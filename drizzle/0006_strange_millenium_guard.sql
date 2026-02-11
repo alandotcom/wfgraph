@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_executions" ADD COLUMN "is_dry_run" boolean DEFAULT false NOT NULL;
