@@ -14,6 +14,7 @@
  * 2. Run: pnpm discover-plugins (or it runs automatically on build)
  */
 
+import "./acuity";
 import "./clerk";
 import "./linear";
 import "./slack";

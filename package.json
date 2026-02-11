@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@ai-sdk/provider": "^2.0.0",
+    "@fountain-bio/acuity": "0.0.23",
     "@linear/sdk": "^63.2.0",
     "@mendable/firecrawl-js": "^4.6.2",
     "@monaco-editor/react": "^4.7.0",

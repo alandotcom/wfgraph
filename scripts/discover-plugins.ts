@@ -42,7 +42,13 @@ const PLUGINS_MARKER_REGEX =
 
 // System integrations that don't have plugins
 const SYSTEM_INTEGRATION_TYPES = ["database"] as const;
-const ENABLED_PLUGIN_TYPES = ["clerk", "linear", "slack", "twilio"] as const;
+const ENABLED_PLUGIN_TYPES = [
+  "acuity",
+  "clerk",
+  "linear",
+  "slack",
+  "twilio",
+] as const;
 const ENABLED_PLUGIN_SET = new Set<string>(ENABLED_PLUGIN_TYPES);
 
 // Regex patterns for codegen template generation

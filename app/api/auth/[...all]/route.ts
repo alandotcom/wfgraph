@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 
-export async function GET() {
+export function GET() {
   return NextResponse.json(
     { error: "Authentication is disabled in private mode" },
     { status: 404 }
   );
 }
 
-export async function POST() {
+export function POST() {
   return NextResponse.json(
     { error: "Authentication is disabled in private mode" },
     { status: 404 }

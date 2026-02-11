@@ -2,6 +2,10 @@ const DURATION_TOKEN_PATTERN = /(-?\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)/gi;
 const ISO_OFFSET_PATTERN = /(Z|[+-]\d{2}:\d{2})$/i;
 const ISO_DURATION_PATTERN =
   /^(-)?P(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/i;
+const NUMERIC_VALUE_PATTERN = /^-?\d+(?:\.\d+)?$/;
+const DIGITS_ONLY_PATTERN = /^\d+$/;
+const NAIVE_DATETIME_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/;
 
 type WaitTimeResolution = {
   waitUntil?: Date;
@@ -64,7 +68,7 @@ export function parseDurationMs(value: unknown): number | null {
     return null;
   }
 
-  if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+  if (NUMERIC_VALUE_PATTERN.test(trimmed)) {
     return Number.parseFloat(trimmed);
   }
 
@@ -100,10 +104,7 @@ function parseNaiveDateTime(value: string): {
   minute: number;
   second: number;
 } | null {
-  const match =
-    /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(
-      value
-    );
+  const match = NAIVE_DATETIME_PATTERN.exec(value);
 
   if (!match) {
     return null;
@@ -182,13 +183,12 @@ export function parseTimestampWithTimezone(
   value: unknown,
   timeZone?: string
 ): Date | null {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
   }
 
-  if (typeof value === "number" && Number.isFinite(value)) {
-    const asDate = new Date(value);
-    return Number.isNaN(asDate.getTime()) ? null : asDate;
+  if (typeof value === "number") {
+    return createValidDate(value);
   }
 
   if (typeof value !== "string") {
@@ -200,27 +200,52 @@ export function parseTimestampWithTimezone(
     return null;
   }
 
-  if (/^\d+$/.test(trimmed)) {
-    const epoch = Number.parseInt(trimmed, 10);
-    const millis = trimmed.length <= 10 ? epoch * 1000 : epoch;
-    const asDate = new Date(millis);
-    return Number.isNaN(asDate.getTime()) ? null : asDate;
+  return (
+    parseEpochTimestamp(trimmed) ??
+    parseIsoOffsetTimestamp(trimmed) ??
+    parseZonedOrNativeTimestamp(trimmed, timeZone)
+  );
+}
+
+function createValidDate(value: number | string): Date | null {
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    return null;
   }
 
-  if (ISO_OFFSET_PATTERN.test(trimmed)) {
-    const asDate = new Date(trimmed);
-    return Number.isNaN(asDate.getTime()) ? null : asDate;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseEpochTimestamp(value: string): Date | null {
+  if (!DIGITS_ONLY_PATTERN.test(value)) {
+    return null;
   }
 
+  const epoch = Number.parseInt(value, 10);
+  const millis = value.length <= 10 ? epoch * 1000 : epoch;
+  return createValidDate(millis);
+}
+
+function parseIsoOffsetTimestamp(value: string): Date | null {
+  if (!ISO_OFFSET_PATTERN.test(value)) {
+    return null;
+  }
+
+  return createValidDate(value);
+}
+
+function parseZonedOrNativeTimestamp(
+  value: string,
+  timeZone?: string
+): Date | null {
   if (timeZone) {
-    const zoned = zonedDateTimeToUtc(trimmed, timeZone);
+    const zoned = zonedDateTimeToUtc(value, timeZone);
     if (zoned) {
       return zoned;
     }
   }
 
-  const asDate = new Date(trimmed);
-  return Number.isNaN(asDate.getTime()) ? null : asDate;
+  return createValidDate(value);
 }
 
 export function resolveWaitUntil(input: {
