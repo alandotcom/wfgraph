@@ -7,6 +7,7 @@ export type WorkflowAuditEventType =
   | "trigger_received"
   | "run_started"
   | "run_waiting"
+  | "run_skipped"
   | "run_resumed"
   | "run_timed_out"
   | "run_cancel_requested"

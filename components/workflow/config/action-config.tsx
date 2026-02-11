@@ -231,6 +231,7 @@ function WaitFields({
   disabled: boolean;
 }) {
   const waitMode = (config.waitMode as string) || "delay";
+  const waitGateMode = (config.waitGateMode as string) || "off";
 
   return (
     <>
@@ -304,6 +305,31 @@ function WaitFields({
             />
             <p className="text-muted-foreground text-xs">
               Example: <code>-1d</code> sends one day before the target time.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="waitGateMode">
+              Continue only if time actually elapsed
+            </Label>
+            <Select
+              disabled={disabled}
+              onValueChange={(value) => onUpdateConfig("waitGateMode", value)}
+              value={waitGateMode}
+            >
+              <SelectTrigger className="w-full" id="waitGateMode">
+                <SelectValue placeholder="Select behavior" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="off">Off (continue immediately)</SelectItem>
+                <SelectItem value="require_actual_wait">
+                  Skip branch when already due
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-muted-foreground text-xs">
+              Prevents immediate sends when the computed time is now or in the
+              past after an update/reschedule.
             </p>
           </div>
 

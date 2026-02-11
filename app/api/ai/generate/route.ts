@@ -192,7 +192,7 @@ System action types (built-in):
 - Database Query: {"actionType": "Database Query", "dbQuery": "SELECT * FROM table", "dbTable": "table"}
 - HTTP Request: {"actionType": "HTTP Request", "httpMethod": "POST", "endpoint": "https://api.example.com", "httpHeaders": "{}", "httpBody": "{}"}
 - Condition: {"actionType": "Condition", "condition": "{{@nodeId:Label.field}} === 'value'"}
-- Wait: {"actionType": "Wait", "waitMode": "delay", "waitDuration": "24h"}
+- Wait: {"actionType": "Wait", "waitMode": "delay", "waitDuration": "24h", "waitGateMode": "require_actual_wait"}
 
 Plugin action types (from integrations):
 ${pluginActionPrompts}

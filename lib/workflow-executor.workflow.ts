@@ -53,6 +53,7 @@ type ExecutionResult = {
   success: boolean;
   data?: unknown;
   error?: string;
+  haltBranch?: boolean;
 };
 
 type NodeOutputs = Record<string, { label: string; data: unknown }>;
@@ -485,6 +486,8 @@ async function executeWaitAction(input: {
   const waitType = waitMode === "hook" ? "hook" : "delay";
   const waitTimezone =
     typeof config.waitTimezone === "string" ? config.waitTimezone : undefined;
+  const waitGateMode =
+    config.waitGateMode === "require_actual_wait" ? "require_actual_wait" : "off";
 
   const startLog = await stepLogStartStep({
     executionId,
@@ -497,6 +500,7 @@ async function executeWaitAction(input: {
       waitUntil: config.waitUntil,
       waitOffset: config.waitOffset,
       waitTimezone,
+      waitGateMode,
       waitForEvents: config.waitForEvents,
       waitTimeout: config.waitTimeout,
     },
@@ -527,11 +531,47 @@ async function executeWaitAction(input: {
       };
     }
 
+    if (waitType === "delay" && resolvedDelay.waitUntil) {
+      const plannedWaitMs = resolvedDelay.waitUntil.getTime() - Date.now();
+      const didActuallyWait = plannedWaitMs > 0;
+
+      if (waitGateMode === "require_actual_wait" && !didActuallyWait) {
+        const output = {
+          dryRun: true,
+          simulated: true,
+          waitType,
+          waitUntil: resolvedDelay.waitUntil.toISOString(),
+          waitGateMode,
+          skipped: true,
+          skippedReason: "past_due_no_wait",
+          plannedWaitMs,
+          didActuallyWait,
+          resumedAt: new Date().toISOString(),
+          message:
+            "Dry run would skip this branch because no actual wait time remained.",
+        };
+
+        await stepLogCompleteStep({
+          logId: startLog.logId,
+          startTime: startLog.startTime,
+          status: "success",
+          output,
+        });
+
+        return {
+          success: true,
+          data: output,
+          haltBranch: true,
+        };
+      }
+    }
+
     const output = {
       dryRun: true,
       simulated: true,
       waitType,
       waitUntil: resolvedDelay.waitUntil?.toISOString(),
+      waitGateMode,
       waitForEvents:
         typeof config.waitForEvents === "string" ? config.waitForEvents : null,
       resumedAt: new Date().toISOString(),
@@ -575,6 +615,51 @@ async function executeWaitAction(input: {
       };
     }
 
+    const plannedWaitMs = resolved.waitUntil.getTime() - Date.now();
+    const didActuallyWait = plannedWaitMs > 0;
+
+    if (waitGateMode === "require_actual_wait" && !didActuallyWait) {
+      const output = {
+        waitType: "delay",
+        waitUntil: resolved.waitUntil.toISOString(),
+        waitGateMode,
+        skipped: true,
+        skippedReason: "past_due_no_wait",
+        plannedWaitMs,
+        didActuallyWait,
+        resumedAt: new Date().toISOString(),
+      };
+
+      await workflowAuditStep({
+        workflowId,
+        executionId,
+        userId,
+        eventType: "run_skipped",
+        message: `Skipped delay branch in node '${context.nodeName}' (target already passed)`,
+        metadata: {
+          nodeId: context.nodeId,
+          waitType: "delay",
+          waitUntil: resolved.waitUntil.toISOString(),
+          plannedWaitMs,
+          reason: "past_due_no_wait",
+          correlationKey: eventContext?.correlationKey,
+        },
+      });
+
+      await stepLogCompleteStep({
+        logId: startLog.logId,
+        startTime: startLog.startTime,
+        status: "success",
+        output,
+      });
+
+      return {
+        success: true,
+        data: output,
+        haltBranch: true,
+      };
+    }
+
     const waitState = await createWaitStateStep({
       executionId,
       workflowId,
@@ -587,6 +672,7 @@ async function executeWaitAction(input: {
       correlationKey: eventContext?.correlationKey,
       metadata: {
         waitMode,
+        waitGateMode,
         waitTimezone,
       },
     });
@@ -601,12 +687,13 @@ async function executeWaitAction(input: {
         nodeId: context.nodeId,
         waitType: "delay",
         waitUntil: resolved.waitUntil.toISOString(),
+        waitGateMode,
         correlationKey: eventContext?.correlationKey,
       },
     });
 
     try {
-      const waitMs = Math.max(resolved.waitUntil.getTime() - Date.now(), 0);
+      const waitMs = Math.max(plannedWaitMs, 0);
       await sleep(waitMs);
     } catch (error) {
       await stepLogCompleteStep({
@@ -703,7 +790,7 @@ async function executeWaitAction(input: {
     correlationKey: eventContext?.correlationKey,
     metadata: {
       waitForEvents,
-      waitMode: "hook",
+        waitMode: "hook",
       waitTimeout: config.waitTimeout,
     },
   });
@@ -1118,9 +1205,16 @@ export async function executeWorkflow(input: WorkflowExecutionInput) {
             error: errorMessage,
           };
         } else {
+          const haltBranch =
+            typeof stepResult === "object" &&
+            stepResult !== null &&
+            "haltBranch" in stepResult &&
+            (stepResult as { haltBranch?: unknown }).haltBranch === true;
+
           result = {
             success: true,
             data: stepResult,
+            haltBranch,
           };
         }
       } else {
@@ -1157,6 +1251,13 @@ export async function executeWorkflow(input: WorkflowExecutionInput) {
         ) {
           console.log(
             "[Workflow Executor] Trigger marked as not triggered; skipping downstream nodes"
+          );
+          return;
+        }
+
+        if (result.haltBranch) {
+          console.log(
+            "[Workflow Executor] Step requested branch halt; skipping downstream nodes"
           );
           return;
         }
