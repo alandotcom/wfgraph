@@ -8,6 +8,7 @@ import {
   preValidateConditionExpression,
   validateConditionExpression,
 } from "@/lib/condition-validator";
+import { getValueByPath, parseCsvSet } from "@/lib/utils/object-path";
 import { resolveWaitUntil } from "@/lib/utils/wait-time";
 import {
   getActionLabel,
@@ -943,6 +944,64 @@ export async function executeWorkflow(input: WorkflowExecutionInput) {
           triggerData = { ...triggerData, ...triggerInput };
         }
 
+        if (triggerType === "Webhook") {
+          const eventTypePathRaw = config.webhookEventPath;
+          const eventTypePath =
+            typeof eventTypePathRaw === "string" && eventTypePathRaw.trim()
+              ? eventTypePathRaw.trim()
+              : "event";
+
+          const eventTypeValue = getValueByPath(triggerData, eventTypePath);
+          const eventType =
+            typeof eventTypeValue === "string" && eventTypeValue.trim()
+              ? eventTypeValue.trim()
+              : undefined;
+
+          const createEvents = parseCsvSet(
+            config.webhookCreateEvents ?? "event.create"
+          );
+          const updateEvents = parseCsvSet(
+            config.webhookUpdateEvents ?? "event.update"
+          );
+          const deleteEvents = parseCsvSet(
+            config.webhookDeleteEvents ?? "event.delete"
+          );
+          const routingConfigured =
+            createEvents.size > 0 ||
+            updateEvents.size > 0 ||
+            deleteEvents.size > 0;
+
+          let ignoreReason: string | undefined;
+          if (routingConfigured && !eventType) {
+            ignoreReason = "missing_event_type";
+          } else if (eventType && deleteEvents.has(eventType)) {
+            ignoreReason = "stop_event";
+          } else if (
+            eventType &&
+            createEvents.size > 0 &&
+            !createEvents.has(eventType) &&
+            !updateEvents.has(eventType)
+          ) {
+            ignoreReason = "event_not_configured";
+          }
+
+          if (ignoreReason) {
+            triggerData = {
+              ...triggerData,
+              triggered: false,
+              eventType,
+              eventTypePath,
+              ignoredReason: ignoreReason,
+            };
+
+            console.log("[Workflow Executor] Webhook trigger ignored:", {
+              eventType,
+              eventTypePath,
+              ignoredReason: ignoreReason,
+            });
+          }
+        }
+
         // Build context for logging
         const triggerContext: StepContext = {
           executionId,
@@ -1089,6 +1148,19 @@ export async function executeWorkflow(input: WorkflowExecutionInput) {
 
       // Execute next nodes
       if (result.success) {
+        // Webhook trigger routing may intentionally ignore an event.
+        if (
+          node.data.type === "trigger" &&
+          result.data &&
+          typeof result.data === "object" &&
+          (result.data as { triggered?: unknown }).triggered === false
+        ) {
+          console.log(
+            "[Workflow Executor] Trigger marked as not triggered; skipping downstream nodes"
+          );
+          return;
+        }
+
         // Check if this is a condition node
         const isConditionNode =
           node.data.type === "action" &&
