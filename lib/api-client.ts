@@ -515,12 +515,6 @@ export const workflowApi = {
       body: JSON.stringify(input),
     }),
 
-  // Get workflow code
-  getCode: (id: string) =>
-    apiCall<{ code: string; workflowName: string }>(
-      `/api/workflows/${id}/code`
-    ),
-
   // Get executions
   getExecutions: (id: string) =>
     apiCall<
@@ -628,17 +622,9 @@ export const workflowApi = {
       status: string;
       nodeStatuses: Array<{
         nodeId: string;
-        status: "pending" | "running" | "success" | "error";
+        status: "pending" | "running" | "success" | "error" | "cancelled";
       }>;
     }>(`/api/workflows/executions/${executionId}/status`),
-
-  // Download workflow
-  download: (id: string) =>
-    apiCall<{
-      success: boolean;
-      files?: Record<string, string>;
-      error?: string;
-    }>(`/api/workflows/${id}/download`),
 
   // Auto-save with debouncing (kept for backwards compatibility)
   autoSaveCurrent: (() => {

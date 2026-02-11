@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { getRun } from "workflow/api";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { workflowExecutions } from "@/lib/db/schema";
+import { sendWorkflowCancelRequested } from "@/lib/inngest/runtime-events";
 import { logWorkflowAuditEvent } from "@/lib/workflow-audit";
 import {
   listExecutionWaitingStates,
@@ -61,24 +61,12 @@ export async function POST(
       message: "Manual cancellation requested",
     });
 
-    const runIds = new Set<string>();
-    for (const waitState of waitingStates) {
-      runIds.add(waitState.runId);
-    }
-    if (execution.workflowRunId) {
-      runIds.add(execution.workflowRunId);
-    }
-
-    for (const runId of runIds) {
-      try {
-        await getRun(runId).cancel();
-      } catch (error) {
-        console.error(
-          `[Execution Cancel] Failed to cancel run ${runId}:`,
-          error
-        );
-      }
-    }
+    await sendWorkflowCancelRequested({
+      executionId,
+      workflowId: execution.workflowId,
+      reason: "Cancelled manually",
+      requestedBy: session.user.id,
+    });
 
     await markWaitingStatesCancelled(waitingStates.map((state) => state.id));
     await markExecutionCancelled({

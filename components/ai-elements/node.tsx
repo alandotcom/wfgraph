@@ -17,7 +17,7 @@ export type NodeProps = ComponentProps<typeof Card> & {
     target: boolean;
     source: boolean;
   };
-  status?: "idle" | "running" | "success" | "error";
+  status?: "idle" | "running" | "success" | "error" | "cancelled";
 };
 
 export const Node = ({ handles, className, status, ...props }: NodeProps) => (
@@ -26,6 +26,7 @@ export const Node = ({ handles, className, status, ...props }: NodeProps) => (
       "node-container relative size-full h-auto w-sm gap-0 rounded-md bg-card p-0 transition-all duration-200",
       status === "success" && "border-green-500 border-2",
       status === "error" && "border-red-500 border-2",
+      status === "cancelled" && "border-slate-500 border-2",
       className
     )}
     {...props}

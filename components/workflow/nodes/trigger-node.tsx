@@ -1,7 +1,7 @@
 "use client";
 
 import type { NodeProps } from "@xyflow/react";
-import { Check, Clock, Play, Webhook, XCircle } from "lucide-react";
+import { Ban, Check, Clock, Play, Webhook, XCircle } from "lucide-react";
 import { memo } from "react";
 import {
   Node,
@@ -48,7 +48,8 @@ export const TriggerNode = memo(({ data, selected }: TriggerNodeProps) => {
           className={cn(
             "absolute top-2 right-2 rounded-full p-1",
             status === "success" && "bg-green-500/50",
-            status === "error" && "bg-red-500/50"
+            status === "error" && "bg-red-500/50",
+            status === "cancelled" && "bg-slate-500/60"
           )}
         >
           {status === "success" && (
@@ -56,6 +57,9 @@ export const TriggerNode = memo(({ data, selected }: TriggerNodeProps) => {
           )}
           {status === "error" && (
             <XCircle className="size-3.5 text-white" strokeWidth={2.5} />
+          )}
+          {status === "cancelled" && (
+            <Ban className="size-3.5 text-white" strokeWidth={2.5} />
           )}
         </div>
       )}

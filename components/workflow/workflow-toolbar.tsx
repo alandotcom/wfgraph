@@ -6,7 +6,6 @@ import {
   Check,
   ChevronDown,
   Copy,
-  Download,
   Loader2,
   Play,
   Plus,
@@ -69,7 +68,6 @@ import { DeployButton } from "../deploy-button";
 import { GitHubStarsButton } from "../github-stars-button";
 import { ConfigurationOverlay } from "../overlays/configuration-overlay";
 import { ConfirmOverlay } from "../overlays/confirm-overlay";
-import { ExportWorkflowOverlay } from "../overlays/export-workflow-overlay";
 import { useOverlay } from "../overlays/overlay-provider";
 import { WorkflowIssuesOverlay } from "../overlays/workflow-issues-overlay";
 import { WorkflowIcon } from "../ui/workflow-icon";
@@ -84,9 +82,9 @@ function updateNodesStatus(
   nodes: WorkflowNode[],
   updateNodeData: (update: {
     id: string;
-    data: { status?: "idle" | "running" | "success" | "error" };
+    data: { status?: "idle" | "running" | "success" | "error" | "cancelled" };
   }) => void,
-  status: "idle" | "running" | "success" | "error"
+  status: "idle" | "running" | "success" | "error" | "cancelled"
 ) {
   for (const node of nodes) {
     updateNodeData({ id: node.id, data: { status } });
@@ -376,7 +374,7 @@ type ExecuteTestWorkflowParams = {
   nodes: WorkflowNode[];
   updateNodeData: (update: {
     id: string;
-    data: { status?: "idle" | "running" | "success" | "error" };
+    data: { status?: "idle" | "running" | "success" | "error" | "cancelled" };
   }) => void;
   pollingIntervalRef: React.MutableRefObject<NodeJS.Timeout | null>;
   setIsExecuting: (value: boolean) => void;
@@ -475,7 +473,8 @@ async function executeTestWorkflow({
                 | "idle"
                 | "running"
                 | "success"
-                | "error",
+                | "error"
+                | "cancelled",
             },
           });
         }
@@ -515,7 +514,7 @@ type WorkflowHandlerParams = {
   edges: WorkflowEdge[];
   updateNodeData: (update: {
     id: string;
-    data: { status?: "idle" | "running" | "success" | "error" };
+    data: { status?: "idle" | "running" | "success" | "error" | "cancelled" };
   }) => void;
   isExecuting: boolean;
   setIsExecuting: (value: boolean) => void;
@@ -686,7 +685,6 @@ function useWorkflowState() {
   const userIntegrations = useAtomValue(integrationsAtom);
   const [triggerExecute, setTriggerExecute] = useAtom(triggerExecuteAtom);
 
-  const [isDownloading, setIsDownloading] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [allWorkflows, setAllWorkflows] = useState<
     Array<{
@@ -731,8 +729,6 @@ function useWorkflowState() {
     addNode,
     canUndo,
     canRedo,
-    isDownloading,
-    setIsDownloading,
     isDuplicating,
     setIsDuplicating,
     allWorkflows,
@@ -763,7 +759,6 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     setHasUnsavedChanges,
     clearWorkflow,
     setAllWorkflows,
-    setIsDownloading,
     setIsDuplicating,
     setActiveTab,
     setNodes,
@@ -838,58 +833,6 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     });
   };
 
-  const handleDownload = async () => {
-    if (!currentWorkflowId) {
-      toast.error("Please save the workflow before downloading");
-      return;
-    }
-
-    setIsDownloading(true);
-    toast.info("Preparing workflow files for download...");
-
-    try {
-      const result = await api.workflow.download(currentWorkflowId);
-
-      if (!result.success) {
-        throw new Error(result.error || "Failed to prepare download");
-      }
-
-      if (!result.files) {
-        throw new Error("No files to download");
-      }
-
-      // Import JSZip dynamically
-      const JSZip = (await import("jszip")).default;
-      const zip = new JSZip();
-
-      // Add all files to the zip
-      for (const [path, content] of Object.entries(result.files)) {
-        zip.file(path, content);
-      }
-
-      // Generate the zip file
-      const blob = await zip.generateAsync({ type: "blob" });
-
-      // Create download link
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${workflowName.toLowerCase().replace(/[^a-z0-9]/g, "-")}-workflow.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      toast.success("Workflow downloaded successfully!");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to download workflow"
-      );
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
   const loadWorkflows = async () => {
     try {
       const workflows = await api.workflow.getAll();
@@ -922,7 +865,6 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     handleExecute,
     handleClearWorkflow,
     handleDeleteWorkflow,
-    handleDownload,
     loadWorkflows,
     handleDuplicate,
   };
@@ -1147,16 +1089,14 @@ function ToolbarActions({
         </Button>
       </ButtonGroup>
 
-      {/* Save/Download - Mobile Vertical */}
+      {/* Save - Mobile Vertical */}
       <ButtonGroup className="flex lg:hidden" orientation="vertical">
         <SaveButton handleSave={actions.handleSave} state={state} />
-        <DownloadButton actions={actions} state={state} />
       </ButtonGroup>
 
-      {/* Save/Download - Desktop Horizontal */}
+      {/* Save - Desktop Horizontal */}
       <ButtonGroup className="hidden lg:flex" orientation="horizontal">
         <SaveButton handleSave={actions.handleSave} state={state} />
-        <DownloadButton actions={actions} state={state} />
       </ButtonGroup>
 
       <RunButtonGroup actions={actions} state={state} />
@@ -1190,50 +1130,6 @@ function SaveButton({
       )}
       {state.hasUnsavedChanges && !state.isSaving && (
         <div className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary" />
-      )}
-    </Button>
-  );
-}
-
-// Download Button Component
-function DownloadButton({
-  state,
-  actions,
-}: {
-  state: ReturnType<typeof useWorkflowState>;
-  actions: ReturnType<typeof useWorkflowActions>;
-}) {
-  const { open: openOverlay } = useOverlay();
-
-  const handleClick = () => {
-    openOverlay(ExportWorkflowOverlay, {
-      onExport: actions.handleDownload,
-      isDownloading: state.isDownloading,
-    });
-  };
-
-  return (
-    <Button
-      className="border hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5 disabled:[&>svg]:text-muted-foreground"
-      disabled={
-        state.isDownloading ||
-        state.nodes.length === 0 ||
-        state.isGenerating ||
-        !state.currentWorkflowId
-      }
-      onClick={handleClick}
-      size="icon"
-      title={
-        state.isDownloading
-          ? "Preparing download..."
-          : "Export workflow as code"
-      }
-      variant="secondary"
-    >
-      {state.isDownloading ? (
-        <Loader2 className="size-4 animate-spin" />
-      ) : (
-        <Download className="size-4" />
       )}
     </Button>
   );

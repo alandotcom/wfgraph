@@ -1,13 +1,15 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { getRun, start } from "workflow/api";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { validateWorkflowIntegrations } from "@/lib/db/integrations";
 import { workflowExecutions, workflows } from "@/lib/db/schema";
+import {
+  sendWorkflowCancelRequested,
+  sendWorkflowRunRequested,
+} from "@/lib/inngest/runtime-events";
 import { getValueByPath, parseCsvSet } from "@/lib/utils/object-path";
 import { logWorkflowAuditEvent } from "@/lib/workflow-audit";
-import { executeWorkflow } from "@/lib/workflow-executor.workflow";
 import type { WorkflowEdge, WorkflowNode } from "@/lib/workflow-store";
 import {
   listWorkflowWaitingStatesByCorrelation,
@@ -38,23 +40,28 @@ async function cancelWaitingRuns(input: {
   waitStates: Array<{
     id: string;
     executionId: string;
-    runId: string;
   }>;
   reason: string;
   eventType?: string;
 }) {
-  const uniqueRunIds = Array.from(
-    new Set(input.waitStates.map((w) => w.runId))
-  );
   const uniqueExecutionIds = Array.from(
     new Set(input.waitStates.map((w) => w.executionId))
   );
 
-  for (const runId of uniqueRunIds) {
+  for (const executionId of uniqueExecutionIds) {
     try {
-      await getRun(runId).cancel();
+      await sendWorkflowCancelRequested({
+        executionId,
+        workflowId: input.workflowId,
+        reason: input.reason,
+        requestedBy: input.userId,
+        eventType: input.eventType,
+      });
     } catch (error) {
-      console.error(`[Execute] Failed to cancel run ${runId}:`, error);
+      console.error(
+        `[Execute] Failed to send cancel signal for execution ${executionId}:`,
+        error
+      );
     }
   }
 
@@ -438,21 +445,19 @@ export async function POST(
       })
       .returning();
 
-    const run = await start(executeWorkflow, [
-      {
-        nodes: workflowNodes,
-        edges: workflowEdges,
-        triggerInput: effectiveInput,
-        executionId: startedExecution.id,
-        workflowId,
-        userId: session.user.id,
-        dryRun,
-        eventContext: {
-          eventType,
-          correlationKey,
-        },
+    const run = await sendWorkflowRunRequested({
+      nodes: workflowNodes,
+      edges: workflowEdges,
+      triggerInput: effectiveInput,
+      executionId: startedExecution.id,
+      workflowId,
+      userId: session.user.id,
+      dryRun,
+      eventContext: {
+        eventType,
+        correlationKey,
       },
-    ]).catch(async (error) => {
+    }).catch(async (error) => {
       await db
         .update(workflowExecutions)
         .set({
@@ -468,7 +473,7 @@ export async function POST(
     await db
       .update(workflowExecutions)
       .set({
-        workflowRunId: run.runId,
+        workflowRunId: run.eventId ?? null,
       })
       .where(eq(workflowExecutions.id, startedExecution.id));
 
@@ -483,14 +488,14 @@ export async function POST(
         dryRun,
         eventType,
         correlationKey,
-        runId: run.runId,
+        runId: run.eventId,
       },
     });
 
     // Return immediately with the execution ID
     return NextResponse.json({
       executionId: startedExecution.id,
-      runId: run.runId,
+      runId: run.eventId,
       status: "running",
       dryRun,
       ...(updateCancellationSummary ?? {}),

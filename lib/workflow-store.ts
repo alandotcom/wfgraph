@@ -10,7 +10,7 @@ export type WorkflowNodeData = {
   description?: string;
   type: WorkflowNodeType;
   config?: Record<string, unknown>;
-  status?: "idle" | "running" | "success" | "error";
+  status?: "idle" | "running" | "success" | "error" | "cancelled";
   enabled?: boolean; // Whether the step is enabled (defaults to true)
   onClick?: () => void; // For the "add" node type
 };

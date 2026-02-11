@@ -1,13 +1,16 @@
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { getRun, resumeHook, start } from "workflow/api";
 import { db } from "@/lib/db";
 import { validateWorkflowIntegrations } from "@/lib/db/integrations";
 import { apiKeys, workflowExecutions, workflows } from "@/lib/db/schema";
+import {
+  sendWorkflowCancelRequested,
+  sendWorkflowRunRequested,
+  sendWorkflowWaitSignal,
+} from "@/lib/inngest/runtime-events";
 import { getValueByPath, parseCsvSet } from "@/lib/utils/object-path";
 import { logWorkflowAuditEvent } from "@/lib/workflow-audit";
-import { executeWorkflow } from "@/lib/workflow-executor.workflow";
 import type { WorkflowEdge, WorkflowNode } from "@/lib/workflow-store";
 import {
   listWorkflowWaitingStatesByCorrelation,
@@ -134,21 +137,19 @@ async function startWebhookExecution(input: {
     })
     .returning();
 
-  const run = await start(executeWorkflow, [
-    {
-      nodes: input.workflowNodes,
-      edges: input.workflowEdges,
-      triggerInput: input.payload,
-      executionId: execution.id,
-      workflowId: input.workflowId,
-      userId: input.workflowUserId,
-      dryRun: input.dryRun === true,
-      eventContext: {
-        eventType: input.eventType,
-        correlationKey: input.correlationKey,
-      },
+  const run = await sendWorkflowRunRequested({
+    nodes: input.workflowNodes,
+    edges: input.workflowEdges,
+    triggerInput: input.payload,
+    executionId: execution.id,
+    workflowId: input.workflowId,
+    userId: input.workflowUserId,
+    dryRun: input.dryRun === true,
+    eventContext: {
+      eventType: input.eventType,
+      correlationKey: input.correlationKey,
     },
-  ]).catch(async (error) => {
+  }).catch(async (error) => {
     await db
       .update(workflowExecutions)
       .set({
@@ -163,7 +164,7 @@ async function startWebhookExecution(input: {
   await db
     .update(workflowExecutions)
     .set({
-      workflowRunId: run.runId,
+      workflowRunId: run.eventId ?? null,
     })
     .where(eq(workflowExecutions.id, execution.id));
 
@@ -178,13 +179,13 @@ async function startWebhookExecution(input: {
       dryRun: input.dryRun === true,
       eventType: input.eventType,
       correlationKey: input.correlationKey,
-      runId: run.runId,
+      runId: run.eventId,
     },
   });
 
   return {
     executionId: execution.id,
-    runId: run.runId,
+    runId: run.eventId,
     dryRun: input.dryRun === true,
   };
 }
@@ -195,25 +196,30 @@ async function cancelWaitingRuns(input: {
   waitStates: Array<{
     id: string;
     executionId: string;
-    runId: string;
     nodeId: string;
     nodeName: string;
   }>;
   eventType?: string;
   reason: string;
 }) {
-  const uniqueRunIds = Array.from(
-    new Set(input.waitStates.map((w) => w.runId))
-  );
   const uniqueExecutionIds = Array.from(
     new Set(input.waitStates.map((w) => w.executionId))
   );
 
-  for (const runId of uniqueRunIds) {
+  for (const executionId of uniqueExecutionIds) {
     try {
-      await getRun(runId).cancel();
+      await sendWorkflowCancelRequested({
+        executionId,
+        workflowId: input.workflowId,
+        reason: input.reason,
+        requestedBy: input.userId,
+        eventType: input.eventType,
+      });
     } catch (error) {
-      console.error(`[Webhook] Failed to cancel run ${runId}:`, error);
+      console.error(
+        `[Webhook] Failed to send cancel signal for execution ${executionId}:`,
+        error
+      );
     }
   }
 
@@ -251,6 +257,7 @@ async function resumeMatchingWaitHooks(input: {
   waitStates: Array<{
     id: string;
     executionId: string;
+    nodeId: string;
     hookToken: string | null;
     metadata: Record<string, unknown> | null;
   }>;
@@ -276,8 +283,15 @@ async function resumeMatchingWaitHooks(input: {
     }
 
     try {
-      await resumeHook(waitState.hookToken, {
+      await sendWorkflowWaitSignal({
+        executionId: waitState.executionId,
+        nodeId: waitState.nodeId,
+        token: waitState.hookToken,
         eventType: input.eventType,
+        correlationKey:
+          typeof metadata.correlationKey === "string"
+            ? metadata.correlationKey
+            : undefined,
         payload: input.payload,
       });
 

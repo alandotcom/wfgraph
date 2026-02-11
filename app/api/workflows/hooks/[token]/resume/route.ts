@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { resumeHook } from "workflow/api";
 import { db } from "@/lib/db";
 import { apiKeys, workflowWaitStates } from "@/lib/db/schema";
+import { sendWorkflowWaitSignal } from "@/lib/inngest/runtime-events";
 import { logWorkflowAuditEvent } from "@/lib/workflow-audit";
 import {
   markExecutionRunning,
@@ -96,7 +96,12 @@ export async function POST(
       unknown
     >;
 
-    await resumeHook(token, body);
+    await sendWorkflowWaitSignal({
+      executionId: waitState.executionId,
+      nodeId: waitState.nodeId,
+      token,
+      payload: body,
+    });
 
     await markWaitStateStatus({
       waitStateId: waitState.id,

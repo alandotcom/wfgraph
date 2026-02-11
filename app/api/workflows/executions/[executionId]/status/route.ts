@@ -6,7 +6,7 @@ import { workflowExecutionLogs, workflowExecutions } from "@/lib/db/schema";
 
 type NodeStatus = {
   nodeId: string;
-  status: "pending" | "running" | "success" | "error";
+  status: "pending" | "running" | "success" | "error" | "cancelled";
 };
 
 export async function GET(
@@ -51,7 +51,11 @@ export async function GET(
     // Map logs to node statuses
     const nodeStatuses: NodeStatus[] = logs.map((log) => ({
       nodeId: log.nodeId,
-      status: log.status,
+      status:
+        execution.status === "cancelled" &&
+        (log.status === "pending" || log.status === "running")
+          ? "cancelled"
+          : log.status,
     }));
 
     return NextResponse.json({

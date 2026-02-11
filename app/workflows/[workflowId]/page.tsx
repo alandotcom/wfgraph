@@ -627,7 +627,8 @@ const WorkflowEditor = ({ params }: WorkflowPageProps) => {
                 | "idle"
                 | "running"
                 | "success"
-                | "error",
+                | "error"
+                | "cancelled",
             },
           });
         }

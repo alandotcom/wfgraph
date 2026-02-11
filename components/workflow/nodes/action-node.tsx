@@ -4,6 +4,7 @@ import type { NodeProps } from "@xyflow/react";
 import { useAtomValue } from "jotai";
 import {
   AlertTriangle,
+  Ban,
   Check,
   Code,
   Database,
@@ -160,7 +161,7 @@ const getProviderLogo = (actionType: string) => {
 const StatusBadge = ({
   status,
 }: {
-  status?: "idle" | "running" | "success" | "error";
+  status?: "idle" | "running" | "success" | "error" | "cancelled";
 }) => {
   // Don't show badge for idle or running (running has BorderBeam animation)
   if (!status || status === "idle" || status === "running") {
@@ -172,7 +173,8 @@ const StatusBadge = ({
       className={cn(
         "absolute top-2 right-2 rounded-full p-1",
         status === "success" && "bg-green-500/50",
-        status === "error" && "bg-red-500/50"
+        status === "error" && "bg-red-500/50",
+        status === "cancelled" && "bg-slate-500/60"
       )}
     >
       {status === "success" && (
@@ -180,6 +182,9 @@ const StatusBadge = ({
       )}
       {status === "error" && (
         <XCircle className="size-3.5 text-white" strokeWidth={2.5} />
+      )}
+      {status === "cancelled" && (
+        <Ban className="size-3.5 text-white" strokeWidth={2.5} />
       )}
     </div>
   );

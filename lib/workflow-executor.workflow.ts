@@ -1,9 +1,8 @@
 /**
- * Workflow-based executor using "use workflow" and "use step" directives
- * This executor captures step executions through the workflow SDK for better observability
+ * Workflow executor used by Inngest runtime.
+ * Keeps node execution, templating, and logging behavior aligned with the builder.
  */
 
-import { createHook, getWorkflowMetadata, sleep } from "workflow";
 import {
   preValidateConditionExpression,
   validateConditionExpression,
@@ -29,6 +28,33 @@ import type { StepContext } from "./steps/step-handler";
 import { triggerStep } from "./steps/trigger";
 import { getErrorMessageAsync } from "./utils";
 import type { WorkflowEdge, WorkflowNode } from "./workflow-store";
+
+type WaitForEventOptions = {
+  event: string;
+  timeoutMs?: number;
+  ifExpression?: string;
+};
+
+export type WorkflowExecutionRuntime = {
+  sleep: (stepId: string, durationMs: number) => Promise<void>;
+  waitForEvent: (
+    stepId: string,
+    options: WaitForEventOptions
+  ) => Promise<unknown | null>;
+  runId?: string;
+};
+
+const DEFAULT_RUNTIME: WorkflowExecutionRuntime = {
+  sleep: async (_stepId, durationMs) => {
+    if (durationMs <= 0) {
+      return;
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, durationMs);
+    });
+  },
+  waitForEvent: async () => null,
+};
 
 // System actions that don't have plugins - maps to module import functions
 const SYSTEM_ACTIONS: Record<string, StepImporter> = {
@@ -398,6 +424,20 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function generateWaitToken(): string {
+  if (
+    typeof globalThis.crypto !== "undefined" &&
+    typeof globalThis.crypto.randomUUID === "function"
+  ) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function escapeCelString(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+}
+
 function isCancellationError(error: unknown): boolean {
   const message = getErrorMessage(error).toLowerCase();
   return (
@@ -518,6 +558,7 @@ async function executeSkippedAction(input: {
 async function executeWaitAction(input: {
   config: Record<string, unknown>;
   context: StepContext;
+  runtime: WorkflowExecutionRuntime;
   executionId?: string;
   workflowId?: string;
   userId?: string;
@@ -531,6 +572,7 @@ async function executeWaitAction(input: {
   const {
     config,
     context,
+    runtime,
     executionId,
     workflowId,
     userId,
@@ -539,11 +581,11 @@ async function executeWaitAction(input: {
     eventContext,
   } = input;
 
-  if (!(executionId && workflowId && userId && workflowRunId)) {
+  if (!(executionId && workflowId && userId)) {
     return {
       success: false,
       error:
-        "Wait requires execution context (executionId, workflowId, userId, workflowRunId).",
+        "Wait requires execution context (executionId, workflowId, userId).",
     };
   }
 
@@ -554,6 +596,7 @@ async function executeWaitAction(input: {
       : "delay";
 
   const waitType = waitMode === "hook" ? "hook" : "delay";
+  const runId = workflowRunId || runtime.runId || executionId;
   const waitTimezone =
     typeof config.waitTimezone === "string" ? config.waitTimezone : undefined;
   const waitGateMode =
@@ -736,7 +779,7 @@ async function executeWaitAction(input: {
       executionId,
       workflowId,
       userId,
-      runId: workflowRunId,
+      runId,
       nodeId: context.nodeId,
       nodeName: context.nodeName,
       waitType: "delay",
@@ -766,7 +809,7 @@ async function executeWaitAction(input: {
 
     try {
       const waitMs = Math.max(plannedWaitMs, 0);
-      await sleep(waitMs);
+      await runtime.sleep(`wait-delay-${context.nodeId}`, waitMs);
     } catch (error) {
       await stepLogCompleteStep({
         logId: startLog.logId,
@@ -837,15 +880,7 @@ async function executeWaitAction(input: {
     typeof config.waitHookToken === "string" && config.waitHookToken.trim()
       ? config.waitHookToken.trim()
       : undefined;
-
-  const hook = createHook<Record<string, unknown>>({
-    token: explicitHookToken,
-    metadata: {
-      executionId,
-      nodeId: context.nodeId,
-      correlationKey: eventContext?.correlationKey,
-    },
-  });
+  const hookToken = explicitHookToken || generateWaitToken();
 
   const waitForEvents =
     typeof config.waitForEvents === "string" ? config.waitForEvents : undefined;
@@ -853,11 +888,11 @@ async function executeWaitAction(input: {
     executionId,
     workflowId,
     userId,
-    runId: workflowRunId,
+    runId,
     nodeId: context.nodeId,
     nodeName: context.nodeName,
     waitType: "hook",
-    hookToken: hook.token,
+    hookToken,
     waitUntilIso: waitTimeoutResolution.waitUntil?.toISOString(),
     correlationKey: eventContext?.correlationKey,
     metadata: {
@@ -875,7 +910,7 @@ async function executeWaitAction(input: {
     message: `Run waiting on hook in node '${context.nodeName}'`,
     metadata: {
       nodeId: context.nodeId,
-      hookToken: hook.token,
+      hookToken,
       waitForEvents,
       timeoutAt: waitTimeoutResolution.waitUntil?.toISOString(),
     },
@@ -885,24 +920,25 @@ async function executeWaitAction(input: {
   let hookPayload: unknown;
 
   try {
-    if (waitTimeoutResolution.waitUntil) {
-      const timeoutMs = Math.max(
-        waitTimeoutResolution.waitUntil.getTime() - Date.now(),
-        0
-      );
-      const raced = await Promise.race([
-        (async () => ({ type: "hook" as const, payload: await hook }))(),
-        sleep(timeoutMs).then(() => ({ type: "timeout" as const })),
-      ]);
+    const timeoutMs = waitTimeoutResolution.waitUntil
+      ? Math.max(waitTimeoutResolution.waitUntil.getTime() - Date.now(), 0)
+      : undefined;
 
-      if (raced.type === "timeout") {
-        timedOut = true;
-      } else {
-        hookPayload = raced.payload;
+    const resumeEvent = await runtime.waitForEvent(
+      `wait-hook-${context.nodeId}`,
+      {
+        event: "workflow/wait.signal",
+        timeoutMs,
+        ifExpression: [
+          "async.data.executionId == event.data.executionId",
+          `async.data.nodeId == '${escapeCelString(context.nodeId)}'`,
+          `async.data.token == '${escapeCelString(hookToken)}'`,
+          `async.data.signalType == 'wait-resume'`,
+        ].join(" && "),
       }
-    } else {
-      hookPayload = await hook;
-    }
+    );
+    timedOut = resumeEvent === null;
+    hookPayload = resumeEvent;
   } catch (error) {
     await stepLogCompleteStep({
       logId: startLog.logId,
@@ -929,13 +965,13 @@ async function executeWaitAction(input: {
       : `Run resumed from hook in node '${context.nodeName}'`,
     metadata: {
       nodeId: context.nodeId,
-      hookToken: hook.token,
+      hookToken,
     },
   });
 
   const output = {
     waitType: "hook",
-    hookToken: hook.token,
+    hookToken,
     timedOut,
     resumedAt: new Date().toISOString(),
     payload: hookPayload,
@@ -958,9 +994,10 @@ async function executeWaitAction(input: {
  * Main workflow executor function
  */
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Main executor coordinates triggers, actions, branching, waits, and terminal run state.
-export async function executeWorkflow(input: WorkflowExecutionInput) {
-  "use workflow";
-
+export async function executeWorkflow(
+  input: WorkflowExecutionInput,
+  runtime: WorkflowExecutionRuntime = DEFAULT_RUNTIME
+) {
   console.log("[Workflow Executor] Starting workflow execution");
 
   const {
@@ -985,9 +1022,8 @@ export async function executeWorkflow(input: WorkflowExecutionInput) {
 
   const outputs: NodeOutputs = {};
   const results: Record<string, ExecutionResult> = {};
-  const workflowMetadata = getWorkflowMetadata();
   const currentWorkflowRunId =
-    workflowRunId || workflowMetadata?.workflowRunId || undefined;
+    workflowRunId || runtime.runId || executionId || undefined;
 
   // Build node and edge maps
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
@@ -1267,6 +1303,7 @@ export async function executeWorkflow(input: WorkflowExecutionInput) {
             stepResult = await executeWaitAction({
               config: processedConfig,
               context: stepContext,
+              runtime,
               executionId,
               workflowId,
               userId,
@@ -1296,6 +1333,7 @@ export async function executeWorkflow(input: WorkflowExecutionInput) {
           stepResult = await executeWaitAction({
             config: processedConfig,
             context: stepContext,
+            runtime,
             executionId,
             workflowId,
             userId,
