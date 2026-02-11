@@ -1,9 +1,15 @@
 "use client";
 
-import { Clock, Copy, Play, Webhook } from "lucide-react";
+import { Clock, Copy, Play, TriangleAlert, Webhook } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -14,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
+import { getValueByPath } from "@/lib/utils/object-path";
 import { SchemaBuilder, type SchemaField } from "./schema-builder";
 
 type TriggerConfigProps = {
@@ -23,21 +30,217 @@ type TriggerConfigProps = {
   workflowId?: string;
 };
 
+type WebhookPreset = {
+  id: string;
+  label: string;
+  payload: Record<string, unknown>;
+};
+
+const WEBHOOK_PRESETS: WebhookPreset[] = [
+  {
+    id: "appointment-created",
+    label: "Appointment Created",
+    payload: {
+      event: "event.create",
+      timestamp: "2026-02-11T18:00:00Z",
+      data: {
+        id: "appt_123",
+        startsAt: "2026-02-12T15:00:00-05:00",
+        timezone: "America/New_York",
+        status: "scheduled",
+      },
+    },
+  },
+  {
+    id: "appointment-updated",
+    label: "Appointment Updated",
+    payload: {
+      event: "event.update",
+      timestamp: "2026-02-11T19:00:00Z",
+      data: {
+        id: "appt_123",
+        startsAt: "2026-02-13T10:00:00-05:00",
+        timezone: "America/New_York",
+        status: "rescheduled",
+      },
+    },
+  },
+  {
+    id: "appointment-deleted",
+    label: "Appointment Deleted",
+    payload: {
+      event: "event.delete",
+      timestamp: "2026-02-11T20:00:00Z",
+      data: {
+        id: "appt_123",
+        status: "cancelled",
+      },
+    },
+  },
+];
+
+function parseCsvEntries(value: unknown): string[] {
+  if (typeof value !== "string") {
+    return [];
+  }
+
+  const entries = value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  return Array.from(new Set(entries));
+}
+
+function readSchema(config: Record<string, unknown>): SchemaField[] {
+  if (typeof config.webhookSchema !== "string" || !config.webhookSchema) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(config.webhookSchema);
+    return Array.isArray(parsed) ? (parsed as SchemaField[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Trigger config intentionally combines form, summary, and warnings in one panel.
 export function TriggerConfig({
   config,
   onUpdateConfig,
   disabled,
   workflowId,
 }: TriggerConfigProps) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   const webhookUrl = workflowId
     ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/workflows/${workflowId}/webhook`
     : "";
+
+  const eventPath = (config?.webhookEventPath as string) || "event";
+  const correlationPath =
+    (config?.webhookCorrelationPath as string) || "data.id";
+  const createEvents =
+    (config?.webhookCreateEvents as string) || "event.create";
+  const updateEvents =
+    (config?.webhookUpdateEvents as string) || "event.update";
+  const deleteEvents =
+    (config?.webhookDeleteEvents as string) || "event.delete";
+  const mockRequest = (config?.webhookMockRequest as string) || "";
+  const schema = readSchema(config);
+
+  const parsedMockRequest = useMemo(() => {
+    if (!mockRequest.trim()) {
+      return { payload: null as unknown, error: "" };
+    }
+
+    try {
+      return {
+        payload: JSON.parse(mockRequest) as unknown,
+        error: "",
+      };
+    } catch {
+      return {
+        payload: null as unknown,
+        error: "Sample payload is not valid JSON.",
+      };
+    }
+  }, [mockRequest]);
+
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Warning assembly validates multiple independent webhook configuration rules.
+  const warnings = useMemo(() => {
+    const items: string[] = [];
+
+    if (!eventPath.trim()) {
+      items.push("Event type field path is empty.");
+    }
+
+    if (!correlationPath.trim()) {
+      items.push("Entity ID field path is empty.");
+    }
+
+    const createSet = new Set(parseCsvEntries(createEvents));
+    const updateSet = new Set(parseCsvEntries(updateEvents));
+    const deleteSet = new Set(parseCsvEntries(deleteEvents));
+
+    if (createSet.size === 0 && updateSet.size === 0 && deleteSet.size === 0) {
+      items.push(
+        "No events are configured. Incoming webhooks will not start, restart, or stop runs."
+      );
+    }
+
+    const overlappingCreateUpdate = [...createSet].filter((eventName) =>
+      updateSet.has(eventName)
+    );
+    if (overlappingCreateUpdate.length > 0) {
+      items.push(
+        `These events appear in both start and restart lists: ${overlappingCreateUpdate.join(", ")}`
+      );
+    }
+
+    const overlappingCreateDelete = [...createSet].filter((eventName) =>
+      deleteSet.has(eventName)
+    );
+    if (overlappingCreateDelete.length > 0) {
+      items.push(
+        `These events appear in both start and stop lists: ${overlappingCreateDelete.join(", ")}`
+      );
+    }
+
+    const overlappingUpdateDelete = [...updateSet].filter((eventName) =>
+      deleteSet.has(eventName)
+    );
+    if (overlappingUpdateDelete.length > 0) {
+      items.push(
+        `These events appear in both restart and stop lists: ${overlappingUpdateDelete.join(", ")}`
+      );
+    }
+
+    if (parsedMockRequest.error) {
+      items.push(parsedMockRequest.error);
+    } else if (parsedMockRequest.payload) {
+      const eventValue = getValueByPath(parsedMockRequest.payload, eventPath);
+      const correlationValue = getValueByPath(
+        parsedMockRequest.payload,
+        correlationPath
+      );
+
+      if (eventValue === undefined) {
+        items.push(`Sample payload is missing event type at "${eventPath}".`);
+      }
+
+      if (correlationValue === undefined) {
+        items.push(
+          `Sample payload is missing entity ID at "${correlationPath}".`
+        );
+      }
+    }
+
+    return items;
+  }, [
+    correlationPath,
+    createEvents,
+    deleteEvents,
+    eventPath,
+    parsedMockRequest.error,
+    parsedMockRequest.payload,
+    updateEvents,
+  ]);
 
   const handleCopyWebhookUrl = () => {
     if (webhookUrl) {
       navigator.clipboard.writeText(webhookUrl);
       toast.success("Webhook URL copied to clipboard");
     }
+  };
+
+  const handleLoadPreset = (preset: WebhookPreset) => {
+    onUpdateConfig(
+      "webhookMockRequest",
+      JSON.stringify(preset.payload, null, 2)
+    );
+    toast.success(`${preset.label} example loaded`);
   };
 
   return (
@@ -77,10 +280,16 @@ export function TriggerConfig({
         </Select>
       </div>
 
-      {/* Webhook fields */}
       {config?.triggerType === "Webhook" && (
-        <>
-          <div className="space-y-2">
+        <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
+          <div className="space-y-1">
+            <p className="font-medium text-sm">Webhook Configuration</p>
+            <p className="text-muted-foreground text-xs">
+              Define how incoming events should start, restart, or stop runs.
+            </p>
+          </div>
+
+          <div className="space-y-2 rounded-md border bg-background p-3">
             <Label className="ml-1">Webhook URL</Label>
             <div className="flex gap-2">
               <Input
@@ -98,105 +307,171 @@ export function TriggerConfig({
               </Button>
             </div>
           </div>
-          <div className="space-y-2">
-            <Label>Request Schema (Optional)</Label>
-            <SchemaBuilder
-              disabled={disabled}
-              onChange={(schema) =>
-                onUpdateConfig("webhookSchema", JSON.stringify(schema))
-              }
-              schema={
-                config?.webhookSchema
-                  ? (JSON.parse(
-                      config.webhookSchema as string
-                    ) as SchemaField[])
-                  : []
-              }
-            />
+
+          <div className="space-y-3 rounded-md border bg-background p-3">
+            <p className="font-medium text-xs uppercase tracking-wide">
+              Routing Rules
+            </p>
+
+            <div className="space-y-2">
+              <Label htmlFor="guidedEventPath">
+                What field contains the event type?
+              </Label>
+              <Input
+                disabled={disabled}
+                id="guidedEventPath"
+                onChange={(e) =>
+                  onUpdateConfig("webhookEventPath", e.target.value)
+                }
+                placeholder="event"
+                value={eventPath}
+              />
+              <p className="text-muted-foreground text-xs">
+                Example: <code>event</code>, <code>type</code>, or{" "}
+                <code>data.event.status</code>.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="guidedCorrelationPath">
+                What field contains the entity ID?
+              </Label>
+              <Input
+                disabled={disabled}
+                id="guidedCorrelationPath"
+                onChange={(e) =>
+                  onUpdateConfig("webhookCorrelationPath", e.target.value)
+                }
+                placeholder="data.id"
+                value={correlationPath}
+              />
+              <p className="text-muted-foreground text-xs">
+                Runs with the same entity ID are cancelled or resumed together.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="guidedCreateEvents">
+                Events that start a run
+              </Label>
+              <Input
+                disabled={disabled}
+                id="guidedCreateEvents"
+                onChange={(e) =>
+                  onUpdateConfig("webhookCreateEvents", e.target.value)
+                }
+                placeholder="event.create"
+                value={createEvents}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="guidedUpdateEvents">
+                Events that restart timing
+              </Label>
+              <Input
+                disabled={disabled}
+                id="guidedUpdateEvents"
+                onChange={(e) =>
+                  onUpdateConfig("webhookUpdateEvents", e.target.value)
+                }
+                placeholder="event.update"
+                value={updateEvents}
+              />
+              <p className="text-muted-foreground text-xs">
+                Matching waiting runs are cancelled first, then a new run
+                starts.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="guidedDeleteEvents">Events that stop runs</Label>
+              <Input
+                disabled={disabled}
+                id="guidedDeleteEvents"
+                onChange={(e) =>
+                  onUpdateConfig("webhookDeleteEvents", e.target.value)
+                }
+                placeholder="event.delete"
+                value={deleteEvents}
+              />
+              <p className="text-muted-foreground text-xs">
+                Matching waiting runs are cancelled and no new run is created.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2 rounded-md border bg-background p-3">
+            <p className="font-medium text-xs uppercase tracking-wide">
+              Behavior Summary
+            </p>
+            <p className="text-sm">
+              Start runs when event is:{" "}
+              <span className="font-mono text-xs">
+                {createEvents.trim() || "(none)"}
+              </span>
+            </p>
+            <p className="text-sm">
+              Restart runs when event is:{" "}
+              <span className="font-mono text-xs">
+                {updateEvents.trim() || "(none)"}
+              </span>
+            </p>
+            <p className="text-sm">
+              Stop runs when event is:{" "}
+              <span className="font-mono text-xs">
+                {deleteEvents.trim() || "(none)"}
+              </span>
+            </p>
             <p className="text-muted-foreground text-xs">
-              Define the expected structure of the incoming webhook payload.
+              Need more complex matching logic? Add a Condition step after this
+              trigger.
             </p>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="webhookEventPath">Event Type Path</Label>
-            <Input
-              disabled={disabled}
-              id="webhookEventPath"
-              onChange={(e) =>
-                onUpdateConfig("webhookEventPath", e.target.value)
-              }
-              placeholder="event"
-              value={(config?.webhookEventPath as string) || "event"}
-            />
-            <p className="text-muted-foreground text-xs">
-              Dot-path to the event name in payload (e.g. event, type,
-              meta.action).
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="webhookCorrelationPath">Correlation Key Path</Label>
-            <Input
-              disabled={disabled}
-              id="webhookCorrelationPath"
-              onChange={(e) =>
-                onUpdateConfig("webhookCorrelationPath", e.target.value)
-              }
-              placeholder="data.id"
-              value={(config?.webhookCorrelationPath as string) || "data.id"}
-            />
-            <p className="text-muted-foreground text-xs">
-              Used to cancel/resume waiting runs for the same entity.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="webhookCreateEvents">Create Events</Label>
-            <Input
-              disabled={disabled}
-              id="webhookCreateEvents"
-              onChange={(e) =>
-                onUpdateConfig("webhookCreateEvents", e.target.value)
-              }
-              placeholder="event.create"
-              value={(config?.webhookCreateEvents as string) || "event.create"}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="webhookUpdateEvents">Update Events</Label>
-            <Input
-              disabled={disabled}
-              id="webhookUpdateEvents"
-              onChange={(e) =>
-                onUpdateConfig("webhookUpdateEvents", e.target.value)
-              }
-              placeholder="event.update"
-              value={(config?.webhookUpdateEvents as string) || "event.update"}
-            />
-            <p className="text-muted-foreground text-xs">
-              Update events cancel existing waiting runs first, then start a new
-              run.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="webhookDeleteEvents">Delete Events</Label>
-            <Input
-              disabled={disabled}
-              id="webhookDeleteEvents"
-              onChange={(e) =>
-                onUpdateConfig("webhookDeleteEvents", e.target.value)
-              }
-              placeholder="event.delete"
-              value={(config?.webhookDeleteEvents as string) || "event.delete"}
-            />
-            <p className="text-muted-foreground text-xs">
-              Delete events cancel waiting runs and do not start a new run.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="webhookMockRequest">Mock Request (Optional)</Label>
+
+          {warnings.length > 0 && (
+            <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+              <div className="flex items-center gap-2">
+                <TriangleAlert className="h-4 w-4 text-amber-600" />
+                <p className="font-medium text-amber-700 text-sm dark:text-amber-300">
+                  Configuration Warnings
+                </p>
+              </div>
+              <div className="space-y-1">
+                {warnings.map((warning) => (
+                  <p
+                    className="text-amber-700 text-xs dark:text-amber-200"
+                    key={warning}
+                  >
+                    {warning}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2 rounded-md border bg-background p-3">
+            <Label htmlFor="webhookMockRequest">
+              Sample Payload (Optional)
+            </Label>
+            <div className="flex flex-wrap gap-2">
+              {WEBHOOK_PRESETS.map((preset) => (
+                <Button
+                  disabled={disabled}
+                  key={preset.id}
+                  onClick={() => handleLoadPreset(preset)}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  {preset.label}
+                </Button>
+              ))}
+            </div>
             <div className="overflow-hidden rounded-md border">
               <CodeEditor
                 defaultLanguage="json"
-                height="150px"
+                height="190px"
                 onChange={(value) =>
                   onUpdateConfig("webhookMockRequest", value || "")
                 }
@@ -208,17 +483,119 @@ export function TriggerConfig({
                   readOnly: disabled,
                   wordWrap: "on",
                 }}
-                value={(config?.webhookMockRequest as string) || ""}
+                value={mockRequest}
               />
             </div>
             <p className="text-muted-foreground text-xs">
-              Enter a sample JSON payload to test the webhook trigger.
+              Use this JSON to test trigger behavior without sending a real
+              webhook.
             </p>
           </div>
-        </>
+
+          <Collapsible onOpenChange={setShowAdvanced} open={showAdvanced}>
+            <div className="rounded-md border bg-background">
+              <CollapsibleTrigger asChild>
+                <Button
+                  className="h-auto w-full justify-between px-3 py-2"
+                  type="button"
+                  variant="ghost"
+                >
+                  <span className="font-medium text-sm">Advanced Settings</span>
+                  <span className="font-mono text-muted-foreground text-xs">
+                    {showAdvanced ? "Hide" : "Show"} raw fields
+                  </span>
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-3 border-t p-3">
+                <div className="space-y-2">
+                  <Label>Request Schema (Optional)</Label>
+                  <SchemaBuilder
+                    disabled={disabled}
+                    onChange={(nextSchema) =>
+                      onUpdateConfig(
+                        "webhookSchema",
+                        JSON.stringify(nextSchema)
+                      )
+                    }
+                    schema={schema}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Optional payload schema for structure and documentation.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="webhookEventPath">Event Type Path</Label>
+                  <Input
+                    disabled={disabled}
+                    id="webhookEventPath"
+                    onChange={(e) =>
+                      onUpdateConfig("webhookEventPath", e.target.value)
+                    }
+                    placeholder="event"
+                    value={eventPath}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="webhookCorrelationPath">
+                    Correlation Key Path
+                  </Label>
+                  <Input
+                    disabled={disabled}
+                    id="webhookCorrelationPath"
+                    onChange={(e) =>
+                      onUpdateConfig("webhookCorrelationPath", e.target.value)
+                    }
+                    placeholder="data.id"
+                    value={correlationPath}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="webhookCreateEvents">Create Events</Label>
+                  <Input
+                    disabled={disabled}
+                    id="webhookCreateEvents"
+                    onChange={(e) =>
+                      onUpdateConfig("webhookCreateEvents", e.target.value)
+                    }
+                    placeholder="event.create"
+                    value={createEvents}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="webhookUpdateEvents">Update Events</Label>
+                  <Input
+                    disabled={disabled}
+                    id="webhookUpdateEvents"
+                    onChange={(e) =>
+                      onUpdateConfig("webhookUpdateEvents", e.target.value)
+                    }
+                    placeholder="event.update"
+                    value={updateEvents}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="webhookDeleteEvents">Delete Events</Label>
+                  <Input
+                    disabled={disabled}
+                    id="webhookDeleteEvents"
+                    onChange={(e) =>
+                      onUpdateConfig("webhookDeleteEvents", e.target.value)
+                    }
+                    placeholder="event.delete"
+                    value={deleteEvents}
+                  />
+                </div>
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
+        </div>
       )}
 
-      {/* Schedule fields */}
       {config?.triggerType === "Schedule" && (
         <>
           <div className="space-y-2">

@@ -235,7 +235,7 @@ function WaitFields({
   return (
     <>
       <div className="space-y-2">
-        <Label htmlFor="waitMode">Wait Mode</Label>
+        <Label htmlFor="waitMode">How should this step wait?</Label>
         <Select
           disabled={disabled}
           onValueChange={(value) => onUpdateConfig("waitMode", value)}
@@ -245,16 +245,23 @@ function WaitFields({
             <SelectValue placeholder="Select wait mode" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="delay">Delay</SelectItem>
-            <SelectItem value="hook">Wait For Event (Hook)</SelectItem>
+            <SelectItem value="delay">Wait for time</SelectItem>
+            <SelectItem value="hook">Wait for webhook event</SelectItem>
           </SelectContent>
         </Select>
+        <p className="text-muted-foreground text-xs">
+          Choose between time-based waiting or waiting for a follow-up webhook
+          event.
+        </p>
       </div>
 
       {waitMode === "delay" && (
-        <>
+        <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+          <p className="font-medium text-xs uppercase tracking-wide">
+            Time-Based Wait
+          </p>
           <div className="space-y-2">
-            <Label htmlFor="waitDuration">Duration</Label>
+            <Label htmlFor="waitDuration">Wait for (duration)</Label>
             <TemplateBadgeInput
               disabled={disabled}
               id="waitDuration"
@@ -263,12 +270,14 @@ function WaitFields({
               value={(config.waitDuration as string) || ""}
             />
             <p className="text-muted-foreground text-xs">
-              Use duration or leave blank and set Wait Until.
+              Example: use <code>24h</code> to continue one day later.
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="waitUntil">Wait Until (Optional)</Label>
+            <Label htmlFor="waitUntil">
+              Wait until this date/time (optional)
+            </Label>
             <TemplateBadgeInput
               disabled={disabled}
               id="waitUntil"
@@ -276,10 +285,16 @@ function WaitFields({
               placeholder="2026-03-10T09:00:00-05:00 or {{Trigger.data.startsAt}}"
               value={(config.waitUntil as string) || ""}
             />
+            <p className="text-muted-foreground text-xs">
+              Use this when timing comes from payload data, like an appointment
+              start time.
+            </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="waitOffset">Offset (Optional)</Label>
+            <Label htmlFor="waitOffset">
+              Send before/after that time (optional)
+            </Label>
             <TemplateBadgeInput
               disabled={disabled}
               id="waitOffset"
@@ -288,12 +303,12 @@ function WaitFields({
               value={(config.waitOffset as string) || ""}
             />
             <p className="text-muted-foreground text-xs">
-              Apply relative offset to Wait Until (e.g. -1d for day-before).
+              Example: <code>-1d</code> sends one day before the target time.
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="waitTimezone">Timezone (Optional)</Label>
+            <Label htmlFor="waitTimezone">Timezone (optional)</Label>
             <TimezoneSelect
               disabled={disabled}
               id="waitTimezone"
@@ -301,32 +316,35 @@ function WaitFields({
               value={(config.waitTimezone as string) || "UTC"}
             />
             <p className="text-muted-foreground text-xs">
-              Used when Wait Until has no timezone offset.
+              Used when the target date/time does not include an offset.
             </p>
           </div>
-        </>
+        </div>
       )}
 
       {waitMode === "hook" && (
-        <>
+        <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+          <p className="font-medium text-xs uppercase tracking-wide">
+            Event-Based Wait
+          </p>
           <div className="space-y-2">
             <Label htmlFor="waitForEvents">
-              Resume Events (comma separated)
+              Resume when event is (comma separated)
             </Label>
             <TemplateBadgeInput
               disabled={disabled}
               id="waitForEvents"
               onChange={(value) => onUpdateConfig("waitForEvents", value)}
-              placeholder="event.confirmed,event.checked_in"
+              placeholder="event.update,event.confirmed"
               value={(config.waitForEvents as string) || ""}
             />
             <p className="text-muted-foreground text-xs">
-              Leave empty to resume on any matching correlation event.
+              Leave empty to resume on any matching event for the same entity.
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="waitTimeout">Timeout (Optional)</Label>
+            <Label htmlFor="waitTimeout">Stop waiting after (optional)</Label>
             <TemplateBadgeInput
               disabled={disabled}
               id="waitTimeout"
@@ -334,11 +352,14 @@ function WaitFields({
               placeholder="48h"
               value={(config.waitTimeout as string) || ""}
             />
+            <p className="text-muted-foreground text-xs">
+              Optional safety timeout if the expected event never arrives.
+            </p>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="waitHookToken">
-              Explicit Hook Token (Optional)
+              Explicit hook token (optional)
             </Label>
             <TemplateBadgeInput
               disabled={disabled}
@@ -347,8 +368,11 @@ function WaitFields({
               placeholder="custom-token-if-you-need-deterministic-resume"
               value={(config.waitHookToken as string) || ""}
             />
+            <p className="text-muted-foreground text-xs">
+              Leave blank unless an external system must target a fixed token.
+            </p>
           </div>
-        </>
+        </div>
       )}
     </>
   );
@@ -545,7 +569,9 @@ export function ActionConfig({
 
   // Check if there are existing connections for this integration type
   const hasExistingConnections = useMemo(() => {
-    if (!integrationType) return false;
+    if (!integrationType) {
+      return false;
+    }
     return globalIntegrations.some((i) => i.type === integrationType);
   }, [integrationType, globalIntegrations]);
 
