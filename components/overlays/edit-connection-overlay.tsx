@@ -4,7 +4,6 @@ import { Check, Pencil, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -390,17 +389,11 @@ export function DeleteConnectionOverlay({
 }: DeleteConnectionOverlayProps) {
   const { pop } = useOverlay();
   const [deleting, setDeleting] = useState(false);
-  const [revokeKey, setRevokeKey] = useState(true);
 
   const handleDelete = async () => {
     try {
       setDeleting(true);
-
-      if (integration.isManaged && revokeKey) {
-        await api.aiGateway.revokeConsent();
-      } else {
-        await api.integration.delete(integration.id);
-      }
+      await api.integration.delete(integration.id);
 
       toast.success("Connection deleted");
       onSuccess?.();
@@ -429,19 +422,6 @@ export function DeleteConnectionOverlay({
         Are you sure you want to delete this connection? Workflows using it will
         fail until a new one is configured.
       </p>
-
-      {integration.isManaged && (
-        <div className="mt-4 flex items-center gap-2">
-          <Checkbox
-            checked={revokeKey}
-            id="revoke-key"
-            onCheckedChange={(checked: boolean) => setRevokeKey(checked)}
-          />
-          <Label className="cursor-pointer font-normal" htmlFor="revoke-key">
-            Revoke API key from Vercel
-          </Label>
-        </div>
-      )}
     </Overlay>
   );
 }

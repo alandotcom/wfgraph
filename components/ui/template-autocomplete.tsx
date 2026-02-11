@@ -94,19 +94,6 @@ const schemaToFields = (
   return fields;
 };
 
-// Helper to check if action type matches (supports both namespaced IDs and legacy labels)
-const isActionType = (
-  actionType: string | undefined,
-  ...matches: string[]
-): boolean => {
-  if (!actionType) return false;
-  return matches.some(
-    (match) =>
-      actionType === match ||
-      actionType.endsWith(`/${match.toLowerCase().replace(/\s+/g, "-")}`)
-  );
-};
-
 // Get common fields based on node action type
 const getCommonFields = (node: WorkflowNode) => {
   const actionType = node.data.config?.actionType as string | undefined;
@@ -135,24 +122,6 @@ const getCommonFields = (node: WorkflowNode) => {
       { field: "rows", description: "Query result rows" },
       { field: "count", description: "Number of rows" },
     ];
-  }
-
-  // AI Gateway generate-text has dynamic output based on format/schema
-  if (isActionType(actionType, "Generate Text", "ai-gateway/generate-text")) {
-    const aiFormat = node.data.config?.aiFormat as string | undefined;
-    const aiSchema = node.data.config?.aiSchema as string | undefined;
-
-    if (aiFormat === "object" && aiSchema) {
-      try {
-        const schema = JSON.parse(aiSchema) as SchemaField[];
-        if (schema.length > 0) {
-          return schemaToFields(schema, "object");
-        }
-      } catch {
-        // If schema parsing fails, fall through to default fields
-      }
-    }
-    return [{ field: "text", description: "Generated text" }];
   }
 
   // Check if the plugin defines output fields

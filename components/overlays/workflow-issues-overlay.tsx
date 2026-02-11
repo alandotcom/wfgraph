@@ -1,15 +1,13 @@
 "use client";
 
-import { useAtomValue, useSetAtom } from "jotai";
+import { useSetAtom } from "jotai";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IntegrationIcon } from "@/components/ui/integration-icon";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { aiGatewayStatusAtom } from "@/lib/ai-gateway/state";
 import { integrationsVersionAtom } from "@/lib/integrations-store";
 import type { IntegrationType } from "@/lib/types/integration";
 import { ConfigureConnectionOverlay } from "./add-connection-overlay";
-import { AiGatewayConsentOverlay } from "./ai-gateway-consent-overlay";
 import { ConfigurationOverlay } from "./configuration-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -61,11 +59,6 @@ export function WorkflowIssuesOverlay({
   const { push, closeAll } = useOverlay();
   const setIntegrationsVersion = useSetAtom(integrationsVersionAtom);
   const isMobile = useIsMobile();
-  const aiGatewayStatus = useAtomValue(aiGatewayStatusAtom);
-
-  // Check if AI Gateway managed keys should be offered
-  const shouldUseManagedKeys =
-    aiGatewayStatus?.enabled && aiGatewayStatus?.isVercelUser;
 
   const { brokenReferences, missingRequiredFields, missingIntegrations } =
     issues;
@@ -99,17 +92,7 @@ export function WorkflowIssuesOverlay({
   };
 
   const handleAddIntegration = (integrationType: IntegrationType) => {
-    // For AI Gateway with managed keys enabled, show consent overlay first
-    if (integrationType === "ai-gateway" && shouldUseManagedKeys) {
-      push(AiGatewayConsentOverlay, {
-        onConsent: () => {
-          setIntegrationsVersion((v) => v + 1);
-        },
-        onManualEntry: () => openConnectionOverlay(integrationType),
-      });
-    } else {
-      openConnectionOverlay(integrationType);
-    }
+    openConnectionOverlay(integrationType);
   };
 
   const handleRunAnyway = () => {

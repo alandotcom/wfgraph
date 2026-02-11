@@ -4,17 +4,13 @@ This document guides AI agents through creating and modifying workflow builder p
 
 ## Quick Start
 
-Use the interactive plugin creation wizard:
+Plugins are now registered via manual static files (no scaffold/discovery scripts).
 
-```bash
-pnpm create-plugin
-```
-
-After creating or modifying a plugin, regenerate registries:
-
-```bash
-pnpm discover-plugins
-```
+When creating or modifying a plugin, update these files manually:
+1. `plugins/index.ts` - add/remove plugin import
+2. `lib/types/integration.ts` - update `IntegrationType` union
+3. `lib/step-registry.ts` - add/remove action step importers and labels
+4. `lib/output-display-configs.ts` - update if action has image/video/url output config
 
 ## Plugin Architecture
 
@@ -204,7 +200,7 @@ export async function doSomethingStep(
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
 
-// Required for codegen auto-generation
+// Optional metadata marker (kept for compatibility across tooling/docs)
 export const _integrationType = "my-service";
 ```
 
@@ -377,7 +373,7 @@ This reduces supply chain attack surface by avoiding transitive dependencies.
 
 1. Must include `"use step";` directive at the start of the entry point function
 2. Must import `"server-only"` at the top of the file
-3. Must export `_integrationType` constant matching the plugin type
+3. Prefer exporting `_integrationType` constant matching the plugin type for consistency
 4. Core input type should match the configFields keys
 5. Full input type extends `StepInput` and includes `integrationId`
 
@@ -395,7 +391,7 @@ type ActionResult =
 
 After creating a plugin:
 
-1. Run `pnpm discover-plugins` to register it
+1. Update static registration files (`plugins/index.ts`, `lib/types/integration.ts`, and `lib/step-registry.ts`)
 2. Run `pnpm type-check && pnpm fix` to verify types and fix formatting/linting
 3. Run `pnpm dev` to test in the UI
 4. Test the connection using the integration dialog
@@ -484,4 +480,4 @@ Study these existing plugins for patterns:
 - `resend/` - Email sending with multiple fields
 - `slack/` - Webhook integration
 - `linear/` - Issue tracking with select fields
-- `ai-gateway/` - AI model integration with schema builder
+- `twilio/` - SMS sending and templated inputs

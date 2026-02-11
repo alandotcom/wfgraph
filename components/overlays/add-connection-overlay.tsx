@@ -1,18 +1,12 @@
 "use client";
 
-import { useAtomValue, useSetAtom } from "jotai";
 import { Search } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { IntegrationIcon } from "@/components/ui/integration-icon";
 import { Label } from "@/components/ui/label";
 import { useIsMobile } from "@/hooks/use-mobile";
-import {
-  aiGatewayStatusAtom,
-  aiGatewayTeamsAtom,
-  aiGatewayTeamsLoadingAtom,
-} from "@/lib/ai-gateway/state";
 import { api } from "@/lib/api-client";
 import type { IntegrationType } from "@/lib/types/integration";
 import {
@@ -21,7 +15,6 @@ import {
   getSortedIntegrationTypes,
 } from "@/plugins";
 import { getIntegrationDescriptions } from "@/plugins/registry";
-import { AiGatewayConsentOverlay } from "./ai-gateway-consent-overlay";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -63,18 +56,9 @@ export function AddConnectionOverlay({
   overlayId,
   onSuccess,
 }: AddConnectionOverlayProps) {
-  const { push, closeAll } = useOverlay();
+  const { push } = useOverlay();
   const [searchQuery, setSearchQuery] = useState("");
   const isMobile = useIsMobile();
-
-  // AI Gateway state
-  const aiGatewayStatus = useAtomValue(aiGatewayStatusAtom);
-  const setAiGatewayStatus = useSetAtom(aiGatewayStatusAtom);
-  const setTeams = useSetAtom(aiGatewayTeamsAtom);
-  const setTeamsLoading = useSetAtom(aiGatewayTeamsLoadingAtom);
-
-  const shouldUseManagedKeys =
-    aiGatewayStatus?.enabled && aiGatewayStatus?.isVercelUser;
 
   const integrationTypes = getIntegrationTypes();
 
@@ -88,44 +72,7 @@ export function AddConnectionOverlay({
     );
   }, [integrationTypes, searchQuery]);
 
-  const showConsentModalWithCallbacks = useCallback(() => {
-    push(AiGatewayConsentOverlay, {
-      onConsent: (integrationId: string) => {
-        onSuccess?.(integrationId);
-        closeAll();
-      },
-    });
-  }, [push, closeAll, onSuccess]);
-
   const handleSelectType = (type: IntegrationType) => {
-    // If selecting AI Gateway and managed keys are available, show consent modal
-    if (type === "ai-gateway" && shouldUseManagedKeys) {
-      showConsentModalWithCallbacks();
-      return;
-    }
-
-    // If AI Gateway but need to fetch status first
-    if (type === "ai-gateway" && aiGatewayStatus === null) {
-      api.aiGateway.getStatus().then((status) => {
-        setAiGatewayStatus(status);
-        if (status?.enabled && status?.isVercelUser) {
-          setTeamsLoading(true);
-          api.aiGateway
-            .getTeams()
-            .then((response) => {
-              setTeams(response.teams);
-            })
-            .finally(() => {
-              setTeamsLoading(false);
-              showConsentModalWithCallbacks();
-            });
-        } else {
-          push(ConfigureConnectionOverlay, { type, onSuccess });
-        }
-      });
-      return;
-    }
-
     // Push to configure overlay
     push(ConfigureConnectionOverlay, { type, onSuccess });
   };
@@ -164,7 +111,7 @@ export function AddConnectionOverlay({
                 >
                   <IntegrationIcon
                     className="size-5 shrink-0"
-                    integration={type === "ai-gateway" ? "vercel" : type}
+                    integration={type}
                   />
                   <span className="min-w-0 flex-1 truncate">
                     <span className="font-medium">{getLabel(type)}</span>

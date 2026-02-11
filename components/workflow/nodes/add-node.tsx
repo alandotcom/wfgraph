@@ -33,15 +33,6 @@ export function AddNode({ data }: NodeProps & { data?: AddNodeData }) {
             target="_blank"
           >
             AI SDK
-          </a>
-          ,{" "}
-          <a
-            className="underline underline-offset-2 transition duration-200 ease-out hover:text-foreground"
-            href="https://vercel.com/ai-gateway"
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            AI Gateway
           </a>{" "}
           and{" "}
           <a
