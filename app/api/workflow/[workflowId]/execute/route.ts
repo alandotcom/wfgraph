@@ -84,6 +84,54 @@ async function cancelWaitingRuns(input: {
   };
 }
 
+async function createTerminalExecution(input: {
+  workflowId: string;
+  userId: string;
+  triggerType: "manual" | "webhook";
+  isDryRun: boolean;
+  triggerEventType?: string;
+  correlationKey?: string;
+  payload: Record<string, unknown>;
+  status: "success" | "error" | "cancelled";
+  error?: string;
+  output?: Record<string, unknown>;
+  auditEventType: "run_cancelled" | "run_ignored" | "run_completed";
+  auditMessage: string;
+  auditMetadata?: Record<string, unknown>;
+}) {
+  const now = new Date();
+  const [execution] = await db
+    .insert(workflowExecutions)
+    .values({
+      workflowId: input.workflowId,
+      userId: input.userId,
+      status: input.status,
+      triggerType: input.triggerType,
+      isDryRun: input.isDryRun,
+      triggerEventType: input.triggerEventType,
+      correlationKey: input.correlationKey,
+      input: input.payload,
+      output: input.output,
+      error: input.error,
+      startedAt: now,
+      completedAt: now,
+      cancelledAt: input.status === "cancelled" ? now : null,
+    })
+    .returning();
+
+  await logWorkflowAuditEvent({
+    workflowId: input.workflowId,
+    executionId: execution.id,
+    userId: input.userId,
+    eventType: input.auditEventType,
+    message: input.auditMessage,
+    metadata: input.auditMetadata,
+  });
+
+  return execution;
+}
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Execute route coordinates trigger parsing, cancellation, and run creation in one request handler.
 export async function POST(
   request: Request,
   context: { params: Promise<{ workflowId: string }> }
@@ -199,7 +247,31 @@ export async function POST(
             });
 
       if (waitStates.length === 0) {
+        const terminalExecution = await createTerminalExecution({
+          workflowId,
+          userId: session.user.id,
+          triggerType: "webhook",
+          isDryRun: dryRun,
+          triggerEventType: eventType,
+          correlationKey,
+          payload: effectiveInput,
+          status: "success",
+          output: {
+            status: "ignored",
+            reason: "no_waiting_runs",
+            dryRun,
+          },
+          auditEventType: "run_ignored",
+          auditMessage: `Ignored ${eventType} because no waiting runs were found`,
+          auditMetadata: {
+            eventType,
+            correlationKey,
+            dryRun,
+          },
+        });
+
         return NextResponse.json({
+          executionId: terminalExecution.id,
           status: "ignored",
           reason: "no_waiting_runs",
           dryRun,
@@ -207,14 +279,41 @@ export async function POST(
       }
 
       if (dryRun) {
+        const cancelledExecutions = new Set(
+          waitStates.map((state) => state.executionId)
+        ).size;
+        const cancelledWaits = waitStates.length;
+        const terminalExecution = await createTerminalExecution({
+          workflowId,
+          userId: session.user.id,
+          triggerType: "webhook",
+          isDryRun: true,
+          triggerEventType: eventType,
+          correlationKey,
+          payload: effectiveInput,
+          status: "cancelled",
+          output: {
+            status: "cancelled",
+            simulated: true,
+            cancelledExecutions,
+            cancelledWaits,
+          },
+          auditEventType: "run_cancelled",
+          auditMessage: `Simulated cancellation by execute event ${eventType}`,
+          auditMetadata: {
+            eventType,
+            correlationKey,
+            simulated: true,
+          },
+        });
+
         return NextResponse.json({
+          executionId: terminalExecution.id,
           status: "cancelled",
           simulated: true,
           dryRun: true,
-          cancelledExecutions: new Set(
-            waitStates.map((state) => state.executionId)
-          ).size,
-          cancelledWaits: waitStates.length,
+          cancelledExecutions,
+          cancelledWaits,
         });
       }
 
@@ -226,7 +325,30 @@ export async function POST(
         reason: `Cancelled by execute event ${eventType}`,
       });
 
+      const terminalExecution = await createTerminalExecution({
+        workflowId,
+        userId: session.user.id,
+        triggerType: "webhook",
+        isDryRun: false,
+        triggerEventType: eventType,
+        correlationKey,
+        payload: effectiveInput,
+        status: "cancelled",
+        output: {
+          status: "cancelled",
+          ...cancellation,
+        },
+        auditEventType: "run_cancelled",
+        auditMessage: `Cancelled by execute event ${eventType}`,
+        auditMetadata: {
+          eventType,
+          correlationKey,
+          ...cancellation,
+        },
+      });
+
       return NextResponse.json({
+        executionId: terminalExecution.id,
         status: "cancelled",
         ...cancellation,
         dryRun: false,
@@ -240,7 +362,31 @@ export async function POST(
       !createEvents.has(eventType) &&
       !updateEvents.has(eventType)
     ) {
+      const terminalExecution = await createTerminalExecution({
+        workflowId,
+        userId: session.user.id,
+        triggerType: "webhook",
+        isDryRun: dryRun,
+        triggerEventType: eventType,
+        correlationKey,
+        payload: effectiveInput,
+        status: "success",
+        output: {
+          status: "ignored",
+          reason: "event_not_configured",
+          dryRun,
+        },
+        auditEventType: "run_ignored",
+        auditMessage: `Ignored execute event ${eventType}`,
+        auditMetadata: {
+          eventType,
+          correlationKey,
+          dryRun,
+        },
+      });
+
       return NextResponse.json({
+        executionId: terminalExecution.id,
         status: "ignored",
         reason: "event_not_configured",
         dryRun,
@@ -278,7 +424,7 @@ export async function POST(
     }
 
     // Create execution record
-    const [execution] = await db
+    const [startedExecution] = await db
       .insert(workflowExecutions)
       .values({
         workflowId,
@@ -297,7 +443,7 @@ export async function POST(
         nodes: workflowNodes,
         edges: workflowEdges,
         triggerInput: effectiveInput,
-        executionId: execution.id,
+        executionId: startedExecution.id,
         workflowId,
         userId: session.user.id,
         dryRun,
@@ -315,7 +461,7 @@ export async function POST(
             error instanceof Error ? error.message : "Failed to enqueue run",
           completedAt: new Date(),
         })
-        .where(eq(workflowExecutions.id, execution.id));
+        .where(eq(workflowExecutions.id, startedExecution.id));
       throw error;
     });
 
@@ -324,11 +470,11 @@ export async function POST(
       .set({
         workflowRunId: run.runId,
       })
-      .where(eq(workflowExecutions.id, execution.id));
+      .where(eq(workflowExecutions.id, startedExecution.id));
 
     await logWorkflowAuditEvent({
       workflowId,
-      executionId: execution.id,
+      executionId: startedExecution.id,
       userId: session.user.id,
       eventType: "run_started",
       message: dryRun ? "Manual dry run started" : "Manual run started",
@@ -343,7 +489,7 @@ export async function POST(
 
     // Return immediately with the execution ID
     return NextResponse.json({
-      executionId: execution.id,
+      executionId: startedExecution.id,
       runId: run.runId,
       status: "running",
       dryRun,

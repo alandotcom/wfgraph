@@ -876,6 +876,40 @@ export function WorkflowRuns({
     }
   };
 
+  const getStatusBadgeClass = (status: string) => {
+    switch (status) {
+      case "success":
+        return "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300";
+      case "error":
+        return "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300";
+      case "running":
+        return "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300";
+      case "waiting":
+        return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+      case "cancelled":
+        return "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300";
+      default:
+        return "border-muted bg-muted/40 text-muted-foreground";
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case "success":
+        return "Success";
+      case "error":
+        return "Error";
+      case "running":
+        return "Running";
+      case "waiting":
+        return "Waiting";
+      case "cancelled":
+        return "Cancelled";
+      default:
+        return "Unknown";
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -900,6 +934,7 @@ export function WorkflowRuns({
 
   return (
     <div className="space-y-3">
+      {/* biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Run card rendering intentionally combines summary, events, and step details in one mapped block. */}
       {executions.map((execution, index) => {
         const isExpanded = expandedRuns.has(execution.id);
         const isSelected = selectedExecutionId === execution.id;
@@ -945,6 +980,14 @@ export function WorkflowRuns({
                 <div className="mb-1 flex items-center gap-2">
                   <span className="font-semibold text-sm">
                     Run #{executions.length - index}
+                  </span>
+                  <span
+                    className={cn(
+                      "rounded border px-1.5 py-0.5 font-medium text-[10px] uppercase",
+                      getStatusBadgeClass(execution.status)
+                    )}
+                  >
+                    {getStatusLabel(execution.status)}
                   </span>
                   {execution.isDryRun && (
                     <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 font-medium text-[10px] text-amber-700 uppercase dark:text-amber-300">
@@ -997,7 +1040,9 @@ export function WorkflowRuns({
                   disabled={isCanceling}
                   onClick={(event) => {
                     event.stopPropagation();
-                    void cancelExecution(execution.id);
+                    cancelExecution(execution.id).catch((error) => {
+                      console.error("Failed to cancel execution:", error);
+                    });
                   }}
                   size="sm"
                   type="button"
