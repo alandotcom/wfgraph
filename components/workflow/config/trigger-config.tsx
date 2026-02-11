@@ -105,6 +105,84 @@ function readSchema(config: Record<string, unknown>): SchemaField[] {
   }
 }
 
+function inferPrimitiveType(value: unknown): "string" | "number" | "boolean" {
+  if (typeof value === "number") {
+    return "number";
+  }
+
+  if (typeof value === "boolean") {
+    return "boolean";
+  }
+
+  return "string";
+}
+
+function inferSchemaField(name: string, value: unknown): SchemaField {
+  if (Array.isArray(value)) {
+    const first = value.at(0);
+
+    if (first && typeof first === "object" && !Array.isArray(first)) {
+      return {
+        name,
+        type: "array",
+        itemType: "object",
+        fields: inferSchemaFromPayload(first as Record<string, unknown>),
+      };
+    }
+
+    return {
+      name,
+      type: "array",
+      itemType: inferPrimitiveType(first),
+    };
+  }
+
+  if (value && typeof value === "object") {
+    return {
+      name,
+      type: "object",
+      fields: inferSchemaFromPayload(value as Record<string, unknown>),
+    };
+  }
+
+  return {
+    name,
+    type: inferPrimitiveType(value),
+  };
+}
+
+function inferSchemaFromPayload(
+  payload: Record<string, unknown>
+): SchemaField[] {
+  return Object.entries(payload).map(([key, value]) =>
+    inferSchemaField(key, value)
+  );
+}
+
+function flattenSchemaPaths(schema: SchemaField[], prefix = ""): string[] {
+  const paths: string[] = [];
+
+  for (const field of schema) {
+    const currentPath = prefix ? `${prefix}.${field.name}` : field.name;
+    paths.push(currentPath);
+
+    if (field.type === "object" && field.fields?.length) {
+      paths.push(...flattenSchemaPaths(field.fields, currentPath));
+    }
+
+    if (
+      field.type === "array" &&
+      field.itemType === "object" &&
+      field.fields?.length
+    ) {
+      // getValueByPath supports dot segments, so use .0 for array item paths.
+      paths.push(...flattenSchemaPaths(field.fields, `${currentPath}.0`));
+    }
+  }
+
+  return paths;
+}
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Trigger config intentionally combines form, summary, and warnings in one panel.
 export function TriggerConfig({
   config,
@@ -215,6 +293,20 @@ export function TriggerConfig({
           `Sample payload is missing entity ID at "${correlationPath}".`
         );
       }
+
+      if (schema.length > 0) {
+        const schemaPaths = flattenSchemaPaths(schema);
+        const missingSchemaPaths = schemaPaths.filter(
+          (path) =>
+            getValueByPath(parsedMockRequest.payload, path) === undefined
+        );
+
+        if (missingSchemaPaths.length > 0) {
+          items.push(
+            `Schema fields missing from sample payload: ${missingSchemaPaths.slice(0, 3).join(", ")}${missingSchemaPaths.length > 3 ? ", ..." : ""}`
+          );
+        }
+      }
     }
 
     return items;
@@ -225,6 +317,7 @@ export function TriggerConfig({
     eventPath,
     parsedMockRequest.error,
     parsedMockRequest.payload,
+    schema,
     updateEvents,
   ]);
 
@@ -240,7 +333,11 @@ export function TriggerConfig({
       "webhookMockRequest",
       JSON.stringify(preset.payload, null, 2)
     );
-    toast.success(`${preset.label} example loaded`);
+
+    const inferredSchema = inferSchemaFromPayload(preset.payload);
+    onUpdateConfig("webhookSchema", JSON.stringify(inferredSchema));
+
+    toast.success(`${preset.label} example loaded (schema synced)`);
   };
 
   return (
@@ -403,6 +500,23 @@ export function TriggerConfig({
 
           <div className="space-y-2 rounded-md border bg-background p-3">
             <p className="font-medium text-xs uppercase tracking-wide">
+              Request Schema
+            </p>
+            <SchemaBuilder
+              disabled={disabled}
+              onChange={(nextSchema) =>
+                onUpdateConfig("webhookSchema", JSON.stringify(nextSchema))
+              }
+              schema={schema}
+            />
+            <p className="text-muted-foreground text-xs">
+              Used for autocomplete fields and payload documentation. Preset
+              samples keep this schema in sync.
+            </p>
+          </div>
+
+          <div className="space-y-2 rounded-md border bg-background p-3">
+            <p className="font-medium text-xs uppercase tracking-wide">
               Behavior Summary
             </p>
             <p className="text-sm">
@@ -508,27 +622,12 @@ export function TriggerConfig({
               </CollapsibleTrigger>
               <CollapsibleContent className="space-y-3 border-t p-3">
                 <div className="space-y-2">
-                  <Label>Request Schema (Optional)</Label>
-                  <SchemaBuilder
-                    disabled={disabled}
-                    onChange={(nextSchema) =>
-                      onUpdateConfig(
-                        "webhookSchema",
-                        JSON.stringify(nextSchema)
-                      )
-                    }
-                    schema={schema}
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    Optional payload schema for structure and documentation.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="webhookEventPath">Event Type Path</Label>
+                  <Label htmlFor="webhookEventPathAdvanced">
+                    Event Type Path
+                  </Label>
                   <Input
                     disabled={disabled}
-                    id="webhookEventPath"
+                    id="webhookEventPathAdvanced"
                     onChange={(e) =>
                       onUpdateConfig("webhookEventPath", e.target.value)
                     }
@@ -538,12 +637,12 @@ export function TriggerConfig({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="webhookCorrelationPath">
+                  <Label htmlFor="webhookCorrelationPathAdvanced">
                     Correlation Key Path
                   </Label>
                   <Input
                     disabled={disabled}
-                    id="webhookCorrelationPath"
+                    id="webhookCorrelationPathAdvanced"
                     onChange={(e) =>
                       onUpdateConfig("webhookCorrelationPath", e.target.value)
                     }
@@ -553,10 +652,12 @@ export function TriggerConfig({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="webhookCreateEvents">Create Events</Label>
+                  <Label htmlFor="webhookCreateEventsAdvanced">
+                    Create Events
+                  </Label>
                   <Input
                     disabled={disabled}
-                    id="webhookCreateEvents"
+                    id="webhookCreateEventsAdvanced"
                     onChange={(e) =>
                       onUpdateConfig("webhookCreateEvents", e.target.value)
                     }
@@ -566,10 +667,12 @@ export function TriggerConfig({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="webhookUpdateEvents">Update Events</Label>
+                  <Label htmlFor="webhookUpdateEventsAdvanced">
+                    Update Events
+                  </Label>
                   <Input
                     disabled={disabled}
-                    id="webhookUpdateEvents"
+                    id="webhookUpdateEventsAdvanced"
                     onChange={(e) =>
                       onUpdateConfig("webhookUpdateEvents", e.target.value)
                     }
@@ -579,10 +682,12 @@ export function TriggerConfig({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="webhookDeleteEvents">Delete Events</Label>
+                  <Label htmlFor="webhookDeleteEventsAdvanced">
+                    Delete Events
+                  </Label>
                   <Input
                     disabled={disabled}
-                    id="webhookDeleteEvents"
+                    id="webhookDeleteEventsAdvanced"
                     onChange={(e) =>
                       onUpdateConfig("webhookDeleteEvents", e.target.value)
                     }
