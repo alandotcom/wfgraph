@@ -1,4 +1,4 @@
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   Copy,
   Eraser,
@@ -145,6 +145,7 @@ const MultiSelectionPanel = ({
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Complex UI logic with multiple conditions
 export const PanelInner = () => {
+  const store = useStore();
   const [selectedNodeId] = useAtom(selectedNodeAtom);
   const [selectedEdgeId] = useAtom(selectedEdgeAtom);
   const [nodes] = useAtom(nodesAtom);
@@ -403,41 +404,53 @@ export const PanelInner = () => {
   );
 
   const handleUpdateConfig = (key: string, value: string) => {
-    if (selectedNode) {
-      let newConfig = { ...selectedNode.data.config, [key]: value };
-
-      // When action type changes, clear the integrationId since it may not be valid for the new action
-      if (key === "actionType" && selectedNode.data.config?.integrationId) {
-        newConfig = { ...newConfig, integrationId: undefined };
-      }
-
-      updateNodeData({ id: selectedNode.id, data: { config: newConfig } });
-
-      // When action type changes, auto-select integration if only one exists
-      if (key === "actionType") {
-        // Cancel any pending auto-select operation for this node
-        const existingController =
-          autoSelectAbortControllersRef.current[selectedNode.id];
-        if (existingController) {
-          existingController.abort();
-        }
-
-        // Create new AbortController for this operation
-        const newController = new AbortController();
-        autoSelectAbortControllersRef.current[selectedNode.id] = newController;
-
-        // Add to pending set before starting async check
-        setPendingIntegrationNodes((prev: Set<string>) =>
-          new Set(prev).add(selectedNode.id)
-        );
-        autoSelectIntegration(
-          selectedNode.id,
-          value,
-          newConfig,
-          newController.signal
-        );
-      }
+    if (!selectedNode) {
+      return;
     }
+
+    const latestNodes = store.get(nodesAtom);
+    const latestNode = latestNodes.find((node) => node.id === selectedNode.id);
+    if (!latestNode) {
+      return;
+    }
+
+    const isActionTypeUpdate = key === "actionType";
+    const shouldClearIntegration =
+      isActionTypeUpdate && Boolean(latestNode.data.config?.integrationId);
+
+    const newConfig: Record<string, unknown> = {
+      ...(latestNode.data.config || {}),
+      [key]: value,
+      ...(shouldClearIntegration ? { integrationId: undefined } : {}),
+    };
+
+    updateNodeData({ id: selectedNode.id, data: { config: newConfig } });
+
+    if (!isActionTypeUpdate) {
+      return;
+    }
+
+    // Cancel any pending auto-select operation for this node
+    const existingController =
+      autoSelectAbortControllersRef.current[selectedNode.id];
+    if (existingController) {
+      existingController.abort();
+    }
+
+    // Create new AbortController for this operation
+    const newController = new AbortController();
+    autoSelectAbortControllersRef.current[selectedNode.id] = newController;
+
+    // Add to pending set before starting async check
+    setPendingIntegrationNodes((prev: Set<string>) =>
+      new Set(prev).add(selectedNode.id)
+    );
+    autoSelectIntegration(
+      selectedNode.id,
+      value,
+      newConfig,
+      newController.signal
+    );
   };
 
   const handleUpdateWorkspaceName = async (newName: string) => {
