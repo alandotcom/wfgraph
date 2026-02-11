@@ -425,6 +425,42 @@ async function executeTestWorkflow({
 
     const result = await response.json();
 
+    if (result.status !== "running" || !result.executionId) {
+      if (result.status === "cancelled") {
+        const cancelledExecutions =
+          typeof result.cancelledExecutions === "number"
+            ? result.cancelledExecutions
+            : 0;
+        toast.success(
+          cancelledExecutions > 0
+            ? `Cancelled ${cancelledExecutions} waiting run${cancelledExecutions === 1 ? "" : "s"}.`
+            : "Cancelled matching waiting runs."
+        );
+      } else if (result.status === "ignored") {
+        toast.message(
+          result.reason === "no_waiting_runs"
+            ? "No matching waiting runs were found."
+            : "Event was ignored by routing rules."
+        );
+      } else {
+        toast.message("Execution completed without starting a new run.");
+      }
+
+      setSelectedExecutionId(null);
+      setIsExecuting(false);
+      updateNodesStatus(nodes, updateNodeData, "idle");
+      return;
+    }
+
+    if (
+      typeof result.cancelledExecutions === "number" &&
+      result.cancelledExecutions > 0
+    ) {
+      toast.message(
+        `Restarted timing after cancelling ${result.cancelledExecutions} waiting run${result.cancelledExecutions === 1 ? "" : "s"}.`
+      );
+    }
+
     // Select the new execution
     setSelectedExecutionId(result.executionId);
 
