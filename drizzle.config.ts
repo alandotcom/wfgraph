@@ -8,6 +8,6 @@ export default {
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL || "postgres://localhost:5432/workflow",
+    url: process.env.DATABASE_URL || "postgres://localhost:55437/workflow",
   },
 } satisfies Config;

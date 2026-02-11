@@ -68,7 +68,7 @@ Required variables for development:
 
 ```bash
 # Database
-DATABASE_URL=postgres://localhost:5432/workflow
+DATABASE_URL=postgres://localhost:55437/workflow
 
 # Authentication
 BETTER_AUTH_SECRET=your-auth-secret-here  # Generate with: openssl rand -base64 32

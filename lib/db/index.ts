@@ -33,7 +33,7 @@ const schema = {
 };
 
 const connectionString =
-  process.env.DATABASE_URL || "postgres://localhost:5432/workflow";
+  process.env.DATABASE_URL || "postgres://localhost:55437/workflow";
 
 // For migrations
 export const migrationClient = postgres(connectionString, { max: 1 });

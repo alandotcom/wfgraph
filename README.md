@@ -42,7 +42,7 @@ Create a `.env.local` file with the following:
 
 ```env
 # Database
-DATABASE_URL=postgresql://workflow:workflow@localhost:5432/workflow_builder
+DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder
 
 # Better Auth
 BETTER_AUTH_SECRET=your-secret-key
