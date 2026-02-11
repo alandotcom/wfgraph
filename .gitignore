@@ -54,3 +54,4 @@ lib/codegen-registry.ts
 lib/step-registry.ts
 lib/output-display-configs.ts
 .agents/
+.npm-cache/

@@ -46,7 +46,7 @@ DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder
 
 # Better Auth
 BETTER_AUTH_SECRET=your-secret-key
-BETTER_AUTH_URL=http://localhost:3000
+BETTER_AUTH_URL=http://localhost:4017
 
 # AI Gateway (for AI workflow generation)
 AI_GATEWAY_API_KEY=your-openai-api-key
@@ -68,7 +68,7 @@ pnpm db:push
 pnpm dev
 ```
 
-Visit [http://localhost:3000](http://localhost:3000) to get started.
+Visit [http://localhost:4017](http://localhost:4017) to get started.
 
 ## Workflow Types
 

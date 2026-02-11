@@ -5,7 +5,7 @@ export const authClient = createAuthClient({
   baseURL:
     typeof window !== "undefined"
       ? window.location.origin
-      : "http://localhost:3000",
+      : "http://localhost:4017",
   plugins: [anonymousClient()],
 });
 

@@ -37,7 +37,7 @@ type ExecutionLog = {
   nodeId: string;
   nodeName: string;
   nodeType: string;
-  status: "pending" | "running" | "success" | "error";
+  status: "pending" | "running" | "success" | "error" | "cancelled";
   startedAt: Date;
   completedAt: Date | null;
   duration: string | null;
@@ -115,7 +115,7 @@ function createExecutionLogsMap(logs: ExecutionLog[]): Record<
     nodeId: string;
     nodeName: string;
     nodeType: string;
-    status: "pending" | "running" | "success" | "error";
+    status: "pending" | "running" | "success" | "error" | "cancelled";
     output?: unknown;
   }
 > {
@@ -125,7 +125,7 @@ function createExecutionLogsMap(logs: ExecutionLog[]): Record<
       nodeId: string;
       nodeName: string;
       nodeType: string;
-      status: "pending" | "running" | "success" | "error";
+      status: "pending" | "running" | "success" | "error" | "cancelled";
       output?: unknown;
     }
   > = {};
@@ -421,6 +421,26 @@ function OutputDisplay({
   );
 }
 
+function applyExecutionStatusToLogs(
+  logEntries: ExecutionLog[],
+  executionStatus: string
+): ExecutionLog[] {
+  if (executionStatus !== "cancelled") {
+    return logEntries;
+  }
+
+  return logEntries.map((log) => {
+    if (log.status === "pending" || log.status === "running") {
+      return {
+        ...log,
+        status: "cancelled",
+        error: log.error || "Run cancelled before step completion",
+      };
+    }
+    return log;
+  });
+}
+
 // Component for rendering individual execution log entries
 function ExecutionLogEntry({
   log,
@@ -631,7 +651,10 @@ export function WorkflowRuns({
     async (executionId: string) => {
       try {
         const data = await api.workflow.getExecutionLogs(executionId);
-        const mappedLogs = mapNodeLabels(data.logs, data.execution.workflow);
+        const mappedLogs = applyExecutionStatusToLogs(
+          mapNodeLabels(data.logs, data.execution.workflow),
+          data.execution.status
+        );
         setLogs((prev) => ({
           ...prev,
           [executionId]: mappedLogs,
@@ -713,9 +736,9 @@ export function WorkflowRuns({
     async (executionId: string) => {
       try {
         const logsData = await api.workflow.getExecutionLogs(executionId);
-        const mappedLogs = mapNodeLabels(
-          logsData.logs,
-          logsData.execution.workflow
+        const mappedLogs = applyExecutionStatusToLogs(
+          mapNodeLabels(logsData.logs, logsData.execution.workflow),
+          logsData.execution.status
         );
         setLogs((prev) => ({
           ...prev,

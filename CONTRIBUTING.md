@@ -77,7 +77,7 @@ BETTER_AUTH_SECRET=your-auth-secret-here  # Generate with: openssl rand -base64 
 INTEGRATION_ENCRYPTION_KEY=your-64-character-hex-string  # Generate with: openssl rand -hex 32
 
 # App URLs
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=http://localhost:4017
 ```
 
 Optional OAuth providers (configure at least one for authentication):

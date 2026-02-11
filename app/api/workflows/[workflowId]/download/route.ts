@@ -302,7 +302,7 @@ cp .env.example .env.local
 pnpm dev
 \`\`\`
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:4017](http://localhost:4017) with your browser to see the result.
 
 ## Workflow API
 
@@ -311,7 +311,7 @@ Your workflow is available at \`/api/workflows/${sanitizeFileName(workflow.name)
 Send a POST request with a JSON body to trigger the workflow:
 
 \`\`\`bash
-curl -X POST http://localhost:3000/api/workflows/${sanitizeFileName(workflow.name)} \\
+curl -X POST http://localhost:4017/api/workflows/${sanitizeFileName(workflow.name)} \\
   -H "Content-Type: application/json" \\
   -d '{"key": "value"}'
 \`\`\`
