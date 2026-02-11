@@ -418,24 +418,28 @@ export async function POST(
       triggerConfig.webhookDeleteEvents ?? "event.delete"
     );
 
-    if (dryRun) {
-      const execution = await startWebhookExecution({
+    const routingConfigured =
+      createEvents.size > 0 || updateEvents.size > 0 || deleteEvents.size > 0;
+
+    if (routingConfigured && !eventType) {
+      await logWorkflowAuditEvent({
         workflowId,
-        workflowUserId: workflow.userId,
-        workflowNodes: workflow.nodes as WorkflowNode[],
-        workflowEdges: workflow.edges as WorkflowEdge[],
-        payload: body,
-        eventType,
-        correlationKey,
-        dryRun: true,
+        userId: workflow.userId,
+        eventType: "run_ignored",
+        message: `Ignored webhook: event type missing at path "${eventTypePath}"`,
+        metadata: {
+          eventTypePath,
+          correlationPath,
+          correlationKey,
+          dryRun,
+        },
       });
 
       return NextResponse.json(
         {
-          executionId: execution.executionId,
-          runId: execution.runId,
-          status: "running",
-          dryRun: true,
+          status: "ignored",
+          reason: "missing_event_type",
+          eventTypePath,
         },
         { headers: corsHeaders }
       );
@@ -448,6 +452,12 @@ export async function POST(
             workflowId,
             correlationKey,
           });
+    const dryRunCancellationSummary = {
+      cancelledExecutions: new Set(
+        waitingStates.map((state) => state.executionId)
+      ).size,
+      cancelledWaits: waitingStates.length,
+    };
 
     if (eventType && deleteEvents.has(eventType)) {
       if (waitingStates.length === 0) {
@@ -466,6 +476,18 @@ export async function POST(
           {
             status: "ignored",
             reason: "no_waiting_runs",
+          },
+          { headers: corsHeaders }
+        );
+      }
+
+      if (dryRun) {
+        return NextResponse.json(
+          {
+            status: "cancelled",
+            dryRun: true,
+            simulated: true,
+            ...dryRunCancellationSummary,
           },
           { headers: corsHeaders }
         );
@@ -510,6 +532,31 @@ export async function POST(
         );
       }
 
+      if (dryRun) {
+        const execution = await startWebhookExecution({
+          workflowId,
+          workflowUserId: workflow.userId,
+          workflowNodes: workflow.nodes as WorkflowNode[],
+          workflowEdges: workflow.edges as WorkflowEdge[],
+          payload: body,
+          eventType,
+          correlationKey,
+          dryRun: true,
+        });
+
+        return NextResponse.json(
+          {
+            executionId: execution.executionId,
+            runId: execution.runId,
+            status: "running",
+            dryRun: true,
+            simulated: true,
+            ...dryRunCancellationSummary,
+          },
+          { headers: corsHeaders }
+        );
+      }
+
       const cancellation = await cancelWaitingRuns({
         workflowId,
         userId: workflow.userId,
@@ -542,6 +589,31 @@ export async function POST(
     }
 
     if (eventType && correlationKey && waitingStates.length > 0) {
+      if (dryRun) {
+        const resumedCount = waitingStates.filter((waitState) => {
+          if (!waitState.hookToken) {
+            return false;
+          }
+
+          const metadata =
+            (waitState.metadata as Record<string, unknown> | null) ?? {};
+          const waitForEvents = parseCsvSet(metadata.waitForEvents);
+          return waitForEvents.size === 0 || waitForEvents.has(eventType);
+        }).length;
+
+        if (resumedCount > 0) {
+          return NextResponse.json(
+            {
+              status: "resumed",
+              resumedCount,
+              dryRun: true,
+              simulated: true,
+            },
+            { headers: corsHeaders }
+          );
+        }
+      }
+
       const resumed = await resumeMatchingWaitHooks({
         workflowId,
         userId: workflow.userId,
@@ -578,6 +650,29 @@ export async function POST(
         {
           status: "ignored",
           reason: "event_not_configured",
+        },
+        { headers: corsHeaders }
+      );
+    }
+
+    if (dryRun) {
+      const execution = await startWebhookExecution({
+        workflowId,
+        workflowUserId: workflow.userId,
+        workflowNodes: workflow.nodes as WorkflowNode[],
+        workflowEdges: workflow.edges as WorkflowEdge[],
+        payload: body,
+        eventType,
+        correlationKey,
+        dryRun: true,
+      });
+
+      return NextResponse.json(
+        {
+          executionId: execution.executionId,
+          runId: execution.runId,
+          status: "running",
+          dryRun: true,
         },
         { headers: corsHeaders }
       );
