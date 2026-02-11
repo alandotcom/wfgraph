@@ -31,7 +31,7 @@ const FALLBACK_UNKNOWN_CODE = `async function unknownStep(input: Record<string, 
 type NodeConfig = Record<string, unknown>;
 
 function generateTriggerCode(config: NodeConfig | undefined): string {
-  const triggerType = (config?.triggerType as string) || "Webhook";
+  const triggerType = (config?.triggerType as string) || "Manual";
 
   if (triggerType === "Schedule") {
     const cron = (config?.scheduleCron as string) || "0 9 * * *";

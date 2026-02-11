@@ -20,7 +20,7 @@ export const TriggerNode = memo(({ data, selected }: TriggerNodeProps) => {
     return null;
   }
 
-  const triggerType = (data.config?.triggerType as string) || "Webhook";
+  const triggerType = (data.config?.triggerType as string) || "Manual";
   const displayTitle = data.label || triggerType;
   const displayDescription = data.description || "Trigger";
   const status = data.status;

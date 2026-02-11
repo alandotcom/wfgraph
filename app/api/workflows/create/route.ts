@@ -17,7 +17,7 @@ function createDefaultTriggerNode() {
       label: "",
       description: "",
       type: "trigger" as const,
-      config: { triggerType: "Webhook" },
+      config: { triggerType: "Manual" },
       status: "idle" as const,
     },
   };

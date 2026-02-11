@@ -45,7 +45,7 @@ const getNodeDisplayName = (node: WorkflowNode): string => {
 
   if (node.data.type === "trigger") {
     const triggerType = node.data.config?.triggerType as string | undefined;
-    return triggerType || "Webhook";
+    return triggerType || "Manual";
   }
 
   return "Node";

@@ -60,7 +60,7 @@ const nodeTemplates = [
     description: "",
     displayLabel: "Trigger",
     icon: PlayCircle,
-    defaultConfig: { triggerType: "Webhook" },
+    defaultConfig: { triggerType: "Manual" },
   },
   {
     type: "action" as WorkflowNodeType,
