@@ -54,6 +54,22 @@ const ENABLED_PLUGIN_SET = new Set<string>(ENABLED_PLUGIN_TYPES);
 // Regex patterns for codegen template generation
 const LEADING_WHITESPACE_PATTERN = /^\s*/;
 
+type DiscoverOptions = {
+  skipReadme: boolean;
+};
+
+function parseOptions(argv: string[]): DiscoverOptions {
+  let skipReadme = false;
+
+  for (const arg of argv) {
+    if (arg === "--skip-readme") {
+      skipReadme = true;
+    }
+  }
+
+  return { skipReadme };
+}
+
 /**
  * Format TypeScript code using Prettier
  */
@@ -189,10 +205,6 @@ export {
  * Update the README.md with the current list of actions
  */
 async function updateReadme(): Promise<void> {
-  // Dynamically import the plugins to populate the registry
-  // This works because we already generated plugins/index.ts above
-  await import("@/plugins/index");
-
   // Now import the registry utilities
   const { getAllIntegrations } = await import("@/plugins/registry");
 
@@ -852,6 +864,8 @@ export function getOutputDisplayConfig(actionType: string): OutputDisplayConfig 
  * Main execution
  */
 async function main(): Promise<void> {
+  const options = parseOptions(process.argv.slice(2));
+
   console.log("Discovering plugins...");
 
   const plugins = discoverPlugins();
@@ -868,8 +882,16 @@ async function main(): Promise<void> {
   console.log("\nGenerating plugins/index.ts...");
   generateIndexFile(plugins);
 
-  console.log("Updating README.md...");
-  await updateReadme();
+  // Ensure plugin side-effect registrations are loaded for all registry-based
+  // generation steps, regardless of README update mode.
+  await import("@/plugins/index");
+
+  if (options.skipReadme) {
+    console.log("Skipping README.md update (--skip-readme).");
+  } else {
+    console.log("Updating README.md...");
+    await updateReadme();
+  }
 
   console.log("Generating lib/types/integration.ts...");
   generateTypesFile();

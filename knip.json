@@ -1,4 +1,15 @@
 {
-  "ignore": ["lib/next-boilerplate/**"],
-  "ignoreDependencies": []
+  "ignore": [
+    "lib/next-boilerplate/**",
+    "lib/codegen-registry.ts",
+    "lib/output-display-configs.ts",
+    "lib/step-registry.ts",
+    "lib/types/integration.ts",
+    "plugins/*/credentials.ts",
+    "plugins/*/icon.tsx",
+    "plugins/*/index.ts",
+    "plugins/*/steps/**",
+    "plugins/*/test.ts"
+  ],
+  "ignoreDependencies": ["@inngest/test", "baseline-browser-mapping"]
 }
