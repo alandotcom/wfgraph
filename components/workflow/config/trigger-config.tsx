@@ -1,15 +1,10 @@
 "use client";
 
 import { Clock, Copy, Play, TriangleAlert, Webhook } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -190,8 +185,6 @@ export function TriggerConfig({
   disabled,
   workflowId,
 }: TriggerConfigProps) {
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
   const webhookUrl = workflowId
     ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/workflows/${workflowId}/webhook`
     : "";
@@ -605,99 +598,6 @@ export function TriggerConfig({
               webhook.
             </p>
           </div>
-
-          <Collapsible onOpenChange={setShowAdvanced} open={showAdvanced}>
-            <div className="rounded-md border bg-background">
-              <CollapsibleTrigger asChild>
-                <Button
-                  className="h-auto w-full justify-between px-3 py-2"
-                  type="button"
-                  variant="ghost"
-                >
-                  <span className="font-medium text-sm">Advanced Settings</span>
-                  <span className="font-mono text-muted-foreground text-xs">
-                    {showAdvanced ? "Hide" : "Show"} raw fields
-                  </span>
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="space-y-3 border-t p-3">
-                <div className="space-y-2">
-                  <Label htmlFor="webhookEventPathAdvanced">
-                    Event Type Path
-                  </Label>
-                  <Input
-                    disabled={disabled}
-                    id="webhookEventPathAdvanced"
-                    onChange={(e) =>
-                      onUpdateConfig("webhookEventPath", e.target.value)
-                    }
-                    placeholder="event"
-                    value={eventPath}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="webhookCorrelationPathAdvanced">
-                    Correlation Key Path
-                  </Label>
-                  <Input
-                    disabled={disabled}
-                    id="webhookCorrelationPathAdvanced"
-                    onChange={(e) =>
-                      onUpdateConfig("webhookCorrelationPath", e.target.value)
-                    }
-                    placeholder="data.id"
-                    value={correlationPath}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="webhookCreateEventsAdvanced">
-                    Create Events
-                  </Label>
-                  <Input
-                    disabled={disabled}
-                    id="webhookCreateEventsAdvanced"
-                    onChange={(e) =>
-                      onUpdateConfig("webhookCreateEvents", e.target.value)
-                    }
-                    placeholder="event.create"
-                    value={createEvents}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="webhookUpdateEventsAdvanced">
-                    Update Events
-                  </Label>
-                  <Input
-                    disabled={disabled}
-                    id="webhookUpdateEventsAdvanced"
-                    onChange={(e) =>
-                      onUpdateConfig("webhookUpdateEvents", e.target.value)
-                    }
-                    placeholder="event.update"
-                    value={updateEvents}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="webhookDeleteEventsAdvanced">
-                    Delete Events
-                  </Label>
-                  <Input
-                    disabled={disabled}
-                    id="webhookDeleteEventsAdvanced"
-                    onChange={(e) =>
-                      onUpdateConfig("webhookDeleteEvents", e.target.value)
-                    }
-                    placeholder="event.delete"
-                    value={deleteEvents}
-                  />
-                </div>
-              </CollapsibleContent>
-            </div>
-          </Collapsible>
         </div>
       )}
 
