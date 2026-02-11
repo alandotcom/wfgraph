@@ -5,34 +5,6 @@ import { db } from "@/lib/db";
 import { validateWorkflowIntegrations } from "@/lib/db/integrations";
 import { workflows } from "@/lib/db/schema";
 
-// Helper to strip sensitive data from nodes for public viewing
-function sanitizeNodesForPublicView(
-  nodes: Record<string, unknown>[]
-): Record<string, unknown>[] {
-  return nodes.map((node) => {
-    const sanitizedNode = { ...node };
-    if (
-      sanitizedNode.data &&
-      typeof sanitizedNode.data === "object" &&
-      sanitizedNode.data !== null
-    ) {
-      const data = { ...(sanitizedNode.data as Record<string, unknown>) };
-      // Remove integrationId from config to not expose which integrations are used
-      if (
-        data.config &&
-        typeof data.config === "object" &&
-        data.config !== null
-      ) {
-        const { integrationId: _, ...configWithoutIntegration } =
-          data.config as Record<string, unknown>;
-        data.config = configWithoutIntegration;
-      }
-      sanitizedNode.data = data;
-    }
-    return sanitizedNode;
-  });
-}
-
 export async function GET(
   request: Request,
   context: { params: Promise<{ workflowId: string }> }
@@ -43,9 +15,15 @@ export async function GET(
       headers: request.headers,
     });
 
-    // First, try to find the workflow
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const workflow = await db.query.workflows.findFirst({
-      where: eq(workflows.id, workflowId),
+      where: and(
+        eq(workflows.id, workflowId),
+        eq(workflows.userId, session.user.id)
+      ),
     });
 
     if (!workflow) {
@@ -55,27 +33,13 @@ export async function GET(
       );
     }
 
-    const isOwner = session?.user?.id === workflow.userId;
-
-    // If not owner, check if workflow is public
-    if (!isOwner && workflow.visibility !== "public") {
-      return NextResponse.json(
-        { error: "Workflow not found" },
-        { status: 404 }
-      );
-    }
-
-    // For public workflows viewed by non-owners, sanitize sensitive data
     const responseData = {
       ...workflow,
-      nodes: isOwner
-        ? workflow.nodes
-        : sanitizeNodesForPublicView(
-            workflow.nodes as Record<string, unknown>[]
-          ),
+      nodes: workflow.nodes,
+      visibility: "private",
       createdAt: workflow.createdAt.toISOString(),
       updatedAt: workflow.updatedAt.toISOString(),
-      isOwner,
+      isOwner: true,
     };
 
     return NextResponse.json(responseData);
@@ -97,6 +61,7 @@ function buildUpdateData(
 ): Record<string, unknown> {
   const updateData: Record<string, unknown> = {
     updatedAt: new Date(),
+    visibility: "private",
   };
 
   if (body.name !== undefined) {
@@ -111,10 +76,6 @@ function buildUpdateData(
   if (body.edges !== undefined) {
     updateData.edges = body.edges;
   }
-  if (body.visibility !== undefined) {
-    updateData.visibility = body.visibility;
-  }
-
   return updateData;
 }
 
@@ -163,18 +124,6 @@ export async function PATCH(
       }
     }
 
-    // Validate visibility value if provided
-    if (
-      body.visibility !== undefined &&
-      body.visibility !== "private" &&
-      body.visibility !== "public"
-    ) {
-      return NextResponse.json(
-        { error: "Invalid visibility value. Must be 'private' or 'public'" },
-        { status: 400 }
-      );
-    }
-
     const updateData = buildUpdateData(body);
 
     const [updatedWorkflow] = await db
@@ -192,6 +141,7 @@ export async function PATCH(
 
     return NextResponse.json({
       ...updatedWorkflow,
+      visibility: "private",
       createdAt: updatedWorkflow.createdAt.toISOString(),
       updatedAt: updatedWorkflow.updatedAt.toISOString(),
       isOwner: true,

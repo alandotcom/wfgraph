@@ -7,9 +7,7 @@ import {
   ChevronDown,
   Copy,
   Download,
-  Globe,
   Loader2,
-  Lock,
   Play,
   Plus,
   Redo2,
@@ -41,7 +39,6 @@ import {
   clearWorkflowAtom,
   currentWorkflowIdAtom,
   currentWorkflowNameAtom,
-  currentWorkflowVisibilityAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
   edgesAtom,
@@ -61,7 +58,6 @@ import {
   updateNodeDataAtom,
   type WorkflowEdge,
   type WorkflowNode,
-  type WorkflowVisibility,
 } from "@/lib/workflow-store";
 import {
   findActionById,
@@ -74,7 +70,6 @@ import { GitHubStarsButton } from "../github-stars-button";
 import { ConfigurationOverlay } from "../overlays/configuration-overlay";
 import { ConfirmOverlay } from "../overlays/confirm-overlay";
 import { ExportWorkflowOverlay } from "../overlays/export-workflow-overlay";
-import { MakePublicOverlay } from "../overlays/make-public-overlay";
 import { useOverlay } from "../overlays/overlay-provider";
 import { WorkflowIssuesOverlay } from "../overlays/workflow-issues-overlay";
 import { WorkflowIcon } from "../ui/workflow-icon";
@@ -674,9 +669,6 @@ function useWorkflowState() {
   const [workflowName, setCurrentWorkflowName] = useAtom(
     currentWorkflowNameAtom
   );
-  const [workflowVisibility, setWorkflowVisibility] = useAtom(
-    currentWorkflowVisibilityAtom
-  );
   const isOwner = useAtomValue(isWorkflowOwnerAtom);
   const router = useRouter();
   const [isSaving, setIsSaving] = useAtom(isSavingAtom);
@@ -728,8 +720,6 @@ function useWorkflowState() {
     currentWorkflowId,
     workflowName,
     setCurrentWorkflowName,
-    workflowVisibility,
-    setWorkflowVisibility,
     isOwner,
     router,
     isSaving,
@@ -772,7 +762,6 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     setIsSaving,
     setHasUnsavedChanges,
     clearWorkflow,
-    setWorkflowVisibility,
     setAllWorkflows,
     setIsDownloading,
     setIsDuplicating,
@@ -910,43 +899,6 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     }
   };
 
-  const handleToggleVisibility = async (newVisibility: WorkflowVisibility) => {
-    if (!currentWorkflowId) {
-      return;
-    }
-
-    // Show confirmation overlay when making public
-    if (newVisibility === "public") {
-      openOverlay(MakePublicOverlay, {
-        onConfirm: async () => {
-          try {
-            await api.workflow.update(currentWorkflowId, {
-              visibility: "public",
-            });
-            setWorkflowVisibility("public");
-            toast.success("Workflow is now public");
-          } catch (error) {
-            console.error("Failed to update visibility:", error);
-            toast.error("Failed to update visibility. Please try again.");
-          }
-        },
-      });
-      return;
-    }
-
-    // Switch to private immediately (no risks)
-    try {
-      await api.workflow.update(currentWorkflowId, {
-        visibility: newVisibility,
-      });
-      setWorkflowVisibility(newVisibility);
-      toast.success("Workflow is now private");
-    } catch (error) {
-      console.error("Failed to update visibility:", error);
-      toast.error("Failed to update visibility. Please try again.");
-    }
-  };
-
   const handleDuplicate = async () => {
     if (!currentWorkflowId) {
       return;
@@ -972,7 +924,6 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     handleDeleteWorkflow,
     handleDownload,
     loadWorkflows,
-    handleToggleVisibility,
     handleDuplicate,
   };
 }
@@ -1208,9 +1159,6 @@ function ToolbarActions({
         <DownloadButton actions={actions} state={state} />
       </ButtonGroup>
 
-      {/* Visibility Toggle */}
-      <VisibilityButton actions={actions} state={state} />
-
       <RunButtonGroup actions={actions} state={state} />
     </>
   );
@@ -1288,55 +1236,6 @@ function DownloadButton({
         <Download className="size-4" />
       )}
     </Button>
-  );
-}
-
-// Visibility Button Component
-function VisibilityButton({
-  state,
-  actions,
-}: {
-  state: ReturnType<typeof useWorkflowState>;
-  actions: ReturnType<typeof useWorkflowActions>;
-}) {
-  const isPublic = state.workflowVisibility === "public";
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          className="border hover:bg-black/5 dark:hover:bg-white/5"
-          disabled={!state.currentWorkflowId || state.isGenerating}
-          size="icon"
-          title={isPublic ? "Public workflow" : "Private workflow"}
-          variant="secondary"
-        >
-          {isPublic ? (
-            <Globe className="size-4" />
-          ) : (
-            <Lock className="size-4" />
-          )}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem
-          className="flex items-center gap-2"
-          onClick={() => actions.handleToggleVisibility("private")}
-        >
-          <Lock className="size-4" />
-          Private
-          {!isPublic && <Check className="ml-auto size-4" />}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="flex items-center gap-2"
-          onClick={() => actions.handleToggleVisibility("public")}
-        >
-          <Globe className="size-4" />
-          Public
-          {isPublic && <Check className="ml-auto size-4" />}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 

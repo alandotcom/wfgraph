@@ -92,10 +92,7 @@ export async function POST(
       );
     }
 
-    const isOwner = session.user.id === sourceWorkflow.userId;
-
-    // If not owner, check if workflow is public
-    if (!isOwner && sourceWorkflow.visibility !== "public") {
+    if (session.user.id !== sourceWorkflow.userId) {
       return NextResponse.json(
         { error: "Workflow not found" },
         { status: 404 }
