@@ -32,7 +32,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { api } from "@/lib/api-client";
-import { authClient, useSession } from "@/lib/auth-client";
 import { integrationsAtom } from "@/lib/integrations-store";
 import type { IntegrationType } from "@/lib/types/integration";
 import {
@@ -390,6 +389,7 @@ type ExecuteTestWorkflowParams = {
   dryRun?: boolean;
 };
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Execution lifecycle combines API kickoff, polling, node status sync, and cancellation handling.
 async function executeTestWorkflow({
   workflowId,
   nodes,
@@ -688,7 +688,6 @@ function useWorkflowState() {
   const addNode = useSetAtom(addNodeAtom);
   const [canUndo] = useAtom(canUndoAtom);
   const [canRedo] = useAtom(canRedoAtom);
-  const { data: session } = useSession();
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const setSelectedNodeId = useSetAtom(selectedNodeAtom);
   const setSelectedExecutionId = useSetAtom(selectedExecutionIdAtom);
@@ -742,7 +741,6 @@ function useWorkflowState() {
     addNode,
     canUndo,
     canRedo,
-    session,
     isDownloading,
     setIsDownloading,
     isDuplicating,
@@ -787,7 +785,6 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     triggerExecute,
     setTriggerExecute,
     router,
-    session,
   } = state;
 
   const { handleSave, handleExecute } = useWorkflowHandlers({
@@ -837,7 +834,9 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
       confirmVariant: "destructive" as const,
       destructive: true,
       onConfirm: async () => {
-        if (!currentWorkflowId) return;
+        if (!currentWorkflowId) {
+          return;
+        }
         try {
           await api.workflow.delete(currentWorkflowId);
           toast.success("Workflow deleted successfully");
@@ -955,13 +954,6 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
 
     setIsDuplicating(true);
     try {
-      // Auto-sign in as anonymous if user has no session
-      if (!session?.user) {
-        await authClient.signIn.anonymous();
-        // Wait for session to be established
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-
       const newWorkflow = await api.workflow.duplicate(currentWorkflowId);
       toast.success("Workflow duplicated successfully");
       router.push(`/workflows/${newWorkflow.id}`);
@@ -1008,8 +1000,7 @@ function ToolbarActions({
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
   const hasSelection = selectedNode || selectedEdge;
 
-  // For non-owners viewing public workflows, don't show toolbar actions
-  // (Duplicate button is now in the main toolbar next to Sign In)
+  // For non-owners viewing public workflows, don't show toolbar actions.
   if (workflowId && !state.isOwner) {
     return null;
   }
@@ -1410,7 +1401,7 @@ function RunButtonGroup({
   );
 }
 
-// Duplicate Button Component - placed next to Sign In for non-owners
+// Duplicate button for read-only/public workflow views
 function DuplicateButton({
   isDuplicating,
   onDuplicate,

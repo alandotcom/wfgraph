@@ -42,6 +42,8 @@ const PLUGINS_MARKER_REGEX =
 
 // System integrations that don't have plugins
 const SYSTEM_INTEGRATION_TYPES = ["database"] as const;
+const ENABLED_PLUGIN_TYPES = ["clerk", "linear", "slack", "twilio"] as const;
+const ENABLED_PLUGIN_SET = new Set<string>(ENABLED_PLUGIN_TYPES);
 
 // Regex patterns for codegen template generation
 const LEADING_WHITESPACE_PATTERN = /^\s*/;
@@ -83,6 +85,29 @@ function discoverPlugins(): string[] {
     }
 
     // Only include directories
+    const fullPath = join(PLUGINS_DIR, entry);
+    try {
+      return statSync(fullPath).isDirectory() && ENABLED_PLUGIN_SET.has(entry);
+    } catch {
+      return false;
+    }
+  });
+
+  return plugins.sort();
+}
+
+function discoverAllPluginTypes(): string[] {
+  const entries = readdirSync(PLUGINS_DIR);
+  const plugins = entries.filter((entry) => {
+    if (
+      entry.startsWith("_") ||
+      entry.startsWith(".") ||
+      entry === "index.ts" ||
+      entry === "registry.ts"
+    ) {
+      return false;
+    }
+
     const fullPath = join(PLUGINS_DIR, entry);
     try {
       return statSync(fullPath).isDirectory();
@@ -202,16 +227,16 @@ async function updateReadme(): Promise<void> {
 /**
  * Generate the lib/types/integration.ts file with dynamic types
  */
-async function generateTypesFile(): Promise<void> {
+function generateTypesFile(): void {
   // Ensure the types directory exists
   const typesDir = dirname(TYPES_FILE);
   if (!existsSync(typesDir)) {
     mkdirSync(typesDir, { recursive: true });
   }
 
-  // Get plugin types from registry
-  const { getIntegrationTypes } = await import("@/plugins/registry");
-  const pluginTypes = getIntegrationTypes();
+  // Keep type union broad so dormant plugin files still type-check.
+  // Runtime availability is controlled by discoverPlugins()/plugins/index.ts allowlist.
+  const pluginTypes = discoverAllPluginTypes();
 
   // Combine plugin types with system types
   const allTypes = [...pluginTypes, ...SYSTEM_INTEGRATION_TYPES].sort();
@@ -841,7 +866,7 @@ async function main(): Promise<void> {
   await updateReadme();
 
   console.log("Generating lib/types/integration.ts...");
-  await generateTypesFile();
+  generateTypesFile();
 
   console.log("Generating lib/step-registry.ts...");
   await generateStepRegistry();

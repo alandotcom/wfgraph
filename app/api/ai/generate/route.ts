@@ -184,15 +184,17 @@ NODE POSITIONING RULES:
 - When adding nodes to existing workflows, position new nodes 250px away from existing nodes
 
 Trigger types:
-- Manual: {"triggerType": "Manual"}
 - Webhook: {"triggerType": "Webhook", "webhookPath": "/webhooks/name", ...}
-- Schedule: {"triggerType": "Schedule", "scheduleCron": "0 9 * * *", ...}
 
 System action types (built-in):
 - Database Query: {"actionType": "Database Query", "dbQuery": "SELECT * FROM table", "dbTable": "table"}
 - HTTP Request: {"actionType": "HTTP Request", "httpMethod": "POST", "endpoint": "https://api.example.com", "httpHeaders": "{}", "httpBody": "{}"}
 - Condition: {"actionType": "Condition", "condition": "{{@nodeId:Label.field}} === 'value'"}
 - Wait: {"actionType": "Wait", "waitMode": "delay", "waitDuration": "24h", "waitGateMode": "require_actual_wait"}
+
+OPTIONAL FOR ANY NON-CONDITION ACTION NODE:
+- "runCondition": JavaScript expression string. If false, that step is skipped and downstream nodes continue.
+- Example: {"actionType":"Send Email","runCondition":"{{@trigger-1:Webhook.data.status}} !== 'cancelled'"}
 
 Plugin action types (from integrations):
 ${pluginActionPrompts}
@@ -231,7 +233,7 @@ WORKFLOW FLOW:
 Example output (linear workflow with 250px horizontal spacing):
 {"op": "setName", "name": "Contact Form Workflow"}
 {"op": "setDescription", "description": "Processes contact form submissions"}
-{"op": "addNode", "node": {"id": "trigger-1", "type": "trigger", "position": {"x": 100, "y": 200}, "data": {"label": "Contact Form", "type": "trigger", "config": {"triggerType": "Manual"}, "status": "idle"}}}
+{"op": "addNode", "node": {"id": "trigger-1", "type": "trigger", "position": {"x": 100, "y": 200}, "data": {"label": "Contact Form", "type": "trigger", "config": {"triggerType": "Webhook"}, "status": "idle"}}}
 {"op": "addNode", "node": {"id": "send-email", "type": "action", "position": {"x": 350, "y": 200}, "data": {"label": "Send Email", "type": "action", "config": {"actionType": "Send Email", "emailTo": "admin@example.com", "emailSubject": "New Contact", "emailBody": "New contact form submission"}, "status": "idle"}}}
 {"op": "addNode", "node": {"id": "log-action", "type": "action", "position": {"x": 600, "y": 200}, "data": {"label": "Log Result", "type": "action", "config": {"actionType": "HTTP Request", "httpMethod": "POST", "endpoint": "https://api.example.com/log"}, "status": "idle"}}}
 {"op": "addEdge", "edge": {"id": "e1", "source": "trigger-1", "target": "send-email", "type": "default"}}

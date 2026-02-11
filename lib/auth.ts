@@ -1,165 +1,120 @@
-import { betterAuth } from "better-auth";
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { anonymous, genericOAuth } from "better-auth/plugins";
-import { eq } from "drizzle-orm";
-import { isAiGatewayManagedKeysEnabled } from "./ai-gateway/config";
-import { db } from "./db";
-import {
-  accounts,
-  integrations,
-  sessions,
-  users,
-  verifications,
-  workflowExecutionLogs,
-  workflowExecutions,
-  workflowExecutionsRelations,
-  workflows,
-} from "./db/schema";
+import "server-only";
 
-// Construct schema object for drizzle adapter
-const schema = {
-  user: users,
-  session: sessions,
-  account: accounts,
-  verification: verifications,
-  workflows,
-  workflowExecutions,
-  workflowExecutionLogs,
-  workflowExecutionsRelations,
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { integrations, users, workflows } from "@/lib/db/schema";
+
+type PrivateSessionUser = {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
 };
 
-// Determine the base URL for authentication
-// This supports Vercel Preview deployments with dynamic URLs
-function getBaseURL() {
-  // Priority 1: Explicit BETTER_AUTH_URL (set manually for production/dev)
-  if (process.env.BETTER_AUTH_URL) {
-    return process.env.BETTER_AUTH_URL;
+type PrivateSession = {
+  user: PrivateSessionUser;
+};
+
+const DEFAULT_OWNER_ID = "private-owner";
+const DEFAULT_OWNER_NAME = "Private Owner";
+const DEFAULT_OWNER_EMAIL = "private-owner@local";
+
+let cachedOwnerId: string | null = null;
+
+async function resolveOwnerIdFromData(): Promise<string | null> {
+  const workflowOwner = await db
+    .select({ userId: workflows.userId })
+    .from(workflows)
+    .limit(1);
+  if (workflowOwner[0]?.userId) {
+    return workflowOwner[0].userId;
   }
 
-  // Priority 2: NEXT_PUBLIC_APP_URL
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return process.env.NEXT_PUBLIC_APP_URL;
+  const integrationOwner = await db
+    .select({ userId: integrations.userId })
+    .from(integrations)
+    .limit(1);
+  if (integrationOwner[0]?.userId) {
+    return integrationOwner[0].userId;
   }
 
-  // Priority 3: Check if we're on Vercel (for preview deployments)
-  if (process.env.VERCEL_URL) {
-    // VERCEL_URL doesn't include protocol, so add it
-    // Use https for Vercel deployments (both production and preview)
-    return `https://${process.env.VERCEL_URL}`;
+  const existingUser = await db.select({ id: users.id }).from(users).limit(1);
+  if (existingUser[0]?.id) {
+    return existingUser[0].id;
   }
 
-  // Fallback: Local development
-  return "http://localhost:4017";
+  return null;
 }
 
-// Build plugins array conditionally
-const plugins = [
-  anonymous({
-    async onLinkAccount(data) {
-      // When an anonymous user links to a real account, migrate their data
-      const fromUserId = data.anonymousUser.user.id;
-      const toUserId = data.newUser.user.id;
+async function resolveOwnerId(): Promise<string> {
+  if (cachedOwnerId) {
+    return cachedOwnerId;
+  }
 
-      console.log(
-        `[Anonymous Migration] Migrating from user ${fromUserId} to ${toUserId}`
-      );
+  const envOwnerId = process.env.PRIVATE_OWNER_USER_ID?.trim();
+  if (envOwnerId) {
+    cachedOwnerId = envOwnerId;
+    return cachedOwnerId;
+  }
 
-      try {
-        // Migrate workflows
-        await db
-          .update(workflows)
-          .set({ userId: toUserId })
-          .where(eq(workflows.userId, fromUserId));
+  const inferredOwnerId = await resolveOwnerIdFromData();
+  cachedOwnerId = inferredOwnerId || DEFAULT_OWNER_ID;
+  return cachedOwnerId;
+}
 
-        // Migrate workflow executions
-        await db
-          .update(workflowExecutions)
-          .set({ userId: toUserId })
-          .where(eq(workflowExecutions.userId, fromUserId));
-
-        // Migrate integrations
-        await db
-          .update(integrations)
-          .set({ userId: toUserId })
-          .where(eq(integrations.userId, fromUserId));
-
-        console.log(
-          `[Anonymous Migration] Successfully migrated data from ${fromUserId} to ${toUserId}`
-        );
-      } catch (error) {
-        console.error(
-          "[Anonymous Migration] Error migrating user data:",
-          error
-        );
-        throw error;
-      }
+async function ensureOwnerUser(ownerId: string): Promise<PrivateSessionUser> {
+  const existingUser = await db.query.users.findFirst({
+    where: eq(users.id, ownerId),
+    columns: {
+      id: true,
+      name: true,
+      email: true,
+      image: true,
     },
-  }),
-  ...(process.env.VERCEL_CLIENT_ID
-    ? [
-        genericOAuth({
-          config: [
-            {
-              providerId: "vercel",
-              clientId: process.env.VERCEL_CLIENT_ID,
-              clientSecret: process.env.VERCEL_CLIENT_SECRET || "",
-              authorizationUrl: "https://vercel.com/oauth/authorize",
-              tokenUrl: "https://api.vercel.com/login/oauth/token",
-              userInfoUrl: "https://api.vercel.com/login/oauth/userinfo",
-              // Include read-write:team scope when AI Gateway User Keys is enabled
-              // This grants APIKey and APIKeyAiGateway permissions for creating user keys
-              scopes: isAiGatewayManagedKeysEnabled()
-                ? ["openid", "email", "profile", "read-write:team"]
-                : ["openid", "email", "profile"],
-              discoveryUrl: undefined,
-              pkce: true,
-              getUserInfo: async (tokens) => {
-                const response = await fetch(
-                  "https://api.vercel.com/login/oauth/userinfo",
-                  {
-                    headers: {
-                      Authorization: `Bearer ${tokens.accessToken}`,
-                    },
-                  }
-                );
-                const profile = await response.json();
-                console.log("[Vercel OAuth] userinfo response:", profile);
-                return {
-                  id: profile.sub,
-                  email: profile.email,
-                  name: profile.name ?? profile.preferred_username,
-                  emailVerified: profile.email_verified ?? true,
-                  image: profile.picture,
-                };
-              },
-            },
-          ],
-        }),
-      ]
-    : []),
-];
+  });
 
-export const auth = betterAuth({
-  baseURL: getBaseURL(),
-  database: drizzleAdapter(db, {
-    provider: "pg",
-    schema,
-  }),
-  emailAndPassword: {
-    enabled: true,
-    requireEmailVerification: false,
-  },
-  socialProviders: {
-    github: {
-      clientId: process.env.GITHUB_CLIENT_ID || "",
-      clientSecret: process.env.GITHUB_CLIENT_SECRET || "",
-      enabled: !!process.env.GITHUB_CLIENT_ID,
-    },
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID || "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-      enabled: !!process.env.GOOGLE_CLIENT_ID,
+  if (existingUser) {
+    return {
+      id: existingUser.id,
+      name: existingUser.name || DEFAULT_OWNER_NAME,
+      email: existingUser.email || DEFAULT_OWNER_EMAIL,
+      image: existingUser.image,
+    };
+  }
+
+  const now = new Date();
+  const name = process.env.PRIVATE_OWNER_NAME?.trim() || DEFAULT_OWNER_NAME;
+  const email = process.env.PRIVATE_OWNER_EMAIL?.trim() || DEFAULT_OWNER_EMAIL;
+
+  await db.insert(users).values({
+    id: ownerId,
+    name,
+    email,
+    emailVerified: true,
+    image: null,
+    createdAt: now,
+    updatedAt: now,
+    isAnonymous: false,
+  });
+
+  return {
+    id: ownerId,
+    name,
+    email,
+    image: null,
+  };
+}
+
+async function getPrivateSession(): Promise<PrivateSession> {
+  const ownerId = await resolveOwnerId();
+  const user = await ensureOwnerUser(ownerId);
+  return { user };
+}
+
+export const auth = {
+  api: {
+    getSession(_: { headers?: Headers } = {}): Promise<PrivateSession> {
+      return getPrivateSession();
     },
   },
-  plugins,
-});
+};

@@ -220,6 +220,57 @@ function ConditionFields({
   );
 }
 
+function RunConditionField({
+  config,
+  onUpdateConfig,
+  disabled,
+}: {
+  config: Record<string, unknown>;
+  onUpdateConfig: (key: string, value: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+      <Label htmlFor="runCondition">Run this step only when (optional)</Label>
+      <TemplateBadgeInput
+        disabled={disabled}
+        id="runCondition"
+        onChange={(value) => onUpdateConfig("runCondition", value)}
+        placeholder="{{@trigger:Webhook.data.status}} !== 'cancelled'"
+        value={(config?.runCondition as string) || ""}
+      />
+      <p className="text-muted-foreground text-xs">
+        JavaScript expression. When false, this step is skipped and the workflow
+        continues to downstream steps.
+      </p>
+    </div>
+  );
+}
+
+function RunConditionSection({
+  actionType,
+  config,
+  onUpdateConfig,
+  disabled,
+}: {
+  actionType: string;
+  config: Record<string, unknown>;
+  onUpdateConfig: (key: string, value: string) => void;
+  disabled: boolean;
+}) {
+  if (!actionType || actionType === "Condition") {
+    return null;
+  }
+
+  return (
+    <RunConditionField
+      config={config}
+      disabled={disabled}
+      onUpdateConfig={onUpdateConfig}
+    />
+  );
+}
+
 // Wait fields component
 function WaitFields({
   config,
@@ -745,6 +796,13 @@ export function ActionConfig({
           onUpdateConfig={handlePluginUpdateConfig}
         />
       )}
+
+      <RunConditionSection
+        actionType={actionType}
+        config={config}
+        disabled={disabled}
+        onUpdateConfig={onUpdateConfig}
+      />
     </>
   );
 }

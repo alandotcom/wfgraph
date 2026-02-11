@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
-import { authClient, useSession } from "@/lib/auth-client";
 import {
   currentWorkflowNameAtom,
   edgesAtom,
@@ -26,7 +25,7 @@ function createDefaultTriggerNode() {
       label: "",
       description: "",
       type: "trigger" as const,
-      config: { triggerType: "Manual" },
+      config: { triggerType: "Webhook" },
       status: "idle" as const,
     },
   };
@@ -34,7 +33,6 @@ function createDefaultTriggerNode() {
 
 const Home = () => {
   const router = useRouter();
-  const { data: session } = useSession();
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const setNodes = useSetAtom(nodesAtom);
@@ -56,14 +54,6 @@ const Home = () => {
   useEffect(() => {
     document.title = `${currentWorkflowName} - AI Workflow Builder`;
   }, [currentWorkflowName]);
-
-  // Helper to create anonymous session if needed
-  const ensureSession = useCallback(async () => {
-    if (!session) {
-      await authClient.signIn.anonymous();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }, [session]);
 
   // Handler to add the first node (replaces the "add" node)
   const handleAddNode = useCallback(() => {
@@ -105,8 +95,6 @@ const Home = () => {
       hasCreatedWorkflowRef.current = true;
 
       try {
-        await ensureSession();
-
         // Create workflow with all real nodes
         const newWorkflow = await api.workflow.create({
           name: "Untitled Workflow",
@@ -129,7 +117,7 @@ const Home = () => {
     };
 
     createWorkflowAndRedirect();
-  }, [nodes, edges, router, ensureSession, setIsTransitioningFromHomepage]);
+  }, [nodes, edges, router, setIsTransitioningFromHomepage]);
 
   // Canvas and toolbar are rendered by PersistentCanvas in the layout
   return null;

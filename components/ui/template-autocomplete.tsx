@@ -45,7 +45,7 @@ const getNodeDisplayName = (node: WorkflowNode): string => {
 
   if (node.data.type === "trigger") {
     const triggerType = node.data.config?.triggerType as string | undefined;
-    return triggerType || "Manual";
+    return triggerType || "Webhook";
   }
 
   return "Node";
@@ -393,4 +393,3 @@ export function TemplateAutocomplete({
   // Use portal to render at document root to avoid clipping issues
   return createPortal(menuContent, document.body);
 }
-
