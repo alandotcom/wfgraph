@@ -9,18 +9,21 @@ import {
   validateConditionExpression,
 } from "@/lib/condition-validator";
 import { resolveWaitUntil } from "@/lib/utils/wait-time";
-import { logWorkflowAuditEvent } from "@/lib/workflow-audit";
-import { logStepCompleteDb, logStepStartDb } from "@/lib/workflow-logging";
-import {
-  createWaitState,
-  markExecutionRunning,
-  markWaitStateStatus,
-} from "@/lib/workflow-wait-state";
 import {
   getActionLabel,
   getStepImporter,
   type StepImporter,
 } from "./step-registry";
+import { workflowAuditStep } from "./steps/internal-workflow-audit";
+import {
+  stepLogCompleteStep,
+  stepLogStartStep,
+} from "./steps/internal-workflow-logging";
+import {
+  createWaitStateStep,
+  markExecutionRunningStep,
+  markWaitStateStatusStep,
+} from "./steps/internal-workflow-wait-state";
 import type { StepContext } from "./steps/step-handler";
 import { triggerStep } from "./steps/trigger";
 import { getErrorMessageAsync } from "./utils";
@@ -419,7 +422,7 @@ async function executeDryRunAction(input: {
     return { success: true, data: output };
   }
 
-  const startLog = await logStepStartDb({
+  const startLog = await stepLogStartStep({
     executionId: input.executionId,
     nodeId: input.context.nodeId,
     nodeName: input.context.nodeName,
@@ -430,7 +433,7 @@ async function executeDryRunAction(input: {
     },
   });
 
-  await logStepCompleteDb({
+  await stepLogCompleteStep({
     logId: startLog.logId,
     startTime: startLog.startTime,
     status: "success",
@@ -482,7 +485,7 @@ async function executeWaitAction(input: {
   const waitTimezone =
     typeof config.waitTimezone === "string" ? config.waitTimezone : undefined;
 
-  const startLog = await logStepStartDb({
+  const startLog = await stepLogStartStep({
     executionId,
     nodeId: context.nodeId,
     nodeName: context.nodeName,
@@ -510,7 +513,7 @@ async function executeWaitAction(input: {
         : { waitUntil: undefined, error: undefined };
 
     if (resolvedDelay.error) {
-      await logStepCompleteDb({
+      await stepLogCompleteStep({
         logId: startLog.logId,
         startTime: startLog.startTime,
         status: "error",
@@ -534,7 +537,7 @@ async function executeWaitAction(input: {
       message: "Dry run skipped waiting and resumed immediately",
     };
 
-    await logStepCompleteDb({
+    await stepLogCompleteStep({
       logId: startLog.logId,
       startTime: startLog.startTime,
       status: "success",
@@ -559,7 +562,7 @@ async function executeWaitAction(input: {
       const errorMessage =
         resolved.error ||
         "Wait could not determine a target timestamp from waitUntil/waitDuration.";
-      await logStepCompleteDb({
+      await stepLogCompleteStep({
         logId: startLog.logId,
         startTime: startLog.startTime,
         status: "error",
@@ -571,7 +574,7 @@ async function executeWaitAction(input: {
       };
     }
 
-    const waitState = await createWaitState({
+    const waitState = await createWaitStateStep({
       executionId,
       workflowId,
       userId,
@@ -579,7 +582,7 @@ async function executeWaitAction(input: {
       nodeId: context.nodeId,
       nodeName: context.nodeName,
       waitType: "delay",
-      waitUntil: resolved.waitUntil,
+      waitUntilIso: resolved.waitUntil.toISOString(),
       correlationKey: eventContext?.correlationKey,
       metadata: {
         waitMode,
@@ -587,7 +590,7 @@ async function executeWaitAction(input: {
       },
     });
 
-    await logWorkflowAuditEvent({
+    await workflowAuditStep({
       workflowId,
       executionId,
       userId,
@@ -605,7 +608,7 @@ async function executeWaitAction(input: {
       const waitMs = Math.max(resolved.waitUntil.getTime() - Date.now(), 0);
       await sleep(waitMs);
     } catch (error) {
-      await logStepCompleteDb({
+      await stepLogCompleteStep({
         logId: startLog.logId,
         startTime: startLog.startTime,
         status: "error",
@@ -614,13 +617,13 @@ async function executeWaitAction(input: {
       throw error;
     }
 
-    await markWaitStateStatus({
+    await markWaitStateStatusStep({
       waitStateId: waitState.id,
       status: "resumed",
     });
-    await markExecutionRunning(executionId);
+    await markExecutionRunningStep({ executionId });
 
-    await logWorkflowAuditEvent({
+    await workflowAuditStep({
       workflowId,
       executionId,
       userId,
@@ -637,7 +640,7 @@ async function executeWaitAction(input: {
       resumedAt: new Date().toISOString(),
     };
 
-    await logStepCompleteDb({
+    await stepLogCompleteStep({
       logId: startLog.logId,
       startTime: startLog.startTime,
       status: "success",
@@ -658,7 +661,7 @@ async function executeWaitAction(input: {
       : { waitUntil: undefined, error: undefined };
 
   if (waitTimeoutResolution.error) {
-    await logStepCompleteDb({
+    await stepLogCompleteStep({
       logId: startLog.logId,
       startTime: startLog.startTime,
       status: "error",
@@ -686,7 +689,7 @@ async function executeWaitAction(input: {
 
   const waitForEvents =
     typeof config.waitForEvents === "string" ? config.waitForEvents : undefined;
-  const waitState = await createWaitState({
+  const waitState = await createWaitStateStep({
     executionId,
     workflowId,
     userId,
@@ -695,7 +698,7 @@ async function executeWaitAction(input: {
     nodeName: context.nodeName,
     waitType: "hook",
     hookToken: hook.token,
-    waitUntil: waitTimeoutResolution.waitUntil,
+    waitUntilIso: waitTimeoutResolution.waitUntil?.toISOString(),
     correlationKey: eventContext?.correlationKey,
     metadata: {
       waitForEvents,
@@ -704,7 +707,7 @@ async function executeWaitAction(input: {
     },
   });
 
-  await logWorkflowAuditEvent({
+  await workflowAuditStep({
     workflowId,
     executionId,
     userId,
@@ -741,7 +744,7 @@ async function executeWaitAction(input: {
       hookPayload = await hook;
     }
   } catch (error) {
-    await logStepCompleteDb({
+    await stepLogCompleteStep({
       logId: startLog.logId,
       startTime: startLog.startTime,
       status: "error",
@@ -750,13 +753,13 @@ async function executeWaitAction(input: {
     throw error;
   }
 
-  await markWaitStateStatus({
+  await markWaitStateStatusStep({
     waitStateId: waitState.id,
     status: timedOut ? "timed_out" : "resumed",
   });
-  await markExecutionRunning(executionId);
+  await markExecutionRunningStep({ executionId });
 
-  await logWorkflowAuditEvent({
+  await workflowAuditStep({
     workflowId,
     executionId,
     userId,
@@ -778,7 +781,7 @@ async function executeWaitAction(input: {
     payload: hookPayload,
   };
 
-  await logStepCompleteDb({
+  await stepLogCompleteStep({
     logId: startLog.logId,
     startTime: startLog.startTime,
     status: "success",
@@ -1196,7 +1199,7 @@ export async function executeWorkflow(input: WorkflowExecutionInput) {
             : "Run completed with errors";
         }
 
-        await logWorkflowAuditEvent({
+        await workflowAuditStep({
           workflowId,
           executionId,
           userId,
@@ -1254,7 +1257,7 @@ export async function executeWorkflow(input: WorkflowExecutionInput) {
             : "Run failed with fatal error";
         }
 
-        await logWorkflowAuditEvent({
+        await workflowAuditStep({
           workflowId,
           executionId,
           userId,
