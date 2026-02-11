@@ -154,15 +154,23 @@ function inferSchemaFromPayload(
   );
 }
 
-function flattenSchemaPaths(schema: SchemaField[], prefix = ""): string[] {
-  const paths: string[] = [];
+type SchemaPathOption = {
+  path: string;
+  type: SchemaField["type"] | SchemaField["itemType"];
+};
+
+function flattenSchemaPathOptions(
+  schema: SchemaField[],
+  prefix = ""
+): SchemaPathOption[] {
+  const paths: SchemaPathOption[] = [];
 
   for (const field of schema) {
     const currentPath = prefix ? `${prefix}.${field.name}` : field.name;
-    paths.push(currentPath);
+    paths.push({ path: currentPath, type: field.type });
 
     if (field.type === "object" && field.fields?.length) {
-      paths.push(...flattenSchemaPaths(field.fields, currentPath));
+      paths.push(...flattenSchemaPathOptions(field.fields, currentPath));
     }
 
     if (
@@ -170,8 +178,7 @@ function flattenSchemaPaths(schema: SchemaField[], prefix = ""): string[] {
       field.itemType === "object" &&
       field.fields?.length
     ) {
-      // getValueByPath supports dot segments, so use .0 for array item paths.
-      paths.push(...flattenSchemaPaths(field.fields, `${currentPath}.0`));
+      paths.push(...flattenSchemaPathOptions(field.fields, `${currentPath}.0`));
     }
   }
 
@@ -200,6 +207,31 @@ export function TriggerConfig({
     (config?.webhookDeleteEvents as string) || "event.delete";
   const mockRequest = (config?.webhookMockRequest as string) || "";
   const schema = readSchema(config);
+  const schemaPathOptions = useMemo(
+    () => flattenSchemaPathOptions(schema),
+    [schema]
+  );
+  const schemaPaths = useMemo(
+    () => schemaPathOptions.map((option) => option.path),
+    [schemaPathOptions]
+  );
+  const eventPathOptions = useMemo(() => {
+    const options = [...schemaPathOptions];
+    if (eventPath && !options.some((option) => option.path === eventPath)) {
+      options.unshift({ path: eventPath, type: "string" });
+    }
+    return options;
+  }, [eventPath, schemaPathOptions]);
+  const correlationPathOptions = useMemo(() => {
+    const options = [...schemaPathOptions];
+    if (
+      correlationPath &&
+      !options.some((option) => option.path === correlationPath)
+    ) {
+      options.unshift({ path: correlationPath, type: "string" });
+    }
+    return options;
+  }, [correlationPath, schemaPathOptions]);
 
   const parsedMockRequest = useMemo(() => {
     if (!mockRequest.trim()) {
@@ -229,6 +261,22 @@ export function TriggerConfig({
 
     if (!correlationPath.trim()) {
       items.push("Entity ID field path is empty.");
+    }
+
+    if (schema.length === 0) {
+      items.push(
+        "Define a request schema first, then pick routing fields from that schema."
+      );
+    } else {
+      if (eventPath && !schemaPaths.includes(eventPath)) {
+        items.push(`Event type field "${eventPath}" is not in request schema.`);
+      }
+
+      if (correlationPath && !schemaPaths.includes(correlationPath)) {
+        items.push(
+          `Entity ID field "${correlationPath}" is not in request schema.`
+        );
+      }
     }
 
     const createSet = new Set(parseCsvEntries(createEvents));
@@ -288,7 +336,6 @@ export function TriggerConfig({
       }
 
       if (schema.length > 0) {
-        const schemaPaths = flattenSchemaPaths(schema);
         const missingSchemaPaths = schemaPaths.filter(
           (path) =>
             getValueByPath(parsedMockRequest.payload, path) === undefined
@@ -311,6 +358,7 @@ export function TriggerConfig({
     parsedMockRequest.error,
     parsedMockRequest.payload,
     schema,
+    schemaPaths,
     updateEvents,
   ]);
 
@@ -400,49 +448,90 @@ export function TriggerConfig({
 
           <div className="space-y-3 rounded-md border bg-background p-3">
             <p className="font-medium text-xs uppercase tracking-wide">
+              Request Schema
+            </p>
+            <SchemaBuilder
+              disabled={disabled}
+              onChange={(nextSchema) =>
+                onUpdateConfig("webhookSchema", JSON.stringify(nextSchema))
+              }
+              schema={schema}
+            />
+            <p className="text-muted-foreground text-xs">
+              Define your webhook contract once. Routing fields and autocomplete
+              both read from this schema.
+            </p>
+          </div>
+
+          <div className="space-y-3 rounded-md border bg-background p-3">
+            <p className="font-medium text-xs uppercase tracking-wide">
               Routing Rules
             </p>
 
             <div className="space-y-2">
               <Label htmlFor="guidedEventPath">
-                What field contains the event type?
+                Which schema field contains the event value?
               </Label>
-              <Input
-                disabled={disabled}
-                id="guidedEventPath"
-                onChange={(e) =>
-                  onUpdateConfig("webhookEventPath", e.target.value)
+              <Select
+                disabled={disabled || schemaPathOptions.length === 0}
+                onValueChange={(value) =>
+                  onUpdateConfig("webhookEventPath", value)
                 }
-                placeholder="event"
                 value={eventPath}
-              />
+              >
+                <SelectTrigger id="guidedEventPath">
+                  <SelectValue placeholder="Select a schema path" />
+                </SelectTrigger>
+                <SelectContent>
+                  {eventPathOptions.map((option) => (
+                    <SelectItem
+                      key={`event-path-${option.path}`}
+                      value={option.path}
+                    >
+                      {option.path}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <p className="text-muted-foreground text-xs">
-                Example: <code>event</code>, <code>type</code>, or{" "}
-                <code>data.event.status</code>.
+                This must point to a string field in your schema, such as{" "}
+                <code>type</code> or <code>meta.action</code>.
               </p>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="guidedCorrelationPath">
-                What field contains the entity ID?
+                Which schema field identifies the entity?
               </Label>
-              <Input
-                disabled={disabled}
-                id="guidedCorrelationPath"
-                onChange={(e) =>
-                  onUpdateConfig("webhookCorrelationPath", e.target.value)
+              <Select
+                disabled={disabled || schemaPathOptions.length === 0}
+                onValueChange={(value) =>
+                  onUpdateConfig("webhookCorrelationPath", value)
                 }
-                placeholder="data.id"
                 value={correlationPath}
-              />
+              >
+                <SelectTrigger id="guidedCorrelationPath">
+                  <SelectValue placeholder="Select a schema path" />
+                </SelectTrigger>
+                <SelectContent>
+                  {correlationPathOptions.map((option) => (
+                    <SelectItem
+                      key={`correlation-path-${option.path}`}
+                      value={option.path}
+                    >
+                      {option.path}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <p className="text-muted-foreground text-xs">
-                Runs with the same entity ID are cancelled or resumed together.
+                Runs with the same value here are cancelled or resumed together.
               </p>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="guidedCreateEvents">
-                Events that start a run
+                Values that start a run
               </Label>
               <Input
                 disabled={disabled}
@@ -457,7 +546,7 @@ export function TriggerConfig({
 
             <div className="space-y-2">
               <Label htmlFor="guidedUpdateEvents">
-                Events that restart timing
+                Values that restart timing
               </Label>
               <Input
                 disabled={disabled}
@@ -475,7 +564,7 @@ export function TriggerConfig({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="guidedDeleteEvents">Events that stop runs</Label>
+              <Label htmlFor="guidedDeleteEvents">Values that stop runs</Label>
               <Input
                 disabled={disabled}
                 id="guidedDeleteEvents"
@@ -489,23 +578,12 @@ export function TriggerConfig({
                 Matching waiting runs are cancelled and no new run is created.
               </p>
             </div>
-          </div>
 
-          <div className="space-y-2 rounded-md border bg-background p-3">
-            <p className="font-medium text-xs uppercase tracking-wide">
-              Request Schema
-            </p>
-            <SchemaBuilder
-              disabled={disabled}
-              onChange={(nextSchema) =>
-                onUpdateConfig("webhookSchema", JSON.stringify(nextSchema))
-              }
-              schema={schema}
-            />
-            <p className="text-muted-foreground text-xs">
-              Used for autocomplete fields and payload documentation. Preset
-              samples keep this schema in sync.
-            </p>
+            {schemaPathOptions.length === 0 && (
+              <p className="text-muted-foreground text-xs">
+                Add schema properties above to enable routing field selection.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2 rounded-md border bg-background p-3">
