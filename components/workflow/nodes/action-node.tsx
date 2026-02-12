@@ -15,7 +15,7 @@ import {
   Zap,
 } from "lucide-react";
 import Image from "next/image";
-import { memo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   Node,
   NodeDescription,
@@ -27,6 +27,7 @@ import {
   integrationsLoadedAtom,
 } from "@/lib/integrations-store";
 import { cn } from "@/lib/utils";
+import { resolveWaitUntil } from "@/lib/utils/wait-time";
 import {
   executionLogsAtom,
   pendingIntegrationNodesAtom,
@@ -34,6 +35,148 @@ import {
   type WorkflowNodeData,
 } from "@/lib/workflow-store";
 import { findActionById, getIntegration } from "@/plugins";
+
+type WaitPreviewData = {
+  countdown: string;
+  triggerTime: string;
+};
+
+function hasTemplateExpression(value: unknown): boolean {
+  return (
+    typeof value === "string" && value.includes("{{") && value.includes("}}")
+  );
+}
+
+function formatCountdown(remainingMs: number): string {
+  const remainingSeconds = Math.max(Math.floor(remainingMs / 1000), 0);
+  const days = Math.floor(remainingSeconds / 86_400);
+  const hours = Math.floor((remainingSeconds % 86_400) / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+
+  const dayLabel = days === 1 ? "day" : "days";
+  const hh = String(hours).padStart(2, "0");
+  const mm = String(minutes).padStart(2, "0");
+  const ss = String(seconds).padStart(2, "0");
+
+  return `${days} ${dayLabel} ${hh}:${mm}:${ss}`;
+}
+
+function formatTriggerTime(date: Date, timeZone?: string): string {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  });
+
+  const parts = Object.fromEntries(
+    formatter.formatToParts(date).map((part) => [part.type, part.value])
+  );
+
+  const dayPeriod = parts.dayPeriod ? ` ${parts.dayPeriod.toUpperCase()}` : "";
+  const timezoneSuffix = parts.timeZoneName ? ` ${parts.timeZoneName}` : "";
+
+  return `${parts.month} ${parts.day}, ${parts.year} ${parts.hour}:${parts.minute}${dayPeriod}${timezoneSuffix}`;
+}
+
+function useWaitPreview(
+  actionType: string,
+  config: Record<string, unknown> | undefined
+): WaitPreviewData | null {
+  const waitMode = (config?.waitMode as string) || "delay";
+  const shouldShowWaitPreview = actionType === "Wait" && waitMode === "delay";
+  const waitDuration = config?.waitDuration;
+  const waitUntil = config?.waitUntil;
+  const waitOffset = config?.waitOffset;
+  const waitTimezone =
+    typeof config?.waitTimezone === "string" && config.waitTimezone.trim()
+      ? config.waitTimezone.trim()
+      : undefined;
+
+  const hasDynamicValue =
+    hasTemplateExpression(waitDuration) ||
+    hasTemplateExpression(waitUntil) ||
+    hasTemplateExpression(waitOffset);
+
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const previewBaseNowMsRef = useRef(Date.now());
+  const waitSignatureRef = useRef("");
+  const waitSignature = [
+    waitMode,
+    String(waitDuration ?? ""),
+    String(waitUntil ?? ""),
+    String(waitOffset ?? ""),
+    String(waitTimezone ?? ""),
+  ].join("|");
+
+  if (shouldShowWaitPreview && waitSignatureRef.current !== waitSignature) {
+    waitSignatureRef.current = waitSignature;
+    previewBaseNowMsRef.current = Date.now();
+  }
+
+  useEffect(() => {
+    if (!shouldShowWaitPreview || hasDynamicValue) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [shouldShowWaitPreview, hasDynamicValue]);
+
+  const resolution = useMemo(() => {
+    if (!shouldShowWaitPreview || hasDynamicValue) {
+      return null;
+    }
+
+    return resolveWaitUntil({
+      now: new Date(previewBaseNowMsRef.current),
+      waitDuration,
+      waitUntil,
+      waitOffset,
+      waitTimezone,
+    });
+  }, [
+    shouldShowWaitPreview,
+    hasDynamicValue,
+    waitDuration,
+    waitUntil,
+    waitOffset,
+    waitTimezone,
+  ]);
+
+  if (!shouldShowWaitPreview) {
+    return null;
+  }
+
+  if (hasDynamicValue) {
+    return {
+      countdown: "Runtime-calculated",
+      triggerTime: "Trigger time comes from workflow data",
+    };
+  }
+
+  if (!resolution?.waitUntil) {
+    return {
+      countdown: "Set wait duration",
+      triggerTime: "Add a valid wait time",
+    };
+  }
+
+  return {
+    countdown: formatCountdown(resolution.waitUntil.getTime() - nowMs),
+    triggerTime: formatTriggerTime(resolution.waitUntil, waitTimezone),
+  };
+}
 
 // Helper to get display name for AI model
 const getModelDisplayName = (modelId: string): string => {
@@ -258,12 +401,13 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   const pendingIntegrationNodes = useAtomValue(pendingIntegrationNodesAtom);
   const availableIntegrationIds = useAtomValue(integrationIdsAtom);
   const integrationsLoaded = useAtomValue(integrationsLoadedAtom);
+  const actionType = (data?.config?.actionType as string) || "";
+  const waitPreview = useWaitPreview(actionType, data?.config);
 
   if (!data) {
     return null;
   }
 
-  const actionType = (data.config?.actionType as string) || "";
   const status = data.status;
 
   // Check if this node has a generated image from the selected execution
@@ -385,10 +529,21 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
         )}
         <div className="flex flex-col items-center gap-1 text-center">
           <NodeTitle className="text-base">{displayTitle}</NodeTitle>
-          {displayDescription && (
-            <NodeDescription className="text-xs">
-              {displayDescription}
-            </NodeDescription>
+          {waitPreview ? (
+            <div className="flex flex-col items-center gap-0.5">
+              <NodeDescription className="font-medium text-[11px] tabular-nums">
+                {waitPreview.countdown}
+              </NodeDescription>
+              <NodeDescription className="max-w-[10.5rem] text-[10px] leading-tight">
+                {waitPreview.triggerTime}
+              </NodeDescription>
+            </div>
+          ) : (
+            displayDescription && (
+              <NodeDescription className="text-xs">
+                {displayDescription}
+              </NodeDescription>
+            )
           )}
           {/* Model badge for AI nodes */}
           {aiModel && <ModelBadge model={aiModel} />}

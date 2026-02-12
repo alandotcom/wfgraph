@@ -269,18 +269,220 @@ function RunConditionSection({
   );
 }
 
-// Wait fields component
-function WaitFields({
-  config,
-  onUpdateConfig,
-  disabled,
-}: {
+type WaitFieldProps = {
   config: Record<string, unknown>;
   onUpdateConfig: (key: string, value: string) => void;
   disabled: boolean;
-}) {
-  const waitMode = (config.waitMode as string) || "delay";
+};
+
+function getDelayTimingMode(
+  config: Record<string, unknown>
+): "duration" | "until" {
+  const delayTimingModeRaw = (config.waitDelayTimingMode as string) || "";
+  if (delayTimingModeRaw === "duration" || delayTimingModeRaw === "until") {
+    return delayTimingModeRaw;
+  }
+
+  const waitUntil = (config.waitUntil as string) || "";
+  if (waitUntil.trim()) {
+    return "until";
+  }
+
+  return "duration";
+}
+
+function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   const waitGateMode = (config.waitGateMode as string) || "off";
+  const configuredWaitUntil = (config.waitUntil as string) || "";
+  const configuredWaitDuration = (config.waitDuration as string) || "";
+  const delayTimingMode = getDelayTimingMode(config);
+
+  const handleDelayTimingModeChange = (value: string) => {
+    onUpdateConfig("waitDelayTimingMode", value);
+
+    if (value === "duration") {
+      onUpdateConfig("waitUntil", "");
+      onUpdateConfig("waitOffset", "");
+      return;
+    }
+
+    if (value === "until") {
+      onUpdateConfig("waitDuration", "");
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+      <p className="font-medium text-xs uppercase tracking-wide">
+        Time-Based Wait
+      </p>
+
+      <div className="space-y-2">
+        <Label htmlFor="waitDelayTimingMode">Time input mode</Label>
+        <Select
+          disabled={disabled}
+          onValueChange={handleDelayTimingModeChange}
+          value={delayTimingMode}
+        >
+          <SelectTrigger className="w-full" id="waitDelayTimingMode">
+            <SelectValue placeholder="Select time input mode" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="duration">Wait for duration</SelectItem>
+            <SelectItem value="until">Wait until date/time</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-muted-foreground text-xs">
+          Pick one mode. Switching modes clears fields that do not apply.
+        </p>
+      </div>
+
+      {delayTimingMode === "duration" ? (
+        <div className="space-y-2">
+          <Label htmlFor="waitDuration">Wait for (duration)</Label>
+          <TemplateBadgeInput
+            disabled={disabled}
+            id="waitDuration"
+            onChange={(value) => onUpdateConfig("waitDuration", value)}
+            placeholder="24h, 90m, 3600000, or P1D"
+            value={configuredWaitDuration}
+          />
+          <p className="text-muted-foreground text-xs">
+            Example: use <code>24h</code> to continue one day later.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="waitUntil">Wait until this date/time</Label>
+            <TemplateBadgeInput
+              disabled={disabled}
+              id="waitUntil"
+              onChange={(value) => onUpdateConfig("waitUntil", value)}
+              placeholder="2026-03-10T09:00:00-05:00 or {{Trigger.data.startsAt}}"
+              value={configuredWaitUntil}
+            />
+            <p className="text-muted-foreground text-xs">
+              Use this when timing comes from payload data, like an appointment
+              start time.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="waitOffset">
+              Send before/after that time (optional)
+            </Label>
+            <TemplateBadgeInput
+              disabled={disabled}
+              id="waitOffset"
+              onChange={(value) => onUpdateConfig("waitOffset", value)}
+              placeholder="-1d, 6h, 30m"
+              value={(config.waitOffset as string) || ""}
+            />
+            <p className="text-muted-foreground text-xs">
+              Example: <code>-1d</code> sends one day before the target time.
+            </p>
+          </div>
+        </>
+      )}
+
+      <div className="space-y-2">
+        <Label htmlFor="waitGateMode">
+          Continue only if time actually elapsed
+        </Label>
+        <Select
+          disabled={disabled}
+          onValueChange={(value) => onUpdateConfig("waitGateMode", value)}
+          value={waitGateMode}
+        >
+          <SelectTrigger className="w-full" id="waitGateMode">
+            <SelectValue placeholder="Select behavior" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="off">Off (continue immediately)</SelectItem>
+            <SelectItem value="require_actual_wait">
+              Skip branch when already due
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-muted-foreground text-xs">
+          Prevents immediate sends when the computed time is now or in the past
+          after an update/reschedule.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="waitTimezone">Timezone (optional)</Label>
+        <TimezoneSelect
+          disabled={disabled}
+          id="waitTimezone"
+          onValueChange={(value) => onUpdateConfig("waitTimezone", value)}
+          value={(config.waitTimezone as string) || "UTC"}
+        />
+        <p className="text-muted-foreground text-xs">
+          Used when the target date/time does not include an offset.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function HookWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
+  return (
+    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+      <p className="font-medium text-xs uppercase tracking-wide">
+        Event-Based Wait
+      </p>
+      <div className="space-y-2">
+        <Label htmlFor="waitForEvents">
+          Resume when event is (comma separated)
+        </Label>
+        <TemplateBadgeInput
+          disabled={disabled}
+          id="waitForEvents"
+          onChange={(value) => onUpdateConfig("waitForEvents", value)}
+          placeholder="event.update,event.confirmed"
+          value={(config.waitForEvents as string) || ""}
+        />
+        <p className="text-muted-foreground text-xs">
+          Leave empty to resume on any matching event for the same entity.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="waitTimeout">Stop waiting after (optional)</Label>
+        <TemplateBadgeInput
+          disabled={disabled}
+          id="waitTimeout"
+          onChange={(value) => onUpdateConfig("waitTimeout", value)}
+          placeholder="48h"
+          value={(config.waitTimeout as string) || ""}
+        />
+        <p className="text-muted-foreground text-xs">
+          Optional safety timeout if the expected event never arrives.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="waitHookToken">Explicit hook token (optional)</Label>
+        <TemplateBadgeInput
+          disabled={disabled}
+          id="waitHookToken"
+          onChange={(value) => onUpdateConfig("waitHookToken", value)}
+          placeholder="custom-token-if-you-need-deterministic-resume"
+          value={(config.waitHookToken as string) || ""}
+        />
+        <p className="text-muted-foreground text-xs">
+          Leave blank unless an external system must target a fixed token.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// Wait fields component
+function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
+  const waitMode = (config.waitMode as string) || "delay";
 
   return (
     <>
@@ -306,148 +508,19 @@ function WaitFields({
       </div>
 
       {waitMode === "delay" && (
-        <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-          <p className="font-medium text-xs uppercase tracking-wide">
-            Time-Based Wait
-          </p>
-          <div className="space-y-2">
-            <Label htmlFor="waitDuration">Wait for (duration)</Label>
-            <TemplateBadgeInput
-              disabled={disabled}
-              id="waitDuration"
-              onChange={(value) => onUpdateConfig("waitDuration", value)}
-              placeholder="24h, 90m, 3600000, or P1D"
-              value={(config.waitDuration as string) || ""}
-            />
-            <p className="text-muted-foreground text-xs">
-              Example: use <code>24h</code> to continue one day later.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="waitUntil">
-              Wait until this date/time (optional)
-            </Label>
-            <TemplateBadgeInput
-              disabled={disabled}
-              id="waitUntil"
-              onChange={(value) => onUpdateConfig("waitUntil", value)}
-              placeholder="2026-03-10T09:00:00-05:00 or {{Trigger.data.startsAt}}"
-              value={(config.waitUntil as string) || ""}
-            />
-            <p className="text-muted-foreground text-xs">
-              Use this when timing comes from payload data, like an appointment
-              start time.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="waitOffset">
-              Send before/after that time (optional)
-            </Label>
-            <TemplateBadgeInput
-              disabled={disabled}
-              id="waitOffset"
-              onChange={(value) => onUpdateConfig("waitOffset", value)}
-              placeholder="-1d, 6h, 30m"
-              value={(config.waitOffset as string) || ""}
-            />
-            <p className="text-muted-foreground text-xs">
-              Example: <code>-1d</code> sends one day before the target time.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="waitGateMode">
-              Continue only if time actually elapsed
-            </Label>
-            <Select
-              disabled={disabled}
-              onValueChange={(value) => onUpdateConfig("waitGateMode", value)}
-              value={waitGateMode}
-            >
-              <SelectTrigger className="w-full" id="waitGateMode">
-                <SelectValue placeholder="Select behavior" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="off">Off (continue immediately)</SelectItem>
-                <SelectItem value="require_actual_wait">
-                  Skip branch when already due
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-muted-foreground text-xs">
-              Prevents immediate sends when the computed time is now or in the
-              past after an update/reschedule.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="waitTimezone">Timezone (optional)</Label>
-            <TimezoneSelect
-              disabled={disabled}
-              id="waitTimezone"
-              onValueChange={(value) => onUpdateConfig("waitTimezone", value)}
-              value={(config.waitTimezone as string) || "UTC"}
-            />
-            <p className="text-muted-foreground text-xs">
-              Used when the target date/time does not include an offset.
-            </p>
-          </div>
-        </div>
+        <DelayWaitFields
+          config={config}
+          disabled={disabled}
+          onUpdateConfig={onUpdateConfig}
+        />
       )}
 
       {waitMode === "hook" && (
-        <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-          <p className="font-medium text-xs uppercase tracking-wide">
-            Event-Based Wait
-          </p>
-          <div className="space-y-2">
-            <Label htmlFor="waitForEvents">
-              Resume when event is (comma separated)
-            </Label>
-            <TemplateBadgeInput
-              disabled={disabled}
-              id="waitForEvents"
-              onChange={(value) => onUpdateConfig("waitForEvents", value)}
-              placeholder="event.update,event.confirmed"
-              value={(config.waitForEvents as string) || ""}
-            />
-            <p className="text-muted-foreground text-xs">
-              Leave empty to resume on any matching event for the same entity.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="waitTimeout">Stop waiting after (optional)</Label>
-            <TemplateBadgeInput
-              disabled={disabled}
-              id="waitTimeout"
-              onChange={(value) => onUpdateConfig("waitTimeout", value)}
-              placeholder="48h"
-              value={(config.waitTimeout as string) || ""}
-            />
-            <p className="text-muted-foreground text-xs">
-              Optional safety timeout if the expected event never arrives.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="waitHookToken">
-              Explicit hook token (optional)
-            </Label>
-            <TemplateBadgeInput
-              disabled={disabled}
-              id="waitHookToken"
-              onChange={(value) => onUpdateConfig("waitHookToken", value)}
-              placeholder="custom-token-if-you-need-deterministic-resume"
-              value={(config.waitHookToken as string) || ""}
-            />
-            <p className="text-muted-foreground text-xs">
-              Leave blank unless an external system must target a fixed token.
-            </p>
-          </div>
-        </div>
+        <HookWaitFields
+          config={config}
+          disabled={disabled}
+          onUpdateConfig={onUpdateConfig}
+        />
       )}
     </>
   );
