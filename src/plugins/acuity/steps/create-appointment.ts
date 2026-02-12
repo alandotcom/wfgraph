@@ -1,12 +1,14 @@
-
-import type { Appointment, CreateAppointmentPayload } from "@fountain-bio/acuity";
+import type {
+  Appointment,
+  CreateAppointmentPayload,
+} from "@fountain-bio/acuity";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
 import {
-  createAcuityClient,
-  getAcuityErrorMessage,
-} from "./client";
-import type { AcuityCredentials } from "../credentials";
+  type StepInput,
+  withStepLogging,
+} from "@/backend/lib/steps/step-handler";
+import type { AcuityCredentials } from "@/plugins/acuity/credentials";
+import { createAcuityClient, getAcuityErrorMessage } from "./client";
 import {
   parseCustomFieldsJson,
   parseOptionalBoolean,
@@ -94,14 +96,14 @@ async function stepHandler(
     };
   }
 
-  if (!input.firstName?.trim() || !input.lastName?.trim()) {
+  if (!(input.firstName?.trim() && input.lastName?.trim())) {
     return {
       success: false,
       error: { message: "First Name and Last Name are required." },
     };
   }
 
-  if (!input.email?.trim() || !input.phone?.trim()) {
+  if (!(input.email?.trim() && input.phone?.trim())) {
     return {
       success: false,
       error: { message: "Email and Phone are required." },
@@ -148,7 +150,6 @@ async function stepHandler(
 export async function createAppointmentStep(
   input: CreateAppointmentInput
 ): Promise<CreateAppointmentResult> {
-
   const credentials = input.integrationId
     ? ((await fetchCredentials(input.integrationId)) as AcuityCredentials)
     : {};

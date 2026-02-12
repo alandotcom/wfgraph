@@ -1,5 +1,5 @@
-import type { IntegrationPlugin } from "../registry";
-import { registerIntegration } from "../registry";
+import type { IntegrationPlugin } from "@/plugins/registry";
+import { registerIntegration } from "@/plugins/registry";
 import { ResendIcon } from "./icon";
 
 const resendPlugin: IntegrationPlugin = {
@@ -117,7 +117,7 @@ const resendPlugin: IntegrationPlugin = {
           label: "Template Variables (JSON)",
           type: "template-textarea",
           rows: 6,
-          placeholder: "{\"FIRST_NAME\":\"Alice\",\"APPOINTMENT_AT\":\"2026-03-10\"}",
+          placeholder: '{"FIRST_NAME":"Alice","APPOINTMENT_AT":"2026-03-10"}',
           showWhen: {
             field: "emailContentMode",
             equals: "template",

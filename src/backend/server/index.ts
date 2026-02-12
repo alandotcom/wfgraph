@@ -1,6 +1,6 @@
 import { serve } from "bun";
 import { configureAppLogging, getAppLogger } from "@/backend/lib/logger";
-import appHtml from "../../client/index.html";
+import appHtml from "@/client/index.html";
 import { app as apiApp } from "./hono-app";
 
 function normalizePath(pathname: string): string {

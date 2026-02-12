@@ -106,16 +106,16 @@ export type ResultComponentProps = {
 export type OutputDisplayConfig =
   | {
       // Built-in display types
-  type: "image" | "video" | "url";
-  // Field name in the step output that contains the displayable value
-  field: string;
+      type: "image" | "video" | "url";
+      // Field name in the step output that contains the displayable value
+      field: string;
     }
   | {
       // Custom component display
       type: "component";
       // React component to render the output
       component: React.ComponentType<ResultComponentProps>;
-};
+    };
 
 /**
  * Action Definition
@@ -147,7 +147,6 @@ export type PluginAction = {
 
   // Output display configuration (how to render output in workflow runs panel)
   outputConfig?: OutputDisplayConfig;
-
 };
 
 /**
@@ -304,13 +303,15 @@ export function findActionById(
   actionId: string | undefined | null
 ): ActionWithFullId | undefined {
   if (!actionId) {
-    return undefined;
+    return;
   }
 
   // First try parsing as a namespaced ID
   const parsed = parseActionId(actionId);
   if (parsed) {
-    const plugin = integrationRegistry.get(parsed.integration as IntegrationType);
+    const plugin = integrationRegistry.get(
+      parsed.integration as IntegrationType
+    );
     if (plugin) {
       const action = plugin.actions.find((a) => a.slug === parsed.slug);
       if (action) {
@@ -335,7 +336,7 @@ export function findActionById(
     }
   }
 
-  return undefined;
+  return;
 }
 
 /**

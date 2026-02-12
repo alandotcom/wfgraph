@@ -6,7 +6,7 @@ export async function testAcuity(credentials: Record<string, string>) {
     const userId = credentials.ACUITY_USER_ID?.trim();
     const apiKey = credentials.ACUITY_API_KEY?.trim();
 
-    if (!userId || !apiKey) {
+    if (!(userId && apiKey)) {
       return {
         success: false,
         error: "ACUITY_USER_ID and ACUITY_API_KEY are required",
@@ -36,7 +36,8 @@ export async function testAcuity(credentials: Record<string, string>) {
     if (message.toLowerCase().includes("unauthorized")) {
       return {
         success: false,
-        error: "Invalid Acuity credentials. Please check your User ID and API key.",
+        error:
+          "Invalid Acuity credentials. Please check your User ID and API key.",
       };
     }
 

@@ -1,11 +1,13 @@
-
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
-import type { ClerkCredentials } from "../credentials";
+import {
+  type StepInput,
+  withStepLogging,
+} from "@/backend/lib/steps/step-handler";
 import {
   createClerkBackendClient,
   getClerkApiErrorMessage,
-} from "../client";
+} from "@/plugins/clerk/client";
+import type { ClerkCredentials } from "@/plugins/clerk/credentials";
 
 type DeleteUserResult =
   | { success: true; data: { deleted: true } }
@@ -67,7 +69,6 @@ async function stepHandler(
 export async function clerkDeleteUserStep(
   input: ClerkDeleteUserInput
 ): Promise<DeleteUserResult> {
-
   const credentials = input.integrationId
     ? await fetchCredentials(input.integrationId)
     : {};

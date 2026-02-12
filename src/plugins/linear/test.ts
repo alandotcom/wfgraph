@@ -1,9 +1,9 @@
 import {
   LinearClient,
   LinearError,
+  type LinearErrorRaw,
   LinearErrorType,
   parseLinearError,
-  type LinearErrorRaw,
 } from "@linear/sdk";
 
 export async function testLinear(credentials: Record<string, string>) {

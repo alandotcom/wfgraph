@@ -1,4 +1,3 @@
-
 import { cn } from "@/shared/utils";
 
 interface AnimatedBorderProps {
@@ -36,7 +35,7 @@ export const AnimatedBorder = ({ className }: AnimatedBorderProps) => {
       `}</style>
       <div
         className={cn(
-          "pointer-events-none absolute inset-0 rounded-[inherit] animate-border-mask",
+          "pointer-events-none absolute inset-0 animate-border-mask rounded-[inherit]",
           className
         )}
       >
@@ -45,24 +44,30 @@ export const AnimatedBorder = ({ className }: AnimatedBorderProps) => {
           xmlns="http://www.w3.org/2000/svg"
         >
           <defs>
-            <linearGradient id="gradient-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient
+              id="gradient-glow"
+              x1="0%"
+              x2="100%"
+              y1="0%"
+              y2="100%"
+            >
               <stop offset="0%" stopColor="#60a5fa" />
               <stop offset="50%" stopColor="#3b82f6" />
               <stop offset="100%" stopColor="#60a5fa" />
             </linearGradient>
           </defs>
           <rect
-            x="1"
-            y="1"
-            width="calc(100% - 2px)"
+            fill="none"
             height="calc(100% - 2px)"
             rx="6"
-            fill="none"
             stroke="url(#gradient-glow)"
             strokeWidth="2"
             style={{
               filter: "drop-shadow(0 0 4px #3b82f6)",
             }}
+            width="calc(100% - 2px)"
+            x="1"
+            y="1"
           />
         </svg>
       </div>

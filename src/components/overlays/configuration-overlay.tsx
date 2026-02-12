@@ -35,12 +35,12 @@ import { useOverlay } from "@/components/overlays/overlay-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ActionConfig } from "@/components/workflow/config/action-config";
+import { ActionGrid } from "@/components/workflow/config/action-grid";
+import { TriggerConfig } from "@/components/workflow/config/trigger-config";
+import { WorkflowRuns } from "@/components/workflow/workflow-runs";
 import { findActionById } from "@/plugins";
 import type { IntegrationType } from "@/shared/types/integration";
-import { ActionConfig } from "../workflow/config/action-config";
-import { ActionGrid } from "../workflow/config/action-grid";
-import { TriggerConfig } from "../workflow/config/trigger-config";
-import { WorkflowRuns } from "../workflow/workflow-runs";
 import type { OverlayComponentProps } from "./types";
 
 // System actions that need integrations (not in plugin registry)

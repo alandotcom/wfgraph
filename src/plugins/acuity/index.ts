@@ -1,5 +1,5 @@
-import type { IntegrationPlugin } from "../registry";
-import { registerIntegration } from "../registry";
+import type { IntegrationPlugin } from "@/plugins/registry";
+import { registerIntegration } from "@/plugins/registry";
 import { AcuityIcon } from "./icon";
 
 const acuityPlugin: IntegrationPlugin = {
@@ -39,7 +39,10 @@ const acuityPlugin: IntegrationPlugin = {
       stepFunction: "listAppointmentTypesStep",
       stepImportPath: "list-appointment-types",
       outputFields: [
-        { field: "appointmentTypes", description: "Array of appointment types" },
+        {
+          field: "appointmentTypes",
+          description: "Array of appointment types",
+        },
         { field: "count", description: "Number of appointment types returned" },
       ],
       configFields: [],
@@ -391,7 +394,10 @@ const acuityPlugin: IntegrationPlugin = {
       stepFunction: "rescheduleAppointmentStep",
       stepImportPath: "reschedule-appointment",
       outputFields: [
-        { field: "appointment", description: "Rescheduled appointment payload" },
+        {
+          field: "appointment",
+          description: "Rescheduled appointment payload",
+        },
         { field: "id", description: "Appointment ID" },
         { field: "datetime", description: "New appointment datetime" },
       ],

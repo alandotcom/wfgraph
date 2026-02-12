@@ -28,4 +28,3 @@ export function SlackIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-

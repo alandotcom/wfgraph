@@ -1,15 +1,14 @@
-
 import type {
   AvailabilityTimeSlot,
   AvailabilityTimesParams,
 } from "@fountain-bio/acuity";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
 import {
-  createAcuityClient,
-  getAcuityErrorMessage,
-} from "./client";
-import type { AcuityCredentials } from "../credentials";
+  type StepInput,
+  withStepLogging,
+} from "@/backend/lib/steps/step-handler";
+import type { AcuityCredentials } from "@/plugins/acuity/credentials";
+import { createAcuityClient, getAcuityErrorMessage } from "./client";
 import {
   parseCommaSeparatedIntegerList,
   parseOptionalInteger,
@@ -100,7 +99,10 @@ async function stepHandler(
     return {
       success: false,
       error: {
-        message: getAcuityErrorMessage(error, "Failed to fetch availability times."),
+        message: getAcuityErrorMessage(
+          error,
+          "Failed to fetch availability times."
+        ),
       },
     };
   }
@@ -109,7 +111,6 @@ async function stepHandler(
 export async function getAvailabilityTimesStep(
   input: GetAvailabilityTimesInput
 ): Promise<GetAvailabilityTimesResult> {
-
   const credentials = input.integrationId
     ? ((await fetchCredentials(input.integrationId)) as AcuityCredentials)
     : {};

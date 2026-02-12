@@ -1,14 +1,17 @@
 import {
   LinearClient,
-  LinearDocument,
+  type LinearDocument,
   LinearError,
-  parseLinearError,
   type LinearErrorRaw,
+  parseLinearError,
 } from "@linear/sdk";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
+import {
+  type StepInput,
+  withStepLogging,
+} from "@/backend/lib/steps/step-handler";
+import type { LinearCredentials } from "@/plugins/linear/credentials";
 import { getErrorMessage } from "@/shared/utils";
-import type { LinearCredentials } from "../credentials";
 
 type LinearIssue = {
   id: string;

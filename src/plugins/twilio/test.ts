@@ -10,7 +10,7 @@ export async function testTwilio(credentials: Record<string, string>) {
     const accountSid = credentials.TWILIO_ACCOUNT_SID;
     const authToken = credentials.TWILIO_AUTH_TOKEN;
 
-    if (!accountSid || !authToken) {
+    if (!(accountSid && authToken)) {
       return {
         success: false,
         error: "TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are required",

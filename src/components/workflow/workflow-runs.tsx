@@ -24,11 +24,11 @@ import {
   selectedExecutionIdAtom,
   type ExecutionLogEntry as WorkflowExecutionLogEntry,
 } from "@/client/lib/workflow-store";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { findActionById } from "@/plugins";
 import { cn } from "@/shared/utils";
 import { getRelativeTime } from "@/shared/utils/time";
-import { Button } from "../ui/button";
-import { Spinner } from "../ui/spinner";
 
 type ExecutionLog = {
   id: string;

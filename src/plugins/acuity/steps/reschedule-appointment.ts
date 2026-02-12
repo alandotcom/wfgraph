@@ -1,12 +1,11 @@
-
 import type { Appointment } from "@fountain-bio/acuity";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
 import {
-  createAcuityClient,
-  getAcuityErrorMessage,
-} from "./client";
-import type { AcuityCredentials } from "../credentials";
+  type StepInput,
+  withStepLogging,
+} from "@/backend/lib/steps/step-handler";
+import type { AcuityCredentials } from "@/plugins/acuity/credentials";
+import { createAcuityClient, getAcuityErrorMessage } from "./client";
 import {
   parseOptionalBoolean,
   parseOptionalInteger,
@@ -46,7 +45,10 @@ async function stepHandler(
     return { success: false, error: { message: clientResult.error } };
   }
 
-  const appointmentId = parseRequiredInteger(input.appointmentId, "Appointment ID");
+  const appointmentId = parseRequiredInteger(
+    input.appointmentId,
+    "Appointment ID"
+  );
   if (!appointmentId.ok) {
     return { success: false, error: { message: appointmentId.error } };
   }
@@ -98,7 +100,10 @@ async function stepHandler(
     return {
       success: false,
       error: {
-        message: getAcuityErrorMessage(error, "Failed to reschedule appointment."),
+        message: getAcuityErrorMessage(
+          error,
+          "Failed to reschedule appointment."
+        ),
       },
     };
   }
@@ -107,7 +112,6 @@ async function stepHandler(
 export async function rescheduleAppointmentStep(
   input: RescheduleAppointmentInput
 ): Promise<RescheduleAppointmentResult> {
-
   const credentials = input.integrationId
     ? ((await fetchCredentials(input.integrationId)) as AcuityCredentials)
     : {};

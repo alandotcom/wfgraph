@@ -7,7 +7,7 @@
 
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sql";
-import { fetchCredentials } from "../credential-fetcher";
+import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import { type StepInput, withStepLogging } from "./step-handler";
 
 type DatabaseQueryResult =

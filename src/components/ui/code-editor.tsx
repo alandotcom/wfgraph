@@ -1,4 +1,3 @@
-
 import { cn } from "@/shared/utils";
 
 type CodeEditorOptions = {
@@ -38,7 +37,9 @@ export function CodeEditor({
       )}
       data-code-editor="true"
       onChange={(event) => onChange?.(event.target.value)}
-      placeholder={defaultLanguage ? `${defaultLanguage.toUpperCase()}...` : undefined}
+      placeholder={
+        defaultLanguage ? `${defaultLanguage.toUpperCase()}...` : undefined
+      }
       readOnly={isReadOnly}
       spellCheck={false}
       style={{

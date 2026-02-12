@@ -4,7 +4,7 @@ export async function testResend(credentials: Record<string, string>) {
   try {
     const apiKey = credentials.RESEND_API_KEY;
 
-    if (!apiKey || !apiKey.startsWith("re_")) {
+    if (!(apiKey && apiKey.startsWith("re_"))) {
       return {
         success: false,
         error: "Invalid API key format. Resend API keys start with 're_'",

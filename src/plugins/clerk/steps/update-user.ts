@@ -1,15 +1,17 @@
-
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
-import type { ClerkCredentials } from "../credentials";
+import {
+  type StepInput,
+  withStepLogging,
+} from "@/backend/lib/steps/step-handler";
 import {
   createClerkBackendClient,
   getClerkApiErrorMessage,
   toClerkApiUser,
-} from "../client";
-import { type ClerkUserResult, toClerkUserData } from "../types";
+} from "@/plugins/clerk/client";
+import type { ClerkCredentials } from "@/plugins/clerk/credentials";
+import { type ClerkUserResult, toClerkUserData } from "@/plugins/clerk/types";
 
 export type ClerkUpdateUserCoreInput = {
   userId: string;
@@ -92,7 +94,10 @@ async function stepHandler(
       isNil
     );
 
-    const user = await clerkClient.users.updateUser(input.userId, updatePayload);
+    const user = await clerkClient.users.updateUser(
+      input.userId,
+      updatePayload
+    );
     return { success: true, data: toClerkUserData(toClerkApiUser(user)) };
   } catch (err) {
     return {
@@ -110,7 +115,6 @@ async function stepHandler(
 export async function clerkUpdateUserStep(
   input: ClerkUpdateUserInput
 ): Promise<ClerkUserResult> {
-
   const credentials = input.integrationId
     ? await fetchCredentials(input.integrationId)
     : {};

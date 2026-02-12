@@ -3,13 +3,13 @@
  * Uses direct database calls for security (no HTTP endpoint)
  */
 
-import { getAppLogger } from "../logger";
-import { redactSensitiveData } from "../utils/redact";
+import { getAppLogger } from "@/backend/lib/logger";
+import { redactSensitiveData } from "@/backend/lib/utils/redact";
 import {
   logStepCompleteDb,
   logStepStartDb,
   logWorkflowCompleteDb,
-} from "../workflow-logging";
+} from "@/backend/lib/workflow-logging";
 
 const stepHandlerLogger = getAppLogger("workflow", "step-handler");
 

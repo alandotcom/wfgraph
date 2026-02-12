@@ -6,14 +6,127 @@
   },
   "overrides": [
     {
+      "includes": ["src/client/**", "src/components/**", "src/frontend/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@/backend/**"],
+                    "message": "Client-side code cannot import backend modules."
+                  },
+                  {
+                    "group": ["../*", "../**"],
+                    "message": "Use @/ aliases instead of cross-folder relative imports."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["src/backend/**"],
       "javascript": {
         "globals": ["Bun"]
       },
       "linter": {
         "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@/client/**"],
+                    "message": "Backend code cannot import client modules."
+                  },
+                  {
+                    "group": ["../*", "../**"],
+                    "message": "Use @/ aliases instead of cross-folder relative imports."
+                  }
+                ]
+              }
+            }
+          },
           "performance": {
             "noBarrelFile": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/shared/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@/backend/**"],
+                    "message": "Shared code must stay runtime-agnostic."
+                  },
+                  {
+                    "group": ["@/client/**"],
+                    "message": "Shared code must stay runtime-agnostic."
+                  },
+                  {
+                    "group": ["../*", "../**"],
+                    "message": "Use @/ aliases instead of cross-folder relative imports."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/plugins/**"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noSvgWithoutTitle": "off"
+          },
+          "complexity": {
+            "noExcessiveCognitiveComplexity": "off",
+            "useOptionalChain": "off"
+          },
+          "performance": {
+            "noBarrelFile": "off"
+          },
+          "style": {
+            "useBlockStatements": "off",
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["../*", "../**"],
+                    "message": "Use @/ aliases instead of cross-folder relative imports."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "src/backend/server/index.ts",
+        "src/client/lib/rpc-client.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
           }
         }
       }
@@ -23,10 +136,8 @@
     "includes": [
       "**/*",
       "!src/components/ui",
-      "!src/components/ai-elements",
-      "!src/lib/utils.ts",
-      "!src/hooks/use-mobile.ts",
-      "!src/plugins"
+      "!src/components/flow-elements",
+      "!src/hooks/use-mobile.ts"
     ]
   }
 }

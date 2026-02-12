@@ -1,15 +1,14 @@
-
 import type {
   AvailabilityDate,
   AvailabilityDatesParams,
 } from "@fountain-bio/acuity";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
 import {
-  createAcuityClient,
-  getAcuityErrorMessage,
-} from "./client";
-import type { AcuityCredentials } from "../credentials";
+  type StepInput,
+  withStepLogging,
+} from "@/backend/lib/steps/step-handler";
+import type { AcuityCredentials } from "@/plugins/acuity/credentials";
+import { createAcuityClient, getAcuityErrorMessage } from "./client";
 import { parseOptionalInteger, parseRequiredInteger } from "./shared";
 
 type GetAvailabilityDatesResult =
@@ -86,7 +85,10 @@ async function stepHandler(
     return {
       success: false,
       error: {
-        message: getAcuityErrorMessage(error, "Failed to fetch availability dates."),
+        message: getAcuityErrorMessage(
+          error,
+          "Failed to fetch availability dates."
+        ),
       },
     };
   }
@@ -95,7 +97,6 @@ async function stepHandler(
 export async function getAvailabilityDatesStep(
   input: GetAvailabilityDatesInput
 ): Promise<GetAvailabilityDatesResult> {
-
   const credentials = input.integrationId
     ? ((await fetchCredentials(input.integrationId)) as AcuityCredentials)
     : {};

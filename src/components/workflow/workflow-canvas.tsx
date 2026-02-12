@@ -38,8 +38,8 @@ import {
   type WorkflowNode,
   type WorkflowNodeType,
 } from "@/client/lib/workflow-store";
-import { Edge } from "../flow-elements/edge";
-import { Panel } from "../flow-elements/panel";
+import { Edge } from "@/components/flow-elements/edge";
+import { Panel } from "@/components/flow-elements/panel";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
 import { TriggerNode } from "./nodes/trigger-node";

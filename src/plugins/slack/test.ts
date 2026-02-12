@@ -26,7 +26,10 @@ export async function testSlack(credentials: Record<string, string>) {
     if (error && typeof error === "object") {
       const slackError = error as SlackWebApiError;
 
-      if (slackError.code === ErrorCode.PlatformError && slackError.data?.error) {
+      if (
+        slackError.code === ErrorCode.PlatformError &&
+        slackError.data?.error
+      ) {
         return {
           success: false,
           error: slackError.data.error,

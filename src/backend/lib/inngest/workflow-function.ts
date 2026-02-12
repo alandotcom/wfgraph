@@ -2,7 +2,7 @@ import {
   executeWorkflow,
   type WorkflowExecutionInput,
   type WorkflowExecutionRuntime,
-} from "../workflow-executor.workflow";
+} from "@/backend/lib/workflow-executor.workflow";
 import { inngest } from "./client";
 
 function toDurationString(milliseconds: number): string {

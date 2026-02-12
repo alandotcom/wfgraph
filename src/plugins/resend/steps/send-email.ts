@@ -1,8 +1,10 @@
-
-import { Resend, type CreateEmailOptions } from "resend";
+import { type CreateEmailOptions, Resend } from "resend";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
-import type { ResendCredentials } from "../credentials";
+import {
+  type StepInput,
+  withStepLogging,
+} from "@/backend/lib/steps/step-handler";
+import type { ResendCredentials } from "@/plugins/resend/credentials";
 
 type SendEmailResult =
   | { success: true; data: { id: string } }
@@ -167,7 +169,9 @@ async function stepHandler(
     if (!data?.id) {
       return {
         success: false,
-        error: { message: "Failed to send email: Missing email id in response" },
+        error: {
+          message: "Failed to send email: Missing email id in response",
+        },
       };
     }
 
@@ -187,7 +191,6 @@ async function stepHandler(
 export async function sendEmailStep(
   input: SendEmailInput
 ): Promise<SendEmailResult> {
-
   const credentials = input.integrationId
     ? await fetchCredentials(input.integrationId)
     : {};

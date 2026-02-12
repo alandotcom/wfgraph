@@ -1,7 +1,6 @@
-
 import { Acuity, AcuityError } from "@fountain-bio/acuity";
+import type { AcuityCredentials } from "@/plugins/acuity/credentials";
 import { getErrorMessage } from "@/shared/utils";
-import type { AcuityCredentials } from "../credentials";
 
 export function createAcuityClient(
   credentials: AcuityCredentials
@@ -9,7 +8,7 @@ export function createAcuityClient(
   const userId = credentials.ACUITY_USER_ID?.trim();
   const apiKey = credentials.ACUITY_API_KEY?.trim();
 
-  if (!userId || !apiKey) {
+  if (!(userId && apiKey)) {
     return {
       error:
         "ACUITY_USER_ID and ACUITY_API_KEY are required. Add them in Project Integrations.",

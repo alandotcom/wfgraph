@@ -1,8 +1,10 @@
-
 import twilio from "twilio";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
-import type { TwilioCredentials } from "../credentials";
+import {
+  type StepInput,
+  withStepLogging,
+} from "@/backend/lib/steps/step-handler";
+import type { TwilioCredentials } from "@/plugins/twilio/credentials";
 
 type SendSmsResult =
   | {
@@ -49,12 +51,17 @@ type TwilioError = {
 
 function getTwilioErrorMessage(error: unknown): string {
   if (error instanceof twilio.RestException) {
-    return error.message || `HTTP ${error.status}: Failed to send SMS via Twilio`;
+    return (
+      error.message || `HTTP ${error.status}: Failed to send SMS via Twilio`
+    );
   }
 
   if (error && typeof error === "object") {
     const twilioError = error as TwilioError;
-    if (typeof twilioError.message === "string" && twilioError.message.length > 0) {
+    if (
+      typeof twilioError.message === "string" &&
+      twilioError.message.length > 0
+    ) {
       return twilioError.message;
     }
     if (typeof twilioError.status === "number") {
@@ -62,7 +69,17 @@ function getTwilioErrorMessage(error: unknown): string {
     }
   }
 
-  return error instanceof Error ? error.message : "Failed to send SMS via Twilio";
+  return error instanceof Error
+    ? error.message
+    : "Failed to send SMS via Twilio";
+}
+
+function validateSendSmsInput(input: SendSmsCoreInput): string | null {
+  if (!(input.smsTo && input.smsBody)) {
+    return "smsTo and smsBody are required";
+  }
+
+  return null;
 }
 
 /**
@@ -75,7 +92,7 @@ async function stepHandler(
   const accountSid = credentials.TWILIO_ACCOUNT_SID;
   const authToken = credentials.TWILIO_AUTH_TOKEN;
 
-  if (!accountSid || !authToken) {
+  if (!(accountSid && authToken)) {
     return {
       success: false,
       error: {
@@ -99,11 +116,12 @@ async function stepHandler(
     };
   }
 
-  if (!input.smsTo || !input.smsBody) {
+  const validationError = validateSendSmsInput(input);
+  if (validationError) {
     return {
       success: false,
       error: {
-        message: "smsTo and smsBody are required",
+        message: validationError,
       },
     };
   }
@@ -119,7 +137,9 @@ async function stepHandler(
       ...(senderMessagingServiceSid && {
         messagingServiceSid: senderMessagingServiceSid,
       }),
-      ...(input.smsStatusCallback && { statusCallback: input.smsStatusCallback }),
+      ...(input.smsStatusCallback && {
+        statusCallback: input.smsStatusCallback,
+      }),
       ...(mediaUrls.length > 0 && { mediaUrl: mediaUrls }),
     });
 
@@ -147,7 +167,6 @@ async function stepHandler(
  * App entry point - fetches credentials and wraps with logging
  */
 export async function sendSmsStep(input: SendSmsInput): Promise<SendSmsResult> {
-
   const credentials = input.integrationId
     ? await fetchCredentials(input.integrationId)
     : {};

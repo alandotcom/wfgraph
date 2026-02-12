@@ -1,9 +1,11 @@
-
 import { ErrorCode, WebClient } from "@slack/web-api";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
+import {
+  type StepInput,
+  withStepLogging,
+} from "@/backend/lib/steps/step-handler";
+import type { SlackCredentials } from "@/plugins/slack/credentials";
 import { getErrorMessage } from "@/shared/utils";
-import type { SlackCredentials } from "../credentials";
 
 type SlackWebApiError = {
   code?: ErrorCode;
@@ -90,7 +92,6 @@ async function stepHandler(
 export async function sendSlackMessageStep(
   input: SendSlackMessageInput
 ): Promise<SendSlackMessageResult> {
-
   const credentials = input.integrationId
     ? await fetchCredentials(input.integrationId)
     : {};

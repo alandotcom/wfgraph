@@ -1,13 +1,15 @@
-
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
-import type { ClerkCredentials } from "../credentials";
+import {
+  type StepInput,
+  withStepLogging,
+} from "@/backend/lib/steps/step-handler";
 import {
   createClerkBackendClient,
   getClerkApiErrorMessage,
   toClerkApiUser,
-} from "../client";
-import { type ClerkUserResult, toClerkUserData } from "../types";
+} from "@/plugins/clerk/client";
+import type { ClerkCredentials } from "@/plugins/clerk/credentials";
+import { type ClerkUserResult, toClerkUserData } from "@/plugins/clerk/types";
 
 export type ClerkGetUserCoreInput = {
   userId: string;
@@ -62,7 +64,6 @@ async function stepHandler(
 export async function clerkGetUserStep(
   input: ClerkGetUserInput
 ): Promise<ClerkUserResult> {
-
   const credentials = input.integrationId
     ? await fetchCredentials(input.integrationId)
     : {};

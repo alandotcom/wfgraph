@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
 import { InngestTestEngine } from "@inngest/test";
-import type { WorkflowExecutionRuntime } from "../workflow-executor.workflow";
+import type { WorkflowExecutionRuntime } from "@/backend/lib/workflow-executor.workflow";
 
 mock.module("../workflow-executor.workflow", () => ({
   executeWorkflow: vi.fn(),
 }));
 
-const { executeWorkflow } = await import("../workflow-executor.workflow");
+const { executeWorkflow } = await import(
+  "@/backend/lib/workflow-executor.workflow"
+);
 const { createWorkflowRunRequestedFunction, createWorkflowTriggerExpression } =
   await import("./workflow-function");
 

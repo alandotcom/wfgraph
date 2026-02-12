@@ -45,6 +45,11 @@ import {
   type WorkflowEdge,
   type WorkflowNode,
 } from "@/client/lib/workflow-store";
+import { Panel } from "@/components/flow-elements/panel";
+import { ConfigurationOverlay } from "@/components/overlays/configuration-overlay";
+import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
+import { useOverlay } from "@/components/overlays/overlay-provider";
+import { WorkflowIssuesOverlay } from "@/components/overlays/workflow-issues-overlay";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import {
@@ -54,19 +59,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { WorkflowIcon } from "@/components/ui/workflow-icon";
+import { UserMenu } from "@/components/workflows/user-menu";
 import {
   findActionById,
   flattenConfigFields,
   getIntegrationLabels,
 } from "@/plugins";
 import type { IntegrationType } from "@/shared/types/integration";
-import { Panel } from "../flow-elements/panel";
-import { ConfigurationOverlay } from "../overlays/configuration-overlay";
-import { ConfirmOverlay } from "../overlays/confirm-overlay";
-import { useOverlay } from "../overlays/overlay-provider";
-import { WorkflowIssuesOverlay } from "../overlays/workflow-issues-overlay";
-import { WorkflowIcon } from "../ui/workflow-icon";
-import { UserMenu } from "../workflows/user-menu";
 
 type WorkflowToolbarProps = {
   workflowId?: string;

@@ -23,4 +23,3 @@ export function WorkflowIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-

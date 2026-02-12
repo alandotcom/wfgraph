@@ -1,12 +1,11 @@
-
 import type { Appointment, ListAppointmentsParams } from "@fountain-bio/acuity";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
 import {
-  createAcuityClient,
-  getAcuityErrorMessage,
-} from "./client";
-import type { AcuityCredentials } from "../credentials";
+  type StepInput,
+  withStepLogging,
+} from "@/backend/lib/steps/step-handler";
+import type { AcuityCredentials } from "@/plugins/acuity/credentials";
+import { createAcuityClient, getAcuityErrorMessage } from "./client";
 import { parseOptionalBoolean, parseOptionalInteger } from "./shared";
 
 type ListAppointmentsResult =
@@ -117,7 +116,6 @@ async function stepHandler(
 export async function listAppointmentsStep(
   input: ListAppointmentsInput
 ): Promise<ListAppointmentsResult> {
-
   const credentials = input.integrationId
     ? ((await fetchCredentials(input.integrationId)) as AcuityCredentials)
     : {};

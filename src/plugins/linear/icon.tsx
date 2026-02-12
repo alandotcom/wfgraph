@@ -15,4 +15,3 @@ export function LinearIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-

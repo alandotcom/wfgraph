@@ -1,5 +1,5 @@
-import type { ResultComponentProps } from "@/plugins/registry";
 import { compact } from "es-toolkit/array";
+import type { ResultComponentProps } from "@/plugins/registry";
 
 // The logging layer unwraps standardized outputs, so we receive just the data
 type ClerkUserData = {
@@ -48,5 +48,3 @@ export function UserCard({ output }: ResultComponentProps) {
     </div>
   );
 }
-
-

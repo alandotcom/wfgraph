@@ -48,7 +48,10 @@ export function getClerkApiErrorMessage(error: unknown): string {
       return String(clerkError.status);
     }
 
-    if (typeof clerkError.message === "string" && clerkError.message.length > 0) {
+    if (
+      typeof clerkError.message === "string" &&
+      clerkError.message.length > 0
+    ) {
       return clerkError.message;
     }
   }

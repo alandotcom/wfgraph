@@ -1,4 +1,3 @@
-
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   AlertTriangle,
@@ -9,18 +8,18 @@ import {
   Settings,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ConfigureConnectionOverlay } from "@/components/overlays/add-connection-overlay";
-import { EditConnectionOverlay } from "@/components/overlays/edit-connection-overlay";
-import { useOverlay } from "@/components/overlays/overlay-provider";
-import { Button } from "@/components/ui/button";
-import { api, type Integration } from "@/client/lib/rpc-client";
 import {
   integrationsAtom,
   integrationsVersionAtom,
 } from "@/client/lib/integrations-store";
+import { api, type Integration } from "@/client/lib/rpc-client";
+import { ConfigureConnectionOverlay } from "@/components/overlays/add-connection-overlay";
+import { EditConnectionOverlay } from "@/components/overlays/edit-connection-overlay";
+import { useOverlay } from "@/components/overlays/overlay-provider";
+import { Button } from "@/components/ui/button";
+import { getIntegration } from "@/plugins";
 import type { IntegrationType } from "@/shared/types/integration";
 import { cn } from "@/shared/utils";
-import { getIntegration } from "@/plugins";
 
 type IntegrationSelectorProps = {
   integrationType: IntegrationType;
@@ -131,7 +130,7 @@ export function IntegrationSelector({
   }, [onAddConnection, openNewConnectionOverlay]);
 
   // Only show loading skeleton if we have no cached data and haven't fetched yet
-  if (!hasCachedData && !hasFetched) {
+  if (!(hasCachedData || hasFetched)) {
     return (
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
@@ -248,8 +247,7 @@ export function IntegrationSelector({
         {/* Show manual integrations */}
         {manualIntegrations.map((integration) => {
           const isSelected = value === integration.id;
-          const displayName =
-            integration.name || `${integrationLabel} API Key`;
+          const displayName = integration.name || `${integrationLabel} API Key`;
           return (
             <div
               className={cn(

@@ -1,11 +1,10 @@
-
 export type ParseResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: string };
 
 function normalizeRawValue(value: unknown): string | undefined {
   if (value === undefined || value === null) {
-    return undefined;
+    return;
   }
 
   if (typeof value === "string") {
@@ -17,7 +16,7 @@ function normalizeRawValue(value: unknown): string | undefined {
     return String(value);
   }
 
-  return undefined;
+  return;
 }
 
 export function parseRequiredInteger(
@@ -117,7 +116,9 @@ export function parseCommaSeparatedIntegerList(
   }
 
   const parsed = entries.map((entry) => Number(entry));
-  const invalid = parsed.some((entry) => !Number.isInteger(entry) || entry <= 0);
+  const invalid = parsed.some(
+    (entry) => !Number.isInteger(entry) || entry <= 0
+  );
 
   if (invalid) {
     return {
@@ -135,7 +136,9 @@ type AcuityCustomField = {
 };
 
 function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+  return (
+    Array.isArray(value) && value.every((entry) => typeof entry === "string")
+  );
 }
 
 function isValidCustomField(value: unknown): value is AcuityCustomField {
@@ -145,7 +148,10 @@ function isValidCustomField(value: unknown): value is AcuityCustomField {
 
   const candidate = value as { fieldID?: unknown; value?: unknown };
 
-  if (!Number.isInteger(candidate.fieldID) || (candidate.fieldID as number) <= 0) {
+  if (
+    !Number.isInteger(candidate.fieldID) ||
+    (candidate.fieldID as number) <= 0
+  ) {
     return false;
   }
 
@@ -170,11 +176,16 @@ export function parseCustomFieldsJson(
     return {
       ok: false,
       error:
-        "Custom Fields JSON must be valid JSON in the format [{\"fieldID\":1234,\"value\":\"text\"}].",
+        'Custom Fields JSON must be valid JSON in the format [{"fieldID":1234,"value":"text"}].',
     };
   }
 
-  if (!Array.isArray(parsed) || !parsed.every((entry) => isValidCustomField(entry))) {
+  if (
+    !(
+      Array.isArray(parsed) &&
+      parsed.every((entry) => isValidCustomField(entry))
+    )
+  ) {
     return {
       ok: false,
       error:
