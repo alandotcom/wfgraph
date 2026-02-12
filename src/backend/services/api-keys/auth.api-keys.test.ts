@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
 
-const mocks = vi.hoisted(() => {
+const mocks = (() => {
   const findMany = vi.fn();
   const where = vi.fn(() => Promise.resolve([]));
   const set = vi.fn(() => ({ where }));
@@ -21,9 +21,9 @@ const mocks = vi.hoisted(() => {
     update,
     logger,
   };
-});
+})();
 
-vi.mock("@/lib/db", () => ({
+mock.module("@/lib/db", () => ({
   db: {
     query: {
       apiKeys: {
@@ -34,14 +34,13 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-vi.mock("@/lib/logger", () => ({
+mock.module("@/lib/logger", () => ({
   getAppLogger: () => mocks.logger,
 }));
 
-import {
-  createApiKeyRecord,
-  validateApiKey,
-} from "@/backend/services/api-keys/auth.api-keys";
+const { createApiKeyRecord, validateApiKey } = await import(
+  "@/backend/services/api-keys/auth.api-keys"
+);
 
 type BunPasswordApi = {
   hash: (value: string) => Promise<string>;
@@ -53,17 +52,18 @@ type BunApi = {
 };
 
 function installBunPasswordMock() {
-  const runtime = globalThis as { Bun?: BunApi };
-  runtime.Bun = {
-    password: {
-      hash: async (value: string) => `hash:${value}`,
-      verify: async (value: string, hash: string) => hash === `hash:${value}`,
-    },
-  };
+  const runtime = Bun as BunApi;
+  vi.spyOn(runtime.password, "hash").mockImplementation(
+    async (value: string) => `hash:${value}`
+  );
+  vi.spyOn(runtime.password, "verify").mockImplementation(
+    async (value: string, hash: string) => hash === `hash:${value}`
+  );
 }
 
 describe("api key auth", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     vi.clearAllMocks();
     installBunPasswordMock();
     mocks.logger.with.mockReturnValue(mocks.logger);

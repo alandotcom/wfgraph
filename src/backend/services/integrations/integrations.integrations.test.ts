@@ -1,10 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  getIntegration,
-  putIntegration,
-} from "@/backend/services/integrations/integrations.integrations";
+import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
 
-const mocks = vi.hoisted(() => {
+const mocks = (() => {
   const createIntegration = vi.fn();
   const deleteIntegration = vi.fn();
   const getIntegrationById = vi.fn();
@@ -31,9 +27,9 @@ const mocks = vi.hoisted(() => {
     getPluginFromRegistry,
     logger,
   };
-});
+})();
 
-vi.mock("@/lib/db/integrations", () => ({
+mock.module("@/lib/db/integrations", () => ({
   createIntegration: mocks.createIntegration,
   deleteIntegration: mocks.deleteIntegration,
   getIntegration: mocks.getIntegrationById,
@@ -41,14 +37,18 @@ vi.mock("@/lib/db/integrations", () => ({
   updateIntegration: mocks.updateIntegration,
 }));
 
-vi.mock("@/plugins", () => ({
+mock.module("@/plugins", () => ({
   getCredentialMapping: mocks.getCredentialMapping,
   getIntegration: mocks.getPluginFromRegistry,
 }));
 
-vi.mock("@/lib/logger", () => ({
+mock.module("@/lib/logger", () => ({
   getAppLogger: () => mocks.logger,
 }));
+
+const { getIntegration, putIntegration } = await import(
+  "@/backend/services/integrations/integrations.integrations"
+);
 
 describe("integration service secret handling", () => {
   beforeEach(() => {

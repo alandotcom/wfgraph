@@ -11,8 +11,8 @@
     "dev:inngest": "bun run inngest:dev",
     "build": "bun run src/scripts/migrate-prod.ts && bun build --target=bun --production --outdir=dist ./src/backend/server/index.ts",
     "start": "NODE_ENV=production bun dist/index.js",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
     "type-check": "bun run tsc --noEmit",
     "typecheck": "bun run tsc --noEmit",
     "check": "bun run ultracite check",
@@ -55,7 +55,6 @@
     "motion": "^12.23.24",
     "nanoid": "^5.1.6",
     "next-themes": "^0.4.6",
-    "postgres": "^3.4.7",
     "radix-ui": "^1.4.3",
     "react": "19.2.1",
     "react-dom": "19.2.1",
@@ -81,8 +80,7 @@
     "tsx": "^4.19.0",
     "tw-animate-css": "^1.4.0",
     "typescript": "^5",
-    "ultracite": "6.3.0",
-    "vitest": "^4.0.18"
+    "ultracite": "6.3.0"
   },
   "trustedDependencies": [
     "bun",

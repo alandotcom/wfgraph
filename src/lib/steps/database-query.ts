@@ -6,8 +6,7 @@
  */
 
 import { sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import { drizzle } from "drizzle-orm/bun-sql";
 import { fetchCredentials } from "../credential-fetcher";
 import { type StepInput, withStepLogging } from "./step-handler";
 
@@ -31,16 +30,16 @@ function validateInput(input: DatabaseQueryInput): string | null {
   return null;
 }
 
-function createDatabaseClient(databaseUrl: string): postgres.Sql {
-  return postgres(databaseUrl, {
+function createDatabaseClient(databaseUrl: string) {
+  return new Bun.SQL(databaseUrl, {
     max: 1,
-    connect_timeout: 10,
-    idle_timeout: 20,
+    connectionTimeout: 10,
+    idleTimeout: 20,
   });
 }
 
 async function executeQuery(
-  client: postgres.Sql,
+  client: ReturnType<typeof createDatabaseClient>,
   queryString: string
 ): Promise<unknown> {
   const db = drizzle(client);
@@ -70,10 +69,12 @@ function getDatabaseErrorMessage(error: unknown): string {
   return errorMessage;
 }
 
-async function cleanupClient(client: postgres.Sql | null): Promise<void> {
+async function cleanupClient(
+  client: ReturnType<typeof createDatabaseClient> | null
+): Promise<void> {
   if (client) {
     try {
-      await client.end();
+      await client.close();
     } catch {
       // Ignore errors during cleanup
     }
@@ -106,12 +107,12 @@ async function databaseQuery(
   }
 
   const queryString = (input.dbQuery || input.query) as string;
-  let client: postgres.Sql | null = null;
+  let client: ReturnType<typeof createDatabaseClient> | null = null;
 
   try {
     client = createDatabaseClient(databaseUrl);
     const result = await executeQuery(client, queryString);
-    await client.end();
+    await client.close();
 
     return {
       success: true,

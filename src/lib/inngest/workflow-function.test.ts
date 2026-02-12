@@ -1,17 +1,16 @@
+import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
 import { InngestTestEngine } from "@inngest/test";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkflowExecutionRuntime } from "../workflow-executor.workflow";
-import { executeWorkflow } from "../workflow-executor.workflow";
-import {
-  createWorkflowRunRequestedFunction,
-  createWorkflowTriggerExpression,
-} from "./workflow-function";
 
-vi.mock("../workflow-executor.workflow", () => ({
+mock.module("../workflow-executor.workflow", () => ({
   executeWorkflow: vi.fn(),
 }));
 
-const executeWorkflowMock = vi.mocked(executeWorkflow);
+const { executeWorkflow } = await import("../workflow-executor.workflow");
+const { createWorkflowRunRequestedFunction, createWorkflowTriggerExpression } =
+  await import("./workflow-function");
+
+const executeWorkflowMock = executeWorkflow as ReturnType<typeof vi.fn>;
 
 function createTestFunction() {
   return createWorkflowRunRequestedFunction({
@@ -103,18 +102,19 @@ describe("workflowRunRequestedFunction", () => {
 
   it("runtime.sleep skips non-positive durations", async () => {
     const { runtime, ctx } = await executeWorkflowFunctionForTest();
-    ctx.step.sleep.mockResolvedValue(undefined);
+    const sleepSpy = vi.spyOn(ctx.step, "sleep").mockResolvedValue(undefined);
 
     await runtime.sleep("sleep-zero", 0);
     await runtime.sleep("sleep-negative", -100);
     await runtime.sleep("sleep-positive", 1500);
 
-    expect(ctx.step.sleep).toHaveBeenCalledTimes(1);
-    expect(ctx.step.sleep).toHaveBeenCalledWith("sleep-positive", 1500);
+    expect(sleepSpy).toHaveBeenCalledTimes(1);
+    expect(sleepSpy).toHaveBeenCalledWith("sleep-positive", 1500);
   });
 
   it("runtime.waitForEvent converts timeoutMs to Inngest duration format", async () => {
     const { runtime, ctx } = await executeWorkflowFunctionForTest();
+    const waitForEventSpy = vi.spyOn(ctx.step, "waitForEvent");
     const waitResult = {
       id: "evt_123",
       name: "workflow/wait.signal",
@@ -122,7 +122,7 @@ describe("workflowRunRequestedFunction", () => {
       ts: Date.now(),
     };
 
-    ctx.step.waitForEvent
+    waitForEventSpy
       .mockResolvedValueOnce(waitResult)
       .mockResolvedValueOnce(null);
 
@@ -133,7 +133,7 @@ describe("workflowRunRequestedFunction", () => {
     });
 
     expect(result).toBe(waitResult);
-    expect(ctx.step.waitForEvent).toHaveBeenNthCalledWith(1, "wait-hook", {
+    expect(waitForEventSpy).toHaveBeenNthCalledWith(1, "wait-hook", {
       event: "workflow/wait.signal",
       if: "async.data.executionId == event.data.executionId",
       timeout: "2s",
@@ -143,7 +143,7 @@ describe("workflowRunRequestedFunction", () => {
       event: "workflow/wait.signal",
     });
 
-    expect(ctx.step.waitForEvent).toHaveBeenNthCalledWith(
+    expect(waitForEventSpy).toHaveBeenNthCalledWith(
       2,
       "wait-hook-default-timeout",
       {

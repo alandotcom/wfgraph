@@ -1,4 +1,3 @@
-import postgres from "postgres";
 import {
   createIntegration,
   deleteIntegration as deleteIntegrationById,
@@ -346,7 +345,14 @@ export async function postIntegrationTest(integrationId: string) {
 }
 
 async function testDatabaseConnection(databaseUrl?: string) {
-  let connection: postgres.Sql | null = null;
+  const createDatabaseConnection = (url: string) =>
+    new Bun.SQL(url, {
+      max: 1,
+      idleTimeout: 5,
+      connectionTimeout: 5,
+    });
+
+  let connection: ReturnType<typeof createDatabaseConnection> | null = null;
 
   try {
     if (!databaseUrl) {
@@ -356,11 +362,7 @@ async function testDatabaseConnection(databaseUrl?: string) {
       };
     }
 
-    connection = postgres(databaseUrl, {
-      max: 1,
-      idle_timeout: 5,
-      connect_timeout: 5,
-    });
+    connection = createDatabaseConnection(databaseUrl);
 
     await connection`SELECT 1`;
 
@@ -375,7 +377,7 @@ async function testDatabaseConnection(databaseUrl?: string) {
     };
   } finally {
     if (connection) {
-      await connection.end();
+      await connection.close();
     }
   }
 }
