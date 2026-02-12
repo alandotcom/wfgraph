@@ -1,24 +1,24 @@
 import { eq } from "drizzle-orm";
-import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
-import { db } from "@/lib/db";
-import { validateWorkflowIntegrations } from "@/lib/db/integrations";
-import { workflowExecutions, workflows } from "@/lib/db/schema";
+import { db } from "@/backend/lib/db";
+import { validateWorkflowIntegrations } from "@/backend/lib/db/integrations";
+import { workflowExecutions, workflows } from "@/backend/lib/db/schema";
 import {
   sendWorkflowCancelRequested,
   sendWorkflowRunRequested,
   sendWorkflowWaitSignal,
-} from "@/lib/inngest/runtime-events";
-import { getAppLogger } from "@/lib/logger";
-import { getValueByPath, parseCsvSet } from "@/lib/utils/object-path";
-import { logWorkflowAuditEvent } from "@/lib/workflow-audit";
-import type { WorkflowEdge, WorkflowNode } from "@/lib/workflow-store";
+} from "@/backend/lib/inngest/runtime-events";
+import { getAppLogger } from "@/backend/lib/logger";
+import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import {
   listWorkflowWaitingStatesByCorrelation,
   markExecutionCancelled,
   markExecutionRunning,
   markWaitingStatesCancelled,
   markWaitStateStatus,
-} from "@/lib/workflow-wait-state";
+} from "@/backend/lib/workflow-wait-state";
+import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
+import { getValueByPath, parseCsvSet } from "@/shared/utils/object-path";
+import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
 
 const webhookLogger = getAppLogger("workflow", "webhook");
 

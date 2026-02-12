@@ -1,10 +1,10 @@
 import { and, eq, ne, sql } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { validateWorkflowIntegrations } from "@/lib/db/integrations";
-import { workflows } from "@/lib/db/schema";
-import { invalidateInngestFunctionsCache } from "@/lib/inngest/functions";
-import { getAppLogger } from "@/lib/logger";
-import type { WorkflowNode } from "@/lib/workflow-store";
+import { db } from "@/backend/lib/db";
+import { validateWorkflowIntegrations } from "@/backend/lib/db/integrations";
+import { workflows } from "@/backend/lib/db/schema";
+import { invalidateInngestFunctionsCache } from "@/backend/lib/inngest/functions";
+import { getAppLogger } from "@/backend/lib/logger";
+import type { WorkflowNode } from "@/shared/workflow/types";
 
 const workflowServiceLogger = getAppLogger("workflow", "service");
 

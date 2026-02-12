@@ -25,13 +25,6 @@ const slackPlugin: IntegrationPlugin = {
     },
   ],
 
-  testConfig: {
-    getTestFunction: async () => {
-      const { testSlack } = await import("./test");
-      return testSlack;
-    },
-  },
-
   actions: [
     {
       slug: "send-message",

@@ -30,13 +30,6 @@ const acuityPlugin: IntegrationPlugin = {
     },
   ],
 
-  testConfig: {
-    getTestFunction: async () => {
-      const { testAcuity } = await import("./test");
-      return testAcuity;
-    },
-  },
-
   actions: [
     {
       slug: "list-appointment-types",

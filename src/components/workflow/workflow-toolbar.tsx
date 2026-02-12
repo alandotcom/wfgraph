@@ -16,18 +16,8 @@ import {
 import { nanoid } from "nanoid";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { integrationsAtom } from "@/lib/integrations-store";
-import { api } from "@/lib/rpc-client";
-import type { IntegrationType } from "@/lib/types/integration";
+import { integrationsAtom } from "@/client/lib/integrations-store";
+import { api } from "@/client/lib/rpc-client";
 import {
   addNodeAtom,
   canRedoAtom,
@@ -54,12 +44,22 @@ import {
   updateNodeDataAtom,
   type WorkflowEdge,
   type WorkflowNode,
-} from "@/lib/workflow-store";
+} from "@/client/lib/workflow-store";
+import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   findActionById,
   flattenConfigFields,
   getIntegrationLabels,
 } from "@/plugins";
+import type { IntegrationType } from "@/shared/types/integration";
 import { Panel } from "../ai-elements/panel";
 import { ConfigurationOverlay } from "../overlays/configuration-overlay";
 import { ConfirmOverlay } from "../overlays/confirm-overlay";

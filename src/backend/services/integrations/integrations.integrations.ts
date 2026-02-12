@@ -1,19 +1,22 @@
+import { omitBy } from "es-toolkit/object";
+import { isNil } from "es-toolkit/predicate";
 import {
   createIntegration,
   deleteIntegration as deleteIntegrationById,
   getIntegration as getIntegrationById,
   getIntegrations as getIntegrationsAll,
   updateIntegration,
-} from "@/lib/db/integrations";
-import { getAppLogger } from "@/lib/logger";
-import type {
-  IntegrationConfig,
-  IntegrationType,
-} from "@/lib/types/integration";
+} from "@/backend/lib/db/integrations";
+import { getAppLogger } from "@/backend/lib/logger";
 import {
   getCredentialMapping,
   getIntegration as getPluginFromRegistry,
 } from "@/plugins";
+import type {
+  IntegrationConfig,
+  IntegrationType,
+} from "@/shared/types/integration";
+import { getIntegrationTestFunction } from "./integration-test-loaders";
 
 const integrationsLogger = getAppLogger("integrations");
 const SECRET_MASK = "********";
@@ -61,24 +64,18 @@ function mergeIntegrationConfig(
   }
 
   const secretKeys = getSecretConfigKeys(type);
-  const merged: IntegrationConfig = { ...currentConfig };
+  const sanitizedUpdates = omitBy(
+    updates,
+    (value, key) =>
+      value === undefined ||
+      (secretKeys.has(key as string) &&
+        (value === SECRET_MASK || value.trim().length === 0))
+  );
 
-  for (const [key, value] of Object.entries(updates)) {
-    if (value === undefined) {
-      continue;
-    }
-
-    if (
-      secretKeys.has(key) &&
-      (value === SECRET_MASK || value.trim().length === 0)
-    ) {
-      continue;
-    }
-
-    merged[key] = value;
-  }
-
-  return merged;
+  return {
+    ...currentConfig,
+    ...sanitizedUpdates,
+  };
 }
 
 export async function getIntegrations(type?: IntegrationType) {
@@ -164,10 +161,18 @@ export async function putIntegration(
         )
       : undefined;
 
-    const integration = await updateIntegration(integrationId, {
-      name: body.name,
-      ...(mergedConfig ? { config: mergedConfig } : {}),
-    });
+    const updatePayload = omitBy(
+      {
+        name: body.name,
+        config: mergedConfig,
+      },
+      isNil
+    ) as {
+      name?: string;
+      config?: IntegrationConfig;
+    };
+
+    const integration = await updateIntegration(integrationId, updatePayload);
 
     if (!integration) {
       requestLogger.warn("Integration not found for update");
@@ -240,7 +245,8 @@ export async function postIntegrationsTest(body: {
       );
     }
 
-    if (!plugin.testConfig) {
+    const testFn = await getIntegrationTestFunction(body.type);
+    if (!testFn) {
       requestLogger.warn("Integration does not support test endpoint");
       return Response.json(
         { error: "Integration does not support testing" },
@@ -249,8 +255,6 @@ export async function postIntegrationsTest(body: {
     }
 
     const credentials = getCredentialMapping(plugin, body.config);
-
-    const testFn = await plugin.testConfig.getTestFunction();
     const testResult = await testFn(credentials);
 
     const result = {
@@ -304,7 +308,8 @@ export async function postIntegrationTest(integrationId: string) {
       );
     }
 
-    if (!plugin.testConfig) {
+    const testFn = await getIntegrationTestFunction(integration.type);
+    if (!testFn) {
       requestLogger.warn(
         "Saved integration type does not support test endpoint",
         {
@@ -318,8 +323,6 @@ export async function postIntegrationTest(integrationId: string) {
     }
 
     const credentials = getCredentialMapping(plugin, integration.config);
-
-    const testFn = await plugin.testConfig.getTestFunction();
     const testResult = await testFn(credentials);
 
     const result = {

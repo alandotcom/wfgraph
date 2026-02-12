@@ -9,7 +9,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 import { Dialog, DialogPortal } from "@/components/ui/dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/utils";
 import { useOverlay } from "./overlay-provider";
 
 // iOS-like spring configuration

@@ -2,9 +2,9 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { serve as serveInngest } from "inngest/hono";
 import { z } from "zod";
-import { inngest } from "@/lib/inngest/client";
-import { getInngestFunctions } from "@/lib/inngest/functions";
-import { getAppLogger } from "@/lib/logger";
+import { inngest } from "@/backend/lib/inngest/client";
+import { getInngestFunctions } from "@/backend/lib/inngest/functions";
+import { getAppLogger } from "@/backend/lib/logger";
 import {
   deleteApiKey,
   deleteIntegration,

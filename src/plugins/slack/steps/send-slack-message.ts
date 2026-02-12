@@ -1,8 +1,8 @@
 
 import { ErrorCode, WebClient } from "@slack/web-api";
-import { fetchCredentials } from "@/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/lib/steps/step-handler";
-import { getErrorMessage } from "@/lib/utils";
+import { fetchCredentials } from "@/backend/lib/credential-fetcher";
+import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
+import { getErrorMessage } from "@/shared/utils";
 import type { SlackCredentials } from "../credentials";
 
 type SlackWebApiError = {

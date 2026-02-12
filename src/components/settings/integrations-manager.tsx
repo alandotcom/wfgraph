@@ -1,6 +1,7 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { api, type Integration } from "@/client/lib/rpc-client";
 import {
   DeleteConnectionOverlay,
   EditConnectionOverlay,
@@ -9,7 +10,6 @@ import { useOverlay } from "@/components/overlays/overlay-provider";
 import { Button } from "@/components/ui/button";
 import { IntegrationIcon } from "@/components/ui/integration-icon";
 import { Spinner } from "@/components/ui/spinner";
-import { api, type Integration } from "@/lib/rpc-client";
 import { getIntegrationLabels } from "@/plugins";
 
 // System integrations that don't have plugins

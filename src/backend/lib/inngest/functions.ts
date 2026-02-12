@@ -1,5 +1,5 @@
-import { db } from "@/lib/db";
-import { CURRENT_WORKFLOW_NAME } from "@/lib/workflow-constants";
+import { db } from "@/backend/lib/db";
+import { CURRENT_WORKFLOW_NAME } from "@/backend/lib/workflow-constants";
 import { createWorkflowRunRequestedFunction } from "./workflow-function";
 
 const REGISTRY_CACHE_TTL_MS = 5000;

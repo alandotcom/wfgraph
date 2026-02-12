@@ -37,7 +37,7 @@ import {
   showMinimapAtom,
   type WorkflowNode,
   type WorkflowNodeType,
-} from "@/lib/workflow-store";
+} from "@/client/lib/workflow-store";
 import { Edge } from "../ai-elements/edge";
 import { Panel } from "../ai-elements/panel";
 import { ActionNode } from "./nodes/action-node";

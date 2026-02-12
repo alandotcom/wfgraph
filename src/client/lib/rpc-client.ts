@@ -1,13 +1,17 @@
 import { hc } from "hono/client";
 import type { AppType } from "@/backend/server/hono-app";
-import { getAppLogger } from "./logger";
-import type { IntegrationConfig, IntegrationType } from "./types/integration";
-import type { WorkflowEdge, WorkflowNode } from "./workflow-store";
-
-const rpcClientLogger = getAppLogger("client", "rpc");
+import type {
+  IntegrationConfig,
+  IntegrationType,
+} from "@/shared/types/integration";
+import type {
+  WorkflowEdge,
+  WorkflowNode,
+  WorkflowVisibility,
+} from "@/shared/workflow/types";
 
 // Workflow data types
-export type WorkflowVisibility = "private" | "public";
+export type { WorkflowVisibility } from "@/shared/workflow/types";
 
 export type WorkflowData = {
   id?: string;
@@ -418,7 +422,9 @@ export const workflowApi = {
 
       autosaveTimeout = setTimeout(() => {
         workflowApi.saveCurrent(nodes, edges).catch((error) => {
-          rpcClientLogger.error("Auto-save current workflow failed", { error });
+          console.error("[rpc-client] Auto-save current workflow failed", {
+            error,
+          });
         });
       }, AUTOSAVE_DELAY);
     };
@@ -444,7 +450,7 @@ export const workflowApi = {
 
       autosaveTimeout = setTimeout(() => {
         workflowApi.update(id, data).catch((error) => {
-          rpcClientLogger.error("Auto-save workflow update failed", {
+          console.error("[rpc-client] Auto-save workflow update failed", {
             workflowId: id,
             error,
           });

@@ -1,8 +1,11 @@
 import { desc, eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { workflowExecutionLogs, workflowExecutions } from "@/lib/db/schema";
-import { getAppLogger } from "@/lib/logger";
-import { redactSensitiveData } from "@/lib/utils/redact";
+import { db } from "@/backend/lib/db";
+import {
+  workflowExecutionLogs,
+  workflowExecutions,
+} from "@/backend/lib/db/schema";
+import { getAppLogger } from "@/backend/lib/logger";
+import { redactSensitiveData } from "@/backend/lib/utils/redact";
 
 const executionLogsLogger = getAppLogger("workflow", "execution-logs");
 

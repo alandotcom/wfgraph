@@ -1,4 +1,4 @@
-import type { WorkflowEdge, WorkflowNode } from "@/lib/workflow-store";
+import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
 import { inngest } from "./client";
 
 export type WorkflowRunRequestedEventData = {

@@ -1,3 +1,8 @@
+import {
+  createClerkBackendClient,
+  getClerkApiErrorMessage,
+} from "./client";
+
 export async function testClerk(credentials: Record<string, string>) {
   try {
     const secretKey = credentials.CLERK_SECRET_KEY;
@@ -21,28 +26,14 @@ export async function testClerk(credentials: Record<string, string>) {
       };
     }
 
-    // Test the connection by fetching users list (limit 1)
-    const response = await fetch("https://api.clerk.com/v1/users?limit=1", {
-      headers: {
-        Authorization: `Bearer ${secretKey}`,
-        "Content-Type": "application/json",
-        "User-Agent": "workflow-builder.dev",
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      return {
-        success: false,
-        error: error.errors?.[0]?.message || `API error: ${response.status}`,
-      };
-    }
+    const clerkClient = createClerkBackendClient(secretKey);
+    await clerkClient.users.getUserList({ limit: 1 });
 
     return { success: true };
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: getClerkApiErrorMessage(error),
     };
   }
 }

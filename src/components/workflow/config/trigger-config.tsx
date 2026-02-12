@@ -14,7 +14,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
-import { getValueByPath } from "@/lib/utils/object-path";
+import { parseCsvSet } from "@/shared/utils/csv";
+import { getValueByPath } from "@/shared/utils/object-path";
 import { SchemaBuilder, type SchemaField } from "./schema-builder";
 
 type TriggerConfigProps = {
@@ -72,19 +73,6 @@ const WEBHOOK_PRESETS: WebhookPreset[] = [
     },
   },
 ];
-
-function parseCsvEntries(value: unknown): string[] {
-  if (typeof value !== "string") {
-    return [];
-  }
-
-  const entries = value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-
-  return Array.from(new Set(entries));
-}
 
 function readSchema(config: Record<string, unknown>): SchemaField[] {
   if (typeof config.webhookSchema !== "string" || !config.webhookSchema) {
@@ -306,9 +294,9 @@ export function TriggerConfig({
       }
     }
 
-    const createSet = new Set(parseCsvEntries(createEvents));
-    const updateSet = new Set(parseCsvEntries(updateEvents));
-    const deleteSet = new Set(parseCsvEntries(deleteEvents));
+    const createSet = parseCsvSet(createEvents);
+    const updateSet = parseCsvSet(updateEvents);
+    const deleteSet = parseCsvSet(deleteEvents);
 
     if (createSet.size === 0 && updateSet.size === 0 && deleteSet.size === 0) {
       items.push(

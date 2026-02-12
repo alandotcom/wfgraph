@@ -43,9 +43,11 @@ Important paths:
 - `src/backend/server` - Bun server and Hono API
 - `src/backend/server/routes` - thin route layer (HTTP parsing/response mapping)
 - `src/backend/services` - domain service logic
+- `src/backend/lib` - backend-only runtime helpers (DB, logger, workflow engine, steps, Inngest)
 - `src/client` - SPA entrypoint and router
+- `src/client/lib` - client-only state and API client modules
 - `src/frontend/app` - route component modules used by TanStack Router
-- `src/lib` - shared runtime utilities, DB, workflow engine helpers
+- `src/shared` - runtime-agnostic shared utilities, types, and workflow types
 - `src/plugins` - integration plugins and steps
 - `src/scripts` - build/runtime scripts
 
@@ -68,18 +70,18 @@ Server-side barrel files are allowed.
 ## API Client Usage
 
 Use the typed RPC client in:
-- `@/lib/rpc-client`
+- `@/client/lib/rpc-client`
 
 Import pattern:
 ```ts
-import { api } from "@/lib/rpc-client";
+import { api } from "@/client/lib/rpc-client";
 ```
 
 Do not reference `@/lib/api-client`.
 
 ## Database Migrations
 
-- Schema file: `src/lib/db/schema.ts`
+- Schema file: `src/backend/lib/db/schema.ts`
 - Generate migrations: `bun run db:generate`
 - Apply migrations locally: `bun run db:push`
 
@@ -87,8 +89,7 @@ Do not hand-write migration SQL in `drizzle/`.
 
 ## Plugin Guidelines
 
-- Plugin steps should use `fetch` directly.
-- Do not add SDK dependencies for step execution paths.
+- Plugin steps should prefer official SDK clients when available and appropriate.
 - Do not use a `dependencies` field in plugin `index.ts` for runtime behavior.
 
 ## Step Output Format

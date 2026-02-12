@@ -1,4 +1,9 @@
-const TWILIO_API_URL = "https://api.twilio.com/2010-04-01";
+import twilio from "twilio";
+
+type TwilioError = {
+  status?: number;
+  message?: string;
+};
 
 export async function testTwilio(credentials: Record<string, string>) {
   try {
@@ -12,24 +17,28 @@ export async function testTwilio(credentials: Record<string, string>) {
       };
     }
 
-    const response = await fetch(
-      `${TWILIO_API_URL}/Accounts/${encodeURIComponent(accountSid)}.json`,
-      {
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
-        },
-      }
-    );
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: `API validation failed: HTTP ${response.status}`,
-      };
-    }
+    const twilioClient = twilio(accountSid, authToken);
+    await twilioClient.api.v2010.accounts(accountSid).fetch();
 
     return { success: true };
   } catch (error) {
+    if (error instanceof twilio.RestException) {
+      return {
+        success: false,
+        error: `API validation failed: HTTP ${error.status}`,
+      };
+    }
+
+    if (error && typeof error === "object") {
+      const twilioError = error as TwilioError;
+      if (typeof twilioError.status === "number") {
+        return {
+          success: false,
+          error: `API validation failed: HTTP ${twilioError.status}`,
+        };
+      }
+    }
+
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),

@@ -48,13 +48,6 @@ const twilioPlugin: IntegrationPlugin = {
     },
   ],
 
-  testConfig: {
-    getTestFunction: async () => {
-      const { testTwilio } = await import("./test");
-      return testTwilio;
-    },
-  },
-
   actions: [
     {
       slug: "send-sms",

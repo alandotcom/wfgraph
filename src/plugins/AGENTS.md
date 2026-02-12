@@ -8,9 +8,9 @@ Plugins are now registered via manual static files (no scaffold/discovery script
 
 When creating or modifying a plugin, update these files manually:
 1. `plugins/index.ts` - add/remove plugin import
-2. `lib/types/integration.ts` - update `IntegrationType` union
-3. `lib/step-registry.ts` - add/remove action step importers and labels
-4. `lib/output-display-configs.ts` - update if action has image/video/url output config
+2. `shared/types/integration.ts` - update `IntegrationType` union
+3. `backend/lib/step-registry.ts` - add/remove action step importers and labels
+4. `client/lib/output-display-configs.ts` - update if action has image/video/url output config
 
 ## Plugin Architecture
 
@@ -65,13 +65,8 @@ const myServicePlugin: IntegrationPlugin = {
     },
   ],
 
-  // Lazy-loaded test function
-  testConfig: {
-    getTestFunction: async () => {
-      const { testMyService } = await import("./test");
-      return testMyService;
-    },
-  },
+  // Note: connection tests are wired server-side in
+  // backend/services/integrations/integration-test-loaders.ts
 
   // Actions provided by this integration
   actions: [
@@ -116,8 +111,8 @@ export type MyServiceCredentials = {
 Step functions follow a two-layer pattern:
 
 ```typescript
-import { fetchCredentials } from "@/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/lib/steps/step-handler";
+import { fetchCredentials } from "@/backend/lib/credential-fetcher";
+import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
 import type { MyServiceCredentials } from "../credentials";
 
 // Result type - use discriminated union
@@ -155,27 +150,11 @@ async function stepHandler(
   }
 
   try {
-    // Use fetch directly - no SDK dependencies
-    const response = await fetch("https://api.myservice.com/endpoint", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        field: input.inputField,
-      }),
+    // Prefer an official SDK client when available
+    const client = new MyServiceClient({ apiKey });
+    const data = await client.items.create({
+      field: input.inputField,
     });
-
-    if (!response.ok) {
-      const error = await response.json();
-      return {
-        success: false,
-        error: error.message || `HTTP ${response.status}`,
-      };
-    }
-
-    const data = await response.json();
     return { success: true, id: data.id };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -222,19 +201,11 @@ export async function testMyService(credentials: Record<string, string>) {
       };
     }
 
-    // Option 2: Make a lightweight read-only API call
-    const response = await fetch("https://api.myservice.com/v1/me", {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        return { success: false, error: "Invalid API key" };
-      }
-      return { success: false, error: `API error: HTTP ${response.status}` };
+    // Option 2: Make a lightweight read-only SDK call
+    const client = new MyServiceClient({ apiKey });
+    const result = await client.auth.whoAmI();
+    if (!result?.id) {
+      return { success: false, error: "Invalid API key" };
     }
 
     return { success: true };
@@ -367,7 +338,7 @@ type ActionResult =
 
 After creating a plugin:
 
-1. Update static registration files (`plugins/index.ts`, `lib/types/integration.ts`, and `lib/step-registry.ts`)
+1. Update static registration files (`plugins/index.ts`, `shared/types/integration.ts`, and `backend/lib/step-registry.ts`)
 2. Run `bun run type-check && bun run fix` to verify types and fix formatting/linting
 3. Run `bun run dev` to test in the UI
 4. Test the connection using the integration dialog

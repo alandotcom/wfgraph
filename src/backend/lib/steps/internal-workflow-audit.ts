@@ -1,7 +1,7 @@
 import {
   logWorkflowAuditEvent,
   type WorkflowAuditEventType,
-} from "@/lib/workflow-audit";
+} from "@/backend/lib/workflow-audit";
 
 type WorkflowAuditStepInput = {
   workflowId: string;

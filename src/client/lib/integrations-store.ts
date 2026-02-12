@@ -1,5 +1,5 @@
 import { atom } from "jotai";
-import type { Integration } from "@/lib/rpc-client";
+import type { Integration } from "@/client/lib/rpc-client";
 
 // Store for all user integrations
 export const integrationsAtom = atom<Integration[]>([]);

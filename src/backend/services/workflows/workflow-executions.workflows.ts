@@ -1,13 +1,13 @@
 import { desc, eq, inArray } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { db } from "@/backend/lib/db";
 import {
   workflowExecutionEvents,
   workflowExecutionLogs,
   workflowExecutions,
   workflows,
   workflowWaitStates,
-} from "@/lib/db/schema";
-import { getAppLogger } from "@/lib/logger";
+} from "@/backend/lib/db/schema";
+import { getAppLogger } from "@/backend/lib/logger";
 
 const workflowExecutionsLogger = getAppLogger("workflow", "executions");
 

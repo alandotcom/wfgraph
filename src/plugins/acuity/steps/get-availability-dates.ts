@@ -3,8 +3,8 @@ import type {
   AvailabilityDate,
   AvailabilityDatesParams,
 } from "@fountain-bio/acuity";
-import { fetchCredentials } from "@/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/lib/steps/step-handler";
+import { fetchCredentials } from "@/backend/lib/credential-fetcher";
+import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
 import {
   createAcuityClient,
   getAcuityErrorMessage,

@@ -1,13 +1,13 @@
 import type { NodeProps } from "@xyflow/react";
 import { Ban, Check, Clock, Play, Webhook, XCircle } from "lucide-react";
 import { memo } from "react";
+import type { WorkflowNodeData } from "@/client/lib/workflow-store";
 import {
   Node,
   NodeDescription,
   NodeTitle,
 } from "@/components/ai-elements/node";
-import { cn } from "@/lib/utils";
-import type { WorkflowNodeData } from "@/lib/workflow-store";
+import { cn } from "@/shared/utils";
 
 type TriggerNodeProps = NodeProps & {
   data?: WorkflowNodeData;

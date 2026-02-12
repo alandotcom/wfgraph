@@ -1,14 +1,14 @@
 import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { workflowExecutions } from "@/lib/db/schema";
-import { sendWorkflowCancelRequested } from "@/lib/inngest/runtime-events";
-import { getAppLogger } from "@/lib/logger";
-import { logWorkflowAuditEvent } from "@/lib/workflow-audit";
+import { db } from "@/backend/lib/db";
+import { workflowExecutions } from "@/backend/lib/db/schema";
+import { sendWorkflowCancelRequested } from "@/backend/lib/inngest/runtime-events";
+import { getAppLogger } from "@/backend/lib/logger";
+import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import {
   listExecutionWaitingStates,
   markExecutionCancelled,
   markWaitingStatesCancelled,
-} from "@/lib/workflow-wait-state";
+} from "@/backend/lib/workflow-wait-state";
 
 const executionCancelLogger = getAppLogger("workflow", "execution-cancel");
 

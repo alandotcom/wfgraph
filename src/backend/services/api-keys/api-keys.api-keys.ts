@@ -1,6 +1,6 @@
-import { db } from "@/lib/db";
-import { apiKeys } from "@/lib/db/schema";
-import { getAppLogger } from "@/lib/logger";
+import { db } from "@/backend/lib/db";
+import { apiKeys } from "@/backend/lib/db/schema";
+import { getAppLogger } from "@/backend/lib/logger";
 import { createApiKeyRecord } from "./auth.api-keys";
 
 const apiKeysLogger = getAppLogger("api-keys");

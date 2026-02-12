@@ -2,7 +2,7 @@
  * Executable step function for HTTP Request action
  */
 
-import { getErrorMessage } from "../utils";
+import { getErrorMessage } from "@/shared/utils";
 import { type StepInput, withStepLogging } from "./step-handler";
 
 type HttpRequestResult =

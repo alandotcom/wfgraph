@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { api } from "@/lib/rpc-client";
+import { api } from "@/client/lib/rpc-client";
 
 export default function WorkflowsPage() {
   useEffect(() => {

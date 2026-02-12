@@ -23,7 +23,7 @@ const mocks = (() => {
   };
 })();
 
-mock.module("@/lib/db", () => ({
+mock.module("@/backend/lib/db", () => ({
   db: {
     query: {
       apiKeys: {
@@ -34,7 +34,7 @@ mock.module("@/lib/db", () => ({
   },
 }));
 
-mock.module("@/lib/logger", () => ({
+mock.module("@/backend/lib/logger", () => ({
   getAppLogger: () => mocks.logger,
 }));
 

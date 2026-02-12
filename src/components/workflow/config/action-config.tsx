@@ -1,6 +1,10 @@
 import { useAtomValue, useSetAtom } from "jotai";
 import { HelpCircle, Plus, Settings } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import {
+  integrationsAtom,
+  integrationsVersionAtom,
+} from "@/client/lib/integrations-store";
 import { ConfigureConnectionOverlay } from "@/components/overlays/add-connection-overlay";
 import { useOverlay } from "@/components/overlays/overlay-provider";
 import { Button } from "@/components/ui/button";
@@ -25,15 +29,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  integrationsAtom,
-  integrationsVersionAtom,
-} from "@/lib/integrations-store";
-import type { IntegrationType } from "@/lib/types/integration";
-import {
   findActionById,
   getActionsByCategory,
   getAllIntegrations,
 } from "@/plugins";
+import type { IntegrationType } from "@/shared/types/integration";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { SchemaBuilder, type SchemaField } from "./schema-builder";
 

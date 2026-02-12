@@ -10,15 +10,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
-import { SmartOverlayHeader } from "@/components/overlays/overlay-header";
-import { useOverlay } from "@/components/overlays/overlay-provider";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { integrationsAtom } from "@/lib/integrations-store";
-import { api } from "@/lib/rpc-client";
-import type { IntegrationType } from "@/lib/types/integration";
+import { integrationsAtom } from "@/client/lib/integrations-store";
+import { api } from "@/client/lib/rpc-client";
 import {
   clearNodeStatusesAtom,
   clearWorkflowAtom,
@@ -35,8 +28,15 @@ import {
   selectedEdgeAtom,
   selectedNodeAtom,
   updateNodeDataAtom,
-} from "@/lib/workflow-store";
+} from "@/client/lib/workflow-store";
+import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
+import { SmartOverlayHeader } from "@/components/overlays/overlay-header";
+import { useOverlay } from "@/components/overlays/overlay-provider";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { findActionById } from "@/plugins";
+import type { IntegrationType } from "@/shared/types/integration";
 import { ActionConfig } from "../workflow/config/action-config";
 import { ActionGrid } from "../workflow/config/action-grid";
 import { TriggerConfig } from "../workflow/config/trigger-config";

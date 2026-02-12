@@ -1,4 +1,7 @@
-import { logStepCompleteDb, logStepStartDb } from "@/lib/workflow-logging";
+import {
+  logStepCompleteDb,
+  logStepStartDb,
+} from "@/backend/lib/workflow-logging";
 
 type StepLogStartInput = {
   executionId: string;

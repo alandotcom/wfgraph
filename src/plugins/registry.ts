@@ -1,4 +1,4 @@
-import type { IntegrationType } from "@/lib/types/integration";
+import type { IntegrationType } from "@/shared/types/integration";
 
 /**
  * Select Option
@@ -174,17 +174,6 @@ export type IntegrationPlugin = {
     configKey: string; // Which key in IntegrationConfig to store the value
     envVar?: string; // Environment variable this field maps to (e.g., "RESEND_API_KEY")
   }>;
-
-  // Testing configuration (lazy-loaded to avoid bundling Node.js packages in client)
-  testConfig?: {
-    // Returns a promise that resolves to the test function
-    // This allows the test module to be loaded only on the server when needed
-    getTestFunction: () => Promise<
-      (
-        credentials: Record<string, string>
-      ) => Promise<{ success: boolean; error?: string }>
-    >;
-  };
 
   // Avoid using this field. Plugins should use fetch instead of SDK dependencies
   // to reduce supply chain attack surface. Only use for codegen if absolutely necessary.

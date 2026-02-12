@@ -35,13 +35,6 @@ const linearPlugin: IntegrationPlugin = {
     },
   ],
 
-  testConfig: {
-    getTestFunction: async () => {
-      const { testLinear } = await import("./test");
-      return testLinear;
-    },
-  },
-
   actions: [
     {
       slug: "create-ticket",

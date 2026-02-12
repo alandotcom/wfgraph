@@ -3,7 +3,7 @@
  * before storage or display in observability tools
  */
 
-import { getAppLogger } from "@/lib/logger";
+import { getAppLogger } from "@/backend/lib/logger";
 
 const redactLogger = getAppLogger("utils", "redact");
 

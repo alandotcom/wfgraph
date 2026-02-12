@@ -1,18 +1,19 @@
+import { omitBy } from "es-toolkit/object";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { api } from "@/client/lib/rpc-client";
 import { Input } from "@/components/ui/input";
 import { IntegrationIcon } from "@/components/ui/integration-icon";
 import { Label } from "@/components/ui/label";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { api } from "@/lib/rpc-client";
-import type { IntegrationType } from "@/lib/types/integration";
 import {
   getIntegration,
   getIntegrationLabels,
   getSortedIntegrationTypes,
 } from "@/plugins";
 import { getIntegrationDescriptions } from "@/plugins/registry";
+import type { IntegrationType } from "@/shared/types/integration";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -41,6 +42,13 @@ const getDescription = (type: IntegrationType): string =>
   getIntegrationDescriptions()[type] ||
   SYSTEM_INTEGRATION_DESCRIPTIONS[type] ||
   "";
+
+function hasProvidedConfigValues(config: Record<string, string>): boolean {
+  return (
+    Object.keys(omitBy(config, (value) => !value || value.length === 0))
+      .length > 0
+  );
+}
 
 type AddConnectionOverlayProps = {
   overlayId: string;
@@ -230,7 +238,7 @@ export function ConfigureConnectionOverlay({
   };
 
   const handleSave = async () => {
-    const hasConfig = Object.values(config).some((v) => v && v.length > 0);
+    const hasConfig = hasProvidedConfigValues(config);
     if (!hasConfig) {
       toast.error("Please enter credentials");
       return;
@@ -274,7 +282,7 @@ export function ConfigureConnectionOverlay({
   };
 
   const handleTest = async () => {
-    const hasConfig = Object.values(config).some((v) => v && v.length > 0);
+    const hasConfig = hasProvidedConfigValues(config);
     if (!hasConfig) {
       toast.error("Please enter credentials first");
       return;

@@ -1,10 +1,10 @@
 import { useSetAtom } from "jotai";
 import { AlertTriangle } from "lucide-react";
+import { integrationsVersionAtom } from "@/client/lib/integrations-store";
 import { Button } from "@/components/ui/button";
 import { IntegrationIcon } from "@/components/ui/integration-icon";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { integrationsVersionAtom } from "@/lib/integrations-store";
-import type { IntegrationType } from "@/lib/types/integration";
+import type { IntegrationType } from "@/shared/types/integration";
 import { ConfigureConnectionOverlay } from "./add-connection-overlay";
 import { ConfigurationOverlay } from "./configuration-overlay";
 import { Overlay } from "./overlay";

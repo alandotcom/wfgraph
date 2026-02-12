@@ -1,10 +1,10 @@
 import { desc, eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { workflows } from "@/lib/db/schema";
-import { invalidateInngestFunctionsCache } from "@/lib/inngest/functions";
-import { getAppLogger } from "@/lib/logger";
-import { generateId } from "@/lib/utils/id";
-import { CURRENT_WORKFLOW_NAME } from "@/lib/workflow-constants";
+import { db } from "@/backend/lib/db";
+import { workflows } from "@/backend/lib/db/schema";
+import { invalidateInngestFunctionsCache } from "@/backend/lib/inngest/functions";
+import { getAppLogger } from "@/backend/lib/logger";
+import { CURRENT_WORKFLOW_NAME } from "@/backend/lib/workflow-constants";
+import { generateId } from "@/shared/utils/id";
 
 const workflowsCurrentLogger = getAppLogger("workflow", "current");
 

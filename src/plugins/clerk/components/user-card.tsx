@@ -1,4 +1,5 @@
 import type { ResultComponentProps } from "@/plugins/registry";
+import { compact } from "es-toolkit/array";
 
 // The logging layer unwraps standardized outputs, so we receive just the data
 type ClerkUserData = {
@@ -17,12 +18,11 @@ export function UserCard({ output }: ResultComponentProps) {
     return null;
   }
 
-  const initials = [data.firstName?.[0], data.lastName?.[0]]
-    .filter(Boolean)
+  const initials = compact([data.firstName?.[0], data.lastName?.[0]])
     .join("")
     .toUpperCase();
 
-  const fullName = [data.firstName, data.lastName].filter(Boolean).join(" ");
+  const fullName = compact([data.firstName, data.lastName]).join(" ");
   const createdDate = data.createdAt
     ? new Date(data.createdAt).toLocaleDateString()
     : "Unknown";
@@ -48,6 +48,5 @@ export function UserCard({ output }: ResultComponentProps) {
     </div>
   );
 }
-
 
 

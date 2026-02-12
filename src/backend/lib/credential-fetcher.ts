@@ -15,9 +15,12 @@
  */
 
 import { getCredentialMapping, getIntegration } from "@/plugins";
+import type {
+  IntegrationConfig,
+  IntegrationType,
+} from "@/shared/types/integration";
 import { getIntegrationById } from "./db/integrations";
 import { getAppLogger } from "./logger";
-import type { IntegrationConfig, IntegrationType } from "./types/integration";
 
 const credentialFetcherLogger = getAppLogger("credentials", "fetcher");
 

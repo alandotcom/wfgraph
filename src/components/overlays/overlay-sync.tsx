@@ -1,6 +1,6 @@
 import { useAtom } from "jotai";
 import { useEffect, useRef } from "react";
-import { overlayStackAtom } from "@/lib/atoms/overlay";
+import { overlayStackAtom } from "@/client/lib/atoms/overlay";
 import { useOverlay } from "./overlay-provider";
 
 /**

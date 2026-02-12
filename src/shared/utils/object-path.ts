@@ -1,3 +1,10 @@
+import { compact } from "es-toolkit/array";
+import { parseCsvSet as parseCsvSetFromCsv } from "./csv";
+
+export function parseCsvSet(value: unknown): Set<string> {
+  return parseCsvSetFromCsv(value);
+}
+
 export function getValueByPath(
   input: unknown,
   path: string | undefined
@@ -11,7 +18,7 @@ export function getValueByPath(
     return;
   }
 
-  const segments = trimmed.split(".").filter(Boolean);
+  const segments = compact(trimmed.split("."));
   let current: unknown = input;
 
   for (const segment of segments) {
@@ -37,17 +44,4 @@ export function getValueByPath(
   }
 
   return current;
-}
-
-export function parseCsvSet(value: unknown): Set<string> {
-  if (typeof value !== "string") {
-    return new Set();
-  }
-
-  return new Set(
-    value
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0)
-  );
 }

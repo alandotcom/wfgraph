@@ -34,13 +34,6 @@ const resendPlugin: IntegrationPlugin = {
     },
   ],
 
-  testConfig: {
-    getTestFunction: async () => {
-      const { testResend } = await import("./test");
-      return testResend;
-    },
-  },
-
   actions: [
     {
       slug: "send-email",

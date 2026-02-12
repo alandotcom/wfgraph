@@ -1,8 +1,8 @@
 
 import { useAtom } from "jotai";
 import { useEffect, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
-import { nodesAtom, selectedNodeAtom } from "@/lib/workflow-store";
+import { cn } from "@/shared/utils";
+import { nodesAtom, selectedNodeAtom } from "@/client/lib/workflow-store";
 import { findActionById } from "@/plugins";
 import { TemplateAutocomplete } from "./template-autocomplete";
 

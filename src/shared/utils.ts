@@ -1,5 +1,5 @@
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { type ClassValue, clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -11,6 +11,7 @@ export function cn(...inputs: ClassValue[]) {
  * and nested error structures common in AI SDKs.
  * Note: This is synchronous - use getErrorMessageAsync for Promise errors.
  */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Consolidated error normalization intentionally handles many transport formats
 export function getErrorMessage(error: unknown): string {
   // Handle null/undefined
   if (error === null || error === undefined) {
@@ -99,9 +100,9 @@ export function getErrorMessage(error: unknown): string {
     }
 
     // Last resort: use Object.prototype.toString
-    const toString = Object.prototype.toString.call(error);
-    if (toString !== "[object Object]") {
-      return toString;
+    const objectToString = Object.prototype.toString.call(error);
+    if (objectToString !== "[object Object]") {
+      return objectToString;
     }
   }
 

@@ -3,9 +3,6 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { Link2Off, Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useRef } from "react";
-import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
-import { useOverlay } from "@/components/overlays/overlay-provider";
-import { cn } from "@/lib/utils";
 import {
   addNodeAtom,
   deleteEdgeAtom,
@@ -14,7 +11,10 @@ import {
   propertiesPanelActiveTabAtom,
   selectedNodeAtom,
   type WorkflowNode,
-} from "@/lib/workflow-store";
+} from "@/client/lib/workflow-store";
+import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
+import { useOverlay } from "@/components/overlays/overlay-provider";
+import { cn } from "@/shared/utils";
 
 export type ContextMenuType = "node" | "edge" | "pane" | null;
 

@@ -1,14 +1,14 @@
 import { and, eq } from "drizzle-orm";
-import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
-import { db } from "@/lib/db";
-import { workflowWaitStates } from "@/lib/db/schema";
-import { sendWorkflowWaitSignal } from "@/lib/inngest/runtime-events";
-import { getAppLogger } from "@/lib/logger";
-import { logWorkflowAuditEvent } from "@/lib/workflow-audit";
+import { db } from "@/backend/lib/db";
+import { workflowWaitStates } from "@/backend/lib/db/schema";
+import { sendWorkflowWaitSignal } from "@/backend/lib/inngest/runtime-events";
+import { getAppLogger } from "@/backend/lib/logger";
+import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import {
   markExecutionRunning,
   markWaitStateStatus,
-} from "@/lib/workflow-wait-state";
+} from "@/backend/lib/workflow-wait-state";
+import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
 
 const workflowResumeLogger = getAppLogger("workflow", "resume");
 

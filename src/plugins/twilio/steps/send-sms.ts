@@ -1,18 +1,8 @@
 
-import { fetchCredentials } from "@/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/lib/steps/step-handler";
+import twilio from "twilio";
+import { fetchCredentials } from "@/backend/lib/credential-fetcher";
+import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
 import type { TwilioCredentials } from "../credentials";
-
-const TWILIO_API_URL = "https://api.twilio.com/2010-04-01";
-
-type TwilioSendSmsResponse = {
-  sid: string;
-  status: string;
-  to: string;
-  from?: string;
-  messaging_service_sid?: string;
-  error_message?: string;
-};
 
 type SendSmsResult =
   | {
@@ -50,6 +40,29 @@ function parseMediaUrls(value: string | undefined): string[] {
     .split(",")
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
+}
+
+type TwilioError = {
+  status?: number;
+  message?: string;
+};
+
+function getTwilioErrorMessage(error: unknown): string {
+  if (error instanceof twilio.RestException) {
+    return error.message || `HTTP ${error.status}: Failed to send SMS via Twilio`;
+  }
+
+  if (error && typeof error === "object") {
+    const twilioError = error as TwilioError;
+    if (typeof twilioError.message === "string" && twilioError.message.length > 0) {
+      return twilioError.message;
+    }
+    if (typeof twilioError.status === "number") {
+      return `HTTP ${twilioError.status}: Failed to send SMS via Twilio`;
+    }
+  }
+
+  return error instanceof Error ? error.message : "Failed to send SMS via Twilio";
 }
 
 /**
@@ -95,71 +108,36 @@ async function stepHandler(
     };
   }
 
-  const formData = new URLSearchParams();
-  formData.set("To", input.smsTo);
-  formData.set("Body", input.smsBody);
-
-  if (senderFrom) {
-    formData.set("From", senderFrom);
-  }
-
-  if (senderMessagingServiceSid) {
-    formData.set("MessagingServiceSid", senderMessagingServiceSid);
-  }
-
-  if (input.smsStatusCallback) {
-    formData.set("StatusCallback", input.smsStatusCallback);
-  }
-
   const mediaUrls = parseMediaUrls(input.smsMediaUrls);
-  for (const mediaUrl of mediaUrls) {
-    formData.append("MediaUrl", mediaUrl);
-  }
 
   try {
-    const response = await fetch(
-      `${TWILIO_API_URL}/Accounts/${encodeURIComponent(accountSid)}/Messages.json`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: formData.toString(),
-      }
-    );
-
-    const data = (await response.json()) as TwilioSendSmsResponse;
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: {
-          message:
-            data.error_message ||
-            `HTTP ${response.status}: Failed to send SMS via Twilio`,
-        },
-      };
-    }
+    const twilioClient = twilio(accountSid, authToken);
+    const message = await twilioClient.messages.create({
+      to: input.smsTo,
+      body: input.smsBody,
+      ...(senderFrom && { from: senderFrom }),
+      ...(senderMessagingServiceSid && {
+        messagingServiceSid: senderMessagingServiceSid,
+      }),
+      ...(input.smsStatusCallback && { statusCallback: input.smsStatusCallback }),
+      ...(mediaUrls.length > 0 && { mediaUrl: mediaUrls }),
+    });
 
     return {
       success: true,
       data: {
-        sid: data.sid,
-        status: data.status,
-        to: data.to,
-        from: data.from,
-        messagingServiceSid: data.messaging_service_sid,
+        sid: message.sid,
+        status: message.status ?? "",
+        to: message.to,
+        from: message.from || undefined,
+        messagingServiceSid: message.messagingServiceSid || undefined,
       },
     };
   } catch (error) {
     return {
       success: false,
       error: {
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to send SMS via Twilio",
+        message: getTwilioErrorMessage(error),
       },
     };
   }

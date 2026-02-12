@@ -1,28 +1,24 @@
-import type { Edge, EdgeChange, Node, NodeChange } from "@xyflow/react";
+import type { EdgeChange, NodeChange } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
+import { partition } from "es-toolkit/array";
 import { atom } from "jotai";
-import { getAppLogger } from "./logger";
+import type {
+  ExecutionLogEntry,
+  WorkflowEdge,
+  WorkflowNode,
+  WorkflowNodeData,
+  WorkflowVisibility,
+} from "@/shared/workflow/types";
 import { api } from "./rpc-client";
 
-const workflowStoreLogger = getAppLogger("client", "workflow-store");
-
-export type WorkflowNodeType = "trigger" | "action" | "add";
-
-export type WorkflowNodeData = {
-  label: string;
-  description?: string;
-  type: WorkflowNodeType;
-  config?: Record<string, unknown>;
-  status?: "idle" | "running" | "success" | "error" | "cancelled";
-  enabled?: boolean; // Whether the step is enabled (defaults to true)
-  onClick?: () => void; // For the "add" node type
-};
-
-export type WorkflowNode = Node<WorkflowNodeData>;
-export type WorkflowEdge = Edge;
-
-// Workflow visibility type
-export type WorkflowVisibility = "private" | "public";
+export type {
+  ExecutionLogEntry,
+  WorkflowEdge,
+  WorkflowNode,
+  WorkflowNodeData,
+  WorkflowNodeType,
+  WorkflowVisibility,
+} from "@/shared/workflow/types";
 
 // Atoms for workflow state (now backed by database)
 export const nodesAtom = atom<WorkflowNode[]>([]);
@@ -60,18 +56,6 @@ export const newlyCreatedNodeIdAtom = atom<string | null>(null);
 // This allows keyboard shortcuts to trigger the same execute flow as the button
 export const triggerExecuteAtom = atom(false);
 
-// Execution log entry type for storing run outputs per node
-export type ExecutionLogEntry = {
-  nodeId: string;
-  nodeName: string;
-  nodeType: string;
-  status: "pending" | "running" | "success" | "error" | "cancelled";
-  input?: unknown;
-  output?: unknown;
-  startedAt?: Date | string;
-  completedAt?: Date | string | null;
-};
-
 // Map of nodeId -> execution log entry for the currently selected execution
 export const executionLogsAtom = atom<Record<string, ExecutionLogEntry>>({});
 
@@ -98,7 +82,7 @@ export const autosaveAtom = atom(
         // Clear the unsaved changes indicator after successful save
         set(hasUnsavedChangesAtom, false);
       } catch (error) {
-        workflowStoreLogger.error("Autosave failed", {
+        console.error("[workflow-store] Autosave failed", {
           workflowId,
           error,
         });
@@ -162,20 +146,20 @@ export const onNodesChangeAtom = atom(
       set(newlyCreatedNodeIdAtom, null);
     }
 
-    // Check if there were any deletions to trigger immediate save
-    const hadDeletions = filteredChanges.some(
+    const [deletionChanges, nonDeletionChanges] = partition(
+      filteredChanges,
       (change) => change.type === "remove"
     );
-    if (hadDeletions) {
+    if (deletionChanges.length > 0) {
       set(autosaveAtom, { immediate: true });
       return;
     }
 
-    // Check if there were any position changes (node moved) to trigger debounced save
-    const hadPositionChanges = filteredChanges.some(
+    const [settledPositionChanges] = partition(
+      nonDeletionChanges,
       (change) => change.type === "position" && change.dragging === false
     );
-    if (hadPositionChanges) {
+    if (settledPositionChanges.length > 0) {
       set(autosaveAtom); // Debounced save
     }
   }
@@ -470,7 +454,9 @@ export const loadWorkflowAtom = atom(null, async (_get, set) => {
       set(currentWorkflowIdAtom, workflow.id);
     }
   } catch (error) {
-    workflowStoreLogger.error("Failed to load current workflow", { error });
+    console.error("[workflow-store] Failed to load current workflow", {
+      error,
+    });
   } finally {
     set(isLoadingAtom, false);
   }
@@ -496,7 +482,7 @@ export const saveWorkflowAsAtom = atom(
       });
       return workflow;
     } catch (error) {
-      workflowStoreLogger.error("Failed to save workflow", {
+      console.error("[workflow-store] Failed to save workflow", {
         workflowName: name,
         error,
       });

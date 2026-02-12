@@ -6,10 +6,12 @@
 import {
   preValidateConditionExpression,
   validateConditionExpression,
-} from "@/lib/condition-validator";
-import { getAppLogger } from "@/lib/logger";
-import { getValueByPath, parseCsvSet } from "@/lib/utils/object-path";
-import { resolveWaitUntil } from "@/lib/utils/wait-time";
+} from "@/backend/lib/condition-validator";
+import { getAppLogger } from "@/backend/lib/logger";
+import { getErrorMessageAsync } from "@/shared/utils";
+import { getValueByPath, parseCsvSet } from "@/shared/utils/object-path";
+import { resolveWaitUntil } from "@/shared/utils/wait-time";
+import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
 import {
   getActionLabel,
   getStepImporter,
@@ -27,8 +29,6 @@ import {
 } from "./steps/internal-workflow-wait-state";
 import type { StepContext } from "./steps/step-handler";
 import { triggerStep } from "./steps/trigger";
-import { getErrorMessageAsync } from "./utils";
-import type { WorkflowEdge, WorkflowNode } from "./workflow-store";
 
 type WaitForEventOptions = {
   event: string;

@@ -8,8 +8,8 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { IntegrationType } from "../types/integration";
-import { generateId } from "../utils/id";
+import type { IntegrationType } from "@/shared/types/integration";
+import { generateId } from "@/shared/utils/id";
 
 // Workflow visibility type
 export type WorkflowVisibility = "private" | "public";

@@ -1,10 +1,10 @@
 import { eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { db } from "@/lib/db";
-import { workflows } from "@/lib/db/schema";
-import { invalidateInngestFunctionsCache } from "@/lib/inngest/functions";
-import { getAppLogger } from "@/lib/logger";
-import { generateId } from "@/lib/utils/id";
+import { db } from "@/backend/lib/db";
+import { workflows } from "@/backend/lib/db/schema";
+import { invalidateInngestFunctionsCache } from "@/backend/lib/inngest/functions";
+import { getAppLogger } from "@/backend/lib/logger";
+import { generateId } from "@/shared/utils/id";
 
 type WorkflowNodeLike = {
   id: string;

@@ -1,11 +1,13 @@
+import { omitBy } from "es-toolkit/object";
+import { isNil } from "es-toolkit/predicate";
 import { Check, Pencil, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { api, type Integration } from "@/client/lib/rpc-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { api, type Integration } from "@/lib/rpc-client";
 import { getIntegration, getIntegrationLabels } from "@/plugins";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
@@ -19,6 +21,13 @@ const getLabel = (type: string): string => {
   const labels = getIntegrationLabels() as Record<string, string>;
   return labels[type] || SYSTEM_INTEGRATION_LABELS[type] || type;
 };
+
+function hasProvidedConfigValues(config: Record<string, string>): boolean {
+  return (
+    Object.keys(omitBy(config, (value) => !value || value.length === 0))
+      .length > 0
+  );
+}
 
 type EditConnectionOverlayProps = {
   overlayId: string;
@@ -148,11 +157,18 @@ export function EditConnectionOverlay({
   const doSave = async () => {
     try {
       setSaving(true);
-      const hasNewConfig = Object.values(config).some((v) => v && v.length > 0);
-      await api.integration.update(integration.id, {
-        name: name.trim(),
-        ...(hasNewConfig ? { config } : {}),
-      });
+      const hasNewConfig = hasProvidedConfigValues(config);
+      const updatePayload = omitBy(
+        {
+          name: name.trim(),
+          config: hasNewConfig ? config : undefined,
+        },
+        isNil
+      ) as {
+        name?: string;
+        config?: Record<string, string>;
+      };
+      await api.integration.update(integration.id, updatePayload);
       toast.success("Connection updated");
       onSuccess?.();
       closeAll();
@@ -165,7 +181,7 @@ export function EditConnectionOverlay({
   };
 
   const handleSave = async () => {
-    const hasNewConfig = Object.values(config).some((v) => v && v.length > 0);
+    const hasNewConfig = hasProvidedConfigValues(config);
 
     // If no new config, just save the name
     if (!hasNewConfig) {
@@ -213,7 +229,7 @@ export function EditConnectionOverlay({
   };
 
   const handleTest = async () => {
-    const hasNewConfig = Object.values(config).some((v) => v && v.length > 0);
+    const hasNewConfig = hasProvidedConfigValues(config);
 
     try {
       setTesting(true);

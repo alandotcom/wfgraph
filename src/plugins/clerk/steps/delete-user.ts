@@ -1,8 +1,11 @@
 
-import { fetchCredentials } from "@/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/lib/steps/step-handler";
-import { getErrorMessage } from "@/lib/utils";
+import { fetchCredentials } from "@/backend/lib/credential-fetcher";
+import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
 import type { ClerkCredentials } from "../credentials";
+import {
+  createClerkBackendClient,
+  getClerkApiErrorMessage,
+} from "../client";
 
 type DeleteUserResult =
   | { success: true; data: { deleted: true } }
@@ -44,35 +47,16 @@ async function stepHandler(
   }
 
   try {
-    const response = await fetch(
-      `https://api.clerk.com/v1/users/${encodeURIComponent(input.userId)}`,
-      {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${secretKey}`,
-          "Content-Type": "application/json",
-          "User-Agent": "workflow-builder.dev",
-        },
-      }
-    );
-
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
-      return {
-        success: false,
-        error: {
-          message:
-            errorBody.errors?.[0]?.message ||
-            `Failed to delete user: ${response.status}`,
-        },
-      };
-    }
+    const clerkClient = createClerkBackendClient(secretKey);
+    await clerkClient.users.deleteUser(input.userId);
 
     return { success: true, data: { deleted: true } };
   } catch (err) {
     return {
       success: false,
-      error: { message: `Failed to delete user: ${getErrorMessage(err)}` },
+      error: {
+        message: `Failed to delete user: ${getClerkApiErrorMessage(err)}`,
+      },
     };
   }
 }

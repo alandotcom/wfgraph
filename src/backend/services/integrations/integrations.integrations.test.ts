@@ -29,7 +29,7 @@ const mocks = (() => {
   };
 })();
 
-mock.module("@/lib/db/integrations", () => ({
+mock.module("@/backend/lib/db/integrations", () => ({
   createIntegration: mocks.createIntegration,
   deleteIntegration: mocks.deleteIntegration,
   getIntegration: mocks.getIntegrationById,
@@ -42,7 +42,7 @@ mock.module("@/plugins", () => ({
   getIntegration: mocks.getPluginFromRegistry,
 }));
 
-mock.module("@/lib/logger", () => ({
+mock.module("@/backend/lib/logger", () => ({
   getAppLogger: () => mocks.logger,
 }));
 

@@ -1,8 +1,14 @@
 
-import { fetchCredentials } from "@/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/lib/steps/step-handler";
-import { getErrorMessage } from "@/lib/utils";
+import { omitBy } from "es-toolkit/object";
+import { isNil } from "es-toolkit/predicate";
+import { fetchCredentials } from "@/backend/lib/credential-fetcher";
+import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
 import type { ClerkCredentials } from "../credentials";
+import {
+  createClerkBackendClient,
+  getClerkApiErrorMessage,
+  toClerkApiUser,
+} from "../client";
 import { type ClerkUserResult, toClerkUserData } from "../types";
 
 export type ClerkCreateUserCoreInput = {
@@ -46,23 +52,13 @@ async function stepHandler(
   }
 
   try {
-    // Build the request body
-    const body: Record<string, unknown> = {
-      email_address: [input.emailAddress],
-    };
-
-    if (input.firstName) {
-      body.first_name = input.firstName;
-    }
-    if (input.lastName) {
-      body.last_name = input.lastName;
-    }
-    if (input.password) {
-      body.password = input.password;
-    }
+    let publicMetadata: Record<string, unknown> | undefined;
     if (input.publicMetadata) {
       try {
-        body.public_metadata = JSON.parse(input.publicMetadata);
+        publicMetadata = JSON.parse(input.publicMetadata) as Record<
+          string,
+          unknown
+        >;
       } catch {
         return {
           success: false,
@@ -70,9 +66,14 @@ async function stepHandler(
         };
       }
     }
+
+    let privateMetadata: Record<string, unknown> | undefined;
     if (input.privateMetadata) {
       try {
-        body.private_metadata = JSON.parse(input.privateMetadata);
+        privateMetadata = JSON.parse(input.privateMetadata) as Record<
+          string,
+          unknown
+        >;
       } catch {
         return {
           success: false,
@@ -81,34 +82,27 @@ async function stepHandler(
       }
     }
 
-    const response = await fetch("https://api.clerk.com/v1/users", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${secretKey}`,
-        "Content-Type": "application/json",
-        "User-Agent": "workflow-builder.dev",
+    const clerkClient = createClerkBackendClient(secretKey);
+    const createPayload = omitBy(
+      {
+        emailAddress: [input.emailAddress],
+        firstName: input.firstName,
+        lastName: input.lastName,
+        password: input.password,
+        publicMetadata,
+        privateMetadata,
       },
-      body: JSON.stringify(body),
-    });
+      isNil
+    );
 
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
-      return {
-        success: false,
-        error: {
-          message:
-            errorBody.errors?.[0]?.message ||
-            `Failed to create user: ${response.status}`,
-        },
-      };
-    }
-
-    const apiUser = await response.json();
-    return { success: true, data: toClerkUserData(apiUser) };
+    const user = await clerkClient.users.createUser(createPayload);
+    return { success: true, data: toClerkUserData(toClerkApiUser(user)) };
   } catch (err) {
     return {
       success: false,
-      error: { message: `Failed to create user: ${getErrorMessage(err)}` },
+      error: {
+        message: `Failed to create user: ${getClerkApiErrorMessage(err)}`,
+      },
     };
   }
 }

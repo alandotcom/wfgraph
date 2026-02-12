@@ -1,18 +1,15 @@
 import { Link } from "@tanstack/react-router";
+import { compact } from "es-toolkit/array";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { NodeConfigPanel } from "@/components/workflow/node-config-panel";
-import { useIsMobile } from "@/hooks/use-mobile";
 import {
   integrationsAtom,
   integrationsLoadedAtom,
   integrationsVersionAtom,
-} from "@/lib/integrations-store";
-import { api } from "@/lib/rpc-client";
-import type { IntegrationType } from "@/lib/types/integration";
+} from "@/client/lib/integrations-store";
+import { api } from "@/client/lib/rpc-client";
 import {
   currentWorkflowIdAtom,
   currentWorkflowNameAtom,
@@ -33,8 +30,12 @@ import {
   type WorkflowNode,
   type WorkflowVisibility,
   workflowNotFoundAtom,
-} from "@/lib/workflow-store";
+} from "@/client/lib/workflow-store";
+import { Button } from "@/components/ui/button";
+import { NodeConfigPanel } from "@/components/workflow/node-config-panel";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { findActionById } from "@/plugins";
+import type { IntegrationType } from "@/shared/types/integration";
 
 type WorkflowPageProps = {
   workflowId: string;
@@ -387,9 +388,11 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
         setIntegrationsLoaded(true);
 
         const validIds = new Set(allIntegrations.map((i) => i.id));
-        const fixes = nodes
-          .map((node) => checkNodeIntegration(node, allIntegrations, validIds))
-          .filter((fix): fix is IntegrationFixResult => fix !== null);
+        const fixes = compact(
+          nodes.map((node) =>
+            checkNodeIntegration(node, allIntegrations, validIds)
+          )
+        ) as IntegrationFixResult[];
 
         for (const fix of fixes) {
           const node = nodes.find((n) => n.id === fix.nodeId);

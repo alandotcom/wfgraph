@@ -2,7 +2,7 @@ import {
   createWaitState,
   markExecutionRunning,
   markWaitStateStatus,
-} from "@/lib/workflow-wait-state";
+} from "@/backend/lib/workflow-wait-state";
 
 type CreateWaitStateStepInput = {
   executionId: string;

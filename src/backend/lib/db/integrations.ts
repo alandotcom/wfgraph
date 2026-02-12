@@ -1,7 +1,11 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
-import { getAppLogger } from "@/lib/logger";
-import type { IntegrationConfig, IntegrationType } from "../types/integration";
+import { uniq } from "es-toolkit/array";
+import { getAppLogger } from "@/backend/lib/logger";
+import type {
+  IntegrationConfig,
+  IntegrationType,
+} from "@/shared/types/integration";
 import { db } from "./index";
 import { integrations, type NewIntegration } from "./schema";
 
@@ -214,7 +218,7 @@ export function extractIntegrationIds(
     }
   }
 
-  return [...new Set(integrationIds)];
+  return uniq(integrationIds);
 }
 
 export async function validateWorkflowIntegrations(

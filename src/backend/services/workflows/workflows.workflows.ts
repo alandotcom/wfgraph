@@ -1,7 +1,7 @@
 import { desc } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { workflows } from "@/lib/db/schema";
-import { getAppLogger } from "@/lib/logger";
+import { db } from "@/backend/lib/db";
+import { workflows } from "@/backend/lib/db/schema";
+import { getAppLogger } from "@/backend/lib/logger";
 
 const workflowsLogger = getAppLogger("workflow", "list");
 

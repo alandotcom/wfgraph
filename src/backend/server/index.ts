@@ -1,5 +1,5 @@
 import { serve } from "bun";
-import { configureAppLogging, getAppLogger } from "@/lib/logger";
+import { configureAppLogging, getAppLogger } from "@/backend/lib/logger";
 import appHtml from "../../client/index.html";
 import { app as apiApp } from "./hono-app";
 

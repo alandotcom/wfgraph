@@ -16,17 +16,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   OUTPUT_DISPLAY_CONFIGS,
   type OutputDisplayConfig,
-} from "@/lib/output-display-configs";
-import { api } from "@/lib/rpc-client";
-import { cn } from "@/lib/utils";
-import { getRelativeTime } from "@/lib/utils/time";
+} from "@/client/lib/output-display-configs";
+import { api } from "@/client/lib/rpc-client";
 import {
   currentWorkflowIdAtom,
   executionLogsAtom,
   selectedExecutionIdAtom,
   type ExecutionLogEntry as WorkflowExecutionLogEntry,
-} from "@/lib/workflow-store";
+} from "@/client/lib/workflow-store";
 import { findActionById } from "@/plugins";
+import { cn } from "@/shared/utils";
+import { getRelativeTime } from "@/shared/utils/time";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 

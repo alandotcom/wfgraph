@@ -2,22 +2,8 @@ import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import { Eraser, Eye, EyeOff, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { integrationsAtom } from "@/lib/integrations-store";
-import { api } from "@/lib/rpc-client";
-import type { IntegrationType } from "@/lib/types/integration";
+import { integrationsAtom } from "@/client/lib/integrations-store";
+import { api } from "@/client/lib/rpc-client";
 import {
   clearNodeStatusesAtom,
   currentWorkflowIdAtom,
@@ -37,8 +23,22 @@ import {
   showClearDialogAtom,
   showDeleteDialogAtom,
   updateNodeDataAtom,
-} from "@/lib/workflow-store";
+} from "@/client/lib/workflow-store";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { findActionById } from "@/plugins";
+import type { IntegrationType } from "@/shared/types/integration";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { ActionConfig } from "./config/action-config";
 import { ActionGrid } from "./config/action-grid";

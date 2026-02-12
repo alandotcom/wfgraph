@@ -14,28 +14,28 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Node,
-  NodeDescription,
-  NodeTitle,
-} from "@/components/ai-elements/node";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import {
   integrationIdsAtom,
   integrationsLoadedAtom,
-} from "@/lib/integrations-store";
-import { cn } from "@/lib/utils";
-import {
-  parseTimestampWithTimezone,
-  resolveWaitUntil,
-} from "@/lib/utils/wait-time";
+} from "@/client/lib/integrations-store";
 import {
   type ExecutionLogEntry,
   executionLogsAtom,
   pendingIntegrationNodesAtom,
   selectedExecutionIdAtom,
   type WorkflowNodeData,
-} from "@/lib/workflow-store";
+} from "@/client/lib/workflow-store";
+import {
+  Node,
+  NodeDescription,
+  NodeTitle,
+} from "@/components/ai-elements/node";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { findActionById, getIntegration } from "@/plugins";
+import { cn } from "@/shared/utils";
+import {
+  parseTimestampWithTimezone,
+  resolveWaitUntil,
+} from "@/shared/utils/wait-time";
 
 type WaitPreviewData = {
   countdown: string;

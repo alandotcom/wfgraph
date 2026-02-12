@@ -26,13 +26,6 @@ const clerkPlugin: IntegrationPlugin = {
     },
   ],
 
-  testConfig: {
-    getTestFunction: async () => {
-      const { testClerk } = await import("./test");
-      return testClerk;
-    },
-  },
-
   actions: [
     {
       slug: "get-user",

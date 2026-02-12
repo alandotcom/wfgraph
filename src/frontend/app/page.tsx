@@ -2,7 +2,7 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { api } from "@/lib/rpc-client";
+import { api } from "@/client/lib/rpc-client";
 import {
   currentWorkflowNameAtom,
   edgesAtom,
@@ -10,7 +10,7 @@ import {
   isTransitioningFromHomepageAtom,
   nodesAtom,
   type WorkflowNode,
-} from "@/lib/workflow-store";
+} from "@/client/lib/workflow-store";
 
 // Helper function to create a default trigger node
 function createDefaultTriggerNode() {

@@ -1,19 +1,8 @@
 
-import { fetchCredentials } from "@/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/lib/steps/step-handler";
+import { Resend, type CreateEmailOptions } from "resend";
+import { fetchCredentials } from "@/backend/lib/credential-fetcher";
+import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
 import type { ResendCredentials } from "../credentials";
-
-const RESEND_API_URL = "https://api.resend.com";
-
-type ResendEmailResponse = {
-  id: string;
-};
-
-type ResendErrorResponse = {
-  statusCode: number;
-  message: string;
-  name: string;
-};
 
 type SendEmailResult =
   | { success: true; data: { id: string } }
@@ -43,7 +32,7 @@ export type SendEmailInput = StepInput &
 
 function parseTemplateVariables(
   templateVariables: string | undefined
-): Record<string, unknown> | undefined {
+): Record<string, string | number> | undefined {
   if (!templateVariables) {
     return;
   }
@@ -51,7 +40,7 @@ function parseTemplateVariables(
   try {
     const parsed = JSON.parse(templateVariables) as unknown;
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
+      return parsed as Record<string, string | number>;
     }
   } catch (error) {
     console.error("[Resend] Failed to parse template variables JSON:", error);
@@ -93,26 +82,21 @@ async function stepHandler(
   }
 
   try {
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    };
-
-    if (input.idempotencyKey) {
-      headers["Idempotency-Key"] = input.idempotencyKey;
-    }
-
+    const resend = new Resend(apiKey);
     const contentMode = input.emailContentMode || "text";
 
-    const payload: Record<string, unknown> = {
+    const basePayload = {
       from: senderEmail,
       to: input.emailTo,
       subject: input.emailSubject,
       ...(input.emailCc && { cc: input.emailCc }),
       ...(input.emailBcc && { bcc: input.emailBcc }),
-      ...(input.emailReplyTo && { reply_to: input.emailReplyTo }),
-      ...(input.emailScheduledAt && { scheduled_at: input.emailScheduledAt }),
+      ...(input.emailReplyTo && { replyTo: input.emailReplyTo }),
+      ...(input.emailScheduledAt && { scheduledAt: input.emailScheduledAt }),
+      ...(input.emailTopicId && { topicId: input.emailTopicId }),
     };
+
+    let payload: CreateEmailOptions;
 
     if (contentMode === "template") {
       if (!input.emailTemplateId) {
@@ -124,11 +108,14 @@ async function stepHandler(
         };
       }
 
-      payload.template = {
-        id: input.emailTemplateId,
-        ...(input.emailTemplateVariables && {
-          variables: parseTemplateVariables(input.emailTemplateVariables),
-        }),
+      payload = {
+        ...basePayload,
+        template: {
+          id: input.emailTemplateId,
+          ...(input.emailTemplateVariables && {
+            variables: parseTemplateVariables(input.emailTemplateVariables),
+          }),
+        },
       };
     } else if (contentMode === "html") {
       if (!input.emailHtml) {
@@ -140,10 +127,11 @@ async function stepHandler(
         };
       }
 
-      payload.html = input.emailHtml;
-      if (input.emailBody) {
-        payload.text = input.emailBody;
-      }
+      payload = {
+        ...basePayload,
+        html: input.emailHtml,
+        ...(input.emailBody && { text: input.emailBody }),
+      };
     } else {
       if (!input.emailBody) {
         return {
@@ -154,30 +142,35 @@ async function stepHandler(
         };
       }
 
-      payload.text = input.emailBody;
-      if (input.emailHtml) {
-        payload.html = input.emailHtml;
-      }
+      payload = {
+        ...basePayload,
+        text: input.emailBody,
+        ...(input.emailHtml && { html: input.emailHtml }),
+      };
     }
 
-    const response = await fetch(`${RESEND_API_URL}/emails`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
+    const { data, error: resendError } = await resend.emails.send(payload, {
+      idempotencyKey: input.idempotencyKey,
     });
 
-    if (!response.ok) {
-      const errorData = (await response.json()) as ResendErrorResponse;
+    if (resendError) {
       return {
         success: false,
         error: {
           message:
-            errorData.message || `HTTP ${response.status}: Failed to send email`,
+            resendError.message ||
+            `HTTP ${resendError.statusCode}: Failed to send email`,
         },
       };
     }
 
-    const data = (await response.json()) as ResendEmailResponse;
+    if (!data?.id) {
+      return {
+        success: false,
+        error: { message: "Failed to send email: Missing email id in response" },
+      };
+    }
+
     return { success: true, data: { id: data.id } };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

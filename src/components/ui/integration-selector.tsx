@@ -13,13 +13,13 @@ import { ConfigureConnectionOverlay } from "@/components/overlays/add-connection
 import { EditConnectionOverlay } from "@/components/overlays/edit-connection-overlay";
 import { useOverlay } from "@/components/overlays/overlay-provider";
 import { Button } from "@/components/ui/button";
-import { api, type Integration } from "@/lib/rpc-client";
+import { api, type Integration } from "@/client/lib/rpc-client";
 import {
   integrationsAtom,
   integrationsVersionAtom,
-} from "@/lib/integrations-store";
-import type { IntegrationType } from "@/lib/types/integration";
-import { cn } from "@/lib/utils";
+} from "@/client/lib/integrations-store";
+import type { IntegrationType } from "@/shared/types/integration";
+import { cn } from "@/shared/utils";
 import { getIntegration } from "@/plugins";
 
 type IntegrationSelectorProps = {

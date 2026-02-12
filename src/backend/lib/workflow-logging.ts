@@ -4,8 +4,11 @@
  */
 
 import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { workflowExecutionLogs, workflowExecutions } from "@/lib/db/schema";
+import { db } from "@/backend/lib/db";
+import {
+  workflowExecutionLogs,
+  workflowExecutions,
+} from "@/backend/lib/db/schema";
 
 export type LogStepStartParams = {
   executionId: string;

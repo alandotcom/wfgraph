@@ -23,6 +23,8 @@
  * - Comments
  */
 
+import { compact } from "es-toolkit/array";
+
 // Dangerous patterns that should never appear in conditions
 const DANGEROUS_PATTERNS = [
   // Assignment operators
@@ -249,7 +251,7 @@ function isValidToken(token: string): boolean {
  * Check for unauthorized identifiers in the expression
  */
 function checkUnauthorizedIdentifiers(expression: string): ValidationResult {
-  const tokens = expression.split(WHITESPACE_SPLIT_PATTERN).filter(Boolean);
+  const tokens = compact(expression.split(WHITESPACE_SPLIT_PATTERN));
 
   for (const token of tokens) {
     if (isValidToken(token)) {

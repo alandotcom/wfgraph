@@ -1,4 +1,4 @@
-const RESEND_API_URL = "https://api.resend.com";
+import { Resend } from "resend";
 
 export async function testResend(credentials: Record<string, string>) {
   try {
@@ -11,16 +11,11 @@ export async function testResend(credentials: Record<string, string>) {
       };
     }
 
-    // Validate API key by fetching domains (lightweight read-only endpoint)
-    const response = await fetch(`${RESEND_API_URL}/domains`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-    });
+    const resend = new Resend(apiKey);
+    const { error } = await resend.domains.list();
 
-    if (!response.ok) {
-      if (response.status === 401) {
+    if (error) {
+      if (error.statusCode === 401 || error.statusCode === 403) {
         return {
           success: false,
           error: "Invalid API key. Please check your Resend API key.",
@@ -28,7 +23,7 @@ export async function testResend(credentials: Record<string, string>) {
       }
       return {
         success: false,
-        error: `API validation failed: HTTP ${response.status}`,
+        error: `API validation failed: HTTP ${error.statusCode ?? "unknown"}`,
       };
     }
 
@@ -40,4 +35,3 @@ export async function testResend(credentials: Record<string, string>) {
     };
   }
 }
-

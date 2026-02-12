@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { CURRENT_WORKFLOW_NAME } from "@/lib/workflow-constants";
+import { CURRENT_WORKFLOW_NAME } from "@/backend/lib/workflow-constants";
 import { buildWorkflowFunctions } from "./functions";
 
 describe("buildWorkflowFunctions", () => {
