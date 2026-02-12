@@ -113,7 +113,6 @@ function useWaitPreview(
     hasTemplateExpression(waitUntil) ||
     hasTemplateExpression(waitOffset);
 
-  const [nowMs, setNowMs] = useState(() => Date.now());
   const previewBaseNowMsRef = useRef(Date.now());
   const waitSignatureRef = useRef("");
   const waitSignature = [
@@ -128,20 +127,6 @@ function useWaitPreview(
     waitSignatureRef.current = waitSignature;
     previewBaseNowMsRef.current = Date.now();
   }
-
-  useEffect(() => {
-    if (!shouldShowWaitPreview || hasDynamicValue) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      setNowMs(Date.now());
-    }, 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [shouldShowWaitPreview, hasDynamicValue]);
 
   const resolution = useMemo(() => {
     if (!shouldShowWaitPreview || hasDynamicValue) {
@@ -183,7 +168,9 @@ function useWaitPreview(
   }
 
   return {
-    countdown: formatCountdown(resolution.waitUntil.getTime() - nowMs),
+    countdown: formatCountdown(
+      resolution.waitUntil.getTime() - previewBaseNowMsRef.current
+    ),
     triggerTime: formatTriggerTime(resolution.waitUntil, waitTimezone),
   };
 }
