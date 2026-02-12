@@ -259,10 +259,21 @@ function CollapsibleSection({
         </button>
         <div className="flex items-center gap-1">
           {externalLink && (
-            <Button asChild className="h-7 px-2" size="sm" variant="ghost">
-              <a href={externalLink} rel="noopener noreferrer" target="_blank">
-                <ExternalLink className="h-3 w-3" />
-              </a>
+            <Button
+              className="h-7 px-2"
+              render={
+                <a
+                  href={externalLink}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  <span className="sr-only">Open external link</span>
+                </a>
+              }
+              size="sm"
+              variant="ghost"
+            >
+              <ExternalLink className="h-3 w-3" />
             </Button>
           )}
           {copyData !== undefined && (

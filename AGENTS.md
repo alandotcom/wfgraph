@@ -15,6 +15,7 @@ Never use npm or yarn.
 - Always use tools like Context7 and/or Exa to check official usage patterns before implementing third-party library code.
 - Prefer the latest stable package versions by default.
 - Do not upgrade to latest if it is likely to break existing behavior; verify compatibility first.
+- For UI primitives/components, use Base UI (https://base-ui.com/llms.txt) and do not introduce Radix UI unless explicitly requested.
 
 ## Required Checks Before Finishing Work
 

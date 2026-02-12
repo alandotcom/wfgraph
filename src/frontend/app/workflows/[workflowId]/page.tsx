@@ -132,8 +132,8 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
 
   // Panel width state for resizing
   const [panelWidth, setPanelWidth] = useState(30); // default percentage
-  // Start visible if sidebar has already been shown (switching between workflows)
-  const [panelVisible, setPanelVisible] = useState(hasSidebarBeenShown);
+  // Keep the panel visible by default; the animation effect can temporarily hide it.
+  const [panelVisible, setPanelVisible] = useState(true);
   const [isDraggingResize, setIsDraggingResize] = useState(false);
   const isResizing = useRef(false);
   const hasReadCookies = useRef(false);
@@ -187,9 +187,15 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
 
   // Trigger slide-in animation on mount (only for homepage -> workflow transition)
   useEffect(() => {
-    // Check if we came from homepage
-    const shouldAnimate = sessionStorage.getItem("animate-sidebar") === "true";
-    sessionStorage.removeItem("animate-sidebar");
+    let shouldAnimate = false;
+    try {
+      // Check if we came from homepage
+      shouldAnimate = sessionStorage.getItem("animate-sidebar") === "true";
+      sessionStorage.removeItem("animate-sidebar");
+    } catch {
+      // If sessionStorage is unavailable, skip animation and show panel.
+      shouldAnimate = false;
+    }
 
     // Skip animation if sidebar has already been shown (switching between workflows)
     // or if we didn't come from homepage (direct load, refresh)
@@ -214,6 +220,15 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
       setIsPanelAnimating(false);
     };
   }, [hasSidebarBeenShown, setHasSidebarBeenShown, setIsPanelAnimating]);
+
+  // Fail-safe: ensure the panel is visible on desktop even if animation state gets stuck.
+  useEffect(() => {
+    if (isMobile || panelVisible) {
+      return;
+    }
+    const timer = setTimeout(() => setPanelVisible(true), 500);
+    return () => clearTimeout(timer);
+  }, [isMobile, panelVisible]);
 
   // Keyboard shortcut Cmd/Ctrl+B to toggle sidebar
   useEffect(() => {
@@ -609,9 +624,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
             <p className="mb-6 text-muted-foreground">
               The workflow you're looking for doesn't exist or has been deleted.
             </p>
-            <Button asChild>
-              <Link to="/">New Workflow</Link>
-            </Button>
+            <Button render={<Link to="/" />}>New Workflow</Button>
           </div>
         </div>
       )}

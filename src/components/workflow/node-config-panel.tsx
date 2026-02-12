@@ -3,7 +3,7 @@ import { Eraser, Eye, EyeOff, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { integrationsAtom } from "@/client/lib/integrations-store";
-import { api } from "@/client/lib/rpc-client";
+import { ApiError, api } from "@/client/lib/rpc-client";
 import {
   clearNodeStatusesAtom,
   currentWorkflowIdAtom,
@@ -23,6 +23,7 @@ import {
   showClearDialogAtom,
   showDeleteDialogAtom,
   updateNodeDataAtom,
+  workflowNameErrorAtom,
 } from "@/client/lib/workflow-store";
 import {
   AlertDialog,
@@ -139,6 +140,9 @@ export const PanelInner = () => {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [currentWorkflowName, setCurrentWorkflowName] = useAtom(
     currentWorkflowNameAtom
+  );
+  const [workflowNameError, setWorkflowNameError] = useAtom(
+    workflowNameErrorAtom
   );
   const isOwner = useAtomValue(isWorkflowOwnerAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
@@ -392,6 +396,7 @@ export const PanelInner = () => {
 
   const handleUpdateWorkspaceName = async (newName: string) => {
     setCurrentWorkflowName(newName);
+    setWorkflowNameError(null);
 
     // Save to database if workflow exists
     if (currentWorkflowId) {
@@ -403,7 +408,11 @@ export const PanelInner = () => {
         });
       } catch (error) {
         console.error("Failed to update workflow name:", error);
-        toast.error("Failed to update workspace name");
+        const message =
+          error instanceof ApiError
+            ? error.message
+            : "Failed to update workflow name";
+        setWorkflowNameError(message);
       }
     }
   };
@@ -537,11 +546,19 @@ export const PanelInner = () => {
                   Workflow Name
                 </Label>
                 <Input
+                  className={
+                    workflowNameError ? "border-destructive" : undefined
+                  }
                   disabled={!isOwner}
                   id="workflow-name"
                   onChange={(e) => handleUpdateWorkspaceName(e.target.value)}
                   value={currentWorkflowName}
                 />
+                {workflowNameError && (
+                  <p className="text-destructive text-xs">
+                    {workflowNameError}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label className="ml-1" htmlFor="workflow-id">

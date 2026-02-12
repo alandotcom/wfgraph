@@ -1,15 +1,13 @@
 import { useAtomValue, useSetAtom } from "jotai";
 import { nanoid } from "nanoid";
-import { useCallback, useEffect, useRef } from "react";
-import { toast } from "sonner";
-import { api } from "@/client/lib/rpc-client";
+import { useCallback, useEffect } from "react";
 import {
   currentWorkflowNameAtom,
   edgesAtom,
   hasSidebarBeenShownAtom,
-  isTransitioningFromHomepageAtom,
   nodesAtom,
   type WorkflowNode,
+  workflowNameErrorAtom,
 } from "@/client/lib/workflow-store";
 
 // Helper function to create a default trigger node
@@ -29,22 +27,18 @@ function createDefaultTriggerNode() {
 }
 
 const Home = () => {
-  const nodes = useAtomValue(nodesAtom);
-  const edges = useAtomValue(edgesAtom);
   const setNodes = useSetAtom(nodesAtom);
   const setEdges = useSetAtom(edgesAtom);
   const setCurrentWorkflowName = useSetAtom(currentWorkflowNameAtom);
+  const setWorkflowNameError = useSetAtom(workflowNameErrorAtom);
   const setHasSidebarBeenShown = useSetAtom(hasSidebarBeenShownAtom);
-  const setIsTransitioningFromHomepage = useSetAtom(
-    isTransitioningFromHomepageAtom
-  );
-  const hasCreatedWorkflowRef = useRef(false);
   const currentWorkflowName = useAtomValue(currentWorkflowNameAtom);
 
   // Reset sidebar animation state when on homepage
   useEffect(() => {
     setHasSidebarBeenShown(false);
-  }, [setHasSidebarBeenShown]);
+    setWorkflowNameError(null);
+  }, [setHasSidebarBeenShown, setWorkflowNameError]);
 
   // Update page title when workflow name changes
   useEffect(() => {
@@ -75,45 +69,14 @@ const Home = () => {
     setNodes([addNodePlaceholder]);
     setEdges([]);
     setCurrentWorkflowName("New Workflow");
-    hasCreatedWorkflowRef.current = false;
-  }, [setNodes, setEdges, setCurrentWorkflowName, handleAddNode]);
-
-  // Create workflow when first real node is added
-  useEffect(() => {
-    const createWorkflowAndRedirect = async () => {
-      // Filter out the placeholder "add" node
-      const realNodes = nodes.filter((node) => node.type !== "add");
-
-      // Only create when we have at least one real node and haven't created a workflow yet
-      if (realNodes.length === 0 || hasCreatedWorkflowRef.current) {
-        return;
-      }
-      hasCreatedWorkflowRef.current = true;
-
-      try {
-        // Create workflow with all real nodes
-        const newWorkflow = await api.workflow.create({
-          name: "Untitled Workflow",
-          description: "",
-          nodes: realNodes,
-          edges,
-        });
-
-        // Set flags to indicate we're coming from homepage (for sidebar animation)
-        sessionStorage.setItem("animate-sidebar", "true");
-        setIsTransitioningFromHomepage(true);
-
-        // Redirect to the workflow page
-        console.log("[Homepage] Navigating to workflow page");
-        window.location.replace(`/workflows/${newWorkflow.id}`);
-      } catch (error) {
-        console.error("Failed to create workflow:", error);
-        toast.error("Failed to create workflow");
-      }
-    };
-
-    createWorkflowAndRedirect();
-  }, [nodes, edges, setIsTransitioningFromHomepage]);
+    setWorkflowNameError(null);
+  }, [
+    setNodes,
+    setEdges,
+    setCurrentWorkflowName,
+    setWorkflowNameError,
+    handleAddNode,
+  ]);
 
   // Canvas and toolbar are rendered by PersistentCanvas in the layout
   return null;

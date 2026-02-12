@@ -793,8 +793,14 @@ export function ActionConfig({
               <Label>Connection</Label>
               <TooltipProvider>
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    <HelpCircle className="size-3.5 text-muted-foreground" />
+                  <TooltipTrigger
+                    render={
+                      <span className="inline-flex">
+                        <HelpCircle className="size-3.5 text-muted-foreground" />
+                      </span>
+                    }
+                  >
+                    <span className="sr-only">Connection help</span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>API key or OAuth credentials for this service</p>

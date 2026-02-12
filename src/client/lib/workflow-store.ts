@@ -30,6 +30,7 @@ export const isLoadingAtom = atom(false);
 export const isGeneratingAtom = atom(false);
 export const currentWorkflowIdAtom = atom<string | null>(null);
 export const currentWorkflowNameAtom = atom<string>("");
+export const workflowNameErrorAtom = atom<string | null>(null);
 export const currentWorkflowVisibilityAtom =
   atom<WorkflowVisibility>("private");
 export const isWorkflowOwnerAtom = atom<boolean>(true); // Whether current user owns this workflow

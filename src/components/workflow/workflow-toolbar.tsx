@@ -17,7 +17,7 @@ import { nanoid } from "nanoid";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { integrationsAtom } from "@/client/lib/integrations-store";
-import { api } from "@/client/lib/rpc-client";
+import { ApiError, api } from "@/client/lib/rpc-client";
 import {
   addNodeAtom,
   canRedoAtom,
@@ -32,6 +32,7 @@ import {
   isExecutingAtom,
   isGeneratingAtom,
   isSavingAtom,
+  isTransitioningFromHomepageAtom,
   isWorkflowOwnerAtom,
   nodesAtom,
   propertiesPanelActiveTabAtom,
@@ -44,6 +45,7 @@ import {
   updateNodeDataAtom,
   type WorkflowEdge,
   type WorkflowNode,
+  workflowNameErrorAtom,
 } from "@/client/lib/workflow-store";
 import { Panel } from "@/components/flow-elements/panel";
 import { ConfigurationOverlay } from "@/components/overlays/configuration-overlay";
@@ -505,6 +507,7 @@ async function executeTestWorkflow({
 // Hook for workflow handlers
 type WorkflowHandlerParams = {
   currentWorkflowId: string | null;
+  workflowName: string;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   updateNodeData: (update: {
@@ -515,6 +518,10 @@ type WorkflowHandlerParams = {
   setIsExecuting: (value: boolean) => void;
   setIsSaving: (value: boolean) => void;
   setHasUnsavedChanges: (value: boolean) => void;
+  setCurrentWorkflowId: (id: string | null) => void;
+  setCurrentWorkflowName: (name: string) => void;
+  setWorkflowNameError: (message: string | null) => void;
+  setIsTransitioningFromHomepage: (value: boolean) => void;
   setActiveTab: (value: string) => void;
   setNodes: (nodes: WorkflowNode[]) => void;
   setEdges: (edges: WorkflowEdge[]) => void;
@@ -525,6 +532,7 @@ type WorkflowHandlerParams = {
 
 function useWorkflowHandlers({
   currentWorkflowId,
+  workflowName,
   nodes,
   edges,
   updateNodeData,
@@ -532,6 +540,10 @@ function useWorkflowHandlers({
   setIsExecuting,
   setIsSaving,
   setHasUnsavedChanges,
+  setCurrentWorkflowId,
+  setCurrentWorkflowName,
+  setWorkflowNameError,
+  setIsTransitioningFromHomepage,
   setActiveTab,
   setNodes,
   setEdges,
@@ -553,17 +565,58 @@ function useWorkflowHandlers({
   );
 
   const handleSave = async () => {
-    if (!currentWorkflowId) {
+    const realNodes = nodes.filter((node) => node.type !== "add");
+    if (realNodes.length === 0) {
+      setWorkflowNameError("Add at least one step before saving.");
+      return;
+    }
+
+    const trimmedWorkflowName = workflowName.trim();
+    if (!trimmedWorkflowName) {
+      setWorkflowNameError("Workflow name is required.");
       return;
     }
 
     setIsSaving(true);
     try {
-      await api.workflow.update(currentWorkflowId, { nodes, edges });
+      if (!currentWorkflowId) {
+        const createdWorkflow = await api.workflow.create({
+          name: trimmedWorkflowName,
+          description: "",
+          nodes: realNodes,
+          edges,
+        });
+
+        setCurrentWorkflowId(createdWorkflow.id);
+        setCurrentWorkflowName(createdWorkflow.name);
+        setWorkflowNameError(null);
+        setHasUnsavedChanges(false);
+
+        try {
+          sessionStorage.setItem("animate-sidebar", "true");
+        } catch {
+          // Ignore if session storage is unavailable.
+        }
+        setIsTransitioningFromHomepage(true);
+        window.location.replace(`/workflows/${createdWorkflow.id}`);
+        return;
+      }
+
+      await api.workflow.update(currentWorkflowId, {
+        name: trimmedWorkflowName,
+        nodes: realNodes,
+        edges,
+      });
+      setCurrentWorkflowName(trimmedWorkflowName);
+      setWorkflowNameError(null);
       setHasUnsavedChanges(false);
     } catch (error) {
       console.error("Failed to save workflow:", error);
-      toast.error("Failed to save workflow. Please try again.");
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : "Failed to save workflow. Please try again.";
+      setWorkflowNameError(message);
     } finally {
       setIsSaving(false);
     }
@@ -660,8 +713,13 @@ function useWorkflowState() {
   const clearWorkflow = useSetAtom(clearWorkflowAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
+  const setCurrentWorkflowId = useSetAtom(currentWorkflowIdAtom);
   const [workflowName, setCurrentWorkflowName] = useAtom(
     currentWorkflowNameAtom
+  );
+  const setWorkflowNameError = useSetAtom(workflowNameErrorAtom);
+  const setIsTransitioningFromHomepage = useSetAtom(
+    isTransitioningFromHomepageAtom
   );
   const isOwner = useAtomValue(isWorkflowOwnerAtom);
   const [isSaving, setIsSaving] = useAtom(isSavingAtom);
@@ -710,8 +768,11 @@ function useWorkflowState() {
     clearWorkflow,
     updateNodeData,
     currentWorkflowId,
+    setCurrentWorkflowId,
     workflowName,
     setCurrentWorkflowName,
+    setWorkflowNameError,
+    setIsTransitioningFromHomepage,
     isOwner,
     isSaving,
     setIsSaving,
@@ -742,7 +803,11 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
   const { open: openOverlay } = useOverlay();
   const {
     currentWorkflowId,
+    setCurrentWorkflowId,
     workflowName,
+    setCurrentWorkflowName,
+    setWorkflowNameError,
+    setIsTransitioningFromHomepage,
     nodes,
     edges,
     updateNodeData,
@@ -765,6 +830,7 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
 
   const { handleSave, handleExecute } = useWorkflowHandlers({
     currentWorkflowId,
+    workflowName,
     nodes,
     edges,
     updateNodeData,
@@ -772,6 +838,10 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     setIsExecuting,
     setIsSaving,
     setHasUnsavedChanges,
+    setCurrentWorkflowId,
+    setCurrentWorkflowName,
+    setWorkflowNameError,
+    setIsTransitioningFromHomepage,
     setActiveTab,
     setNodes,
     setEdges,
@@ -887,10 +957,6 @@ function ToolbarActions({
 
   // For non-owners viewing public workflows, don't show toolbar actions.
   if (workflowId && !state.isOwner) {
-    return null;
-  }
-
-  if (!workflowId) {
     return null;
   }
 
@@ -1104,12 +1170,12 @@ function SaveButton({
   state: ReturnType<typeof useWorkflowState>;
   handleSave: () => Promise<void>;
 }) {
+  const hasRealNodes = state.nodes.some((node) => node.type !== "add");
+
   return (
     <Button
       className="relative border hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5 disabled:[&>svg]:text-muted-foreground"
-      disabled={
-        !state.currentWorkflowId || state.isGenerating || state.isSaving
-      }
+      disabled={!hasRealNodes || state.isGenerating || state.isSaving}
       onClick={handleSave}
       size="icon"
       title={state.isSaving ? "Saving..." : "Save workflow"}
@@ -1136,7 +1202,10 @@ function RunButtonGroup({
   actions: ReturnType<typeof useWorkflowActions>;
 }) {
   const isDisabled =
-    state.isExecuting || state.nodes.length === 0 || state.isGenerating;
+    state.isExecuting ||
+    state.nodes.length === 0 ||
+    state.isGenerating ||
+    !state.currentWorkflowId;
 
   return (
     <ButtonGroup className="flex" orientation="horizontal">
@@ -1156,16 +1225,18 @@ function RunButtonGroup({
       </Button>
 
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            className="border hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5 disabled:[&>svg]:text-muted-foreground"
-            disabled={isDisabled}
-            size="icon"
-            title="Run options"
-            variant="secondary"
-          >
-            <ChevronDown className="size-4" />
-          </Button>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              className="border hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5 disabled:[&>svg]:text-muted-foreground"
+              disabled={isDisabled}
+              size="icon"
+              title="Run options"
+              variant="secondary"
+            />
+          }
+        >
+          <ChevronDown className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem
@@ -1245,13 +1316,15 @@ function WorkflowMenuComponent({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-64">
             <DropdownMenuItem
-              asChild
               className="flex items-center justify-between"
+              render={
+                <a href="/">
+                  <span className="sr-only">New Workflow</span>
+                </a>
+              }
             >
-              <a href="/">
-                New Workflow{" "}
-                {!workflowId && <Check className="size-4 shrink-0" />}
-              </a>
+              New Workflow{" "}
+              {!workflowId && <Check className="size-4 shrink-0" />}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             {state.allWorkflows.length === 0 ? (

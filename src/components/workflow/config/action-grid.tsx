@@ -283,19 +283,21 @@ export function ActionGrid({
         </div>
         <TooltipProvider>
           <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                className="shrink-0"
-                onClick={toggleViewMode}
-                size="icon"
-                variant="ghost"
-              >
-                {viewMode === "list" ? (
-                  <Grid3X3 className="size-4" />
-                ) : (
-                  <List className="size-4" />
-                )}
-              </Button>
+            <TooltipTrigger
+              render={
+                <Button
+                  className="shrink-0"
+                  onClick={toggleViewMode}
+                  size="icon"
+                  variant="ghost"
+                />
+              }
+            >
+              {viewMode === "list" ? (
+                <Grid3X3 className="size-4" />
+              ) : (
+                <List className="size-4" />
+              )}
             </TooltipTrigger>
             <TooltipContent>
               {viewMode === "list" ? "Grid view" : "List view"}
@@ -305,19 +307,21 @@ export function ActionGrid({
         {hiddenCount > 0 && (
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  className={cn("shrink-0", showHidden && "bg-muted")}
-                  onClick={() => setShowHidden(!showHidden)}
-                  size="icon"
-                  variant="ghost"
-                >
-                  {showHidden ? (
-                    <Eye className="size-4" />
-                  ) : (
-                    <EyeOff className="size-4" />
-                  )}
-                </Button>
+              <TooltipTrigger
+                render={
+                  <Button
+                    className={cn("shrink-0", showHidden && "bg-muted")}
+                    onClick={() => setShowHidden(!showHidden)}
+                    size="icon"
+                    variant="ghost"
+                  />
+                }
+              >
+                {showHidden ? (
+                  <Eye className="size-4" />
+                ) : (
+                  <EyeOff className="size-4" />
+                )}
               </TooltipTrigger>
               <TooltipContent>
                 {showHidden
@@ -407,13 +411,15 @@ export function ActionGrid({
                     {group.category}
                   </button>
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        className="rounded p-0.5 hover:bg-muted hover:text-foreground"
-                        type="button"
-                      >
-                        <MoreHorizontal className="size-4" />
-                      </button>
+                    <DropdownMenuTrigger
+                      render={
+                        <button
+                          className="rounded p-0.5 hover:bg-muted hover:text-foreground"
+                          type="button"
+                        />
+                      }
+                    >
+                      <MoreHorizontal className="size-4" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem

@@ -23,10 +23,10 @@ export const UserMenu = () => {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button className="h-9" size="sm" variant="outline">
-          Settings
-        </Button>
+      <DropdownMenuTrigger
+        render={<Button className="h-9" size="sm" variant="outline" />}
+      >
+        Settings
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuItem onClick={() => openOverlay(IntegrationsOverlay)}>

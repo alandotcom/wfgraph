@@ -11,7 +11,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { integrationsAtom } from "@/client/lib/integrations-store";
-import { api } from "@/client/lib/rpc-client";
+import { ApiError, api } from "@/client/lib/rpc-client";
 import {
   clearNodeStatusesAtom,
   clearWorkflowAtom,
@@ -28,6 +28,7 @@ import {
   selectedEdgeAtom,
   selectedNodeAtom,
   updateNodeDataAtom,
+  workflowNameErrorAtom,
 } from "@/client/lib/workflow-store";
 import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
 import { SmartOverlayHeader } from "@/components/overlays/overlay-header";
@@ -61,6 +62,9 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [currentWorkflowName, setCurrentWorkflowName] = useAtom(
     currentWorkflowNameAtom
+  );
+  const [workflowNameError, setWorkflowNameError] = useAtom(
+    workflowNameErrorAtom
   );
   const isOwner = useAtomValue(isWorkflowOwnerAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
@@ -246,12 +250,18 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   // Handle updating workflow name
   const handleUpdateWorkflowName = async (newName: string) => {
     setCurrentWorkflowName(newName);
+    setWorkflowNameError(null);
 
     if (currentWorkflowId) {
       try {
         await api.workflow.update(currentWorkflowId, { name: newName });
       } catch (error) {
         console.error("Failed to update workflow name:", error);
+        const message =
+          error instanceof ApiError
+            ? error.message
+            : "Failed to update workflow name";
+        setWorkflowNameError(message);
       }
     }
   };
@@ -359,11 +369,19 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
               <div className="space-y-2">
                 <Label htmlFor="workflow-name">Workflow Name</Label>
                 <Input
+                  className={
+                    workflowNameError ? "border-destructive" : undefined
+                  }
                   disabled={!isOwner}
                   id="workflow-name"
                   onChange={(e) => handleUpdateWorkflowName(e.target.value)}
                   value={currentWorkflowName}
                 />
+                {workflowNameError && (
+                  <p className="text-destructive text-xs">
+                    {workflowNameError}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="workflow-id">Workflow ID</Label>
