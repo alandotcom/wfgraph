@@ -85,7 +85,6 @@ export const router = createRouter({
 });
 
 declare module "@tanstack/react-router" {
-  // biome-ignore lint/style/useConsistentTypeDefinitions: module augmentation requires an interface
   interface Register {
     router: typeof router;
   }

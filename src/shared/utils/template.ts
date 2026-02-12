@@ -186,7 +186,6 @@ function unwrapStandardizedOutput(data: unknown): unknown {
   return data;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Field path resolution requires nested logic for arrays and standardized outputs
 function resolveFieldPath(data: unknown, fieldPath: string): unknown {
   if (!data) {
     return;
