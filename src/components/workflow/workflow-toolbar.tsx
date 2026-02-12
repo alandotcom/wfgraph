@@ -60,7 +60,7 @@ import {
   getIntegrationLabels,
 } from "@/plugins";
 import type { IntegrationType } from "@/shared/types/integration";
-import { Panel } from "../ai-elements/panel";
+import { Panel } from "../flow-elements/panel";
 import { ConfigurationOverlay } from "../overlays/configuration-overlay";
 import { ConfirmOverlay } from "../overlays/confirm-overlay";
 import { useOverlay } from "../overlays/overlay-provider";

@@ -11,9 +11,9 @@ import {
 } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas } from "@/components/ai-elements/canvas";
-import { Connection } from "@/components/ai-elements/connection";
-import { Controls } from "@/components/ai-elements/controls";
+import { Canvas } from "@/components/flow-elements/canvas";
+import { Connection } from "@/components/flow-elements/connection";
+import { Controls } from "@/components/flow-elements/controls";
 import { WorkflowToolbar } from "@/components/workflow/workflow-toolbar";
 import "@xyflow/react/dist/style.css";
 
@@ -38,8 +38,8 @@ import {
   type WorkflowNode,
   type WorkflowNodeType,
 } from "@/client/lib/workflow-store";
-import { Edge } from "../ai-elements/edge";
-import { Panel } from "../ai-elements/panel";
+import { Edge } from "../flow-elements/edge";
+import { Panel } from "../flow-elements/panel";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
 import { TriggerNode } from "./nodes/trigger-node";

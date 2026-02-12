@@ -1,26 +1,51 @@
 
-import MonacoEditor, { type EditorProps, type OnMount } from "@monaco-editor/react";
-import { useTheme } from "next-themes";
-import { vercelDarkTheme } from "@/client/lib/monaco-theme";
+import { cn } from "@/shared/utils";
 
-export function CodeEditor(props: EditorProps) {
-  const { resolvedTheme } = useTheme();
+type CodeEditorOptions = {
+  readOnly?: boolean;
+  domReadOnly?: boolean;
+  wordWrap?: "on" | "off";
+  [key: string]: unknown;
+};
 
-  const handleEditorMount: OnMount = (editor, monaco) => {
-    monaco.editor.defineTheme("vercel-dark", vercelDarkTheme);
-    monaco.editor.setTheme(resolvedTheme === "dark" ? "vercel-dark" : "light");
+export type CodeEditorProps = {
+  className?: string;
+  defaultLanguage?: string;
+  height?: number | string;
+  onChange?: (value: string | undefined) => void;
+  options?: CodeEditorOptions;
+  value?: string;
+};
 
-    if (props.onMount) {
-      props.onMount(editor, monaco);
-    }
-  };
+export function CodeEditor({
+  className,
+  defaultLanguage,
+  height,
+  onChange,
+  options,
+  value,
+}: CodeEditorProps) {
+  const isReadOnly = Boolean(options?.readOnly || options?.domReadOnly);
+  const normalizedHeight =
+    typeof height === "number" ? `${height}px` : (height ?? "140px");
 
   return (
-    <MonacoEditor
-      {...props}
-      onMount={handleEditorMount}
-      theme={resolvedTheme === "dark" ? "vercel-dark" : "light"}
+    <textarea
+      className={cn(
+        "w-full resize-y bg-background px-3 py-2 font-mono text-sm outline-none",
+        "placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
+        className
+      )}
+      data-code-editor="true"
+      onChange={(event) => onChange?.(event.target.value)}
+      placeholder={defaultLanguage ? `${defaultLanguage.toUpperCase()}...` : undefined}
+      readOnly={isReadOnly}
+      spellCheck={false}
+      style={{
+        height: normalizedHeight,
+        whiteSpace: options?.wordWrap === "on" ? "pre-wrap" : "pre",
+      }}
+      value={value ?? ""}
     />
   );
 }
-

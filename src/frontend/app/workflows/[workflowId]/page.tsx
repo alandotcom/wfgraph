@@ -464,12 +464,6 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
     []
   );
 
-  // Helper to check if we're in Monaco editor
-  const isInMonacoEditor = useCallback(
-    (target: HTMLElement) => target.closest(".monaco-editor") !== null,
-    []
-  );
-
   // Helper to handle save shortcut
   const handleSaveShortcut = useCallback(
     (e: KeyboardEvent) => {
@@ -490,7 +484,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
   const handleRunShortcut = useCallback(
     (e: KeyboardEvent, target: HTMLElement) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-        if (!(isInputElement(target) || isInMonacoEditor(target))) {
+        if (!isInputElement(target)) {
           e.preventDefault();
           e.stopPropagation();
           // Trigger execute via atom - the toolbar will handle it
@@ -500,7 +494,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
       }
       return false;
     },
-    [setTriggerExecute, isInputElement, isInMonacoEditor]
+    [setTriggerExecute, isInputElement]
   );
 
   useEffect(() => {

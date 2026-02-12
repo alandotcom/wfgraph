@@ -6,7 +6,7 @@ import {
   Node,
   NodeDescription,
   NodeTitle,
-} from "@/components/ai-elements/node";
+} from "@/components/flow-elements/node";
 import { cn } from "@/shared/utils";
 
 type TriggerNodeProps = NodeProps & {

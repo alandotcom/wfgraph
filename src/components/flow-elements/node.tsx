@@ -1,3 +1,6 @@
+import { Handle, Position } from "@xyflow/react";
+import type { ComponentProps } from "react";
+import { AnimatedBorder } from "@/components/ui/animated-border";
 import {
   Card,
   CardAction,
@@ -8,9 +11,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/shared/utils";
-import { Handle, Position } from "@xyflow/react";
-import type { ComponentProps } from "react";
-import { AnimatedBorder } from "@/components/ui/animated-border";
 
 export type NodeProps = ComponentProps<typeof Card> & {
   handles: {
@@ -24,9 +24,9 @@ export const Node = ({ handles, className, status, ...props }: NodeProps) => (
   <Card
     className={cn(
       "node-container relative size-full h-auto w-sm gap-0 rounded-md bg-card p-0 transition-all duration-200",
-      status === "success" && "border-green-500 border-2",
-      status === "error" && "border-red-500 border-2",
-      status === "cancelled" && "border-slate-500 border-2",
+      status === "success" && "border-2 border-green-500",
+      status === "error" && "border-2 border-red-500",
+      status === "cancelled" && "border-2 border-slate-500",
       className
     )}
     {...props}
@@ -64,7 +64,10 @@ export const NodeAction = (props: NodeActionProps) => <CardAction {...props} />;
 export type NodeContentProps = ComponentProps<typeof CardContent>;
 
 export const NodeContent = ({ className, ...props }: NodeContentProps) => (
-  <CardContent className={cn("rounded-b-md bg-card p-3", className)} {...props} />
+  <CardContent
+    className={cn("rounded-b-md bg-card p-3", className)}
+    {...props}
+  />
 );
 
 export type NodeFooterProps = ComponentProps<typeof CardFooter>;

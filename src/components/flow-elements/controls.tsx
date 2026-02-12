@@ -1,10 +1,15 @@
-
 import { useReactFlow } from "@xyflow/react";
-import { ZoomIn, ZoomOut, Maximize2, MapPin, MapPinXInside } from "lucide-react";
 import { useAtom } from "jotai";
+import {
+  MapPin,
+  MapPinXInside,
+  Maximize2,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
+import { showMinimapAtom } from "@/client/lib/workflow-store";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { showMinimapAtom } from "@/client/lib/workflow-store";
 
 export const Controls = () => {
   const { zoomIn, zoomOut, fitView } = useReactFlow();

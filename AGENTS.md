@@ -110,6 +110,11 @@ return { success: false, error: { message: "Error description" } };
 ## Code Cleanliness
 
 - Remove unused imports, variables, and functions.
+- Prefer `es-toolkit` helpers for common object/collection cleanup instead of ad-hoc chains.
+- Use `omitBy(..., isNil)` (or equivalent predicate) to shape API/update payloads instead of deeply nested conditional spreads.
+- Use `compact(...)` instead of `filter(Boolean)` for clearer intent and better typing.
+- Use `uniq(...)` and `partition(...)` instead of manual `new Set(...)`/multi-pass `some(...)` patterns when that simplifies logic.
+- If `es-toolkit` usage requires unsafe casting, prefer a small typed helper function over repeated inline `as` assertions.
 - Use the correct Jotai hook for intent:
   - `useAtom` for read/write
   - `useAtomValue` for read-only

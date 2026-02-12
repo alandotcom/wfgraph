@@ -28,7 +28,7 @@ import {
   Node,
   NodeDescription,
   NodeTitle,
-} from "@/components/ai-elements/node";
+} from "@/components/flow-elements/node";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { findActionById, getIntegration } from "@/plugins";
 import { cn } from "@/shared/utils";

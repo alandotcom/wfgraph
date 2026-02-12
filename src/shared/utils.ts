@@ -8,7 +8,7 @@ export function cn(...inputs: ClassValue[]) {
 /**
  * Extract a meaningful error message from various error types.
  * Handles Error instances, objects with message/error properties, strings,
- * and nested error structures common in AI SDKs.
+ * and nested error structures common in API/provider SDKs.
  * Note: This is synchronous - use getErrorMessageAsync for Promise errors.
  */
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Consolidated error normalization intentionally handles many transport formats
@@ -41,7 +41,7 @@ export function getErrorMessage(error: unknown): string {
       return obj.message;
     }
 
-    // AI SDK often wraps errors in responseBody or data
+    // Some SDKs wrap errors in responseBody or data
     if (obj.responseBody && typeof obj.responseBody === "object") {
       const body = obj.responseBody as Record<string, unknown>;
       if (typeof body.error === "string") {

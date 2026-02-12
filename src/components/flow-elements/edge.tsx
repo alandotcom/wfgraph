@@ -127,9 +127,9 @@ const Animated = ({ id, source, target, style, selected }: EdgeProps) => {
   });
 
   return (
-    <BaseEdge 
-      id={id} 
-      path={edgePath} 
+    <BaseEdge
+      id={id}
+      path={edgePath}
       style={{
         ...style,
         stroke: selected ? "var(--muted-foreground)" : "var(--border)",

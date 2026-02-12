@@ -1,5 +1,3 @@
-
-import { cn } from "@/shared/utils";
 import { motion } from "motion/react";
 import {
   type CSSProperties,
@@ -8,6 +6,7 @@ import {
   memo,
   useMemo,
 } from "react";
+import { cn } from "@/shared/utils";
 
 export type TextShimmerProps = {
   children: string;
