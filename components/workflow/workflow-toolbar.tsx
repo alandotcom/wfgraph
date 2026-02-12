@@ -64,8 +64,6 @@ import {
   getIntegrationLabels,
 } from "@/plugins";
 import { Panel } from "../ai-elements/panel";
-import { DeployButton } from "../deploy-button";
-import { GitHubStarsButton } from "../github-stars-button";
 import { ConfigurationOverlay } from "../overlays/configuration-overlay";
 import { ConfirmOverlay } from "../overlays/confirm-overlay";
 import { useOverlay } from "../overlays/overlay-provider";
@@ -1282,6 +1280,30 @@ function WorkflowMenuComponent({
                   </DropdownMenuItem>
                 ))
             )}
+            {workflowId && state.isOwner && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="flex items-center gap-2"
+                  disabled={state.isDuplicating}
+                  onClick={actions.handleDuplicate}
+                >
+                  {state.isDuplicating ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Copy className="size-4" />
+                  )}
+                  Duplicate
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="flex items-center gap-2 text-destructive focus:text-destructive"
+                  onClick={actions.handleDeleteWorkflow}
+                >
+                  <Trash2 className="size-4" />
+                  Delete Workflow
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -1326,12 +1348,6 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
             workflowId={workflowId}
           />
           <div className="flex items-center gap-2">
-            {!workflowId && (
-              <>
-                <GitHubStarsButton />
-                <DeployButton />
-              </>
-            )}
             {workflowId && !state.isOwner && (
               <DuplicateButton
                 isDuplicating={state.isDuplicating}

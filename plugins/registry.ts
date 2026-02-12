@@ -1,5 +1,4 @@
 import type { IntegrationType } from "@/lib/types/integration";
-import { LEGACY_ACTION_MAPPINGS } from "./legacy-mappings";
 
 /**
  * Select Option
@@ -314,7 +313,7 @@ export function getActionsByCategory(): Record<string, ActionWithFullId[]> {
 
 /**
  * Find an action by full ID (e.g., "resend/send-email")
- * Also supports legacy IDs (e.g., "Send Email") for backward compatibility
+ * Also supports action label-based IDs (e.g., "Send Email")
  */
 export function findActionById(
   actionId: string | undefined | null
@@ -339,14 +338,7 @@ export function findActionById(
     }
   }
 
-  // Check legacy mappings for backward compatibility
-  const mappedId = LEGACY_ACTION_MAPPINGS[actionId];
-  if (mappedId) {
-    // Recursively look up the mapped ID
-    return findActionById(mappedId);
-  }
-
-  // Fall back to legacy label-based lookup (exact label match)
+  // Fall back to label-based lookup (exact label match)
   for (const plugin of integrationRegistry.values()) {
     const action = plugin.actions.find((a) => a.label === actionId);
     if (action) {

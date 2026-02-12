@@ -16,7 +16,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "@/components/ai-elements/canvas";
 import { Connection } from "@/components/ai-elements/connection";
 import { Controls } from "@/components/ai-elements/controls";
-import { AIPrompt } from "@/components/ai-elements/prompt";
 import { WorkflowToolbar } from "@/components/workflow/workflow-toolbar";
 import "@xyflow/react/dist/style.css";
 
@@ -60,7 +59,7 @@ const nodeTemplates = [
     description: "",
     displayLabel: "Trigger",
     icon: PlayCircle,
-    defaultConfig: { triggerType: "Manual" },
+    defaultConfig: { triggerType: "Webhook" },
   },
   {
     type: "action" as WorkflowNodeType,
@@ -77,7 +76,6 @@ const edgeTypes = {
   temporary: Edge.Temporary,
 };
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: React Flow canvas requires complex setup
 export function WorkflowCanvas() {
   const [nodes, setNodes] = useAtom(nodesAtom);
   const [edges, setEdges] = useAtom(edgesAtom);
@@ -572,9 +570,6 @@ export function WorkflowCanvas() {
           <MiniMap bgColor="var(--sidebar)" nodeStrokeColor="var(--border)" />
         )}
       </Canvas>
-
-      {/* AI Prompt */}
-      {currentWorkflowId && <AIPrompt workflowId={currentWorkflowId} />}
 
       {/* Context Menu */}
       <WorkflowContextMenu

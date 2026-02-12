@@ -261,10 +261,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
 
   // Determine which tabs to show (only for node view)
   const showCodeTab =
-    selectedNode &&
-    (selectedNode.data.type !== "trigger" ||
-      (selectedNode.data.config?.triggerType as string) !== "Manual") &&
-    selectedNode.data.config?.actionType !== "Condition";
+    selectedNode && selectedNode.data.config?.actionType !== "Condition";
 
   // Get current tab title
   const getTabTitle = () => {

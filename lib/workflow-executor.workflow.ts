@@ -279,12 +279,19 @@ async function executeActionStep(input: {
   if (actionType === "Condition") {
     const systemAction = SYSTEM_ACTIONS.Condition;
     const module = await systemAction.importer();
+    const stepFn = module[systemAction.stepFunction];
+    if (typeof stepFn !== "function") {
+      return {
+        success: false,
+        error: `Step function "${systemAction.stepFunction}" not found for action "${actionType}".`,
+      };
+    }
     const originalExpression = stepInput.condition;
     const { result: evaluatedCondition, resolvedValues } =
       evaluateConditionExpression(originalExpression, outputs);
     console.log("[Condition] Final result:", evaluatedCondition);
 
-    return await module[systemAction.stepFunction]({
+    return await stepFn({
       condition: evaluatedCondition,
       // Include original expression and resolved values for logging purposes
       expression:
@@ -300,6 +307,12 @@ async function executeActionStep(input: {
   if (systemAction) {
     const module = await systemAction.importer();
     const stepFunction = module[systemAction.stepFunction];
+    if (typeof stepFunction !== "function") {
+      return {
+        success: false,
+        error: `Step function "${systemAction.stepFunction}" not found for action "${actionType}".`,
+      };
+    }
     return await stepFunction(stepInput);
   }
 
@@ -308,7 +321,7 @@ async function executeActionStep(input: {
   if (stepImporter) {
     const module = await stepImporter.importer();
     const stepFunction = module[stepImporter.stepFunction];
-    if (stepFunction) {
+    if (typeof stepFunction === "function") {
       return await stepFunction(stepInput);
     }
 

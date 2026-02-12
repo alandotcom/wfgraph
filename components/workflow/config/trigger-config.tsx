@@ -1,6 +1,7 @@
 "use client";
 
-import { Clock, Copy, Play, TriangleAlert, Webhook } from "lucide-react";
+import cronstrue from "cronstrue";
+import { Clock, Copy, TriangleAlert, Webhook } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -192,6 +193,9 @@ export function TriggerConfig({
   disabled,
   workflowId,
 }: TriggerConfigProps) {
+  const triggerType = (config?.triggerType as string) || "Webhook";
+  const scheduleCron = (config?.scheduleCron as string) || "";
+
   const webhookUrl = workflowId
     ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/workflows/${workflowId}/webhook`
     : "";
@@ -250,6 +254,25 @@ export function TriggerConfig({
       };
     }
   }, [mockRequest]);
+
+  const parsedCronDescription = useMemo(() => {
+    if (!scheduleCron.trim()) {
+      return { description: "", error: "" };
+    }
+
+    try {
+      return {
+        description: cronstrue.toString(scheduleCron, { verbose: true }),
+        error: "",
+      };
+    } catch (error) {
+      return {
+        description: "",
+        error:
+          error instanceof Error ? error.message : "Invalid cron expression.",
+      };
+    }
+  }, [scheduleCron]);
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Warning assembly validates multiple independent webhook configuration rules.
   const warnings = useMemo(() => {
@@ -390,18 +413,12 @@ export function TriggerConfig({
         <Select
           disabled={disabled}
           onValueChange={(value) => onUpdateConfig("triggerType", value)}
-          value={(config?.triggerType as string) || "Manual"}
+          value={triggerType}
         >
           <SelectTrigger className="w-full" id="triggerType">
             <SelectValue placeholder="Select trigger type" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="Manual">
-              <div className="flex items-center gap-2">
-                <Play className="h-4 w-4" />
-                Manual
-              </div>
-            </SelectItem>
             <SelectItem value="Schedule">
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4" />
@@ -418,7 +435,7 @@ export function TriggerConfig({
         </Select>
       </div>
 
-      {config?.triggerType === "Webhook" && (
+      {triggerType === "Webhook" && (
         <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
           <div className="space-y-1">
             <p className="font-medium text-sm">Webhook Configuration</p>
@@ -679,7 +696,7 @@ export function TriggerConfig({
         </div>
       )}
 
-      {config?.triggerType === "Schedule" && (
+      {triggerType === "Schedule" && (
         <>
           <div className="space-y-2">
             <Label className="ml-1" htmlFor="scheduleCron">
@@ -690,8 +707,18 @@ export function TriggerConfig({
               id="scheduleCron"
               onChange={(e) => onUpdateConfig("scheduleCron", e.target.value)}
               placeholder="0 9 * * * (every day at 9am)"
-              value={(config?.scheduleCron as string) || ""}
+              value={scheduleCron}
             />
+            {parsedCronDescription.description ? (
+              <p className="text-muted-foreground text-xs">
+                {parsedCronDescription.description}
+              </p>
+            ) : null}
+            {parsedCronDescription.error ? (
+              <p className="text-destructive text-xs">
+                {parsedCronDescription.error}
+              </p>
+            ) : null}
           </div>
           <div className="space-y-2">
             <Label className="ml-1" htmlFor="scheduleTimezone">

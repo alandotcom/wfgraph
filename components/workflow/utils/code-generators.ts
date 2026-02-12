@@ -2,7 +2,6 @@
  * Code generation utilities for workflow step functions
  */
 
-import { AUTO_GENERATED_TEMPLATES } from "@/lib/codegen-registry";
 import conditionTemplate from "@/lib/codegen-templates/condition";
 import databaseQueryTemplate from "@/lib/codegen-templates/database-query";
 import httpRequestTemplate from "@/lib/codegen-templates/http-request";
@@ -31,7 +30,7 @@ const FALLBACK_UNKNOWN_CODE = `async function unknownStep(input: Record<string, 
 type NodeConfig = Record<string, unknown>;
 
 function generateTriggerCode(config: NodeConfig | undefined): string {
-  const triggerType = (config?.triggerType as string) || "Manual";
+  const triggerType = (config?.triggerType as string) || "Webhook";
 
   if (triggerType === "Schedule") {
     const cron = (config?.scheduleCron as string) || "0 9 * * *";
@@ -76,12 +75,7 @@ function generateActionCode(actionType: string | undefined): string {
   // Look up plugin actions in registry
   const action = findActionById(actionType);
   if (action) {
-    // Prefer auto-generated templates, fall back to manual templates
-    return (
-      AUTO_GENERATED_TEMPLATES[action.id] ||
-      action.codegenTemplate ||
-      FALLBACK_ACTION_CODE
-    );
+    return action.codegenTemplate || FALLBACK_ACTION_CODE;
   }
 
   return FALLBACK_ACTION_CODE;
