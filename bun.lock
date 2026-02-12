@@ -5,7 +5,7 @@
     "": {
       "name": "ai-workflow-builder-template",
       "dependencies": {
-        "@fountain-bio/acuity": "0.0.23",
+        "@fountain-bio/acuity": "^0.0.25",
         "@hono/zod-validator": "^0.7.6",
         "@linear/sdk": "^63.2.0",
         "@logtape/logtape": "^2.0.2",
@@ -187,7 +187,7 @@
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.10", "", {}, "sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ=="],
 
-    "@fountain-bio/acuity": ["@fountain-bio/acuity@0.0.23", "https://npm.pkg.github.com/@fountain-bio/acuity/-/acuity-0.0.23.tgz", { "dependencies": { "yargs": "18.0.0" } }, "sha512-kj0oYpdDD/BRcsouBCL/h9rBAa//h/3SxQ9/gPRikGC8hVwQ3wlLlGg/AuKCr8yQy+31wLEkR7ncXBeC4tKSqA=="],
+    "@fountain-bio/acuity": ["@fountain-bio/acuity@0.0.25", "", { "dependencies": { "yargs": "^18.0.0" }, "bin": { "acuity": "dist/cli.js" } }, "sha512-K+Z7b6b8v1jjB9r8JvYtvZoxrajNLyhJPhS+541w38TX5s6ltSBXr+wCCiqdZbhvozOYx3lrQh0OGMn4FVZYew=="],
 
     "@graphql-typed-document-node/core": ["@graphql-typed-document-node/core@3.2.0", "", { "peerDependencies": { "graphql": "15.10.1" } }, "sha512-mB9oAsNCm9aM3/SOv4YtBMqZbYj10R7dkq8byBqxGY/ncFwhf2oQzMV+LCRlWoDSEBJ3COiR1yeDvMtsoOsuFQ=="],
 

@@ -24,7 +24,7 @@
     "inngest:dev": "sh -c 'until curl -sSf http://localhost:4017/api/inngest >/dev/null 2>/dev/null; do sleep 1; done; bun run inngest-cli dev --no-discovery -u http://localhost:4017/api/inngest -p 8388 --connect-gateway-port 8390 --connect-gateway-grpc-port 50062 --connect-executor-grpc-port 50063 --persist'"
   },
   "dependencies": {
-    "@fountain-bio/acuity": "0.0.23",
+    "@fountain-bio/acuity": "^0.0.25",
     "@hono/zod-validator": "^0.7.6",
     "@linear/sdk": "^63.2.0",
     "@logtape/logtape": "^2.0.2",

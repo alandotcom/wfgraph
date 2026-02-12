@@ -337,25 +337,6 @@ Available types for action `configFields`:
 
 ## Critical Rules
 
-### Use fetch, Not SDKs
-
-Plugins must use the native `fetch` API instead of SDK dependencies:
-
-```typescript
-// CORRECT - use fetch directly
-const response = await fetch("https://api.service.com/endpoint", {
-  method: "POST",
-  headers: { Authorization: `Bearer ${apiKey}` },
-  body: JSON.stringify(data),
-});
-
-// WRONG - do not add SDK dependencies
-import { ServiceClient } from "service-sdk";  // Never do this
-const client = new ServiceClient(apiKey);
-```
-
-This reduces supply chain attack surface by avoiding transitive dependencies.
-
 ### Naming Conventions
 
 - Plugin folder name = plugin `type` (kebab-case): `my-service`

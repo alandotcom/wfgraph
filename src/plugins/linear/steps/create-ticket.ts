@@ -1,32 +1,13 @@
-
+import {
+  LinearClient,
+  LinearError,
+  parseLinearError,
+  type LinearErrorRaw,
+} from "@linear/sdk";
 import { fetchCredentials } from "@/lib/credential-fetcher";
 import { type StepInput, withStepLogging } from "@/lib/steps/step-handler";
 import { getErrorMessage } from "@/lib/utils";
 import type { LinearCredentials } from "../credentials";
-
-const LINEAR_API_URL = "https://api.linear.app/graphql";
-
-type LinearGraphQLResponse<T> = {
-  data?: T;
-  errors?: Array<{ message: string }>;
-};
-
-type TeamsQueryResponse = {
-  teams: {
-    nodes: Array<{ id: string; name: string }>;
-  };
-};
-
-type CreateIssueMutationResponse = {
-  issueCreate: {
-    success: boolean;
-    issue?: {
-      id: string;
-      title: string;
-      url: string;
-    };
-  };
-};
 
 type CreateTicketResult =
   | { success: true; data: { id: string; url: string; title: string } }
@@ -41,27 +22,6 @@ export type CreateTicketInput = StepInput &
   CreateTicketCoreInput & {
     integrationId?: string;
   };
-
-async function linearQuery<T>(
-  apiKey: string,
-  query: string,
-  variables?: Record<string, unknown>
-): Promise<LinearGraphQLResponse<T>> {
-  const response = await fetch(LINEAR_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: apiKey,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Linear API error: HTTP ${response.status}`);
-  }
-
-  return response.json() as Promise<LinearGraphQLResponse<T>>;
-}
 
 /**
  * Core logic - portable between app and export
@@ -84,22 +44,14 @@ async function stepHandler(
   }
 
   try {
+    const linearClient = new LinearClient({ apiKey });
     let targetTeamId = teamId;
 
     if (!targetTeamId) {
-      const teamsResult = await linearQuery<TeamsQueryResponse>(
-        apiKey,
-        `query { teams { nodes { id name } } }`
-      );
-
-      if (teamsResult.errors?.length) {
-        return {
-          success: false,
-          error: { message: teamsResult.errors[0].message },
-        };
-      }
-
-      const firstTeam = teamsResult.data?.teams.nodes[0];
+      const teamsResult = await linearClient.teams({
+        first: 1,
+      });
+      const firstTeam = teamsResult.nodes[0];
       if (!firstTeam) {
         return {
           success: false,
@@ -109,33 +61,13 @@ async function stepHandler(
       targetTeamId = firstTeam.id;
     }
 
-    const createResult = await linearQuery<CreateIssueMutationResponse>(
-      apiKey,
-      `mutation CreateIssue($title: String!, $description: String, $teamId: String!) {
-        issueCreate(input: { title: $title, description: $description, teamId: $teamId }) {
-          success
-          issue {
-            id
-            title
-            url
-          }
-        }
-      }`,
-      {
-        title: input.ticketTitle,
-        description: input.ticketDescription,
-        teamId: targetTeamId,
-      }
-    );
+    const createResult = await linearClient.createIssue({
+      title: input.ticketTitle,
+      description: input.ticketDescription,
+      teamId: targetTeamId,
+    });
 
-    if (createResult.errors?.length) {
-      return {
-        success: false,
-        error: { message: createResult.errors[0].message },
-      };
-    }
-
-    const issue = createResult.data?.issueCreate.issue;
+    const issue = createResult.issue ? await createResult.issue : undefined;
     if (!issue) {
       return {
         success: false,
@@ -152,9 +84,16 @@ async function stepHandler(
       },
     };
   } catch (error) {
+    const linearError =
+      error instanceof LinearError
+        ? error
+        : parseLinearError(error as LinearErrorRaw);
+
     return {
       success: false,
-      error: { message: `Failed to create ticket: ${getErrorMessage(error)}` },
+      error: {
+        message: `Failed to create ticket: ${linearError.errors?.[0]?.message || linearError.message || getErrorMessage(error)}`,
+      },
     };
   }
 }
@@ -165,7 +104,6 @@ async function stepHandler(
 export async function createTicketStep(
   input: CreateTicketInput
 ): Promise<CreateTicketResult> {
-
   const credentials = input.integrationId
     ? await fetchCredentials(input.integrationId)
     : {};

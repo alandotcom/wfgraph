@@ -1,16 +1,15 @@
 
+import { ErrorCode, WebClient } from "@slack/web-api";
 import { fetchCredentials } from "@/lib/credential-fetcher";
 import { type StepInput, withStepLogging } from "@/lib/steps/step-handler";
 import { getErrorMessage } from "@/lib/utils";
 import type { SlackCredentials } from "../credentials";
 
-const SLACK_API_URL = "https://slack.com/api";
-
-type SlackPostMessageResponse = {
-  ok: boolean;
-  ts?: string;
-  channel?: string;
-  error?: string;
+type SlackWebApiError = {
+  code?: ErrorCode;
+  data?: { error?: string };
+  message?: string;
+  statusCode?: number;
 };
 
 type SendSlackMessageResult =
@@ -26,6 +25,27 @@ export type SendSlackMessageInput = StepInput &
   SendSlackMessageCoreInput & {
     integrationId?: string;
   };
+
+function getSlackErrorMessage(error: unknown): string {
+  if (!error || typeof error !== "object") {
+    return getErrorMessage(error);
+  }
+
+  const slackError = error as SlackWebApiError;
+
+  if (slackError.code === ErrorCode.PlatformError && slackError.data?.error) {
+    return slackError.data.error;
+  }
+
+  if (
+    slackError.code === ErrorCode.HTTPError &&
+    typeof slackError.statusCode === "number"
+  ) {
+    return `HTTP ${slackError.statusCode}`;
+  }
+
+  return slackError.message || getErrorMessage(error);
+}
 
 /**
  * Core logic - portable between app and export
@@ -45,43 +65,21 @@ async function stepHandler(
   }
 
   try {
-    const response = await fetch(`${SLACK_API_URL}/chat.postMessage`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        channel: input.slackChannel,
-        text: input.slackMessage,
-      }),
+    const slackClient = new WebClient(apiKey);
+    const result = await slackClient.chat.postMessage({
+      channel: input.slackChannel,
+      text: input.slackMessage,
     });
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: `HTTP ${response.status}: Failed to send Slack message`,
-      };
-    }
-
-    const result = (await response.json()) as SlackPostMessageResponse;
-
-    if (!result.ok) {
-      return {
-        success: false,
-        error: result.error || "Failed to send Slack message",
-      };
-    }
 
     return {
       success: true,
       ts: result.ts || "",
-      channel: result.channel || "",
+      channel: typeof result.channel === "string" ? result.channel : "",
     };
   } catch (error) {
     return {
       success: false,
-      error: `Failed to send Slack message: ${getErrorMessage(error)}`,
+      error: `Failed to send Slack message: ${getSlackErrorMessage(error)}`,
     };
   }
 }
