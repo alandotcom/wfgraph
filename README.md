@@ -1,4 +1,4 @@
-# AI Workflow Builder Template
+# Rova
 
 A Bun-based workflow automation app with a visual editor, typed API routes, and plugin-driven integrations.
 

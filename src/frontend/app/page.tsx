@@ -48,7 +48,7 @@ const Home = () => {
 
   // Update page title when workflow name changes
   useEffect(() => {
-    document.title = `${currentWorkflowName} - AI Workflow Builder`;
+    document.title = `${currentWorkflowName} - Rova`;
   }, [currentWorkflowName]);
 
   // Handler to add the first node (replaces the "add" node)
