@@ -167,7 +167,13 @@ function flattenSchemaPathOptions(
   const paths: SchemaPathOption[] = [];
 
   for (const field of schema) {
-    const currentPath = prefix ? `${prefix}.${field.name}` : field.name;
+    const fieldName = field.name.trim();
+
+    if (!fieldName) {
+      continue;
+    }
+
+    const currentPath = prefix ? `${prefix}.${fieldName}` : fieldName;
     paths.push({ path: currentPath, type: field.type });
 
     if (field.type === "object" && field.fields?.length) {
