@@ -1,14 +1,32 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-  "extends": ["ultracite/core", "ultracite/react", "ultracite/next"],
+  "extends": ["ultracite/core", "ultracite/react"],
+  "javascript": {
+    "globals": ["Bun"]
+  },
+  "overrides": [
+    {
+      "includes": ["src/backend/**"],
+      "javascript": {
+        "globals": ["Bun"]
+      },
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off"
+          }
+        }
+      }
+    }
+  ],
   "files": {
     "includes": [
       "**/*",
-      "!components/ui",
-      "!components/ai-elements",
-      "!lib/utils.ts",
-      "!hooks/use-mobile.ts",
-      "!plugins"
+      "!src/components/ui",
+      "!src/components/ai-elements",
+      "!src/lib/utils.ts",
+      "!src/hooks/use-mobile.ts",
+      "!src/plugins"
     ]
   }
 }

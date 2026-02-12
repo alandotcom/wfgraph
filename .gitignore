@@ -50,3 +50,6 @@ tmp/
 
 .agents/
 .npm-cache/
+*.log
+.claude/skills
+.inngest/*.db

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "workflows_name_ci_uidx" ON "workflows" USING btree (lower("name"));

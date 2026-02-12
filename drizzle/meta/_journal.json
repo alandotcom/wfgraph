@@ -5,50 +5,22 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1763524363750,
-      "tag": "0000_easy_supernaut",
+      "when": 1770872425939,
+      "tag": "0000_old_randall",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1763686045429,
-      "tag": "0001_dark_human_cannonball",
+      "when": 1770876457453,
+      "tag": "0001_robust_leper_queen",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "7",
-      "when": 1764691121867,
-      "tag": "0002_icy_otto_octavius",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1764694021611,
-      "tag": "0003_clammy_tusk",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1765834764376,
-      "tag": "0004_real_wither",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1770772523981,
-      "tag": "0005_closed_victor_mancha",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1770775240822,
-      "tag": "0006_strange_millenium_guard",
+      "when": 1770916643011,
+      "tag": "0002_narrow_tempest",
       "breakpoints": true
     }
   ]
