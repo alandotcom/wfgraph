@@ -38,7 +38,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { findActionById } from "@/plugins";
 import type { IntegrationType } from "@/shared/types/integration";
 import { ActionConfig } from "./config/action-config";
@@ -161,6 +160,8 @@ export const PanelInner = () => {
   const [showDeleteRunsAlert, setShowDeleteRunsAlert] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useAtom(propertiesPanelActiveTabAtom);
+  const validActiveTab =
+    activeTab === "runs" && isOwner ? "runs" : "properties";
   const refreshRunsRef = useRef<(() => Promise<void>) | null>(null);
   const autoSelectAbortControllersRef = useRef<Record<string, AbortController>>(
     {}
@@ -514,32 +515,36 @@ export const PanelInner = () => {
   if (!selectedNode) {
     return (
       <>
-        <Tabs
-          className="size-full"
-          defaultValue="properties"
-          onValueChange={setActiveTab}
-          value={activeTab}
-        >
-          <TabsList className="h-14 w-full shrink-0 rounded-none border-b bg-transparent px-4 py-2.5">
-            <TabsTrigger
-              className="bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none"
-              value="properties"
-            >
-              Properties
-            </TabsTrigger>
-            {isOwner && (
-              <TabsTrigger
-                className="bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                value="runs"
+        <div className="flex size-full flex-col">
+          <div className="shrink-0 border-b px-4 py-2.5">
+            <div className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-muted p-[3px] text-muted-foreground">
+              <button
+                className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 py-1 font-medium text-sm transition-[color,box-shadow] ${
+                  validActiveTab === "properties"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground"
+                }`}
+                onClick={() => setActiveTab("properties")}
+                type="button"
               >
-                Runs
-              </TabsTrigger>
-            )}
-          </TabsList>
-          <TabsContent
-            className="flex flex-col overflow-hidden"
-            value="properties"
-          >
+                Properties
+              </button>
+              {isOwner && (
+                <button
+                  className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 py-1 font-medium text-sm transition-[color,box-shadow] ${
+                    validActiveTab === "runs"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => setActiveTab("runs")}
+                  type="button"
+                >
+                  Runs
+                </button>
+              )}
+            </div>
+          </div>
+          {validActiveTab === "properties" && (
             <div className="flex-1 space-y-4 overflow-y-auto p-4">
               <div className="space-y-2">
                 <Label className="ml-1" htmlFor="workflow-name">
@@ -601,9 +606,9 @@ export const PanelInner = () => {
                 </div>
               )}
             </div>
-          </TabsContent>
-          {isOwner && (
-            <TabsContent className="flex flex-col overflow-hidden" value="runs">
+          )}
+          {isOwner && validActiveTab === "runs" && (
+            <div className="flex min-h-0 flex-1 flex-col">
               {/* Actions in content header */}
               <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
                 <Button
@@ -630,13 +635,13 @@ export const PanelInner = () => {
               </div>
               <div className="flex-1 space-y-4 overflow-y-auto p-4">
                 <WorkflowRuns
-                  isActive={activeTab === "runs"}
+                  isActive={validActiveTab === "runs"}
                   onRefreshRef={refreshRunsRef}
                 />
               </div>
-            </TabsContent>
+            </div>
           )}
-        </Tabs>
+        </div>
 
         <AlertDialog
           onOpenChange={setShowDeleteRunsAlert}
@@ -664,166 +669,173 @@ export const PanelInner = () => {
 
   return (
     <>
-      <Tabs
-        className="size-full"
-        data-testid="properties-panel"
-        defaultValue="properties"
-        onValueChange={setActiveTab}
-        value={activeTab}
-      >
-        <TabsList className="h-14 w-full shrink-0 rounded-none border-b bg-transparent px-4 py-2.5">
-          <TabsTrigger
-            className="bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none"
-            value="properties"
-          >
-            Properties
-          </TabsTrigger>
-          {isOwner && (
-            <TabsTrigger
-              className="bg-transparent text-muted-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none"
-              value="runs"
+      <div className="flex size-full flex-col" data-testid="properties-panel">
+        <div className="shrink-0 border-b px-4 py-2.5">
+          <div className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-muted p-[3px] text-muted-foreground">
+            <button
+              className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 py-1 font-medium text-sm transition-[color,box-shadow] ${
+                validActiveTab === "properties"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground"
+              }`}
+              onClick={() => setActiveTab("properties")}
+              type="button"
             >
-              Runs
-            </TabsTrigger>
-          )}
-        </TabsList>
-        <TabsContent
-          className="flex flex-col overflow-hidden"
-          value="properties"
-        >
-          {/* Action selection - full height flex layout */}
-          {selectedNode.data.type === "action" &&
-            !selectedNode.data.config?.actionType &&
-            isOwner && (
-              <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
-                <ActionGrid
-                  disabled={isGenerating}
-                  isNewlyCreated={selectedNode?.id === newlyCreatedNodeId}
-                  onSelectAction={(actionType) => {
-                    handleUpdateConfig("actionType", actionType);
-                    // Clear newly created tracking once action is selected
-                    if (selectedNode?.id === newlyCreatedNodeId) {
-                      setNewlyCreatedNodeId(null);
-                    }
-                  }}
-                />
-              </div>
+              Properties
+            </button>
+            {isOwner && (
+              <button
+                className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 py-1 font-medium text-sm transition-[color,box-shadow] ${
+                  validActiveTab === "runs"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground"
+                }`}
+                onClick={() => setActiveTab("runs")}
+                type="button"
+              >
+                Runs
+              </button>
             )}
-
-          {/* Other content - scrollable */}
-          {!(
-            selectedNode.data.type === "action" &&
-            !selectedNode.data.config?.actionType &&
-            isOwner
-          ) && (
-            <div className="flex-1 space-y-4 overflow-y-auto p-4">
-              {selectedNode.data.type === "trigger" && (
-                <TriggerConfig
-                  config={selectedNode.data.config || {}}
-                  disabled={isGenerating || !isOwner}
-                  onUpdateConfig={handleUpdateConfig}
-                  workflowId={currentWorkflowId ?? undefined}
-                />
+          </div>
+        </div>
+        {validActiveTab === "properties" && (
+          <div className="flex min-h-0 flex-1 flex-col">
+            {/* Action selection - full height flex layout */}
+            {selectedNode.data.type === "action" &&
+              !selectedNode.data.config?.actionType &&
+              isOwner && (
+                <div className="flex-1 overflow-y-auto px-4 pt-4">
+                  <ActionGrid
+                    disabled={isGenerating}
+                    isNewlyCreated={selectedNode?.id === newlyCreatedNodeId}
+                    onSelectAction={(actionType) => {
+                      handleUpdateConfig("actionType", actionType);
+                      // Clear newly created tracking once action is selected
+                      if (selectedNode?.id === newlyCreatedNodeId) {
+                        setNewlyCreatedNodeId(null);
+                      }
+                    }}
+                  />
+                </div>
               )}
 
-              {selectedNode.data.type === "action" &&
-                !selectedNode.data.config?.actionType &&
-                !isOwner && (
+            {/* Other content - scrollable */}
+            {!(
+              selectedNode.data.type === "action" &&
+              !selectedNode.data.config?.actionType &&
+              isOwner
+            ) && (
+              <div className="flex-1 space-y-4 overflow-y-auto p-4">
+                {selectedNode.data.type === "trigger" && (
+                  <TriggerConfig
+                    config={selectedNode.data.config || {}}
+                    disabled={isGenerating || !isOwner}
+                    onUpdateConfig={handleUpdateConfig}
+                    workflowId={currentWorkflowId ?? undefined}
+                  />
+                )}
+
+                {selectedNode.data.type === "action" &&
+                  !selectedNode.data.config?.actionType &&
+                  !isOwner && (
+                    <div className="rounded-lg border border-muted bg-muted/30 p-3">
+                      <p className="text-muted-foreground text-sm">
+                        No action configured for this step.
+                      </p>
+                    </div>
+                  )}
+
+                {selectedNode.data.type === "action" &&
+                selectedNode.data.config?.actionType ? (
+                  <ActionConfig
+                    config={selectedNode.data.config || {}}
+                    disabled={isGenerating || !isOwner}
+                    isOwner={isOwner}
+                    onUpdateConfig={handleUpdateConfig}
+                  />
+                ) : null}
+
+                {selectedNode.data.type !== "action" ||
+                selectedNode.data.config?.actionType ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label className="ml-1" htmlFor="label">
+                        Label
+                      </Label>
+                      <Input
+                        disabled={isGenerating || !isOwner}
+                        id="label"
+                        onChange={(e) => handleUpdateLabel(e.target.value)}
+                        value={selectedNode.data.label}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="ml-1" htmlFor="description">
+                        Description
+                      </Label>
+                      <Input
+                        disabled={isGenerating || !isOwner}
+                        id="description"
+                        onChange={(e) =>
+                          handleUpdateDescription(e.target.value)
+                        }
+                        placeholder="Optional description"
+                        value={selectedNode.data.description || ""}
+                      />
+                    </div>
+                  </>
+                ) : null}
+
+                {!isOwner && (
                   <div className="rounded-lg border border-muted bg-muted/30 p-3">
                     <p className="text-muted-foreground text-sm">
-                      No action configured for this step.
+                      You are viewing a public workflow. Duplicate it to make
+                      changes.
                     </p>
                   </div>
                 )}
 
-              {selectedNode.data.type === "action" &&
-              selectedNode.data.config?.actionType ? (
-                <ActionConfig
-                  config={selectedNode.data.config || {}}
-                  disabled={isGenerating || !isOwner}
-                  isOwner={isOwner}
-                  onUpdateConfig={handleUpdateConfig}
-                />
-              ) : null}
-
-              {selectedNode.data.type !== "action" ||
-              selectedNode.data.config?.actionType ? (
-                <>
-                  <div className="space-y-2">
-                    <Label className="ml-1" htmlFor="label">
-                      Label
-                    </Label>
-                    <Input
-                      disabled={isGenerating || !isOwner}
-                      id="label"
-                      onChange={(e) => handleUpdateLabel(e.target.value)}
-                      value={selectedNode.data.label}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="ml-1" htmlFor="description">
-                      Description
-                    </Label>
-                    <Input
-                      disabled={isGenerating || !isOwner}
-                      id="description"
-                      onChange={(e) => handleUpdateDescription(e.target.value)}
-                      placeholder="Optional description"
-                      value={selectedNode.data.description || ""}
-                    />
-                  </div>
-                </>
-              ) : null}
-
-              {!isOwner && (
-                <div className="rounded-lg border border-muted bg-muted/30 p-3">
-                  <p className="text-muted-foreground text-sm">
-                    You are viewing a public workflow. Duplicate it to make
-                    changes.
-                  </p>
-                </div>
-              )}
-
-              {/* Actions moved into content */}
-              {isOwner && (
-                <div className="flex items-center gap-2 pt-4">
-                  {selectedNode.data.type === "action" && (
+                {/* Actions moved into content */}
+                {isOwner && (
+                  <div className="flex items-center gap-2 pt-4">
+                    {selectedNode.data.type === "action" && (
+                      <Button
+                        className="text-muted-foreground"
+                        onClick={handleToggleEnabled}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        {selectedNode.data.enabled === false ? (
+                          <>
+                            <EyeOff className="mr-2 size-4" />
+                            Disabled
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="mr-2 size-4" />
+                            Enabled
+                          </>
+                        )}
+                      </Button>
+                    )}
                     <Button
                       className="text-muted-foreground"
-                      onClick={handleToggleEnabled}
+                      onClick={() => setShowDeleteNodeAlert(true)}
                       size="sm"
                       variant="ghost"
                     >
-                      {selectedNode.data.enabled === false ? (
-                        <>
-                          <EyeOff className="mr-2 size-4" />
-                          Disabled
-                        </>
-                      ) : (
-                        <>
-                          <Eye className="mr-2 size-4" />
-                          Enabled
-                        </>
-                      )}
+                      <Trash2 className="mr-2 size-4" />
+                      Delete
                     </Button>
-                  )}
-                  <Button
-                    className="text-muted-foreground"
-                    onClick={() => setShowDeleteNodeAlert(true)}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    <Trash2 className="mr-2 size-4" />
-                    Delete
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-        </TabsContent>
-        {isOwner && (
-          <TabsContent className="flex flex-col overflow-hidden" value="runs">
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {isOwner && validActiveTab === "runs" && (
+          <div className="flex min-h-0 flex-1 flex-col">
             {/* Actions in content header */}
             <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
               <Button
@@ -850,13 +862,13 @@ export const PanelInner = () => {
             </div>
             <div className="flex-1 space-y-4 overflow-y-auto p-4">
               <WorkflowRuns
-                isActive={activeTab === "runs"}
+                isActive={validActiveTab === "runs"}
                 onRefreshRef={refreshRunsRef}
               />
             </div>
-          </TabsContent>
+          </div>
         )}
-      </Tabs>
+      </div>
 
       <AlertDialog
         onOpenChange={setShowDeleteRunsAlert}

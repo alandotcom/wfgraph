@@ -297,28 +297,31 @@ export function TriggerConfig({
   };
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Warning assembly validates multiple independent webhook configuration rules.
-  const warnings = useMemo(() => {
-    const items: string[] = [];
+  const { configWarnings, payloadWarnings } = useMemo(() => {
+    const configItems: string[] = [];
+    const payloadItems: string[] = [];
 
     if (!eventPath.trim()) {
-      items.push("Event type field path is empty.");
+      configItems.push("Event type field path is empty.");
     }
 
     if (!correlationPath.trim()) {
-      items.push("Entity ID field path is empty.");
+      configItems.push("Entity ID field path is empty.");
     }
 
     if (schema.length === 0) {
-      items.push(
+      configItems.push(
         "Define a request schema first, then pick routing fields from that schema."
       );
     } else {
       if (eventPath && !schemaPaths.includes(eventPath)) {
-        items.push(`Event type field "${eventPath}" is not in request schema.`);
+        configItems.push(
+          `Event type field "${eventPath}" is not in request schema.`
+        );
       }
 
       if (correlationPath && !schemaPaths.includes(correlationPath)) {
-        items.push(
+        configItems.push(
           `Entity ID field "${correlationPath}" is not in request schema.`
         );
       }
@@ -329,7 +332,7 @@ export function TriggerConfig({
     const deleteSet = parseCsvSet(deleteEvents);
 
     if (createSet.size === 0 && updateSet.size === 0 && deleteSet.size === 0) {
-      items.push(
+      configItems.push(
         "No events are configured. Incoming webhooks will not start, restart, or stop runs."
       );
     }
@@ -338,7 +341,7 @@ export function TriggerConfig({
       updateSet.has(eventName)
     );
     if (overlappingCreateUpdate.length > 0) {
-      items.push(
+      configItems.push(
         `These events appear in both start and restart lists: ${overlappingCreateUpdate.join(", ")}`
       );
     }
@@ -347,7 +350,7 @@ export function TriggerConfig({
       deleteSet.has(eventName)
     );
     if (overlappingCreateDelete.length > 0) {
-      items.push(
+      configItems.push(
         `These events appear in both start and stop lists: ${overlappingCreateDelete.join(", ")}`
       );
     }
@@ -356,13 +359,13 @@ export function TriggerConfig({
       deleteSet.has(eventName)
     );
     if (overlappingUpdateDelete.length > 0) {
-      items.push(
+      configItems.push(
         `These events appear in both restart and stop lists: ${overlappingUpdateDelete.join(", ")}`
       );
     }
 
     if (parsedMockRequest.error) {
-      items.push(parsedMockRequest.error);
+      payloadItems.push(parsedMockRequest.error);
     } else if (parsedMockRequest.payload) {
       const eventValue = getValueByPath(parsedMockRequest.payload, eventPath);
       const correlationValue = getValueByPath(
@@ -371,11 +374,13 @@ export function TriggerConfig({
       );
 
       if (eventValue === undefined) {
-        items.push(`Sample payload is missing event type at "${eventPath}".`);
+        payloadItems.push(
+          `Sample payload is missing event type at "${eventPath}".`
+        );
       }
 
       if (correlationValue === undefined) {
-        items.push(
+        payloadItems.push(
           `Sample payload is missing entity ID at "${correlationPath}".`
         );
       }
@@ -387,14 +392,17 @@ export function TriggerConfig({
         );
 
         if (missingSchemaPaths.length > 0) {
-          items.push(
+          payloadItems.push(
             `Schema fields missing from sample payload: ${missingSchemaPaths.slice(0, 3).join(", ")}${missingSchemaPaths.length > 3 ? ", ..." : ""}`
           );
         }
       }
     }
 
-    return items;
+    return {
+      configWarnings: configItems,
+      payloadWarnings: payloadItems,
+    };
   }, [
     correlationPath,
     createEvents,
@@ -653,7 +661,7 @@ export function TriggerConfig({
             </p>
           </div>
 
-          {warnings.length > 0 && (
+          {configWarnings.length > 0 && (
             <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
               <div className="flex items-center gap-2">
                 <TriangleAlert className="h-4 w-4 text-amber-600" />
@@ -662,7 +670,7 @@ export function TriggerConfig({
                 </p>
               </div>
               <div className="space-y-1">
-                {warnings.map((warning) => (
+                {configWarnings.map((warning) => (
                   <p
                     className="text-amber-700 text-xs dark:text-amber-200"
                     key={warning}
@@ -709,6 +717,20 @@ export function TriggerConfig({
                 }}
                 value={mockRequest}
               />
+            </div>
+            <div className="min-h-5">
+              {payloadWarnings.length > 0 ? (
+                <div className="space-y-1">
+                  {payloadWarnings.map((warning) => (
+                    <p
+                      className="text-amber-700 text-xs dark:text-amber-200"
+                      key={warning}
+                    >
+                      {warning}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <p className="text-muted-foreground text-xs">
               Use this JSON to test trigger behavior without sending a real

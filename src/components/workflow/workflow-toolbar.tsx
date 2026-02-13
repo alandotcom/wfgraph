@@ -1317,11 +1317,7 @@ function WorkflowMenuComponent({
           <DropdownMenuContent align="start" className="w-64">
             <DropdownMenuItem
               className="flex items-center justify-between"
-              render={
-                <a href="/">
-                  <span className="sr-only">New Workflow</span>
-                </a>
-              }
+              onClick={() => window.location.assign("/")}
             >
               New Workflow{" "}
               {!workflowId && <Check className="size-4 shrink-0" />}

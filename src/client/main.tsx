@@ -4,6 +4,10 @@ import { createRoot } from "react-dom/client";
 import "@/frontend/app/globals.css";
 import { router } from "./router";
 
+if (process.env.NODE_ENV === "development") {
+  import("react-grab");
+}
+
 const queryClient = new QueryClient();
 
 const isResizeObserverLoopMessage = (message: string | undefined): boolean =>

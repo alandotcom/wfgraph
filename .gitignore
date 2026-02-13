@@ -53,3 +53,4 @@ tmp/
 *.log
 .claude/skills
 .inngest/*.db
+dist/
