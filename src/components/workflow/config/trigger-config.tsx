@@ -16,6 +16,7 @@ import {
 import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { parseCsvSet } from "@/shared/utils/csv";
 import { getValueByPath } from "@/shared/utils/object-path";
+import { parseScheduleExpression } from "@/shared/utils/schedule-expression";
 import { SchemaBuilder, type SchemaField } from "./schema-builder";
 
 type TriggerConfigProps = {
@@ -186,7 +187,12 @@ export function TriggerConfig({
   workflowId,
 }: TriggerConfigProps) {
   const triggerType = (config?.triggerType as string) || "Webhook";
+  const scheduleExpression = (config?.scheduleExpression as string) || "";
   const scheduleCron = (config?.scheduleCron as string) || "";
+  const resolvedSchedule = useMemo(
+    () => parseScheduleExpression(scheduleExpression || scheduleCron),
+    [scheduleExpression, scheduleCron]
+  );
 
   const webhookUrl = workflowId
     ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/workflows/${workflowId}/webhook`
@@ -248,23 +254,47 @@ export function TriggerConfig({
   }, [mockRequest]);
 
   const parsedCronDescription = useMemo(() => {
-    if (!scheduleCron.trim()) {
-      return { description: "", error: "" };
+    if (!(scheduleExpression.trim() || scheduleCron.trim())) {
+      return {
+        description: "",
+        error: "",
+        normalizedCron: "",
+        source: "cron" as const,
+      };
     }
 
     try {
       return {
-        description: cronstrue.toString(scheduleCron, { verbose: true }),
+        description: cronstrue.toString(resolvedSchedule?.cron ?? "", {
+          verbose: true,
+        }),
         error: "",
+        normalizedCron: resolvedSchedule?.cron ?? "",
+        source: resolvedSchedule?.source ?? ("cron" as const),
       };
     } catch (error) {
       return {
         description: "",
         error:
           error instanceof Error ? error.message : "Invalid cron expression.",
+        normalizedCron: "",
+        source: resolvedSchedule?.source ?? ("cron" as const),
       };
     }
-  }, [scheduleCron]);
+  }, [
+    resolvedSchedule?.cron,
+    resolvedSchedule?.source,
+    scheduleCron,
+    scheduleExpression,
+  ]);
+
+  const handleScheduleExpressionChange = (value: string) => {
+    onUpdateConfig("scheduleExpression", value);
+    onUpdateConfig(
+      "scheduleCron",
+      parseScheduleExpression(value)?.cron ?? value
+    );
+  };
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Warning assembly validates multiple independent webhook configuration rules.
   const warnings = useMemo(() => {
@@ -697,13 +727,22 @@ export function TriggerConfig({
             <Input
               disabled={disabled}
               id="scheduleCron"
-              onChange={(e) => onUpdateConfig("scheduleCron", e.target.value)}
+              onChange={(e) => handleScheduleExpressionChange(e.target.value)}
               placeholder="0 9 * * * (every day at 9am)"
-              value={scheduleCron}
+              value={scheduleExpression || scheduleCron}
             />
             {parsedCronDescription.description ? (
               <p className="text-muted-foreground text-xs">
                 {parsedCronDescription.description}
+              </p>
+            ) : null}
+            {parsedCronDescription.source === "natural-language" &&
+            parsedCronDescription.normalizedCron ? (
+              <p className="text-muted-foreground text-xs">
+                Cron:{" "}
+                <code className="font-mono text-[11px]">
+                  {parsedCronDescription.normalizedCron}
+                </code>
               </p>
             ) : null}
             {parsedCronDescription.error ? (

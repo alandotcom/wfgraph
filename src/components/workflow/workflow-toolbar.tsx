@@ -1049,7 +1049,7 @@ function ToolbarActions({
       {/* Add Step - Mobile Vertical */}
       <ButtonGroup className="flex lg:hidden" orientation="vertical">
         <Button
-          className="border hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5 disabled:[&>svg]:text-muted-foreground"
+          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
           disabled={state.isGenerating}
           onClick={handleAddStep}
           size="icon"
@@ -1063,7 +1063,7 @@ function ToolbarActions({
       {/* Properties - Mobile Vertical (always visible) */}
       <ButtonGroup className="flex lg:hidden" orientation="vertical">
         <Button
-          className="border hover:bg-black/5 dark:hover:bg-white/5"
+          className="border hover:bg-secondary dark:hover:bg-secondary"
           onClick={() => openOverlay(ConfigurationOverlay, {})}
           size="icon"
           title="Configuration"
@@ -1074,7 +1074,7 @@ function ToolbarActions({
         {/* Delete - Show when node or edge is selected */}
         {hasSelection && (
           <Button
-            className="border hover:bg-black/5 dark:hover:bg-white/5"
+            className="border hover:bg-secondary dark:hover:bg-secondary"
             onClick={handleDeleteConfirm}
             size="icon"
             title="Delete"
@@ -1088,7 +1088,7 @@ function ToolbarActions({
       {/* Add Step - Desktop Horizontal */}
       <ButtonGroup className="hidden lg:flex" orientation="horizontal">
         <Button
-          className="border hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5 disabled:[&>svg]:text-muted-foreground"
+          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
           disabled={state.isGenerating}
           onClick={handleAddStep}
           size="icon"
@@ -1102,7 +1102,7 @@ function ToolbarActions({
       {/* Undo/Redo - Mobile Vertical */}
       <ButtonGroup className="flex lg:hidden" orientation="vertical">
         <Button
-          className="border hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5 disabled:[&>svg]:text-muted-foreground"
+          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
           disabled={!state.canUndo || state.isGenerating}
           onClick={() => state.undo()}
           size="icon"
@@ -1112,7 +1112,7 @@ function ToolbarActions({
           <Undo2 className="size-4" />
         </Button>
         <Button
-          className="border hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5 disabled:[&>svg]:text-muted-foreground"
+          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
           disabled={!state.canRedo || state.isGenerating}
           onClick={() => state.redo()}
           size="icon"
@@ -1126,7 +1126,7 @@ function ToolbarActions({
       {/* Undo/Redo - Desktop Horizontal */}
       <ButtonGroup className="hidden lg:flex" orientation="horizontal">
         <Button
-          className="border hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5 disabled:[&>svg]:text-muted-foreground"
+          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
           disabled={!state.canUndo || state.isGenerating}
           onClick={() => state.undo()}
           size="icon"
@@ -1136,7 +1136,7 @@ function ToolbarActions({
           <Undo2 className="size-4" />
         </Button>
         <Button
-          className="border hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5 disabled:[&>svg]:text-muted-foreground"
+          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
           disabled={!state.canRedo || state.isGenerating}
           onClick={() => state.redo()}
           size="icon"
@@ -1174,7 +1174,7 @@ function SaveButton({
 
   return (
     <Button
-      className="relative border hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5 disabled:[&>svg]:text-muted-foreground"
+      className="relative border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
       disabled={!hasRealNodes || state.isGenerating || state.isSaving}
       onClick={handleSave}
       size="icon"
@@ -1210,7 +1210,7 @@ function RunButtonGroup({
   return (
     <ButtonGroup className="flex" orientation="horizontal">
       <Button
-        className="border hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5 disabled:[&>svg]:text-muted-foreground"
+        className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
         disabled={isDisabled}
         onClick={() => actions.handleExecute()}
         size="icon"
@@ -1228,7 +1228,7 @@ function RunButtonGroup({
         <DropdownMenuTrigger
           render={
             <Button
-              className="border hover:bg-black/5 disabled:opacity-100 dark:hover:bg-white/5 disabled:[&>svg]:text-muted-foreground"
+              className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
               disabled={isDisabled}
               size="icon"
               title="Run options"
@@ -1269,7 +1269,7 @@ function DuplicateButton({
 }) {
   return (
     <Button
-      className="h-9 border hover:bg-black/5 dark:hover:bg-white/5"
+      className="h-9 border hover:bg-secondary dark:hover:bg-secondary"
       disabled={isDuplicating}
       onClick={onDuplicate}
       size="sm"
@@ -1300,7 +1300,7 @@ function WorkflowMenuComponent({
     <div className="flex flex-col gap-1">
       <div className="flex h-9 max-w-[160px] items-center overflow-hidden rounded-md border bg-secondary text-secondary-foreground sm:max-w-none">
         <DropdownMenu onOpenChange={(open) => open && actions.loadWorkflows()}>
-          <DropdownMenuTrigger className="flex h-full cursor-pointer items-center gap-2 px-3 font-medium text-sm transition-all hover:bg-black/5 dark:hover:bg-white/5">
+          <DropdownMenuTrigger className="flex h-full cursor-pointer items-center gap-2 px-3 font-medium text-sm transition-all hover:bg-secondary dark:hover:bg-secondary">
             <WorkflowIcon className="size-4 shrink-0" />
             <p className="truncate font-medium text-sm">
               {workflowId ? (
