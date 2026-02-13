@@ -34,7 +34,7 @@ import {
   postWorkflowsCurrent,
   postWorkflowWebhook,
   putIntegration,
-} from "./routes";
+} from "./server/routes";
 
 const idSchema = z.string().trim().min(1);
 const integrationTypeSchema = z.enum([

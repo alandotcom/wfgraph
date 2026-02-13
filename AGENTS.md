@@ -54,8 +54,8 @@ Important paths:
 
 ## Backend Architecture
 
-- Runtime server: Bun (`src/backend/server/index.ts`)
-- API framework: Hono (`src/backend/server/hono-app.ts`)
+- Runtime server: Bun (`src/server.ts`)
+- API framework: Hono (`src/backend/app.ts`)
 - API route exports: `src/backend/server/routes/index.ts`
 - Route handlers should remain light.
 - Business/domain logic belongs in `src/backend/services/<domain>`.

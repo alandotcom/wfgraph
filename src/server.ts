@@ -1,7 +1,7 @@
 import { serve } from "bun";
+import { app as apiApp } from "@/backend/app";
 import { configureAppLogging, getAppLogger } from "@/backend/lib/logger";
 import appHtml from "@/client/index.html";
-import { app as apiApp } from "./hono-app";
 
 function normalizePath(pathname: string): string {
   if (pathname.length > 1 && pathname.endsWith("/")) {

@@ -7,10 +7,10 @@
   "description": "Workflow automation platform with a visual editor and plugin integrations",
   "scripts": {
     "dev": "concurrently --kill-others-on-fail --names app,inngest --prefix-colors blue,magenta \"bun run dev:app\" \"bun run dev:inngest\"",
-    "dev:app": "NODE_ENV=development INNGEST_DEV=http://localhost:8388 bun --hot src/backend/server/index.ts",
+    "dev:app": "NODE_ENV=development INNGEST_DEV=http://localhost:8388 bun --hot src/server.ts",
     "dev:inngest": "bun run inngest:dev",
-    "build": "bun run src/scripts/migrate-prod.ts && bun build --target=bun --production --outdir=dist ./src/backend/server/index.ts",
-    "start": "NODE_ENV=production bun dist/index.js",
+    "build": "bun run src/scripts/migrate-prod.ts && bun build --target=bun --production --outdir=dist ./src/server.ts",
+    "start": "cd dist && NODE_ENV=production bun server.js",
     "test": "bun test",
     "test:watch": "bun test --watch",
     "type-check": "bun run tsc --noEmit",

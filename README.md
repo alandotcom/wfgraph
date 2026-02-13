@@ -6,8 +6,8 @@ A Bun-based workflow automation app with a visual editor, typed API routes, and 
 
 This project runs as a Bun server with a React SPA frontend.
 
-- HTTP server: Bun (`src/backend/server/index.ts`)
-- API: Hono (`src/backend/server/hono-app.ts`)
+- HTTP server: Bun (`src/server.ts`)
+- API: Hono (`src/backend/app.ts`)
 - Frontend: React SPA + TanStack Router (`src/client/main.tsx`, `src/client/router.tsx`)
 - State: Jotai
 - Data fetching/cache: TanStack Query

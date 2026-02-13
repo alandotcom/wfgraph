@@ -1,5 +1,5 @@
 import { hc } from "hono/client";
-import type { AppType } from "@/backend/server/hono-app";
+import type { AppType } from "@/backend/app";
 import type {
   IntegrationConfig,
   IntegrationType,
