@@ -187,6 +187,10 @@ Server-side barrel files are allowed.
 - Template reference model:
   - Autocomplete builds upstream node references only (based on incoming edges).
   - Canonical token format: `{{@nodeId:NodeLabel}}` and `{{@nodeId:NodeLabel.field}}` (`src/components/ui/template-autocomplete.tsx`).
+- Node input autofill behavior:
+  - Autofill/autocomplete for node inputs must only suggest variables available from valid upstream context (and trigger schema when applicable).
+  - Applying a suggestion should insert/replace only the active token at the cursor/selection; never overwrite unrelated user-authored text in the same field.
+  - Autofill must remain user-initiated (explicit selection/confirm) and should not silently rewrite saved node config values on render, focus, or node switch.
 
 ### Action Execution Semantics
 
