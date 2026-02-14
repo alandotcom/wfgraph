@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { serve as serveInngest } from "inngest/hono";
 import { z } from "zod";
+import { respond } from "@/backend/lib/http/respond";
 import { inngest } from "@/backend/lib/inngest/client";
 import { getInngestFunctions } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
@@ -360,90 +361,50 @@ const routes = app
       postWorkflowExecute(c.req.valid("param").workflowId, c.req.valid("json"))
   )
   .get("/workflows", async (c) => {
-    const result = await getWorkflows();
-    if (!result.ok) {
-      return c.json(result.error, result.status);
-    }
-    return c.json(result.data);
+    return respond(c, await getWorkflows());
   })
   .post(
     "/workflows/create",
     zValidator("json", workflowCreateSchema),
-    async (c) => {
-      const result = await postWorkflowsCreate(c.req.valid("json"));
-      if (!result.ok) {
-        return c.json(result.error, result.status);
-      }
-      return c.json(result.data);
-    }
+    async (c) => respond(c, await postWorkflowsCreate(c.req.valid("json")))
   )
-  .get("/workflows/current", async (c) => {
-    const result = await getWorkflowsCurrent();
-    if (!result.ok) {
-      return c.json(result.error, result.status);
-    }
-    return c.json(result.data);
-  })
+  .get("/workflows/current", async (c) =>
+    respond(c, await getWorkflowsCurrent())
+  )
   .post(
     "/workflows/current",
     zValidator("json", workflowCurrentSaveSchema),
-    async (c) => {
-      const result = await postWorkflowsCurrent(c.req.valid("json"));
-      if (!result.ok) {
-        return c.json(result.error, result.status);
-      }
-      return c.json(result.data);
-    }
+    async (c) => respond(c, await postWorkflowsCurrent(c.req.valid("json")))
   )
   .get(
     "/workflows/:workflowId",
     zValidator("param", workflowIdParamsSchema),
-    async (c) => {
-      const result = await getWorkflow(c.req.valid("param").workflowId);
-      if (!result.ok) {
-        return c.json(result.error, result.status);
-      }
-      return c.json(result.data);
-    }
+    async (c) => respond(c, await getWorkflow(c.req.valid("param").workflowId))
   )
   .patch(
     "/workflows/:workflowId",
     zValidator("param", workflowIdParamsSchema),
     zValidator("json", workflowPatchSchema),
-    async (c) => {
-      const result = await patchWorkflow(
-        c.req.valid("param").workflowId,
-        c.req.valid("json")
-      );
-      if (!result.ok) {
-        return c.json(result.error, result.status);
-      }
-      return c.json(result.data);
-    }
+    async (c) =>
+      respond(
+        c,
+        await patchWorkflow(
+          c.req.valid("param").workflowId,
+          c.req.valid("json")
+        )
+      )
   )
   .delete(
     "/workflows/:workflowId",
     zValidator("param", workflowIdParamsSchema),
-    async (c) => {
-      const result = await deleteWorkflow(c.req.valid("param").workflowId);
-      if (!result.ok) {
-        return c.json(result.error, result.status);
-      }
-      return c.json(result.data);
-    }
+    async (c) =>
+      respond(c, await deleteWorkflow(c.req.valid("param").workflowId))
   )
   .post(
     "/workflows/:workflowId/duplicate",
     zValidator("param", workflowIdParamsSchema),
-    async (c) => {
-      const result = await postWorkflowDuplicate(
-        c.req.valid("param").workflowId
-      );
-      if (!result.ok) {
-        return c.json(result.error, result.status);
-      }
-      return c.json(result.data);
-    }
+    async (c) =>
+      respond(c, await postWorkflowDuplicate(c.req.valid("param").workflowId))
   )
   .get(
     "/workflows/:workflowId/executions",

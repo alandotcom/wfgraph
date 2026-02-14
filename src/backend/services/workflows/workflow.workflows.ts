@@ -10,10 +10,15 @@ import {
   success,
 } from "@/backend/lib/service-result";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
+import {
+  buildWorkflowUpdateData,
+  toWorkflowApiPayload,
+} from "@/backend/services/workflows/workflow-mappers.workflows";
 import type {
   ApiErrorPayload,
   WorkflowApiPayload,
 } from "@/shared/workflow/api-contracts";
+import type { SerializedWorkflowGraph } from "@/shared/workflow/types";
 
 const workflowServiceLogger = getAppLogger("workflow", "service");
 
@@ -47,18 +52,7 @@ export async function getWorkflow(
       return failure(404, { error: "Workflow not found" });
     }
 
-    const payload: WorkflowApiPayload = {
-      id: workflow.id,
-      name: workflow.name,
-      description: workflow.description ?? undefined,
-      graph: workflow.graph,
-      visibility: "private",
-      isOwner: true,
-      createdAt: workflow.createdAt.toISOString(),
-      updatedAt: workflow.updatedAt.toISOString(),
-    };
-
-    return success(payload);
+    return success(toWorkflowApiPayload(workflow));
   } catch (error) {
     workflowServiceLogger.error("Failed to get workflow", {
       workflowId,
@@ -70,26 +64,6 @@ export async function getWorkflow(
   }
 }
 
-function buildUpdateData(
-  body: Record<string, unknown>
-): Record<string, unknown> {
-  const updateData: Record<string, unknown> = {
-    updatedAt: new Date(),
-    visibility: "private",
-  };
-
-  if (body.name !== undefined) {
-    updateData.name = body.name;
-  }
-  if (body.description !== undefined) {
-    updateData.description = body.description;
-  }
-  if (body.graph !== undefined) {
-    updateData.graph = body.graph;
-  }
-  return updateData;
-}
-
 export async function patchWorkflow(
   workflowId: string,
   body: {
@@ -99,6 +73,16 @@ export async function patchWorkflow(
   }
 ): Promise<PatchWorkflowResult> {
   const requestLogger = workflowServiceLogger.with({ workflowId });
+  const updateInput: {
+    name?: string;
+    description?: string;
+    graph?: SerializedWorkflowGraph;
+  } = {};
+
+  if (body.description !== undefined) {
+    updateInput.description = body.description;
+  }
+
   try {
     const existingWorkflow = await db.query.workflows.findFirst({
       where: eq(workflows.id, workflowId),
@@ -131,7 +115,7 @@ export async function patchWorkflow(
         });
       }
 
-      body.name = normalizedName;
+      updateInput.name = normalizedName;
     }
 
     if (body.graph !== undefined) {
@@ -158,10 +142,10 @@ export async function patchWorkflow(
         });
       }
 
-      body.graph = graphValidation.graph;
+      updateInput.graph = graphValidation.graph;
     }
 
-    const updateData = buildUpdateData(body);
+    const updateData = buildWorkflowUpdateData(updateInput);
 
     const [updatedWorkflow] = await db
       .update(workflows)
@@ -177,21 +161,10 @@ export async function patchWorkflow(
 
     requestLogger.info("Workflow updated", {
       workflowName: updatedWorkflow.name,
-      hasGraph: body.graph !== undefined,
+      hasGraph: updateInput.graph !== undefined,
     });
 
-    const payload: WorkflowApiPayload = {
-      id: updatedWorkflow.id,
-      name: updatedWorkflow.name,
-      description: updatedWorkflow.description ?? undefined,
-      graph: updatedWorkflow.graph,
-      visibility: "private",
-      isOwner: true,
-      createdAt: updatedWorkflow.createdAt.toISOString(),
-      updatedAt: updatedWorkflow.updatedAt.toISOString(),
-    };
-
-    return success(payload);
+    return success(toWorkflowApiPayload(updatedWorkflow));
   } catch (error) {
     requestLogger.error("Failed to update workflow", { error });
     return failure(500, {

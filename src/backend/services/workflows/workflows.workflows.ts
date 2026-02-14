@@ -7,6 +7,7 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
+import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers.workflows";
 import type {
   ApiErrorPayload,
   WorkflowApiPayload,
@@ -27,18 +28,8 @@ export async function getWorkflows(): Promise<GetWorkflowsResult> {
       .from(workflows)
       .orderBy(desc(workflows.updatedAt));
 
-    const mappedWorkflows: WorkflowApiPayload[] = allWorkflows.map(
-      (workflow) => ({
-        id: workflow.id,
-        name: workflow.name,
-        description: workflow.description ?? undefined,
-        graph: workflow.graph,
-        visibility: "private",
-        createdAt: workflow.createdAt.toISOString(),
-        updatedAt: workflow.updatedAt.toISOString(),
-        isOwner: true,
-      })
-    );
+    const mappedWorkflows: WorkflowApiPayload[] =
+      allWorkflows.map(toWorkflowApiPayload);
 
     return success(mappedWorkflows);
   } catch (error) {

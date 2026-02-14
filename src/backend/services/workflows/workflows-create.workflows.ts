@@ -11,6 +11,7 @@ import {
   success,
 } from "@/backend/lib/service-result";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
+import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers.workflows";
 import { generateId } from "@/shared/utils/id";
 import type {
   ApiErrorPayload,
@@ -125,18 +126,7 @@ export async function postWorkflowsCreate(body: {
       edgeCount: graphValidation.edges.length,
     });
 
-    const payload: WorkflowApiPayload = {
-      id: newWorkflow.id,
-      name: newWorkflow.name,
-      description: newWorkflow.description ?? undefined,
-      graph: newWorkflow.graph,
-      visibility: "private",
-      isOwner: true,
-      createdAt: newWorkflow.createdAt.toISOString(),
-      updatedAt: newWorkflow.updatedAt.toISOString(),
-    };
-
-    return success(payload);
+    return success(toWorkflowApiPayload(newWorkflow));
   } catch (error) {
     workflowCreateLogger.error("Failed to create workflow", { error });
     return failure(500, {

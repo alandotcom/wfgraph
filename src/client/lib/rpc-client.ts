@@ -87,15 +87,22 @@ async function rpcCall<
   return response.json() as Promise<TData>;
 }
 
-type WorkflowApiPayload = InferResponseType<
-  (typeof rpc.api.workflows)[":workflowId"]["$get"],
-  200
->;
+type WorkflowApiPayload =
+  InferResponseType<
+    (typeof rpc.api.workflows)[":workflowId"]["$get"],
+    200
+  > extends infer T
+    ? T extends { graph: SerializedWorkflowGraph }
+      ? T
+      : never
+    : never;
 
-type WorkflowsApiPayload = InferResponseType<
-  (typeof rpc.api.workflows)["$get"],
-  200
->;
+type WorkflowsApiPayload =
+  InferResponseType<(typeof rpc.api.workflows)["$get"], 200> extends infer T
+    ? T extends WorkflowApiPayload[]
+      ? T
+      : never
+    : never;
 
 function toWorkflowData(payload: WorkflowApiPayload): WorkflowData {
   const graphData = toWorkflowGraphData(payload.graph);
