@@ -449,6 +449,9 @@ export function TriggerConfig({
             <SelectValue placeholder="Select trigger type" />
           </SelectTrigger>
           <SelectContent>
+            {/* Keep this list aligned with first-class trigger schemas in
+                `src/shared/workflow/schemas.ts` and built-in registrations in
+                `src/shared/workflow/trigger-registry.ts`. */}
             <SelectItem value="Schedule">
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4" />

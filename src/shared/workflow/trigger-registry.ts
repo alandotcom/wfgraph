@@ -50,12 +50,15 @@ const scheduleTrigger = createTrigger(createScheduleTriggerDefinition());
 
 const webhookTrigger = createTrigger(createWebhookTriggerDefinition());
 
+// Built-in triggers ship here. Project-specific triggers should register at
+// runtime via `registerWorkflowTrigger(...)` inside `src/backend/workflow-triggers/index.ts`.
 const triggerRegistry = new Map<string, WorkflowTriggerDefinition>([
   [webhookTrigger.type, webhookTrigger],
   [scheduleTrigger.type, scheduleTrigger],
 ]);
 
 export function registerWorkflowTrigger(definition: WorkflowTriggerDefinition) {
+  // Prefer unique, stable `type` values because this map overwrites on key collisions.
   triggerRegistry.set(definition.type, definition);
 }
 

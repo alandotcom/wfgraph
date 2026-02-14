@@ -43,6 +43,10 @@ export const workflowTriggerConfigSchema = z.union([
   scheduleTriggerConfigSchema,
   customTriggerConfigSchema,
 ]);
+// When adding a new first-class trigger type (beyond Webhook/Schedule):
+// - Add a dedicated schema here and include it in this union.
+// - Mirror the trigger option + config UI in `src/components/workflow/config/trigger-config.tsx`.
+// Custom trigger configs are still accepted through `customTriggerConfigSchema`.
 
 const workflowNodeDataBaseSchema = z.object({
   label: z.string(),
