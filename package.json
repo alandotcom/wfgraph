@@ -22,7 +22,7 @@
     "db:migrate": "bun --bun drizzle-kit migrate",
     "db:push": "bun -bun drizzle-kit push",
     "db:studio": "bun --bun drizzle-kit studio",
-    "inngest:dev": "sh -c 'until curl -sSf http://localhost:4017/api/inngest >/dev/null 2>/dev/null; do sleep 1; done; bun run inngest-cli dev --no-discovery -u http://localhost:4017/api/inngest -p 8388 --connect-gateway-port 8390 --connect-gateway-grpc-port 50062 --connect-executor-grpc-port 50063 --persist'"
+    "inngest:dev": "sh -c 'until curl -sSf http://localhost:4017/api/inngest >/dev/null 2>/dev/null; do sleep 1; done; DO_NOT_TRACK=1 bun run inngest-cli dev --no-discovery -u http://localhost:4017/api/inngest -p 8388 --connect-gateway-port 8390 --connect-gateway-grpc-port 50062 --connect-executor-grpc-port 50063 --persist'"
   },
   "dependencies": {
     "@base-ui/react": "1.2.0",
