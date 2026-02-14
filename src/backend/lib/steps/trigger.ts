@@ -1,13 +1,8 @@
 /**
- * Trigger step - handles trigger execution with proper logging
- * Also handles workflow completion when called with _workflowComplete
+ * Trigger step - handles trigger execution with proper logging.
  */
 
-import {
-  logWorkflowComplete,
-  type StepInput,
-  withStepLogging,
-} from "./step-handler";
+import { type StepInput, withStepLogging } from "./step-handler";
 
 type TriggerResult = {
   success: true;
@@ -16,14 +11,6 @@ type TriggerResult = {
 
 export type TriggerInput = StepInput & {
   triggerData: Record<string, unknown>;
-  /** If set, this call is just to log workflow completion (no trigger execution) */
-  _workflowComplete?: {
-    executionId: string;
-    status: "success" | "error" | "cancelled";
-    output?: unknown;
-    error?: string;
-    startTime: number;
-  };
 };
 
 /**
@@ -38,16 +25,9 @@ function executeTrigger(input: TriggerInput): TriggerResult {
 
 /**
  * Trigger Step
- * Executes a trigger and logs it properly
- * Also handles workflow completion when called with _workflowComplete
+ * Executes a trigger and logs it properly.
  */
-export async function triggerStep(input: TriggerInput): Promise<TriggerResult> {
-  // If this is a completion-only call, just log workflow completion
-  if (input._workflowComplete) {
-    await logWorkflowComplete(input._workflowComplete);
-    return { success: true, data: {} };
-  }
-
+export function triggerStep(input: TriggerInput): Promise<TriggerResult> {
   // Normal trigger execution with logging
   return withStepLogging(input, () => Promise.resolve(executeTrigger(input)));
 }

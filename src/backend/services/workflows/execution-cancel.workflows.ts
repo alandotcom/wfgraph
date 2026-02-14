@@ -51,7 +51,18 @@ export async function postExecutionCancel(executionId: string) {
       requestedBy: "manual",
     });
 
-    await markWaitingStatesCancelled(waitingStates.map((state) => state.id));
+    const cancelledWaitStateIds = await markWaitingStatesCancelled(
+      waitingStates.map((state) => state.id)
+    );
+    if (cancelledWaitStateIds.length === 0) {
+      requestLogger.warn(
+        "Execution wait state changed before cancel persisted"
+      );
+      return Response.json(
+        { error: "Execution is no longer waiting" },
+        { status: 409 }
+      );
+    }
     await markExecutionCancelled({
       executionId,
       error: "Cancelled manually",
@@ -63,14 +74,14 @@ export async function postExecutionCancel(executionId: string) {
       eventType: "run_cancelled",
       message: "Run cancelled manually while waiting",
       metadata: {
-        waitingStates: waitingStates.length,
+        waitingStates: cancelledWaitStateIds.length,
       },
     });
 
     return Response.json({
       success: true,
       status: "cancelled",
-      cancelledWaitStates: waitingStates.length,
+      cancelledWaitStates: cancelledWaitStateIds.length,
     });
   } catch (error) {
     requestLogger.error("Failed to cancel execution", { error });

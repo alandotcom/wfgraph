@@ -16,6 +16,9 @@ export type HttpRequestInput = StepInput & {
   httpBody?: string;
 };
 
+const HTTP_REQUEST_TIMEOUT_MS = 15_000;
+const HTTP_REQUEST_MAX_ATTEMPTS = 2;
+
 function parseHeaders(httpHeaders?: string): Record<string, string> {
   if (!httpHeaders) {
     return {};
@@ -50,6 +53,35 @@ function parseResponse(response: Response): Promise<unknown> {
   return response.text();
 }
 
+function isTimeoutError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.name === "AbortError";
+}
+
+async function fetchWithTimeout(
+  input: HttpRequestInput,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(input.endpoint, {
+      method: input.httpMethod,
+      headers: parseHeaders(input.httpHeaders),
+      body: parseBody(input.httpMethod, input.httpBody),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 /**
  * HTTP request logic
  */
@@ -63,30 +95,49 @@ async function httpRequest(
     };
   }
 
-  try {
-    const response = await fetch(input.endpoint, {
-      method: input.httpMethod,
-      headers: parseHeaders(input.httpHeaders),
-      body: parseBody(input.httpMethod, input.httpBody),
-    });
+  for (let attempt = 1; attempt <= HTTP_REQUEST_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(input, HTTP_REQUEST_TIMEOUT_MS);
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "Unknown error");
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Unknown error");
+
+        if (response.status >= 500 && attempt < HTTP_REQUEST_MAX_ATTEMPTS) {
+          continue;
+        }
+
+        return {
+          success: false,
+          error: `HTTP request failed with status ${response.status}: ${errorText}`,
+          status: response.status,
+        };
+      }
+
+      const data = await parseResponse(response);
+      return { success: true, data, status: response.status };
+    } catch (error) {
+      if (attempt < HTTP_REQUEST_MAX_ATTEMPTS) {
+        continue;
+      }
+
+      if (isTimeoutError(error)) {
+        return {
+          success: false,
+          error: `HTTP request failed: request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`,
+        };
+      }
+
       return {
         success: false,
-        error: `HTTP request failed with status ${response.status}: ${errorText}`,
-        status: response.status,
+        error: `HTTP request failed: ${getErrorMessage(error)}`,
       };
     }
-
-    const data = await parseResponse(response);
-    return { success: true, data, status: response.status };
-  } catch (error) {
-    return {
-      success: false,
-      error: `HTTP request failed: ${getErrorMessage(error)}`,
-    };
   }
+
+  return {
+    success: false,
+    error: "HTTP request failed after retries",
+  };
 }
 
 /**

@@ -1,0 +1,2 @@
+CREATE INDEX "workflow_execution_logs_execution_id_idx" ON "workflow_execution_logs" USING btree ("execution_id");--> statement-breakpoint
+CREATE INDEX "workflow_execution_logs_execution_id_timestamp_idx" ON "workflow_execution_logs" USING btree ("execution_id","timestamp");

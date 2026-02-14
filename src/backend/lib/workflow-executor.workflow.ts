@@ -34,7 +34,7 @@ import {
   markExecutionRunningStep,
   markWaitStateStatusStep,
 } from "./steps/internal-workflow-wait-state";
-import type { StepContext } from "./steps/step-handler";
+import { logWorkflowComplete, type StepContext } from "./steps/step-handler";
 import { triggerStep } from "./steps/trigger";
 
 type WaitForEventOptions = {
@@ -1057,14 +1057,20 @@ export async function executeWorkflow(
 
   const outputs: NodeOutputs = {};
   const results: Record<string, ExecutionResult> = {};
+  const workflowStartTime = Date.now();
 
   // Build node and edge maps
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   const edgesBySource = new Map<string, string[]>();
+  const edgesByTarget = new Map<string, string[]>();
   for (const edge of edges) {
     const targets = edgesBySource.get(edge.source) || [];
     targets.push(edge.target);
     edgesBySource.set(edge.source, targets);
+
+    const sources = edgesByTarget.get(edge.target) || [];
+    sources.push(edge.source);
+    edgesByTarget.set(edge.target, sources);
   }
 
   // Find trigger nodes
@@ -1077,6 +1083,10 @@ export async function executeWorkflow(
     triggerNodeCount: triggerNodes.length,
     triggerNodeIds: triggerNodes.map((node) => node.id),
   });
+
+  const completedNodes = new Set<string>();
+  const inProgressNodes = new Set<string>();
+  const downstreamReadyNodes = new Set<string>();
 
   // Helper to get a meaningful node name
   function getNodeName(node: WorkflowNode): string {
@@ -1103,23 +1113,76 @@ export async function executeWorkflow(
     return node.data.type;
   }
 
+  function getDeterministicTerminalOutput() {
+    const terminalNodeIds = nodes
+      .filter((node) => (edgesBySource.get(node.id) ?? []).length === 0)
+      .map((node) => node.id)
+      .sort((a, b) => a.localeCompare(b));
+
+    for (const nodeId of terminalNodeIds) {
+      const output = results[nodeId]?.data;
+      if (output !== undefined) {
+        return output;
+      }
+    }
+
+    const resultKeys = Object.keys(results).sort((a, b) => a.localeCompare(b));
+    for (const nodeId of resultKeys) {
+      const output = results[nodeId]?.data;
+      if (output !== undefined) {
+        return output;
+      }
+    }
+
+    return undefined;
+  }
+
   // Helper to execute a single node
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Node execution requires type checking and error handling
-  async function executeNode(nodeId: string, visited: Set<string> = new Set()) {
+  async function executeNode(
+    nodeId: string,
+    callStack: Set<string> = new Set()
+  ) {
     const nodeLogger = executionLogger.with({ nodeId });
     nodeLogger.debug("Executing node");
 
-    if (visited.has(nodeId)) {
+    if (completedNodes.has(nodeId)) {
+      nodeLogger.debug("Skipping node already completed");
+      return;
+    }
+
+    if (inProgressNodes.has(nodeId)) {
+      nodeLogger.debug("Skipping node already in progress");
+      return;
+    }
+
+    if (callStack.has(nodeId)) {
       nodeLogger.debug("Skipping node already visited");
       return; // Prevent cycles
     }
-    visited.add(nodeId);
 
     const node = nodeMap.get(nodeId);
     if (!node) {
       nodeLogger.warn("Node not found");
       return;
     }
+
+    const dependencies = edgesByTarget.get(nodeId) ?? [];
+    const missingDependencies = dependencies.filter(
+      (dependency) => !downstreamReadyNodes.has(dependency)
+    );
+    if (missingDependencies.length > 0) {
+      nodeLogger.debug("Waiting for dependencies before execution", {
+        dependencies,
+        missingDependencies,
+      });
+      return;
+    }
+
+    inProgressNodes.add(nodeId);
+    const nextCallStack = new Set(callStack);
+    nextCallStack.add(nodeId);
+
     const nodeName = getNodeName(node);
     const namedNodeLogger = nodeLogger.with({
       nodeName,
@@ -1132,15 +1195,22 @@ export async function executeWorkflow(
 
       // Store null output for disabled nodes so downstream templates don't fail
       const sanitizedNodeId = nodeId.replace(/[^a-zA-Z0-9]/g, "_");
+      results[nodeId] = {
+        success: true,
+        data: null,
+      };
       outputs[sanitizedNodeId] = {
         label: node.data.label || nodeId,
         data: null,
       };
+      completedNodes.add(nodeId);
+      downstreamReadyNodes.add(nodeId);
 
       const nextNodes = edgesBySource.get(nodeId) || [];
       await Promise.all(
-        nextNodes.map((nextNodeId) => executeNode(nextNodeId, visited))
+        nextNodes.map((nextNodeId) => executeNode(nextNodeId, nextCallStack))
       );
+      inProgressNodes.delete(nodeId);
       return;
     }
 
@@ -1413,6 +1483,7 @@ export async function executeWorkflow(
         label: node.data.label || nodeId,
         data: result.data,
       };
+      completedNodes.add(nodeId);
 
       namedNodeLogger.info("Node execution completed", {
         success: result.success,
@@ -1422,6 +1493,8 @@ export async function executeWorkflow(
 
       // Execute next nodes
       if (result.success) {
+        let shouldContinueDownstream = true;
+
         // Webhook trigger routing may intentionally ignore an event.
         if (
           node.data.type === "trigger" &&
@@ -1432,14 +1505,14 @@ export async function executeWorkflow(
           namedNodeLogger.info(
             "Skipping downstream nodes because trigger was not fired"
           );
-          return;
+          shouldContinueDownstream = false;
         }
 
-        if (result.haltBranch) {
+        if (result.haltBranch && shouldContinueDownstream) {
           namedNodeLogger.info(
             "Skipping downstream nodes because step requested halt"
           );
-          return;
+          shouldContinueDownstream = false;
         }
 
         // Check if this is a condition node
@@ -1447,7 +1520,7 @@ export async function executeWorkflow(
           node.data.type === "action" &&
           node.data.config?.actionType === "Condition";
 
-        if (isConditionNode) {
+        if (isConditionNode && shouldContinueDownstream) {
           // For condition nodes, only execute next nodes if condition is true
           const conditionResult = (result.data as { condition?: boolean })
             ?.condition;
@@ -1465,13 +1538,16 @@ export async function executeWorkflow(
               }
             );
             // Execute all next nodes in parallel
+            downstreamReadyNodes.add(nodeId);
             await Promise.all(
-              nextNodes.map((nextNodeId) => executeNode(nextNodeId, visited))
+              nextNodes.map((nextNodeId) =>
+                executeNode(nextNodeId, nextCallStack)
+              )
             );
           } else {
             namedNodeLogger.debug("Condition false, skipping downstream nodes");
           }
-        } else {
+        } else if (shouldContinueDownstream) {
           // For non-condition nodes, execute all next nodes in parallel
           const nextNodes = edgesBySource.get(nodeId) || [];
           namedNodeLogger.debug("Executing downstream nodes in parallel", {
@@ -1479,8 +1555,11 @@ export async function executeWorkflow(
             nextNodeIds: nextNodes,
           });
           // Execute all next nodes in parallel
+          downstreamReadyNodes.add(nodeId);
           await Promise.all(
-            nextNodes.map((nextNodeId) => executeNode(nextNodeId, visited))
+            nextNodes.map((nextNodeId) =>
+              executeNode(nextNodeId, nextCallStack)
+            )
           );
         }
       }
@@ -1497,20 +1576,22 @@ export async function executeWorkflow(
         error: errorMessage,
       };
       results[nodeId] = errorResult;
+      completedNodes.add(nodeId);
       // Note: stepHandler already logged the error for action steps
       // Trigger steps don't throw, so this catch is mainly for unexpected errors
+    } finally {
+      inProgressNodes.delete(nodeId);
     }
   }
 
   // Execute from each trigger node in parallel
   try {
     executionLogger.info("Starting execution from trigger nodes");
-    const workflowStartTime = Date.now();
-
     await Promise.all(triggerNodes.map((trigger) => executeNode(trigger.id)));
 
     const finalSuccess = Object.values(results).every((r) => r.success);
     const duration = Date.now() - workflowStartTime;
+    const finalOutput = getDeterministicTerminalOutput();
 
     executionLogger.info("Workflow execution completed", {
       success: finalSuccess,
@@ -1522,15 +1603,12 @@ export async function executeWorkflow(
     if (executionId) {
       const finalStatus = finalSuccess ? "success" : "error";
       try {
-        await triggerStep({
-          triggerData: {},
-          _workflowComplete: {
-            executionId,
-            status: finalStatus,
-            output: Object.values(results).at(-1)?.data,
-            error: Object.values(results).find((r) => !r.success)?.error,
-            startTime: workflowStartTime,
-          },
+        await logWorkflowComplete({
+          executionId,
+          status: finalStatus,
+          output: finalOutput,
+          error: Object.values(results).find((r) => !r.success)?.error,
+          startTime: workflowStartTime,
         });
         executionLogger.debug("Updated execution record", {
           status: finalStatus,
@@ -1584,14 +1662,11 @@ export async function executeWorkflow(
     // Update execution record with error if we have an executionId
     if (executionId) {
       try {
-        await triggerStep({
-          triggerData: {},
-          _workflowComplete: {
-            executionId,
-            status: terminalStatus,
-            error: errorMessage,
-            startTime: Date.now(),
-          },
+        await logWorkflowComplete({
+          executionId,
+          status: terminalStatus,
+          error: errorMessage,
+          startTime: workflowStartTime,
         });
       } catch (logError) {
         executionLogger.error("Failed to persist fatal execution error", {

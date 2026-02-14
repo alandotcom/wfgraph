@@ -592,7 +592,18 @@ export function WorkflowRuns({
           setLoading(true);
         }
         const data = await api.workflow.getExecutions(currentWorkflowId);
-        setExecutions(data as WorkflowExecution[]);
+        const mappedExecutions: WorkflowExecution[] = data.map((execution) => ({
+          ...execution,
+          startedAt: new Date(execution.startedAt),
+          waitingAt: execution.waitingAt ? new Date(execution.waitingAt) : null,
+          cancelledAt: execution.cancelledAt
+            ? new Date(execution.cancelledAt)
+            : null,
+          completedAt: execution.completedAt
+            ? new Date(execution.completedAt)
+            : null,
+        }));
+        setExecutions(mappedExecutions);
       } catch (error) {
         console.error("Failed to load executions:", error);
         setExecutions([]);
@@ -643,11 +654,10 @@ export function WorkflowRuns({
         input: unknown;
         output: unknown;
         error: string | null;
-        startedAt: Date;
-        completedAt: Date | null;
+        startedAt: string;
+        completedAt: string | null;
         duration: string | null;
-      }>,
-      _workflow?: unknown
+      }>
     ): ExecutionLog[] =>
       logEntries.map((log) => ({
         id: log.id,
@@ -670,7 +680,7 @@ export function WorkflowRuns({
       try {
         const data = await api.workflow.getExecutionLogs(executionId);
         const mappedLogs = applyExecutionStatusToLogs(
-          mapNodeLabels(data.logs, data.execution.workflow),
+          mapNodeLabels(data.logs),
           data.execution.status
         );
         setLogs((prev) => ({
@@ -750,7 +760,7 @@ export function WorkflowRuns({
       try {
         const logsData = await api.workflow.getExecutionLogs(executionId);
         const mappedLogs = applyExecutionStatusToLogs(
-          mapNodeLabels(logsData.logs, logsData.execution.workflow),
+          mapNodeLabels(logsData.logs),
           logsData.execution.status
         );
         setLogs((prev) => ({
@@ -788,15 +798,28 @@ export function WorkflowRuns({
     const pollExecutions = async () => {
       try {
         const data = await api.workflow.getExecutions(currentWorkflowId);
-        setExecutions(data as WorkflowExecution[]);
+        const mappedExecutions: WorkflowExecution[] = data.map((execution) => ({
+          ...execution,
+          startedAt: new Date(execution.startedAt),
+          waitingAt: execution.waitingAt ? new Date(execution.waitingAt) : null,
+          cancelledAt: execution.cancelledAt
+            ? new Date(execution.cancelledAt)
+            : null,
+          completedAt: execution.completedAt
+            ? new Date(execution.completedAt)
+            : null,
+        }));
+        setExecutions(mappedExecutions);
 
         // Also refresh logs for expanded runs
-        for (const executionId of expandedRuns) {
-          await Promise.all([
-            refreshExecutionLogs(executionId),
-            refreshExecutionEvents(executionId),
-          ]);
-        }
+        await Promise.all(
+          [...expandedRuns].map(async (executionId) => {
+            await Promise.all([
+              refreshExecutionLogs(executionId),
+              refreshExecutionEvents(executionId),
+            ]);
+          })
+        );
       } catch (error) {
         console.error("Failed to poll executions:", error);
       }
@@ -980,7 +1003,7 @@ export function WorkflowRuns({
       {executions.map((execution, index) => {
         const isExpanded = expandedRuns.has(execution.id);
         const isSelected = selectedExecutionId === execution.id;
-        const executionLogs = (logs[execution.id] || []).sort((a, b) => {
+        const executionLogs = [...(logs[execution.id] || [])].sort((a, b) => {
           // Sort by startedAt to ensure first to last order
           return (
             new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()

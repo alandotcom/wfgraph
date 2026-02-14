@@ -40,16 +40,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { findActionById } from "@/plugins";
 import type { IntegrationType } from "@/shared/types/integration";
+import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 import { ActionConfig } from "./config/action-config";
 import { ActionGrid } from "./config/action-grid";
 
 import { TriggerConfig } from "./config/trigger-config";
 import { WorkflowRuns } from "./workflow-runs";
-
-// System actions that need integrations (not in plugin registry)
-const SYSTEM_ACTION_INTEGRATIONS: Record<string, IntegrationType> = {
-  "Database Query": "database",
-};
 
 // Multi-selection panel component
 const MultiSelectionPanel = ({
@@ -166,6 +162,7 @@ export const PanelInner = () => {
   const autoSelectAbortControllersRef = useRef<Record<string, AbortController>>(
     {}
   );
+  const workflowNameSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
 
@@ -395,28 +392,42 @@ export const PanelInner = () => {
     );
   };
 
-  const handleUpdateWorkspaceName = async (newName: string) => {
+  const handleUpdateWorkspaceName = (newName: string) => {
     setCurrentWorkflowName(newName);
     setWorkflowNameError(null);
 
-    // Save to database if workflow exists
+    if (workflowNameSaveTimeoutRef.current) {
+      clearTimeout(workflowNameSaveTimeoutRef.current);
+      workflowNameSaveTimeoutRef.current = null;
+    }
+
+    // Save to database if workflow exists (debounced for typing)
     if (currentWorkflowId) {
-      try {
-        await api.workflow.update(currentWorkflowId, {
-          name: newName,
-          nodes,
-          edges,
-        });
-      } catch (error) {
-        console.error("Failed to update workflow name:", error);
-        const message =
-          error instanceof ApiError
-            ? error.message
-            : "Failed to update workflow name";
-        setWorkflowNameError(message);
-      }
+      workflowNameSaveTimeoutRef.current = setTimeout(async () => {
+        try {
+          await api.workflow.update(currentWorkflowId, {
+            name: newName,
+          });
+        } catch (error) {
+          console.error("Failed to update workflow name:", error);
+          const message =
+            error instanceof ApiError
+              ? error.message
+              : "Failed to update workflow name";
+          setWorkflowNameError(message);
+        }
+      }, 700);
     }
   };
+
+  useEffect(
+    () => () => {
+      if (workflowNameSaveTimeoutRef.current) {
+        clearTimeout(workflowNameSaveTimeoutRef.current);
+      }
+    },
+    []
+  );
 
   const handleRefreshRuns = async () => {
     setIsRefreshing(true);

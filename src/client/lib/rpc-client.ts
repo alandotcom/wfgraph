@@ -4,6 +4,10 @@ import type {
   IntegrationConfig,
   IntegrationType,
 } from "@/shared/types/integration";
+import type {
+  WorkflowExecuteResponse,
+  WorkflowWebhookResponse,
+} from "@/shared/workflow/execution-contracts";
 import {
   createSerializedWorkflowGraph,
   toWorkflowGraphData,
@@ -317,15 +321,7 @@ export const workflowApi = {
     id: string,
     input: Record<string, unknown> = {},
     options?: { dryRun?: boolean }
-  ): Promise<{
-    executionId: string;
-    runId?: string;
-    status: string;
-    dryRun?: boolean;
-    output?: unknown;
-    error?: string;
-    duration?: number;
-  }> => {
+  ): Promise<WorkflowExecuteResponse> => {
     const request = {
       param: { workflowId: id },
       json: { input, dryRun: options?.dryRun === true },
@@ -339,15 +335,7 @@ export const workflowApi = {
     id: string,
     input: Record<string, unknown> = {},
     options?: { dryRun?: boolean }
-  ): Promise<{
-    executionId?: string;
-    runId?: string;
-    status: string;
-    dryRun?: boolean;
-    resumedCount?: number;
-    cancelledExecutions?: number;
-    reason?: string;
-  }> => {
+  ): Promise<WorkflowWebhookResponse> => {
     if (options?.dryRun) {
       const request = {
         param: { workflowId: id },
@@ -389,10 +377,10 @@ export const workflowApi = {
       input: unknown;
       output: unknown;
       error: string | null;
-      startedAt: Date;
-      waitingAt: Date | null;
-      cancelledAt: Date | null;
-      completedAt: Date | null;
+      startedAt: string;
+      waitingAt: string | null;
+      cancelledAt: string | null;
+      completedAt: string | null;
       duration: string | null;
     }>
   > =>
@@ -423,14 +411,9 @@ export const workflowApi = {
       input: unknown;
       output: unknown;
       error: string | null;
-      startedAt: Date;
-      completedAt: Date | null;
+      startedAt: string;
+      completedAt: string | null;
       duration: string | null;
-      workflow: {
-        id: string;
-        name: string;
-        graph: unknown;
-      };
     };
     logs: Array<{
       id: string;
@@ -442,8 +425,8 @@ export const workflowApi = {
       input: unknown;
       output: unknown;
       error: string | null;
-      startedAt: Date;
-      completedAt: Date | null;
+      startedAt: string;
+      completedAt: string | null;
       duration: string | null;
     }>;
   }> =>
@@ -464,7 +447,7 @@ export const workflowApi = {
       eventType: string;
       message: string;
       metadata: unknown;
-      createdAt: Date;
+      createdAt: string;
     }>;
   }> =>
     rpcCall(
@@ -502,26 +485,6 @@ export const workflowApi = {
         param: { executionId },
       })
     ),
-
-  // Auto-save with debouncing (kept for backwards compatibility)
-  autoSaveCurrent: (() => {
-    let autosaveTimeout: ReturnType<typeof setTimeout> | null = null;
-    const AUTOSAVE_DELAY = 2000;
-
-    return (nodes: WorkflowNode[], edges: WorkflowEdge[]): void => {
-      if (autosaveTimeout) {
-        clearTimeout(autosaveTimeout);
-      }
-
-      autosaveTimeout = setTimeout(() => {
-        workflowApi.saveCurrent({ nodes, edges }).catch((error) => {
-          console.error("[rpc-client] Auto-save current workflow failed", {
-            error,
-          });
-        });
-      }, AUTOSAVE_DELAY);
-    };
-  })(),
 
   // Auto-save specific workflow with debouncing
   autoSaveWorkflow: (() => {

@@ -94,29 +94,39 @@ export const workflowExecutions = pgTable(
   ]
 );
 
-export const workflowExecutionLogs = pgTable("workflow_execution_logs", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  executionId: text("execution_id")
-    .notNull()
-    .references(() => workflowExecutions.id),
-  nodeId: text("node_id").notNull(),
-  nodeName: text("node_name").notNull(),
-  nodeType: text("node_type").notNull(),
-  status: text("status")
-    .notNull()
-    .$type<"pending" | "running" | "success" | "error">(),
-  // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level
-  input: jsonb("input").$type<any>(),
-  // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level
-  output: jsonb("output").$type<any>(),
-  error: text("error"),
-  startedAt: timestamp("started_at").notNull().defaultNow(),
-  completedAt: timestamp("completed_at"),
-  duration: text("duration"),
-  timestamp: timestamp("timestamp").notNull().defaultNow(),
-});
+export const workflowExecutionLogs = pgTable(
+  "workflow_execution_logs",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    executionId: text("execution_id")
+      .notNull()
+      .references(() => workflowExecutions.id),
+    nodeId: text("node_id").notNull(),
+    nodeName: text("node_name").notNull(),
+    nodeType: text("node_type").notNull(),
+    status: text("status")
+      .notNull()
+      .$type<"pending" | "running" | "success" | "error">(),
+    // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level
+    input: jsonb("input").$type<any>(),
+    // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level
+    output: jsonb("output").$type<any>(),
+    error: text("error"),
+    startedAt: timestamp("started_at").notNull().defaultNow(),
+    completedAt: timestamp("completed_at"),
+    duration: text("duration"),
+    timestamp: timestamp("timestamp").notNull().defaultNow(),
+  },
+  (table) => [
+    index("workflow_execution_logs_execution_id_idx").on(table.executionId),
+    index("workflow_execution_logs_execution_id_timestamp_idx").on(
+      table.executionId,
+      table.timestamp
+    ),
+  ]
+);
 
 export const workflowWaitStates = pgTable(
   "workflow_wait_states",

@@ -42,12 +42,8 @@ import { TriggerConfig } from "@/components/workflow/config/trigger-config";
 import { WorkflowRuns } from "@/components/workflow/workflow-runs";
 import { findActionById } from "@/plugins";
 import type { IntegrationType } from "@/shared/types/integration";
+import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 import type { OverlayComponentProps } from "./types";
-
-// System actions that need integrations (not in plugin registry)
-const SYSTEM_ACTION_INTEGRATIONS: Record<string, IntegrationType> = {
-  "Database Query": "database",
-};
 
 type ConfigurationOverlayProps = OverlayComponentProps;
 

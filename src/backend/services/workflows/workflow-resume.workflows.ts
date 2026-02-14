@@ -55,10 +55,18 @@ export async function postWorkflowResume(
       payload: body,
     });
 
-    await markWaitStateStatus({
+    const waitStateUpdated = await markWaitStateStatus({
       waitStateId: waitState.id,
       status: "resumed",
     });
+    if (!waitStateUpdated) {
+      requestLogger.warn("Wait hook changed state before resume update");
+      return Response.json(
+        { error: "Wait hook not found or no longer active" },
+        { status: 409 }
+      );
+    }
+
     await markExecutionRunning(waitState.executionId);
 
     await logWorkflowAuditEvent({

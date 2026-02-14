@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { uniq } from "es-toolkit/array";
 import { getAppLogger } from "@/backend/lib/logger";
 import type {
@@ -221,22 +221,10 @@ export function extractIntegrationIds(
   return uniq(integrationIds);
 }
 
-export async function validateWorkflowIntegrations(
-  nodes: WorkflowNodeForValidation[]
+export function validateWorkflowIntegrations(
+  _nodes: WorkflowNodeForValidation[]
 ): Promise<{ valid: boolean; invalidIds?: string[] }> {
-  const integrationIds = extractIntegrationIds(nodes);
-
-  if (integrationIds.length === 0) {
-    return { valid: true };
-  }
-
-  // Stale references to deleted integrations are allowed.
-  // With global scope, the only invalid case is malformed IDs that do not resolve
-  // AND are expected to be enforced strictly. We keep validation permissive.
-  await db
-    .select({ id: integrations.id })
-    .from(integrations)
-    .where(inArray(integrations.id, integrationIds));
-
-  return { valid: true };
+  // Stale references to deleted integrations are allowed. Validation stays
+  // permissive by design, so no database existence check is required here.
+  return Promise.resolve({ valid: true });
 }

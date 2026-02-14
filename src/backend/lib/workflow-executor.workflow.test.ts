@@ -1,0 +1,78 @@
+import { describe, expect, it } from "bun:test";
+import { executeWorkflow } from "@/backend/lib/workflow-executor.workflow";
+import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
+import type { WorkflowNode } from "@/shared/workflow/types";
+
+function createTriggerNode(id: string): WorkflowNode {
+  return {
+    id,
+    type: "trigger",
+    position: { x: 0, y: 0 },
+    data: {
+      label: "Trigger",
+      type: "trigger",
+      config: {
+        triggerType: "Trigger",
+      },
+    },
+  };
+}
+
+function createConditionNode(id: string, condition: boolean): WorkflowNode {
+  return {
+    id,
+    type: "action",
+    position: { x: 100, y: 100 },
+    data: {
+      label: id,
+      type: "action",
+      config: {
+        actionType: "Condition",
+        condition,
+      },
+    },
+  };
+}
+
+function createUnknownActionNode(id: string): WorkflowNode {
+  return {
+    id,
+    type: "action",
+    position: { x: 100, y: 100 },
+    data: {
+      label: id,
+      type: "action",
+      config: {
+        actionType: "Unknown Action",
+      },
+    },
+  };
+}
+
+describe("executeWorkflow", () => {
+  it("does not execute a join node until all inbound dependencies are downstream-ready", async () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createTriggerNode("trigger_1"),
+        createConditionNode("action_success", true),
+        createUnknownActionNode("action_failure"),
+        createConditionNode("join_node", true),
+      ],
+      edges: [
+        { id: "edge_t_s", source: "trigger_1", target: "action_success" },
+        { id: "edge_t_f", source: "trigger_1", target: "action_failure" },
+        { id: "edge_s_j", source: "action_success", target: "join_node" },
+        { id: "edge_f_j", source: "action_failure", target: "join_node" },
+      ],
+    });
+
+    const result = await executeWorkflow({
+      graph,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.results.action_success?.success).toBe(true);
+    expect(result.results.action_failure?.success).toBe(false);
+    expect(result.results.join_node).toBeUndefined();
+  });
+});

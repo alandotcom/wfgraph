@@ -23,6 +23,7 @@ export type CancelWaitingRunsInput = {
 export type CancelWaitingRunsSummary = {
   cancelledExecutions: number;
   cancelledWaits: number;
+  failedExecutions?: string[];
 };
 
 export async function cancelWaitingRuns(
@@ -31,6 +32,8 @@ export async function cancelWaitingRuns(
   const uniqueExecutionIds = Array.from(
     new Set(input.waitStates.map((waitState) => waitState.executionId))
   );
+  const successfulExecutionIds: string[] = [];
+  const failedExecutionIds: string[] = [];
 
   for (const executionId of uniqueExecutionIds) {
     try {
@@ -41,7 +44,9 @@ export async function cancelWaitingRuns(
         requestedBy: input.workflowId,
         eventType: input.eventType,
       });
+      successfulExecutionIds.push(executionId);
     } catch (error) {
+      failedExecutionIds.push(executionId);
       input.logger.error("Failed to send cancel signal for execution", {
         workflowId: input.workflowId,
         executionId,
@@ -51,9 +56,14 @@ export async function cancelWaitingRuns(
     }
   }
 
-  await markWaitingStatesCancelled(input.waitStates.map((state) => state.id));
+  const successfulExecutionIdSet = new Set(successfulExecutionIds);
+  const waitStateIdsToCancel = input.waitStates
+    .filter((state) => successfulExecutionIdSet.has(state.executionId))
+    .map((state) => state.id);
+  const cancelledWaitStateIds =
+    await markWaitingStatesCancelled(waitStateIdsToCancel);
 
-  for (const executionId of uniqueExecutionIds) {
+  for (const executionId of successfulExecutionIds) {
     await markExecutionCancelled({
       executionId,
       error: input.reason,
@@ -71,7 +81,9 @@ export async function cancelWaitingRuns(
   }
 
   return {
-    cancelledExecutions: uniqueExecutionIds.length,
-    cancelledWaits: input.waitStates.length,
+    cancelledExecutions: successfulExecutionIds.length,
+    cancelledWaits: cancelledWaitStateIds.length,
+    failedExecutions:
+      failedExecutionIds.length > 0 ? failedExecutionIds : undefined,
   };
 }

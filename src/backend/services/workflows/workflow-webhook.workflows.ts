@@ -16,7 +16,7 @@ import {
   markWaitStateStatus,
 } from "@/backend/lib/workflow-wait-state";
 import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
-import { parseCsvSet } from "@/shared/utils/object-path";
+import type { WorkflowWebhookResponse } from "@/shared/workflow/execution-contracts";
 import {
   evaluateWorkflowTrigger,
   resolveWorkflowTriggerDefinition,
@@ -25,6 +25,7 @@ import type {
   SerializedWorkflowGraph,
   WorkflowNode,
 } from "@/shared/workflow/types";
+import { orchestrateTriggerExecution } from "./trigger-orchestrator.workflows";
 
 const webhookLogger = getAppLogger("workflow", "webhook");
 
@@ -141,7 +142,7 @@ async function resumeMatchingWaitHooks(input: {
   }>;
 }) {
   if (!input.eventType) {
-    return { resumedCount: 0 };
+    return 0;
   }
 
   let resumedCount = 0;
@@ -152,13 +153,6 @@ async function resumeMatchingWaitHooks(input: {
     }
 
     const metadata = waitState.metadata ?? {};
-    const waitForEvents = parseCsvSet(metadata.waitForEvents);
-    const shouldResume =
-      waitForEvents.size === 0 || waitForEvents.has(input.eventType);
-
-    if (!shouldResume) {
-      continue;
-    }
 
     try {
       await sendWorkflowWaitSignal({
@@ -173,10 +167,15 @@ async function resumeMatchingWaitHooks(input: {
         payload: input.payload,
       });
 
-      await markWaitStateStatus({
+      const waitStateUpdated = await markWaitStateStatus({
         waitStateId: waitState.id,
         status: "resumed",
       });
+
+      if (!waitStateUpdated) {
+        continue;
+      }
+
       await markExecutionRunning(waitState.executionId);
 
       await logWorkflowAuditEvent({
@@ -202,14 +201,33 @@ async function resumeMatchingWaitHooks(input: {
     }
   }
 
-  return { resumedCount };
+  return resumedCount;
+}
+
+function buildIgnoredAuditMessage(input: {
+  reason: "missing_event_type" | "event_not_configured" | "no_waiting_runs";
+  eventType?: string;
+  eventTypePath?: string;
+}): string {
+  if (input.reason === "missing_event_type") {
+    return `Ignored webhook: event type missing at path "${input.eventTypePath ?? "event"}"`;
+  }
+
+  if (input.reason === "event_not_configured") {
+    return input.eventType
+      ? `Ignored webhook event ${input.eventType}`
+      : "Ignored webhook event not configured by routing";
+  }
+
+  return input.eventType
+    ? `Ignored ${input.eventType} because no waiting runs were found`
+    : "Ignored webhook event because no waiting runs were found";
 }
 
 export function optionsWorkflowWebhook() {
   return Response.json({}, { headers: corsHeaders });
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Webhook orchestration requires branching for create/update/delete/resume flows
 export async function postWorkflowWebhook(input: {
   workflowId: string;
   authHeader: string | null;
@@ -221,7 +239,6 @@ export async function postWorkflowWebhook(input: {
   try {
     const { workflowId, authHeader, dryRunQuery, dryRunHeader, body } = input;
 
-    // Get workflow
     const workflow = await db.query.workflows.findFirst({
       where: eq(workflows.id, workflowId),
     });
@@ -233,7 +250,6 @@ export async function postWorkflowWebhook(input: {
       );
     }
 
-    // Validate API key
     const apiKeyValidation = await validateApiKey(authHeader);
 
     if (!apiKeyValidation.valid) {
@@ -258,7 +274,6 @@ export async function postWorkflowWebhook(input: {
     const workflowNodes = graphValidation.nodes;
     const workflowGraph = graphValidation.graph;
 
-    // Verify this is a webhook-triggered workflow
     const triggerNode = getTriggerNode(workflowNodes);
 
     const triggerConfig = (triggerNode?.data.config ?? undefined) as
@@ -304,7 +319,7 @@ export async function postWorkflowWebhook(input: {
       correlationPath,
       eventType,
       correlationKey,
-      requestPayload: body,
+      requestPayloadKeys: Object.keys(body),
     });
 
     await logWorkflowAuditEvent({
@@ -318,32 +333,6 @@ export async function postWorkflowWebhook(input: {
       },
     });
 
-    if (
-      routingDecision.kind === "ignore" &&
-      routingDecision.reason === "missing_event_type"
-    ) {
-      await logWorkflowAuditEvent({
-        workflowId,
-        eventType: "run_ignored",
-        message: `Ignored webhook: event type missing at path "${eventTypePath}"`,
-        metadata: {
-          eventTypePath,
-          correlationPath,
-          correlationKey,
-          dryRun,
-        },
-      });
-
-      return Response.json(
-        {
-          status: "ignored",
-          reason: "missing_event_type",
-          eventTypePath,
-        },
-        { headers: corsHeaders }
-      );
-    }
-
     const waitingStates =
       correlationKey === undefined
         ? []
@@ -351,248 +340,65 @@ export async function postWorkflowWebhook(input: {
             workflowId,
             correlationKey,
           });
-    const dryRunCancellationSummary = {
-      cancelledExecutions: new Set(
-        waitingStates.map((state) => state.executionId)
-      ).size,
-      cancelledWaits: waitingStates.length,
-    };
 
-    if (routingDecision.kind === "stop" && eventType) {
-      if (waitingStates.length === 0) {
-        await logWorkflowAuditEvent({
-          workflowId,
-          eventType: "run_ignored",
-          message: `Ignored ${eventType} because no waiting runs were found`,
-          metadata: {
-            eventType,
-            correlationKey,
-          },
-        });
-
-        return Response.json(
-          {
-            status: "ignored",
-            reason: "no_waiting_runs",
-          },
-          { headers: corsHeaders }
-        );
-      }
-
-      if (dryRun) {
-        return Response.json(
-          {
-            status: "cancelled",
-            dryRun: true,
-            simulated: true,
-            ...dryRunCancellationSummary,
-          },
-          { headers: corsHeaders }
-        );
-      }
-
-      const cancellation = await cancelWaitingRuns({
-        workflowId,
-        waitStates: waitingStates,
-        eventType,
-        reason: `Cancelled by webhook event ${eventType}`,
-        logger: webhookLogger,
-      });
-
-      return Response.json(
-        {
-          status: "cancelled",
-          ...cancellation,
-        },
-        { headers: corsHeaders }
-      );
-    }
-
-    if (routingDecision.kind === "restart" && eventType) {
-      if (waitingStates.length === 0) {
-        await logWorkflowAuditEvent({
-          workflowId,
-          eventType: "run_ignored",
-          message: `Ignored ${eventType} because no waiting runs were found`,
-          metadata: {
-            eventType,
-            correlationKey,
-          },
-        });
-
-        return Response.json(
-          {
-            status: "ignored",
-            reason: "no_waiting_runs",
-          },
-          { headers: corsHeaders }
-        );
-      }
-
-      if (dryRun) {
-        const execution = await startWebhookExecution({
+    const outcome = await orchestrateTriggerExecution({
+      dryRun,
+      eventType,
+      correlationKey,
+      eventTypePath,
+      routingDecision,
+      waitStates: waitingStates,
+      enableResumes: true,
+      startExecution: async () =>
+        await startWebhookExecution({
           workflowId,
           workflowName: workflow.name,
           workflowGraph,
           payload: body,
           eventType,
           correlationKey,
-          dryRun: true,
-        });
-
-        return Response.json(
-          {
-            executionId: execution.executionId,
-            runId: execution.runId,
-            status: "running",
-            dryRun: true,
-            simulated: true,
-            ...dryRunCancellationSummary,
-          },
-          { headers: corsHeaders }
-        );
-      }
-
-      const cancellation = await cancelWaitingRuns({
-        workflowId,
-        waitStates: waitingStates,
-        eventType,
-        reason: `Cancelled by webhook event ${eventType}`,
-        logger: webhookLogger,
-      });
-
-      const execution = await startWebhookExecution({
-        workflowId,
-        workflowName: workflow.name,
-        workflowGraph,
-        payload: body,
-        eventType,
-        correlationKey,
-        dryRun,
-      });
-
-      return Response.json(
-        {
-          executionId: execution.executionId,
-          runId: execution.runId,
-          status: "running",
           dryRun,
-          ...cancellation,
-        },
-        { headers: corsHeaders }
-      );
-    }
+        }),
+      cancelWaitStates: async (currentEventType) =>
+        await cancelWaitingRuns({
+          workflowId,
+          waitStates: waitingStates,
+          eventType: currentEventType,
+          reason: `Cancelled by webhook event ${currentEventType}`,
+          logger: webhookLogger,
+        }),
+      resumeWaitStates: async (currentEventType, waitStates) =>
+        await resumeMatchingWaitHooks({
+          workflowId,
+          eventType: currentEventType,
+          payload: body,
+          waitStates,
+        }),
+    });
 
-    if (eventType && correlationKey && waitingStates.length > 0) {
-      if (dryRun) {
-        const resumedCount = waitingStates.filter((waitState) => {
-          if (!waitState.hookToken) {
-            return false;
-          }
-
-          const metadata =
-            (waitState.metadata as Record<string, unknown> | null) ?? {};
-          const waitForEvents = parseCsvSet(metadata.waitForEvents);
-          return waitForEvents.size === 0 || waitForEvents.has(eventType);
-        }).length;
-
-        if (resumedCount > 0) {
-          return Response.json(
-            {
-              status: "resumed",
-              resumedCount,
-              dryRun: true,
-              simulated: true,
-            },
-            { headers: corsHeaders }
-          );
-        }
-      }
-
-      const resumed = await resumeMatchingWaitHooks({
-        workflowId,
-        eventType,
-        payload: body,
-        waitStates: waitingStates,
-      });
-
-      if (resumed.resumedCount > 0) {
-        return Response.json(
-          {
-            status: "resumed",
-            resumedCount: resumed.resumedCount,
-          },
-          { headers: corsHeaders }
-        );
-      }
-    }
-
-    // Event types not configured to create runs are ignored.
-    if (
-      routingDecision.kind === "ignore" &&
-      routingDecision.reason === "event_not_configured" &&
-      eventType
-    ) {
+    if (outcome.status === "ignored") {
       await logWorkflowAuditEvent({
         workflowId,
         eventType: "run_ignored",
-        message: `Ignored webhook event ${eventType}`,
+        message: buildIgnoredAuditMessage({
+          reason: outcome.reason,
+          eventType,
+          eventTypePath: outcome.eventTypePath,
+        }),
         metadata: {
           eventType,
+          eventTypePath,
+          correlationPath,
           correlationKey,
+          dryRun,
+          reason: outcome.reason,
         },
       });
-
-      return Response.json(
-        {
-          status: "ignored",
-          reason: "event_not_configured",
-        },
-        { headers: corsHeaders }
-      );
     }
 
-    if (dryRun) {
-      const execution = await startWebhookExecution({
-        workflowId,
-        workflowName: workflow.name,
-        workflowGraph,
-        payload: body,
-        eventType,
-        correlationKey,
-        dryRun: true,
-      });
-
-      return Response.json(
-        {
-          executionId: execution.executionId,
-          runId: execution.runId,
-          status: "running",
-          dryRun: true,
-        },
-        { headers: corsHeaders }
-      );
-    }
-
-    const execution = await startWebhookExecution({
-      workflowId,
-      workflowName: workflow.name,
-      workflowGraph,
-      payload: body,
-      eventType,
-      correlationKey,
-      dryRun,
+    return Response.json(outcome as WorkflowWebhookResponse, {
+      headers: corsHeaders,
     });
-
-    return Response.json(
-      {
-        executionId: execution.executionId,
-        runId: execution.runId,
-        status: "running",
-        dryRun,
-      },
-      { headers: corsHeaders }
-    );
   } catch (error) {
     requestLogger.error("Failed to start workflow execution", { error });
     return Response.json(

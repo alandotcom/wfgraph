@@ -24,6 +24,11 @@ function shutdown(signal: string): void {
 
   shuttingDown = true;
   logger.warn("Shutting down", { signal });
+  try {
+    server.stop(true);
+  } catch (error) {
+    logger.error("Failed to stop server gracefully", { error });
+  }
   process.exit(0);
 }
 

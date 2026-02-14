@@ -14,8 +14,16 @@ export async function getExecutionLogs(executionId: string) {
   try {
     const execution = await db.query.workflowExecutions.findFirst({
       where: eq(workflowExecutions.id, executionId),
-      with: {
-        workflow: true,
+      columns: {
+        id: true,
+        workflowId: true,
+        status: true,
+        input: true,
+        output: true,
+        error: true,
+        startedAt: true,
+        completedAt: true,
+        duration: true,
       },
     });
 

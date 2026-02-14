@@ -444,25 +444,6 @@ export const clearWorkflowAtom = atom(null, (get, set) => {
   set(hasUnsavedChangesAtom, true);
 });
 
-// Load workflow from database
-export const loadWorkflowAtom = atom(null, async (_get, set) => {
-  try {
-    set(isLoadingAtom, true);
-    const workflow = await api.workflow.getCurrent();
-    set(nodesAtom, workflow.nodes);
-    set(edgesAtom, workflow.edges);
-    if (workflow.id) {
-      set(currentWorkflowIdAtom, workflow.id);
-    }
-  } catch (error) {
-    console.error("[workflow-store] Failed to load current workflow", {
-      error,
-    });
-  } finally {
-    set(isLoadingAtom, false);
-  }
-});
-
 // Save workflow with a name
 export const saveWorkflowAsAtom = atom(
   null,
@@ -577,3 +558,46 @@ export const clearNodeStatusesAtom = atom(null, (get, set) => {
   }));
   set(nodesAtom, newNodes);
 });
+
+export const setNodeStatusesAtom = atom(
+  null,
+  (
+    get,
+    set,
+    statuses: Array<{
+      nodeId: string;
+      status: "idle" | "running" | "success" | "error" | "cancelled";
+    }>
+  ) => {
+    if (statuses.length === 0) {
+      return;
+    }
+
+    const statusByNodeId = new Map(
+      statuses.map((statusEntry) => [statusEntry.nodeId, statusEntry.status])
+    );
+
+    const currentNodes = get(nodesAtom);
+    let hasUpdates = false;
+
+    const nextNodes = currentNodes.map((node) => {
+      const nextStatus = statusByNodeId.get(node.id);
+      if (!nextStatus || node.data.status === nextStatus) {
+        return node;
+      }
+
+      hasUpdates = true;
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          status: nextStatus,
+        },
+      };
+    });
+
+    if (hasUpdates) {
+      set(nodesAtom, nextNodes);
+    }
+  }
+);

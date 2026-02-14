@@ -15,7 +15,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { integrationsAtom } from "@/client/lib/integrations-store";
 import { ApiError, api } from "@/client/lib/rpc-client";
@@ -70,10 +70,10 @@ import {
   getIntegrationLabels,
 } from "@/plugins";
 import type { IntegrationType } from "@/shared/types/integration";
-
-type WorkflowToolbarProps = {
-  workflowId?: string;
-};
+import {
+  SYSTEM_ACTION_INTEGRATIONS,
+  SYSTEM_INTEGRATION_LABELS,
+} from "@/shared/workflow/system-action-integrations";
 
 // Helper functions to reduce complexity
 function updateNodesStatus(
@@ -95,14 +95,8 @@ type MissingIntegrationInfo = {
   nodeNames: string[];
 };
 
-// Built-in actions that require integrations but aren't in the plugin registry
-const BUILTIN_ACTION_INTEGRATIONS: Record<string, IntegrationType> = {
-  "Database Query": "database",
-};
-
-// Labels for built-in integration types that don't have plugins
-const BUILTIN_INTEGRATION_LABELS: Record<string, string> = {
-  database: "Database",
+type WorkflowToolbarProps = {
+  workflowId?: string;
 };
 
 // Type for broken template reference info
@@ -327,7 +321,7 @@ function getMissingIntegrations(
     const action = findActionById(actionType);
     // Fall back to built-in action integrations for actions not in the registry
     const requiredIntegrationType =
-      action?.integration || BUILTIN_ACTION_INTEGRATIONS[actionType];
+      action?.integration || SYSTEM_ACTION_INTEGRATIONS[actionType];
 
     if (!requiredIntegrationType) {
       continue;
@@ -360,7 +354,7 @@ function getMissingIntegrations(
       integrationType,
       integrationLabel:
         integrationLabels[integrationType] ||
-        BUILTIN_INTEGRATION_LABELS[integrationType] ||
+        SYSTEM_INTEGRATION_LABELS[integrationType] ||
         integrationType,
       nodeNames,
     })
@@ -374,7 +368,6 @@ type ExecuteTestWorkflowParams = {
     id: string;
     data: { status?: "idle" | "running" | "success" | "error" | "cancelled" };
   }) => void;
-  pollingIntervalRef: React.MutableRefObject<NodeJS.Timeout | null>;
   setIsExecuting: (value: boolean) => void;
   setSelectedExecutionId: (value: string | null) => void;
   dryRun?: boolean;
@@ -385,7 +378,6 @@ async function executeTestWorkflow({
   workflowId,
   nodes,
   updateNodeData,
-  pollingIntervalRef,
   setIsExecuting,
   setSelectedExecutionId,
   dryRun = false,
@@ -401,20 +393,7 @@ async function executeTestWorkflow({
   }
 
   try {
-    // Start the execution via API
-    const response = await fetch(`/api/workflow/${workflowId}/execute`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ input: {}, dryRun }),
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to execute workflow");
-    }
-
-    const result = await response.json();
+    const result = await api.workflow.execute(workflowId, {}, { dryRun });
 
     if (result.status !== "running" || !result.executionId) {
       if (result.status === "cancelled") {
@@ -454,47 +433,6 @@ async function executeTestWorkflow({
 
     // Select the new execution
     setSelectedExecutionId(result.executionId);
-
-    // Poll for execution status updates
-    const pollInterval = setInterval(async () => {
-      try {
-        const statusData = await api.workflow.getExecutionStatus(
-          result.executionId
-        );
-
-        // Update node statuses based on the execution logs
-        for (const nodeStatus of statusData.nodeStatuses) {
-          updateNodeData({
-            id: nodeStatus.nodeId,
-            data: {
-              status: nodeStatus.status as
-                | "idle"
-                | "running"
-                | "success"
-                | "error"
-                | "cancelled",
-            },
-          });
-        }
-
-        // Stop polling if execution is complete
-        if (statusData.status !== "running") {
-          if (pollingIntervalRef.current) {
-            clearInterval(pollingIntervalRef.current);
-            pollingIntervalRef.current = null;
-          }
-
-          setIsExecuting(false);
-
-          // Don't reset node statuses - let them show the final state
-          // The user can click another run or deselect to reset
-        }
-      } catch (error) {
-        console.error("Failed to poll execution status:", error);
-      }
-    }, 500); // Poll every 500ms
-
-    pollingIntervalRef.current = pollInterval;
   } catch (error) {
     console.error("Failed to execute workflow:", error);
     toast.error(
@@ -554,17 +492,6 @@ function useWorkflowHandlers({
 }: WorkflowHandlerParams) {
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Cleanup polling interval on unmount
-  useEffect(
-    () => () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-    },
-    []
-  );
 
   const handleSave = async () => {
     const realNodes = nodes.filter((node) => node.type !== "add");
@@ -647,7 +574,6 @@ function useWorkflowHandlers({
       workflowId: currentWorkflowId,
       nodes,
       updateNodeData,
-      pollingIntervalRef,
       setIsExecuting,
       setSelectedExecutionId,
       dryRun,

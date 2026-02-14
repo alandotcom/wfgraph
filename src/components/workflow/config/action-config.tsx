@@ -34,6 +34,7 @@ import {
   getAllIntegrations,
 } from "@/plugins";
 import type { IntegrationType } from "@/shared/types/integration";
+import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { SchemaBuilder, type SchemaField } from "./schema-builder";
 
@@ -583,11 +584,6 @@ const SYSTEM_ACTIONS: Array<{ id: string; label: string }> = [
 ];
 
 const SYSTEM_ACTION_IDS = SYSTEM_ACTIONS.map((a) => a.id);
-
-// System actions that need integrations (not in plugin registry)
-const SYSTEM_ACTION_INTEGRATIONS: Record<string, IntegrationType> = {
-  "Database Query": "database",
-};
 
 // Build category mapping dynamically from plugins + System
 function useCategoryData() {

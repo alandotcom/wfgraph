@@ -15,11 +15,13 @@ import {
   currentWorkflowVisibilityAtom,
   edgesAtom,
   hasUnsavedChangesAtom,
+  isExecutingAtom,
   isGeneratingAtom,
   isSavingAtom,
   isWorkflowOwnerAtom,
   nodesAtom,
   selectedExecutionIdAtom,
+  setNodeStatusesAtom,
   triggerExecuteAtom,
   updateNodeDataAtom,
   type WorkflowNode,
@@ -30,14 +32,10 @@ import { Button } from "@/components/ui/button";
 import { WorkflowSidebarPanel } from "@/components/workflow/workflow-sidebar-panel";
 import { findActionById } from "@/plugins";
 import type { IntegrationType } from "@/shared/types/integration";
+import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 
 type WorkflowPageProps = {
   workflowId: string;
-};
-
-// System actions that need integrations (not in plugin registry)
-const SYSTEM_ACTION_INTEGRATIONS: Record<string, IntegrationType> = {
-  "Database Query": "database",
 };
 
 // Helper to get required integration type for an action
@@ -101,11 +99,13 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
   const [edges] = useAtom(edgesAtom);
   const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
   const [selectedExecutionId] = useAtom(selectedExecutionIdAtom);
+  const setIsExecuting = useSetAtom(isExecutingAtom);
   const setNodes = useSetAtom(nodesAtom);
   const setEdges = useSetAtom(edgesAtom);
   const setCurrentWorkflowId = useSetAtom(currentWorkflowIdAtom);
   const setCurrentWorkflowName = useSetAtom(currentWorkflowNameAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
+  const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
   const setHasUnsavedChanges = useSetAtom(hasUnsavedChangesAtom);
   const [workflowNotFound, setWorkflowNotFound] = useAtom(workflowNotFoundAtom);
   const setTriggerExecute = useSetAtom(triggerExecuteAtom);
@@ -117,8 +117,6 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
   const setIntegrationsLoaded = useSetAtom(integrationsLoadedAtom);
   const integrationsVersion = useAtomValue(integrationsVersionAtom);
 
-  // Ref to track polling interval
-  const executionPollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   // Ref to track polling interval for selected execution
   const selectedExecutionPollingIntervalRef = useRef<NodeJS.Timeout | null>(
     null
@@ -143,11 +141,6 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
       const workflow = await api.workflow.getById(workflowId);
 
       if (latestWorkflowIdRef.current !== workflowId) {
-        return;
-      }
-
-      if (!workflow) {
-        setWorkflowNotFound(true);
         return;
       }
 
@@ -360,9 +353,6 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
   // Cleanup polling interval on unmount
   useEffect(
     () => () => {
-      if (executionPollingIntervalRef.current) {
-        clearInterval(executionPollingIntervalRef.current);
-      }
       if (selectedExecutionPollingIntervalRef.current) {
         clearInterval(selectedExecutionPollingIntervalRef.current);
       }
@@ -381,9 +371,10 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
     // If no execution is selected or it's the currently running one, don't poll
     if (!selectedExecutionId) {
       // Reset all node statuses when no execution is selected
-      for (const node of nodesRef.current) {
-        updateNodeData({ id: node.id, data: { status: "idle" } });
-      }
+      setNodeStatuses(
+        nodesRef.current.map((node) => ({ nodeId: node.id, status: "idle" }))
+      );
+      setIsExecuting(false);
       return;
     }
 
@@ -393,31 +384,26 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
         const statusData =
           await api.workflow.getExecutionStatus(selectedExecutionId);
 
-        // Update node statuses based on the execution logs
-        for (const nodeStatus of statusData.nodeStatuses) {
-          updateNodeData({
-            id: nodeStatus.nodeId,
-            data: {
-              status: nodeStatus.status as
-                | "idle"
-                | "running"
-                | "success"
-                | "error"
-                | "cancelled",
-            },
-          });
-        }
+        setNodeStatuses(
+          statusData.nodeStatuses.map((nodeStatus) => ({
+            nodeId: nodeStatus.nodeId,
+            status:
+              nodeStatus.status === "pending" ? "idle" : nodeStatus.status,
+          }))
+        );
 
         // Stop polling only for terminal states
-        if (
-          ["success", "error", "cancelled"].includes(statusData.status) &&
-          selectedExecutionPollingIntervalRef.current
-        ) {
+        const isRunningLike =
+          statusData.status === "running" || statusData.status === "waiting";
+        setIsExecuting(isRunningLike);
+
+        if (!isRunningLike && selectedExecutionPollingIntervalRef.current) {
           clearInterval(selectedExecutionPollingIntervalRef.current);
           selectedExecutionPollingIntervalRef.current = null;
         }
       } catch (error) {
         console.error("Failed to poll selected execution status:", error);
+        setIsExecuting(false);
         // Clear polling on error
         if (selectedExecutionPollingIntervalRef.current) {
           clearInterval(selectedExecutionPollingIntervalRef.current);
@@ -437,7 +423,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
         selectedExecutionPollingIntervalRef.current = null;
       }
     };
-  }, [selectedExecutionId, updateNodeData]);
+  }, [selectedExecutionId, setIsExecuting, setNodeStatuses]);
 
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden">
