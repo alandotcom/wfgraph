@@ -5,8 +5,17 @@ import { validateWorkflowIntegrations } from "@/backend/lib/db/integrations";
 import { workflows } from "@/backend/lib/db/schema";
 import { invalidateInngestFunctionsCache } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
+import {
+  failure,
+  type ServiceResult,
+  success,
+} from "@/backend/lib/service-result";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import { generateId } from "@/shared/utils/id";
+import type {
+  ApiErrorPayload,
+  WorkflowApiPayload,
+} from "@/shared/workflow/api-contracts";
 import {
   createSerializedWorkflowGraph,
   isSerializedWorkflowGraph,
@@ -29,21 +38,24 @@ function createDefaultTriggerNode() {
 
 const workflowCreateLogger = getAppLogger("workflow", "create");
 
+type CreateWorkflowResult = ServiceResult<
+  WorkflowApiPayload,
+  400 | 403 | 409 | 500,
+  ApiErrorPayload
+>;
+
 export async function postWorkflowsCreate(body: {
   name: string;
   description?: string;
   graph: unknown;
-}) {
+}): Promise<CreateWorkflowResult> {
   try {
     const workflowName = body.name.trim();
     if (!workflowName) {
       workflowCreateLogger.warn(
         "Rejected workflow create request with empty name"
       );
-      return Response.json(
-        { error: "Workflow name is required" },
-        { status: 400 }
-      );
+      return failure(400, { error: "Workflow name is required" });
     }
 
     const existingWorkflow = await db.query.workflows.findFirst({
@@ -54,10 +66,9 @@ export async function postWorkflowsCreate(body: {
       workflowCreateLogger.warn("Duplicate workflow name on create", {
         workflowName,
       });
-      return Response.json(
-        { error: `Workflow name "${workflowName}" already exists` },
-        { status: 409 }
-      );
+      return failure(409, {
+        error: `Workflow name "${workflowName}" already exists`,
+      });
     }
 
     const graphWithDefaultTrigger =
@@ -74,7 +85,7 @@ export async function postWorkflowsCreate(body: {
         workflowName,
         error: graphValidation.error,
       });
-      return Response.json({ error: graphValidation.error }, { status: 400 });
+      return failure(400, { error: graphValidation.error });
     }
 
     const integrationValidation = await validateWorkflowIntegrations(
@@ -88,10 +99,9 @@ export async function postWorkflowsCreate(body: {
           invalidIntegrationIds: integrationValidation.invalidIds,
         }
       );
-      return Response.json(
-        { error: "Invalid integration references in workflow" },
-        { status: 403 }
-      );
+      return failure(403, {
+        error: "Invalid integration references in workflow",
+      });
     }
 
     const workflowId = generateId();
@@ -115,20 +125,23 @@ export async function postWorkflowsCreate(body: {
       edgeCount: graphValidation.edges.length,
     });
 
-    return Response.json({
-      ...newWorkflow,
+    const payload: WorkflowApiPayload = {
+      id: newWorkflow.id,
+      name: newWorkflow.name,
+      description: newWorkflow.description ?? undefined,
+      graph: newWorkflow.graph,
+      visibility: "private",
       isOwner: true,
       createdAt: newWorkflow.createdAt.toISOString(),
       updatedAt: newWorkflow.updatedAt.toISOString(),
-    });
+    };
+
+    return success(payload);
   } catch (error) {
     workflowCreateLogger.error("Failed to create workflow", { error });
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to create workflow",
-      },
-      { status: 500 }
-    );
+    return failure(500, {
+      error:
+        error instanceof Error ? error.message : "Failed to create workflow",
+    });
   }
 }

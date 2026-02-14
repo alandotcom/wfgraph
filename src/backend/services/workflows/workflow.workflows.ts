@@ -4,39 +4,69 @@ import { validateWorkflowIntegrations } from "@/backend/lib/db/integrations";
 import { workflows } from "@/backend/lib/db/schema";
 import { invalidateInngestFunctionsCache } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
+import {
+  failure,
+  type ServiceResult,
+  success,
+} from "@/backend/lib/service-result";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
+import type {
+  ApiErrorPayload,
+  WorkflowApiPayload,
+} from "@/shared/workflow/api-contracts";
 
 const workflowServiceLogger = getAppLogger("workflow", "service");
 
-export async function getWorkflow(workflowId: string) {
+type GetWorkflowResult = ServiceResult<
+  WorkflowApiPayload,
+  404 | 500,
+  ApiErrorPayload
+>;
+
+type PatchWorkflowResult = ServiceResult<
+  WorkflowApiPayload,
+  400 | 403 | 404 | 409 | 500,
+  ApiErrorPayload
+>;
+
+type DeleteWorkflowResult = ServiceResult<
+  { success: true },
+  404 | 500,
+  ApiErrorPayload
+>;
+
+export async function getWorkflow(
+  workflowId: string
+): Promise<GetWorkflowResult> {
   try {
     const workflow = await db.query.workflows.findFirst({
       where: eq(workflows.id, workflowId),
     });
 
     if (!workflow) {
-      return Response.json({ error: "Workflow not found" }, { status: 404 });
+      return failure(404, { error: "Workflow not found" });
     }
 
-    return Response.json({
-      ...workflow,
+    const payload: WorkflowApiPayload = {
+      id: workflow.id,
+      name: workflow.name,
+      description: workflow.description ?? undefined,
+      graph: workflow.graph,
       visibility: "private",
       isOwner: true,
       createdAt: workflow.createdAt.toISOString(),
       updatedAt: workflow.updatedAt.toISOString(),
-    });
+    };
+
+    return success(payload);
   } catch (error) {
     workflowServiceLogger.error("Failed to get workflow", {
       workflowId,
       error,
     });
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to get workflow",
-      },
-      { status: 500 }
-    );
+    return failure(500, {
+      error: error instanceof Error ? error.message : "Failed to get workflow",
+    });
   }
 }
 
@@ -67,7 +97,7 @@ export async function patchWorkflow(
     description?: string;
     graph?: unknown;
   }
-) {
+): Promise<PatchWorkflowResult> {
   const requestLogger = workflowServiceLogger.with({ workflowId });
   try {
     const existingWorkflow = await db.query.workflows.findFirst({
@@ -75,17 +105,14 @@ export async function patchWorkflow(
     });
 
     if (!existingWorkflow) {
-      return Response.json({ error: "Workflow not found" }, { status: 404 });
+      return failure(404, { error: "Workflow not found" });
     }
 
     if (body.name !== undefined) {
       const normalizedName = body.name.trim();
       if (!normalizedName) {
         requestLogger.warn("Rejected workflow update with empty name");
-        return Response.json(
-          { error: "Workflow name is required" },
-          { status: 400 }
-        );
+        return failure(400, { error: "Workflow name is required" });
       }
 
       const nameConflict = await db.query.workflows.findFirst({
@@ -99,10 +126,9 @@ export async function patchWorkflow(
         requestLogger.warn("Duplicate workflow name on update", {
           workflowName: normalizedName,
         });
-        return Response.json(
-          { error: `Workflow name "${normalizedName}" already exists` },
-          { status: 409 }
-        );
+        return failure(409, {
+          error: `Workflow name "${normalizedName}" already exists`,
+        });
       }
 
       body.name = normalizedName;
@@ -114,7 +140,7 @@ export async function patchWorkflow(
         requestLogger.warn("Rejected invalid workflow graph on update", {
           error: graphValidation.error,
         });
-        return Response.json({ error: graphValidation.error }, { status: 400 });
+        return failure(400, { error: graphValidation.error });
       }
 
       const integrationValidation = await validateWorkflowIntegrations(
@@ -127,10 +153,9 @@ export async function patchWorkflow(
             invalidIntegrationIds: integrationValidation.invalidIds,
           }
         );
-        return Response.json(
-          { error: "Invalid integration references in workflow" },
-          { status: 403 }
-        );
+        return failure(403, {
+          error: "Invalid integration references in workflow",
+        });
       }
 
       body.graph = graphValidation.graph;
@@ -145,7 +170,7 @@ export async function patchWorkflow(
       .returning();
 
     if (!updatedWorkflow) {
-      return Response.json({ error: "Workflow not found" }, { status: 404 });
+      return failure(404, { error: "Workflow not found" });
     }
 
     invalidateInngestFunctionsCache();
@@ -155,26 +180,30 @@ export async function patchWorkflow(
       hasGraph: body.graph !== undefined,
     });
 
-    return Response.json({
-      ...updatedWorkflow,
+    const payload: WorkflowApiPayload = {
+      id: updatedWorkflow.id,
+      name: updatedWorkflow.name,
+      description: updatedWorkflow.description ?? undefined,
+      graph: updatedWorkflow.graph,
       visibility: "private",
       isOwner: true,
       createdAt: updatedWorkflow.createdAt.toISOString(),
       updatedAt: updatedWorkflow.updatedAt.toISOString(),
-    });
+    };
+
+    return success(payload);
   } catch (error) {
     requestLogger.error("Failed to update workflow", { error });
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to update workflow",
-      },
-      { status: 500 }
-    );
+    return failure(500, {
+      error:
+        error instanceof Error ? error.message : "Failed to update workflow",
+    });
   }
 }
 
-export async function deleteWorkflow(workflowId: string) {
+export async function deleteWorkflow(
+  workflowId: string
+): Promise<DeleteWorkflowResult> {
   const requestLogger = workflowServiceLogger.with({ workflowId });
   try {
     const existingWorkflow = await db.query.workflows.findFirst({
@@ -182,7 +211,7 @@ export async function deleteWorkflow(workflowId: string) {
     });
 
     if (!existingWorkflow) {
-      return Response.json({ error: "Workflow not found" }, { status: 404 });
+      return failure(404, { error: "Workflow not found" });
     }
 
     await db.delete(workflows).where(eq(workflows.id, workflowId));
@@ -190,15 +219,12 @@ export async function deleteWorkflow(workflowId: string) {
 
     requestLogger.info("Workflow deleted");
 
-    return Response.json({ success: true });
+    return success({ success: true as const });
   } catch (error) {
     requestLogger.error("Failed to delete workflow", { error });
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to delete workflow",
-      },
-      { status: 500 }
-    );
+    return failure(500, {
+      error:
+        error instanceof Error ? error.message : "Failed to delete workflow",
+    });
   }
 }

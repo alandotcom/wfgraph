@@ -4,15 +4,36 @@ import { db } from "@/backend/lib/db";
 import { workflows } from "@/backend/lib/db/schema";
 import { invalidateInngestFunctionsCache } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
+import {
+  failure,
+  type ServiceResult,
+  success,
+} from "@/backend/lib/service-result";
 import { CURRENT_WORKFLOW_NAME } from "@/backend/lib/workflow-constants";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import { generateId } from "@/shared/utils/id";
+import type {
+  ApiErrorPayload,
+  WorkflowApiPayload,
+} from "@/shared/workflow/api-contracts";
 import {
   createSerializedWorkflowGraph,
   isSerializedWorkflowGraph,
 } from "@/shared/workflow/graph";
 
 const workflowsCurrentLogger = getAppLogger("workflow", "current");
+
+type GetCurrentWorkflowResult = ServiceResult<
+  WorkflowApiPayload,
+  500,
+  ApiErrorPayload
+>;
+
+type SaveCurrentWorkflowResult = ServiceResult<
+  WorkflowApiPayload,
+  400 | 500,
+  ApiErrorPayload
+>;
 
 function createDefaultTriggerNode() {
   return {
@@ -29,7 +50,7 @@ function createDefaultTriggerNode() {
   };
 }
 
-export async function getWorkflowsCurrent() {
+export async function getWorkflowsCurrent(): Promise<GetCurrentWorkflowResult> {
   try {
     const [currentWorkflow] = await db
       .select()
@@ -39,30 +60,29 @@ export async function getWorkflowsCurrent() {
       .limit(1);
 
     if (!currentWorkflow) {
-      return Response.json({
+      return success({
         graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
       });
     }
 
-    return Response.json({
+    return success({
       id: currentWorkflow.id,
       graph: currentWorkflow.graph,
     });
   } catch (error) {
     workflowsCurrentLogger.error("Failed to get current workflow", { error });
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to get current workflow",
-      },
-      { status: 500 }
-    );
+    return failure(500, {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to get current workflow",
+    });
   }
 }
 
-export async function postWorkflowsCurrent(body: { graph: unknown }) {
+export async function postWorkflowsCurrent(body: {
+  graph: unknown;
+}): Promise<SaveCurrentWorkflowResult> {
   try {
     const graphToValidate =
       isSerializedWorkflowGraph(body.graph) && body.graph.nodes.length === 0
@@ -74,7 +94,7 @@ export async function postWorkflowsCurrent(body: { graph: unknown }) {
 
     const graphValidation = validateWorkflowGraph(graphToValidate);
     if (!graphValidation.valid) {
-      return Response.json({ error: graphValidation.error }, { status: 400 });
+      return failure(400, { error: graphValidation.error });
     }
 
     const [existingWorkflow] = await db
@@ -94,7 +114,7 @@ export async function postWorkflowsCurrent(body: { graph: unknown }) {
         .where(eq(workflows.id, existingWorkflow.id))
         .returning();
 
-      return Response.json({
+      return success({
         id: updatedWorkflow.id,
         graph: updatedWorkflow.graph,
       });
@@ -114,20 +134,17 @@ export async function postWorkflowsCurrent(body: { graph: unknown }) {
 
     invalidateInngestFunctionsCache();
 
-    return Response.json({
+    return success({
       id: savedWorkflow.id,
       graph: savedWorkflow.graph,
     });
   } catch (error) {
     workflowsCurrentLogger.error("Failed to save current workflow", { error });
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to save current workflow",
-      },
-      { status: 500 }
-    );
+    return failure(500, {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to save current workflow",
+    });
   }
 }

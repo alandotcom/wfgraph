@@ -4,7 +4,16 @@ import { db } from "@/backend/lib/db";
 import { workflows } from "@/backend/lib/db/schema";
 import { invalidateInngestFunctionsCache } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
+import {
+  failure,
+  type ServiceResult,
+  success,
+} from "@/backend/lib/service-result";
 import { generateId } from "@/shared/utils/id";
+import type {
+  ApiErrorPayload,
+  WorkflowApiPayload,
+} from "@/shared/workflow/api-contracts";
 import {
   createSerializedWorkflowGraph,
   toWorkflowGraphData,
@@ -54,7 +63,15 @@ function updateEdgeReferences(
 
 const workflowDuplicateLogger = getAppLogger("workflow", "duplicate");
 
-export async function postWorkflowDuplicate(workflowId: string) {
+type DuplicateWorkflowResult = ServiceResult<
+  WorkflowApiPayload,
+  404 | 409 | 500,
+  ApiErrorPayload
+>;
+
+export async function postWorkflowDuplicate(
+  workflowId: string
+): Promise<DuplicateWorkflowResult> {
   const requestLogger = workflowDuplicateLogger.with({ workflowId });
   try {
     const sourceWorkflow = await db.query.workflows.findFirst({
@@ -62,7 +79,7 @@ export async function postWorkflowDuplicate(workflowId: string) {
     });
 
     if (!sourceWorkflow) {
-      return Response.json({ error: "Workflow not found" }, { status: 404 });
+      return failure(404, { error: "Workflow not found" });
     }
 
     const sourceGraph = sourceWorkflow.graph as SerializedWorkflowGraph;
@@ -86,10 +103,9 @@ export async function postWorkflowDuplicate(workflowId: string) {
       requestLogger.warn("Duplicate workflow name on duplicate", {
         workflowName,
       });
-      return Response.json(
-        { error: `Workflow name "${workflowName}" already exists` },
-        { status: 409 }
-      );
+      return failure(409, {
+        error: `Workflow name "${workflowName}" already exists`,
+      });
     }
 
     const newWorkflowId = generateId();
@@ -112,22 +128,23 @@ export async function postWorkflowDuplicate(workflowId: string) {
       newWorkflowId,
     });
 
-    return Response.json({
-      ...newWorkflow,
+    const payload: WorkflowApiPayload = {
+      id: newWorkflow.id,
+      name: newWorkflow.name,
+      description: newWorkflow.description ?? undefined,
+      graph: newWorkflow.graph,
+      visibility: "private",
       isOwner: true,
       createdAt: newWorkflow.createdAt.toISOString(),
       updatedAt: newWorkflow.updatedAt.toISOString(),
-    });
+    };
+
+    return success(payload);
   } catch (error) {
     requestLogger.error("Failed to duplicate workflow", { error });
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to duplicate workflow",
-      },
-      { status: 500 }
-    );
+    return failure(500, {
+      error:
+        error instanceof Error ? error.message : "Failed to duplicate workflow",
+    });
   }
 }
