@@ -7,7 +7,31 @@ import {
   buildWebhookRoutingConfig,
   deriveWebhookEventContext,
   routeWebhookEvent,
+  type WebhookRoutingDecision,
 } from "@/shared/workflow/webhook-routing";
+
+function assertUnreachable(value: never): never {
+  throw new Error(
+    `Unhandled webhook routing decision: ${JSON.stringify(value)}`
+  );
+}
+
+function mapWebhookDecisionToTriggerDecision(
+  decision: WebhookRoutingDecision
+): TriggerRoutingDecision {
+  switch (decision.kind) {
+    case "create":
+      return { kind: "start" };
+    case "update":
+      return { kind: "restart" };
+    case "delete":
+      return { kind: "stop" };
+    case "ignore":
+      return { kind: "ignore", reason: decision.reason };
+    default:
+      return assertUnreachable(decision);
+  }
+}
 
 export function createWebhookTriggerDefinition(): WorkflowTriggerDefinition {
   return {
@@ -38,27 +62,13 @@ export function createWebhookTriggerDefinition(): WorkflowTriggerDefinition {
         eventType: context.eventType,
         routing,
       });
-      let routingDecision: TriggerRoutingDecision;
-
-      if (webhookDecision.kind === "create") {
-        routingDecision = { kind: "start" };
-      } else if (webhookDecision.kind === "update") {
-        routingDecision = { kind: "restart" };
-      } else if (webhookDecision.kind === "delete") {
-        routingDecision = { kind: "stop" };
-      } else {
-        routingDecision = {
-          kind: "ignore",
-          reason: webhookDecision.reason,
-        };
-      }
 
       return {
         triggerType: "Webhook",
         executionType: "webhook",
         eventType: context.eventType,
         correlationKey: context.correlationKey,
-        routingDecision,
+        routingDecision: mapWebhookDecisionToTriggerDecision(webhookDecision),
         metadata: {
           eventTypePath: routing.eventTypePath,
           correlationPath: routing.correlationPath,
