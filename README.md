@@ -51,9 +51,28 @@ PORT=4017
 INNGEST_DEV=http://localhost:8388
 INNGEST_BASE_URL=http://localhost:8288
 RUN_DB_MIGRATIONS=false
+MIGRATIONS_DIR=drizzle
 ```
 
 Integration-specific credentials can be provided via the integrations UI and/or environment variables, depending on plugin.
+
+## Database Migrations At Startup
+
+The server can run Drizzle migrations automatically during startup.
+
+- Controlled by `RUN_DB_MIGRATIONS` (default `false`)
+- Migration folder is `MIGRATIONS_DIR` (default `drizzle`)
+- Startup migrations run before the HTTP server starts (`src/server.ts`)
+
+Examples:
+
+```bash
+# Run migrations at app startup
+RUN_DB_MIGRATIONS=true bun run dev:app
+
+# Use a custom migration directory
+RUN_DB_MIGRATIONS=true MIGRATIONS_DIR=drizzle bun run dev:app
+```
 
 ## Local Development
 
@@ -73,11 +92,54 @@ bun run dev
 
 App URL: `http://localhost:4017`
 
+## Compile Standalone Binary
+
+Build a standalone executable:
+
+```bash
+bun run compile
+```
+
+Output binary:
+
+- `dist/server`
+
+Run it:
+
+```bash
+PORT=4017 DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder ./dist/server
+```
+
+Run it with startup migrations:
+
+```bash
+RUN_DB_MIGRATIONS=true PORT=4017 DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder ./dist/server
+```
+
+## Docker Build And Run
+
+Build image:
+
+```bash
+docker build -t notifications-workflow .
+```
+
+Run container:
+
+```bash
+docker run --rm \
+  -p 4017:4017 \
+  -e DATABASE_URL=postgresql://workflow:workflow@host.docker.internal:55437/workflow_builder \
+  -e RUN_DB_MIGRATIONS=true \
+  notifications-workflow
+```
+
 ## Scripts
 
 - `bun run dev` - run app and inngest dev processes
 - `bun run dev:app` - run only Bun app server
 - `bun run dev:inngest` - run only inngest dev process
+- `bun run compile` - build standalone executable to `dist/server`
 - `bun run build` - production build to `dist/`
 - `bun run start` - run production build
 - `bun run test` - run Vitest tests
@@ -138,15 +200,15 @@ Base path: `/api`
 
 ## Typed Client
 
-Use the typed client from `src/lib/rpc-client.ts`:
+Use the typed client from `src/client/lib/rpc-client.ts`:
 
 ```ts
-import { api } from "@/lib/rpc-client";
+import { api } from "@/client/lib/rpc-client";
 ```
 
 ## Database Tables
 
-Defined in `src/lib/db/schema.ts`:
+Defined in `src/backend/lib/db/schema.ts`:
 
 - `workflows`
 - `integrations`

@@ -5,22 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1770872425939,
-      "tag": "0000_old_randall",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1770876457453,
-      "tag": "0001_robust_leper_queen",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1770916643011,
-      "tag": "0002_narrow_tempest",
+      "when": 1771035473314,
+      "tag": "0000_baseline",
       "breakpoints": true
     }
   ]

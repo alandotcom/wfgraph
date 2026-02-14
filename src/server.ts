@@ -1,5 +1,6 @@
 import { serve } from "bun";
 import { app as apiApp } from "@/backend/app";
+import { runMigrationsIfRequested } from "@/backend/lib/db/migrations";
 import { configureAppLogging, getAppLogger } from "@/backend/lib/logger";
 import appHtml from "@/client/index.html";
 
@@ -12,6 +13,19 @@ function normalizePath(pathname: string): string {
 
 configureAppLogging();
 const logger = getAppLogger("server");
+let shuttingDown = false;
+
+function shutdown(signal: string): void {
+  if (shuttingDown) {
+    return;
+  }
+
+  shuttingDown = true;
+  logger.warn("Shutting down", { signal });
+  process.exit(0);
+}
+
+await runMigrationsIfRequested();
 
 const server = serve({
   port: Number(Bun.env.PORT ?? 4017),
@@ -32,6 +46,14 @@ const server = serve({
     return Response.json({ error: "Not found" }, { status: 404 });
   },
 });
+
+const shutdownSignals = ["SIGINT", "SIGTERM"] as const;
+
+for (const signal of shutdownSignals) {
+  process.on(signal, () => {
+    shutdown(signal);
+  });
+}
 
 logger.info("Server listening", {
   url: server.url,

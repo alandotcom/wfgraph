@@ -9,6 +9,7 @@
     "dev": "concurrently --kill-others-on-fail --names app,inngest --prefix-colors blue,magenta \"bun run dev:app\" \"bun run dev:inngest\"",
     "dev:app": "NODE_ENV=development INNGEST_DEV=http://localhost:8388 bun --hot src/server.ts",
     "dev:inngest": "bun run inngest:dev",
+    "compile": "bun run src/scripts/compile.ts",
     "build": "bun run src/scripts/migrate-prod.ts && bun build --target=bun --production --outdir=dist ./src/server.ts",
     "start": "cd dist && NODE_ENV=production bun server.js",
     "test": "bun test",
@@ -17,10 +18,10 @@
     "typecheck": "bun run tsc --noEmit",
     "check": "bun run ultracite check",
     "fix": "bun run ultracite fix",
-    "db:generate": "bun run drizzle-kit generate",
-    "db:migrate": "bun run drizzle-kit migrate",
-    "db:push": "bun run drizzle-kit push",
-    "db:studio": "bun run drizzle-kit studio",
+    "db:generate": "bun --bun drizzle-kit generate",
+    "db:migrate": "bun --bun drizzle-kit migrate",
+    "db:push": "bun -bun drizzle-kit push",
+    "db:studio": "bun --bun drizzle-kit studio",
     "inngest:dev": "sh -c 'until curl -sSf http://localhost:4017/api/inngest >/dev/null 2>/dev/null; do sleep 1; done; bun run inngest-cli dev --no-discovery -u http://localhost:4017/api/inngest -p 8388 --connect-gateway-port 8390 --connect-gateway-grpc-port 50062 --connect-executor-grpc-port 50063 --persist'"
   },
   "dependencies": {

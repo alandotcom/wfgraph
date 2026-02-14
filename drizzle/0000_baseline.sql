@@ -97,6 +97,7 @@ ALTER TABLE "workflow_execution_logs" ADD CONSTRAINT "workflow_execution_logs_ex
 ALTER TABLE "workflow_executions" ADD CONSTRAINT "workflow_executions_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."workflows"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_wait_states" ADD CONSTRAINT "workflow_wait_states_execution_id_workflow_executions_id_fk" FOREIGN KEY ("execution_id") REFERENCES "public"."workflow_executions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_wait_states" ADD CONSTRAINT "workflow_wait_states_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."workflows"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "api_keys_key_prefix_idx" ON "api_keys" USING btree ("key_prefix");--> statement-breakpoint
 CREATE INDEX "workflow_execution_events_workflow_created_at_idx" ON "workflow_execution_events" USING btree ("workflow_id","created_at");--> statement-breakpoint
 CREATE INDEX "workflow_execution_events_execution_created_at_idx" ON "workflow_execution_events" USING btree ("execution_id","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "workflow_executions_workflow_run_id_uidx" ON "workflow_executions" USING btree ("workflow_run_id");--> statement-breakpoint
@@ -105,4 +106,5 @@ CREATE INDEX "workflow_executions_workflow_id_correlation_key_idx" ON "workflow_
 CREATE UNIQUE INDEX "workflow_wait_states_hook_token_uidx" ON "workflow_wait_states" USING btree ("hook_token");--> statement-breakpoint
 CREATE INDEX "workflow_wait_states_execution_status_idx" ON "workflow_wait_states" USING btree ("execution_id","status");--> statement-breakpoint
 CREATE INDEX "workflow_wait_states_workflow_correlation_status_idx" ON "workflow_wait_states" USING btree ("workflow_id","correlation_key","status");--> statement-breakpoint
-CREATE INDEX "workflow_wait_states_run_id_idx" ON "workflow_wait_states" USING btree ("run_id");
+CREATE INDEX "workflow_wait_states_run_id_idx" ON "workflow_wait_states" USING btree ("run_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "workflows_name_ci_uidx" ON "workflows" USING btree (lower("name"));
