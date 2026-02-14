@@ -23,9 +23,7 @@ export const workflows = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level
-    nodes: jsonb("nodes").notNull().$type<any[]>(),
-    // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level
-    edges: jsonb("edges").notNull().$type<any[]>(),
+    graph: jsonb("graph").notNull().$type<any>(),
     visibility: text("visibility")
       .notNull()
       .default("private")

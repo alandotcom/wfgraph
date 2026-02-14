@@ -5,6 +5,7 @@ import { z } from "zod";
 import { inngest } from "@/backend/lib/inngest/client";
 import { getInngestFunctions } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
+import { serializedWorkflowGraphSchema } from "@/shared/workflow/schemas";
 import {
   deleteApiKey,
   deleteIntegration,
@@ -91,15 +92,13 @@ const workflowCreateSchema = z
   .object({
     name: z.string(),
     description: z.string().optional(),
-    nodes: z.array(z.unknown()),
-    edges: z.array(z.unknown()),
+    graph: serializedWorkflowGraphSchema,
   })
   .passthrough();
 
 const workflowCurrentSaveSchema = z
   .object({
-    nodes: z.array(z.unknown()),
-    edges: z.array(z.unknown()),
+    graph: serializedWorkflowGraphSchema,
   })
   .passthrough();
 
@@ -107,8 +106,7 @@ const workflowPatchSchema = z
   .object({
     name: z.string().optional(),
     description: z.string().optional(),
-    nodes: z.array(z.unknown()).optional(),
-    edges: z.array(z.unknown()).optional(),
+    graph: serializedWorkflowGraphSchema.optional(),
   })
   .passthrough();
 

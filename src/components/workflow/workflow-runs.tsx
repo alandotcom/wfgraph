@@ -647,9 +647,7 @@ export function WorkflowRuns({
         completedAt: Date | null;
         duration: string | null;
       }>,
-      _workflow?: {
-        nodes: unknown;
-      }
+      _workflow?: unknown
     ): ExecutionLog[] =>
       logEntries.map((log) => ({
         id: log.id,

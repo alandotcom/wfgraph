@@ -1,9 +1,8 @@
-import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
+import type { SerializedWorkflowGraph } from "@/shared/workflow/types";
 import { inngest } from "./client";
 
 export type WorkflowRunRequestedEventData = {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
+  graph: SerializedWorkflowGraph;
   triggerInput?: Record<string, unknown>;
   workflowName?: string;
   requestPayload?: Record<string, unknown>;

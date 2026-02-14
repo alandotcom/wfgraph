@@ -5,49 +5,40 @@ import { workflows } from "@/backend/lib/db/schema";
 import { invalidateInngestFunctionsCache } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
 import { generateId } from "@/shared/utils/id";
+import {
+  createSerializedWorkflowGraph,
+  toWorkflowGraphData,
+} from "@/shared/workflow/graph";
+import type {
+  SerializedWorkflowGraph,
+  WorkflowEdge,
+  WorkflowNode,
+} from "@/shared/workflow/types";
 
-type WorkflowNodeLike = {
-  id: string;
-  data?: {
-    config?: {
-      integrationId?: string;
-      [key: string]: unknown;
-    };
-    status?: string;
-    [key: string]: unknown;
-  };
-  [key: string]: unknown;
-};
-
-function stripIntegrationIds(nodes: WorkflowNodeLike[]): WorkflowNodeLike[] {
+function stripIntegrationIds(nodes: WorkflowNode[]): WorkflowNode[] {
   return nodes.map((node) => {
-    const newNode: WorkflowNodeLike = { ...node, id: nanoid() };
-    if (newNode.data) {
-      const data = { ...newNode.data };
-      if (data.config) {
-        const configWithoutIntegration = { ...data.config };
-        configWithoutIntegration.integrationId = undefined;
-        data.config = configWithoutIntegration;
+    const newNode: WorkflowNode = { ...node, id: nanoid() };
+    const currentData = newNode.data;
+    if (currentData) {
+      const updatedData = { ...currentData };
+      if (updatedData.config) {
+        updatedData.config = {
+          ...updatedData.config,
+          integrationId: undefined,
+        };
       }
-      data.status = "idle";
-      newNode.data = data;
+      updatedData.status = "idle";
+      newNode.data = updatedData;
     }
     return newNode;
   });
 }
 
-type WorkflowEdgeLike = {
-  id: string;
-  source: string;
-  target: string;
-  [key: string]: unknown;
-};
-
 function updateEdgeReferences(
-  edges: WorkflowEdgeLike[],
-  oldNodes: WorkflowNodeLike[],
-  newNodes: WorkflowNodeLike[]
-): WorkflowEdgeLike[] {
+  edges: WorkflowEdge[],
+  oldNodes: WorkflowNode[],
+  newNodes: WorkflowNode[]
+): WorkflowEdge[] {
   const idMap = new Map<string, string>();
   oldNodes.forEach((oldNode, index) => {
     idMap.set(oldNode.id, newNodes[index].id);
@@ -74,13 +65,16 @@ export async function postWorkflowDuplicate(workflowId: string) {
       return Response.json({ error: "Workflow not found" }, { status: 404 });
     }
 
-    const oldNodes = sourceWorkflow.nodes as WorkflowNodeLike[];
+    const sourceGraph = sourceWorkflow.graph as SerializedWorkflowGraph;
+    const { nodes: oldNodes, edges: oldEdges } =
+      toWorkflowGraphData(sourceGraph);
     const newNodes = stripIntegrationIds(oldNodes);
-    const newEdges = updateEdgeReferences(
-      sourceWorkflow.edges as WorkflowEdgeLike[],
-      oldNodes,
-      newNodes
-    );
+    const newEdges = updateEdgeReferences(oldEdges, oldNodes, newNodes);
+    const newGraph = createSerializedWorkflowGraph({
+      nodes: newNodes,
+      edges: newEdges,
+      attributes: sourceGraph.attributes,
+    });
 
     const baseName = `${sourceWorkflow.name} (Copy)`;
     const workflowName = baseName;
@@ -105,8 +99,7 @@ export async function postWorkflowDuplicate(workflowId: string) {
         id: newWorkflowId,
         name: workflowName,
         description: sourceWorkflow.description,
-        nodes: newNodes,
-        edges: newEdges,
+        graph: newGraph,
         visibility: "private",
       })
       .returning();

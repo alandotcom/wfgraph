@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
 import { InngestTestEngine } from "@inngest/test";
 import type { WorkflowExecutionRuntime } from "@/backend/lib/workflow-executor.workflow";
+import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
 
 mock.module("../workflow-executor.workflow", () => ({
   executeWorkflow: vi.fn(),
@@ -38,7 +39,9 @@ async function executeWorkflowFunctionForTest() {
     events: [
       {
         name: "workflow/run.requested",
-        data: { nodes: [], edges: [] },
+        data: {
+          graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        },
       },
     ],
   });
@@ -73,8 +76,7 @@ describe("workflowRunRequestedFunction", () => {
   it("forwards event data and runtime to executeWorkflow", async () => {
     const workflowRunRequestedFunction = createTestFunction();
     const workflowInput = {
-      nodes: [],
-      edges: [],
+      graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
       executionId: "exec_123",
       workflowId: "workflow_123",
     };

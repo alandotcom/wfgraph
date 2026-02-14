@@ -84,8 +84,7 @@ CREATE TABLE "workflows" (
 	"id" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"description" text,
-	"nodes" jsonb NOT NULL,
-	"edges" jsonb NOT NULL,
+	"graph" jsonb NOT NULL,
 	"visibility" text DEFAULT 'private' NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL

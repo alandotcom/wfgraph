@@ -4,7 +4,12 @@ import type {
   IntegrationConfig,
   IntegrationType,
 } from "@/shared/types/integration";
+import {
+  createSerializedWorkflowGraph,
+  toWorkflowGraphData,
+} from "@/shared/workflow/graph";
 import type {
+  SerializedWorkflowGraph,
   WorkflowEdge,
   WorkflowNode,
   WorkflowVisibility,
@@ -17,6 +22,7 @@ export type WorkflowData = {
   id?: string;
   name?: string;
   description?: string;
+  graph: SerializedWorkflowGraph;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   visibility?: WorkflowVisibility;
@@ -44,6 +50,17 @@ export class ApiError extends Error {
 
 export const rpc = hc<AppType>("");
 
+type WorkflowApiPayload = {
+  id?: string;
+  name?: string;
+  description?: string;
+  graph: SerializedWorkflowGraph;
+  visibility?: WorkflowVisibility;
+  createdAt?: string;
+  updatedAt?: string;
+  isOwner?: boolean;
+};
+
 async function rpcCall<T>(request: Promise<Response>): Promise<T> {
   const response = await request;
 
@@ -64,6 +81,49 @@ async function rpcCall<T>(request: Promise<Response>): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+function toWorkflowData(payload: WorkflowApiPayload): WorkflowData {
+  const graphData = toWorkflowGraphData(payload.graph);
+
+  return {
+    ...payload,
+    graph: payload.graph,
+    nodes: graphData.nodes,
+    edges: graphData.edges,
+  };
+}
+
+function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
+  const graphData = toWorkflowGraphData(payload.graph);
+
+  return {
+    id: payload.id ?? "",
+    name: payload.name ?? "",
+    description: payload.description,
+    graph: payload.graph,
+    nodes: graphData.nodes,
+    edges: graphData.edges,
+    visibility: payload.visibility ?? "private",
+    createdAt: payload.createdAt ?? new Date(0).toISOString(),
+    updatedAt: payload.updatedAt ?? new Date(0).toISOString(),
+    isOwner: payload.isOwner,
+  };
+}
+
+function toGraphPayload(input: {
+  graph?: SerializedWorkflowGraph;
+  nodes?: WorkflowNode[];
+  edges?: WorkflowEdge[];
+}): SerializedWorkflowGraph {
+  if (input.graph) {
+    return input.graph;
+  }
+
+  return createSerializedWorkflowGraph({
+    nodes: input.nodes ?? [],
+    edges: input.edges ?? [],
+  });
 }
 
 export type Integration = {
@@ -151,40 +211,69 @@ export const integrationApi = {
 // Workflow API
 export const workflowApi = {
   // Get all workflows
-  getAll: (): Promise<SavedWorkflow[]> => rpcCall(rpc.api.workflows.$get()),
+  getAll: async (): Promise<SavedWorkflow[]> => {
+    const payload = await rpcCall<WorkflowApiPayload[]>(
+      rpc.api.workflows.$get()
+    );
+    return payload.map(toSavedWorkflow);
+  },
 
   // Get a specific workflow
-  getById: (id: string): Promise<SavedWorkflow> =>
-    rpcCall(
+  getById: async (id: string): Promise<SavedWorkflow> => {
+    const payload = await rpcCall<WorkflowApiPayload>(
       rpc.api.workflows[":workflowId"].$get({
         param: { workflowId: id },
       })
-    ),
+    );
+    return toSavedWorkflow(payload);
+  },
 
   // Create a new workflow
   create: (workflow: {
     name: string;
     description?: string;
-    nodes: WorkflowNode[];
-    edges: WorkflowEdge[];
+    graph?: SerializedWorkflowGraph;
+    nodes?: WorkflowNode[];
+    edges?: WorkflowEdge[];
   }): Promise<SavedWorkflow> =>
-    rpcCall(
+    rpcCall<WorkflowApiPayload>(
       rpc.api.workflows.create.$post({
-        json: workflow,
+        json: {
+          name: workflow.name,
+          description: workflow.description,
+          graph: toGraphPayload(workflow),
+        },
       })
-    ),
+    ).then(toSavedWorkflow),
 
   // Update a workflow
   update: (
     id: string,
     workflow: Partial<WorkflowData>
   ): Promise<SavedWorkflow> => {
+    const hasGraphUpdate =
+      workflow.graph !== undefined ||
+      (workflow.nodes !== undefined && workflow.edges !== undefined);
+    const graph = hasGraphUpdate
+      ? toGraphPayload({
+          graph: workflow.graph,
+          nodes: workflow.nodes,
+          edges: workflow.edges,
+        })
+      : undefined;
+
     const request = {
       param: { workflowId: id },
-      json: workflow,
+      json: {
+        name: workflow.name,
+        description: workflow.description,
+        graph,
+      },
     };
 
-    return rpcCall(rpc.api.workflows[":workflowId"].$patch(request));
+    return rpcCall<WorkflowApiPayload>(
+      rpc.api.workflows[":workflowId"].$patch(request)
+    ).then(toSavedWorkflow);
   },
 
   // Delete a workflow
@@ -197,26 +286,31 @@ export const workflowApi = {
 
   // Duplicate a workflow
   duplicate: (id: string): Promise<SavedWorkflow> =>
-    rpcCall(
+    rpcCall<WorkflowApiPayload>(
       rpc.api.workflows[":workflowId"].duplicate.$post({
         param: { workflowId: id },
       })
-    ),
+    ).then(toSavedWorkflow),
 
   // Get current workflow state
   getCurrent: (): Promise<WorkflowData> =>
-    rpcCall(rpc.api.workflows.current.$get()),
+    rpcCall<WorkflowApiPayload>(rpc.api.workflows.current.$get()).then(
+      toWorkflowData
+    ),
 
   // Save current workflow state
-  saveCurrent: (
-    nodes: WorkflowNode[],
-    edges: WorkflowEdge[]
-  ): Promise<WorkflowData> =>
-    rpcCall(
+  saveCurrent: (input: {
+    graph?: SerializedWorkflowGraph;
+    nodes?: WorkflowNode[];
+    edges?: WorkflowEdge[];
+  }): Promise<WorkflowData> =>
+    rpcCall<WorkflowApiPayload>(
       rpc.api.workflows.current.$post({
-        json: { nodes, edges },
+        json: {
+          graph: toGraphPayload(input),
+        },
       })
-    ),
+    ).then(toWorkflowData),
 
   // Execute workflow
   execute: (
@@ -335,8 +429,7 @@ export const workflowApi = {
       workflow: {
         id: string;
         name: string;
-        nodes: unknown;
-        edges: unknown;
+        graph: unknown;
       };
     };
     logs: Array<{
@@ -421,7 +514,7 @@ export const workflowApi = {
       }
 
       autosaveTimeout = setTimeout(() => {
-        workflowApi.saveCurrent(nodes, edges).catch((error) => {
+        workflowApi.saveCurrent({ nodes, edges }).catch((error) => {
           console.error("[rpc-client] Auto-save current workflow failed", {
             error,
           });

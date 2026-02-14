@@ -4,7 +4,7 @@ import { validateWorkflowIntegrations } from "@/backend/lib/db/integrations";
 import { workflows } from "@/backend/lib/db/schema";
 import { invalidateInngestFunctionsCache } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
-import type { WorkflowNode } from "@/shared/workflow/types";
+import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 
 const workflowServiceLogger = getAppLogger("workflow", "service");
 
@@ -20,7 +20,6 @@ export async function getWorkflow(workflowId: string) {
 
     return Response.json({
       ...workflow,
-      nodes: workflow.nodes,
       visibility: "private",
       isOwner: true,
       createdAt: workflow.createdAt.toISOString(),
@@ -55,11 +54,8 @@ function buildUpdateData(
   if (body.description !== undefined) {
     updateData.description = body.description;
   }
-  if (body.nodes !== undefined) {
-    updateData.nodes = body.nodes;
-  }
-  if (body.edges !== undefined) {
-    updateData.edges = body.edges;
+  if (body.graph !== undefined) {
+    updateData.graph = body.graph;
   }
   return updateData;
 }
@@ -69,8 +65,7 @@ export async function patchWorkflow(
   body: {
     name?: string;
     description?: string;
-    nodes?: unknown[];
-    edges?: unknown[];
+    graph?: unknown;
   }
 ) {
   const requestLogger = workflowServiceLogger.with({ workflowId });
@@ -113,15 +108,23 @@ export async function patchWorkflow(
       body.name = normalizedName;
     }
 
-    if (Array.isArray(body.nodes)) {
-      const validation = await validateWorkflowIntegrations(
-        body.nodes as WorkflowNode[]
+    if (body.graph !== undefined) {
+      const graphValidation = validateWorkflowGraph(body.graph);
+      if (!graphValidation.valid) {
+        requestLogger.warn("Rejected invalid workflow graph on update", {
+          error: graphValidation.error,
+        });
+        return Response.json({ error: graphValidation.error }, { status: 400 });
+      }
+
+      const integrationValidation = await validateWorkflowIntegrations(
+        graphValidation.nodes
       );
-      if (!validation.valid) {
+      if (!integrationValidation.valid) {
         requestLogger.warn(
           "Rejected workflow update due to invalid integrations",
           {
-            invalidIntegrationIds: validation.invalidIds,
+            invalidIntegrationIds: integrationValidation.invalidIds,
           }
         );
         return Response.json(
@@ -129,6 +132,8 @@ export async function patchWorkflow(
           { status: 403 }
         );
       }
+
+      body.graph = graphValidation.graph;
     }
 
     const updateData = buildUpdateData(body);
@@ -147,8 +152,7 @@ export async function patchWorkflow(
 
     requestLogger.info("Workflow updated", {
       workflowName: updatedWorkflow.name,
-      hasNodes: Array.isArray(body.nodes),
-      hasEdges: Array.isArray(body.edges),
+      hasGraph: body.graph !== undefined,
     });
 
     return Response.json({

@@ -9,6 +9,7 @@ import {
 } from "@/backend/lib/inngest/runtime-events";
 import { getAppLogger } from "@/backend/lib/logger";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
+import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import {
   listWorkflowWaitingStatesByCorrelation,
   markExecutionCancelled,
@@ -18,7 +19,10 @@ import {
 } from "@/backend/lib/workflow-wait-state";
 import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
 import { getValueByPath, parseCsvSet } from "@/shared/utils/object-path";
-import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
+import type {
+  SerializedWorkflowGraph,
+  WorkflowNode,
+} from "@/shared/workflow/types";
 
 const webhookLogger = getAppLogger("workflow", "webhook");
 
@@ -64,8 +68,7 @@ function getTriggerNode(workflowNodes: WorkflowNode[]) {
 async function startWebhookExecution(input: {
   workflowId: string;
   workflowName: string;
-  workflowNodes: WorkflowNode[];
-  workflowEdges: WorkflowEdge[];
+  workflowGraph: SerializedWorkflowGraph;
   payload: Record<string, unknown>;
   eventType?: string;
   correlationKey?: string;
@@ -85,8 +88,7 @@ async function startWebhookExecution(input: {
     .returning();
 
   const run = await sendWorkflowRunRequested({
-    nodes: input.workflowNodes,
-    edges: input.workflowEdges,
+    graph: input.workflowGraph,
     triggerInput: input.payload,
     requestPayload: input.payload,
     executionId: execution.id,
@@ -311,7 +313,20 @@ export async function postWorkflowWebhook(input: {
       );
     }
 
-    const workflowNodes = workflow.nodes as WorkflowNode[];
+    const graphValidation = validateWorkflowGraph(workflow.graph);
+    if (!graphValidation.valid) {
+      requestLogger.error("Invalid workflow graph", {
+        workflowName: workflow.name,
+        error: graphValidation.error,
+      });
+      return Response.json(
+        { error: "Workflow graph is invalid" },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    const workflowNodes = graphValidation.nodes;
+    const workflowGraph = graphValidation.graph;
 
     // Verify this is a webhook-triggered workflow
     const triggerNode = getTriggerNode(workflowNodes);
@@ -495,8 +510,7 @@ export async function postWorkflowWebhook(input: {
         const execution = await startWebhookExecution({
           workflowId,
           workflowName: workflow.name,
-          workflowNodes: workflow.nodes as WorkflowNode[],
-          workflowEdges: workflow.edges as WorkflowEdge[],
+          workflowGraph,
           payload: body,
           eventType,
           correlationKey,
@@ -526,8 +540,7 @@ export async function postWorkflowWebhook(input: {
       const execution = await startWebhookExecution({
         workflowId,
         workflowName: workflow.name,
-        workflowNodes: workflow.nodes as WorkflowNode[],
-        workflowEdges: workflow.edges as WorkflowEdge[],
+        workflowGraph,
         payload: body,
         eventType,
         correlationKey,
@@ -615,8 +628,7 @@ export async function postWorkflowWebhook(input: {
       const execution = await startWebhookExecution({
         workflowId,
         workflowName: workflow.name,
-        workflowNodes: workflow.nodes as WorkflowNode[],
-        workflowEdges: workflow.edges as WorkflowEdge[],
+        workflowGraph,
         payload: body,
         eventType,
         correlationKey,
@@ -637,8 +649,7 @@ export async function postWorkflowWebhook(input: {
     const execution = await startWebhookExecution({
       workflowId,
       workflowName: workflow.name,
-      workflowNodes: workflow.nodes as WorkflowNode[],
-      workflowEdges: workflow.edges as WorkflowEdge[],
+      workflowGraph,
       payload: body,
       eventType,
       correlationKey,

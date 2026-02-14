@@ -5,8 +5,12 @@ import { validateWorkflowIntegrations } from "@/backend/lib/db/integrations";
 import { workflows } from "@/backend/lib/db/schema";
 import { invalidateInngestFunctionsCache } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
+import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import { generateId } from "@/shared/utils/id";
-import type { WorkflowNode } from "@/shared/workflow/types";
+import {
+  createSerializedWorkflowGraph,
+  isSerializedWorkflowGraph,
+} from "@/shared/workflow/graph";
 
 function createDefaultTriggerNode() {
   return {
@@ -28,8 +32,7 @@ const workflowCreateLogger = getAppLogger("workflow", "create");
 export async function postWorkflowsCreate(body: {
   name: string;
   description?: string;
-  nodes: unknown[];
-  edges: unknown[];
+  graph: unknown;
 }) {
   try {
     const workflowName = body.name.trim();
@@ -57,26 +60,38 @@ export async function postWorkflowsCreate(body: {
       );
     }
 
-    const validation = await validateWorkflowIntegrations(
-      body.nodes as WorkflowNode[]
+    const graphWithDefaultTrigger =
+      isSerializedWorkflowGraph(body.graph) && body.graph.nodes.length === 0
+        ? createSerializedWorkflowGraph({
+            nodes: [createDefaultTriggerNode()],
+            edges: [],
+          })
+        : body.graph;
+
+    const graphValidation = validateWorkflowGraph(graphWithDefaultTrigger);
+    if (!graphValidation.valid) {
+      workflowCreateLogger.warn("Rejected invalid workflow graph on create", {
+        workflowName,
+        error: graphValidation.error,
+      });
+      return Response.json({ error: graphValidation.error }, { status: 400 });
+    }
+
+    const integrationValidation = await validateWorkflowIntegrations(
+      graphValidation.nodes
     );
-    if (!validation.valid) {
+    if (!integrationValidation.valid) {
       workflowCreateLogger.warn(
         "Rejected workflow create due to invalid integrations",
         {
           workflowName,
-          invalidIntegrationIds: validation.invalidIds,
+          invalidIntegrationIds: integrationValidation.invalidIds,
         }
       );
       return Response.json(
         { error: "Invalid integration references in workflow" },
         { status: 403 }
       );
-    }
-
-    let nodes = body.nodes;
-    if (nodes.length === 0) {
-      nodes = [createDefaultTriggerNode()];
     }
 
     const workflowId = generateId();
@@ -87,8 +102,7 @@ export async function postWorkflowsCreate(body: {
         id: workflowId,
         name: workflowName,
         description: body.description,
-        nodes,
-        edges: body.edges,
+        graph: graphValidation.graph,
       })
       .returning();
 
@@ -97,8 +111,8 @@ export async function postWorkflowsCreate(body: {
     workflowCreateLogger.info("Workflow created", {
       workflowId,
       workflowName,
-      nodeCount: nodes.length,
-      edgeCount: body.edges.length,
+      nodeCount: graphValidation.nodes.length,
+      edgeCount: graphValidation.edges.length,
     });
 
     return Response.json({

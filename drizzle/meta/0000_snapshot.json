@@ -752,14 +752,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "nodes": {
-          "name": "nodes",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "edges": {
-          "name": "edges",
+        "graph": {
+          "name": "graph",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true

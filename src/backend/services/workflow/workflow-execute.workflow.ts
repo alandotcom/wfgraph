@@ -8,13 +8,14 @@ import {
 } from "@/backend/lib/inngest/runtime-events";
 import { getAppLogger } from "@/backend/lib/logger";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
+import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import {
   listWorkflowWaitingStatesByCorrelation,
   markExecutionCancelled,
   markWaitingStatesCancelled,
 } from "@/backend/lib/workflow-wait-state";
 import { getValueByPath, parseCsvSet } from "@/shared/utils/object-path";
-import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
+import type { WorkflowNode } from "@/shared/workflow/types";
 
 const executeLogger = getAppLogger("workflow", "execute");
 
@@ -155,13 +156,25 @@ export async function postWorkflowExecute(
       return Response.json({ error: "Workflow not found" }, { status: 404 });
     }
 
-    const validation = await validateWorkflowIntegrations(
-      workflow.nodes as WorkflowNode[]
+    const graphValidation = validateWorkflowGraph(workflow.graph);
+    if (!graphValidation.valid) {
+      requestLogger.error("Invalid workflow graph", {
+        workflowName: workflow.name,
+        error: graphValidation.error,
+      });
+      return Response.json(
+        { error: "Workflow graph is invalid" },
+        { status: 400 }
+      );
+    }
+
+    const integrationValidation = await validateWorkflowIntegrations(
+      graphValidation.nodes
     );
-    if (!validation.valid) {
+    if (!integrationValidation.valid) {
       requestLogger.error("Invalid integration references in workflow", {
         workflowName: workflow.name,
-        invalidIntegrationIds: validation.invalidIds,
+        invalidIntegrationIds: integrationValidation.invalidIds,
       });
       return Response.json(
         { error: "Workflow contains invalid integration references" },
@@ -169,8 +182,7 @@ export async function postWorkflowExecute(
       );
     }
 
-    const workflowNodes = workflow.nodes as WorkflowNode[];
-    const workflowEdges = workflow.edges as WorkflowEdge[];
+    const workflowNodes = graphValidation.nodes;
     const triggerNode = getTriggerNode(workflowNodes);
     const triggerConfig = triggerNode?.data.config ?? {};
     const isWebhookTrigger = triggerConfig.triggerType === "Webhook";
@@ -428,8 +440,7 @@ export async function postWorkflowExecute(
       .returning();
 
     const run = await sendWorkflowRunRequested({
-      nodes: workflowNodes,
-      edges: workflowEdges,
+      graph: graphValidation.graph,
       triggerInput: effectiveInput,
       requestPayload: body.input ?? {},
       executionId: startedExecution.id,

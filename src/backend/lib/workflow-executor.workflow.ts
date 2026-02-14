@@ -11,7 +11,11 @@ import { getAppLogger } from "@/backend/lib/logger";
 import { getErrorMessageAsync } from "@/shared/utils";
 import { getValueByPath, parseCsvSet } from "@/shared/utils/object-path";
 import { resolveWaitUntil } from "@/shared/utils/wait-time";
-import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
+import { toWorkflowGraphData } from "@/shared/workflow/graph";
+import type {
+  SerializedWorkflowGraph,
+  WorkflowNode,
+} from "@/shared/workflow/types";
 import {
   getActionLabel,
   getStepImporter,
@@ -86,8 +90,7 @@ type ExecutionResult = {
 type NodeOutputs = Record<string, { label: string; data: unknown }>;
 
 export type WorkflowExecutionInput = {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
+  graph: SerializedWorkflowGraph;
   triggerInput?: Record<string, unknown>;
   requestPayload?: Record<string, unknown>;
   executionId?: string;
@@ -1015,8 +1018,7 @@ export async function executeWorkflow(
   runtime: WorkflowExecutionRuntime = DEFAULT_RUNTIME
 ) {
   const {
-    nodes,
-    edges,
+    graph,
     triggerInput = {},
     requestPayload,
     executionId,
@@ -1026,6 +1028,7 @@ export async function executeWorkflow(
     dryRun = false,
     eventContext,
   } = input;
+  const { nodes, edges } = toWorkflowGraphData(graph);
 
   const currentWorkflowRunId =
     workflowRunId || runtime.runId || executionId || undefined;

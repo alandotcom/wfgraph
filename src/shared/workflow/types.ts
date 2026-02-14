@@ -15,6 +15,32 @@ export type WorkflowNodeData = {
 export type WorkflowNode = Node<WorkflowNodeData>;
 export type WorkflowEdge = Edge;
 
+export type WorkflowGraphAttributes = Record<string, unknown>;
+
+export type SerializedWorkflowNode = {
+  key: string;
+  attributes: WorkflowNode;
+};
+
+export type SerializedWorkflowEdge = {
+  key: string;
+  source: string;
+  target: string;
+  attributes: WorkflowEdge;
+  undirected?: false;
+};
+
+export type SerializedWorkflowGraph = {
+  attributes?: WorkflowGraphAttributes;
+  options?: {
+    allowSelfLoops?: boolean;
+    multi?: boolean;
+    type?: "directed" | "undirected" | "mixed";
+  };
+  nodes: SerializedWorkflowNode[];
+  edges: SerializedWorkflowEdge[];
+};
+
 export type WorkflowVisibility = "private" | "public";
 
 export type ExecutionLogEntry = {
