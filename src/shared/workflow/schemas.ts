@@ -2,18 +2,70 @@ import { z } from "zod";
 
 export const workflowNodeTypeSchema = z.enum(["trigger", "action", "add"]);
 
-export const workflowNodeDataSchema = z
+export const webhookTriggerConfigSchema = z
   .object({
-    label: z.string(),
-    description: z.string().optional(),
-    type: workflowNodeTypeSchema,
-    config: z.record(z.string(), z.unknown()).optional(),
-    status: z
-      .enum(["idle", "running", "success", "error", "cancelled"])
-      .optional(),
-    enabled: z.boolean().optional(),
+    triggerType: z.literal("Webhook"),
+    webhookSchema: z.string().optional(),
+    webhookEventPath: z.string().optional(),
+    webhookCorrelationPath: z.string().optional(),
+    webhookCreateEvents: z.string().optional(),
+    webhookUpdateEvents: z.string().optional(),
+    webhookDeleteEvents: z.string().optional(),
+    webhookMockRequest: z.string().optional(),
+  })
+  .strict();
+
+export const scheduleTriggerConfigSchema = z
+  .object({
+    triggerType: z.literal("Schedule"),
+    scheduleExpression: z.string().optional(),
+    scheduleCron: z.string().optional(),
+    scheduleTimezone: z.string().optional(),
+  })
+  .strict();
+
+export const workflowTriggerConfigSchema = z.discriminatedUnion("triggerType", [
+  webhookTriggerConfigSchema,
+  scheduleTriggerConfigSchema,
+]);
+
+const workflowNodeDataBaseSchema = z.object({
+  label: z.string(),
+  description: z.string().optional(),
+  status: z
+    .enum(["idle", "running", "success", "error", "cancelled"])
+    .optional(),
+  enabled: z.boolean().optional(),
+});
+
+const workflowTriggerNodeDataSchema = workflowNodeDataBaseSchema
+  .extend({
+    type: z.literal("trigger"),
+    config: workflowTriggerConfigSchema.optional(),
   })
   .passthrough();
+
+const workflowNonTriggerNodeDataSchema = workflowNodeDataBaseSchema
+  .extend({
+    type: z.enum(["action", "add"]),
+    config: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+
+export const workflowNodeDataSchema = z.discriminatedUnion("type", [
+  workflowTriggerNodeDataSchema,
+  workflowNonTriggerNodeDataSchema,
+]);
+
+export type WebhookTriggerConfigInput = z.infer<
+  typeof webhookTriggerConfigSchema
+>;
+export type ScheduleTriggerConfigInput = z.infer<
+  typeof scheduleTriggerConfigSchema
+>;
+export type WorkflowTriggerConfigInput = z.infer<
+  typeof workflowTriggerConfigSchema
+>;
 
 export const workflowNodeAttributesSchema = z
   .object({

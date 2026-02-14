@@ -1,4 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
+import type { SerializedWorkflowGraphInput } from "@/shared/workflow/schemas";
 
 export type WorkflowNodeType = "trigger" | "action" | "add";
 
@@ -17,29 +18,9 @@ export type WorkflowEdge = Edge;
 
 export type WorkflowGraphAttributes = Record<string, unknown>;
 
-export type SerializedWorkflowNode = {
-  key: string;
-  attributes: WorkflowNode;
-};
-
-export type SerializedWorkflowEdge = {
-  key: string;
-  source: string;
-  target: string;
-  attributes: WorkflowEdge;
-  undirected?: false;
-};
-
-export type SerializedWorkflowGraph = {
-  attributes?: WorkflowGraphAttributes;
-  options?: {
-    allowSelfLoops?: boolean;
-    multi?: boolean;
-    type?: "directed" | "undirected" | "mixed";
-  };
-  nodes: SerializedWorkflowNode[];
-  edges: SerializedWorkflowEdge[];
-};
+export type SerializedWorkflowGraph = SerializedWorkflowGraphInput;
+export type SerializedWorkflowNode = SerializedWorkflowGraph["nodes"][number];
+export type SerializedWorkflowEdge = SerializedWorkflowGraph["edges"][number];
 
 export type WorkflowVisibility = "private" | "public";
 

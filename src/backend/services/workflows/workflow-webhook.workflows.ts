@@ -18,11 +18,16 @@ import {
   markWaitStateStatus,
 } from "@/backend/lib/workflow-wait-state";
 import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
-import { getValueByPath, parseCsvSet } from "@/shared/utils/object-path";
+import { parseCsvSet } from "@/shared/utils/object-path";
 import type {
   SerializedWorkflowGraph,
   WorkflowNode,
 } from "@/shared/workflow/types";
+import {
+  buildWebhookRoutingConfig,
+  deriveWebhookEventContext,
+  routeWebhookEvent,
+} from "@/shared/workflow/webhook-routing";
 
 const webhookLogger = getAppLogger("workflow", "webhook");
 
@@ -31,19 +36,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
-
-function asNonEmptyString(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return;
-  }
-
-  return trimmed;
-}
 
 function parseBooleanFlag(value: string | null): boolean | undefined {
   if (value === null) {
@@ -354,16 +346,17 @@ export async function postWorkflowWebhook(input: {
     const dryRunFromHeader = parseBooleanFlag(dryRunHeader);
     const dryRun = dryRunFromQuery ?? dryRunFromHeader ?? false;
 
-    const triggerConfig = triggerNode.data.config ?? {};
-    const eventTypePath =
-      asNonEmptyString(triggerConfig.webhookEventPath) ?? "event";
-    const correlationPath =
-      asNonEmptyString(triggerConfig.webhookCorrelationPath) ?? "data.id";
-
-    const eventType = asNonEmptyString(getValueByPath(body, eventTypePath));
-    const correlationKey = asNonEmptyString(
-      getValueByPath(body, correlationPath)
+    const routing = buildWebhookRoutingConfig(triggerNode.data.config);
+    const eventTypePath = routing.eventTypePath;
+    const correlationPath = routing.correlationPath;
+    const { eventType, correlationKey } = deriveWebhookEventContext(
+      body,
+      routing
     );
+    const routingDecision = routeWebhookEvent({
+      eventType,
+      routing,
+    });
 
     requestLogger.info("Webhook request received", {
       workflowName: workflow.name,
@@ -386,20 +379,10 @@ export async function postWorkflowWebhook(input: {
       },
     });
 
-    const createEvents = parseCsvSet(
-      triggerConfig.webhookCreateEvents ?? "event.create"
-    );
-    const updateEvents = parseCsvSet(
-      triggerConfig.webhookUpdateEvents ?? "event.update"
-    );
-    const deleteEvents = parseCsvSet(
-      triggerConfig.webhookDeleteEvents ?? "event.delete"
-    );
-
-    const routingConfigured =
-      createEvents.size > 0 || updateEvents.size > 0 || deleteEvents.size > 0;
-
-    if (routingConfigured && !eventType) {
+    if (
+      routingDecision.kind === "ignore" &&
+      routingDecision.reason === "missing_event_type"
+    ) {
       await logWorkflowAuditEvent({
         workflowId,
         eventType: "run_ignored",
@@ -436,7 +419,7 @@ export async function postWorkflowWebhook(input: {
       cancelledWaits: waitingStates.length,
     };
 
-    if (eventType && deleteEvents.has(eventType)) {
+    if (routingDecision.kind === "delete" && eventType) {
       if (waitingStates.length === 0) {
         await logWorkflowAuditEvent({
           workflowId,
@@ -485,7 +468,7 @@ export async function postWorkflowWebhook(input: {
       );
     }
 
-    if (eventType && updateEvents.has(eventType)) {
+    if (routingDecision.kind === "update" && eventType) {
       if (waitingStates.length === 0) {
         await logWorkflowAuditEvent({
           workflowId,
@@ -604,7 +587,11 @@ export async function postWorkflowWebhook(input: {
     }
 
     // Event types not configured to create runs are ignored.
-    if (eventType && createEvents.size > 0 && !createEvents.has(eventType)) {
+    if (
+      routingDecision.kind === "ignore" &&
+      routingDecision.reason === "event_not_configured" &&
+      eventType
+    ) {
       await logWorkflowAuditEvent({
         workflowId,
         eventType: "run_ignored",

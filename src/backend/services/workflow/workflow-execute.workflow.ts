@@ -14,23 +14,15 @@ import {
   markExecutionCancelled,
   markWaitingStatesCancelled,
 } from "@/backend/lib/workflow-wait-state";
-import { getValueByPath, parseCsvSet } from "@/shared/utils/object-path";
 import type { WorkflowNode } from "@/shared/workflow/types";
+import {
+  asNonEmptyString,
+  buildWebhookRoutingConfig,
+  deriveWebhookEventContext,
+  routeWebhookEvent,
+} from "@/shared/workflow/webhook-routing";
 
 const executeLogger = getAppLogger("workflow", "execute");
-
-function asNonEmptyString(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return;
-  }
-
-  return trimmed;
-}
 
 function getTriggerNode(workflowNodes: WorkflowNode[]) {
   return workflowNodes.find((node) => node.data.type === "trigger");
@@ -209,25 +201,15 @@ export async function postWorkflowExecute(
       }
     }
 
-    const eventTypePath =
-      asNonEmptyString(triggerConfig.webhookEventPath) ?? "event";
-    const correlationPath =
-      asNonEmptyString(triggerConfig.webhookCorrelationPath) ?? "data.id";
-    const eventType = asNonEmptyString(
-      getValueByPath(effectiveInput, eventTypePath)
+    const routing = buildWebhookRoutingConfig(triggerConfig);
+    const { eventType, correlationKey } = deriveWebhookEventContext(
+      effectiveInput,
+      routing
     );
-    const correlationKey = asNonEmptyString(
-      getValueByPath(effectiveInput, correlationPath)
-    );
-    const createEvents = parseCsvSet(
-      triggerConfig.webhookCreateEvents ?? "event.create"
-    );
-    const updateEvents = parseCsvSet(
-      triggerConfig.webhookUpdateEvents ?? "event.update"
-    );
-    const deleteEvents = parseCsvSet(
-      triggerConfig.webhookDeleteEvents ?? "event.delete"
-    );
+    const routingDecision = routeWebhookEvent({
+      eventType,
+      routing,
+    });
 
     requestLogger.info("Workflow execute request received", {
       workflowName: workflow.name,
@@ -245,7 +227,7 @@ export async function postWorkflowExecute(
         }
       | undefined;
 
-    if (isWebhookTrigger && eventType && deleteEvents.has(eventType)) {
+    if (isWebhookTrigger && routingDecision.kind === "delete" && eventType) {
       const waitStates =
         correlationKey === undefined
           ? []
@@ -361,10 +343,9 @@ export async function postWorkflowExecute(
 
     if (
       isWebhookTrigger &&
-      eventType &&
-      createEvents.size > 0 &&
-      !createEvents.has(eventType) &&
-      !updateEvents.has(eventType)
+      routingDecision.kind === "ignore" &&
+      routingDecision.reason === "event_not_configured" &&
+      eventType
     ) {
       const terminalExecution = await createTerminalExecution({
         workflowId,
@@ -396,7 +377,7 @@ export async function postWorkflowExecute(
       });
     }
 
-    if (isWebhookTrigger && eventType && updateEvents.has(eventType)) {
+    if (isWebhookTrigger && routingDecision.kind === "update" && eventType) {
       const waitStates =
         correlationKey === undefined
           ? []

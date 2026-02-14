@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type { IntegrationType } from "@/shared/types/integration";
 import { generateId } from "@/shared/utils/id";
+import type { SerializedWorkflowGraph } from "@/shared/workflow/types";
 
 // Workflow visibility type
 export type WorkflowVisibility = "private" | "public";
@@ -22,8 +23,7 @@ export const workflows = pgTable(
       .$defaultFn(() => generateId()),
     name: text("name").notNull(),
     description: text("description"),
-    // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level
-    graph: jsonb("graph").notNull().$type<any>(),
+    graph: jsonb("graph").notNull().$type<SerializedWorkflowGraph>(),
     visibility: text("visibility")
       .notNull()
       .default("private")

@@ -9,13 +9,17 @@ import {
 } from "@/backend/lib/condition-validator";
 import { getAppLogger } from "@/backend/lib/logger";
 import { getErrorMessageAsync } from "@/shared/utils";
-import { getValueByPath, parseCsvSet } from "@/shared/utils/object-path";
 import { resolveWaitUntil } from "@/shared/utils/wait-time";
 import { toWorkflowGraphData } from "@/shared/workflow/graph";
 import type {
   SerializedWorkflowGraph,
   WorkflowNode,
 } from "@/shared/workflow/types";
+import {
+  buildWebhookRoutingConfig,
+  deriveWebhookEventContext,
+  routeWebhookEvent,
+} from "@/shared/workflow/webhook-routing";
 import {
   getActionLabel,
   getStepImporter,
@@ -1092,7 +1096,15 @@ export async function executeWorkflow(
       return "Action";
     }
     if (node.data.type === "trigger") {
-      return (node.data.config?.triggerType as string) || "Trigger";
+      if (node.data.config?.triggerType === "Schedule") {
+        return "Schedule";
+      }
+
+      if (node.data.config?.triggerType === "Webhook") {
+        return "Webhook";
+      }
+
+      return "Trigger";
     }
     return node.data.type;
   }
@@ -1144,25 +1156,36 @@ export async function executeWorkflow(
       if (node.data.type === "trigger") {
         namedNodeLogger.debug("Executing trigger node");
 
-        const config = node.data.config || {};
-        const triggerType = config.triggerType as string;
+        const config = node.data.config;
         let triggerData: Record<string, unknown> = {
           triggered: true,
           timestamp: Date.now(),
         };
 
         // Handle webhook mock request for test runs
+        const webhookMockRequest =
+          config?.triggerType === "Webhook" &&
+          typeof config.webhookMockRequest === "string"
+            ? config.webhookMockRequest
+            : undefined;
+
         if (
-          triggerType === "Webhook" &&
-          config.webhookMockRequest &&
+          config?.triggerType === "Webhook" &&
+          webhookMockRequest &&
           (!triggerInput || Object.keys(triggerInput).length === 0)
         ) {
           try {
-            const mockData = JSON.parse(config.webhookMockRequest as string);
-            triggerData = { ...triggerData, ...mockData };
-            namedNodeLogger.debug("Using webhook mock request payload", {
-              mockData,
-            });
+            const mockData = JSON.parse(webhookMockRequest);
+            if (
+              mockData &&
+              typeof mockData === "object" &&
+              !Array.isArray(mockData)
+            ) {
+              triggerData = { ...triggerData, ...mockData };
+              namedNodeLogger.debug("Using webhook mock request payload", {
+                mockData,
+              });
+            }
           } catch (error) {
             namedNodeLogger.error("Failed to parse webhook mock request", {
               error,
@@ -1173,45 +1196,20 @@ export async function executeWorkflow(
           triggerData = { ...triggerData, ...triggerInput };
         }
 
-        if (triggerType === "Webhook") {
-          const eventTypePathRaw = config.webhookEventPath;
-          const eventTypePath =
-            typeof eventTypePathRaw === "string" && eventTypePathRaw.trim()
-              ? eventTypePathRaw.trim()
-              : "event";
-
-          const eventTypeValue = getValueByPath(triggerData, eventTypePath);
-          const eventType =
-            typeof eventTypeValue === "string" && eventTypeValue.trim()
-              ? eventTypeValue.trim()
-              : undefined;
-
-          const createEvents = parseCsvSet(
-            config.webhookCreateEvents ?? "event.create"
-          );
-          const updateEvents = parseCsvSet(
-            config.webhookUpdateEvents ?? "event.update"
-          );
-          const deleteEvents = parseCsvSet(
-            config.webhookDeleteEvents ?? "event.delete"
-          );
-          const routingConfigured =
-            createEvents.size > 0 ||
-            updateEvents.size > 0 ||
-            deleteEvents.size > 0;
+        if (config?.triggerType === "Webhook") {
+          const routing = buildWebhookRoutingConfig(config);
+          const eventTypePath = routing.eventTypePath;
+          const { eventType } = deriveWebhookEventContext(triggerData, routing);
+          const routingDecision = routeWebhookEvent({
+            eventType,
+            routing,
+          });
 
           let ignoreReason: string | undefined;
-          if (routingConfigured && !eventType) {
-            ignoreReason = "missing_event_type";
-          } else if (eventType && deleteEvents.has(eventType)) {
+          if (routingDecision.kind === "delete") {
             ignoreReason = "stop_event";
-          } else if (
-            eventType &&
-            createEvents.size > 0 &&
-            !createEvents.has(eventType) &&
-            !updateEvents.has(eventType)
-          ) {
-            ignoreReason = "event_not_configured";
+          } else if (routingDecision.kind === "ignore") {
+            ignoreReason = routingDecision.reason;
           }
 
           if (ignoreReason) {
