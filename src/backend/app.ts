@@ -5,6 +5,7 @@ import { z } from "zod";
 import { inngest } from "@/backend/lib/inngest/client";
 import { getInngestFunctions } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
+import { initializeWorkflowTriggers } from "@/backend/lib/workflow-trigger-bootstrap";
 import { serializedWorkflowGraphSchema } from "@/shared/workflow/schemas";
 import {
   deleteApiKey,
@@ -119,6 +120,8 @@ const executeWorkflowSchema = z
 
 const webhookBodySchema = z.record(z.string(), z.unknown());
 const resumeBodySchema = z.record(z.string(), z.unknown());
+
+initializeWorkflowTriggers();
 
 const app = new Hono().basePath("/api");
 const httpLogger = getAppLogger("http", "hono");

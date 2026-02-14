@@ -8,13 +8,11 @@ import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-wait-state";
-import type { WorkflowNode } from "@/shared/workflow/types";
 import {
-  asNonEmptyString,
-  buildWebhookRoutingConfig,
-  deriveWebhookEventContext,
-  routeWebhookEvent,
-} from "@/shared/workflow/webhook-routing";
+  evaluateWorkflowTrigger,
+  resolveWorkflowTriggerDefinition,
+} from "@/shared/workflow/trigger-registry";
+import type { WorkflowNode } from "@/shared/workflow/types";
 
 const executeLogger = getAppLogger("workflow", "execute");
 
@@ -114,43 +112,30 @@ export async function postWorkflowExecute(
     const workflowNodes = graphValidation.nodes;
     const triggerNode = getTriggerNode(workflowNodes);
     const triggerConfig = triggerNode?.data.config ?? {};
-    const isWebhookTrigger = triggerConfig.triggerType === "Webhook";
+    const triggerConfigRecord = triggerConfig as Record<string, unknown>;
+    const triggerDefinition =
+      resolveWorkflowTriggerDefinition(triggerConfigRecord);
+    const isWebhookTrigger = triggerDefinition.executionType === "webhook";
     const input = body.input ?? {};
     const dryRun = body.dryRun === true;
-    const mockInputRaw = asNonEmptyString(triggerConfig.webhookMockRequest);
     let effectiveInput = input;
 
-    if (
-      isWebhookTrigger &&
-      Object.keys(input).length === 0 &&
-      mockInputRaw !== undefined
-    ) {
-      try {
-        const parsed = JSON.parse(mockInputRaw);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          effectiveInput = parsed as Record<string, unknown>;
-        }
-      } catch (error) {
-        requestLogger.error("Failed to parse webhook mock payload", {
-          workflowName: workflow.name,
-          error,
-        });
+    if (isWebhookTrigger && Object.keys(input).length === 0) {
+      const mockInput = triggerDefinition.parseMockInput?.(triggerConfigRecord);
+      if (mockInput) {
+        effectiveInput = mockInput;
       }
     }
 
-    const routing = buildWebhookRoutingConfig(triggerConfig);
-    const { eventType, correlationKey } = deriveWebhookEventContext(
-      effectiveInput,
-      routing
-    );
-    const routingDecision = routeWebhookEvent({
-      eventType,
-      routing,
-    });
+    const { eventType, correlationKey, routingDecision } =
+      evaluateWorkflowTrigger({
+        config: triggerConfigRecord,
+        payload: effectiveInput,
+      });
 
     requestLogger.info("Workflow execute request received", {
       workflowName: workflow.name,
-      triggerType: isWebhookTrigger ? "webhook" : "manual",
+      triggerType: triggerDefinition.type.toLowerCase(),
       dryRun,
       requestPayload: body.input ?? {},
       effectiveInput,
@@ -164,7 +149,7 @@ export async function postWorkflowExecute(
         }
       | undefined;
 
-    if (isWebhookTrigger && routingDecision.kind === "delete" && eventType) {
+    if (isWebhookTrigger && routingDecision.kind === "stop" && eventType) {
       const waitStates =
         correlationKey === undefined
           ? []
@@ -315,7 +300,7 @@ export async function postWorkflowExecute(
       });
     }
 
-    if (isWebhookTrigger && routingDecision.kind === "update" && eventType) {
+    if (isWebhookTrigger && routingDecision.kind === "restart" && eventType) {
       const waitStates =
         correlationKey === undefined
           ? []

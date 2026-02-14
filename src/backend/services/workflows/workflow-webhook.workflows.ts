@@ -17,15 +17,14 @@ import {
 } from "@/backend/lib/workflow-wait-state";
 import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
 import { parseCsvSet } from "@/shared/utils/object-path";
+import {
+  evaluateWorkflowTrigger,
+  resolveWorkflowTriggerDefinition,
+} from "@/shared/workflow/trigger-registry";
 import type {
   SerializedWorkflowGraph,
   WorkflowNode,
 } from "@/shared/workflow/types";
-import {
-  buildWebhookRoutingConfig,
-  deriveWebhookEventContext,
-  routeWebhookEvent,
-} from "@/shared/workflow/webhook-routing";
 
 const webhookLogger = getAppLogger("workflow", "webhook");
 
@@ -262,7 +261,12 @@ export async function postWorkflowWebhook(input: {
     // Verify this is a webhook-triggered workflow
     const triggerNode = getTriggerNode(workflowNodes);
 
-    if (!triggerNode || triggerNode.data.config?.triggerType !== "Webhook") {
+    const triggerConfig = (triggerNode?.data.config ?? undefined) as
+      | Record<string, unknown>
+      | undefined;
+    const triggerDefinition = resolveWorkflowTriggerDefinition(triggerConfig);
+
+    if (!triggerNode || triggerDefinition.executionType !== "webhook") {
       return Response.json(
         { error: "This workflow is not configured for webhook triggers" },
         { status: 400, headers: corsHeaders }
@@ -285,17 +289,13 @@ export async function postWorkflowWebhook(input: {
     const dryRunFromHeader = parseBooleanFlag(dryRunHeader);
     const dryRun = dryRunFromQuery ?? dryRunFromHeader ?? false;
 
-    const routing = buildWebhookRoutingConfig(triggerNode.data.config);
-    const eventTypePath = routing.eventTypePath;
-    const correlationPath = routing.correlationPath;
-    const { eventType, correlationKey } = deriveWebhookEventContext(
-      body,
-      routing
-    );
-    const routingDecision = routeWebhookEvent({
-      eventType,
-      routing,
-    });
+    const { eventType, correlationKey, routingDecision, metadata } =
+      evaluateWorkflowTrigger({
+        config: triggerConfig,
+        payload: body,
+      });
+    const eventTypePath = metadata?.eventTypePath ?? "event";
+    const correlationPath = metadata?.correlationPath ?? "data.id";
 
     requestLogger.info("Webhook request received", {
       workflowName: workflow.name,
@@ -358,7 +358,7 @@ export async function postWorkflowWebhook(input: {
       cancelledWaits: waitingStates.length,
     };
 
-    if (routingDecision.kind === "delete" && eventType) {
+    if (routingDecision.kind === "stop" && eventType) {
       if (waitingStates.length === 0) {
         await logWorkflowAuditEvent({
           workflowId,
@@ -408,7 +408,7 @@ export async function postWorkflowWebhook(input: {
       );
     }
 
-    if (routingDecision.kind === "update" && eventType) {
+    if (routingDecision.kind === "restart" && eventType) {
       if (waitingStates.length === 0) {
         await logWorkflowAuditEvent({
           workflowId,

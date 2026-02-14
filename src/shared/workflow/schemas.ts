@@ -24,9 +24,24 @@ export const scheduleTriggerConfigSchema = z
   })
   .strict();
 
-export const workflowTriggerConfigSchema = z.discriminatedUnion("triggerType", [
+export const customTriggerConfigSchema = z
+  .object({
+    triggerType: z.string().trim().min(1),
+  })
+  .catchall(z.unknown())
+  .refine(
+    (value) =>
+      value.triggerType !== "Webhook" && value.triggerType !== "Schedule",
+    {
+      message: 'Custom triggerType must not be "Webhook" or "Schedule"',
+      path: ["triggerType"],
+    }
+  );
+
+export const workflowTriggerConfigSchema = z.union([
   webhookTriggerConfigSchema,
   scheduleTriggerConfigSchema,
+  customTriggerConfigSchema,
 ]);
 
 const workflowNodeDataBaseSchema = z.object({
@@ -62,6 +77,9 @@ export type WebhookTriggerConfigInput = z.infer<
 >;
 export type ScheduleTriggerConfigInput = z.infer<
   typeof scheduleTriggerConfigSchema
+>;
+export type CustomTriggerConfigInput = z.infer<
+  typeof customTriggerConfigSchema
 >;
 export type WorkflowTriggerConfigInput = z.infer<
   typeof workflowTriggerConfigSchema

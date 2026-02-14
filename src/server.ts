@@ -2,6 +2,7 @@ import { serve } from "bun";
 import { app as apiApp } from "@/backend/app";
 import { runMigrationsIfRequested } from "@/backend/lib/db/migrations";
 import { configureAppLogging, getAppLogger } from "@/backend/lib/logger";
+import { initializeWorkflowTriggers } from "@/backend/lib/workflow-trigger-bootstrap";
 import appHtml from "@/client/index.html";
 
 function normalizePath(pathname: string): string {
@@ -12,6 +13,7 @@ function normalizePath(pathname: string): string {
 }
 
 configureAppLogging();
+initializeWorkflowTriggers();
 const logger = getAppLogger("server");
 let shuttingDown = false;
 
