@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useReactFlow } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
@@ -552,6 +553,7 @@ function useWorkflowHandlers({
   userIntegrations,
 }: WorkflowHandlerParams) {
   const { open: openOverlay } = useOverlay();
+  const navigate = useNavigate();
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cleanup polling interval on unmount
@@ -598,7 +600,11 @@ function useWorkflowHandlers({
           // Ignore if session storage is unavailable.
         }
         setIsTransitioningFromHomepage(true);
-        window.location.replace(`/workflows/${createdWorkflow.id}`);
+        await navigate({
+          to: "/workflows/$workflowId",
+          params: { workflowId: createdWorkflow.id },
+          replace: true,
+        });
         return;
       }
 
@@ -801,6 +807,7 @@ function useWorkflowState() {
 // Hook for workflow actions
 function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
   const { open: openOverlay } = useOverlay();
+  const navigate = useNavigate();
   const {
     currentWorkflowId,
     setCurrentWorkflowId,
@@ -886,7 +893,7 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
         try {
           await api.workflow.delete(currentWorkflowId);
           toast.success("Workflow deleted successfully");
-          window.location.href = "/";
+          await navigate({ to: "/", replace: true });
         } catch (error) {
           console.error("Failed to delete workflow:", error);
           toast.error("Failed to delete workflow. Please try again.");
@@ -913,7 +920,10 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     try {
       const newWorkflow = await api.workflow.duplicate(currentWorkflowId);
       toast.success("Workflow duplicated successfully");
-      window.location.assign(`/workflows/${newWorkflow.id}`);
+      await navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: newWorkflow.id },
+      });
     } catch (error) {
       console.error("Failed to duplicate workflow:", error);
       toast.error("Failed to duplicate workflow. Please try again.");
@@ -1296,6 +1306,8 @@ function WorkflowMenuComponent({
   state: ReturnType<typeof useWorkflowState>;
   actions: ReturnType<typeof useWorkflowActions>;
 }) {
+  const navigate = useNavigate();
+
   return (
     <div className="flex flex-col gap-1">
       <div className="flex h-9 max-w-[160px] items-center overflow-hidden rounded-md border bg-secondary text-secondary-foreground sm:max-w-none">
@@ -1317,7 +1329,7 @@ function WorkflowMenuComponent({
           <DropdownMenuContent align="start" className="w-64">
             <DropdownMenuItem
               className="flex items-center justify-between"
-              onClick={() => window.location.assign("/")}
+              onClick={() => navigate({ to: "/" })}
             >
               New Workflow{" "}
               {!workflowId && <Check className="size-4 shrink-0" />}
@@ -1333,7 +1345,10 @@ function WorkflowMenuComponent({
                     className="flex items-center justify-between"
                     key={workflow.id}
                     onClick={() =>
-                      window.location.assign(`/workflows/${workflow.id}`)
+                      navigate({
+                        to: "/workflows/$workflowId",
+                        params: { workflowId: workflow.id },
+                      })
                     }
                   >
                     <span className="truncate">{workflow.name}</span>

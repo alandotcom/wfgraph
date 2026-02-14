@@ -1,7 +1,10 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { api } from "@/client/lib/rpc-client";
 
 export default function WorkflowsPage() {
+  const navigate = useNavigate();
+
   useEffect(() => {
     const redirectToWorkflow = async () => {
       try {
@@ -15,19 +18,23 @@ export default function WorkflowsPage() {
             (a, b) =>
               new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
           )[0];
-          window.location.replace(`/workflows/${mostRecent.id}`);
+          await navigate({
+            to: "/workflows/$workflowId",
+            params: { workflowId: mostRecent.id },
+            replace: true,
+          });
         } else {
           // No workflows, redirect to homepage
-          window.location.replace("/");
+          await navigate({ to: "/", replace: true });
         }
       } catch (error) {
         console.error("Failed to load workflows:", error);
-        window.location.replace("/");
+        await navigate({ to: "/", replace: true });
       }
     };
 
     redirectToWorkflow();
-  }, []);
+  }, [navigate]);
 
   return null;
 }

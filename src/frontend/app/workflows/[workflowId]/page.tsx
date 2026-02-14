@@ -123,6 +123,8 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
   const selectedExecutionPollingIntervalRef = useRef<NodeJS.Timeout | null>(
     null
   );
+  // Ref to ignore stale async loads when user switches workflows quickly.
+  const latestWorkflowIdRef = useRef(workflowId);
   // Ref to access current nodes without triggering effect re-runs
   const nodesRef = useRef(nodes);
 
@@ -131,10 +133,18 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
     nodesRef.current = nodes;
   }, [nodes]);
 
+  useEffect(() => {
+    latestWorkflowIdRef.current = workflowId;
+  }, [workflowId]);
+
   // Helper function to load existing workflow
   const loadExistingWorkflow = useCallback(async () => {
     try {
       const workflow = await api.workflow.getById(workflowId);
+
+      if (latestWorkflowIdRef.current !== workflowId) {
+        return;
+      }
 
       if (!workflow) {
         setWorkflowNotFound(true);
@@ -162,6 +172,9 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
       setHasUnsavedChanges(false);
       setWorkflowNotFound(false);
     } catch (error) {
+      if (latestWorkflowIdRef.current !== workflowId) {
+        return;
+      }
       console.error("Failed to load workflow:", error);
       toast.error("Failed to load workflow");
     }
@@ -183,17 +196,8 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
   );
 
   useEffect(() => {
-    const loadWorkflowData = async () => {
-      // Check if state is already loaded for this workflow
-      if (currentWorkflowId === workflowId && nodes.length > 0) {
-        return;
-      }
-
-      await loadExistingWorkflow();
-    };
-
-    loadWorkflowData();
-  }, [workflowId, currentWorkflowId, nodes.length, loadExistingWorkflow]);
+    loadExistingWorkflow();
+  }, [loadExistingWorkflow]);
 
   // Auto-fix invalid/missing integrations on workflow load or when integrations change
   useEffect(() => {
