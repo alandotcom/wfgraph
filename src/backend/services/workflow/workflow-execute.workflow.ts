@@ -2,18 +2,12 @@ import { eq } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
 import { validateWorkflowIntegrations } from "@/backend/lib/db/integrations";
 import { workflowExecutions, workflows } from "@/backend/lib/db/schema";
-import {
-  sendWorkflowCancelRequested,
-  sendWorkflowRunRequested,
-} from "@/backend/lib/inngest/runtime-events";
+import { sendWorkflowRunRequested } from "@/backend/lib/inngest/runtime-events";
 import { getAppLogger } from "@/backend/lib/logger";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
+import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
-import {
-  listWorkflowWaitingStatesByCorrelation,
-  markExecutionCancelled,
-  markWaitingStatesCancelled,
-} from "@/backend/lib/workflow-wait-state";
+import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-wait-state";
 import type { WorkflowNode } from "@/shared/workflow/types";
 import {
   asNonEmptyString,
@@ -26,63 +20,6 @@ const executeLogger = getAppLogger("workflow", "execute");
 
 function getTriggerNode(workflowNodes: WorkflowNode[]) {
   return workflowNodes.find((node) => node.data.type === "trigger");
-}
-
-async function cancelWaitingRuns(input: {
-  workflowId: string;
-  waitStates: Array<{
-    id: string;
-    executionId: string;
-  }>;
-  reason: string;
-  eventType?: string;
-}) {
-  const uniqueExecutionIds = Array.from(
-    new Set(input.waitStates.map((w) => w.executionId))
-  );
-
-  for (const executionId of uniqueExecutionIds) {
-    try {
-      await sendWorkflowCancelRequested({
-        executionId,
-        workflowId: input.workflowId,
-        reason: input.reason,
-        requestedBy: input.workflowId,
-        eventType: input.eventType,
-      });
-    } catch (error) {
-      executeLogger.error("Failed to send cancel signal for execution", {
-        workflowId: input.workflowId,
-        executionId,
-        eventType: input.eventType,
-        error,
-      });
-    }
-  }
-
-  await markWaitingStatesCancelled(input.waitStates.map((state) => state.id));
-
-  for (const executionId of uniqueExecutionIds) {
-    await markExecutionCancelled({
-      executionId,
-      error: input.reason,
-    });
-
-    await logWorkflowAuditEvent({
-      workflowId: input.workflowId,
-      executionId,
-      eventType: "run_cancelled",
-      message: input.reason,
-      metadata: {
-        eventType: input.eventType,
-      },
-    });
-  }
-
-  return {
-    cancelledExecutions: uniqueExecutionIds.length,
-    cancelledWaits: input.waitStates.length,
-  };
 }
 
 async function createTerminalExecution(input: {
@@ -310,6 +247,7 @@ export async function postWorkflowExecute(
         waitStates,
         eventType,
         reason: `Cancelled by execute event ${eventType}`,
+        logger: executeLogger,
       });
 
       const terminalExecution = await createTerminalExecution({
@@ -401,6 +339,7 @@ export async function postWorkflowExecute(
             waitStates,
             eventType,
             reason: `Cancelled by execute event ${eventType}`,
+            logger: executeLogger,
           });
         }
       }
