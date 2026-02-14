@@ -14,6 +14,15 @@ const result = await Bun.build({
   target: "bun",
   minify: true,
   publicPath: "/",
+  naming: {
+    entry: "[dir]/[name].[ext]",
+    chunk: "chunk-[name].[ext]",
+    asset: "asset-[name].[ext]",
+  },
+  define: {
+    "process.env.NODE_ENV": '"production"',
+    "import.meta.env.DEV": "false",
+  },
   plugins: [tailwindPlugin],
   compile: compileTarget ?? true,
 });
