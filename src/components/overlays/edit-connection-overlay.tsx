@@ -168,7 +168,10 @@ export function EditConnectionOverlay({
         name?: string;
         config?: Record<string, string>;
       };
-      await api.integration.update(integration.id, updatePayload);
+      await api.integration.update({
+        integrationId: integration.id,
+        ...updatePayload,
+      });
       toast.success("Connection updated");
       onSuccess?.();
       closeAll();
@@ -245,7 +248,9 @@ export function EditConnectionOverlay({
         });
       } else {
         // Test existing credentials
-        result = await api.integration.testConnection(integration.id);
+        result = await api.integration.testConnection({
+          integrationId: integration.id,
+        });
       }
 
       setTestResult(result);
@@ -407,7 +412,7 @@ export function DeleteConnectionOverlay({
   const handleDelete = async () => {
     try {
       setDeleting(true);
-      await api.integration.delete(integration.id);
+      await api.integration.delete({ integrationId: integration.id });
 
       toast.success("Connection deleted");
       onSuccess?.();

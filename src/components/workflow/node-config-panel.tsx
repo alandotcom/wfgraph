@@ -308,7 +308,7 @@ export const PanelInner = () => {
       }
 
       try {
-        const all = await api.integration.getAll();
+        const all = await api.integration.getAll({});
 
         // Check if this operation was aborted (actionType changed)
         if (abortSignal.aborted) {

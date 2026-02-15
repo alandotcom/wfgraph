@@ -16,7 +16,6 @@ import {
   markWaitStateStatus,
 } from "@/backend/lib/workflow-wait-state";
 import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
-import type { WorkflowWebhookResponse } from "@/shared/workflow/execution-contracts";
 import {
   evaluateWorkflowTrigger,
   resolveWorkflowTriggerDefinition,
@@ -396,7 +395,7 @@ export async function postWorkflowWebhook(input: {
       });
     }
 
-    return Response.json(outcome as WorkflowWebhookResponse, {
+    return Response.json(outcome, {
       headers: corsHeaders,
     });
   } catch (error) {

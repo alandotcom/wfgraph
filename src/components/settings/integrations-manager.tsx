@@ -34,7 +34,7 @@ export function IntegrationsManager({
   const loadIntegrations = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await api.integration.getAll();
+      const data = await api.integration.getAll({});
       setIntegrations(data);
     } catch (error) {
       console.error("Failed to load integrations:", error);
@@ -107,7 +107,9 @@ export function IntegrationsManager({
   const handleTest = async (id: string) => {
     try {
       setTestingId(id);
-      const result = await api.integration.testConnection(id);
+      const result = await api.integration.testConnection({
+        integrationId: id,
+      });
 
       if (result.status === "success") {
         toast.success(result.message || "Connection successful");

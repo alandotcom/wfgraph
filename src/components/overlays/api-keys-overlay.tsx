@@ -1,6 +1,7 @@
 import { Copy, Key, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { type ApiKey, api } from "@/client/lib/rpc-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,15 +9,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
-
-type ApiKey = {
-  id: string;
-  name: string | null;
-  keyPrefix: string;
-  createdAt: string;
-  lastUsedAt: string | null;
-  key?: string;
-};
 
 type ApiKeysOverlayProps = {
   overlayId: string;
@@ -40,18 +32,9 @@ function CreateApiKeyOverlay({
   const handleCreate = async () => {
     setCreating(true);
     try {
-      const response = await fetch("/api/api-keys", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: keyName || null }),
+      const newKey = await api.apiKey.create({
+        name: keyName || null,
       });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to create API key");
-      }
-
-      const newKey = await response.json();
       onCreated(newKey);
       toast.success("API key created successfully");
       pop();
@@ -100,11 +83,7 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
   const loadApiKeys = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/api-keys");
-      if (!response.ok) {
-        throw new Error("Failed to load API keys");
-      }
-      const keys = await response.json();
+      const keys = await api.apiKey.getAll({});
       setApiKeys(keys);
     } catch (error) {
       console.error("Failed to load API keys:", error);
@@ -126,13 +105,7 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
   const handleDelete = async (keyId: string) => {
     setDeleting(keyId);
     try {
-      const response = await fetch(`/api/api-keys/${keyId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to delete API key");
-      }
+      await api.apiKey.delete({ keyId });
 
       setApiKeys((prev) => prev.filter((k) => k.id !== keyId));
       toast.success("API key deleted");

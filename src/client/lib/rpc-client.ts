@@ -1,13 +1,8 @@
-import { type ClientResponse, hc, type InferResponseType } from "hono/client";
-import type { AppType } from "@/backend/app";
-import type {
-  IntegrationConfig,
-  IntegrationType,
-} from "@/shared/types/integration";
-import type {
-  WorkflowExecuteResponse,
-  WorkflowWebhookResponse,
-} from "@/shared/workflow/execution-contracts";
+import { createORPCClient, ORPCError } from "@orpc/client";
+import { RPCLink } from "@orpc/client/fetch";
+import type { ContractRouterClient } from "@orpc/contract";
+import type { RpcContract } from "@/shared/rpc/contracts";
+import type { WorkflowApiPayload } from "@/shared/workflow/api-contracts";
 import {
   createSerializedWorkflowGraph,
   toWorkflowGraphData,
@@ -19,7 +14,6 @@ import type {
   WorkflowVisibility,
 } from "@/shared/workflow/types";
 
-// Workflow data types
 export type { WorkflowVisibility } from "@/shared/workflow/types";
 
 export type WorkflowData = {
@@ -41,7 +35,6 @@ export type SavedWorkflow = WorkflowData & {
   isOwner?: boolean;
 };
 
-// API error class
 export class ApiError extends Error {
   status: number;
 
@@ -52,11 +45,63 @@ export class ApiError extends Error {
   }
 }
 
-export const rpc = hc<AppType>("");
+const link = new RPCLink({
+  url: "/api/rpc",
+  interceptors: [
+    async (options) => {
+      try {
+        return await options.next();
+      } catch (error) {
+        if (error instanceof ApiError) {
+          throw error;
+        }
 
-type RpcResponse = ClientResponse<unknown, number, string>;
+        if (error instanceof ORPCError) {
+          throw new ApiError(
+            error.status,
+            getErrorMessage(error.data ?? error.message)
+          );
+        }
+
+        if (error instanceof Error) {
+          throw new ApiError(500, error.message || "Request failed");
+        }
+
+        throw new ApiError(500, "Request failed");
+      }
+    },
+  ],
+});
+
+export const rpc: ContractRouterClient<RpcContract> = createORPCClient(link);
+
+type RpcOutput<T> = T extends (...args: never[]) => Promise<infer TResult>
+  ? TResult
+  : never;
+type WorkflowExecuteResult = RpcOutput<typeof rpc.workflow.execute>;
+type WorkflowWebhookResult = RpcOutput<typeof rpc.workflow.triggerWebhook>;
+type WorkflowExecutionsResult = RpcOutput<typeof rpc.workflow.getExecutions>;
+type WorkflowDeleteExecutionsResult = RpcOutput<
+  typeof rpc.workflow.deleteExecutions
+>;
+type WorkflowExecutionLogsResult = RpcOutput<
+  typeof rpc.workflow.getExecutionLogs
+>;
+type WorkflowExecutionEventsResult = RpcOutput<
+  typeof rpc.workflow.getExecutionEvents
+>;
+type WorkflowCancelExecutionResult = RpcOutput<
+  typeof rpc.workflow.cancelExecution
+>;
+type WorkflowExecutionStatusResult = RpcOutput<
+  typeof rpc.workflow.getExecutionStatus
+>;
 
 function getErrorMessage(payload: unknown): string {
+  if (typeof payload === "string" && payload.length > 0) {
+    return payload;
+  }
+
   if (typeof payload !== "object" || payload === null) {
     return "Request failed";
   }
@@ -72,37 +117,6 @@ function getErrorMessage(payload: unknown): string {
 
   return "Request failed";
 }
-
-async function rpcCall<
-  TMethod extends (...args: never[]) => Promise<RpcResponse>,
-  TData = InferResponseType<TMethod, 200>,
->(method: TMethod, ...args: Parameters<TMethod>): Promise<TData> {
-  const response = await method(...args);
-
-  if (!response.ok) {
-    const errorPayload = (await response.json().catch(() => null)) as unknown;
-    throw new ApiError(response.status, getErrorMessage(errorPayload));
-  }
-
-  return response.json() as Promise<TData>;
-}
-
-type WorkflowApiPayload =
-  InferResponseType<
-    (typeof rpc.api.workflows)[":workflowId"]["$get"],
-    200
-  > extends infer T
-    ? T extends { graph: SerializedWorkflowGraph }
-      ? T
-      : never
-    : never;
-
-type WorkflowsApiPayload =
-  InferResponseType<(typeof rpc.api.workflows)["$get"], 200> extends infer T
-    ? T extends WorkflowApiPayload[]
-      ? T
-      : never
-    : never;
 
 function toWorkflowData(payload: WorkflowApiPayload): WorkflowData {
   const graphData = toWorkflowGraphData(payload.graph);
@@ -132,7 +146,7 @@ function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
   };
 }
 
-function toSavedWorkflows(payload: WorkflowsApiPayload): SavedWorkflow[] {
+function toSavedWorkflows(payload: WorkflowApiPayload[]): SavedWorkflow[] {
   return payload.map(toSavedWorkflow);
 }
 
@@ -151,91 +165,19 @@ function toGraphPayload(input: {
   });
 }
 
-export type Integration = {
-  id: string;
-  name: string;
-  type: IntegrationType;
-  isManaged?: boolean;
-  createdAt: string;
-  updatedAt: string;
+export type Integration = RpcOutput<typeof rpc.integration.create>;
+export type IntegrationWithConfig = RpcOutput<typeof rpc.integration.get>;
+export type ApiKey = RpcOutput<typeof rpc.apiKey.getAll>[number] & {
+  key?: string;
 };
 
-export type IntegrationWithConfig = Integration & {
-  config: IntegrationConfig;
-};
-
-// Integration API
-export const integrationApi = {
-  // List all integrations
-  getAll: (type?: IntegrationType): Promise<Integration[]> =>
-    rpcCall(rpc.api.integrations.$get, { query: type ? { type } : {} }),
-
-  // Get single integration with config
-  get: (id: string): Promise<IntegrationWithConfig> =>
-    rpcCall(rpc.api.integrations[":integrationId"].$get, {
-      param: { integrationId: id },
-    }),
-
-  // Create integration
-  create: (data: {
-    name: string;
-    type: IntegrationType;
-    config: IntegrationConfig;
-  }): Promise<Integration> =>
-    rpcCall(rpc.api.integrations.$post, {
-      json: data,
-    }),
-
-  // Update integration
-  update: (
-    id: string,
-    data: { name?: string; config?: IntegrationConfig }
-  ): Promise<IntegrationWithConfig> => {
-    const request = {
-      param: { integrationId: id },
-      json: data,
-    };
-
-    return rpcCall(rpc.api.integrations[":integrationId"].$put, request);
-  },
-
-  // Delete integration
-  delete: (id: string): Promise<{ success: boolean }> =>
-    rpcCall(rpc.api.integrations[":integrationId"].$delete, {
-      param: { integrationId: id },
-    }),
-
-  // Test existing integration connection
-  testConnection: (
-    integrationId: string
-  ): Promise<{ status: "success" | "error"; message: string }> =>
-    rpcCall(rpc.api.integrations[":integrationId"].test.$post, {
-      param: { integrationId },
-    }),
-
-  // Test credentials without saving
-  testCredentials: (data: {
-    type: IntegrationType;
-    config: IntegrationConfig;
-  }): Promise<{ status: "success" | "error"; message: string }> =>
-    rpcCall(rpc.api.integrations.test.$post, {
-      json: data,
-    }),
-};
-
-// Workflow API
 export const workflowApi = {
-  // Get all workflows
   getAll: (): Promise<SavedWorkflow[]> =>
-    rpcCall(rpc.api.workflows.$get).then(toSavedWorkflows),
+    rpc.workflow.getAll({}).then(toSavedWorkflows),
 
-  // Get a specific workflow
   getById: (id: string): Promise<SavedWorkflow> =>
-    rpcCall(rpc.api.workflows[":workflowId"].$get, {
-      param: { workflowId: id },
-    }).then(toSavedWorkflow),
+    rpc.workflow.getById({ workflowId: id }).then(toSavedWorkflow),
 
-  // Create a new workflow
   create: (workflow: {
     name: string;
     description?: string;
@@ -243,15 +185,14 @@ export const workflowApi = {
     nodes?: WorkflowNode[];
     edges?: WorkflowEdge[];
   }): Promise<SavedWorkflow> =>
-    rpcCall(rpc.api.workflows.create.$post, {
-      json: {
+    rpc.workflow
+      .create({
         name: workflow.name,
         description: workflow.description,
         graph: toGraphPayload(workflow),
-      },
-    }).then(toSavedWorkflow),
+      })
+      .then(toSavedWorkflow),
 
-  // Update a workflow
   update: (
     id: string,
     workflow: Partial<WorkflowData>
@@ -267,207 +208,84 @@ export const workflowApi = {
         })
       : undefined;
 
-    const request = {
-      param: { workflowId: id },
-      json: {
+    return rpc.workflow
+      .update({
+        workflowId: id,
         name: workflow.name,
         description: workflow.description,
         graph,
-      },
-    };
-
-    return rpcCall(rpc.api.workflows[":workflowId"].$patch, request).then(
-      toSavedWorkflow
-    );
+      })
+      .then(toSavedWorkflow);
   },
 
-  // Delete a workflow
-  delete: (id: string): Promise<{ success: boolean }> =>
-    rpcCall(rpc.api.workflows[":workflowId"].$delete, {
-      param: { workflowId: id },
-    }),
+  delete: (id: string): Promise<{ success: true }> =>
+    rpc.workflow.delete({ workflowId: id }),
 
-  // Duplicate a workflow
   duplicate: (id: string): Promise<SavedWorkflow> =>
-    rpcCall(rpc.api.workflows[":workflowId"].duplicate.$post, {
-      param: { workflowId: id },
-    }).then(toSavedWorkflow),
+    rpc.workflow.duplicate({ workflowId: id }).then(toSavedWorkflow),
 
-  // Get current workflow state
   getCurrent: (): Promise<WorkflowData> =>
-    rpcCall(rpc.api.workflows.current.$get).then(toWorkflowData),
+    rpc.workflow.getCurrent({}).then(toWorkflowData),
 
-  // Save current workflow state
   saveCurrent: (input: {
     graph?: SerializedWorkflowGraph;
     nodes?: WorkflowNode[];
     edges?: WorkflowEdge[];
   }): Promise<WorkflowData> =>
-    rpcCall(rpc.api.workflows.current.$post, {
-      json: {
+    rpc.workflow
+      .saveCurrent({
         graph: toGraphPayload(input),
-      },
-    }).then(toWorkflowData),
+      })
+      .then(toWorkflowData),
 
-  // Execute workflow
   execute: (
     id: string,
     input: Record<string, unknown> = {},
     options?: { dryRun?: boolean }
-  ): Promise<WorkflowExecuteResponse> => {
-    const request = {
-      param: { workflowId: id },
-      json: { input, dryRun: options?.dryRun === true },
-    };
+  ): Promise<WorkflowExecuteResult> =>
+    rpc.workflow.execute({
+      workflowId: id,
+      input,
+      dryRun: options?.dryRun === true,
+    }),
 
-    return rpcCall(rpc.api.workflow[":workflowId"].execute.$post, request);
-  },
-
-  // Trigger workflow via webhook
   triggerWebhook: (
     id: string,
     input: Record<string, unknown> = {},
     options?: { dryRun?: boolean }
-  ): Promise<WorkflowWebhookResponse> => {
-    if (options?.dryRun) {
-      const request = {
-        param: { workflowId: id },
-        query: { dryRun: "true" as const },
-        json: input,
-      };
-
-      return rpcCall(rpc.api.workflows[":workflowId"].webhook.$post, request);
-    }
-
-    const request = {
-      param: { workflowId: id },
-      query: {},
-      json: input,
-    };
-
-    return rpcCall(rpc.api.workflows[":workflowId"].webhook.$post, request);
-  },
-
-  // Get executions
-  getExecutions: (
-    id: string
-  ): Promise<
-    Array<{
-      id: string;
-      workflowId: string;
-      status:
-        | "pending"
-        | "running"
-        | "waiting"
-        | "success"
-        | "error"
-        | "cancelled";
-      triggerType: "manual" | "webhook" | null;
-      isDryRun: boolean;
-      triggerEventType: string | null;
-      correlationKey: string | null;
-      workflowRunId: string | null;
-      input: unknown;
-      output: unknown;
-      error: string | null;
-      startedAt: string;
-      waitingAt: string | null;
-      cancelledAt: string | null;
-      completedAt: string | null;
-      duration: string | null;
-    }>
-  > =>
-    rpcCall(rpc.api.workflows[":workflowId"].executions.$get, {
-      param: { workflowId: id },
+  ): Promise<WorkflowWebhookResult> =>
+    rpc.workflow.triggerWebhook({
+      workflowId: id,
+      input,
+      dryRun: options?.dryRun,
     }),
 
-  // Delete executions
-  deleteExecutions: (
-    id: string
-  ): Promise<{ success: boolean; deletedCount: number }> =>
-    rpcCall(rpc.api.workflows[":workflowId"].executions.$delete, {
-      param: { workflowId: id },
-    }),
+  getExecutions: (id: string): Promise<WorkflowExecutionsResult> =>
+    rpc.workflow.getExecutions({ workflowId: id }),
 
-  // Get execution logs
+  deleteExecutions: (id: string): Promise<WorkflowDeleteExecutionsResult> =>
+    rpc.workflow.deleteExecutions({ workflowId: id }),
+
   getExecutionLogs: (
     executionId: string
-  ): Promise<{
-    execution: {
-      id: string;
-      workflowId: string;
-      status: string;
-      input: unknown;
-      output: unknown;
-      error: string | null;
-      startedAt: string;
-      completedAt: string | null;
-      duration: string | null;
-    };
-    logs: Array<{
-      id: string;
-      executionId: string;
-      nodeId: string;
-      nodeName: string;
-      nodeType: string;
-      status: "pending" | "running" | "success" | "error";
-      input: unknown;
-      output: unknown;
-      error: string | null;
-      startedAt: string;
-      completedAt: string | null;
-      duration: string | null;
-    }>;
-  }> =>
-    rpcCall(rpc.api.workflows.executions[":executionId"].logs.$get, {
-      param: { executionId },
-    }),
+  ): Promise<WorkflowExecutionLogsResult> =>
+    rpc.workflow.getExecutionLogs({ executionId }),
 
-  // Get execution audit events
   getExecutionEvents: (
     executionId: string
-  ): Promise<{
-    events: Array<{
-      id: string;
-      workflowId: string;
-      executionId: string | null;
-      eventType: string;
-      message: string;
-      metadata: unknown;
-      createdAt: string;
-    }>;
-  }> =>
-    rpcCall(rpc.api.workflows.executions[":executionId"].events.$get, {
-      param: { executionId },
-    }),
+  ): Promise<WorkflowExecutionEventsResult> =>
+    rpc.workflow.getExecutionEvents({ executionId }),
 
-  // Cancel execution (only while waiting)
   cancelExecution: (
     executionId: string
-  ): Promise<{
-    success: boolean;
-    status: "cancelled";
-    cancelledWaitStates: number;
-  }> =>
-    rpcCall(rpc.api.workflows.executions[":executionId"].cancel.$post, {
-      param: { executionId },
-    }),
+  ): Promise<WorkflowCancelExecutionResult> =>
+    rpc.workflow.cancelExecution({ executionId }),
 
-  // Get execution status
   getExecutionStatus: (
     executionId: string
-  ): Promise<{
-    status: string;
-    nodeStatuses: Array<{
-      nodeId: string;
-      status: "pending" | "running" | "success" | "error" | "cancelled";
-    }>;
-  }> =>
-    rpcCall(rpc.api.workflows.executions[":executionId"].status.$get, {
-      param: { executionId },
-    }),
+  ): Promise<WorkflowExecutionStatusResult> =>
+    rpc.workflow.getExecutionStatus({ executionId }),
 
-  // Auto-save specific workflow with debouncing
   autoSaveWorkflow: (() => {
     let autosaveTimeout: ReturnType<typeof setTimeout> | null = null;
     const AUTOSAVE_DELAY = 2000;
@@ -497,8 +315,8 @@ export const workflowApi = {
   })(),
 };
 
-// Export all APIs as a single object
 export const api = {
-  integration: integrationApi,
+  apiKey: rpc.apiKey,
+  integration: rpc.integration,
   workflow: workflowApi,
 };

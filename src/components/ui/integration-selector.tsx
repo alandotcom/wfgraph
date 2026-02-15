@@ -56,7 +56,7 @@ export function IntegrationSelector({
 
   const loadIntegrations = useCallback(async () => {
     try {
-      const all = await api.integration.getAll();
+      const all = await api.integration.getAll({});
       // Update global store so other components can access it
       setGlobalIntegrations(all);
       setHasFetched(true);

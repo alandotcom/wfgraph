@@ -216,7 +216,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
 
     const autoFixIntegrations = async () => {
       try {
-        const allIntegrations = await api.integration.getAll();
+        const allIntegrations = await api.integration.getAll({});
         setGlobalIntegrations(allIntegrations);
         setIntegrationsLoaded(true);
 

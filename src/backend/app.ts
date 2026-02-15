@@ -1,123 +1,30 @@
 import { zValidator } from "@hono/zod-validator";
+import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import { serve as serveInngest } from "inngest/hono";
 import { z } from "zod";
-import { respond } from "@/backend/lib/http/respond";
 import { inngest } from "@/backend/lib/inngest/client";
 import { getInngestFunctions } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
 import { initializeWorkflowTriggers } from "@/backend/lib/workflow-trigger-bootstrap";
-import { serializedWorkflowGraphSchema } from "@/shared/workflow/schemas";
+import type { RpcContext } from "@/backend/rpc/context";
 import {
-  deleteApiKey,
-  deleteIntegration,
-  deleteWorkflow,
-  deleteWorkflowExecutions,
-  getApiKeys,
-  getExecutionEvents,
-  getExecutionLogs,
-  getExecutionStatus,
-  getIntegration,
-  getIntegrations,
-  getWorkflow,
-  getWorkflowExecutions,
-  getWorkflows,
-  getWorkflowsCurrent,
+  openApiReferenceHandler,
+  openApiRestHandler,
+} from "@/backend/rpc/openapi";
+import { rpcRouter } from "@/backend/rpc/router";
+import { postWorkflowResume } from "@/backend/services/workflows/workflow-resume.workflows";
+import {
   optionsWorkflowWebhook,
-  patchWorkflow,
-  postApiKeys,
-  postExecutionCancel,
-  postIntegrations,
-  postIntegrationsTest,
-  postIntegrationTest,
-  postWorkflowDuplicate,
-  postWorkflowExecute,
-  postWorkflowResume,
-  postWorkflowsCreate,
-  postWorkflowsCurrent,
   postWorkflowWebhook,
-  putIntegration,
-} from "./server/routes";
+} from "@/backend/services/workflows/workflow-webhook.workflows";
 
 const idSchema = z.string().trim().min(1);
-const integrationTypeSchema = z.enum([
-  "acuity",
-  "clerk",
-  "database",
-  "linear",
-  "resend",
-  "slack",
-  "twilio",
-]);
 const workflowIdParamsSchema = z.object({ workflowId: idSchema });
-const integrationIdParamsSchema = z.object({ integrationId: idSchema });
-const executionIdParamsSchema = z.object({ executionId: idSchema });
-const apiKeyIdParamsSchema = z.object({ keyId: idSchema });
 const tokenParamsSchema = z.object({ token: idSchema });
-const integrationQuerySchema = z.object({
-  type: integrationTypeSchema.optional(),
-});
 const webhookQuerySchema = z.object({
   dryRun: z.enum(["true", "false"]).optional(),
 });
-const integrationConfigSchema = z.record(z.string(), z.string().optional());
-
-const createApiKeySchema = z
-  .object({
-    name: z.string().optional(),
-  })
-  .passthrough();
-
-const integrationCreateSchema = z
-  .object({
-    name: z.string().optional(),
-    type: integrationTypeSchema,
-    config: integrationConfigSchema,
-  })
-  .passthrough();
-
-const integrationUpdateSchema = z
-  .object({
-    name: z.string().optional(),
-    config: integrationConfigSchema.optional(),
-  })
-  .passthrough();
-
-const integrationTestSchema = z
-  .object({
-    type: integrationTypeSchema,
-    config: integrationConfigSchema,
-  })
-  .passthrough();
-
-const workflowCreateSchema = z
-  .object({
-    name: z.string(),
-    description: z.string().optional(),
-    graph: serializedWorkflowGraphSchema,
-  })
-  .passthrough();
-
-const workflowCurrentSaveSchema = z
-  .object({
-    graph: serializedWorkflowGraphSchema,
-  })
-  .passthrough();
-
-const workflowPatchSchema = z
-  .object({
-    name: z.string().optional(),
-    description: z.string().optional(),
-    graph: serializedWorkflowGraphSchema.optional(),
-  })
-  .passthrough();
-
-const executeWorkflowSchema = z
-  .object({
-    input: z.record(z.string(), z.unknown()).optional(),
-    dryRun: z.boolean().optional(),
-  })
-  .passthrough();
 
 const webhookBodySchema = z.record(z.string(), z.unknown());
 const resumeBodySchema = z.record(z.string(), z.unknown());
@@ -126,6 +33,7 @@ initializeWorkflowTriggers();
 
 const app = new Hono().basePath("/api");
 const httpLogger = getAppLogger("http", "hono");
+const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
 
 const BODY_LOG_LIMIT = 8192;
 const isDevelopmentEnvironment = ["development", "dev"].includes(
@@ -235,6 +143,21 @@ async function getResponseLogBody(res: Response): Promise<unknown | undefined> {
   };
 }
 
+async function handleOpenApiReferenceRoute(
+  request: Request
+): Promise<Response | null> {
+  const { matched, response } = await openApiReferenceHandler.handle(request, {
+    prefix: "/api",
+    context: { headers: request.headers },
+  });
+
+  if (!matched) {
+    return null;
+  }
+
+  return response;
+}
+
 app.use("*", async (c, next) => {
   const requestId = c.req.header("x-request-id") ?? buildRequestId();
   const startTime = Date.now();
@@ -306,6 +229,48 @@ app.onError((error, c) => {
 });
 
 const routes = app
+  .use("/rpc/*", async (c, next) => {
+    const { matched, response } = await rpcHandler.handle(c.req.raw, {
+      prefix: "/api/rpc",
+      context: { headers: c.req.raw.headers },
+    });
+
+    if (matched) {
+      return c.newResponse(response.body, response);
+    }
+
+    await next();
+  })
+  .use("/rest/*", async (c, next) => {
+    const { matched, response } = await openApiRestHandler.handle(c.req.raw, {
+      prefix: "/api/rest",
+      context: { headers: c.req.raw.headers },
+    });
+
+    if (matched) {
+      return c.newResponse(response.body, response);
+    }
+
+    await next();
+  })
+  .get("/openapi.json", async (c) => {
+    const response = await handleOpenApiReferenceRoute(c.req.raw);
+
+    if (!response) {
+      return c.json({ error: "Not found" }, 404);
+    }
+
+    return c.newResponse(response.body, response);
+  })
+  .get("/docs", async (c) => {
+    const response = await handleOpenApiReferenceRoute(c.req.raw);
+
+    if (!response) {
+      return c.json({ error: "Not found" }, 404);
+    }
+
+    return c.newResponse(response.body, response);
+  })
   .all("/auth", (c) => c.json({ error: "Not found" }, 404))
   .all("/auth/*", (c) => c.json({ error: "Not found" }, 404))
   .all("/og", (c) => c.json({ error: "Not found" }, 404))
@@ -315,107 +280,6 @@ const routes = app
     const inngestHandler = serveInngest({ client: inngest, functions });
     return await inngestHandler(c);
   })
-  .get("/api-keys", () => getApiKeys())
-  .post("/api-keys", zValidator("json", createApiKeySchema), (c) =>
-    postApiKeys(c.req.valid("json"))
-  )
-  .delete("/api-keys/:keyId", zValidator("param", apiKeyIdParamsSchema), (c) =>
-    deleteApiKey(c.req.valid("param").keyId)
-  )
-  .get("/integrations", zValidator("query", integrationQuerySchema), (c) =>
-    getIntegrations(c.req.valid("query").type)
-  )
-  .post("/integrations", zValidator("json", integrationCreateSchema), (c) =>
-    postIntegrations(c.req.valid("json"))
-  )
-  .post("/integrations/test", zValidator("json", integrationTestSchema), (c) =>
-    postIntegrationsTest(c.req.valid("json"))
-  )
-  .get(
-    "/integrations/:integrationId",
-    zValidator("param", integrationIdParamsSchema),
-    (c) => getIntegration(c.req.valid("param").integrationId)
-  )
-  .put(
-    "/integrations/:integrationId",
-    zValidator("param", integrationIdParamsSchema),
-    zValidator("json", integrationUpdateSchema),
-    (c) =>
-      putIntegration(c.req.valid("param").integrationId, c.req.valid("json"))
-  )
-  .delete(
-    "/integrations/:integrationId",
-    zValidator("param", integrationIdParamsSchema),
-    (c) => deleteIntegration(c.req.valid("param").integrationId)
-  )
-  .post(
-    "/integrations/:integrationId/test",
-    zValidator("param", integrationIdParamsSchema),
-    (c) => postIntegrationTest(c.req.valid("param").integrationId)
-  )
-  .post(
-    "/workflow/:workflowId/execute",
-    zValidator("param", workflowIdParamsSchema),
-    zValidator("json", executeWorkflowSchema),
-    (c) =>
-      postWorkflowExecute(c.req.valid("param").workflowId, c.req.valid("json"))
-  )
-  .get("/workflows", async (c) => {
-    return respond(c, await getWorkflows());
-  })
-  .post(
-    "/workflows/create",
-    zValidator("json", workflowCreateSchema),
-    async (c) => respond(c, await postWorkflowsCreate(c.req.valid("json")))
-  )
-  .get("/workflows/current", async (c) =>
-    respond(c, await getWorkflowsCurrent())
-  )
-  .post(
-    "/workflows/current",
-    zValidator("json", workflowCurrentSaveSchema),
-    async (c) => respond(c, await postWorkflowsCurrent(c.req.valid("json")))
-  )
-  .get(
-    "/workflows/:workflowId",
-    zValidator("param", workflowIdParamsSchema),
-    async (c) => respond(c, await getWorkflow(c.req.valid("param").workflowId))
-  )
-  .patch(
-    "/workflows/:workflowId",
-    zValidator("param", workflowIdParamsSchema),
-    zValidator("json", workflowPatchSchema),
-    async (c) =>
-      respond(
-        c,
-        await patchWorkflow(
-          c.req.valid("param").workflowId,
-          c.req.valid("json")
-        )
-      )
-  )
-  .delete(
-    "/workflows/:workflowId",
-    zValidator("param", workflowIdParamsSchema),
-    async (c) =>
-      respond(c, await deleteWorkflow(c.req.valid("param").workflowId))
-  )
-  .post(
-    "/workflows/:workflowId/duplicate",
-    zValidator("param", workflowIdParamsSchema),
-    async (c) =>
-      respond(c, await postWorkflowDuplicate(c.req.valid("param").workflowId))
-  )
-  .get(
-    "/workflows/:workflowId/executions",
-    zValidator("param", workflowIdParamsSchema),
-    (c) => getWorkflowExecutions(c.req.valid("param").workflowId)
-  )
-  .delete(
-    "/workflows/:workflowId/executions",
-    zValidator("param", workflowIdParamsSchema),
-    (c) => deleteWorkflowExecutions(c.req.valid("param").workflowId)
-  )
   .options("/workflows/:workflowId/webhook", () => optionsWorkflowWebhook())
   .post(
     "/workflows/:workflowId/webhook",
@@ -431,26 +295,6 @@ const routes = app
         body: c.req.valid("json"),
       })
   )
-  .get(
-    "/workflows/executions/:executionId/status",
-    zValidator("param", executionIdParamsSchema),
-    (c) => getExecutionStatus(c.req.valid("param").executionId)
-  )
-  .get(
-    "/workflows/executions/:executionId/logs",
-    zValidator("param", executionIdParamsSchema),
-    (c) => getExecutionLogs(c.req.valid("param").executionId)
-  )
-  .get(
-    "/workflows/executions/:executionId/events",
-    zValidator("param", executionIdParamsSchema),
-    (c) => getExecutionEvents(c.req.valid("param").executionId)
-  )
-  .post(
-    "/workflows/executions/:executionId/cancel",
-    zValidator("param", executionIdParamsSchema),
-    (c) => postExecutionCancel(c.req.valid("param").executionId)
-  )
   .post(
     "/workflows/hooks/:token/resume",
     zValidator("param", tokenParamsSchema),
@@ -464,7 +308,5 @@ const routes = app
   );
 
 routes.notFound((c) => c.json({ error: "Not found" }, 404));
-
-export type AppType = typeof routes;
 
 export { routes as app };
