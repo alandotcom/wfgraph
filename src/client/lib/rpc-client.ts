@@ -46,8 +46,59 @@ export class ApiError extends Error {
   }
 }
 
+const DEFAULT_RPC_PATH = "/api/rpc";
+const DEFAULT_RPC_ORIGIN = "http://localhost:3000";
+
+type ResolveRpcUrlOptions = {
+  rpcUrl?: string | null;
+  origin?: string | null;
+};
+
+function getRuntimeOrigin(): string | undefined {
+  const origin =
+    typeof globalThis.location?.origin === "string"
+      ? globalThis.location.origin.trim()
+      : "";
+
+  if (!origin || origin === "null") {
+    return undefined;
+  }
+
+  return origin;
+}
+
+function getConfiguredRpcUrl(): string | undefined {
+  const env = (
+    import.meta as ImportMeta & {
+      env?: Record<string, string | undefined>;
+    }
+  ).env;
+
+  const rpcUrl = env?.VITE_RPC_URL;
+  return typeof rpcUrl === "string" ? rpcUrl : undefined;
+}
+
+export function resolveRpcUrl(options: ResolveRpcUrlOptions = {}): string {
+  const configuredUrl = options.rpcUrl ?? getConfiguredRpcUrl();
+  const candidateUrl = (configuredUrl ?? DEFAULT_RPC_PATH).trim();
+  const url = candidateUrl.length > 0 ? candidateUrl : DEFAULT_RPC_PATH;
+
+  try {
+    return new URL(url).toString();
+  } catch {
+    const origin =
+      options.origin?.trim() || getRuntimeOrigin() || DEFAULT_RPC_ORIGIN;
+
+    try {
+      return new URL(url, origin).toString();
+    } catch {
+      return new URL(url, DEFAULT_RPC_ORIGIN).toString();
+    }
+  }
+}
+
 const link = new RPCLink({
-  url: "/api/rpc",
+  url: resolveRpcUrl(),
   interceptors: [
     async (options) => {
       try {
