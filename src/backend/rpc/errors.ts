@@ -1,5 +1,6 @@
 import { ORPCError } from "@orpc/server";
 import type { ServiceResult } from "@/backend/lib/service-result";
+import { getRpcErrorMessage } from "@/shared/rpc/error-message";
 
 function statusToOrpcCode(status: number): string {
   switch (status) {
@@ -46,67 +47,12 @@ function statusToOrpcCode(status: number): string {
   }
 }
 
-function getErrorMessage(payload: unknown): string {
-  if (typeof payload === "string" && payload.trim().length > 0) {
-    return payload;
-  }
-
-  if (typeof payload !== "object" || payload === null) {
-    return "Request failed";
-  }
-
-  const value = payload as {
-    error?: unknown;
-    message?: unknown;
-    details?: unknown;
-  };
-
-  if (typeof value.error === "string" && value.error.trim().length > 0) {
-    return value.error;
-  }
-
-  if (typeof value.message === "string" && value.message.trim().length > 0) {
-    return value.message;
-  }
-
-  if (typeof value.details === "string" && value.details.trim().length > 0) {
-    return value.details;
-  }
-
-  return "Request failed";
-}
-
 function throwOrpcError(status: number, payload: unknown): never {
   throw new ORPCError(statusToOrpcCode(status), {
     status,
-    message: getErrorMessage(payload),
+    message: getRpcErrorMessage(payload),
     data: payload,
   });
-}
-
-function isServiceResult<TData>(
-  value: unknown
-): value is ServiceResult<TData, number, unknown> {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  if (!("ok" in value)) {
-    return false;
-  }
-
-  const maybeServiceResult = value as { ok?: unknown };
-  return typeof maybeServiceResult.ok === "boolean";
-}
-
-async function responseToData<TData>(response: Response): Promise<TData> {
-  const payload = (await response.json().catch(() => null)) as unknown;
-
-  if (!response.ok) {
-    throwOrpcError(response.status, payload);
-  }
-
-  return payload as TData;
 }
 
 function serviceResultToData<TData>(
@@ -119,26 +65,10 @@ function serviceResultToData<TData>(
   return result.data;
 }
 
-type RpcCompatibleResult<TData> =
-  | Response
-  | ServiceResult<TData, number, unknown>;
+export type RpcCompatibleResult<TData> = ServiceResult<TData, number, unknown>;
 
 export async function toRpcData<TData>(
   result: RpcCompatibleResult<TData> | Promise<RpcCompatibleResult<TData>>
 ): Promise<TData> {
-  const resolved = await result;
-
-  if (resolved instanceof Response) {
-    return responseToData<TData>(resolved);
-  }
-
-  if (isServiceResult<TData>(resolved)) {
-    return serviceResultToData<TData>(resolved);
-  }
-
-  throw new ORPCError("INTERNAL_SERVER_ERROR", {
-    status: 500,
-    message: "Invalid RPC handler result",
-    data: null,
-  });
+  return serviceResultToData(await result);
 }

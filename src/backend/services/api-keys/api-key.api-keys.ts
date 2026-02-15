@@ -1,11 +1,21 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
 import { apiKeys } from "@/backend/lib/db/schema";
+import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { getAppLogger } from "@/backend/lib/logger";
+import {
+  failure,
+  type ServiceResult,
+  success,
+} from "@/backend/lib/service-result";
 
 const apiKeyLogger = getAppLogger("api-keys");
 
-export async function deleteApiKey(keyId: string) {
+type DeleteApiKeyError = { error: string };
+
+export async function deleteApiKeyResult(
+  keyId: string
+): Promise<ServiceResult<{ success: true }, 404 | 500, DeleteApiKeyError>> {
   const requestLogger = apiKeyLogger.with({ keyId });
   try {
     const result = await db
@@ -15,15 +25,16 @@ export async function deleteApiKey(keyId: string) {
 
     if (result.length === 0) {
       requestLogger.warn("API key not found for delete");
-      return Response.json({ error: "API key not found" }, { status: 404 });
+      return failure(404, { error: "API key not found" });
     }
 
-    return Response.json({ success: true });
+    return success({ success: true });
   } catch (error) {
     requestLogger.error("Failed to delete API key", { error });
-    return Response.json(
-      { error: "Failed to delete API key" },
-      { status: 500 }
-    );
+    return failure(500, { error: "Failed to delete API key" });
   }
+}
+
+export async function deleteApiKey(keyId: string) {
+  return responseFromServiceResult(await deleteApiKeyResult(keyId));
 }

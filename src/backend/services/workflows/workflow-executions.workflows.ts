@@ -7,11 +7,73 @@ import {
   workflows,
   workflowWaitStates,
 } from "@/backend/lib/db/schema";
+import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { getAppLogger } from "@/backend/lib/logger";
+import {
+  failure,
+  type ServiceResult,
+  success,
+} from "@/backend/lib/service-result";
 
 const workflowExecutionsLogger = getAppLogger("workflow", "executions");
 
-export async function getWorkflowExecutions(workflowId: string) {
+type WorkflowExecutionItem = {
+  id: string;
+  workflowId: string;
+  status: "pending" | "running" | "waiting" | "success" | "error" | "cancelled";
+  triggerType: "manual" | "webhook" | null;
+  isDryRun: boolean;
+  triggerEventType: string | null;
+  correlationKey: string | null;
+  workflowRunId: string | null;
+  input: unknown;
+  output: unknown;
+  error: string | null;
+  startedAt: string;
+  waitingAt: string | null;
+  cancelledAt: string | null;
+  completedAt: string | null;
+  duration: string | null;
+};
+
+type WorkflowExecutionsError = { error: string };
+
+function toIso(value: Date | null): string | null {
+  return value?.toISOString() ?? null;
+}
+
+function toWorkflowExecutionItem(input: {
+  id: string;
+  workflowId: string;
+  status: "pending" | "running" | "waiting" | "success" | "error" | "cancelled";
+  triggerType: "manual" | "webhook" | null;
+  isDryRun: boolean;
+  triggerEventType: string | null;
+  correlationKey: string | null;
+  workflowRunId: string | null;
+  input: unknown;
+  output: unknown;
+  error: string | null;
+  startedAt: Date;
+  waitingAt: Date | null;
+  cancelledAt: Date | null;
+  completedAt: Date | null;
+  duration: string | null;
+}): WorkflowExecutionItem {
+  return {
+    ...input,
+    startedAt: input.startedAt.toISOString(),
+    waitingAt: toIso(input.waitingAt),
+    cancelledAt: toIso(input.cancelledAt),
+    completedAt: toIso(input.completedAt),
+  };
+}
+
+export async function getWorkflowExecutionsResult(
+  workflowId: string
+): Promise<
+  ServiceResult<WorkflowExecutionItem[], 404 | 500, WorkflowExecutionsError>
+> {
   const requestLogger = workflowExecutionsLogger.with({ workflowId });
   try {
     const workflow = await db.query.workflows.findFirst({
@@ -21,7 +83,7 @@ export async function getWorkflowExecutions(workflowId: string) {
 
     if (!workflow) {
       requestLogger.warn("Workflow not found for executions list");
-      return Response.json({ error: "Workflow not found" }, { status: 404 });
+      return failure(404, { error: "Workflow not found" });
     }
 
     const executions = await db.query.workflowExecutions.findMany({
@@ -30,20 +92,31 @@ export async function getWorkflowExecutions(workflowId: string) {
       limit: 50,
     });
 
-    return Response.json(executions);
+    return success(executions.map(toWorkflowExecutionItem));
   } catch (error) {
     requestLogger.error("Failed to get workflow executions", { error });
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to get executions",
-      },
-      { status: 500 }
-    );
+    return failure(500, {
+      error:
+        error instanceof Error ? error.message : "Failed to get executions",
+    });
   }
 }
 
-export async function deleteWorkflowExecutions(workflowId: string) {
+export async function getWorkflowExecutions(workflowId: string) {
+  return responseFromServiceResult(
+    await getWorkflowExecutionsResult(workflowId)
+  );
+}
+
+export async function deleteWorkflowExecutionsResult(
+  workflowId: string
+): Promise<
+  ServiceResult<
+    { success: true; deletedCount: number },
+    404 | 500,
+    WorkflowExecutionsError
+  >
+> {
   const requestLogger = workflowExecutionsLogger.with({ workflowId });
   try {
     const workflow = await db.query.workflows.findFirst({
@@ -53,7 +126,7 @@ export async function deleteWorkflowExecutions(workflowId: string) {
 
     if (!workflow) {
       requestLogger.warn("Workflow not found for executions delete");
-      return Response.json({ error: "Workflow not found" }, { status: 404 });
+      return failure(404, { error: "Workflow not found" });
     }
 
     const executions = await db.query.workflowExecutions.findMany({
@@ -81,20 +154,21 @@ export async function deleteWorkflowExecutions(workflowId: string) {
         .where(eq(workflowExecutions.workflowId, workflowId));
     }
 
-    return Response.json({
+    return success({
       success: true,
       deletedCount: executionIds.length,
     });
   } catch (error) {
     requestLogger.error("Failed to delete workflow executions", { error });
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to delete executions",
-      },
-      { status: 500 }
-    );
+    return failure(500, {
+      error:
+        error instanceof Error ? error.message : "Failed to delete executions",
+    });
   }
+}
+
+export async function deleteWorkflowExecutions(workflowId: string) {
+  return responseFromServiceResult(
+    await deleteWorkflowExecutionsResult(workflowId)
+  );
 }

@@ -2,8 +2,14 @@ import { eq } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
 import { validateWorkflowIntegrations } from "@/backend/lib/db/integrations";
 import { workflowExecutions, workflows } from "@/backend/lib/db/schema";
+import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { sendWorkflowRunRequested } from "@/backend/lib/inngest/runtime-events";
 import { getAppLogger } from "@/backend/lib/logger";
+import {
+  failure,
+  type ServiceResult,
+  success,
+} from "@/backend/lib/service-result";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
@@ -163,7 +169,6 @@ function buildIgnoredAuditMessage(input: {
     : "Ignored event because no waiting runs were found";
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Execute route coordinates trigger parsing, cancellation, and run creation in one request handler.
 export async function postWorkflowExecute(
   workflowId: string,
   body: {
@@ -171,6 +176,25 @@ export async function postWorkflowExecute(
     dryRun?: boolean;
   }
 ) {
+  return responseFromServiceResult(
+    await postWorkflowExecuteResult(workflowId, body)
+  );
+}
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Execute route coordinates trigger parsing, cancellation, and run creation in one request handler.
+export async function postWorkflowExecuteResult(
+  workflowId: string,
+  body: {
+    input?: Record<string, unknown>;
+    dryRun?: boolean;
+  }
+): Promise<
+  ServiceResult<
+    WorkflowExecuteResponse,
+    400 | 403 | 404 | 500,
+    { error: string }
+  >
+> {
   const requestLogger = executeLogger.with({ workflowId });
   try {
     const workflow = await db.query.workflows.findFirst({
@@ -178,7 +202,7 @@ export async function postWorkflowExecute(
     });
 
     if (!workflow) {
-      return Response.json({ error: "Workflow not found" }, { status: 404 });
+      return failure(404, { error: "Workflow not found" });
     }
 
     const graphValidation = validateWorkflowGraph(workflow.graph);
@@ -187,10 +211,7 @@ export async function postWorkflowExecute(
         workflowName: workflow.name,
         error: graphValidation.error,
       });
-      return Response.json(
-        { error: "Workflow graph is invalid" },
-        { status: 400 }
-      );
+      return failure(400, { error: "Workflow graph is invalid" });
     }
 
     const integrationValidation = await validateWorkflowIntegrations(
@@ -201,10 +222,9 @@ export async function postWorkflowExecute(
         workflowName: workflow.name,
         invalidIntegrationIds: integrationValidation.invalidIds,
       });
-      return Response.json(
-        { error: "Workflow contains invalid integration references" },
-        { status: 403 }
-      );
+      return failure(403, {
+        error: "Workflow contains invalid integration references",
+      });
     }
 
     const triggerNode = getTriggerNode(graphValidation.nodes);
@@ -259,7 +279,7 @@ export async function postWorkflowExecute(
         runId: startedExecution.runId,
         dryRun,
       };
-      return Response.json(response);
+      return success(response);
     }
 
     const waitStates =
@@ -311,7 +331,7 @@ export async function postWorkflowExecute(
         cancelledWaits: orchestrated.cancelledWaits,
         simulated: orchestrated.simulated,
       };
-      return Response.json(response);
+      return success(response);
     }
 
     if (orchestrated.status === "cancelled") {
@@ -360,19 +380,16 @@ export async function postWorkflowExecute(
         failedExecutions: orchestrated.failedExecutions,
         simulated: orchestrated.simulated,
       };
-      return Response.json(response);
+      return success(response);
     }
 
     if (orchestrated.status === "resumed") {
       requestLogger.error(
         "Unexpected resumed outcome for manual execute orchestration"
       );
-      return Response.json(
-        {
-          error: "Unexpected routing outcome while executing workflow",
-        },
-        { status: 500 }
-      );
+      return failure(500, {
+        error: "Unexpected routing outcome while executing workflow",
+      });
     }
 
     const ignoredReason = orchestrated.reason;
@@ -413,15 +430,12 @@ export async function postWorkflowExecute(
       eventTypePath: orchestrated.eventTypePath,
     };
 
-    return Response.json(response);
+    return success(response);
   } catch (error) {
     requestLogger.error("Failed to start workflow execution", { error });
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to execute workflow",
-      },
-      { status: 500 }
-    );
+    return failure(500, {
+      error:
+        error instanceof Error ? error.message : "Failed to execute workflow",
+    });
   }
 }

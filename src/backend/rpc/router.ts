@@ -1,23 +1,23 @@
 import { implement } from "@orpc/server";
-import { deleteApiKey } from "@/backend/services/api-keys/api-key.api-keys";
+import { deleteApiKeyResult } from "@/backend/services/api-keys/api-key.api-keys";
 import {
-  getApiKeys,
-  postApiKeys,
+  getApiKeysResult,
+  postApiKeysResult,
 } from "@/backend/services/api-keys/api-keys.api-keys";
 import {
-  deleteIntegration,
-  getIntegration,
-  getIntegrations,
-  postIntegrations,
-  postIntegrationsTest,
-  postIntegrationTest,
-  putIntegration,
+  deleteIntegrationResult,
+  getIntegrationResult,
+  getIntegrationsResult,
+  postIntegrationsResult,
+  postIntegrationsTestResult,
+  postIntegrationTestResult,
+  putIntegrationResult,
 } from "@/backend/services/integrations/integrations.integrations";
-import { postWorkflowExecute } from "@/backend/services/workflow/workflow-execute.workflow";
-import { postExecutionCancel } from "@/backend/services/workflows/execution-cancel.workflows";
-import { getExecutionEvents } from "@/backend/services/workflows/execution-events.workflows";
-import { getExecutionLogs } from "@/backend/services/workflows/execution-logs.workflows";
-import { getExecutionStatus } from "@/backend/services/workflows/execution-status.workflows";
+import { postWorkflowExecuteResult } from "@/backend/services/workflow/workflow-execute.workflow";
+import { postExecutionCancelResult } from "@/backend/services/workflows/execution-cancel.workflows";
+import { getExecutionEventsResult } from "@/backend/services/workflows/execution-events.workflows";
+import { getExecutionLogsResult } from "@/backend/services/workflows/execution-logs.workflows";
+import { getExecutionStatusResult } from "@/backend/services/workflows/execution-status.workflows";
 import {
   deleteWorkflow,
   getWorkflow,
@@ -25,10 +25,10 @@ import {
 } from "@/backend/services/workflows/workflow.workflows";
 import { postWorkflowDuplicate } from "@/backend/services/workflows/workflow-duplicate.workflows";
 import {
-  deleteWorkflowExecutions,
-  getWorkflowExecutions,
+  deleteWorkflowExecutionsResult,
+  getWorkflowExecutionsResult,
 } from "@/backend/services/workflows/workflow-executions.workflows";
-import { postWorkflowWebhook } from "@/backend/services/workflows/workflow-webhook.workflows";
+import { postWorkflowWebhookResult } from "@/backend/services/workflows/workflow-webhook.workflows";
 import { getWorkflows } from "@/backend/services/workflows/workflows.workflows";
 import { postWorkflowsCreate } from "@/backend/services/workflows/workflows-create.workflows";
 import {
@@ -37,57 +37,81 @@ import {
 } from "@/backend/services/workflows/workflows-current.workflows";
 import { rpcContract } from "@/shared/rpc/contracts";
 import type { RpcContext } from "./context";
-import { toRpcData } from "./errors";
+import { type RpcCompatibleResult, toRpcData } from "./errors";
 
 const rpc = implement(rpcContract).$context<RpcContext>();
 
+type Awaitable<T> = T | Promise<T>;
+
+function bindNoInput<TOutput>(
+  handler: () => Awaitable<RpcCompatibleResult<TOutput>>
+) {
+  return () => toRpcData<TOutput>(handler());
+}
+
+function bindInput<TInput, TOutput>(
+  handler: (input: TInput) => Awaitable<RpcCompatibleResult<TOutput>>
+) {
+  return ({ input }: { input: TInput }) => toRpcData<TOutput>(handler(input));
+}
+
+function bindContextInput<TInput, TOutput>(
+  handler: (
+    context: RpcContext,
+    input: TInput
+  ) => Awaitable<RpcCompatibleResult<TOutput>>
+) {
+  return ({ context, input }: { context: RpcContext; input: TInput }) =>
+    toRpcData<TOutput>(handler(context, input));
+}
+
 export const rpcRouter = rpc.router({
   apiKey: {
-    getAll: rpc.apiKey.getAll.handler(() => toRpcData(getApiKeys())),
-    create: rpc.apiKey.create.handler(({ input }) =>
-      toRpcData(
-        postApiKeys({
+    getAll: rpc.apiKey.getAll.handler(bindNoInput(getApiKeysResult)),
+    create: rpc.apiKey.create.handler(
+      bindInput((input) =>
+        postApiKeysResult({
           name: input.name ?? undefined,
         })
       )
     ),
-    delete: rpc.apiKey.delete.handler(({ input }) =>
-      toRpcData(deleteApiKey(input.keyId))
+    delete: rpc.apiKey.delete.handler(
+      bindInput((input) => deleteApiKeyResult(input.keyId))
     ),
   },
   integration: {
-    getAll: rpc.integration.getAll.handler(({ input }) =>
-      toRpcData(getIntegrations(input.type))
+    getAll: rpc.integration.getAll.handler(
+      bindInput((input) => getIntegrationsResult(input.type))
     ),
-    get: rpc.integration.get.handler(({ input }) =>
-      toRpcData(getIntegration(input.integrationId))
+    get: rpc.integration.get.handler(
+      bindInput((input) => getIntegrationResult(input.integrationId))
     ),
-    create: rpc.integration.create.handler(({ input }) =>
-      toRpcData(
-        postIntegrations({
+    create: rpc.integration.create.handler(
+      bindInput((input) =>
+        postIntegrationsResult({
           name: input.name,
           type: input.type,
           config: input.config,
         })
       )
     ),
-    update: rpc.integration.update.handler(({ input }) =>
-      toRpcData(
-        putIntegration(input.integrationId, {
+    update: rpc.integration.update.handler(
+      bindInput((input) =>
+        putIntegrationResult(input.integrationId, {
           name: input.name,
           config: input.config,
         })
       )
     ),
-    delete: rpc.integration.delete.handler(({ input }) =>
-      toRpcData(deleteIntegration(input.integrationId))
+    delete: rpc.integration.delete.handler(
+      bindInput((input) => deleteIntegrationResult(input.integrationId))
     ),
-    testConnection: rpc.integration.testConnection.handler(({ input }) =>
-      toRpcData(postIntegrationTest(input.integrationId))
+    testConnection: rpc.integration.testConnection.handler(
+      bindInput((input) => postIntegrationTestResult(input.integrationId))
     ),
-    testCredentials: rpc.integration.testCredentials.handler(({ input }) =>
-      toRpcData(
-        postIntegrationsTest({
+    testCredentials: rpc.integration.testCredentials.handler(
+      bindInput((input) =>
+        postIntegrationsTestResult({
           type: input.type,
           config: input.config,
         })
@@ -95,12 +119,12 @@ export const rpcRouter = rpc.router({
     ),
   },
   workflow: {
-    getAll: rpc.workflow.getAll.handler(() => toRpcData(getWorkflows())),
-    getById: rpc.workflow.getById.handler(({ input }) =>
-      toRpcData(getWorkflow(input.workflowId))
+    getAll: rpc.workflow.getAll.handler(bindNoInput(getWorkflows)),
+    getById: rpc.workflow.getById.handler(
+      bindInput((input) => getWorkflow(input.workflowId))
     ),
-    create: rpc.workflow.create.handler(({ input }) =>
-      toRpcData(
+    create: rpc.workflow.create.handler(
+      bindInput((input) =>
         postWorkflowsCreate({
           name: input.name,
           description: input.description,
@@ -108,8 +132,8 @@ export const rpcRouter = rpc.router({
         })
       )
     ),
-    update: rpc.workflow.update.handler(({ input }) =>
-      toRpcData(
+    update: rpc.workflow.update.handler(
+      bindInput((input) =>
         patchWorkflow(input.workflowId, {
           name: input.name,
           description: input.description,
@@ -117,32 +141,32 @@ export const rpcRouter = rpc.router({
         })
       )
     ),
-    delete: rpc.workflow.delete.handler(({ input }) =>
-      toRpcData(deleteWorkflow(input.workflowId))
+    delete: rpc.workflow.delete.handler(
+      bindInput((input) => deleteWorkflow(input.workflowId))
     ),
-    duplicate: rpc.workflow.duplicate.handler(({ input }) =>
-      toRpcData(postWorkflowDuplicate(input.workflowId))
+    duplicate: rpc.workflow.duplicate.handler(
+      bindInput((input) => postWorkflowDuplicate(input.workflowId))
     ),
-    getCurrent: rpc.workflow.getCurrent.handler(() =>
-      toRpcData(getWorkflowsCurrent())
+    getCurrent: rpc.workflow.getCurrent.handler(
+      bindNoInput(getWorkflowsCurrent)
     ),
-    saveCurrent: rpc.workflow.saveCurrent.handler(({ input }) =>
-      toRpcData(
+    saveCurrent: rpc.workflow.saveCurrent.handler(
+      bindInput((input) =>
         postWorkflowsCurrent({
           graph: input.graph,
         })
       )
     ),
-    execute: rpc.workflow.execute.handler(({ input }) =>
-      toRpcData(
-        postWorkflowExecute(input.workflowId, {
+    execute: rpc.workflow.execute.handler(
+      bindInput((input) =>
+        postWorkflowExecuteResult(input.workflowId, {
           input: input.input,
           dryRun: input.dryRun,
         })
       )
     ),
     triggerWebhook: rpc.workflow.triggerWebhook.handler(
-      ({ context, input }) => {
+      bindContextInput((context, input) => {
         let dryRunQuery: "true" | "false" | undefined;
         if (input.dryRun === true) {
           dryRunQuery = "true";
@@ -150,34 +174,32 @@ export const rpcRouter = rpc.router({
           dryRunQuery = "false";
         }
 
-        return toRpcData(
-          postWorkflowWebhook({
-            workflowId: input.workflowId,
-            authHeader: context.headers.get("Authorization"),
-            dryRunQuery,
-            dryRunHeader: null,
-            body: input.input ?? {},
-          })
-        );
-      }
+        return postWorkflowWebhookResult({
+          workflowId: input.workflowId,
+          authHeader: context.headers.get("Authorization"),
+          dryRunQuery,
+          dryRunHeader: null,
+          body: input.input ?? {},
+        });
+      })
     ),
-    getExecutions: rpc.workflow.getExecutions.handler(({ input }) =>
-      toRpcData(getWorkflowExecutions(input.workflowId))
+    getExecutions: rpc.workflow.getExecutions.handler(
+      bindInput((input) => getWorkflowExecutionsResult(input.workflowId))
     ),
-    deleteExecutions: rpc.workflow.deleteExecutions.handler(({ input }) =>
-      toRpcData(deleteWorkflowExecutions(input.workflowId))
+    deleteExecutions: rpc.workflow.deleteExecutions.handler(
+      bindInput((input) => deleteWorkflowExecutionsResult(input.workflowId))
     ),
-    getExecutionLogs: rpc.workflow.getExecutionLogs.handler(({ input }) =>
-      toRpcData(getExecutionLogs(input.executionId))
+    getExecutionLogs: rpc.workflow.getExecutionLogs.handler(
+      bindInput((input) => getExecutionLogsResult(input.executionId))
     ),
-    getExecutionEvents: rpc.workflow.getExecutionEvents.handler(({ input }) =>
-      toRpcData(getExecutionEvents(input.executionId))
+    getExecutionEvents: rpc.workflow.getExecutionEvents.handler(
+      bindInput((input) => getExecutionEventsResult(input.executionId))
     ),
-    cancelExecution: rpc.workflow.cancelExecution.handler(({ input }) =>
-      toRpcData(postExecutionCancel(input.executionId))
+    cancelExecution: rpc.workflow.cancelExecution.handler(
+      bindInput((input) => postExecutionCancelResult(input.executionId))
     ),
-    getExecutionStatus: rpc.workflow.getExecutionStatus.handler(({ input }) =>
-      toRpcData(getExecutionStatus(input.executionId))
+    getExecutionStatus: rpc.workflow.getExecutionStatus.handler(
+      bindInput((input) => getExecutionStatusResult(input.executionId))
     ),
   },
 });

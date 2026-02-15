@@ -1,8 +1,14 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
 import { workflowExecutions } from "@/backend/lib/db/schema";
+import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { sendWorkflowCancelRequested } from "@/backend/lib/inngest/runtime-events";
 import { getAppLogger } from "@/backend/lib/logger";
+import {
+  failure,
+  type ServiceResult,
+  success,
+} from "@/backend/lib/service-result";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import {
   listExecutionWaitingStates,
@@ -12,7 +18,19 @@ import {
 
 const executionCancelLogger = getAppLogger("workflow", "execution-cancel");
 
-export async function postExecutionCancel(executionId: string) {
+type CancelExecutionSuccess = {
+  success: true;
+  status: "cancelled";
+  cancelledWaitStates: number;
+};
+
+type CancelExecutionError = { error: string };
+
+export async function postExecutionCancelResult(
+  executionId: string
+): Promise<
+  ServiceResult<CancelExecutionSuccess, 404 | 409 | 500, CancelExecutionError>
+> {
   const requestLogger = executionCancelLogger.with({ executionId });
   try {
     const execution = await db.query.workflowExecutions.findFirst({
@@ -24,17 +42,14 @@ export async function postExecutionCancel(executionId: string) {
 
     if (!execution) {
       requestLogger.warn("Execution not found for cancel");
-      return Response.json({ error: "Execution not found" }, { status: 404 });
+      return failure(404, { error: "Execution not found" });
     }
 
     const waitingStates = await listExecutionWaitingStates(executionId);
 
     if (waitingStates.length === 0) {
       requestLogger.warn("Execution is not waiting and cannot be cancelled");
-      return Response.json(
-        { error: "Execution is not currently waiting" },
-        { status: 409 }
-      );
+      return failure(409, { error: "Execution is not currently waiting" });
     }
 
     await logWorkflowAuditEvent({
@@ -58,11 +73,9 @@ export async function postExecutionCancel(executionId: string) {
       requestLogger.warn(
         "Execution wait state changed before cancel persisted"
       );
-      return Response.json(
-        { error: "Execution is no longer waiting" },
-        { status: 409 }
-      );
+      return failure(409, { error: "Execution is no longer waiting" });
     }
+
     await markExecutionCancelled({
       executionId,
       error: "Cancelled manually",
@@ -78,19 +91,22 @@ export async function postExecutionCancel(executionId: string) {
       },
     });
 
-    return Response.json({
+    return success({
       success: true,
       status: "cancelled",
       cancelledWaitStates: cancelledWaitStateIds.length,
     });
   } catch (error) {
     requestLogger.error("Failed to cancel execution", { error });
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to cancel execution",
-      },
-      { status: 500 }
-    );
+    return failure(500, {
+      error:
+        error instanceof Error ? error.message : "Failed to cancel execution",
+    });
   }
+}
+
+export async function postExecutionCancel(executionId: string) {
+  return responseFromServiceResult(
+    await postExecutionCancelResult(executionId)
+  );
 }

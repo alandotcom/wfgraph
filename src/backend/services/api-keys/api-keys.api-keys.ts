@@ -1,11 +1,38 @@
 import { db } from "@/backend/lib/db";
 import { apiKeys } from "@/backend/lib/db/schema";
+import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { getAppLogger } from "@/backend/lib/logger";
+import {
+  failure,
+  type ServiceResult,
+  success,
+} from "@/backend/lib/service-result";
 import { createApiKeyRecord } from "./auth.api-keys";
 
 const apiKeysLogger = getAppLogger("api-keys");
 
-export async function getApiKeys() {
+type ApiKeyListItem = {
+  id: string;
+  name: string | null;
+  keyPrefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+};
+
+type ApiKeyCreated = {
+  id: string;
+  name: string | null;
+  keyPrefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  key: string;
+};
+
+type ApiKeyError = { error: string };
+
+export async function getApiKeysResult(): Promise<
+  ServiceResult<ApiKeyListItem[], 500, ApiKeyError>
+> {
   try {
     const keys = await db.query.apiKeys.findMany({
       columns: {
@@ -18,14 +45,28 @@ export async function getApiKeys() {
       orderBy: (table, { desc }) => [desc(table.createdAt)],
     });
 
-    return Response.json(keys);
+    return success(
+      keys.map((key) => ({
+        id: key.id,
+        name: key.name,
+        keyPrefix: key.keyPrefix,
+        createdAt: key.createdAt.toISOString(),
+        lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
+      }))
+    );
   } catch (error) {
     apiKeysLogger.error("Failed to list API keys", { error });
-    return Response.json({ error: "Failed to list API keys" }, { status: 500 });
+    return failure(500, { error: "Failed to list API keys" });
   }
 }
 
-export async function postApiKeys(body: { name?: string }) {
+export async function getApiKeys() {
+  return responseFromServiceResult(await getApiKeysResult());
+}
+
+export async function postApiKeysResult(body: {
+  name?: string;
+}): Promise<ServiceResult<ApiKeyCreated, 500, ApiKeyError>> {
   try {
     const name = body.name || null;
 
@@ -45,15 +86,20 @@ export async function postApiKeys(body: { name?: string }) {
         createdAt: apiKeys.createdAt,
       });
 
-    return Response.json({
-      ...newKey,
+    return success({
+      id: newKey.id,
+      name: newKey.name,
+      keyPrefix: newKey.keyPrefix,
+      createdAt: newKey.createdAt.toISOString(),
+      lastUsedAt: null,
       key,
     });
   } catch (error) {
     apiKeysLogger.error("Failed to create API key", { error });
-    return Response.json(
-      { error: "Failed to create API key" },
-      { status: 500 }
-    );
+    return failure(500, { error: "Failed to create API key" });
   }
+}
+
+export async function postApiKeys(body: { name?: string }) {
+  return responseFromServiceResult(await postApiKeysResult(body));
 }

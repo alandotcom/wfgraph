@@ -4,7 +4,13 @@ import {
   workflowExecutionLogs,
   workflowExecutions,
 } from "@/backend/lib/db/schema";
+import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { getAppLogger } from "@/backend/lib/logger";
+import {
+  failure,
+  type ServiceResult,
+  success,
+} from "@/backend/lib/service-result";
 
 const executionStatusLogger = getAppLogger("workflow", "execution-status");
 
@@ -13,7 +19,18 @@ type NodeStatus = {
   status: "pending" | "running" | "success" | "error" | "cancelled";
 };
 
-export async function getExecutionStatus(executionId: string) {
+type ExecutionStatusResult = {
+  status: string;
+  nodeStatuses: NodeStatus[];
+};
+
+type ExecutionStatusError = { error: string };
+
+export async function getExecutionStatusResult(
+  executionId: string
+): Promise<
+  ServiceResult<ExecutionStatusResult, 404 | 500, ExecutionStatusError>
+> {
   const requestLogger = executionStatusLogger.with({ executionId });
   try {
     const execution = await db.query.workflowExecutions.findFirst({
@@ -26,7 +43,7 @@ export async function getExecutionStatus(executionId: string) {
 
     if (!execution) {
       requestLogger.warn("Execution not found for status");
-      return Response.json({ error: "Execution not found" }, { status: 404 });
+      return failure(404, { error: "Execution not found" });
     }
 
     const logs = await db.query.workflowExecutionLogs.findMany({
@@ -42,20 +59,21 @@ export async function getExecutionStatus(executionId: string) {
           : log.status,
     }));
 
-    return Response.json({
+    return success({
       status: execution.status,
       nodeStatuses,
     });
   } catch (error) {
     requestLogger.error("Failed to get execution status", { error });
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to get execution status",
-      },
-      { status: 500 }
-    );
+    return failure(500, {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to get execution status",
+    });
   }
+}
+
+export async function getExecutionStatus(executionId: string) {
+  return responseFromServiceResult(await getExecutionStatusResult(executionId));
 }

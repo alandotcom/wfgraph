@@ -2,11 +2,17 @@ import { eq } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
 import { validateWorkflowIntegrations } from "@/backend/lib/db/integrations";
 import { workflowExecutions, workflows } from "@/backend/lib/db/schema";
+import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import {
   sendWorkflowRunRequested,
   sendWorkflowWaitSignal,
 } from "@/backend/lib/inngest/runtime-events";
 import { getAppLogger } from "@/backend/lib/logger";
+import {
+  failure,
+  type ServiceResult,
+  success,
+} from "@/backend/lib/service-result";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
@@ -16,6 +22,7 @@ import {
   markWaitStateStatus,
 } from "@/backend/lib/workflow-wait-state";
 import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
+import type { WorkflowWebhookResponse } from "@/shared/workflow/execution-contracts";
 import {
   evaluateWorkflowTrigger,
   resolveWorkflowTriggerDefinition,
@@ -234,6 +241,18 @@ export async function postWorkflowWebhook(input: {
   dryRunHeader: string | null;
   body: Record<string, unknown>;
 }) {
+  return responseFromServiceResult(await postWorkflowWebhookResult(input), {
+    headers: corsHeaders,
+  });
+}
+
+export async function postWorkflowWebhookResult(input: {
+  workflowId: string;
+  authHeader: string | null;
+  dryRunQuery?: "true" | "false";
+  dryRunHeader: string | null;
+  body: Record<string, unknown>;
+}): Promise<ServiceResult<WorkflowWebhookResponse, number, { error: string }>> {
   const requestLogger = webhookLogger.with({ workflowId: input.workflowId });
   try {
     const { workflowId, authHeader, dryRunQuery, dryRunHeader, body } = input;
@@ -243,19 +262,15 @@ export async function postWorkflowWebhook(input: {
     });
 
     if (!workflow) {
-      return Response.json(
-        { error: "Workflow not found" },
-        { status: 404, headers: corsHeaders }
-      );
+      return failure(404, { error: "Workflow not found" });
     }
 
     const apiKeyValidation = await validateApiKey(authHeader);
 
     if (!apiKeyValidation.valid) {
-      return Response.json(
-        { error: apiKeyValidation.error },
-        { status: apiKeyValidation.statusCode || 401, headers: corsHeaders }
-      );
+      return failure(apiKeyValidation.statusCode || 401, {
+        error: apiKeyValidation.error,
+      });
     }
 
     const graphValidation = validateWorkflowGraph(workflow.graph);
@@ -264,10 +279,7 @@ export async function postWorkflowWebhook(input: {
         workflowName: workflow.name,
         error: graphValidation.error,
       });
-      return Response.json(
-        { error: "Workflow graph is invalid" },
-        { status: 400, headers: corsHeaders }
-      );
+      return failure(400, { error: "Workflow graph is invalid" });
     }
 
     const workflowNodes = graphValidation.nodes;
@@ -281,10 +293,9 @@ export async function postWorkflowWebhook(input: {
     const triggerDefinition = resolveWorkflowTriggerDefinition(triggerConfig);
 
     if (!triggerNode || triggerDefinition.executionType !== "webhook") {
-      return Response.json(
-        { error: "This workflow is not configured for webhook triggers" },
-        { status: 400, headers: corsHeaders }
-      );
+      return failure(400, {
+        error: "This workflow is not configured for webhook triggers",
+      });
     }
 
     const validation = await validateWorkflowIntegrations(workflowNodes);
@@ -293,10 +304,9 @@ export async function postWorkflowWebhook(input: {
         workflowName: workflow.name,
         invalidIntegrationIds: validation.invalidIds,
       });
-      return Response.json(
-        { error: "Workflow contains invalid integration references" },
-        { status: 403, headers: corsHeaders }
-      );
+      return failure(403, {
+        error: "Workflow contains invalid integration references",
+      });
     }
 
     const dryRunFromQuery = parseBooleanFlag(dryRunQuery ?? null);
@@ -395,17 +405,12 @@ export async function postWorkflowWebhook(input: {
       });
     }
 
-    return Response.json(outcome, {
-      headers: corsHeaders,
-    });
+    return success(outcome);
   } catch (error) {
     requestLogger.error("Failed to start workflow execution", { error });
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to execute workflow",
-      },
-      { status: 500, headers: corsHeaders }
-    );
+    return failure(500, {
+      error:
+        error instanceof Error ? error.message : "Failed to execute workflow",
+    });
   }
 }

@@ -2,6 +2,7 @@ import { createORPCClient, ORPCError } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { ContractRouterClient } from "@orpc/contract";
 import type { RpcContract } from "@/shared/rpc/contracts";
+import { getRpcErrorMessage } from "@/shared/rpc/error-message";
 import type { WorkflowApiPayload } from "@/shared/workflow/api-contracts";
 import {
   createSerializedWorkflowGraph,
@@ -59,7 +60,7 @@ const link = new RPCLink({
         if (error instanceof ORPCError) {
           throw new ApiError(
             error.status,
-            getErrorMessage(error.data ?? error.message)
+            getRpcErrorMessage(error.data ?? error.message)
           );
         }
 
@@ -96,27 +97,6 @@ type WorkflowCancelExecutionResult = RpcOutput<
 type WorkflowExecutionStatusResult = RpcOutput<
   typeof rpc.workflow.getExecutionStatus
 >;
-
-function getErrorMessage(payload: unknown): string {
-  if (typeof payload === "string" && payload.length > 0) {
-    return payload;
-  }
-
-  if (typeof payload !== "object" || payload === null) {
-    return "Request failed";
-  }
-
-  const maybeError = payload as { error?: unknown; message?: unknown };
-  if (typeof maybeError.error === "string" && maybeError.error.length > 0) {
-    return maybeError.error;
-  }
-
-  if (typeof maybeError.message === "string" && maybeError.message.length > 0) {
-    return maybeError.message;
-  }
-
-  return "Request failed";
-}
 
 function toWorkflowData(payload: WorkflowApiPayload): WorkflowData {
   const graphData = toWorkflowGraphData(payload.graph);

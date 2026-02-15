@@ -4,23 +4,47 @@ import {
   workflowExecutionEvents,
   workflowExecutions,
 } from "@/backend/lib/db/schema";
+import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { getAppLogger } from "@/backend/lib/logger";
+import {
+  failure,
+  type ServiceResult,
+  success,
+} from "@/backend/lib/service-result";
 
 const executionEventsLogger = getAppLogger("workflow", "execution-events");
 
-export async function getExecutionEvents(executionId: string) {
+type ExecutionEvent = {
+  id: string;
+  workflowId: string;
+  executionId: string | null;
+  eventType: string;
+  message: string;
+  metadata: unknown;
+  createdAt: string;
+};
+
+type ExecutionEventsResult = {
+  events: ExecutionEvent[];
+};
+
+type ExecutionEventsError = { error: string };
+
+export async function getExecutionEventsResult(
+  executionId: string
+): Promise<
+  ServiceResult<ExecutionEventsResult, 404 | 500, ExecutionEventsError>
+> {
   const requestLogger = executionEventsLogger.with({ executionId });
   try {
     const execution = await db.query.workflowExecutions.findFirst({
       where: eq(workflowExecutions.id, executionId),
-      with: {
-        workflow: true,
-      },
+      columns: { id: true },
     });
 
     if (!execution) {
       requestLogger.warn("Execution not found for events");
-      return Response.json({ error: "Execution not found" }, { status: 404 });
+      return failure(404, { error: "Execution not found" });
     }
 
     const events = await db.query.workflowExecutionEvents.findMany({
@@ -29,17 +53,28 @@ export async function getExecutionEvents(executionId: string) {
       limit: 200,
     });
 
-    return Response.json({ events });
+    return success({
+      events: events.map((event) => ({
+        id: event.id,
+        workflowId: event.workflowId,
+        executionId: event.executionId,
+        eventType: event.eventType,
+        message: event.message,
+        metadata: event.metadata,
+        createdAt: event.createdAt.toISOString(),
+      })),
+    });
   } catch (error) {
     requestLogger.error("Failed to get execution events", { error });
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to get execution events",
-      },
-      { status: 500 }
-    );
+    return failure(500, {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to get execution events",
+    });
   }
+}
+
+export async function getExecutionEvents(executionId: string) {
+  return responseFromServiceResult(await getExecutionEventsResult(executionId));
 }

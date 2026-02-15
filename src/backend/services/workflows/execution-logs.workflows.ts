@@ -4,12 +4,58 @@ import {
   workflowExecutionLogs,
   workflowExecutions,
 } from "@/backend/lib/db/schema";
+import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { getAppLogger } from "@/backend/lib/logger";
+import {
+  failure,
+  type ServiceResult,
+  success,
+} from "@/backend/lib/service-result";
 import { redactSensitiveData } from "@/backend/lib/utils/redact";
 
 const executionLogsLogger = getAppLogger("workflow", "execution-logs");
 
-export async function getExecutionLogs(executionId: string) {
+type ExecutionSummary = {
+  id: string;
+  workflowId: string;
+  status: string;
+  input: unknown;
+  output: unknown;
+  error: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  duration: string | null;
+};
+
+type ExecutionLogItem = {
+  id: string;
+  executionId: string;
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  status: "pending" | "running" | "success" | "error";
+  input: unknown;
+  output: unknown;
+  error: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  duration: string | null;
+};
+
+type ExecutionLogsResult = {
+  execution: ExecutionSummary;
+  logs: ExecutionLogItem[];
+};
+
+type ExecutionLogsError = { error: string };
+
+function toIso(value: Date | null): string | null {
+  return value?.toISOString() ?? null;
+}
+
+export async function getExecutionLogsResult(
+  executionId: string
+): Promise<ServiceResult<ExecutionLogsResult, 404 | 500, ExecutionLogsError>> {
   const requestLogger = executionLogsLogger.with({ executionId });
   try {
     const execution = await db.query.workflowExecutions.findFirst({
@@ -29,7 +75,7 @@ export async function getExecutionLogs(executionId: string) {
 
     if (!execution) {
       requestLogger.warn("Execution not found for logs");
-      return Response.json({ error: "Execution not found" }, { status: 404 });
+      return failure(404, { error: "Execution not found" });
     }
 
     const logs = await db.query.workflowExecutionLogs.findMany({
@@ -38,25 +84,43 @@ export async function getExecutionLogs(executionId: string) {
     });
 
     const redactedLogs = logs.map((log) => ({
-      ...log,
+      id: log.id,
+      executionId: log.executionId,
+      nodeId: log.nodeId,
+      nodeName: log.nodeName,
+      nodeType: log.nodeType,
+      status: log.status,
       input: redactSensitiveData(log.input),
       output: redactSensitiveData(log.output),
+      error: log.error,
+      startedAt: log.startedAt.toISOString(),
+      completedAt: toIso(log.completedAt),
+      duration: log.duration,
     }));
 
-    return Response.json({
-      execution,
+    return success({
+      execution: {
+        id: execution.id,
+        workflowId: execution.workflowId,
+        status: execution.status,
+        input: execution.input,
+        output: execution.output,
+        error: execution.error,
+        startedAt: execution.startedAt.toISOString(),
+        completedAt: toIso(execution.completedAt),
+        duration: execution.duration,
+      },
       logs: redactedLogs,
     });
   } catch (error) {
     requestLogger.error("Failed to get execution logs", { error });
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to get execution logs",
-      },
-      { status: 500 }
-    );
+    return failure(500, {
+      error:
+        error instanceof Error ? error.message : "Failed to get execution logs",
+    });
   }
+}
+
+export async function getExecutionLogs(executionId: string) {
+  return responseFromServiceResult(await getExecutionLogsResult(executionId));
 }
