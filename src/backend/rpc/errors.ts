@@ -67,6 +67,24 @@ function serviceResultToData<TData>(
 
 export type RpcCompatibleResult<TData> = ServiceResult<TData, number, unknown>;
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+export function isRpcCompatibleResult(
+  value: unknown
+): value is RpcCompatibleResult<unknown> {
+  if (!isObjectRecord(value) || typeof value.ok !== "boolean") {
+    return false;
+  }
+
+  if (value.ok) {
+    return "data" in value;
+  }
+
+  return typeof value.status === "number" && "error" in value;
+}
+
 export async function toRpcData<TData>(
   result: RpcCompatibleResult<TData> | Promise<RpcCompatibleResult<TData>>
 ): Promise<TData> {

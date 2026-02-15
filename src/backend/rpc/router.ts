@@ -37,57 +37,56 @@ import {
 } from "@/backend/services/workflows/workflows-current.workflows";
 import { rpcContract } from "@/shared/rpc/contracts";
 import type { RpcContext } from "./context";
-import { type RpcCompatibleResult, toRpcData } from "./errors";
+import {
+  isRpcCompatibleResult,
+  type RpcCompatibleResult,
+  toRpcData,
+} from "./errors";
 
-const rpc = implement(rpcContract).$context<RpcContext>();
-
-type Awaitable<T> = T | Promise<T>;
-
-function bindNoInput<TOutput>(
-  handler: () => Awaitable<RpcCompatibleResult<TOutput>>
-) {
-  return () => toRpcData<TOutput>(handler());
-}
-
-function bindInput<TInput, TOutput>(
-  handler: (input: TInput) => Awaitable<RpcCompatibleResult<TOutput>>
-) {
-  return ({ input }: { input: TInput }) => toRpcData<TOutput>(handler(input));
-}
-
-function bindContextInput<TInput, TOutput>(
+function asRpcHandler<TArgs extends unknown[], TOutput>(
   handler: (
-    context: RpcContext,
-    input: TInput
-  ) => Awaitable<RpcCompatibleResult<TOutput>>
-) {
-  return ({ context, input }: { context: RpcContext; input: TInput }) =>
-    toRpcData<TOutput>(handler(context, input));
+    ...args: TArgs
+  ) => RpcCompatibleResult<TOutput> | Promise<RpcCompatibleResult<TOutput>>
+): (...args: TArgs) => Promise<TOutput> {
+  return handler as unknown as (...args: TArgs) => Promise<TOutput>;
 }
+
+const rpc = implement(rpcContract)
+  .$context<RpcContext>()
+  .$config({ initialOutputValidationIndex: -1 })
+  .use(async ({ next }) => {
+    const result = await next();
+    const output = await Promise.resolve(result.output);
+
+    return {
+      ...result,
+      output: isRpcCompatibleResult(output) ? await toRpcData(output) : output,
+    };
+  });
 
 export const rpcRouter = rpc.router({
   apiKey: {
-    getAll: rpc.apiKey.getAll.handler(bindNoInput(getApiKeysResult)),
+    getAll: rpc.apiKey.getAll.handler(asRpcHandler(() => getApiKeysResult())),
     create: rpc.apiKey.create.handler(
-      bindInput((input) =>
+      asRpcHandler(({ input }) =>
         postApiKeysResult({
           name: input.name ?? undefined,
         })
       )
     ),
     delete: rpc.apiKey.delete.handler(
-      bindInput((input) => deleteApiKeyResult(input.keyId))
+      asRpcHandler(({ input }) => deleteApiKeyResult(input.keyId))
     ),
   },
   integration: {
     getAll: rpc.integration.getAll.handler(
-      bindInput((input) => getIntegrationsResult(input.type))
+      asRpcHandler(({ input }) => getIntegrationsResult(input.type))
     ),
     get: rpc.integration.get.handler(
-      bindInput((input) => getIntegrationResult(input.integrationId))
+      asRpcHandler(({ input }) => getIntegrationResult(input.integrationId))
     ),
     create: rpc.integration.create.handler(
-      bindInput((input) =>
+      asRpcHandler(({ input }) =>
         postIntegrationsResult({
           name: input.name,
           type: input.type,
@@ -96,7 +95,7 @@ export const rpcRouter = rpc.router({
       )
     ),
     update: rpc.integration.update.handler(
-      bindInput((input) =>
+      asRpcHandler(({ input }) =>
         putIntegrationResult(input.integrationId, {
           name: input.name,
           config: input.config,
@@ -104,13 +103,15 @@ export const rpcRouter = rpc.router({
       )
     ),
     delete: rpc.integration.delete.handler(
-      bindInput((input) => deleteIntegrationResult(input.integrationId))
+      asRpcHandler(({ input }) => deleteIntegrationResult(input.integrationId))
     ),
     testConnection: rpc.integration.testConnection.handler(
-      bindInput((input) => postIntegrationTestResult(input.integrationId))
+      asRpcHandler(({ input }) =>
+        postIntegrationTestResult(input.integrationId)
+      )
     ),
     testCredentials: rpc.integration.testCredentials.handler(
-      bindInput((input) =>
+      asRpcHandler(({ input }) =>
         postIntegrationsTestResult({
           type: input.type,
           config: input.config,
@@ -119,12 +120,12 @@ export const rpcRouter = rpc.router({
     ),
   },
   workflow: {
-    getAll: rpc.workflow.getAll.handler(bindNoInput(getWorkflows)),
+    getAll: rpc.workflow.getAll.handler(asRpcHandler(() => getWorkflows())),
     getById: rpc.workflow.getById.handler(
-      bindInput((input) => getWorkflow(input.workflowId))
+      asRpcHandler(({ input }) => getWorkflow(input.workflowId))
     ),
     create: rpc.workflow.create.handler(
-      bindInput((input) =>
+      asRpcHandler(({ input }) =>
         postWorkflowsCreate({
           name: input.name,
           description: input.description,
@@ -133,7 +134,7 @@ export const rpcRouter = rpc.router({
       )
     ),
     update: rpc.workflow.update.handler(
-      bindInput((input) =>
+      asRpcHandler(({ input }) =>
         patchWorkflow(input.workflowId, {
           name: input.name,
           description: input.description,
@@ -142,23 +143,23 @@ export const rpcRouter = rpc.router({
       )
     ),
     delete: rpc.workflow.delete.handler(
-      bindInput((input) => deleteWorkflow(input.workflowId))
+      asRpcHandler(({ input }) => deleteWorkflow(input.workflowId))
     ),
     duplicate: rpc.workflow.duplicate.handler(
-      bindInput((input) => postWorkflowDuplicate(input.workflowId))
+      asRpcHandler(({ input }) => postWorkflowDuplicate(input.workflowId))
     ),
     getCurrent: rpc.workflow.getCurrent.handler(
-      bindNoInput(getWorkflowsCurrent)
+      asRpcHandler(() => getWorkflowsCurrent())
     ),
     saveCurrent: rpc.workflow.saveCurrent.handler(
-      bindInput((input) =>
+      asRpcHandler(({ input }) =>
         postWorkflowsCurrent({
           graph: input.graph,
         })
       )
     ),
     execute: rpc.workflow.execute.handler(
-      bindInput((input) =>
+      asRpcHandler(({ input }) =>
         postWorkflowExecuteResult(input.workflowId, {
           input: input.input,
           dryRun: input.dryRun,
@@ -166,7 +167,7 @@ export const rpcRouter = rpc.router({
       )
     ),
     triggerWebhook: rpc.workflow.triggerWebhook.handler(
-      bindContextInput((context, input) => {
+      asRpcHandler(({ context, input }) => {
         let dryRunQuery: "true" | "false" | undefined;
         if (input.dryRun === true) {
           dryRunQuery = "true";
@@ -184,22 +185,24 @@ export const rpcRouter = rpc.router({
       })
     ),
     getExecutions: rpc.workflow.getExecutions.handler(
-      bindInput((input) => getWorkflowExecutionsResult(input.workflowId))
+      asRpcHandler(({ input }) => getWorkflowExecutionsResult(input.workflowId))
     ),
     deleteExecutions: rpc.workflow.deleteExecutions.handler(
-      bindInput((input) => deleteWorkflowExecutionsResult(input.workflowId))
+      asRpcHandler(({ input }) =>
+        deleteWorkflowExecutionsResult(input.workflowId)
+      )
     ),
     getExecutionLogs: rpc.workflow.getExecutionLogs.handler(
-      bindInput((input) => getExecutionLogsResult(input.executionId))
+      asRpcHandler(({ input }) => getExecutionLogsResult(input.executionId))
     ),
     getExecutionEvents: rpc.workflow.getExecutionEvents.handler(
-      bindInput((input) => getExecutionEventsResult(input.executionId))
+      asRpcHandler(({ input }) => getExecutionEventsResult(input.executionId))
     ),
     cancelExecution: rpc.workflow.cancelExecution.handler(
-      bindInput((input) => postExecutionCancelResult(input.executionId))
+      asRpcHandler(({ input }) => postExecutionCancelResult(input.executionId))
     ),
     getExecutionStatus: rpc.workflow.getExecutionStatus.handler(
-      bindInput((input) => getExecutionStatusResult(input.executionId))
+      asRpcHandler(({ input }) => getExecutionStatusResult(input.executionId))
     ),
   },
 });
