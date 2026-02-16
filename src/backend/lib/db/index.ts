@@ -83,30 +83,60 @@ function resolveDatabaseConfig(): Required<DatabaseRuntimeConfig> {
   };
 }
 
-function assertConfigurable(): void {
+function normalizeRuntimeConfig(
+  config: DatabaseRuntimeConfig
+): Required<DatabaseRuntimeConfig> {
+  return {
+    url: config.url.trim(),
+    maxConnections: normalizeConnectionCount(
+      config.maxConnections,
+      DEFAULT_QUERY_CONNECTIONS
+    ),
+    migrationConnections: normalizeConnectionCount(
+      config.migrationConnections,
+      DEFAULT_MIGRATION_CONNECTIONS
+    ),
+  };
+}
+
+function areConfigsEquivalent(
+  left: Required<DatabaseRuntimeConfig>,
+  right: Required<DatabaseRuntimeConfig>
+): boolean {
+  return (
+    left.url === right.url &&
+    left.maxConnections === right.maxConnections &&
+    left.migrationConnections === right.migrationConnections
+  );
+}
+
+export function configureDatabaseRuntime(config: DatabaseRuntimeConfig): void {
+  const normalizedConfig = normalizeRuntimeConfig(config);
+  if (!normalizedConfig.url) {
+    throw new Error("Database configuration requires a non-empty url.");
+  }
+
+  if (databaseState.config && !databaseState.db && !databaseState.queryClient) {
+    databaseState.config = normalizedConfig;
+    return;
+  }
+
   if (
     databaseState.db ||
     databaseState.queryClient ||
     databaseState.migrationClient
   ) {
+    const currentConfig = resolveDatabaseConfig();
+    if (areConfigsEquivalent(currentConfig, normalizedConfig)) {
+      return;
+    }
+
     throw new Error(
-      "Database runtime is already initialized. Call configureDatabaseRuntime(...) before first database use."
+      "Database runtime is already initialized with a different configuration. Restart the process to apply a new database config."
     );
   }
-}
 
-export function configureDatabaseRuntime(config: DatabaseRuntimeConfig): void {
-  const url = config.url.trim();
-  if (!url) {
-    throw new Error("Database configuration requires a non-empty url.");
-  }
-
-  assertConfigurable();
-
-  databaseState.config = {
-    ...config,
-    url,
-  };
+  databaseState.config = normalizedConfig;
 }
 
 export function getDb(): BunSQLDatabase<typeof schema> {

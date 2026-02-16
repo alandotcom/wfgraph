@@ -20,6 +20,7 @@ export type InngestDevServerConfig = {
 
 type InngestDevServerState = {
   process: Bun.Subprocess<"ignore", "inherit", "inherit"> | null;
+  cleanupInstalled: boolean;
 };
 
 const logger = getAppLogger("inngest", "dev-server");
@@ -31,11 +32,81 @@ const globalForInngestDevServer = globalThis as unknown as {
 const devServerState: InngestDevServerState =
   globalForInngestDevServer.__rovaInngestDevServerState ?? {
     process: null,
+    cleanupInstalled: false,
   };
 
 globalForInngestDevServer.__rovaInngestDevServerState = devServerState;
 
-const DEFAULT_DEV_SERVER_COMMAND = ["bun", "run", "inngest-cli"];
+const DEFAULT_DEV_SERVER_COMMAND_FALLBACK = ["bun", "run", "inngest-cli"];
+
+function resolveDefaultCommand(): string[] {
+  const binaryPath = Bun.which("inngest") ?? Bun.which("inngest-cli");
+  if (binaryPath) {
+    return [binaryPath];
+  }
+
+  return [...DEFAULT_DEV_SERVER_COMMAND_FALLBACK];
+}
+
+function getProcessId(
+  child: Bun.Subprocess<"ignore", "inherit", "inherit">
+): number | null {
+  return typeof child.pid === "number" && child.pid > 0 ? child.pid : null;
+}
+
+function signalProcess(
+  child: Bun.Subprocess<"ignore", "inherit", "inherit">,
+  signal: NodeJS.Signals
+): void {
+  const pid = getProcessId(child);
+  if (!pid) {
+    return;
+  }
+
+  try {
+    process.kill(-pid, signal);
+    return;
+  } catch {
+    // Fall back to single process signal.
+  }
+
+  try {
+    process.kill(pid, signal);
+  } catch {
+    // Process may have already exited.
+  }
+}
+
+async function waitForExit(
+  child: Bun.Subprocess<"ignore", "inherit", "inherit">,
+  timeoutMs: number
+): Promise<boolean> {
+  const outcome = await Promise.race([
+    child.exited.then(() => true),
+    new Promise<boolean>((resolve) =>
+      setTimeout(() => resolve(false), timeoutMs)
+    ),
+  ]);
+
+  return outcome;
+}
+
+function installCleanupHooks(): void {
+  if (devServerState.cleanupInstalled) {
+    return;
+  }
+
+  devServerState.cleanupInstalled = true;
+
+  process.once("exit", () => {
+    const child = devServerState.process;
+    if (!child) {
+      return;
+    }
+
+    signalProcess(child, "SIGTERM");
+  });
+}
 
 function normalizeSdkUrls(config: InngestDevServerConfig): string[] {
   return config.sdkUrl?.map((url) => url.trim()).filter(Boolean) ?? [];
@@ -98,7 +169,7 @@ function buildInngestDevServerCommand(
   const baseCommand =
     config.command && config.command.length > 0
       ? [...config.command]
-      : [...DEFAULT_DEV_SERVER_COMMAND];
+      : resolveDefaultCommand();
 
   const args: string[] = [mode];
   appendCommonArgs(args, config);
@@ -139,12 +210,15 @@ export function startInngestDevServer(config: InngestDevServerConfig): void {
     ...(config.env ?? {}),
   };
 
+  installCleanupHooks();
+
   const child = Bun.spawn(command, {
     stdin: "ignore",
     stdout: "inherit",
     stderr: "inherit",
     env: processEnv,
     cwd: config.cwd ?? process.cwd(),
+    detached: true,
   });
 
   devServerState.process = child;
@@ -171,17 +245,17 @@ export async function stopInngestDevServer(): Promise<void> {
 
   logger.info("Stopping Inngest dev server");
 
-  try {
-    child.kill();
-  } catch (error) {
-    logger.warn("Failed to signal Inngest dev server", { error });
-  }
+  signalProcess(child, "SIGTERM");
 
   try {
-    await Promise.race([
-      child.exited,
-      new Promise((resolve) => setTimeout(resolve, 5000)),
-    ]);
+    const exited = await waitForExit(child, 5000);
+    if (!exited) {
+      logger.warn(
+        "Inngest dev server did not exit after SIGTERM; forcing kill"
+      );
+      signalProcess(child, "SIGKILL");
+      await waitForExit(child, 2000);
+    }
   } catch (error) {
     logger.warn("Failed waiting for Inngest dev server shutdown", { error });
   }

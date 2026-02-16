@@ -19,6 +19,7 @@ import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { parseCsvSet } from "@/shared/utils/csv";
 import { getValueByPath } from "@/shared/utils/object-path";
 import { parseScheduleExpression } from "@/shared/utils/schedule-expression";
+import { ActionConfigRenderer } from "./action-config-renderer";
 import { SchemaBuilder, type SchemaField } from "./schema-builder";
 
 type TriggerConfigProps = {
@@ -181,6 +182,26 @@ function flattenSchemaPathOptions(
   return paths;
 }
 
+function toConfigString(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value === undefined || value === null) {
+    return "";
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Trigger config intentionally combines form, summary, and warnings in one panel.
 export function TriggerConfig({
   config,
@@ -195,6 +216,10 @@ export function TriggerConfig({
         (trigger) => trigger.type !== "Webhook" && trigger.type !== "Schedule"
       ),
     []
+  );
+  const selectedRuntimeTrigger = useMemo(
+    () => runtimeTriggers.find((trigger) => trigger.type === triggerType),
+    [runtimeTriggers, triggerType]
   );
   const scheduleExpression = (config?.scheduleExpression as string) || "";
   const scheduleCron = (config?.scheduleCron as string) || "";
@@ -443,6 +468,10 @@ export function TriggerConfig({
     toast.success(`${preset.label} example loaded (schema synced)`);
   };
 
+  const handleCustomTriggerConfigUpdate = (key: string, value: unknown) => {
+    onUpdateConfig(key, toConfigString(value));
+  };
+
   return (
     <>
       <div className="space-y-2">
@@ -484,11 +513,28 @@ export function TriggerConfig({
       </div>
 
       {triggerType !== "Webhook" && triggerType !== "Schedule" && (
-        <div className="rounded-lg border border-muted bg-muted/30 p-3">
-          <p className="font-medium text-sm">Custom Trigger</p>
-          <p className="mt-1 text-muted-foreground text-xs">
-            This trigger is provided by your server extension configuration.
-          </p>
+        <div className="space-y-3 rounded-lg border border-muted bg-muted/30 p-3">
+          <div className="space-y-1">
+            <p className="font-medium text-sm">Custom Trigger</p>
+            <p className="text-muted-foreground text-xs">
+              {selectedRuntimeTrigger?.description ??
+                "This trigger is provided by your server extension configuration."}
+            </p>
+          </div>
+
+          {(selectedRuntimeTrigger?.configFields?.length ?? 0) > 0 && (
+            <div className="space-y-3 rounded-md border bg-background p-3">
+              <p className="font-medium text-xs uppercase tracking-wide">
+                Configuration
+              </p>
+              <ActionConfigRenderer
+                config={config}
+                disabled={disabled}
+                fields={selectedRuntimeTrigger?.configFields ?? []}
+                onUpdateConfig={handleCustomTriggerConfigUpdate}
+              />
+            </div>
+          )}
         </div>
       )}
 

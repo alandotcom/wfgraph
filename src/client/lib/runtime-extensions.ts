@@ -1,4 +1,5 @@
 import {
+  type ActionConfigField,
   clearRuntimeActions,
   type RuntimeActionDefinition,
   registerRuntimeAction,
@@ -8,6 +9,8 @@ export type RuntimeTriggerDefinition = {
   type: string;
   label: string;
   executionType: "manual" | "webhook";
+  description?: string;
+  configFields?: ActionConfigField[];
 };
 
 type RuntimeExtensionsPayload = {

@@ -54,23 +54,51 @@ function resolveDefaultClientConfig(): InngestClientRuntimeConfig {
   };
 }
 
-function assertClientConfigurable(): void {
-  if (inngestRuntimeState.client) {
-    throw new Error(
-      "Inngest client is already initialized. Call configureInngestClient(...) before first use."
-    );
-  }
+function normalizeClientConfig(
+  config: InngestClientRuntimeConfig
+): InngestClientRuntimeConfig {
+  return {
+    ...config,
+    id: String(config.id ?? "").trim(),
+  };
+}
+
+function areClientConfigsCompatible(
+  current: InngestClientRuntimeConfig,
+  next: InngestClientRuntimeConfig
+): boolean {
+  return (
+    current.id === next.id &&
+    current.baseUrl === next.baseUrl &&
+    current.eventKey === next.eventKey &&
+    current.env === next.env &&
+    current.isDev === next.isDev
+  );
 }
 
 export function configureInngestClient(
   config: InngestClientRuntimeConfig
 ): void {
-  if (!(config.id && String(config.id).trim())) {
+  const normalizedConfig = normalizeClientConfig(config);
+
+  if (!normalizedConfig.id) {
     throw new Error("Inngest client configuration requires a non-empty id.");
   }
 
-  assertClientConfigurable();
-  inngestRuntimeState.clientConfig = config;
+  if (inngestRuntimeState.client) {
+    const currentConfig =
+      inngestRuntimeState.clientConfig ?? resolveDefaultClientConfig();
+
+    if (areClientConfigsCompatible(currentConfig, normalizedConfig)) {
+      return;
+    }
+
+    throw new Error(
+      "Inngest client is already initialized with a different configuration. Restart the process to apply a new Inngest client config."
+    );
+  }
+
+  inngestRuntimeState.clientConfig = normalizedConfig;
 }
 
 export function configureInngestServe(

@@ -1,3 +1,4 @@
+import type { ActionConfigField } from "@/plugins/registry";
 import {
   createDefaultTriggerDefinition,
   createUnknownTriggerDefinition,
@@ -30,6 +31,8 @@ export type WorkflowTriggerDefinition = {
   type: string;
   label: string;
   executionType: TriggerExecutionType;
+  description?: string;
+  configFields?: ActionConfigField[];
   parseMockInput?: (
     config: Record<string, unknown> | undefined
   ) => Record<string, unknown> | undefined;
@@ -42,8 +45,16 @@ export type WorkflowTriggerDefinition = {
 export function createTrigger(
   definition: WorkflowTriggerDefinition
 ): WorkflowTriggerDefinition {
-  return definition;
+  return {
+    ...definition,
+    configFields: definition.configFields ?? [],
+  };
 }
+
+export type WorkflowTriggerMetadata = Pick<
+  WorkflowTriggerDefinition,
+  "type" | "label" | "executionType" | "description" | "configFields"
+>;
 
 const defaultTrigger = createTrigger(createDefaultTriggerDefinition());
 const scheduleTrigger = createTrigger(createScheduleTriggerDefinition());
@@ -62,21 +73,17 @@ export function registerWorkflowTrigger(definition: WorkflowTriggerDefinition) {
   triggerRegistry.set(definition.type, definition);
 }
 
-export function listWorkflowTriggers(): Pick<
-  WorkflowTriggerDefinition,
-  "type" | "label" | "executionType"
->[] {
+export function listWorkflowTriggers(): WorkflowTriggerMetadata[] {
   return Array.from(triggerRegistry.values()).map((definition) => ({
     type: definition.type,
     label: definition.label,
     executionType: definition.executionType,
+    description: definition.description,
+    configFields: definition.configFields ?? [],
   }));
 }
 
-export function listCustomWorkflowTriggers(): Pick<
-  WorkflowTriggerDefinition,
-  "type" | "label" | "executionType"
->[] {
+export function listCustomWorkflowTriggers(): WorkflowTriggerMetadata[] {
   return listWorkflowTriggers().filter(
     (definition) =>
       definition.type !== webhookTrigger.type &&

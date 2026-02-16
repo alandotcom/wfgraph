@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   createTrigger,
   evaluateWorkflowTrigger,
+  listCustomWorkflowTriggers,
   registerWorkflowTrigger,
   resolveWorkflowTriggerDefinition,
 } from "./trigger-registry";
@@ -92,5 +93,50 @@ describe("registerWorkflowTrigger", () => {
 
     expect(evaluation.triggerType).toBe("InternalQueue");
     expect(evaluation.eventType).toBe("job.ready");
+  });
+
+  it("includes custom trigger metadata for editor rendering", () => {
+    registerWorkflowTrigger(
+      createTrigger({
+        type: "CustomWebhookRouter",
+        label: "Custom Webhook Router",
+        description: "Routes webhook payloads from a custom source.",
+        executionType: "webhook",
+        configFields: [
+          {
+            key: "eventPath",
+            label: "Event Path",
+            type: "text",
+            required: true,
+            placeholder: "event.name",
+          },
+        ],
+        evaluate() {
+          return {
+            triggerType: "CustomWebhookRouter",
+            executionType: "webhook",
+            eventType: undefined,
+            correlationKey: undefined,
+            routingDecision: { kind: "start" },
+          };
+        },
+      })
+    );
+
+    const customTriggers = listCustomWorkflowTriggers();
+    const triggerMetadata = customTriggers.find(
+      (trigger) => trigger.type === "CustomWebhookRouter"
+    );
+
+    expect(triggerMetadata).toBeDefined();
+    expect(triggerMetadata?.label).toBe("Custom Webhook Router");
+    expect(triggerMetadata?.description).toBe(
+      "Routes webhook payloads from a custom source."
+    );
+    expect(triggerMetadata?.configFields).toHaveLength(1);
+    const firstField = triggerMetadata?.configFields?.[0];
+    expect(firstField && "key" in firstField ? firstField.key : undefined).toBe(
+      "eventPath"
+    );
   });
 });
