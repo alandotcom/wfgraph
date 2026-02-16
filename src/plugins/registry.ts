@@ -238,7 +238,7 @@ export function parseActionId(actionId: string | undefined | null): {
 /**
  * Register an integration plugin
  */
-export function registerIntegration(plugin: IntegrationPlugin) {
+export function registerIntegration(plugin: IntegrationPlugin): void {
   integrationRegistry.set(plugin.type, plugin);
 }
 

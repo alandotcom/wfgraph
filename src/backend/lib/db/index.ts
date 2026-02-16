@@ -11,7 +11,16 @@ import {
   workflowWaitStates,
 } from "./schema";
 
-const schema = {
+const schema: {
+  workflows: typeof workflows;
+  workflowExecutions: typeof workflowExecutions;
+  workflowExecutionLogs: typeof workflowExecutionLogs;
+  workflowExecutionEvents: typeof workflowExecutionEvents;
+  workflowExecutionsRelations: typeof workflowExecutionsRelations;
+  workflowWaitStates: typeof workflowWaitStates;
+  apiKeys: typeof apiKeys;
+  integrations: typeof integrations;
+} = {
   workflows,
   workflowExecutions,
   workflowExecutionLogs,
@@ -33,7 +42,8 @@ export type DatabaseRuntimeConfig = {
   migrationConnections?: number;
 };
 
-const createSqlClient = (url: string, max: number) => new Bun.SQL(url, { max });
+const createSqlClient = (url: string, max: number): Bun.SQL =>
+  new Bun.SQL(url, { max });
 
 type DatabaseRuntimeState = {
   config: DatabaseRuntimeConfig | null;
@@ -168,10 +178,12 @@ export function getMigrationClient(): ReturnType<typeof createSqlClient> {
   return databaseState.migrationClient;
 }
 
-export const db = new Proxy({} as BunSQLDatabase<typeof schema>, {
+const dbProxy = new Proxy({} as BunSQLDatabase<typeof schema>, {
   get(_target, property, receiver) {
     const instance = getDb() as unknown as Record<PropertyKey, unknown>;
     const value = Reflect.get(instance, property, receiver);
     return typeof value === "function" ? value.bind(instance) : value;
   },
 });
+
+export const db: BunSQLDatabase<typeof schema> = dbProxy;

@@ -46,7 +46,7 @@ export async function runMigrations(
   options: MigrationsRuntimeOptions
 ): Promise<void> {
   if (!options.runOnStartup) {
-    logger.info(
+    logger.debug(
       "Skipping migrations (set runOnStartup=true to run them at startup)"
     );
     return;

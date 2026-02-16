@@ -68,7 +68,9 @@ const triggerRegistry = new Map<string, WorkflowTriggerDefinition>([
   [scheduleTrigger.type, scheduleTrigger],
 ]);
 
-export function registerWorkflowTrigger(definition: WorkflowTriggerDefinition) {
+export function registerWorkflowTrigger(
+  definition: WorkflowTriggerDefinition
+): void {
   // Prefer unique, stable `type` values because this map overwrites on key collisions.
   triggerRegistry.set(definition.type, definition);
 }

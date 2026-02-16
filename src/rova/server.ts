@@ -14,11 +14,6 @@ import {
   type InngestClientRuntimeConfig,
   type InngestServeRuntimeConfig,
 } from "@/backend/lib/inngest/client";
-import {
-  type InngestDevServerConfig,
-  startInngestDevServer,
-  stopInngestDevServer,
-} from "@/backend/lib/inngest/dev-server";
 import { configureAppLogging, getAppLogger } from "@/backend/lib/logger";
 import { initializeWorkflowTriggers } from "@/backend/lib/workflow-trigger-bootstrap";
 import appHtml from "@/client/index.html";
@@ -49,7 +44,6 @@ export type RovaServerStartOptions = {
   inngest: {
     client: InngestClientRuntimeConfig;
     serve?: InngestServeRuntimeConfig;
-    devServer?: InngestDevServerConfig;
   };
   triggers?: WorkflowTriggerDefinition[];
   actions?: RuntimeActionDefinition[];
@@ -61,6 +55,25 @@ export type RovaServerHandle = {
   port: number;
   stop: () => Promise<void>;
 };
+
+type RovaServerRuntimeState = {
+  activeHandle: RovaServerHandle | null;
+  activeKey: string | null;
+  starting: Promise<RovaServerHandle> | null;
+};
+
+const globalForRovaServer = globalThis as unknown as {
+  __rovaServerRuntimeState?: RovaServerRuntimeState;
+};
+
+const rovaServerRuntimeState: RovaServerRuntimeState =
+  globalForRovaServer.__rovaServerRuntimeState ?? {
+    activeHandle: null,
+    activeKey: null,
+    starting: null,
+  };
+
+globalForRovaServer.__rovaServerRuntimeState = rovaServerRuntimeState;
 
 function normalizePath(pathname: string): string {
   if (pathname.length > 1 && pathname.endsWith("/")) {
@@ -93,112 +106,172 @@ function assertRequiredConfig(options: RovaServerStartOptions): void {
   }
 }
 
+function getResolvedPort(options: RovaServerStartOptions): number {
+  return options.port ?? Number(Bun.env.PORT ?? 4017);
+}
+
+function createRuntimeKey(options: RovaServerStartOptions): string {
+  return JSON.stringify({
+    port: getResolvedPort(options),
+    databaseUrl: options.database.url,
+    inngestClientId: options.inngest.client.id,
+    inngestBaseUrl: options.inngest.client.baseUrl,
+    runMigrations: options.migrations?.runOnStartup === true,
+  });
+}
+
 export async function startRovaServer(
   options: RovaServerStartOptions
 ): Promise<RovaServerHandle> {
   assertRequiredConfig(options);
 
-  if (options.configureLogging !== false) {
-    configureAppLogging();
+  const runtimeKey = createRuntimeKey(options);
+
+  if (
+    rovaServerRuntimeState.activeHandle &&
+    rovaServerRuntimeState.activeKey === runtimeKey
+  ) {
+    return rovaServerRuntimeState.activeHandle;
   }
 
-  const logger = resolveLogger(options.logger);
-
-  configureDatabaseRuntime(options.database);
-  configureInngestClient(options.inngest.client);
-  configureInngestServe(options.inngest.serve);
-
-  registerRuntimeExtensions(options);
-  initializeWorkflowTriggers();
-
-  await runMigrations({
-    runOnStartup: options.migrations?.runOnStartup === true,
-    migrationsDir: options.migrations?.migrationsDir,
-  });
-
-  const apiApp = createApiApp();
-  const port = options.port ?? Number(Bun.env.PORT ?? 4017);
-  const bunServer = serve({
-    port,
-    development: Bun.env.NODE_ENV !== "production",
-    routes: {
-      "/": appHtml,
-      "/workflows": appHtml,
-      "/workflows/:workflowId": appHtml,
-    },
-    fetch(req) {
-      const url = new URL(req.url);
-      const pathname = normalizePath(url.pathname);
-
-      if (pathname.startsWith("/api/")) {
-        return apiApp.fetch(req);
-      }
-
-      return Response.json({ error: "Not found" }, { status: 404 });
-    },
-  });
-
-  const defaultInngestSdkUrl = new URL(
-    "/api/inngest",
-    bunServer.url
-  ).toString();
-  startInngestDevServer({
-    enabled: options.inngest.devServer?.enabled ?? false,
-    ...options.inngest.devServer,
-    sdkUrl:
-      options.inngest.devServer?.sdkUrl &&
-      options.inngest.devServer.sdkUrl.length > 0
-        ? options.inngest.devServer.sdkUrl
-        : [defaultInngestSdkUrl],
-  });
-
-  let stopping = false;
-  const stop = async () => {
-    if (stopping) {
-      return;
-    }
-
-    stopping = true;
-
-    try {
-      bunServer.stop(true);
-    } catch (error) {
-      logger.error("Failed to stop Bun server", { error });
-    }
-
-    await stopInngestDevServer();
-  };
-
-  const signalHandlers = new Map<string, () => void>();
-  if (options.installSignalHandlers !== false) {
-    const signals = ["SIGINT", "SIGTERM"] as const;
-    for (const signal of signals) {
-      const handler = () => {
-        logger.warn("Received shutdown signal", { signal });
-        stop().catch((error) => {
-          logger.error("Failed to stop server after signal", { error, signal });
-        });
-      };
-      signalHandlers.set(signal, handler);
-      process.on(signal, handler);
-    }
+  if (
+    rovaServerRuntimeState.starting &&
+    rovaServerRuntimeState.activeKey === runtimeKey
+  ) {
+    return await rovaServerRuntimeState.starting;
   }
 
-  logger.info("Server listening", { url: bunServer.url, port });
+  if (rovaServerRuntimeState.activeHandle) {
+    throw new Error(
+      "Rova server is already running with a different configuration. Stop the current server before starting a new one."
+    );
+  }
 
-  return {
-    url: bunServer.url,
-    port,
-    stop: async () => {
-      for (const [signal, handler] of signalHandlers.entries()) {
-        process.off(signal, handler);
+  const startupPromise = (async (): Promise<RovaServerHandle> => {
+    if (options.configureLogging !== false) {
+      configureAppLogging();
+    }
+
+    const logger = resolveLogger(options.logger);
+
+    configureDatabaseRuntime(options.database);
+    configureInngestClient(options.inngest.client);
+    configureInngestServe(options.inngest.serve);
+
+    registerRuntimeExtensions(options);
+    initializeWorkflowTriggers();
+
+    await runMigrations({
+      runOnStartup: options.migrations?.runOnStartup === true,
+      migrationsDir: options.migrations?.migrationsDir,
+    });
+
+    const apiApp = createApiApp();
+    const port = getResolvedPort(options);
+    const bunServer = serve({
+      port,
+      development: Bun.env.NODE_ENV !== "production",
+      routes: {
+        "/": appHtml,
+        "/workflows": appHtml,
+        "/workflows/:workflowId": appHtml,
+      },
+      fetch(req) {
+        const url = new URL(req.url);
+        const pathname = normalizePath(url.pathname);
+
+        if (pathname.startsWith("/api/")) {
+          return apiApp.fetch(req);
+        }
+
+        return Response.json({ error: "Not found" }, { status: 404 });
+      },
+    });
+
+    let stopping = false;
+    const stop = () => {
+      if (stopping) {
+        return;
       }
-      signalHandlers.clear();
-      await stop();
-    },
-  };
+
+      stopping = true;
+
+      try {
+        bunServer.stop(true);
+      } catch (error) {
+        logger.error("Failed to stop Bun server", { error });
+      }
+    };
+
+    const signalHandlers = new Map<string, () => void>();
+    if (options.installSignalHandlers !== false) {
+      const signals = ["SIGINT", "SIGTERM"] as const;
+      for (const signal of signals) {
+        const handler = () => {
+          logger.warn("Received shutdown signal", { signal });
+          try {
+            stop();
+          } catch (error) {
+            logger.error("Failed to stop server after signal", {
+              error,
+              signal,
+            });
+          }
+        };
+        signalHandlers.set(signal, handler);
+        process.on(signal, handler);
+      }
+    }
+
+    logger.info("Server listening", { url: bunServer.url, port });
+
+    const handle: RovaServerHandle = {
+      url: bunServer.url,
+      port,
+      stop: () => {
+        for (const [signal, handler] of signalHandlers.entries()) {
+          process.off(signal, handler);
+        }
+        signalHandlers.clear();
+        stop();
+
+        if (rovaServerRuntimeState.activeHandle === handle) {
+          rovaServerRuntimeState.activeHandle = null;
+          rovaServerRuntimeState.activeKey = null;
+        }
+
+        return Promise.resolve();
+      },
+    };
+
+    rovaServerRuntimeState.activeHandle = handle;
+    rovaServerRuntimeState.activeKey = runtimeKey;
+
+    return handle;
+  })();
+
+  rovaServerRuntimeState.starting = startupPromise;
+  rovaServerRuntimeState.activeKey = runtimeKey;
+
+  try {
+    return await startupPromise;
+  } catch (error) {
+    if (rovaServerRuntimeState.starting === startupPromise) {
+      rovaServerRuntimeState.starting = null;
+      if (!rovaServerRuntimeState.activeHandle) {
+        rovaServerRuntimeState.activeKey = null;
+      }
+    }
+    throw error;
+  } finally {
+    if (rovaServerRuntimeState.starting === startupPromise) {
+      rovaServerRuntimeState.starting = null;
+    }
+  }
 }
 
-export const server = {
+export const server: {
+  start: typeof startRovaServer;
+} = {
   start: startRovaServer,
 };
