@@ -1,9 +1,12 @@
+import { getRuntimeAction } from "@/shared/workflow/action-registry";
+
 type StepModule = Record<string, unknown>;
 
 export type StepImporter = {
   importer: () => Promise<StepModule>;
   stepFunction: string;
   label?: string;
+  execute?: (input: Record<string, unknown>) => Promise<unknown> | unknown;
 };
 
 const STEP_IMPORTERS: Record<string, StepImporter> = {
@@ -102,7 +105,22 @@ const SYSTEM_ACTION_LABELS: Record<string, string> = {
 };
 
 export function getStepImporter(actionType: string): StepImporter | undefined {
-  return STEP_IMPORTERS[actionType];
+  const importer = STEP_IMPORTERS[actionType];
+  if (importer) {
+    return importer;
+  }
+
+  const runtimeAction = getRuntimeAction(actionType);
+  if (!runtimeAction) {
+    return;
+  }
+
+  return {
+    importer: async () => ({}),
+    stepFunction: "__runtime_execute__",
+    label: runtimeAction.label,
+    execute: runtimeAction.execute,
+  };
 }
 
 export function getActionLabel(actionType: string): string | undefined {
@@ -110,5 +128,17 @@ export function getActionLabel(actionType: string): string | undefined {
     return SYSTEM_ACTION_LABELS[actionType];
   }
 
+  const runtimeAction = getRuntimeAction(actionType);
+  if (runtimeAction) {
+    return runtimeAction.label;
+  }
+
   return STEP_IMPORTERS[actionType]?.label;
+}
+
+export function registerStepImporter(
+  actionType: string,
+  importer: StepImporter
+): void {
+  STEP_IMPORTERS[actionType] = importer;
 }

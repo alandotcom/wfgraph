@@ -1,5 +1,5 @@
 import type { SerializedWorkflowGraph } from "@/shared/workflow/types";
-import { inngest } from "./client";
+import { getInngestClient } from "./client";
 
 export type WorkflowRunRequestedEventData = {
   graph: SerializedWorkflowGraph;
@@ -71,7 +71,7 @@ function getEventId(result: unknown): string | undefined {
 export async function sendWorkflowRunRequested(
   data: WorkflowRunRequestedEventData
 ) {
-  const response = await inngest.send({
+  const response = await getInngestClient().send({
     id: data.executionId ? `workflow-run-${data.executionId}` : undefined,
     name: "workflow/run.requested",
     data,
@@ -88,7 +88,7 @@ export async function sendWorkflowCancelRequested(input: {
   eventType?: string;
   correlationKey?: string;
 }) {
-  return await inngest.send({
+  return await getInngestClient().send({
     id: `workflow-cancel-${input.executionId}-${Date.now()}`,
     name: "workflow/run.cancel.requested",
     data: input,
@@ -103,7 +103,7 @@ export async function sendWorkflowWaitSignal(input: {
   correlationKey?: string;
   payload?: Record<string, unknown>;
 }) {
-  return await inngest.send({
+  return await getInngestClient().send({
     id: `workflow-wait-signal-${input.executionId}-${input.nodeId}-${Date.now()}`,
     name: "workflow/wait.signal",
     data: {

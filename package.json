@@ -2,13 +2,16 @@
   "name": "rova-workflows",
   "version": "0.1.0",
   "private": true,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "packageManager": "bun@1.3.9",
   "license": "Apache-2.0",
   "description": "Workflow automation platform with a visual editor and plugin integrations",
   "scripts": {
-    "dev": "concurrently --kill-others-on-fail --names app,inngest --prefix-colors blue,magenta \"bun run dev:app\" \"bun run dev:inngest\"",
-    "dev:app": "NODE_ENV=development INNGEST_DEV=http://localhost:8388 bun --hot src/server.ts",
-    "dev:inngest": "bun run inngest:dev",
+    "dev": "bun run dev:app",
+    "dev:app": "NODE_ENV=development ROVA_INNGEST_DEV_SERVER=true INNGEST_DEV=http://localhost:8388 bun --hot src/server.ts",
     "compile": "bun run src/scripts/compile.ts",
     "build": "bun run src/scripts/migrate-prod.ts && bun build --target=bun --production --outdir=dist ./src/server.ts",
     "start": "cd dist && NODE_ENV=production bun server.js",
@@ -21,8 +24,7 @@
     "db:generate": "bun --bun drizzle-kit generate",
     "db:migrate": "bun --bun drizzle-kit migrate",
     "db:push": "bun -bun drizzle-kit push",
-    "db:studio": "bun --bun drizzle-kit studio",
-    "inngest:dev": "sh -c 'until curl -sSf http://localhost:4017/api/inngest >/dev/null 2>/dev/null; do sleep 1; done; DO_NOT_TRACK=1 bun run inngest-cli dev --no-discovery -u http://localhost:4017/api/inngest -p 8388 --connect-gateway-port 8390 --connect-gateway-grpc-port 50062 --connect-executor-grpc-port 50063 --persist'"
+    "db:studio": "bun --bun drizzle-kit studio"
   },
   "dependencies": {
     "@base-ui/react": "1.2.0",
@@ -75,7 +77,6 @@
     "@types/react-dom": "^19.2.3",
     "bun-plugin-tailwind": "^0.1.2",
     "bun-types": "^1.3.9",
-    "concurrently": "^9.2.1",
     "drizzle-kit": "^0.31.9",
     "grab": "^0.1.14",
     "inngest-cli": "^1.17.0",

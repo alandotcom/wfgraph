@@ -305,6 +305,8 @@ function getMissingIntegrations(
   const userIntegrationIds = new Set(userIntegrations.map((i) => i.id));
   const missingByType = new Map<IntegrationType, string[]>();
   const integrationLabels = getIntegrationLabels();
+  const isKnownIntegrationType = (value: string): value is IntegrationType =>
+    value in integrationLabels || value in SYSTEM_INTEGRATION_LABELS;
 
   for (const node of nodes) {
     // Skip disabled nodes
@@ -320,12 +322,19 @@ function getMissingIntegrations(
     // Look up the integration type from the plugin registry first
     const action = findActionById(actionType);
     // Fall back to built-in action integrations for actions not in the registry
-    const requiredIntegrationType =
+    const requiredIntegrationTypeRaw =
       action?.integration || SYSTEM_ACTION_INTEGRATIONS[actionType];
 
-    if (!requiredIntegrationType) {
+    if (
+      !(
+        requiredIntegrationTypeRaw &&
+        isKnownIntegrationType(requiredIntegrationTypeRaw)
+      )
+    ) {
       continue;
     }
+
+    const requiredIntegrationType = requiredIntegrationTypeRaw;
 
     // Check if this node has a valid integrationId configured
     // The integration must exist (not just be configured)

@@ -331,8 +331,9 @@ const getIntegrationFromActionType = (actionType: string): string => {
 
   // Look up in plugin registry
   const action = findActionById(actionType);
-  if (action?.integration) {
-    const plugin = getIntegration(action.integration);
+  const integrationType = action?.integration;
+  if (typeof integrationType === "string") {
+    const plugin = getIntegration(integrationType);
     return plugin?.label || "System";
   }
 
@@ -360,7 +361,7 @@ const requiresIntegration = (actionType: string): boolean => {
 
   // Plugin actions always require integration
   const action = findActionById(actionType);
-  return action !== undefined;
+  return Boolean(action?.integration);
 };
 
 // Helper to get provider logo for action type
@@ -386,8 +387,9 @@ const getProviderLogo = (actionType: string) => {
 
   // Look up action in plugin registry and get the integration icon
   const action = findActionById(actionType);
-  if (action) {
-    const plugin = getIntegration(action.integration);
+  const integrationType = action?.integration;
+  if (typeof integrationType === "string") {
+    const plugin = getIntegration(integrationType);
     if (plugin?.icon) {
       const PluginIcon = plugin.icon;
       return <PluginIcon className="size-12" />;

@@ -3,7 +3,7 @@ import {
   type WorkflowExecutionInput,
   type WorkflowExecutionRuntime,
 } from "@/backend/lib/workflow-executor.workflow";
-import { inngest } from "./client";
+import { getInngestClient } from "./client";
 
 function toDurationString(milliseconds: number): string {
   const seconds = Math.max(1, Math.ceil(milliseconds / 1000));
@@ -58,7 +58,7 @@ export function createWorkflowRunRequestedFunction(input: {
   name?: string;
   workflowId: string;
 }) {
-  return inngest.createFunction(
+  return getInngestClient().createFunction(
     {
       id: input.id,
       name: input.name,

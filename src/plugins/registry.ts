@@ -188,7 +188,17 @@ export type IntegrationPlugin = {
  */
 export type ActionWithFullId = PluginAction & {
   id: string; // Full action ID: {integration}/{slug}
-  integration: IntegrationType;
+  integration?: IntegrationType | string;
+};
+
+export type RuntimeActionDefinition = {
+  id: string;
+  label: string;
+  description: string;
+  category: string;
+  configFields?: ActionConfigField[];
+  outputFields?: OutputField[];
+  integration?: string;
 };
 
 /**
@@ -196,6 +206,7 @@ export type ActionWithFullId = PluginAction & {
  * Auto-populated by plugin files
  */
 const integrationRegistry = new Map<IntegrationType, IntegrationPlugin>();
+const runtimeActionRegistry = new Map<string, RuntimeActionDefinition>();
 
 /**
  * Compute full action ID from integration type and action slug
@@ -231,13 +242,25 @@ export function registerIntegration(plugin: IntegrationPlugin) {
   integrationRegistry.set(plugin.type, plugin);
 }
 
+export function registerRuntimeAction(action: RuntimeActionDefinition): void {
+  runtimeActionRegistry.set(action.id, action);
+}
+
+export function clearRuntimeActions(): void {
+  runtimeActionRegistry.clear();
+}
+
+export function getRuntimeActions(): RuntimeActionDefinition[] {
+  return Array.from(runtimeActionRegistry.values());
+}
+
 /**
  * Get an integration plugin
  */
 export function getIntegration(
-  type: IntegrationType
+  type: IntegrationType | string
 ): IntegrationPlugin | undefined {
-  return integrationRegistry.get(type);
+  return integrationRegistry.get(type as IntegrationType);
 }
 
 /**
@@ -270,6 +293,21 @@ export function getAllActions(): ActionWithFullId[] {
     }
   }
 
+  for (const runtimeAction of runtimeActionRegistry.values()) {
+    actions.push({
+      slug: runtimeAction.id,
+      label: runtimeAction.label,
+      description: runtimeAction.description,
+      category: runtimeAction.category,
+      stepFunction: "runtime",
+      stepImportPath: "runtime",
+      configFields: runtimeAction.configFields ?? [],
+      outputFields: runtimeAction.outputFields,
+      id: runtimeAction.id,
+      integration: runtimeAction.integration,
+    });
+  }
+
   return actions;
 }
 
@@ -290,6 +328,25 @@ export function getActionsByCategory(): Record<string, ActionWithFullId[]> {
         integration: plugin.type,
       });
     }
+  }
+
+  for (const runtimeAction of runtimeActionRegistry.values()) {
+    if (!categories[runtimeAction.category]) {
+      categories[runtimeAction.category] = [];
+    }
+
+    categories[runtimeAction.category].push({
+      slug: runtimeAction.id,
+      label: runtimeAction.label,
+      description: runtimeAction.description,
+      category: runtimeAction.category,
+      stepFunction: "runtime",
+      stepImportPath: "runtime",
+      configFields: runtimeAction.configFields ?? [],
+      outputFields: runtimeAction.outputFields,
+      id: runtimeAction.id,
+      integration: runtimeAction.integration,
+    });
   }
 
   return categories;
@@ -321,6 +378,24 @@ export function findActionById(
           integration: plugin.type,
         };
       }
+    }
+  }
+
+  // Fall back to label-based lookup (exact label match)
+  for (const runtimeAction of runtimeActionRegistry.values()) {
+    if (runtimeAction.id === actionId || runtimeAction.label === actionId) {
+      return {
+        slug: runtimeAction.id,
+        label: runtimeAction.label,
+        description: runtimeAction.description,
+        category: runtimeAction.category,
+        stepFunction: "runtime",
+        stepImportPath: "runtime",
+        configFields: runtimeAction.configFields ?? [],
+        outputFields: runtimeAction.outputFields,
+        id: runtimeAction.id,
+        integration: runtimeAction.integration,
+      };
     }
   }
 
@@ -395,8 +470,11 @@ export function getDependenciesForActions(
   // Find which integrations are used
   for (const actionId of actionIds) {
     const action = findActionById(actionId);
-    if (action) {
-      integrations.add(action.integration);
+    if (
+      action?.integration &&
+      integrationRegistry.has(action.integration as IntegrationType)
+    ) {
+      integrations.add(action.integration as IntegrationType);
     }
   }
 

@@ -18,10 +18,12 @@ export type {
   ActionWithFullId,
   IntegrationPlugin,
   PluginAction,
+  RuntimeActionDefinition,
 } from "./registry";
 
 // Export the registry utilities
 export {
+  clearRuntimeActions,
   computeActionId,
   findActionById,
   flattenConfigFields,
@@ -37,8 +39,10 @@ export {
   getIntegrationLabels,
   getIntegrationTypes,
   getPluginEnvVars,
+  getRuntimeActions,
   getSortedIntegrationTypes,
   isFieldGroup,
   parseActionId,
   registerIntegration,
+  registerRuntimeAction,
 } from "./registry";

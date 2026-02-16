@@ -3,10 +3,12 @@ import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import { serve as serveInngest } from "inngest/hono";
 import { z } from "zod";
-import { inngest } from "@/backend/lib/inngest/client";
+import {
+  getInngestClient,
+  getInngestServeConfig,
+} from "@/backend/lib/inngest/client";
 import { getInngestFunctions } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
-import { initializeWorkflowTriggers } from "@/backend/lib/workflow-trigger-bootstrap";
 import type { RpcContext } from "@/backend/rpc/context";
 import {
   openApiReferenceHandler,
@@ -18,6 +20,8 @@ import {
   optionsWorkflowWebhook,
   postWorkflowWebhook,
 } from "@/backend/services/workflows/workflow-webhook.workflows";
+import { listRuntimeActions } from "@/shared/workflow/action-registry";
+import { listCustomWorkflowTriggers } from "@/shared/workflow/trigger-registry";
 
 const idSchema = z.string().trim().min(1);
 const workflowIdParamsSchema = z.object({ workflowId: idSchema });
@@ -29,11 +33,7 @@ const webhookQuerySchema = z.object({
 const webhookBodySchema = z.record(z.string(), z.unknown());
 const resumeBodySchema = z.record(z.string(), z.unknown());
 
-initializeWorkflowTriggers();
-
-const app = new Hono().basePath("/api");
 const httpLogger = getAppLogger("http", "hono");
-const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
 
 const BODY_LOG_LIMIT = 8192;
 const isDevelopmentEnvironment = ["development", "dev"].includes(
@@ -158,155 +158,173 @@ async function handleOpenApiReferenceRoute(
   return response;
 }
 
-app.use("*", async (c, next) => {
-  const requestId = c.req.header("x-request-id") ?? buildRequestId();
-  const startTime = Date.now();
-  const method = c.req.method.toUpperCase();
-  const path = c.req.path;
-  const query = c.req.query();
-  const requestBody = LOG_HTTP_BODIES
-    ? await getRequestLogBody(c.req.raw)
-    : undefined;
-  const requestLogger = httpLogger.with({ requestId });
+export function createApiApp() {
+  const app = new Hono().basePath("/api");
+  const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
 
-  requestLogger.info(`--> ${method} ${path} [${requestId}]`, {
-    method,
-    path,
-    query,
-    requestBody,
-    userAgent: c.req.header("user-agent") ?? null,
-    ip:
-      c.req.header("x-forwarded-for") ??
-      c.req.header("x-real-ip") ??
-      c.req.header("cf-connecting-ip") ??
-      null,
-  });
+  app.use("*", async (c, next) => {
+    const requestId = c.req.header("x-request-id") ?? buildRequestId();
+    const startTime = Date.now();
+    const method = c.req.method.toUpperCase();
+    const path = c.req.path;
+    const query = c.req.query();
+    const requestBody = LOG_HTTP_BODIES
+      ? await getRequestLogBody(c.req.raw)
+      : undefined;
+    const requestLogger = httpLogger.with({ requestId });
 
-  try {
-    await next();
-  } catch (error) {
-    requestLogger.error(`xx> ${method} ${path} [${requestId}]`, {
+    requestLogger.info(`--> ${method} ${path} [${requestId}]`, {
       method,
       path,
-      durationMs: Date.now() - startTime,
-      error,
+      query,
+      requestBody,
+      userAgent: c.req.header("user-agent") ?? null,
+      ip:
+        c.req.header("x-forwarded-for") ??
+        c.req.header("x-real-ip") ??
+        c.req.header("cf-connecting-ip") ??
+        null,
     });
-    throw error;
-  }
 
-  const status = c.res.status;
-  const responseBody =
-    LOG_HTTP_BODIES && status >= 400
-      ? await getResponseLogBody(c.res)
-      : undefined;
-  const responseLog = {
-    method,
-    path,
-    statusCode: status,
-    durationMs: Date.now() - startTime,
-    responseBody,
-  };
-  const responseSummary = `<-- ${method} ${path} ${status} ${responseLog.durationMs}ms [${requestId}]`;
+    try {
+      await next();
+    } catch (error) {
+      requestLogger.error(`xx> ${method} ${path} [${requestId}]`, {
+        method,
+        path,
+        durationMs: Date.now() - startTime,
+        error,
+      });
+      throw error;
+    }
 
-  if (status >= 500) {
-    requestLogger.error(responseSummary, responseLog);
-  } else if (status >= 400) {
-    requestLogger.warn(responseSummary, responseLog);
-  } else {
-    requestLogger.info(responseSummary, responseLog);
-  }
-});
+    const status = c.res.status;
+    const responseBody =
+      LOG_HTTP_BODIES && status >= 400
+        ? await getResponseLogBody(c.res)
+        : undefined;
+    const responseLog = {
+      method,
+      path,
+      statusCode: status,
+      durationMs: Date.now() - startTime,
+      responseBody,
+    };
+    const responseSummary = `<-- ${method} ${path} ${status} ${responseLog.durationMs}ms [${requestId}]`;
 
-app.onError((error, c) => {
-  httpLogger.error("Unhandled API error", {
-    method: c.req.method.toUpperCase(),
-    path: c.req.path,
-    query: c.req.query(),
-    error,
+    if (status >= 500) {
+      requestLogger.error(responseSummary, responseLog);
+    } else if (status >= 400) {
+      requestLogger.warn(responseSummary, responseLog);
+    } else {
+      requestLogger.info(responseSummary, responseLog);
+    }
   });
 
-  return c.json({ error: "Internal Server Error" }, 500);
-});
-
-const routes = app
-  .use("/rpc/*", async (c, next) => {
-    const { matched, response } = await rpcHandler.handle(c.req.raw, {
-      prefix: "/api/rpc",
-      context: { headers: c.req.raw.headers },
+  app.onError((error, c) => {
+    httpLogger.error("Unhandled API error", {
+      method: c.req.method.toUpperCase(),
+      path: c.req.path,
+      query: c.req.query(),
+      error,
     });
 
-    if (matched) {
+    return c.json({ error: "Internal Server Error" }, 500);
+  });
+
+  const routes = app
+    .use("/rpc/*", async (c, next) => {
+      const { matched, response } = await rpcHandler.handle(c.req.raw, {
+        prefix: "/api/rpc",
+        context: { headers: c.req.raw.headers },
+      });
+
+      if (matched) {
+        return c.newResponse(response.body, response);
+      }
+
+      await next();
+    })
+    .use("/rest/*", async (c, next) => {
+      const { matched, response } = await openApiRestHandler.handle(c.req.raw, {
+        prefix: "/api/rest",
+        context: { headers: c.req.raw.headers },
+      });
+
+      if (matched) {
+        return c.newResponse(response.body, response);
+      }
+
+      await next();
+    })
+    .get("/openapi.json", async (c) => {
+      const response = await handleOpenApiReferenceRoute(c.req.raw);
+
+      if (!response) {
+        return c.json({ error: "Not found" }, 404);
+      }
+
       return c.newResponse(response.body, response);
-    }
+    })
+    .get("/docs", async (c) => {
+      const response = await handleOpenApiReferenceRoute(c.req.raw);
 
-    await next();
-  })
-  .use("/rest/*", async (c, next) => {
-    const { matched, response } = await openApiRestHandler.handle(c.req.raw, {
-      prefix: "/api/rest",
-      context: { headers: c.req.raw.headers },
-    });
+      if (!response) {
+        return c.json({ error: "Not found" }, 404);
+      }
 
-    if (matched) {
       return c.newResponse(response.body, response);
-    }
-
-    await next();
-  })
-  .get("/openapi.json", async (c) => {
-    const response = await handleOpenApiReferenceRoute(c.req.raw);
-
-    if (!response) {
-      return c.json({ error: "Not found" }, 404);
-    }
-
-    return c.newResponse(response.body, response);
-  })
-  .get("/docs", async (c) => {
-    const response = await handleOpenApiReferenceRoute(c.req.raw);
-
-    if (!response) {
-      return c.json({ error: "Not found" }, 404);
-    }
-
-    return c.newResponse(response.body, response);
-  })
-  .all("/auth", (c) => c.json({ error: "Not found" }, 404))
-  .all("/auth/*", (c) => c.json({ error: "Not found" }, 404))
-  .all("/og", (c) => c.json({ error: "Not found" }, 404))
-  .all("/og/*", (c) => c.json({ error: "Not found" }, 404))
-  .on(["GET", "POST", "PUT"], "/inngest", async (c) => {
-    const functions = await getInngestFunctions();
-    const inngestHandler = serveInngest({ client: inngest, functions });
-    return await inngestHandler(c);
-  })
-  .options("/workflows/:workflowId/webhook", () => optionsWorkflowWebhook())
-  .post(
-    "/workflows/:workflowId/webhook",
-    zValidator("param", workflowIdParamsSchema),
-    zValidator("query", webhookQuerySchema),
-    zValidator("json", webhookBodySchema),
-    (c) =>
-      postWorkflowWebhook({
-        workflowId: c.req.valid("param").workflowId,
-        authHeader: c.req.header("Authorization") ?? null,
-        dryRunQuery: c.req.valid("query").dryRun,
-        dryRunHeader: c.req.header("x-workflow-dry-run") ?? null,
-        body: c.req.valid("json"),
+    })
+    .get("/extensions", (c) =>
+      c.json({
+        actions: listRuntimeActions(),
+        triggers: listCustomWorkflowTriggers(),
       })
-  )
-  .post(
-    "/workflows/hooks/:token/resume",
-    zValidator("param", tokenParamsSchema),
-    zValidator("json", resumeBodySchema),
-    (c) =>
-      postWorkflowResume(
-        c.req.valid("param").token,
-        c.req.valid("json"),
-        c.req.header("Authorization") ?? null
-      )
-  );
+    )
+    .all("/auth", (c) => c.json({ error: "Not found" }, 404))
+    .all("/auth/*", (c) => c.json({ error: "Not found" }, 404))
+    .all("/og", (c) => c.json({ error: "Not found" }, 404))
+    .all("/og/*", (c) => c.json({ error: "Not found" }, 404))
+    .on(["GET", "POST", "PUT"], "/inngest", async (c) => {
+      const functions = await getInngestFunctions();
+      const serveOptions = getInngestServeConfig();
+      const inngestHandler = serveInngest({
+        client: getInngestClient(),
+        functions,
+        ...(serveOptions as Record<string, unknown>),
+      });
+      return await inngestHandler(c);
+    })
+    .options("/workflows/:workflowId/webhook", () => optionsWorkflowWebhook())
+    .post(
+      "/workflows/:workflowId/webhook",
+      zValidator("param", workflowIdParamsSchema),
+      zValidator("query", webhookQuerySchema),
+      zValidator("json", webhookBodySchema),
+      (c) =>
+        postWorkflowWebhook({
+          workflowId: c.req.valid("param").workflowId,
+          authHeader: c.req.header("Authorization") ?? null,
+          dryRunQuery: c.req.valid("query").dryRun,
+          dryRunHeader: c.req.header("x-workflow-dry-run") ?? null,
+          body: c.req.valid("json"),
+        })
+    )
+    .post(
+      "/workflows/hooks/:token/resume",
+      zValidator("param", tokenParamsSchema),
+      zValidator("json", resumeBodySchema),
+      (c) =>
+        postWorkflowResume(
+          c.req.valid("param").token,
+          c.req.valid("json"),
+          c.req.header("Authorization") ?? null
+        )
+    );
 
-routes.notFound((c) => c.json({ error: "Not found" }, 404));
+  routes.notFound((c) => c.json({ error: "Not found" }, 404));
 
-export { routes as app };
+  return routes;
+}
+
+export const app = createApiApp();

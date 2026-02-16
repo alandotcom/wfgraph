@@ -62,6 +62,28 @@ export function registerWorkflowTrigger(definition: WorkflowTriggerDefinition) {
   triggerRegistry.set(definition.type, definition);
 }
 
+export function listWorkflowTriggers(): Pick<
+  WorkflowTriggerDefinition,
+  "type" | "label" | "executionType"
+>[] {
+  return Array.from(triggerRegistry.values()).map((definition) => ({
+    type: definition.type,
+    label: definition.label,
+    executionType: definition.executionType,
+  }));
+}
+
+export function listCustomWorkflowTriggers(): Pick<
+  WorkflowTriggerDefinition,
+  "type" | "label" | "executionType"
+>[] {
+  return listWorkflowTriggers().filter(
+    (definition) =>
+      definition.type !== webhookTrigger.type &&
+      definition.type !== scheduleTrigger.type
+  );
+}
+
 export function resolveWorkflowTriggerDefinition(
   config: Record<string, unknown> | undefined
 ): WorkflowTriggerDefinition {

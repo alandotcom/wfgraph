@@ -1,58 +1,74 @@
 import { resolve } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sql";
 import { migrate } from "drizzle-orm/bun-sql/migrator";
-import { migrationClient } from "@/backend/lib/db/index";
+import { getMigrationClient } from "@/backend/lib/db/index";
 import { getAppLogger } from "@/backend/lib/logger";
 
 const logger = getAppLogger("migrations");
 
-const DEFAULT_MIGRATIONS_DIR = resolve(process.cwd(), "drizzle");
+const MIGRATIONS_DIR_CANDIDATES = [
+  resolve(process.cwd(), "drizzle"),
+  resolve(import.meta.dir, "../../../../drizzle"),
+  resolve(import.meta.dir, "../../../drizzle"),
+];
 
-function getMigrationsFolder(): string {
-  const configuredFolder = Bun.env.MIGRATIONS_DIR?.trim();
-  if (!configuredFolder) {
-    return DEFAULT_MIGRATIONS_DIR;
+export type MigrationsRuntimeOptions = {
+  runOnStartup: boolean;
+  migrationsDir?: string;
+};
+
+async function resolveExistingMigrationsDir(
+  configuredPath: string | undefined
+): Promise<string> {
+  const candidates = configuredPath
+    ? [resolve(process.cwd(), configuredPath)]
+    : MIGRATIONS_DIR_CANDIDATES;
+
+  for (const candidate of candidates) {
+    const migrationPath = Bun.file(candidate);
+    try {
+      const stats = await migrationPath.stat();
+      if (stats.isDirectory()) {
+        return candidate;
+      }
+    } catch {
+      // Keep scanning candidates.
+    }
   }
 
-  return resolve(process.cwd(), configuredFolder);
+  throw new Error(
+    `Migrations folder not found. Checked: ${candidates.join(", ")}.` +
+      " If needed, pass migrations.migrationsDir in server.start(...)."
+  );
 }
 
-function shouldRunMigrations(): boolean {
-  return Bun.env.RUN_DB_MIGRATIONS === "true";
-}
-
-export async function runMigrationsIfRequested(): Promise<void> {
-  if (!shouldRunMigrations()) {
+export async function runMigrations(
+  options: MigrationsRuntimeOptions
+): Promise<void> {
+  if (!options.runOnStartup) {
     logger.info(
-      "Skipping migrations (set RUN_DB_MIGRATIONS=true to run them at startup)"
+      "Skipping migrations (set runOnStartup=true to run them at startup)"
     );
     return;
   }
 
-  const migrationsFolder = getMigrationsFolder();
-
-  const migrationPath = Bun.file(migrationsFolder);
-  let isDirectory = false;
-
-  try {
-    const stats = await migrationPath.stat();
-    isDirectory = stats.isDirectory();
-  } catch {
-    isDirectory = false;
-  }
-
-  if (!isDirectory) {
-    throw new Error(
-      `Migrations folder not found or invalid at ${migrationsFolder}. Set MIGRATIONS_DIR to a valid folder path.`
-    );
-  }
+  const migrationsFolder = await resolveExistingMigrationsDir(
+    options.migrationsDir?.trim()
+  );
 
   logger.info("Running database migrations", { migrationsFolder });
 
-  const migrationDb = drizzle(migrationClient);
+  const migrationDb = drizzle(getMigrationClient());
   await migrate(migrationDb, {
     migrationsFolder,
   });
 
   logger.info("Database migrations completed");
+}
+
+export async function runMigrationsIfRequested(): Promise<void> {
+  await runMigrations({
+    runOnStartup: Bun.env.RUN_DB_MIGRATIONS === "true",
+    migrationsDir: Bun.env.MIGRATIONS_DIR?.trim(),
+  });
 }

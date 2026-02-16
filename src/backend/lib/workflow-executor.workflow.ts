@@ -340,6 +340,10 @@ async function executeActionStep(input: {
   // Look up plugin action from the generated step registry
   const stepImporter = getStepImporter(actionType);
   if (stepImporter) {
+    if (typeof stepImporter.execute === "function") {
+      return await stepImporter.execute(stepInput);
+    }
+
     const module = await stepImporter.importer();
     const stepFunction = module[stepImporter.stepFunction];
     if (typeof stepFunction === "function") {

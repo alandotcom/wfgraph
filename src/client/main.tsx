@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { createRoot } from "react-dom/client";
 import "@/frontend/app/globals.css";
+import { hydrateRuntimeExtensionsFromApi } from "@/client/lib/runtime-extensions";
 import { router } from "./router";
 
 if (process.env.NODE_ENV === "development") {
@@ -64,6 +65,8 @@ const suppressResizeObserverLoopErrors = () => {
 
 patchResizeObserver();
 suppressResizeObserverLoopErrors();
+
+await hydrateRuntimeExtensionsFromApi();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

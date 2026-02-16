@@ -2,6 +2,7 @@ import cronstrue from "cronstrue";
 import { Clock, Copy, TriangleAlert, Webhook } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
+import { getRuntimeTriggers } from "@/client/lib/runtime-extensions";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -187,6 +189,13 @@ export function TriggerConfig({
   workflowId,
 }: TriggerConfigProps) {
   const triggerType = (config?.triggerType as string) || "Webhook";
+  const runtimeTriggers = useMemo(
+    () =>
+      getRuntimeTriggers().filter(
+        (trigger) => trigger.type !== "Webhook" && trigger.type !== "Schedule"
+      ),
+    []
+  );
   const scheduleExpression = (config?.scheduleExpression as string) || "";
   const scheduleCron = (config?.scheduleCron as string) || "";
   const resolvedSchedule = useMemo(
@@ -464,9 +473,24 @@ export function TriggerConfig({
                 Webhook
               </div>
             </SelectItem>
+            {runtimeTriggers.length > 0 && <SelectSeparator />}
+            {runtimeTriggers.map((trigger) => (
+              <SelectItem key={trigger.type} value={trigger.type}>
+                {trigger.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
+
+      {triggerType !== "Webhook" && triggerType !== "Schedule" && (
+        <div className="rounded-lg border border-muted bg-muted/30 p-3">
+          <p className="font-medium text-sm">Custom Trigger</p>
+          <p className="mt-1 text-muted-foreground text-xs">
+            This trigger is provided by your server extension configuration.
+          </p>
+        </div>
+      )}
 
       {triggerType === "Webhook" && (
         <div className="space-y-4 rounded-lg border bg-muted/20 p-4">

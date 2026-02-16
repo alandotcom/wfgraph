@@ -1,5 +1,5 @@
 import { useAtomValue, useSetAtom } from "jotai";
-import { HelpCircle, Plus, Settings } from "lucide-react";
+import { HelpCircle, Plus, Settings, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   integrationsAtom,
@@ -650,6 +650,20 @@ export function ActionConfig({
   const actionType = (config?.actionType as string) || "";
   const categories = useCategoryData();
   const integrations = useMemo(() => getAllIntegrations(), []);
+  const integrationByLabel = useMemo(
+    () =>
+      new Map(
+        integrations.map((integration) => [integration.label, integration])
+      ),
+    [integrations]
+  );
+  const categoryOptions = useMemo(
+    () =>
+      Object.keys(categories)
+        .filter((name) => name !== "System")
+        .sort(),
+    [categories]
+  );
 
   const selectedCategory = actionType ? getCategoryForAction(actionType) : null;
   const [category, setCategory] = useState<string>(selectedCategory || "");
@@ -742,18 +756,26 @@ export function ActionConfig({
                   <span>System</span>
                 </div>
               </SelectItem>
-              <SelectSeparator />
-              {integrations.map((integration) => (
-                <SelectItem key={integration.type} value={integration.label}>
-                  <div className="flex items-center gap-2">
-                    <IntegrationIcon
-                      className="size-4"
-                      integration={integration.type}
-                    />
-                    <span>{integration.label}</span>
-                  </div>
-                </SelectItem>
-              ))}
+              {categoryOptions.length > 0 && <SelectSeparator />}
+              {categoryOptions.map((categoryName) => {
+                const integration = integrationByLabel.get(categoryName);
+
+                return (
+                  <SelectItem key={categoryName} value={categoryName}>
+                    <div className="flex items-center gap-2">
+                      {integration ? (
+                        <IntegrationIcon
+                          className="size-4"
+                          integration={integration.type}
+                        />
+                      ) : (
+                        <Zap className="size-4" />
+                      )}
+                      <span>{categoryName}</span>
+                    </div>
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
