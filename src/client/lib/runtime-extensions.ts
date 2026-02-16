@@ -10,6 +10,7 @@ export type RuntimeTriggerDefinition = {
   label: string;
   executionType: "manual" | "webhook";
   description?: string;
+  logoUrl?: string;
   configFields?: ActionConfigField[];
 };
 

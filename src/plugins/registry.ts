@@ -189,6 +189,7 @@ export type IntegrationPlugin = {
 export type ActionWithFullId = PluginAction & {
   id: string; // Full action ID: {integration}/{slug}
   integration?: IntegrationType | string;
+  logoUrl?: string;
 };
 
 export type RuntimeActionDefinition = {
@@ -196,6 +197,7 @@ export type RuntimeActionDefinition = {
   label: string;
   description: string;
   category: string;
+  logoUrl?: string;
   configFields?: ActionConfigField[];
   outputFields?: OutputField[];
   integration?: string;
@@ -299,6 +301,7 @@ export function getAllActions(): ActionWithFullId[] {
       label: runtimeAction.label,
       description: runtimeAction.description,
       category: runtimeAction.category,
+      logoUrl: runtimeAction.logoUrl,
       stepFunction: "runtime",
       stepImportPath: "runtime",
       configFields: runtimeAction.configFields ?? [],
@@ -340,6 +343,7 @@ export function getActionsByCategory(): Record<string, ActionWithFullId[]> {
       label: runtimeAction.label,
       description: runtimeAction.description,
       category: runtimeAction.category,
+      logoUrl: runtimeAction.logoUrl,
       stepFunction: "runtime",
       stepImportPath: "runtime",
       configFields: runtimeAction.configFields ?? [],
@@ -389,6 +393,7 @@ export function findActionById(
         label: runtimeAction.label,
         description: runtimeAction.description,
         category: runtimeAction.category,
+        logoUrl: runtimeAction.logoUrl,
         stepFunction: "runtime",
         stepImportPath: "runtime",
         configFields: runtimeAction.configFields ?? [],

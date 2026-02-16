@@ -92,6 +92,69 @@ bun run dev
 
 App URL: `http://localhost:4017`
 
+## Library Extension API
+
+You can run Rova as an embeddable library and register custom actions/triggers at startup.
+
+```ts
+import { createAction, createTrigger, server } from "rova";
+
+const action = createAction({
+  id: "custom/send-message",
+  label: "Send Message",
+  description: "Sends a custom message",
+  category: "Custom",
+  logoUrl: "https://cdn.example.com/logos/custom-action.svg",
+  configFields: [
+    { key: "text", label: "Text", type: "template-textarea", required: true },
+  ],
+  async execute(input) {
+    return { success: true, data: { echoed: input.text } };
+  },
+});
+
+const trigger = createTrigger({
+  type: "CustomWebhook",
+  label: "Custom Webhook",
+  description: "Routes custom webhook events",
+  executionType: "webhook",
+  logoUrl: "https://cdn.example.com/logos/custom-trigger.svg",
+  evaluate({ payload }) {
+    return {
+      triggerType: "CustomWebhook",
+      executionType: "webhook",
+      eventType: typeof payload.event === "string" ? payload.event : undefined,
+      correlationKey: typeof payload.id === "string" ? payload.id : undefined,
+      routingDecision: { kind: "start" },
+    };
+  },
+});
+
+await server.start({
+  port: 5000,
+  database: { url: process.env.DATABASE_URL! },
+  migrations: { runOnStartup: false },
+  inngest: {
+    client: {
+      id: "my-rova-app",
+      baseUrl: process.env.INNGEST_BASE_URL,
+      eventKey: process.env.INNGEST_EVENT_KEY,
+    },
+    serve: {
+      signingKey: process.env.INNGEST_SIGNING_KEY,
+    },
+  },
+  actions: [action],
+  triggers: [trigger],
+});
+```
+
+Notes:
+
+- Rova does not spawn `inngest-cli` in library mode.
+- For local app development (`bun run dev`), this repo starts Inngest CLI as a separate process.
+- `logoUrl` is optional; when provided, it is rendered in trigger/action selectors.
+
 ## Compile Standalone Binary
 
 Build a standalone executable:
@@ -139,9 +202,10 @@ docker run --rm \
 - `bun run dev` - run app and inngest dev processes
 - `bun run dev:app` - run only Bun app server
 - `bun run dev:inngest` - run only inngest dev process
+- `bun run build` - build Bun-only library artifacts to `dist/lib` (`.mjs` + `.d.mts`)
+- `bun run build:lib` - alias for `bun run build`
 - `bun run compile` - build standalone executable to `dist/server`
-- `bun run build` - production build to `dist/`
-- `bun run start` - run production build
+- `bun run start` - run standalone compiled server (`./dist/server`)
 - `bun run test` - run Vitest tests
 - `bun run type-check` - run TypeScript checks
 - `bun run check` - lint/format check

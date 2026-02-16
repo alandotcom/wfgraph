@@ -101,6 +101,7 @@ describe("registerWorkflowTrigger", () => {
         type: "CustomWebhookRouter",
         label: "Custom Webhook Router",
         description: "Routes webhook payloads from a custom source.",
+        logoUrl: "https://cdn.example.com/logos/custom-router.svg",
         executionType: "webhook",
         configFields: [
           {
@@ -132,6 +133,9 @@ describe("registerWorkflowTrigger", () => {
     expect(triggerMetadata?.label).toBe("Custom Webhook Router");
     expect(triggerMetadata?.description).toBe(
       "Routes webhook payloads from a custom source."
+    );
+    expect(triggerMetadata?.logoUrl).toBe(
+      "https://cdn.example.com/logos/custom-router.svg"
     );
     expect(triggerMetadata?.configFields).toHaveLength(1);
     const firstField = triggerMetadata?.configFields?.[0];

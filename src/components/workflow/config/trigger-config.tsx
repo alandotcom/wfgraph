@@ -1,6 +1,6 @@
 import cronstrue from "cronstrue";
 import { Clock, Copy, TriangleAlert, Webhook } from "lucide-react";
-import { useMemo } from "react";
+import { type ReactNode, useMemo } from "react";
 import { toast } from "sonner";
 import { getRuntimeTriggers } from "@/client/lib/runtime-extensions";
 import { Button } from "@/components/ui/button";
@@ -200,6 +200,33 @@ function toConfigString(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function OptionLogo({
+  logoUrl,
+  label,
+  fallback,
+}: {
+  logoUrl?: string;
+  label: string;
+  fallback: ReactNode;
+}) {
+  const normalizedLogoUrl = logoUrl?.trim();
+
+  if (!normalizedLogoUrl) {
+    return fallback;
+  }
+
+  return (
+    <img
+      alt={`${label} logo`}
+      className="size-4 rounded-sm object-contain"
+      height={16}
+      loading="lazy"
+      src={normalizedLogoUrl}
+      width={16}
+    />
+  );
 }
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Trigger config intentionally combines form, summary, and warnings in one panel.
@@ -505,7 +532,14 @@ export function TriggerConfig({
             {runtimeTriggers.length > 0 && <SelectSeparator />}
             {runtimeTriggers.map((trigger) => (
               <SelectItem key={trigger.type} value={trigger.type}>
-                {trigger.label}
+                <div className="flex items-center gap-2">
+                  <OptionLogo
+                    fallback={<Webhook className="h-4 w-4" />}
+                    label={trigger.label}
+                    logoUrl={trigger.logoUrl}
+                  />
+                  <span>{trigger.label}</span>
+                </div>
               </SelectItem>
             ))}
           </SelectContent>
@@ -514,7 +548,17 @@ export function TriggerConfig({
 
       {triggerType !== "Webhook" && triggerType !== "Schedule" && (
         <div className="space-y-3 rounded-lg border border-muted bg-muted/30 p-3">
-          <div className="space-y-1">
+          <div className="space-y-2">
+            {selectedRuntimeTrigger?.logoUrl && (
+              <img
+                alt={`${selectedRuntimeTrigger.label} logo`}
+                className="h-6 w-6 rounded-sm object-contain"
+                height={24}
+                loading="lazy"
+                src={selectedRuntimeTrigger.logoUrl}
+                width={24}
+              />
+            )}
             <p className="font-medium text-sm">Custom Trigger</p>
             <p className="text-muted-foreground text-xs">
               {selectedRuntimeTrigger?.description ??

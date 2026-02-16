@@ -77,6 +77,8 @@ Server-side barrel files are allowed.
 - SPA shell routes (`/`, `/workflows`, `/workflows/:workflowId`) are served directly from Bun using `src/client/index.html`.
 - All `/api/*` traffic is delegated to the Hono app in `src/backend/app.ts`.
 - Inngest is mounted inside the API at `/api/inngest` using `serveInngest(...)`.
+- Local repo development starts `inngest-cli` as a separate process via `bun run dev:inngest`.
+- Library mode (`server.start(...)` from `src/rova/server.ts`) never spawns `inngest-cli`; users must run/configure Inngest themselves.
 
 ### API Composition and Boundaries
 
@@ -154,6 +156,8 @@ Server-side barrel files are allowed.
 ### Trigger Configuration and Routing Mechanics
 
 - Trigger selector UI currently exposes first-class `Webhook` and `Schedule` options in `src/components/workflow/config/trigger-config.tsx`.
+- Runtime-registered custom triggers from `server.start({ triggers })` are exposed through `/api/extensions` and shown in the same selector.
+- Custom trigger metadata can include `configFields` and optional `logoUrl`, both rendered by `TriggerConfig`.
 - Webhook trigger config includes:
   - Optional schema (`webhookSchema`) for payload structure and template autocomplete.
   - Event/correlation extraction paths (`webhookEventPath`, `webhookCorrelationPath`).
@@ -176,6 +180,8 @@ Server-side barrel files are allowed.
   - Two-stage selection: `Service` (System or integration category) then `Action`.
   - System actions are hardcoded: `HTTP Request`, `Database Query`, `Condition`, `Wait`.
   - Plugin actions are discovered from registry metadata (`src/plugins/registry.ts`).
+  - Runtime actions from `server.start({ actions })` are merged into the same category/action lists.
+  - Runtime action metadata can include optional `logoUrl`, rendered in service/action selectors.
 - Action configuration model:
   - System action forms are explicit React forms in `ActionConfig`.
   - Plugin actions render declarative field schemas (`configFields`) via `ActionConfigRenderer`.

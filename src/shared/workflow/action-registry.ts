@@ -12,6 +12,7 @@ export type RuntimeActionDefinition = {
   label: string;
   description: string;
   category?: string;
+  logoUrl?: string;
   configFields?: ActionConfigField[];
   outputFields?: OutputField[];
   execute: (
@@ -26,9 +27,12 @@ const runtimeActionRegistry = new Map<string, RuntimeActionDefinition>();
 export function createAction(
   definition: RuntimeActionDefinition
 ): RuntimeActionDefinition {
+  const logoUrl = definition.logoUrl?.trim();
+
   return {
     ...definition,
     category: definition.category?.trim() || "Custom",
+    logoUrl: logoUrl || undefined,
   };
 }
 

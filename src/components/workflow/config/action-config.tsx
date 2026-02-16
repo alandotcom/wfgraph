@@ -1,6 +1,6 @@
 import { useAtomValue, useSetAtom } from "jotai";
 import { HelpCircle, Plus, Settings, Zap } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   integrationsAtom,
   integrationsVersionAtom,
@@ -44,6 +44,40 @@ type ActionConfigProps = {
   disabled: boolean;
   isOwner?: boolean;
 };
+
+type CategoryActionOption = {
+  id: string;
+  label: string;
+  logoUrl?: string;
+  integration?: string;
+};
+
+function OptionLogo({
+  logoUrl,
+  label,
+  fallback,
+}: {
+  logoUrl?: string;
+  label: string;
+  fallback: ReactNode;
+}) {
+  const normalizedLogoUrl = logoUrl?.trim();
+
+  if (!normalizedLogoUrl) {
+    return fallback;
+  }
+
+  return (
+    <img
+      alt={`${label} logo`}
+      className="size-4 rounded-sm object-contain"
+      height={16}
+      loading="lazy"
+      src={normalizedLogoUrl}
+      width={16}
+    />
+  );
+}
 
 // Database Query fields component
 function DatabaseQueryFields({
@@ -576,7 +610,7 @@ function SystemActionFields({
 }
 
 // System actions that don't have plugins
-const SYSTEM_ACTIONS: Array<{ id: string; label: string }> = [
+const SYSTEM_ACTIONS: CategoryActionOption[] = [
   { id: "HTTP Request", label: "HTTP Request" },
   { id: "Database Query", label: "Database Query" },
   { id: "Condition", label: "Condition" },
@@ -586,15 +620,12 @@ const SYSTEM_ACTIONS: Array<{ id: string; label: string }> = [
 const SYSTEM_ACTION_IDS = SYSTEM_ACTIONS.map((a) => a.id);
 
 // Build category mapping dynamically from plugins + System
-function useCategoryData() {
+function useCategoryData(): Record<string, CategoryActionOption[]> {
   return useMemo(() => {
     const pluginCategories = getActionsByCategory();
 
     // Build category map including System with both id and label
-    const allCategories: Record<
-      string,
-      Array<{ id: string; label: string }>
-    > = {
+    const allCategories: Record<string, CategoryActionOption[]> = {
       System: SYSTEM_ACTIONS,
     };
 
@@ -602,6 +633,9 @@ function useCategoryData() {
       allCategories[category] = actions.map((a) => ({
         id: a.id,
         label: a.label,
+        logoUrl: a.logoUrl,
+        integration:
+          typeof a.integration === "string" ? a.integration : undefined,
       }));
     }
 
@@ -759,18 +793,30 @@ export function ActionConfig({
               {categoryOptions.length > 0 && <SelectSeparator />}
               {categoryOptions.map((categoryName) => {
                 const integration = integrationByLabel.get(categoryName);
+                const categoryLogoUrl = categories[categoryName]
+                  ?.map((action) => action.logoUrl)
+                  .find(
+                    (value) =>
+                      typeof value === "string" && value.trim().length > 0
+                  );
+
+                const fallbackIcon = integration ? (
+                  <IntegrationIcon
+                    className="size-4"
+                    integration={integration.type}
+                  />
+                ) : (
+                  <Zap className="size-4" />
+                );
 
                 return (
                   <SelectItem key={categoryName} value={categoryName}>
                     <div className="flex items-center gap-2">
-                      {integration ? (
-                        <IntegrationIcon
-                          className="size-4"
-                          integration={integration.type}
-                        />
-                      ) : (
-                        <Zap className="size-4" />
-                      )}
+                      <OptionLogo
+                        fallback={fallbackIcon}
+                        label={categoryName}
+                        logoUrl={categoryLogoUrl}
+                      />
                       <span>{categoryName}</span>
                     </div>
                   </SelectItem>
@@ -794,11 +840,41 @@ export function ActionConfig({
             </SelectTrigger>
             <SelectContent>
               {category &&
-                categories[category]?.map((action) => (
-                  <SelectItem key={action.id} value={action.id}>
-                    {action.label}
-                  </SelectItem>
-                ))}
+                categories[category]?.map((action) => {
+                  const integrationType =
+                    typeof action.integration === "string"
+                      ? action.integration
+                      : undefined;
+                  const integration = integrationType
+                    ? integrations.find((item) => item.type === integrationType)
+                    : undefined;
+                  let fallbackIcon: ReactNode;
+                  if (category === "System") {
+                    fallbackIcon = <Settings className="size-4" />;
+                  } else if (integration) {
+                    fallbackIcon = (
+                      <IntegrationIcon
+                        className="size-4"
+                        integration={integration.type}
+                      />
+                    );
+                  } else {
+                    fallbackIcon = <Zap className="size-4" />;
+                  }
+
+                  return (
+                    <SelectItem key={action.id} value={action.id}>
+                      <div className="flex items-center gap-2">
+                        <OptionLogo
+                          fallback={fallbackIcon}
+                          label={action.label}
+                          logoUrl={action.logoUrl}
+                        />
+                        <span>{action.label}</span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
             </SelectContent>
           </Select>
         </div>

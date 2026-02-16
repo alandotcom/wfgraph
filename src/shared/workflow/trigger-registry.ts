@@ -32,6 +32,7 @@ export type WorkflowTriggerDefinition = {
   label: string;
   executionType: TriggerExecutionType;
   description?: string;
+  logoUrl?: string;
   configFields?: ActionConfigField[];
   parseMockInput?: (
     config: Record<string, unknown> | undefined
@@ -45,15 +46,23 @@ export type WorkflowTriggerDefinition = {
 export function createTrigger(
   definition: WorkflowTriggerDefinition
 ): WorkflowTriggerDefinition {
+  const logoUrl = definition.logoUrl?.trim();
+
   return {
     ...definition,
+    logoUrl: logoUrl || undefined,
     configFields: definition.configFields ?? [],
   };
 }
 
 export type WorkflowTriggerMetadata = Pick<
   WorkflowTriggerDefinition,
-  "type" | "label" | "executionType" | "description" | "configFields"
+  | "type"
+  | "label"
+  | "executionType"
+  | "description"
+  | "configFields"
+  | "logoUrl"
 >;
 
 const defaultTrigger = createTrigger(createDefaultTriggerDefinition());
@@ -81,6 +90,7 @@ export function listWorkflowTriggers(): WorkflowTriggerMetadata[] {
     label: definition.label,
     executionType: definition.executionType,
     description: definition.description,
+    logoUrl: definition.logoUrl,
     configFields: definition.configFields ?? [],
   }));
 }
