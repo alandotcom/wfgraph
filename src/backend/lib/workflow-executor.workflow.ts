@@ -3,10 +3,7 @@
  * Keeps node execution, templating, and logging behavior aligned with the builder.
  */
 
-import {
-  preValidateConditionExpression,
-  validateConditionExpression,
-} from "@/backend/lib/condition-validator";
+import { evaluateCelBooleanExpression } from "@/backend/lib/cel/environment";
 import { getAppLogger } from "@/backend/lib/logger";
 import { getErrorMessageAsync } from "@/shared/utils";
 import { resolveWaitUntil } from "@/shared/utils/wait-time";
@@ -110,88 +107,39 @@ export type WorkflowExecutionInput = {
 const workflowExecutorLogger = getAppLogger("workflow", "executor");
 const conditionLogger = workflowExecutorLogger.getChild("condition");
 
-/**
- * Helper to replace template variables in conditions
- */
-function replaceTemplateVariable(
-  match: string,
-  nodeId: string,
-  rest: string,
-  outputs: NodeOutputs,
-  evalContext: Record<string, unknown>,
-  varCounter: { value: number }
-): string {
-  const sanitizedNodeId = nodeId.replace(/[^a-zA-Z0-9]/g, "_");
-  const output = outputs[sanitizedNodeId];
-
-  if (!output) {
-    conditionLogger.warn("Condition output not found for node", {
-      nodeId: sanitizedNodeId,
-    });
-    return match;
-  }
-
-  const dotIndex = rest.indexOf(".");
-  let value: unknown;
-
-  if (dotIndex === -1) {
-    value = output.data;
-  } else if (output.data === null || output.data === undefined) {
-    value = undefined;
-  } else {
-    const fieldPath = rest.substring(dotIndex + 1);
-    const fields = fieldPath.split(".");
-    // biome-ignore lint/suspicious/noExplicitAny: Dynamic data traversal
-    let current: any = output.data;
-
-    // For standardized outputs { success, data, error }, automatically look inside data
-    // unless explicitly accessing success/data/error
-    const firstField = fields[0];
-    if (
-      current &&
-      typeof current === "object" &&
-      "success" in current &&
-      "data" in current &&
-      firstField !== "success" &&
-      firstField !== "data" &&
-      firstField !== "error"
-    ) {
-      current = current.data;
-    }
-
-    for (const field of fields) {
-      if (current && typeof current === "object") {
-        current = current[field];
-      } else {
-        conditionLogger.warn("Condition field access failed", {
-          fieldPath,
-        });
-        value = undefined;
-        break;
-      }
-    }
-    if (value === undefined && current !== undefined) {
-      value = current;
-    }
-  }
-
-  const varName = `__v${varCounter.value}`;
-  varCounter.value += 1;
-  evalContext[varName] = value;
-  return varName;
-}
-
 type ConditionEvalResult = {
   result: boolean;
-  resolvedValues: Record<string, unknown>;
 };
 
+function mergeConditionContextValue(
+  context: Record<string, unknown>,
+  value: unknown
+) {
+  if (!(value && typeof value === "object" && !Array.isArray(value))) {
+    return;
+  }
+
+  const record = value as Record<string, unknown>;
+  Object.assign(context, record);
+
+  const nestedInput = record.input;
+  if (!(nestedInput && typeof nestedInput === "object")) {
+    return;
+  }
+
+  if (Array.isArray(nestedInput)) {
+    return;
+  }
+
+  for (const [key, nestedValue] of Object.entries(nestedInput)) {
+    if (!(key in context)) {
+      context[key] = nestedValue;
+    }
+  }
+}
+
 /**
- * Evaluate condition expression with template variable replacement
- * Uses Function constructor to evaluate user-defined conditions dynamically
- *
- * Security: Expressions are validated before evaluation to prevent code injection.
- * Only comparison operators, logical operators, and whitelisted methods are allowed.
+ * Evaluate CEL condition expression against workflow output context.
  */
 function evaluateConditionExpression(
   conditionExpression: unknown,
@@ -202,76 +150,40 @@ function evaluateConditionExpression(
   });
 
   if (typeof conditionExpression === "boolean") {
-    return { result: conditionExpression, resolvedValues: {} };
+    return { result: conditionExpression };
   }
 
-  if (typeof conditionExpression === "string") {
-    // Pre-validate the expression before any processing
-    const preValidation = preValidateConditionExpression(conditionExpression);
-    if (!preValidation.valid) {
-      conditionLogger.error("Condition pre-validation failed", {
-        error: preValidation.error,
-        conditionExpression,
-      });
-      return { result: false, resolvedValues: {} };
-    }
-
-    try {
-      const evalContext: Record<string, unknown> = {};
-      const resolvedValues: Record<string, unknown> = {};
-      let transformedExpression = conditionExpression;
-      const templatePattern = /\{\{@([^:]+):([^}]+)\}\}/g;
-      const varCounter = { value: 0 };
-
-      transformedExpression = transformedExpression.replace(
-        templatePattern,
-        (match, nodeId, rest) => {
-          const varName = replaceTemplateVariable(
-            match,
-            nodeId,
-            rest,
-            outputs,
-            evalContext,
-            varCounter
-          );
-          // Store the resolved value with a readable key (the display text from the template)
-          resolvedValues[rest] = evalContext[varName];
-          return varName;
-        }
-      );
-
-      // Validate the transformed expression before evaluation
-      const validation = validateConditionExpression(transformedExpression);
-      if (!validation.valid) {
-        conditionLogger.error("Condition validation failed", {
-          error: validation.error,
-          conditionExpression,
-          transformedExpression,
-        });
-        return { result: false, resolvedValues };
-      }
-
-      const varNames = Object.keys(evalContext);
-      const varValues = Object.values(evalContext);
-
-      // Safe to evaluate - expression has been validated
-      // Only contains: variables (__v0, __v1), operators, literals, and whitelisted methods
-      const evalFunc = new Function(
-        ...varNames,
-        `return (${transformedExpression});`
-      );
-      const result = evalFunc(...varValues);
-      return { result: Boolean(result), resolvedValues };
-    } catch (error) {
-      conditionLogger.error("Condition evaluation failed", {
-        error,
-        conditionExpression,
-      });
-      return { result: false, resolvedValues: {} };
-    }
+  if (typeof conditionExpression !== "string") {
+    conditionLogger.warn("Condition is neither boolean nor string", {
+      conditionExpression,
+    });
+    return { result: false };
   }
 
-  return { result: Boolean(conditionExpression), resolvedValues: {} };
+  const expression = conditionExpression.trim();
+  if (!expression) {
+    return { result: false };
+  }
+
+  const evalContext: Record<string, unknown> = { now: new Date() };
+  for (const output of Object.values(outputs)) {
+    mergeConditionContextValue(evalContext, output.data);
+  }
+
+  const evaluation = evaluateCelBooleanExpression({
+    expression,
+    context: evalContext,
+  });
+
+  if (!evaluation.ok) {
+    conditionLogger.error("CEL condition evaluation failed", {
+      error: evaluation.error,
+      conditionExpression,
+    });
+    return { result: false };
+  }
+
+  return { result: evaluation.value };
 }
 
 /**
@@ -305,20 +217,19 @@ async function executeActionStep(input: {
       };
     }
     const originalExpression = stepInput.condition;
-    const { result: evaluatedCondition, resolvedValues } =
-      evaluateConditionExpression(originalExpression, outputs);
+    const { result: evaluatedCondition } = evaluateConditionExpression(
+      originalExpression,
+      outputs
+    );
     conditionLogger.debug("Condition evaluation result", {
       evaluatedCondition,
-      hasResolvedValues: Object.keys(resolvedValues).length > 0,
     });
 
     return await stepFn({
       condition: evaluatedCondition,
-      // Include original expression and resolved values for logging purposes
+      // Include original expression for step logs.
       expression:
         typeof originalExpression === "string" ? originalExpression : undefined,
-      values:
-        Object.keys(resolvedValues).length > 0 ? resolvedValues : undefined,
       _context: context,
     });
   }
@@ -534,7 +445,6 @@ async function executeSkippedAction(input: {
     correlationKey?: string;
   };
   runCondition?: unknown;
-  resolvedValues?: Record<string, unknown>;
 }): Promise<Record<string, unknown>> {
   const output: Record<string, unknown> = {
     skipped: true,
@@ -545,10 +455,6 @@ async function executeSkippedAction(input: {
 
   if (input.runCondition !== undefined) {
     output.runCondition = input.runCondition;
-  }
-
-  if (input.resolvedValues && Object.keys(input.resolvedValues).length > 0) {
-    output.values = input.resolvedValues;
   }
 
   if (input.executionId) {
@@ -1357,8 +1263,10 @@ export async function executeWorkflow(
         });
         let stepResult: unknown;
         if (shouldEvaluateRunCondition) {
-          const { result: shouldRun, resolvedValues } =
-            evaluateConditionExpression(runConditionExpression, outputs);
+          const { result: shouldRun } = evaluateConditionExpression(
+            runConditionExpression,
+            outputs
+          );
 
           if (!shouldRun) {
             stepResult = await executeSkippedAction({
@@ -1369,7 +1277,6 @@ export async function executeWorkflow(
               workflowId,
               eventContext,
               runCondition: runConditionExpression,
-              resolvedValues,
             });
           } else if (
             dryRun &&

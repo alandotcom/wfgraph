@@ -9,6 +9,7 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
+import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
 import { CURRENT_WORKFLOW_NAME } from "@/backend/lib/workflow-constants";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import { generateId } from "@/shared/utils/id";
@@ -65,6 +66,32 @@ export async function getWorkflowsCurrent(): Promise<GetCurrentWorkflowResult> {
       });
     }
 
+    const graphValidation = validateWorkflowGraph(currentWorkflow.graph);
+    if (!graphValidation.valid) {
+      workflowsCurrentLogger.error(
+        "Stored current workflow has invalid graph",
+        {
+          error: graphValidation.error,
+        }
+      );
+      return failure(500, {
+        error: "Stored current workflow graph is invalid",
+      });
+    }
+
+    const conditionValidation = validateWorkflowConditionConfigs(
+      graphValidation.nodes
+    );
+    if (!conditionValidation.valid) {
+      workflowsCurrentLogger.error(
+        "Stored current workflow has invalid condition config",
+        {
+          error: conditionValidation.error,
+        }
+      );
+      return failure(500, { error: conditionValidation.error });
+    }
+
     return success({
       id: currentWorkflow.id,
       graph: currentWorkflow.graph,
@@ -95,6 +122,13 @@ export async function postWorkflowsCurrent(body: {
     const graphValidation = validateWorkflowGraph(graphToValidate);
     if (!graphValidation.valid) {
       return failure(400, { error: graphValidation.error });
+    }
+
+    const conditionValidation = validateWorkflowConditionConfigs(
+      graphValidation.nodes
+    );
+    if (!conditionValidation.valid) {
+      return failure(400, { error: conditionValidation.error });
     }
 
     const [existingWorkflow] = await db

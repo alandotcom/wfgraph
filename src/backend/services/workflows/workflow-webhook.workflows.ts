@@ -15,6 +15,7 @@ import {
 } from "@/backend/lib/service-result";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
+import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import {
   listWorkflowWaitingStatesByCorrelation,
@@ -280,6 +281,17 @@ export async function postWorkflowWebhookResult(input: {
         error: graphValidation.error,
       });
       return failure(400, { error: "Workflow graph is invalid" });
+    }
+
+    const conditionValidation = validateWorkflowConditionConfigs(
+      graphValidation.nodes
+    );
+    if (!conditionValidation.valid) {
+      requestLogger.error("Invalid workflow condition configuration", {
+        workflowName: workflow.name,
+        error: conditionValidation.error,
+      });
+      return failure(400, { error: conditionValidation.error });
     }
 
     const workflowNodes = graphValidation.nodes;

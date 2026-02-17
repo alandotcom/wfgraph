@@ -1,0 +1,614 @@
+import { useAtomValue } from "jotai";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  edgesAtom,
+  nodesAtom,
+  selectedNodeAtom,
+} from "@/client/lib/workflow-store";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  BOOLEAN_OPERATOR_OPTIONS,
+  type ConditionFieldDefinition,
+  type ConditionFieldType,
+  type ConditionModel,
+  compileConditionModel,
+  createDefaultConditionModel,
+  isTimestampAbsoluteConditionModel,
+  isTimestampRelativeConditionModel,
+  NUMBER_OPERATOR_OPTIONS,
+  parseConditionModel,
+  STRING_OPERATOR_OPTIONS,
+  serializeConditionModel,
+  TIME_UNIT_OPTIONS,
+  TIMESTAMP_OPERATOR_OPTIONS,
+  type TimestampAbsoluteOperator,
+  type TimestampRelativeOperator,
+  type TimeUnit,
+} from "@/shared/workflow/conditions";
+import {
+  getWebhookConditionFields,
+  type WebhookSchemaField,
+} from "@/shared/workflow/webhook-field-registry";
+
+type ConditionBuilderRowProps = {
+  label: string;
+  description: string;
+  config: Record<string, unknown>;
+  onUpdateConfig: (key: string, value: string) => void;
+  disabled: boolean;
+  modelKey: "conditionModel" | "runConditionModel";
+  expressionKey: "condition" | "runCondition";
+  optional?: boolean;
+};
+
+function isTimestampRelativeOperatorValue(
+  value: string
+): value is TimestampRelativeOperator {
+  return (
+    value === "within_next" ||
+    value === "more_than_from_now" ||
+    value === "less_than_ago" ||
+    value === "more_than_ago"
+  );
+}
+
+function isTimestampAbsoluteOperatorValue(
+  value: string
+): value is TimestampAbsoluteOperator {
+  return value === "before" || value === "after";
+}
+
+function getTodayUtcDateString(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isStringOperatorValue(
+  value: string
+): value is "equals" | "not_equals" | "contains" {
+  return value === "equals" || value === "not_equals" || value === "contains";
+}
+
+function isNumberOperatorValue(
+  value: string
+): value is
+  | "equals"
+  | "not_equals"
+  | "greater_than"
+  | "greater_or_equal"
+  | "less_than"
+  | "less_or_equal" {
+  return (
+    value === "equals" ||
+    value === "not_equals" ||
+    value === "greater_than" ||
+    value === "greater_or_equal" ||
+    value === "less_than" ||
+    value === "less_or_equal"
+  );
+}
+
+function isBooleanOperatorValue(
+  value: string
+): value is "is_true" | "is_false" {
+  return value === "is_true" || value === "is_false";
+}
+
+function getUpstreamNodeIds(
+  nodeId: string,
+  edges: Array<{ source: string; target: string }>
+): string[] {
+  const visited = new Set<string>();
+  const upstream = new Set<string>();
+
+  const traverse = (currentNodeId: string) => {
+    if (visited.has(currentNodeId)) {
+      return;
+    }
+    visited.add(currentNodeId);
+
+    const incomingEdges = edges.filter((edge) => edge.target === currentNodeId);
+    for (const edge of incomingEdges) {
+      upstream.add(edge.source);
+      traverse(edge.source);
+    }
+  };
+
+  traverse(nodeId);
+  return Array.from(upstream.values());
+}
+
+function getUpstreamWebhookFields(input: {
+  nodeId: string | null;
+  nodes: Array<{
+    id: string;
+    data: {
+      type: string;
+      config?: Record<string, unknown>;
+    };
+  }>;
+  edges: Array<{ source: string; target: string }>;
+}): ConditionFieldDefinition[] {
+  const { nodeId, nodes, edges } = input;
+  if (!nodeId) {
+    return [];
+  }
+
+  const upstreamNodeIds = new Set(getUpstreamNodeIds(nodeId, edges));
+  const fieldsByPath = new Map<string, ConditionFieldDefinition>();
+
+  for (const node of nodes) {
+    if (!upstreamNodeIds.has(node.id)) {
+      continue;
+    }
+
+    if (node.data.type !== "trigger") {
+      continue;
+    }
+
+    const config = node.data.config;
+    if (!config || config.triggerType !== "Webhook") {
+      continue;
+    }
+
+    const rawSchema = config.webhookSchema;
+    if (typeof rawSchema !== "string" || rawSchema.trim().length === 0) {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(rawSchema) as WebhookSchemaField[];
+      const fields = getWebhookConditionFields(parsed);
+      for (const field of fields) {
+        if (!fieldsByPath.has(field.path)) {
+          fieldsByPath.set(field.path, field);
+        }
+      }
+    } catch {
+      // Ignore invalid schema and continue with any other trigger schemas.
+    }
+  }
+
+  return Array.from(fieldsByPath.values()).sort((a, b) =>
+    a.path.localeCompare(b.path)
+  );
+}
+
+function getOperatorOptionsByFieldType(fieldType: ConditionFieldType) {
+  if (fieldType === "timestamp") {
+    return TIMESTAMP_OPERATOR_OPTIONS;
+  }
+
+  if (fieldType === "string") {
+    return STRING_OPERATOR_OPTIONS;
+  }
+
+  if (fieldType === "number") {
+    return NUMBER_OPERATOR_OPTIONS;
+  }
+
+  return BOOLEAN_OPERATOR_OPTIONS;
+}
+
+function buildTimestampOperatorModel(input: {
+  model: Extract<ConditionModel, { fieldType: "timestamp" }>;
+  operatorValue: string;
+}): Extract<ConditionModel, { fieldType: "timestamp" }> | null {
+  const { model, operatorValue } = input;
+
+  if (isTimestampRelativeOperatorValue(operatorValue)) {
+    return {
+      version: 1,
+      field: model.field,
+      fieldType: "timestamp",
+      operator: operatorValue,
+      amount: isTimestampRelativeConditionModel(model) ? model.amount : 1,
+      unit: isTimestampRelativeConditionModel(model) ? model.unit : "days",
+    };
+  }
+
+  if (isTimestampAbsoluteOperatorValue(operatorValue)) {
+    return {
+      version: 1,
+      field: model.field,
+      fieldType: "timestamp",
+      operator: operatorValue,
+      date: isTimestampAbsoluteConditionModel(model)
+        ? model.date
+        : getTodayUtcDateString(),
+    };
+  }
+
+  return null;
+}
+
+function renderValueInput(input: {
+  model: ConditionModel;
+  disabled: boolean;
+  onModelChange: (model: ConditionModel) => void;
+}) {
+  const { model, disabled, onModelChange } = input;
+
+  if (model.fieldType === "timestamp") {
+    if (isTimestampRelativeConditionModel(model)) {
+      return (
+        <>
+          <Input
+            className="w-20"
+            disabled={disabled}
+            min={1}
+            onChange={(event) => {
+              const parsed = Number.parseInt(event.target.value, 10);
+              onModelChange({
+                ...model,
+                amount: Number.isNaN(parsed) ? 1 : Math.max(parsed, 1),
+              });
+            }}
+            type="number"
+            value={model.amount}
+          />
+          <Select
+            disabled={disabled}
+            onValueChange={(value) => {
+              onModelChange({
+                ...model,
+                unit: value as TimeUnit,
+              });
+            }}
+            value={model.unit}
+          >
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TIME_UNIT_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </>
+      );
+    }
+
+    return (
+      <Input
+        disabled={disabled}
+        onChange={(event) => {
+          if (!isTimestampAbsoluteConditionModel(model)) {
+            return;
+          }
+
+          onModelChange({ ...model, date: event.target.value });
+        }}
+        type="date"
+        value={isTimestampAbsoluteConditionModel(model) ? model.date : ""}
+      />
+    );
+  }
+
+  if (model.fieldType === "string") {
+    return (
+      <Input
+        disabled={disabled}
+        onChange={(event) => {
+          onModelChange({
+            ...model,
+            value: event.target.value,
+          });
+        }}
+        placeholder="value"
+        value={model.value}
+      />
+    );
+  }
+
+  if (model.fieldType === "number") {
+    return (
+      <Input
+        disabled={disabled}
+        onChange={(event) => {
+          const parsed = Number.parseFloat(event.target.value);
+          onModelChange({
+            ...model,
+            value: Number.isNaN(parsed) ? 0 : parsed,
+          });
+        }}
+        placeholder="0"
+        type="number"
+        value={String(model.value)}
+      />
+    );
+  }
+
+  return null;
+}
+
+export function ConditionBuilderRow({
+  label,
+  description,
+  config,
+  onUpdateConfig,
+  disabled,
+  modelKey,
+  expressionKey,
+  optional = false,
+}: ConditionBuilderRowProps) {
+  const selectedNodeId = useAtomValue(selectedNodeAtom);
+  const nodes = useAtomValue(nodesAtom);
+  const edges = useAtomValue(edgesAtom);
+  const [compileError, setCompileError] = useState<string | null>(null);
+
+  const availableFields = useMemo(
+    () =>
+      getUpstreamWebhookFields({
+        nodeId: selectedNodeId,
+        nodes,
+        edges,
+      }),
+    [selectedNodeId, nodes, edges]
+  );
+
+  const fieldByPath = useMemo(
+    () => new Map(availableFields.map((field) => [field.path, field])),
+    [availableFields]
+  );
+
+  const modelParseResult = parseConditionModel(config[modelKey]);
+  const parsedModel = modelParseResult.valid ? modelParseResult.model : null;
+  const expressionValue =
+    typeof config[expressionKey] === "string"
+      ? config[expressionKey].trim()
+      : "";
+  const modelValue =
+    typeof config[modelKey] === "string" ? config[modelKey].trim() : "";
+  const isConfigured = expressionValue.length > 0 || modelValue.length > 0;
+
+  const persistModel = useCallback(
+    (model: ConditionModel) => {
+      const compiled = compileConditionModel(model);
+      onUpdateConfig(modelKey, serializeConditionModel(model));
+
+      if (!compiled.valid) {
+        setCompileError(compiled.error);
+        onUpdateConfig(expressionKey, "");
+        return;
+      }
+
+      setCompileError(null);
+      onUpdateConfig(expressionKey, compiled.expression);
+    },
+    [expressionKey, modelKey, onUpdateConfig]
+  );
+
+  const clearCondition = useCallback(() => {
+    setCompileError(null);
+    onUpdateConfig(modelKey, "");
+    onUpdateConfig(expressionKey, "");
+  }, [expressionKey, modelKey, onUpdateConfig]);
+
+  const addCondition = useCallback(() => {
+    const firstField = availableFields[0];
+    if (!firstField) {
+      return;
+    }
+
+    persistModel(createDefaultConditionModel(firstField));
+  }, [availableFields, persistModel]);
+
+  useEffect(() => {
+    if (optional) {
+      return;
+    }
+
+    if (parsedModel) {
+      return;
+    }
+
+    const firstField = availableFields[0];
+    if (!firstField) {
+      return;
+    }
+
+    persistModel(createDefaultConditionModel(firstField));
+  }, [availableFields, optional, parsedModel, persistModel]);
+
+  useEffect(() => {
+    if (!parsedModel) {
+      return;
+    }
+
+    const selectedField = fieldByPath.get(parsedModel.field);
+    if (!selectedField) {
+      const fallbackField = availableFields[0];
+      if (fallbackField) {
+        persistModel(createDefaultConditionModel(fallbackField));
+      }
+      return;
+    }
+
+    if (selectedField.type !== parsedModel.fieldType) {
+      persistModel(createDefaultConditionModel(selectedField));
+    }
+  }, [availableFields, fieldByPath, parsedModel, persistModel]);
+
+  if (optional && !isConfigured) {
+    return (
+      <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+        <Label className="text-sm">{label}</Label>
+        <p className="text-muted-foreground text-xs">{description}</p>
+        <Button
+          disabled={disabled || availableFields.length === 0}
+          onClick={addCondition}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          Add run condition
+        </Button>
+        {availableFields.length === 0 && (
+          <p className="text-muted-foreground text-xs">
+            Define webhook schema fields first. Timestamp behavior appears when
+            a field is marked as timestamp.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (!parsedModel) {
+    return (
+      <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+        <Label className="text-sm">{label}</Label>
+        <p className="text-muted-foreground text-xs">{description}</p>
+        {availableFields.length === 0 ? (
+          <p className="text-destructive text-xs">
+            No webhook fields are available. Define a webhook schema first.
+          </p>
+        ) : (
+          <Button
+            disabled={disabled}
+            onClick={addCondition}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Configure condition
+          </Button>
+        )}
+        {modelValue && !modelParseResult.valid && (
+          <p className="text-destructive text-xs">{modelParseResult.error}</p>
+        )}
+      </div>
+    );
+  }
+
+  const operatorOptions = getOperatorOptionsByFieldType(parsedModel.fieldType);
+
+  const handleOperatorChange = (operatorValue: string) => {
+    if (parsedModel.fieldType === "timestamp") {
+      const nextModel = buildTimestampOperatorModel({
+        model: parsedModel,
+        operatorValue,
+      });
+      if (nextModel) {
+        persistModel(nextModel);
+      }
+      return;
+    }
+
+    if (parsedModel.fieldType === "string") {
+      if (isStringOperatorValue(operatorValue)) {
+        persistModel({
+          ...parsedModel,
+          operator: operatorValue,
+        });
+      }
+      return;
+    }
+
+    if (parsedModel.fieldType === "number") {
+      if (isNumberOperatorValue(operatorValue)) {
+        persistModel({
+          ...parsedModel,
+          operator: operatorValue,
+        });
+      }
+      return;
+    }
+
+    if (isBooleanOperatorValue(operatorValue)) {
+      persistModel({
+        ...parsedModel,
+        operator: operatorValue,
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+      <Label className="text-sm">{label}</Label>
+      <p className="text-muted-foreground text-xs">{description}</p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Select
+          disabled={disabled}
+          onValueChange={(fieldPath) => {
+            const field = fieldByPath.get(fieldPath);
+            if (!field) {
+              return;
+            }
+
+            persistModel(createDefaultConditionModel(field));
+          }}
+          value={parsedModel.field}
+        >
+          <SelectTrigger className="min-w-[180px]">
+            <SelectValue placeholder="Select field" />
+          </SelectTrigger>
+          <SelectContent>
+            {availableFields.map((field) => (
+              <SelectItem key={field.path} value={field.path}>
+                {field.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          disabled={disabled}
+          onValueChange={handleOperatorChange}
+          value={parsedModel.operator}
+        >
+          <SelectTrigger className="min-w-[180px]">
+            <SelectValue placeholder="Select operator" />
+          </SelectTrigger>
+          <SelectContent>
+            {operatorOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {renderValueInput({
+          model: parsedModel,
+          disabled,
+          onModelChange: persistModel,
+        })}
+      </div>
+
+      {compileError && (
+        <p className="text-destructive text-xs">{compileError}</p>
+      )}
+      {!compileError && expressionValue && (
+        <p className="text-muted-foreground text-xs">
+          Compiled CEL: {expressionValue}
+        </p>
+      )}
+
+      {optional && (
+        <Button
+          className="px-0 text-destructive"
+          disabled={disabled}
+          onClick={clearCondition}
+          size="sm"
+          type="button"
+          variant="link"
+        >
+          Remove run condition
+        </Button>
+      )}
+    </div>
+  );
+}

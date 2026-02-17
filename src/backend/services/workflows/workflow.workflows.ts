@@ -9,6 +9,7 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
+import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import {
   buildWorkflowUpdateData,
@@ -50,6 +51,18 @@ export async function getWorkflow(
 
     if (!workflow) {
       return failure(404, { error: "Workflow not found" });
+    }
+
+    const graphValidation = validateWorkflowGraph(workflow.graph);
+    if (!graphValidation.valid) {
+      return failure(500, { error: "Workflow graph is invalid" });
+    }
+
+    const conditionValidation = validateWorkflowConditionConfigs(
+      graphValidation.nodes
+    );
+    if (!conditionValidation.valid) {
+      return failure(500, { error: conditionValidation.error });
     }
 
     return success(toWorkflowApiPayload(workflow));
@@ -125,6 +138,19 @@ export async function patchWorkflow(
           error: graphValidation.error,
         });
         return failure(400, { error: graphValidation.error });
+      }
+
+      const conditionValidation = validateWorkflowConditionConfigs(
+        graphValidation.nodes
+      );
+      if (!conditionValidation.valid) {
+        requestLogger.warn(
+          "Rejected workflow update due to invalid condition configuration",
+          {
+            error: conditionValidation.error,
+          }
+        );
+        return failure(400, { error: conditionValidation.error });
       }
 
       const integrationValidation = await validateWorkflowIntegrations(

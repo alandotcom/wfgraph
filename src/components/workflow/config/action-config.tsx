@@ -36,6 +36,7 @@ import {
 import type { IntegrationType } from "@/shared/types/integration";
 import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 import { ActionConfigRenderer } from "./action-config-renderer";
+import { ConditionBuilderRow } from "./condition-builder-row";
 import { SchemaBuilder, type SchemaField } from "./schema-builder";
 
 type ActionConfigProps = {
@@ -234,20 +235,15 @@ function ConditionFields({
   disabled: boolean;
 }) {
   return (
-    <div className="space-y-2">
-      <Label htmlFor="condition">Condition Expression</Label>
-      <TemplateBadgeInput
-        disabled={disabled}
-        id="condition"
-        onChange={(value) => onUpdateConfig("condition", value)}
-        placeholder="e.g., 5 > 3, status === 200, {{PreviousNode.value}} > 100"
-        value={(config?.condition as string) || ""}
-      />
-      <p className="text-muted-foreground text-xs">
-        Enter a JavaScript expression that evaluates to true or false. You can
-        use @ to reference previous node outputs.
-      </p>
-    </div>
+    <ConditionBuilderRow
+      config={config}
+      description="Build a condition using webhook schema fields. Timestamp fields support relative and absolute time filters."
+      disabled={disabled}
+      expressionKey="condition"
+      label="Condition"
+      modelKey="conditionModel"
+      onUpdateConfig={onUpdateConfig}
+    />
   );
 }
 
@@ -261,20 +257,16 @@ function RunConditionField({
   disabled: boolean;
 }) {
   return (
-    <div className="space-y-2 rounded-md border bg-muted/30 p-3">
-      <Label htmlFor="runCondition">Run this step only when (optional)</Label>
-      <TemplateBadgeInput
-        disabled={disabled}
-        id="runCondition"
-        onChange={(value) => onUpdateConfig("runCondition", value)}
-        placeholder="{{@trigger:Webhook.data.status}} !== 'cancelled'"
-        value={(config?.runCondition as string) || ""}
-      />
-      <p className="text-muted-foreground text-xs">
-        JavaScript expression. When false, this step is skipped and the workflow
-        continues to downstream steps.
-      </p>
-    </div>
+    <ConditionBuilderRow
+      config={config}
+      description="Optional guard. When false, this step is skipped and execution continues."
+      disabled={disabled}
+      expressionKey="runCondition"
+      label="Run this step only when"
+      modelKey="runConditionModel"
+      onUpdateConfig={onUpdateConfig}
+      optional
+    />
   );
 }
 

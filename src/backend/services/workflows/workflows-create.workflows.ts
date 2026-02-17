@@ -10,6 +10,7 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
+import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers.workflows";
 import { generateId } from "@/shared/utils/id";
@@ -87,6 +88,20 @@ export async function postWorkflowsCreate(body: {
         error: graphValidation.error,
       });
       return failure(400, { error: graphValidation.error });
+    }
+
+    const conditionValidation = validateWorkflowConditionConfigs(
+      graphValidation.nodes
+    );
+    if (!conditionValidation.valid) {
+      workflowCreateLogger.warn(
+        "Rejected workflow create due to invalid condition configuration",
+        {
+          workflowName,
+          error: conditionValidation.error,
+        }
+      );
+      return failure(400, { error: conditionValidation.error });
     }
 
     const integrationValidation = await validateWorkflowIntegrations(

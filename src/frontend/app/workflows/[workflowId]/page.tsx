@@ -169,7 +169,9 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
         return;
       }
       console.error("Failed to load workflow:", error);
-      toast.error("Failed to load workflow");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to load workflow"
+      );
     }
   }, [
     workflowId,

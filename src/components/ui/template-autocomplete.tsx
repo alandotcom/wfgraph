@@ -24,6 +24,7 @@ type SchemaField = {
   type: "string" | "number" | "boolean" | "array" | "object";
   itemType?: "string" | "number" | "boolean" | "object";
   fields?: SchemaField[];
+  format?: "timestamp";
   description?: string;
 };
 

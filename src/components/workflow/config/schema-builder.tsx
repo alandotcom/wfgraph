@@ -17,6 +17,7 @@ export type SchemaField = {
   type: "string" | "number" | "boolean" | "array" | "object";
   itemType?: "string" | "number" | "boolean" | "object";
   fields?: SchemaField[];
+  format?: "timestamp";
   description?: string;
 };
 
@@ -48,6 +49,9 @@ export function SchemaBuilder({
     }
     if (type !== "object") {
       updated.fields = undefined;
+    }
+    if (type !== "string") {
+      updated.format = undefined;
     }
     if (type === "array" && !updated.itemType) {
       updated.itemType = "string";
@@ -176,6 +180,40 @@ export function SchemaBuilder({
                     <SelectItem value="number">Number</SelectItem>
                     <SelectItem value="boolean">Boolean</SelectItem>
                     <SelectItem value="object">Object</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {field.type === "string" && (
+              <div className="space-y-2">
+                <Label
+                  className="ml-1"
+                  htmlFor={`field-format-${level}-${index}`}
+                >
+                  Format
+                </Label>
+                <Select
+                  disabled={disabled}
+                  onValueChange={(value) =>
+                    updateField(index, {
+                      format:
+                        value === "timestamp"
+                          ? "timestamp"
+                          : (undefined as SchemaField["format"]),
+                    })
+                  }
+                  value={field.format || "text"}
+                >
+                  <SelectTrigger
+                    className="w-full"
+                    id={`field-format-${level}-${index}`}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="text">Text</SelectItem>
+                    <SelectItem value="timestamp">Timestamp</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
