@@ -136,6 +136,47 @@ async function startWebhookExecution(input: {
   };
 }
 
+async function createTerminalWebhookExecution(input: {
+  workflowId: string;
+  payload: Record<string, unknown>;
+  dryRun: boolean;
+  status: "success" | "cancelled";
+  eventType?: string;
+  correlationKey?: string;
+  output: Record<string, unknown>;
+  auditEventType: "run_ignored" | "run_cancelled";
+  auditMessage: string;
+  auditMetadata?: Record<string, unknown>;
+}) {
+  const now = new Date();
+  const [execution] = await db
+    .insert(workflowExecutions)
+    .values({
+      workflowId: input.workflowId,
+      status: input.status,
+      triggerType: "webhook",
+      isDryRun: input.dryRun,
+      triggerEventType: input.eventType,
+      correlationKey: input.correlationKey,
+      input: input.payload,
+      output: input.output,
+      startedAt: now,
+      completedAt: now,
+      cancelledAt: input.status === "cancelled" ? now : null,
+    })
+    .returning();
+
+  await logWorkflowAuditEvent({
+    workflowId: input.workflowId,
+    executionId: execution.id,
+    eventType: input.auditEventType,
+    message: input.auditMessage,
+    metadata: input.auditMetadata,
+  });
+
+  return execution;
+}
+
 async function resumeMatchingWaitHooks(input: {
   workflowId: string;
   eventType?: string;
@@ -214,10 +255,18 @@ async function resumeMatchingWaitHooks(input: {
 }
 
 function buildIgnoredAuditMessage(input: {
-  reason: "missing_event_type" | "event_not_configured" | "no_waiting_runs";
+  reason:
+    | "missing_event_type"
+    | "event_not_configured"
+    | "no_waiting_runs"
+    | "workflow_paused";
   eventType?: string;
   eventTypePath?: string;
 }): string {
+  if (input.reason === "workflow_paused") {
+    return "Ignored webhook event because workflow is paused";
+  }
+
   if (input.reason === "missing_event_type") {
     return `Ignored webhook: event type missing at path "${input.eventTypePath ?? "event"}"`;
   }
@@ -324,6 +373,35 @@ export async function postWorkflowWebhookResult(input: {
     const dryRunFromQuery = parseBooleanFlag(dryRunQuery ?? null);
     const dryRunFromHeader = parseBooleanFlag(dryRunHeader);
     const dryRun = dryRunFromQuery ?? dryRunFromHeader ?? false;
+
+    if (workflow.isPaused) {
+      const ignoredExecution = await createTerminalWebhookExecution({
+        workflowId,
+        payload: body,
+        dryRun,
+        status: "success",
+        output: {
+          status: "ignored",
+          reason: "workflow_paused",
+          dryRun,
+        },
+        auditEventType: "run_ignored",
+        auditMessage: buildIgnoredAuditMessage({
+          reason: "workflow_paused",
+        }),
+        auditMetadata: {
+          reason: "workflow_paused",
+          dryRun,
+        },
+      });
+
+      return success({
+        status: "ignored",
+        executionId: ignoredExecution.id,
+        dryRun,
+        reason: "workflow_paused",
+      });
+    }
 
     const { eventType, correlationKey, routingDecision, metadata } =
       evaluateWorkflowTrigger({

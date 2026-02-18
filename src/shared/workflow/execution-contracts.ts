@@ -7,7 +7,8 @@ export type WorkflowExecutionStatus =
 export type WorkflowExecutionIgnoredReason =
   | "missing_event_type"
   | "event_not_configured"
-  | "no_waiting_runs";
+  | "no_waiting_runs"
+  | "workflow_paused";
 
 export type WorkflowExecutionRunningResponse = {
   status: "running";

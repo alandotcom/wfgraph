@@ -24,6 +24,7 @@ export const workflows = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     graph: jsonb("graph").notNull().$type<SerializedWorkflowGraph>(),
+    isPaused: boolean("is_paused").notNull().default(false),
     visibility: text("visibility")
       .notNull()
       .default("private")

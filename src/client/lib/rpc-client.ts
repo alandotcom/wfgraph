@@ -24,12 +24,14 @@ export type WorkflowData = {
   graph: SerializedWorkflowGraph;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+  isPaused?: boolean;
   visibility?: WorkflowVisibility;
 };
 
 export type SavedWorkflow = WorkflowData & {
   id: string;
   name: string;
+  isPaused: boolean;
   visibility: WorkflowVisibility;
   createdAt: string;
   updatedAt: string;
@@ -148,6 +150,10 @@ type WorkflowCancelExecutionResult = RpcOutput<
 type WorkflowExecutionStatusResult = RpcOutput<
   typeof rpc.workflow.getExecutionStatus
 >;
+type WorkflowExecutionsGlobalResult = RpcOutput<
+  typeof rpc.workflow.getExecutionsGlobal
+>;
+type WorkflowBulkLifecycleResult = RpcOutput<typeof rpc.workflow.bulkLifecycle>;
 
 function toWorkflowData(payload: WorkflowApiPayload): WorkflowData {
   const graphData = toWorkflowGraphData(payload.graph);
@@ -170,6 +176,7 @@ function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
     graph: payload.graph,
     nodes: graphData.nodes,
     edges: graphData.edges,
+    isPaused: payload.isPaused ?? false,
     visibility: payload.visibility ?? "private",
     createdAt: payload.createdAt ?? new Date(0).toISOString(),
     updatedAt: payload.updatedAt ?? new Date(0).toISOString(),
@@ -293,6 +300,30 @@ export const workflowApi = {
 
   getExecutions: (id: string): Promise<WorkflowExecutionsResult> =>
     rpc.workflow.getExecutions({ workflowId: id }),
+
+  getExecutionsGlobal: (input: {
+    workflowIds?: string[];
+    statuses?: Array<
+      "pending" | "running" | "waiting" | "success" | "error" | "cancelled"
+    >;
+    limit?: number;
+    cursor?: { startedAt: string; id: string };
+  }): Promise<WorkflowExecutionsGlobalResult> =>
+    rpc.workflow.getExecutionsGlobal({
+      workflowIds: input.workflowIds,
+      statuses: input.statuses,
+      limit: input.limit,
+      cursor: input.cursor,
+    }),
+
+  bulkLifecycle: (input: {
+    workflowIds: string[];
+    action: "pause" | "resume" | "delete";
+  }): Promise<WorkflowBulkLifecycleResult> =>
+    rpc.workflow.bulkLifecycle({
+      workflowIds: input.workflowIds,
+      action: input.action,
+    }),
 
   deleteExecutions: (id: string): Promise<WorkflowDeleteExecutionsResult> =>
     rpc.workflow.deleteExecutions({ workflowId: id }),

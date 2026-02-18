@@ -11,6 +11,7 @@ function createWorkflow(overrides: Partial<Workflow> = {}): Workflow {
     name: "Public Workflow",
     description: null,
     graph: { nodes: [], edges: [] },
+    isPaused: false,
     visibility: "public",
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-02T00:00:00.000Z"),
@@ -26,6 +27,7 @@ describe("workflow mappers", () => {
     expect(payload.createdAt).toBe("2026-01-01T00:00:00.000Z");
     expect(payload.updatedAt).toBe("2026-01-02T00:00:00.000Z");
     expect(payload.description).toBeUndefined();
+    expect(payload.isPaused).toBe(false);
   });
 
   it("builds patch update payload without forcing visibility", () => {

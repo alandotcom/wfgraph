@@ -8,6 +8,7 @@ type WorkflowPayloadSource = Pick<
   | "name"
   | "description"
   | "graph"
+  | "isPaused"
   | "visibility"
   | "createdAt"
   | "updatedAt"
@@ -27,6 +28,7 @@ export function toWorkflowApiPayload(
     name: workflow.name,
     description: workflow.description ?? undefined,
     graph: workflow.graph,
+    isPaused: workflow.isPaused,
     visibility: workflow.visibility,
     isOwner: true,
     createdAt: workflow.createdAt.toISOString(),

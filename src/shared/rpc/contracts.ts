@@ -51,6 +51,7 @@ const workflowApiPayloadSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   graph: serializedWorkflowGraphSchema,
+  isPaused: z.boolean().optional(),
   visibility: z.enum(["private", "public"]).optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
@@ -126,6 +127,7 @@ const ignoredReasonSchema = z.enum([
   "missing_event_type",
   "event_not_configured",
   "no_waiting_runs",
+  "workflow_paused",
 ]);
 
 const workflowExecutionRunningSchema = z
@@ -188,6 +190,44 @@ const workflowWebhookResponseSchema = z.discriminatedUnion("status", [
   workflowExecutionIgnoredSchema,
   workflowExecutionResumedSchema,
 ]);
+
+const workflowExecutionStatusFilterSchema = z.enum([
+  "pending",
+  "running",
+  "waiting",
+  "success",
+  "error",
+  "cancelled",
+]);
+
+const workflowGlobalExecutionSchema = workflowExecutionSchema.extend({
+  workflowName: z.string(),
+  workflowIsPaused: z.boolean(),
+});
+
+const workflowGlobalExecutionsCursorSchema = z.object({
+  startedAt: z.string(),
+  id: idSchema,
+});
+
+const workflowBulkActionSchema = z.enum(["pause", "resume", "delete"]);
+
+const workflowBulkLifecycleResultSchema = z.object({
+  summary: z.object({
+    requested: z.number(),
+    succeeded: z.number(),
+    failed: z.number(),
+  }),
+  results: z.array(
+    z.object({
+      workflowId: idSchema,
+      action: workflowBulkActionSchema,
+      ok: z.boolean(),
+      deleted: z.boolean().optional(),
+      error: z.string().optional(),
+    })
+  ),
+});
 
 export const rpcContract = {
   apiKey: {
@@ -365,6 +405,31 @@ export const rpcContract = {
         })
       )
       .output(z.array(workflowExecutionSchema)),
+    getExecutionsGlobal: oc
+      .route({ method: "GET", path: "/workflows/executions" })
+      .input(
+        z.object({
+          workflowIds: z.array(idSchema).optional(),
+          statuses: z.array(workflowExecutionStatusFilterSchema).optional(),
+          limit: z.number().int().min(1).max(500).optional(),
+          cursor: workflowGlobalExecutionsCursorSchema.optional(),
+        })
+      )
+      .output(
+        z.object({
+          items: z.array(workflowGlobalExecutionSchema),
+          nextCursor: workflowGlobalExecutionsCursorSchema.nullable(),
+        })
+      ),
+    bulkLifecycle: oc
+      .route({ method: "POST", path: "/workflows/bulk-lifecycle" })
+      .input(
+        z.object({
+          workflowIds: z.array(idSchema).min(1),
+          action: workflowBulkActionSchema,
+        })
+      )
+      .output(workflowBulkLifecycleResultSchema),
     deleteExecutions: oc
       .route({ method: "DELETE", path: "/workflows/{workflowId}/executions" })
       .input(

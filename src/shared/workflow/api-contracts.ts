@@ -11,6 +11,7 @@ export type WorkflowApiPayload = {
   name?: string;
   description?: string;
   graph: SerializedWorkflowGraph;
+  isPaused?: boolean;
   visibility?: WorkflowVisibility;
   createdAt?: string;
   updatedAt?: string;

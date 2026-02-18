@@ -151,10 +151,18 @@ async function startExecution(input: {
 }
 
 function buildIgnoredAuditMessage(input: {
-  reason: "missing_event_type" | "event_not_configured" | "no_waiting_runs";
+  reason:
+    | "missing_event_type"
+    | "event_not_configured"
+    | "no_waiting_runs"
+    | "workflow_paused";
   eventType?: string;
   eventTypePath?: string;
 }): string {
+  if (input.reason === "workflow_paused") {
+    return "Ignored execute request because workflow is paused";
+  }
+
   if (input.reason === "missing_event_type") {
     return `Ignored webhook event because event type is missing at path "${input.eventTypePath ?? "event"}"`;
   }
@@ -254,6 +262,37 @@ export async function postWorkflowExecuteResult(
       if (mockInput) {
         effectiveInput = mockInput;
       }
+    }
+
+    if (workflow.isPaused) {
+      const ignoredExecution = await createTerminalExecution({
+        workflowId,
+        triggerType: "manual",
+        isDryRun: dryRun,
+        payload: effectiveInput,
+        status: "success",
+        output: {
+          status: "ignored",
+          reason: "workflow_paused",
+          dryRun,
+        },
+        auditEventType: "run_ignored",
+        auditMessage: buildIgnoredAuditMessage({
+          reason: "workflow_paused",
+        }),
+        auditMetadata: {
+          reason: "workflow_paused",
+          dryRun,
+        },
+      });
+
+      const response: WorkflowExecuteResponse = {
+        status: "ignored",
+        executionId: ignoredExecution.id,
+        dryRun,
+        reason: "workflow_paused",
+      };
+      return success(response);
     }
 
     const { eventType, correlationKey, routingDecision, metadata } =

@@ -28,8 +28,10 @@ import {
   deleteWorkflowExecutionsResult,
   getWorkflowExecutionsResult,
 } from "@/backend/services/workflows/workflow-executions.workflows";
+import { getWorkflowExecutionsGlobalResult } from "@/backend/services/workflows/workflow-executions-global.workflows";
 import { postWorkflowWebhookResult } from "@/backend/services/workflows/workflow-webhook.workflows";
 import { getWorkflows } from "@/backend/services/workflows/workflows.workflows";
+import { postWorkflowsBulkLifecycleResult } from "@/backend/services/workflows/workflows-bulk-lifecycle.workflows";
 import { postWorkflowsCreate } from "@/backend/services/workflows/workflows-create.workflows";
 import {
   getWorkflowsCurrent,
@@ -171,6 +173,24 @@ export const rpcRouter = rpc.router({
     ),
     getExecutions: rpc.workflow.getExecutions.handler(
       rpcHandler(({ input }) => getWorkflowExecutionsResult(input.workflowId))
+    ),
+    getExecutionsGlobal: rpc.workflow.getExecutionsGlobal.handler(
+      rpcHandler(({ input }) =>
+        getWorkflowExecutionsGlobalResult({
+          workflowIds: input.workflowIds,
+          statuses: input.statuses,
+          limit: input.limit,
+          cursor: input.cursor,
+        })
+      )
+    ),
+    bulkLifecycle: rpc.workflow.bulkLifecycle.handler(
+      rpcHandler(({ input }) =>
+        postWorkflowsBulkLifecycleResult({
+          workflowIds: input.workflowIds,
+          action: input.action,
+        })
+      )
     ),
     deleteExecutions: rpc.workflow.deleteExecutions.handler(
       rpcHandler(({ input }) =>

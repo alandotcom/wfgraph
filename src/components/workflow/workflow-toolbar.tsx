@@ -421,11 +421,14 @@ async function executeTestWorkflow({
             : "Cancelled matching waiting runs."
         );
       } else if (result.status === "ignored") {
-        toast.message(
-          result.reason === "no_waiting_runs"
-            ? "No matching waiting runs were found."
-            : "Event was ignored by routing rules."
-        );
+        let ignoredMessage = "Event was ignored by routing rules.";
+        if (result.reason === "no_waiting_runs") {
+          ignoredMessage = "No matching waiting runs were found.";
+        } else if (result.reason === "workflow_paused") {
+          ignoredMessage = "Workflow is paused and cannot start new runs.";
+        }
+
+        toast.message(ignoredMessage);
       } else {
         toast.message("Execution completed without starting a new run.");
       }
