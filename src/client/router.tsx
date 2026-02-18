@@ -2,6 +2,7 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  Navigate,
   Outlet,
   useParams,
 } from "@tanstack/react-router";
@@ -12,7 +13,6 @@ import { OverlayProvider } from "@/components/overlays/overlay-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { PersistentCanvas } from "@/components/workflow/persistent-canvas";
-import HomePage from "@/frontend/app/page";
 import WorkflowEditorPage from "@/frontend/app/workflows/[workflowId]/page";
 import WorkflowsPage from "@/frontend/app/workflows/page";
 
@@ -58,13 +58,13 @@ const rootRoute = createRootRoute({
 const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: HomePage,
+  component: WorkflowsPage,
 });
 
 const workflowsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/workflows",
-  component: WorkflowsPage,
+  component: () => <Navigate replace to="/" />,
 });
 
 const workflowRoute = createRoute({

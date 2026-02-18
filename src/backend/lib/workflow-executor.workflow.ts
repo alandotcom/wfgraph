@@ -1489,8 +1489,9 @@ export async function executeWorkflow(
               "Condition result missing boolean value, skipping downstream nodes"
             );
           } else {
-            const nextBranch: ConditionBranch =
-              conditionResult === true ? "true" : "false";
+            const nextBranch: ConditionBranch = conditionResult
+              ? "true"
+              : "false";
             const outgoingEdges = edgesBySource.get(nodeId) || [];
             const nextNodes = getConditionNextNodeIds({
               edges: outgoingEdges,

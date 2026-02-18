@@ -449,7 +449,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
             <p className="mb-6 text-muted-foreground">
               The workflow you're looking for doesn't exist or has been deleted.
             </p>
-            <Button render={<Link to="/" />}>New Workflow</Button>
+            <Button render={<Link to="/" />}>Go to Dashboard</Button>
           </div>
         </div>
       )}

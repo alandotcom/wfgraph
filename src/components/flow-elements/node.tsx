@@ -43,15 +43,26 @@ function renderHandles(
     );
   }
 
-  return config.map((handleConfig, index) => (
-    <Handle
-      id={handleConfig.id}
-      key={`${handleType}-${handleConfig.id ?? handleConfig.position}-${index}`}
-      position={handleConfig.position}
-      style={handleConfig.style}
-      type={handleType}
-    />
-  ));
+  return config.map((handleConfig) => {
+    const fallbackKey = [
+      handleType,
+      handleConfig.position,
+      handleConfig.style?.top,
+      handleConfig.style?.right,
+      handleConfig.style?.bottom,
+      handleConfig.style?.left,
+    ].join(":");
+
+    return (
+      <Handle
+        id={handleConfig.id}
+        key={handleConfig.id ?? fallbackKey}
+        position={handleConfig.position}
+        style={handleConfig.style}
+        type={handleType}
+      />
+    );
+  });
 }
 
 export const Node = ({ handles, className, status, ...props }: NodeProps) => (

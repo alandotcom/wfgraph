@@ -26,6 +26,7 @@ bun run type-check
 
 2. Run auto-fix formatting/linting:
 ```bash
+bun run lint
 bun run fix
 ```
 

@@ -65,7 +65,9 @@
         "src/frontend/**/*.ts",
         "src/frontend/**/*.tsx",
         "src/components/**/*.ts",
-        "src/components/**/*.tsx"
+        "src/components/**/*.tsx",
+        "src/plugins/**/*.ts",
+        "src/plugins/**/*.tsx"
       ],
       "env": {
         "browser": true

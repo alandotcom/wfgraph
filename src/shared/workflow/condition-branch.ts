@@ -1,11 +1,15 @@
 import type { ConditionBranch, WorkflowNode } from "@/shared/workflow/types";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  if (!isRecord(value)) {
     return null;
   }
 
-  return value as Record<string, unknown>;
+  return value;
 }
 
 function asTrimmedString(value: unknown): string | null {

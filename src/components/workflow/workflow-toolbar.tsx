@@ -63,6 +63,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { WorkflowIcon } from "@/components/ui/workflow-icon";
+import { CreateWorkflowDialog } from "@/components/workflow/create-workflow-dialog";
 import { UserMenu } from "@/components/workflows/user-menu";
 import {
   findActionById,
@@ -1250,90 +1251,117 @@ function WorkflowMenuComponent({
   actions: ReturnType<typeof useWorkflowActions>;
 }) {
   const navigate = useNavigate();
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex h-9 max-w-[160px] items-center overflow-hidden rounded-md border bg-secondary text-secondary-foreground sm:max-w-none">
-        <DropdownMenu onOpenChange={(open) => open && actions.loadWorkflows()}>
-          <DropdownMenuTrigger className="flex h-full cursor-pointer items-center gap-2 px-3 font-medium text-sm transition-all hover:bg-secondary dark:hover:bg-secondary">
-            <WorkflowIcon className="size-4 shrink-0" />
-            <p className="truncate font-medium text-sm">
-              {workflowId ? (
-                state.workflowName
+    <>
+      <div className="flex flex-col gap-1">
+        <div className="flex h-9 max-w-[160px] items-center overflow-hidden rounded-md border bg-secondary text-secondary-foreground sm:max-w-none">
+          <DropdownMenu
+            onOpenChange={(open) => open && actions.loadWorkflows()}
+          >
+            <DropdownMenuTrigger className="flex h-full cursor-pointer items-center gap-2 px-3 font-medium text-sm transition-all hover:bg-secondary dark:hover:bg-secondary">
+              <WorkflowIcon className="size-4 shrink-0" />
+              <p className="truncate font-medium text-sm">
+                {workflowId ? (
+                  state.workflowName
+                ) : (
+                  <>
+                    <span className="sm:hidden">Dashboard</span>
+                    <span className="hidden sm:inline">Workflow Dashboard</span>
+                  </>
+                )}
+              </p>
+              <ChevronDown className="size-3 shrink-0 opacity-50" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64">
+              <DropdownMenuItem
+                className="flex items-center justify-between"
+                onClick={() => navigate({ to: "/" })}
+              >
+                Dashboard {!workflowId && <Check className="size-4 shrink-0" />}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex items-center gap-2"
+                onClick={() => {
+                  setIsCreateDialogOpen(true);
+                }}
+              >
+                <Plus className="size-4" />
+                New Workflow...
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {state.allWorkflows.length === 0 ? (
+                <DropdownMenuItem disabled>No workflows found</DropdownMenuItem>
               ) : (
+                state.allWorkflows
+                  .filter((w) => w.name !== "__current__")
+                  .map((workflow) => (
+                    <DropdownMenuItem
+                      className="flex items-center justify-between"
+                      key={workflow.id}
+                      onClick={() =>
+                        navigate({
+                          to: "/workflows/$workflowId",
+                          params: { workflowId: workflow.id },
+                        })
+                      }
+                    >
+                      <span className="truncate">{workflow.name}</span>
+                      {workflow.id === state.currentWorkflowId && (
+                        <Check className="size-4 shrink-0" />
+                      )}
+                    </DropdownMenuItem>
+                  ))
+              )}
+              {workflowId && state.isOwner && (
                 <>
-                  <span className="sm:hidden">New</span>
-                  <span className="hidden sm:inline">New Workflow</span>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="flex items-center gap-2"
+                    disabled={state.isDuplicating}
+                    onClick={actions.handleDuplicate}
+                  >
+                    {state.isDuplicating ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Copy className="size-4" />
+                    )}
+                    Duplicate
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="flex items-center gap-2 text-destructive focus:text-destructive"
+                    onClick={actions.handleDeleteWorkflow}
+                  >
+                    <Trash2 className="size-4" />
+                    Delete Workflow
+                  </DropdownMenuItem>
                 </>
               )}
-            </p>
-            <ChevronDown className="size-3 shrink-0 opacity-50" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-64">
-            <DropdownMenuItem
-              className="flex items-center justify-between"
-              onClick={() => navigate({ to: "/" })}
-            >
-              New Workflow{" "}
-              {!workflowId && <Check className="size-4 shrink-0" />}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {state.allWorkflows.length === 0 ? (
-              <DropdownMenuItem disabled>No workflows found</DropdownMenuItem>
-            ) : (
-              state.allWorkflows
-                .filter((w) => w.name !== "__current__")
-                .map((workflow) => (
-                  <DropdownMenuItem
-                    className="flex items-center justify-between"
-                    key={workflow.id}
-                    onClick={() =>
-                      navigate({
-                        to: "/workflows/$workflowId",
-                        params: { workflowId: workflow.id },
-                      })
-                    }
-                  >
-                    <span className="truncate">{workflow.name}</span>
-                    {workflow.id === state.currentWorkflowId && (
-                      <Check className="size-4 shrink-0" />
-                    )}
-                  </DropdownMenuItem>
-                ))
-            )}
-            {workflowId && state.isOwner && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="flex items-center gap-2"
-                  disabled={state.isDuplicating}
-                  onClick={actions.handleDuplicate}
-                >
-                  {state.isDuplicating ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Copy className="size-4" />
-                  )}
-                  Duplicate
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex items-center gap-2 text-destructive focus:text-destructive"
-                  onClick={actions.handleDeleteWorkflow}
-                >
-                  <Trash2 className="size-4" />
-                  Delete Workflow
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        {workflowId && !state.isOwner && (
+          <span className="text-muted-foreground text-xs uppercase lg:hidden">
+            Read-only
+          </span>
+        )}
       </div>
-      {workflowId && !state.isOwner && (
-        <span className="text-muted-foreground text-xs uppercase lg:hidden">
-          Read-only
-        </span>
-      )}
-    </div>
+      <CreateWorkflowDialog
+        existingWorkflowNames={state.allWorkflows.map(
+          (workflow) => workflow.name
+        )}
+        onCreated={async (createdWorkflow) => {
+          await actions.loadWorkflows();
+          await navigate({
+            to: "/workflows/$workflowId",
+            params: { workflowId: createdWorkflow.id },
+          });
+        }}
+        onOpenChange={setIsCreateDialogOpen}
+        open={isCreateDialogOpen}
+      />
+    </>
   );
 }
 

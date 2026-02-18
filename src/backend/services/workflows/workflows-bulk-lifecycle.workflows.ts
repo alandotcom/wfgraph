@@ -87,52 +87,49 @@ export async function postWorkflowsBulkLifecycleResult(
   });
 
   try {
-    const results: WorkflowBulkLifecycleResult["results"] = [];
+    const results: WorkflowBulkLifecycleResult["results"] = await Promise.all(
+      workflowIds.map(async (workflowId) => {
+        if (input.action === "delete") {
+          const deletion = await deleteWorkflow(workflowId);
 
-    for (const workflowId of workflowIds) {
-      if (input.action === "delete") {
-        const deletion = await deleteWorkflow(workflowId);
+          if (deletion.ok) {
+            return {
+              workflowId,
+              action: input.action,
+              ok: true,
+              deleted: true,
+            };
+          }
 
-        if (deletion.ok) {
-          results.push({
+          return {
+            workflowId,
+            action: input.action,
+            ok: false,
+            error: deletion.error.error,
+          };
+        }
+
+        const pauseUpdate = await setWorkflowPausedState({
+          workflowId,
+          isPaused: input.action === "pause",
+        });
+
+        if (pauseUpdate.ok) {
+          return {
             workflowId,
             action: input.action,
             ok: true,
-            deleted: true,
-          });
-          continue;
+          };
         }
 
-        results.push({
+        return {
           workflowId,
           action: input.action,
           ok: false,
-          error: deletion.error.error,
-        });
-        continue;
-      }
-
-      const pauseUpdate = await setWorkflowPausedState({
-        workflowId,
-        isPaused: input.action === "pause",
-      });
-
-      if (pauseUpdate.ok) {
-        results.push({
-          workflowId,
-          action: input.action,
-          ok: true,
-        });
-        continue;
-      }
-
-      results.push({
-        workflowId,
-        action: input.action,
-        ok: false,
-        error: pauseUpdate.error,
-      });
-    }
+          error: pauseUpdate.error,
+        };
+      })
+    );
 
     const succeeded = results.filter((result) => result.ok).length;
 

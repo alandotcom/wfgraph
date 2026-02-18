@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CreateWorkflowDialog } from "@/components/workflow/create-workflow-dialog";
 import { getRelativeTime } from "@/shared/utils/time";
 
 type WorkflowExecutionStatus =
@@ -122,6 +123,7 @@ export default function WorkflowsPage() {
   const [lifecycleAction, setLifecycleAction] = useState<
     "pause" | "resume" | "delete" | null
   >(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<ConfirmDeleteState | null>(
     null
   );
@@ -353,7 +355,7 @@ export default function WorkflowsPage() {
               <Checkbox
                 checked={allSelected}
                 onCheckedChange={(checked) => {
-                  toggleSelectAll(checked === true);
+                  toggleSelectAll(checked);
                 }}
               />
             </th>
@@ -380,7 +382,7 @@ export default function WorkflowsPage() {
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={(checked) => {
-                      toggleSelectOne(workflow.id, checked === true);
+                      toggleSelectOne(workflow.id, checked);
                     }}
                   />
                 </td>
@@ -524,9 +526,19 @@ export default function WorkflowsPage() {
     <div className="pointer-events-auto h-dvh overflow-auto bg-background">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-6">
         <div className="flex flex-col gap-2">
-          <h1 className="font-semibold text-2xl text-foreground">
-            Workflow Dashboard
-          </h1>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="font-semibold text-2xl text-foreground">
+              Workflow Dashboard
+            </h1>
+            <Button
+              onClick={() => {
+                setIsCreateDialogOpen(true);
+              }}
+              type="button"
+            >
+              New Workflow
+            </Button>
+          </div>
           <p className="text-muted-foreground text-sm">
             Manage workflows in bulk and review runs across every workflow.
             Paused workflows block new manual, webhook, and schedule starts.
@@ -729,6 +741,18 @@ export default function WorkflowsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <CreateWorkflowDialog
+        existingWorkflowNames={workflows.map((workflow) => workflow.name)}
+        onCreated={async (createdWorkflow) => {
+          await Promise.all([loadWorkflows(), loadRuns()]);
+          await navigate({
+            to: "/workflows/$workflowId",
+            params: { workflowId: createdWorkflow.id },
+          });
+        }}
+        onOpenChange={setIsCreateDialogOpen}
+        open={isCreateDialogOpen}
+      />
     </div>
   );
 }
