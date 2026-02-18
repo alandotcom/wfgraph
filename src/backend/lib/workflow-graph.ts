@@ -1,5 +1,9 @@
 import { hasCycle } from "graphology-dag";
 import {
+  isConditionActionNode,
+  normalizeConditionBranch,
+} from "@/shared/workflow/condition-branch";
+import {
   createGraphFromSerialized,
   getNodeTypeFromSerializedNode,
   getSerializedWorkflowGraphError,
@@ -26,6 +30,42 @@ function hasRootTrigger(input: {
   return input.nodes.some(
     (node) => node.data.type === "trigger" && !incoming.has(node.id)
   );
+}
+
+function getNodeLabel(node: WorkflowNode): string {
+  return node.data.label?.trim() || node.id;
+}
+
+function validateConditionBranchEdges(input: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}): string | null {
+  const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
+
+  for (const edge of input.edges) {
+    const sourceNode = nodeById.get(edge.source);
+    if (!sourceNode) {
+      continue;
+    }
+
+    const sourceIsCondition = isConditionActionNode(sourceNode);
+    const branch = normalizeConditionBranch(edge.sourceHandle);
+
+    if (sourceIsCondition) {
+      const hasExplicitBranch =
+        edge.sourceHandle === "true" || edge.sourceHandle === "false";
+      if (!hasExplicitBranch) {
+        return `Condition node "${getNodeLabel(sourceNode)}" has edge "${edge.id}" without explicit sourceHandle "true" or "false"`;
+      }
+      continue;
+    }
+
+    if (branch) {
+      return `Only Condition nodes can emit true/false branch edges (edge "${edge.id}")`;
+    }
+  }
+
+  return null;
 }
 
 export type WorkflowGraphValidationResult =
@@ -141,6 +181,15 @@ export function validateWorkflowGraph(
     return {
       valid: false,
       error: "Workflow must contain at least one root trigger node",
+    };
+  }
+
+  const conditionBranchValidationError =
+    validateConditionBranchEdges(graphData);
+  if (conditionBranchValidationError) {
+    return {
+      valid: false,
+      error: conditionBranchValidationError,
     };
   }
 

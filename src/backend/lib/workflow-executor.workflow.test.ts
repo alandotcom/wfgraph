@@ -49,6 +49,20 @@ function createUnknownActionNode(id: string): WorkflowNode {
   };
 }
 
+function createConditionBranchEdge(input: {
+  id: string;
+  source: string;
+  target: string;
+  branch: "true" | "false";
+}) {
+  return {
+    id: input.id,
+    source: input.source,
+    target: input.target,
+    sourceHandle: input.branch,
+  };
+}
+
 describe("executeWorkflow", () => {
   it("does not execute a join node until all inbound dependencies are downstream-ready", async () => {
     const graph = createSerializedWorkflowGraph({
@@ -74,5 +88,111 @@ describe("executeWorkflow", () => {
     expect(result.results.action_success?.success).toBe(true);
     expect(result.results.action_failure?.success).toBe(false);
     expect(result.results.join_node).toBeUndefined();
+  });
+
+  it("executes only the true branch when condition evaluates true", async () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createTriggerNode("trigger_1"),
+        createConditionNode("condition_node", true),
+        createConditionNode("true_node", true),
+        createConditionNode("false_node", true),
+      ],
+      edges: [
+        { id: "edge_t_c", source: "trigger_1", target: "condition_node" },
+        createConditionBranchEdge({
+          id: "edge_c_true",
+          source: "condition_node",
+          target: "true_node",
+          branch: "true",
+        }),
+        createConditionBranchEdge({
+          id: "edge_c_false",
+          source: "condition_node",
+          target: "false_node",
+          branch: "false",
+        }),
+      ],
+    });
+
+    const result = await executeWorkflow({ graph });
+
+    expect(result.success).toBe(true);
+    expect(result.results.condition_node?.success).toBe(true);
+    expect(result.results.true_node?.success).toBe(true);
+    expect(result.results.false_node).toBeUndefined();
+  });
+
+  it("executes only the false branch when condition evaluates false", async () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createTriggerNode("trigger_1"),
+        createConditionNode("condition_node", false),
+        createConditionNode("true_node", true),
+        createConditionNode("false_node", true),
+      ],
+      edges: [
+        { id: "edge_t_c", source: "trigger_1", target: "condition_node" },
+        createConditionBranchEdge({
+          id: "edge_c_true",
+          source: "condition_node",
+          target: "true_node",
+          branch: "true",
+        }),
+        createConditionBranchEdge({
+          id: "edge_c_false",
+          source: "condition_node",
+          target: "false_node",
+          branch: "false",
+        }),
+      ],
+    });
+
+    const result = await executeWorkflow({ graph });
+
+    expect(result.success).toBe(true);
+    expect(result.results.condition_node?.success).toBe(true);
+    expect(result.results.true_node).toBeUndefined();
+    expect(result.results.false_node?.success).toBe(true);
+  });
+
+  it("fans out to multiple targets on the selected condition branch", async () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createTriggerNode("trigger_1"),
+        createConditionNode("condition_node", true),
+        createConditionNode("true_node_a", true),
+        createConditionNode("true_node_b", true),
+        createConditionNode("false_node", true),
+      ],
+      edges: [
+        { id: "edge_t_c", source: "trigger_1", target: "condition_node" },
+        createConditionBranchEdge({
+          id: "edge_c_true_a",
+          source: "condition_node",
+          target: "true_node_a",
+          branch: "true",
+        }),
+        createConditionBranchEdge({
+          id: "edge_c_true_b",
+          source: "condition_node",
+          target: "true_node_b",
+          branch: "true",
+        }),
+        createConditionBranchEdge({
+          id: "edge_c_false",
+          source: "condition_node",
+          target: "false_node",
+          branch: "false",
+        }),
+      ],
+    });
+
+    const result = await executeWorkflow({ graph });
+
+    expect(result.success).toBe(true);
+    expect(result.results.true_node_a?.success).toBe(true);
+    expect(result.results.true_node_b?.success).toBe(true);
+    expect(result.results.false_node).toBeUndefined();
   });
 });

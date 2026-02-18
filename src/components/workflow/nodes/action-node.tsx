@@ -1,4 +1,8 @@
-import type { NodeProps } from "@xyflow/react";
+import {
+  type NodeProps,
+  Position,
+  useUpdateNodeInternals,
+} from "@xyflow/react";
 import { useAtomValue } from "jotai";
 import {
   AlertTriangle,
@@ -19,6 +23,7 @@ import {
 } from "@/client/lib/integrations-store";
 import {
   type ExecutionLogEntry,
+  edgesAtom,
   executionLogsAtom,
   pendingIntegrationNodesAtom,
   selectedExecutionIdAtom,
@@ -36,6 +41,7 @@ import {
   parseTimestampWithTimezone,
   resolveWaitUntil,
 } from "@/shared/utils/wait-time";
+import { normalizeConditionBranch } from "@/shared/workflow/condition-branch";
 
 type WaitPreviewData = {
   countdown: string;
@@ -490,15 +496,36 @@ type ActionNodeProps = NodeProps & {
   id: string;
 };
 
+const CONDITION_TRUE_HANDLE_TOP = "38%";
+const CONDITION_FALSE_HANDLE_TOP = "62%";
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Complex UI logic with multiple conditions including disabled state
 export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
+  const updateNodeInternals = useUpdateNodeInternals();
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
+  const edges = useAtomValue(edgesAtom);
   const executionLogs = useAtomValue(executionLogsAtom);
   const pendingIntegrationNodes = useAtomValue(pendingIntegrationNodesAtom);
   const availableIntegrationIds = useAtomValue(integrationIdsAtom);
   const integrationsLoaded = useAtomValue(integrationsLoadedAtom);
   const nodeLog = executionLogs[id];
   const actionType = readConfigString(data?.config, "actionType");
+  const isConditionAction = actionType === "Condition";
+  const conditionBranchOccupancy = useMemo(
+    () => ({
+      true: edges.some(
+        (edge) =>
+          edge.source === id &&
+          normalizeConditionBranch(edge.sourceHandle) === "true"
+      ),
+      false: edges.some(
+        (edge) =>
+          edge.source === id &&
+          normalizeConditionBranch(edge.sourceHandle) === "false"
+      ),
+    }),
+    [edges, id]
+  );
   const runtimeWaitPreview = useRuntimeWaitPreview(
     actionType,
     selectedExecutionId,
@@ -506,6 +533,14 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   );
   const configWaitPreview = useWaitPreview(actionType, data?.config);
   const waitPreview = runtimeWaitPreview ?? configWaitPreview;
+
+  useEffect(() => {
+    if (!isConditionAction) {
+      return;
+    }
+
+    updateNodeInternals(id);
+  }, [id, isConditionAction, updateNodeInternals]);
 
   if (!data) {
     return null;
@@ -608,7 +643,31 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
         isDisabled && "opacity-50"
       )}
       data-testid={`action-node-${id}`}
-      handles={{ target: true, source: true }}
+      handles={{
+        target: true,
+        source: isConditionAction
+          ? [
+              {
+                id: "true",
+                position: Position.Right,
+                style: {
+                  top: CONDITION_TRUE_HANDLE_TOP,
+                  width: 12,
+                  height: 12,
+                },
+              },
+              {
+                id: "false",
+                position: Position.Right,
+                style: {
+                  top: CONDITION_FALSE_HANDLE_TOP,
+                  width: 12,
+                  height: 12,
+                },
+              },
+            ]
+          : true,
+      }}
       status={status}
     >
       {/* Disabled badge in top left */}
@@ -627,6 +686,16 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
       {/* Status indicator badge in top right */}
       <StatusBadge status={status} />
+      {isConditionAction && !conditionBranchOccupancy.true && (
+        <div className="pointer-events-none absolute top-[38%] -right-12 -translate-y-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none">
+          True
+        </div>
+      )}
+      {isConditionAction && !conditionBranchOccupancy.false && (
+        <div className="pointer-events-none absolute top-[62%] -right-12 -translate-y-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none">
+          False
+        </div>
+      )}
 
       <div className="flex flex-col items-center justify-center gap-3 p-6">
         {hasGeneratedImage

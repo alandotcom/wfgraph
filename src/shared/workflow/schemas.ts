@@ -108,6 +108,9 @@ export const workflowEdgeAttributesSchema = z
     id: z.string().trim().min(1),
     source: z.string().trim().min(1),
     target: z.string().trim().min(1),
+    sourceHandle: z.string().trim().min(1).nullable().optional(),
+    targetHandle: z.string().trim().min(1).nullable().optional(),
+    data: z.record(z.string(), z.unknown()).optional(),
   })
   .loose();
 

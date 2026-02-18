@@ -7,13 +7,16 @@ import { evaluateCelBooleanExpression } from "@/backend/lib/cel/environment";
 import { getAppLogger } from "@/backend/lib/logger";
 import { getErrorMessageAsync } from "@/shared/utils";
 import { resolveWaitUntil } from "@/shared/utils/wait-time";
+import { normalizeConditionBranch } from "@/shared/workflow/condition-branch";
 import { toWorkflowGraphData } from "@/shared/workflow/graph";
 import {
   evaluateWorkflowTrigger,
   resolveWorkflowTriggerDefinition,
 } from "@/shared/workflow/trigger-registry";
 import type {
+  ConditionBranch,
   SerializedWorkflowGraph,
+  WorkflowEdge,
   WorkflowNode,
 } from "@/shared/workflow/types";
 import {
@@ -148,6 +151,17 @@ function readConditionValue(value: unknown): boolean | undefined {
     return undefined;
   }
   return typeof value.condition === "boolean" ? value.condition : undefined;
+}
+
+function getConditionNextNodeIds(input: {
+  edges: WorkflowEdge[];
+  branch: ConditionBranch;
+}): string[] {
+  return input.edges
+    .filter(
+      (edge) => normalizeConditionBranch(edge.sourceHandle) === input.branch
+    )
+    .map((edge) => edge.target);
 }
 
 function mergeConditionContextValue(
@@ -1019,12 +1033,12 @@ export async function executeWorkflow(
 
   // Build node and edge maps
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-  const edgesBySource = new Map<string, string[]>();
+  const edgesBySource = new Map<string, WorkflowEdge[]>();
   const edgesByTarget = new Map<string, string[]>();
   for (const edge of edges) {
-    const targets = edgesBySource.get(edge.source) || [];
-    targets.push(edge.target);
-    edgesBySource.set(edge.source, targets);
+    const sourceEdges = edgesBySource.get(edge.source) || [];
+    sourceEdges.push(edge);
+    edgesBySource.set(edge.source, sourceEdges);
 
     const sources = edgesByTarget.get(edge.target) || [];
     sources.push(edge.source);
@@ -1073,7 +1087,7 @@ export async function executeWorkflow(
 
   function getDeterministicTerminalOutput() {
     const terminalNodeIds = nodes
-      .filter((node) => (edgesBySource.get(node.id) ?? []).length === 0)
+      .filter((node) => (edgesBySource.get(node.id)?.length ?? 0) === 0)
       .map((node) => node.id)
       .toSorted((a, b) => a.localeCompare(b));
 
@@ -1166,7 +1180,9 @@ export async function executeWorkflow(
       completedNodes.add(nodeId);
       downstreamReadyNodes.add(nodeId);
 
-      const nextNodes = edgesBySource.get(nodeId) || [];
+      const nextNodes = (edgesBySource.get(nodeId) || []).map(
+        (edge) => edge.target
+      );
       await Promise.all(
         nextNodes.map((nextNodeId) => executeNode(nextNodeId, nextCallStack))
       );
@@ -1463,34 +1479,43 @@ export async function executeWorkflow(
           node.data.config?.actionType === "Condition";
 
         if (isConditionNode && shouldContinueDownstream) {
-          // For condition nodes, only execute next nodes if condition is true
           const conditionResult = readConditionValue(result.data);
           namedNodeLogger.debug("Condition node result", {
             conditionResult,
           });
 
-          if (conditionResult === true) {
-            const nextNodes = edgesBySource.get(nodeId) || [];
+          if (conditionResult !== true && conditionResult !== false) {
             namedNodeLogger.debug(
-              "Condition true, executing downstream nodes in parallel",
+              "Condition result missing boolean value, skipping downstream nodes"
+            );
+          } else {
+            const nextBranch: ConditionBranch =
+              conditionResult === true ? "true" : "false";
+            const outgoingEdges = edgesBySource.get(nodeId) || [];
+            const nextNodes = getConditionNextNodeIds({
+              edges: outgoingEdges,
+              branch: nextBranch,
+            });
+            namedNodeLogger.debug(
+              "Condition branch selected, executing downstream nodes in parallel",
               {
+                selectedBranch: nextBranch,
                 nextNodeCount: nextNodes.length,
                 nextNodeIds: nextNodes,
               }
             );
-            // Execute all next nodes in parallel
             downstreamReadyNodes.add(nodeId);
             await Promise.all(
               nextNodes.map((nextNodeId) =>
                 executeNode(nextNodeId, nextCallStack)
               )
             );
-          } else {
-            namedNodeLogger.debug("Condition false, skipping downstream nodes");
           }
         } else if (shouldContinueDownstream) {
           // For non-condition nodes, execute all next nodes in parallel
-          const nextNodes = edgesBySource.get(nodeId) || [];
+          const nextNodes = (edgesBySource.get(nodeId) || []).map(
+            (edge) => edge.target
+          );
           namedNodeLogger.debug("Executing downstream nodes in parallel", {
             nextNodeCount: nextNodes.length,
             nextNodeIds: nextNodes,

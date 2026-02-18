@@ -1,5 +1,5 @@
 import { Handle, Position } from "@xyflow/react";
-import type { ComponentProps } from "react";
+import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { AnimatedBorder } from "@/components/ui/animated-border";
 import {
   Card,
@@ -14,16 +14,50 @@ import { cn } from "@/shared/utils";
 
 export type NodeProps = ComponentProps<typeof Card> & {
   handles: {
-    target: boolean;
-    source: boolean;
+    target: boolean | NodeHandleConfig[];
+    source: boolean | NodeHandleConfig[];
   };
   status?: "idle" | "running" | "success" | "error" | "cancelled";
 };
 
+type NodeHandleConfig = {
+  id?: string;
+  position: Position;
+  style?: CSSProperties;
+};
+
+function renderHandles(
+  handleType: "source" | "target",
+  config: boolean | NodeHandleConfig[]
+): ReactNode {
+  if (config === false) {
+    return null;
+  }
+
+  if (config === true) {
+    return (
+      <Handle
+        position={handleType === "source" ? Position.Right : Position.Left}
+        type={handleType}
+      />
+    );
+  }
+
+  return config.map((handleConfig, index) => (
+    <Handle
+      id={handleConfig.id}
+      key={`${handleType}-${handleConfig.id ?? handleConfig.position}-${index}`}
+      position={handleConfig.position}
+      style={handleConfig.style}
+      type={handleType}
+    />
+  ));
+}
+
 export const Node = ({ handles, className, status, ...props }: NodeProps) => (
   <Card
     className={cn(
-      "node-container relative size-full h-auto w-sm gap-0 rounded-md bg-card p-0 transition-all duration-200",
+      "node-container relative size-full h-auto w-sm gap-0 overflow-visible rounded-md bg-card p-0 transition-all duration-200",
       status === "success" && "border-2 border-green-500",
       status === "error" && "border-2 border-red-500",
       status === "cancelled" && "border-2 border-slate-500",
@@ -32,8 +66,8 @@ export const Node = ({ handles, className, status, ...props }: NodeProps) => (
     {...props}
   >
     {status === "running" && <AnimatedBorder />}
-    {handles.target && <Handle position={Position.Left} type="target" />}
-    {handles.source && <Handle position={Position.Right} type="source" />}
+    {renderHandles("target", handles.target)}
+    {renderHandles("source", handles.source)}
     {props.children}
   </Card>
 );

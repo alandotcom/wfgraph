@@ -42,14 +42,23 @@ const Temporary = ({
 
 const getHandleCoordsByPosition = (
   node: InternalNode,
-  handlePosition: Position
+  handlePosition: Position,
+  handleId?: string | null
 ) => {
   // Choose the handle type based on position - Left is for target, Right is for source
   const handleType = handlePosition === Position.Left ? "target" : "source";
 
-  const handle = node.internals.handleBounds?.[handleType]?.find(
-    (h) => h.position === handlePosition
-  );
+  const handles = node.internals.handleBounds?.[handleType];
+  if (!(handles && handles.length > 0)) {
+    return [0, 0] as const;
+  }
+
+  const handle =
+    (handleId
+      ? handles.find((candidate) => (candidate.id ?? null) === handleId)
+      : undefined) ??
+    handles.find((candidate) => candidate.position === handlePosition) ??
+    handles[0];
 
   if (!handle) {
     return [0, 0] as const;
@@ -86,12 +95,14 @@ const getHandleCoordsByPosition = (
 
 const getEdgeParams = (
   source: InternalNode,
-  target: InternalNode
+  target: InternalNode,
+  sourceHandle?: string | null,
+  targetHandle?: string | null
 ) => {
   const sourcePos = Position.Right;
-  const [sx, sy] = getHandleCoordsByPosition(source, sourcePos);
+  const [sx, sy] = getHandleCoordsByPosition(source, sourcePos, sourceHandle);
   const targetPos = Position.Left;
-  const [tx, ty] = getHandleCoordsByPosition(target, targetPos);
+  const [tx, ty] = getHandleCoordsByPosition(target, targetPos, targetHandle);
 
   return {
     sx,
@@ -103,7 +114,15 @@ const getEdgeParams = (
   };
 };
 
-const Animated = ({ id, source, target, style, selected }: EdgeProps) => {
+const Animated = ({
+  id,
+  source,
+  sourceHandleId,
+  target,
+  targetHandleId,
+  style,
+  selected,
+}: EdgeProps) => {
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
 
@@ -113,7 +132,9 @@ const Animated = ({ id, source, target, style, selected }: EdgeProps) => {
 
   const { sx, sy, tx, ty, sourcePos, targetPos } = getEdgeParams(
     sourceNode,
-    targetNode
+    targetNode,
+    sourceHandleId,
+    targetHandleId
   );
 
   const [edgePath] = getBezierPath({

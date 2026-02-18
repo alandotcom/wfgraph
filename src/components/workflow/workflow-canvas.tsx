@@ -40,6 +40,10 @@ import {
 } from "@/client/lib/workflow-store";
 import { Edge } from "@/components/flow-elements/edge";
 import { Panel } from "@/components/flow-elements/panel";
+import {
+  isConditionActionNode,
+  normalizeConditionBranch,
+} from "@/shared/workflow/condition-branch";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
 import { TriggerNode } from "./nodes/trigger-node";
@@ -96,6 +100,7 @@ export function WorkflowCanvas() {
 
   const connectingNodeId = useRef<string | null>(null);
   const connectingHandleType = useRef<"source" | "target" | null>(null);
+  const connectingHandleId = useRef<string | null>(null);
   const justCreatedNodeFromConnection = useRef(false);
   const viewportInitialized = useRef(false);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
@@ -264,11 +269,59 @@ export function WorkflowCanvas() {
     []
   );
 
+  const inferConditionBranch = useCallback(
+    (sourceNodeId: string): "true" | "false" => {
+      const outgoing = edges.filter((edge) => edge.source === sourceNodeId);
+      const hasTrue = outgoing.some(
+        (edge) => normalizeConditionBranch(edge.sourceHandle) === "true"
+      );
+      if (!hasTrue) {
+        return "true";
+      }
+
+      const hasFalse = outgoing.some(
+        (edge) => normalizeConditionBranch(edge.sourceHandle) === "false"
+      );
+      if (!hasFalse) {
+        return "false";
+      }
+
+      return "true";
+    },
+    [edges]
+  );
+
+  const normalizeSourceHandleForConnection = useCallback(
+    (sourceNodeId: string, sourceHandle: string | null | undefined) => {
+      const explicitBranch = normalizeConditionBranch(sourceHandle);
+      if (explicitBranch) {
+        return explicitBranch;
+      }
+
+      const sourceNode = nodes.find((node) => node.id === sourceNodeId);
+      if (!isConditionActionNode(sourceNode)) {
+        return sourceHandle ?? null;
+      }
+
+      return inferConditionBranch(sourceNodeId);
+    },
+    [inferConditionBranch, nodes]
+  );
+
   const onConnect: OnConnect = useCallback(
     (connection: XYFlowConnection) => {
+      if (!(connection.source && connection.target)) {
+        return;
+      }
+
+      const sourceHandle = normalizeSourceHandleForConnection(
+        connection.source,
+        connection.sourceHandle
+      );
       const newEdge = {
         id: nanoid(),
         ...connection,
+        sourceHandle,
         type: "animated",
       };
       setEdges([...edges, newEdge]);
@@ -276,7 +329,13 @@ export function WorkflowCanvas() {
       // Trigger immediate autosave when nodes are connected
       triggerAutosave({ immediate: true });
     },
-    [edges, setEdges, setHasUnsavedChanges, triggerAutosave]
+    [
+      edges,
+      normalizeSourceHandleForConnection,
+      setEdges,
+      setHasUnsavedChanges,
+      triggerAutosave,
+    ]
   );
 
   const onNodeClick: NodeMouseHandler = useCallback(
@@ -290,6 +349,7 @@ export function WorkflowCanvas() {
     (_event: MouseEvent | TouchEvent, params: OnConnectStartParams) => {
       connectingNodeId.current = params.nodeId;
       connectingHandleType.current = params.handleType;
+      connectingHandleId.current = params.handleId ?? null;
     },
     []
   );
@@ -341,15 +401,20 @@ export function WorkflowCanvas() {
       ) {
         const sourceId = fromSource ? connectingId : targetNodeId;
         const targetId = fromSource ? targetNodeId : connectingId;
+        const sourceHandle = normalizeSourceHandleForConnection(
+          sourceId,
+          fromSource ? connectingHandleId.current : null
+        );
+        const targetHandle = fromSource ? null : connectingHandleId.current;
         onConnect({
           source: sourceId,
           target: targetId,
-          sourceHandle: null,
-          targetHandle: null,
+          sourceHandle,
+          targetHandle,
         });
       }
     },
-    [nodeHasHandle, onConnect]
+    [nodeHasHandle, normalizeSourceHandleForConnection, onConnect]
   );
 
   const handleConnectionToNewNode = useCallback(
@@ -413,11 +478,20 @@ export function WorkflowCanvas() {
 
       // Create connection from the source node to the new node
       const fromSource = connectingHandleType.current === "source";
+      const sourceId = fromSource ? sourceNodeId : newNode.id;
+      const targetId = fromSource ? newNode.id : sourceNodeId;
+      const sourceHandle = normalizeSourceHandleForConnection(
+        sourceId,
+        fromSource ? connectingHandleId.current : null
+      );
+      const targetHandle = fromSource ? null : connectingHandleId.current;
 
       const newEdge = {
         id: nanoid(),
-        source: fromSource ? sourceNodeId : newNode.id,
-        target: fromSource ? newNode.id : sourceNodeId,
+        source: sourceId,
+        target: targetId,
+        sourceHandle,
+        targetHandle,
         type: "animated",
       };
       setEdges([...edges, newEdge]);
@@ -442,6 +516,7 @@ export function WorkflowCanvas() {
       setActiveTab,
       setHasUnsavedChanges,
       triggerAutosave,
+      normalizeSourceHandleForConnection,
     ]
   );
 
@@ -467,6 +542,8 @@ export function WorkflowCanvas() {
 
       if (!target) {
         connectingNodeId.current = null;
+        connectingHandleType.current = null;
+        connectingHandleId.current = null;
         return;
       }
 
@@ -478,6 +555,7 @@ export function WorkflowCanvas() {
         handleConnectionToExistingNode(nodeElement);
         connectingNodeId.current = null;
         connectingHandleType.current = null;
+        connectingHandleId.current = null;
         return;
       }
 
@@ -487,6 +565,7 @@ export function WorkflowCanvas() {
 
       connectingNodeId.current = null;
       connectingHandleType.current = null;
+      connectingHandleId.current = null;
     },
     [
       getClientPosition,

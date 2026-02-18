@@ -15,6 +15,13 @@
       "when": 1771093178532,
       "tag": "0001_red_kinsey_walden",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771443114382,
+      "tag": "0002_bizarre_imperial_guard",
+      "breakpoints": true
     }
   ]
 }

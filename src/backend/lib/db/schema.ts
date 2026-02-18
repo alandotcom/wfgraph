@@ -57,7 +57,7 @@ export const workflowExecutions = pgTable(
       .$defaultFn(() => generateId()),
     workflowId: text("workflow_id")
       .notNull()
-      .references(() => workflows.id),
+      .references(() => workflows.id, { onDelete: "cascade" }),
     workflowRunId: text("workflow_run_id"),
     status: text("status")
       .notNull()
@@ -102,7 +102,7 @@ export const workflowExecutionLogs = pgTable(
       .$defaultFn(() => generateId()),
     executionId: text("execution_id")
       .notNull()
-      .references(() => workflowExecutions.id),
+      .references(() => workflowExecutions.id, { onDelete: "cascade" }),
     nodeId: text("node_id").notNull(),
     nodeName: text("node_name").notNull(),
     nodeType: text("node_type").notNull(),
@@ -136,10 +136,10 @@ export const workflowWaitStates = pgTable(
       .$defaultFn(() => generateId()),
     executionId: text("execution_id")
       .notNull()
-      .references(() => workflowExecutions.id),
+      .references(() => workflowExecutions.id, { onDelete: "cascade" }),
     workflowId: text("workflow_id")
       .notNull()
-      .references(() => workflows.id),
+      .references(() => workflows.id, { onDelete: "cascade" }),
     runId: text("run_id").notNull(),
     nodeId: text("node_id").notNull(),
     nodeName: text("node_name").notNull(),
@@ -179,8 +179,10 @@ export const workflowExecutionEvents = pgTable(
       .$defaultFn(() => generateId()),
     workflowId: text("workflow_id")
       .notNull()
-      .references(() => workflows.id),
-    executionId: text("execution_id").references(() => workflowExecutions.id),
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    executionId: text("execution_id").references(() => workflowExecutions.id, {
+      onDelete: "cascade",
+    }),
     eventType: text("event_type").notNull(),
     message: text("message").notNull(),
     // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level

@@ -33,6 +33,19 @@ function createActionNode(id = "action_1"): WorkflowNode {
   };
 }
 
+function createConditionActionNode(id = "condition_1"): WorkflowNode {
+  return {
+    id,
+    type: "action",
+    position: { x: 100, y: 100 },
+    data: {
+      label: "Condition",
+      type: "action",
+      config: { actionType: "Condition", condition: true },
+    },
+  };
+}
+
 function createEdge(
   source: string,
   target: string,
@@ -42,6 +55,20 @@ function createEdge(
     id,
     source,
     target,
+  };
+}
+
+function createConditionEdge(
+  source: string,
+  target: string,
+  branch: "true" | "false",
+  id: string
+): WorkflowEdge {
+  return {
+    id,
+    source,
+    target,
+    sourceHandle: branch,
   };
 }
 
@@ -123,6 +150,78 @@ describe("validateWorkflowGraph", () => {
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.error).toContain("acyclic");
+    }
+  });
+
+  it("accepts condition edges with explicit true/false handles", () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createBaseTriggerNode("trigger_1"),
+        createConditionActionNode("condition_1"),
+        createActionNode("action_true"),
+        createActionNode("action_false"),
+      ],
+      edges: [
+        createEdge("trigger_1", "condition_1", "edge_trigger_condition"),
+        createConditionEdge(
+          "condition_1",
+          "action_true",
+          "true",
+          "edge_condition_true"
+        ),
+        createConditionEdge(
+          "condition_1",
+          "action_false",
+          "false",
+          "edge_condition_false"
+        ),
+      ],
+    });
+
+    const result = validateWorkflowGraph(graph);
+
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects condition edges without explicit branch handles", () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createBaseTriggerNode("trigger_1"),
+        createConditionActionNode("condition_1"),
+        createActionNode("action_true"),
+      ],
+      edges: [
+        createEdge("trigger_1", "condition_1", "edge_trigger_condition"),
+        createEdge("condition_1", "action_true", "edge_condition_unlabeled"),
+      ],
+    });
+
+    const result = validateWorkflowGraph(graph);
+
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.error).toContain('sourceHandle "true" or "false"');
+    }
+  });
+
+  it("rejects true/false handles emitted by non-condition nodes", () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createBaseTriggerNode("trigger_1"),
+        createActionNode("action_1"),
+        createActionNode("action_2"),
+      ],
+      edges: [
+        createEdge("trigger_1", "action_1", "edge_trigger_action"),
+        createConditionEdge("action_1", "action_2", "true", "edge_invalid"),
+      ],
+    });
+
+    const result = validateWorkflowGraph(graph);
+
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.error).toContain("Only Condition nodes");
     }
   });
 });
