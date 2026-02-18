@@ -358,7 +358,7 @@ export const PanelInner = () => {
       isActionTypeUpdate && Boolean(latestNode.data.config?.integrationId);
 
     const newConfig: Record<string, unknown> = {
-      ...(latestNode.data.config || {}),
+      ...latestNode.data.config,
       [key]: value,
       ...(shouldClearIntegration ? { integrationId: undefined } : {}),
     };

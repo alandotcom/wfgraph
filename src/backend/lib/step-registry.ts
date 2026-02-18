@@ -1,4 +1,8 @@
-import { getRuntimeAction } from "@/shared/workflow/action-registry";
+import {
+  getRuntimeAction,
+  type RuntimeActionExecuteInput,
+  type RuntimeActionResult,
+} from "@/shared/workflow/action-registry";
 
 type StepModule = Record<string, unknown>;
 
@@ -6,7 +10,9 @@ export type StepImporter = {
   importer: () => Promise<StepModule>;
   stepFunction: string;
   label?: string;
-  execute?: (input: Record<string, unknown>) => Promise<unknown> | unknown;
+  execute?: (
+    input: RuntimeActionExecuteInput
+  ) => RuntimeActionResult | Promise<RuntimeActionResult>;
 };
 
 const STEP_IMPORTERS: Record<string, StepImporter> = {

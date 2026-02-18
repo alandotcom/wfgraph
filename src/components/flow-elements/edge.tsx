@@ -76,7 +76,7 @@ const getHandleCoordsByPosition = (
       offsetY = handle.height;
       break;
     default:
-      throw new Error(`Invalid handle position: ${handlePosition}`);
+      throw new Error("Invalid handle position");
   }
 
   const x = node.internals.positionAbsolute.x + handle.x + offsetX;

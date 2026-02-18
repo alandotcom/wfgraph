@@ -45,7 +45,7 @@ export type WorkflowExecutionRuntime = {
   waitForEvent: (
     stepId: string,
     options: WaitForEventOptions
-  ) => Promise<unknown | null>;
+  ) => Promise<unknown>;
   runId?: string;
 };
 
@@ -309,7 +309,20 @@ function processTemplates(
             if (typeof data === "object") {
               return JSON.stringify(data);
             }
-            return String(data);
+            if (typeof data === "string") {
+              return data;
+            }
+            if (
+              typeof data === "number" ||
+              typeof data === "boolean" ||
+              typeof data === "bigint"
+            ) {
+              return `${data}`;
+            }
+            if (typeof data === "symbol") {
+              return data.toString();
+            }
+            return "";
           }
 
           // If data is null/undefined, return empty string instead of trying to access fields

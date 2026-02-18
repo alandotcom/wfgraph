@@ -89,7 +89,7 @@ function safeParseJson(text: string): unknown {
   }
 }
 
-async function getRequestLogBody(req: Request): Promise<unknown | undefined> {
+async function getRequestLogBody(req: Request): Promise<unknown> {
   if (!METHODS_WITH_BODY.has(req.method.toUpperCase())) {
     return;
   }
@@ -118,7 +118,7 @@ async function getRequestLogBody(req: Request): Promise<unknown | undefined> {
   };
 }
 
-async function getResponseLogBody(res: Response): Promise<unknown | undefined> {
+async function getResponseLogBody(res: Response): Promise<unknown> {
   const contentType = res.headers.get("content-type") ?? undefined;
   if (!isJsonContentType(contentType)) {
     return;

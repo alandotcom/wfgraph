@@ -71,7 +71,7 @@ type ExecutionEvent = {
 
 type WorkflowRunsProps = {
   isActive?: boolean;
-  onRefreshRef?: React.MutableRefObject<(() => Promise<void>) | null>;
+  onRefreshRef?: { current: (() => Promise<void>) | null };
   onStartRun?: (executionId: string) => void;
 };
 

@@ -94,6 +94,38 @@ function formatTriggerTime(date: Date, timeZone?: string): string {
   return `${parts.month} ${parts.day}, ${parts.year} ${parts.hour}:${parts.minute}${dayPeriod}${timezoneSuffix}`;
 }
 
+function serializeWaitConfigValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return `${value}`;
+  }
+
+  if (typeof value === "symbol") {
+    return value.toString();
+  }
+
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "";
+    }
+  }
+
+  return "";
+}
+
 function useWaitPreview(
   actionType: string,
   config: Record<string, unknown> | undefined
@@ -117,10 +149,10 @@ function useWaitPreview(
   const waitSignatureRef = useRef("");
   const waitSignature = [
     waitMode,
-    String(waitDuration ?? ""),
-    String(waitUntil ?? ""),
-    String(waitOffset ?? ""),
-    String(waitTimezone ?? ""),
+    serializeWaitConfigValue(waitDuration),
+    serializeWaitConfigValue(waitUntil),
+    serializeWaitConfigValue(waitOffset),
+    serializeWaitConfigValue(waitTimezone),
   ].join("|");
 
   if (shouldShowWaitPreview && waitSignatureRef.current !== waitSignature) {

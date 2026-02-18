@@ -138,7 +138,7 @@ const workflowExecutionRunningSchema = z
     cancelledWaits: z.number().optional(),
     simulated: z.boolean().optional(),
   })
-  .passthrough();
+  .loose();
 
 const workflowExecutionCancelledSchema = z
   .object({
@@ -150,7 +150,7 @@ const workflowExecutionCancelledSchema = z
     simulated: z.boolean().optional(),
     failedExecutions: z.array(z.string()).optional(),
   })
-  .passthrough();
+  .loose();
 
 const workflowExecutionIgnoredSchema = z
   .object({
@@ -160,7 +160,7 @@ const workflowExecutionIgnoredSchema = z
     reason: ignoredReasonSchema,
     eventTypePath: z.string().optional(),
   })
-  .passthrough();
+  .loose();
 
 const workflowExecutionResumedSchema = z
   .object({
@@ -169,7 +169,7 @@ const workflowExecutionResumedSchema = z
     dryRun: z.boolean().optional(),
     simulated: z.boolean().optional(),
   })
-  .passthrough();
+  .loose();
 
 const workflowExecuteResponseSchema = z.discriminatedUnion("status", [
   workflowExecutionRunningSchema,

@@ -188,7 +188,7 @@ export type IntegrationPlugin = {
  */
 export type ActionWithFullId = PluginAction & {
   id: string; // Full action ID: {integration}/{slug}
-  integration?: IntegrationType | string;
+  integration?: string;
   logoUrl?: string;
 };
 
@@ -259,9 +259,7 @@ export function getRuntimeActions(): RuntimeActionDefinition[] {
 /**
  * Get an integration plugin
  */
-export function getIntegration(
-  type: IntegrationType | string
-): IntegrationPlugin | undefined {
+export function getIntegration(type: string): IntegrationPlugin | undefined {
   return integrationRegistry.get(type as IntegrationType);
 }
 

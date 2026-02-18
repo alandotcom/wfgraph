@@ -62,14 +62,14 @@ const workflowTriggerNodeDataSchema = workflowNodeDataBaseSchema
     type: z.literal("trigger"),
     config: workflowTriggerConfigSchema.optional(),
   })
-  .passthrough();
+  .loose();
 
 const workflowNonTriggerNodeDataSchema = workflowNodeDataBaseSchema
   .extend({
     type: z.enum(["action", "add"]),
     config: z.record(z.string(), z.unknown()).optional(),
   })
-  .passthrough();
+  .loose();
 
 export const workflowNodeDataSchema = z.discriminatedUnion("type", [
   workflowTriggerNodeDataSchema,
@@ -101,7 +101,7 @@ export const workflowNodeAttributesSchema = z
       .optional(),
     data: workflowNodeDataSchema,
   })
-  .passthrough();
+  .loose();
 
 export const workflowEdgeAttributesSchema = z
   .object({
@@ -109,7 +109,7 @@ export const workflowEdgeAttributesSchema = z
     source: z.string().trim().min(1),
     target: z.string().trim().min(1),
   })
-  .passthrough();
+  .loose();
 
 export const serializedWorkflowNodeSchema = z
   .object({

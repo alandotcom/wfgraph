@@ -73,6 +73,24 @@ function getDisplayTextForTemplate(
   return `${displayLabel}.${field}`;
 }
 
+function insertTextAtSelection(text: string): boolean {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return false;
+  }
+
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  const textNode = document.createTextNode(text);
+  range.insertNode(textNode);
+  range.setStartAfter(textNode);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+
+  return true;
+}
+
 /**
  * An input component that renders template variables as styled badges
  * Converts {{@nodeId:DisplayName.field}} to badges showing "DisplayName.field"
@@ -511,7 +529,9 @@ export function TemplateBadgeInput({
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
     const text = e.clipboardData.getData("text/plain");
-    document.execCommand("insertText", false, text);
+    if (insertTextAtSelection(text)) {
+      handleInput();
+    }
   };
 
   // Update display only when needed (not while typing)

@@ -269,7 +269,7 @@ export async function startRovaServer(
     });
 
     let stopping = false;
-    const stop = () => {
+    const stop = async (): Promise<void> => {
       if (stopping) {
         return;
       }
@@ -277,20 +277,20 @@ export async function startRovaServer(
       stopping = true;
 
       try {
-        bunServer.stop(true);
+        await bunServer.stop(true);
       } catch (error) {
         logger.error("Failed to stop Bun server", { error });
       }
     };
 
-    const signalHandlers = new Map<string, () => void>();
+    const signalHandlers = new Map<string, () => Promise<void>>();
     if (options.installSignalHandlers !== false) {
       const signals = ["SIGINT", "SIGTERM"] as const;
       for (const signal of signals) {
-        const handler = () => {
+        const handler = async () => {
           logger.warn("Received shutdown signal", { signal });
           try {
-            stop();
+            await stop();
           } catch (error) {
             logger.error("Failed to stop server after signal", {
               error,
@@ -308,19 +308,17 @@ export async function startRovaServer(
     const handle: RovaServerHandle = {
       url: bunServer.url,
       port,
-      stop: () => {
+      stop: async () => {
         for (const [signal, handler] of signalHandlers.entries()) {
           process.off(signal, handler);
         }
         signalHandlers.clear();
-        stop();
+        await stop();
 
         if (rovaServerRuntimeState.activeHandle === handle) {
           rovaServerRuntimeState.activeHandle = null;
           rovaServerRuntimeState.activeKey = null;
         }
-
-        return Promise.resolve();
       },
     };
 

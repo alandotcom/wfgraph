@@ -74,6 +74,44 @@ function getDisplayTextForTemplate(
   return `${displayLabel}.${field}`;
 }
 
+function insertTextAtSelection(text: string): boolean {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return false;
+  }
+
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  const textNode = document.createTextNode(text);
+  range.insertNode(textNode);
+  range.setStartAfter(textNode);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+
+  return true;
+}
+
+function insertLineBreakAtSelection(): boolean {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return false;
+  }
+
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  const lineBreak = document.createElement("br");
+  const trailingText = document.createTextNode("");
+  range.insertNode(lineBreak);
+  lineBreak.parentNode?.insertBefore(trailingText, lineBreak.nextSibling);
+  range.setStart(trailingText, 0);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+
+  return true;
+}
+
 /**
  * A textarea component that renders template variables as styled badges
  * Converts {{@nodeId:DisplayName.field}} to badges showing "DisplayName.field"
@@ -275,7 +313,7 @@ export function TemplateBadgeTextarea({
         selection?.removeAllRanges();
         selection?.addRange(range);
         contentRef.current.focus();
-      } catch (e) {
+      } catch {
         // If positioning fails, just focus the element
         contentRef.current.focus();
       }
@@ -313,7 +351,7 @@ export function TemplateBadgeTextarea({
     let match;
 
     while ((match = pattern.exec(text)) !== null) {
-      const [fullMatch, , displayPart] = match;
+      const [fullMatch] = match;
       const matchStart = match.index;
 
       // Add text before the template (preserving line breaks)
@@ -616,14 +654,18 @@ export function TemplateBadgeTextarea({
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
     const text = e.clipboardData.getData("text/plain");
-    document.execCommand("insertText", false, text);
+    if (insertTextAtSelection(text)) {
+      handleInput();
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Handle Enter key to insert line breaks
     if (e.key === "Enter") {
       e.preventDefault();
-      document.execCommand("insertLineBreak");
+      if (insertLineBreakAtSelection()) {
+        handleInput();
+      }
     }
   };
 

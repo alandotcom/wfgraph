@@ -382,47 +382,58 @@ function resolveExpression(
 /**
  * Format a value for string interpolation
  */
+function formatScalarValue(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return `${value}`;
+  }
+
+  if (typeof value === "symbol") {
+    return value.toString();
+  }
+
+  return null;
+}
+
+function formatObjectValue(value: Record<string, unknown>): string {
+  const meaningfulKeys = ["title", "name", "id", "message"] as const;
+
+  for (const key of meaningfulKeys) {
+    const formatted = formatScalarValue(value[key]);
+    if (formatted !== null) {
+      return formatted;
+    }
+  }
+
+  return JSON.stringify(value, null, 2);
+}
+
 function formatValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "";
   }
 
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
+  const scalar = formatScalarValue(value);
+  if (scalar !== null) {
+    return scalar;
   }
 
   if (Array.isArray(value)) {
-    // Format arrays as comma-separated values
     return value.map(formatValue).join(", ");
   }
 
   if (typeof value === "object") {
-    // For objects, try to find a meaningful representation
-    const obj = value as Record<string, unknown>;
-
-    // Common fields to check for meaningful representation
-    if (obj.title) {
-      return String(obj.title);
-    }
-    if (obj.name) {
-      return String(obj.name);
-    }
-    if (obj.id) {
-      return String(obj.id);
-    }
-    if (obj.message) {
-      return String(obj.message);
-    }
-
-    // Otherwise return JSON
-    return JSON.stringify(value, null, 2);
+    return formatObjectValue(value as Record<string, unknown>);
   }
 
-  return String(value);
+  return "";
 }
 
 /**
@@ -506,7 +517,7 @@ export function getAvailableFields(nodeOutputs: NodeOutputs): Array<{
  * Recursively extract fields from an object
  */
 function extractFields(
-  obj: Record<string, unknown> | unknown,
+  obj: unknown,
   nodeLabel: string,
   fields: Array<{
     nodeLabel: string;
