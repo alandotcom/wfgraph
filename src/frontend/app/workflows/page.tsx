@@ -300,7 +300,11 @@ export default function WorkflowsPage() {
           });
         }
 
-        await Promise.all([loadWorkflows(), loadRuns()]);
+        await loadWorkflows();
+
+        if (action === "delete") {
+          await loadRuns();
+        }
       } catch (error) {
         console.error(`Failed to ${action} workflows:`, error);
         toast.error(`Failed to ${action} workflows`);
@@ -331,7 +335,7 @@ export default function WorkflowsPage() {
   }, []);
 
   const renderWorkflowContent = () => {
-    if (isLoadingWorkflows) {
+    if (isLoadingWorkflows && workflowRows.length === 0) {
       return (
         <div className="p-6 text-muted-foreground text-sm">
           Loading workflows...
@@ -405,7 +409,7 @@ export default function WorkflowsPage() {
                 </td>
                 <td className="px-2 py-3">
                   <span
-                    className={`inline-flex rounded border px-2 py-0.5 font-medium text-xs ${stateClass}`}
+                    className={`inline-flex rounded border px-2 py-0.5 font-medium text-xs transition-colors duration-200 ${stateClass}`}
                   >
                     {stateLabel}
                   </span>
@@ -448,7 +452,7 @@ export default function WorkflowsPage() {
   };
 
   const renderRunsContent = () => {
-    if (isLoadingRuns) {
+    if (isLoadingRuns && runs.length === 0) {
       return (
         <div className="p-6 text-muted-foreground text-sm">Loading runs...</div>
       );
