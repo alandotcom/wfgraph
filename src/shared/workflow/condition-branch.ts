@@ -47,16 +47,33 @@ export function isExplicitConditionBranch(
   return value === "true" || value === "false";
 }
 
+export function getConditionBranchDisplayLabel(value: unknown): string | null {
+  const branch = normalizeConditionBranch(value);
+  if (branch === "true") {
+    return "True";
+  }
+
+  if (branch === "false") {
+    return "False";
+  }
+
+  return null;
+}
+
+export function isConditionActionType(value: unknown): boolean {
+  const actionType = asTrimmedString(value);
+  if (!actionType) {
+    return false;
+  }
+
+  return actionType.toLowerCase() === "condition";
+}
+
 export function isConditionActionNode(node: WorkflowNode | undefined): boolean {
   if (!node || node.data.type !== "action") {
     return false;
   }
 
   const config = asRecord(node.data.config);
-  const actionType = asTrimmedString(config?.actionType);
-  if (!actionType) {
-    return false;
-  }
-
-  return actionType.toLowerCase() === "condition";
+  return isConditionActionType(config?.actionType);
 }

@@ -1,5 +1,6 @@
 import {
   BaseEdge,
+  EdgeLabelRenderer,
   type EdgeProps,
   getBezierPath,
   getSimpleBezierPath,
@@ -7,6 +8,7 @@ import {
   Position,
   useInternalNode,
 } from "@xyflow/react";
+import { getConditionBranchDisplayLabel } from "@/shared/workflow/condition-branch";
 
 const Temporary = ({
   id,
@@ -137,7 +139,7 @@ const Animated = ({
     targetHandleId
   );
 
-  const [edgePath] = getBezierPath({
+  const [edgePath, labelX, labelY] = getBezierPath({
     sourceX: sx,
     sourceY: sy,
     sourcePosition: sourcePos,
@@ -145,19 +147,34 @@ const Animated = ({
     targetY: ty,
     targetPosition: targetPos,
   });
+  const branchLabel = getConditionBranchDisplayLabel(sourceHandleId);
 
   return (
-    <BaseEdge
-      id={id}
-      path={edgePath}
-      style={{
-        ...style,
-        stroke: selected ? "var(--muted-foreground)" : "var(--border)",
-        strokeWidth: 2,
-        animation: "dashdraw 0.5s linear infinite",
-        strokeDasharray: 5,
-      }}
-    />
+    <>
+      <BaseEdge
+        id={id}
+        path={edgePath}
+        style={{
+          ...style,
+          stroke: selected ? "var(--muted-foreground)" : "var(--border)",
+          strokeWidth: 2,
+          animation: "dashdraw 0.5s linear infinite",
+          strokeDasharray: 5,
+        }}
+      />
+      {branchLabel && (
+        <EdgeLabelRenderer>
+          <div
+            className="pointer-events-none absolute rounded-sm border bg-background px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground leading-none"
+            style={{
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            }}
+          >
+            {branchLabel}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
   );
 };
 
