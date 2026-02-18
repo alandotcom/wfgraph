@@ -24,17 +24,23 @@ function createConditionNode(config: Record<string, unknown>): WorkflowNode {
 
 describe("validateWorkflowConditionConfigs", () => {
   it("accepts valid structured condition config", () => {
-    const model = createDefaultConditionModel({
-      path: "appointment.startsAt",
-      label: "appointment.startsAt",
-      type: "timestamp",
-    });
+    const model = createDefaultConditionModel(
+      {
+        path: "appointment.startsAt",
+        label: "appointment.startsAt",
+        type: "timestamp",
+      },
+      {
+        groupId: "group-1",
+        conditionId: "condition-1",
+      }
+    );
 
     const result = validateWorkflowConditionConfigs([
       createConditionNode({
         conditionModel: serializeConditionModel(model),
         condition:
-          "appointment.startsAt > now && appointment.startsAt < now + days(1)",
+          "((appointment.startsAt > now && appointment.startsAt < now + days(1)))",
       }),
     ]);
 
@@ -52,11 +58,17 @@ describe("validateWorkflowConditionConfigs", () => {
   });
 
   it("rejects mismatched compiled CEL", () => {
-    const model = createDefaultConditionModel({
-      path: "appointment.startsAt",
-      label: "appointment.startsAt",
-      type: "timestamp",
-    });
+    const model = createDefaultConditionModel(
+      {
+        path: "appointment.startsAt",
+        label: "appointment.startsAt",
+        type: "timestamp",
+      },
+      {
+        groupId: "group-1",
+        conditionId: "condition-1",
+      }
+    );
 
     const result = validateWorkflowConditionConfigs([
       createConditionNode({

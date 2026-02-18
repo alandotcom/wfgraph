@@ -2,6 +2,8 @@ export type ConditionFieldType = "timestamp" | "string" | "number" | "boolean";
 
 export type TimeUnit = "minutes" | "hours" | "days" | "weeks";
 
+export type GroupLogic = "and" | "or";
+
 export type TimestampRelativeOperator =
   | "within_next"
   | "more_than_from_now"
@@ -38,48 +40,60 @@ export type ConditionFieldDefinition = {
   type: ConditionFieldType;
 };
 
-type ConditionModelBase = {
-  version: 1;
+type ConditionRuleBase = {
+  id: string;
   field: string;
   fieldType: ConditionFieldType;
 };
 
-export type TimestampRelativeConditionModel = ConditionModelBase & {
+export type TimestampRelativeConditionRule = ConditionRuleBase & {
   fieldType: "timestamp";
   operator: TimestampRelativeOperator;
   amount: number;
   unit: TimeUnit;
 };
 
-export type TimestampAbsoluteConditionModel = ConditionModelBase & {
+export type TimestampAbsoluteConditionRule = ConditionRuleBase & {
   fieldType: "timestamp";
   operator: TimestampAbsoluteOperator;
-  date: string;
+  dateTime: string;
 };
 
-export type StringConditionModel = ConditionModelBase & {
+export type StringConditionRule = ConditionRuleBase & {
   fieldType: "string";
   operator: StringOperator;
   value: string;
 };
 
-export type NumberConditionModel = ConditionModelBase & {
+export type NumberConditionRule = ConditionRuleBase & {
   fieldType: "number";
   operator: NumberOperator;
   value: number;
 };
 
-export type BooleanConditionModel = ConditionModelBase & {
+export type BooleanConditionRule = ConditionRuleBase & {
   fieldType: "boolean";
   operator: BooleanOperator;
 };
 
-export type ConditionModel =
-  | TimestampRelativeConditionModel
-  | TimestampAbsoluteConditionModel
-  | StringConditionModel
-  | NumberConditionModel
-  | BooleanConditionModel;
+export type ConditionRule =
+  | TimestampRelativeConditionRule
+  | TimestampAbsoluteConditionRule
+  | StringConditionRule
+  | NumberConditionRule
+  | BooleanConditionRule;
+
+export type ConditionGroup = {
+  id: string;
+  logic: GroupLogic;
+  conditions: ConditionRule[];
+};
+
+export type ConditionModel = {
+  version: 2;
+  groupLogic: GroupLogic;
+  groups: ConditionGroup[];
+};
 
 export type ConditionModelParseResult =
   | { valid: true; model: ConditionModel }
@@ -89,7 +103,13 @@ export type ConditionCompileResult =
   | { valid: true; expression: string }
   | { valid: false; error: string };
 
-const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+export const GROUP_LOGIC_OPTIONS: Array<{
+  value: GroupLogic;
+  label: string;
+}> = [
+  { value: "and", label: "AND" },
+  { value: "or", label: "OR" },
+];
 
 export const TIMESTAMP_OPERATOR_OPTIONS: Array<{
   value: TimestampOperator;
@@ -143,6 +163,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function isGroupLogic(value: unknown): value is GroupLogic {
+  return value === "and" || value === "or";
+}
+
 function isPositiveInteger(value: unknown): value is number {
   return (
     typeof value === "number" &&
@@ -182,16 +206,16 @@ function isTimestampAbsoluteOperator(
   return value === "before" || value === "after";
 }
 
-export function isTimestampRelativeConditionModel(
-  model: TimestampRelativeConditionModel | TimestampAbsoluteConditionModel
-): model is TimestampRelativeConditionModel {
-  return isTimestampRelativeOperator(model.operator);
+export function isTimestampRelativeConditionRule(
+  rule: TimestampRelativeConditionRule | TimestampAbsoluteConditionRule
+): rule is TimestampRelativeConditionRule {
+  return isTimestampRelativeOperator(rule.operator);
 }
 
-export function isTimestampAbsoluteConditionModel(
-  model: TimestampRelativeConditionModel | TimestampAbsoluteConditionModel
-): model is TimestampAbsoluteConditionModel {
-  return isTimestampAbsoluteOperator(model.operator);
+export function isTimestampAbsoluteConditionRule(
+  rule: TimestampRelativeConditionRule | TimestampAbsoluteConditionRule
+): rule is TimestampAbsoluteConditionRule {
+  return isTimestampAbsoluteOperator(rule.operator);
 }
 
 function isTimeUnit(value: unknown): value is TimeUnit {
@@ -215,6 +239,20 @@ function isBooleanOperator(value: unknown): value is BooleanOperator {
   return value === "is_true" || value === "is_false";
 }
 
+function isDateTimeString(value: unknown): value is string {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed.includes("T")) {
+    return false;
+  }
+
+  const parsed = new Date(trimmed);
+  return !Number.isNaN(parsed.getTime());
+}
+
 function toOperatorExpression(operator: NumberOperator): string {
   switch (operator) {
     case "equals":
@@ -234,7 +272,222 @@ function toOperatorExpression(operator: NumberOperator): string {
   }
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Parsing validates each supported model shape explicitly for clear error messages.
+function parseTimestampConditionRule(input: {
+  id: string;
+  field: string;
+  operator: unknown;
+  amount: unknown;
+  unit: unknown;
+  dateTime: unknown;
+}): { valid: true; rule: ConditionRule } | { valid: false; error: string } {
+  if (!isTimestampOperator(input.operator)) {
+    return { valid: false, error: "Timestamp operator is invalid" };
+  }
+
+  if (isTimestampRelativeOperator(input.operator)) {
+    if (!isPositiveInteger(input.amount)) {
+      return {
+        valid: false,
+        error: "Timestamp amount must be a positive integer",
+      };
+    }
+
+    if (!isTimeUnit(input.unit)) {
+      return { valid: false, error: "Timestamp unit is invalid" };
+    }
+
+    return {
+      valid: true,
+      rule: {
+        id: input.id,
+        field: input.field,
+        fieldType: "timestamp",
+        operator: input.operator,
+        amount: input.amount,
+        unit: input.unit,
+      },
+    };
+  }
+
+  if (!isDateTimeString(input.dateTime)) {
+    return {
+      valid: false,
+      error: "Timestamp absolute operators require a valid date-time",
+    };
+  }
+
+  return {
+    valid: true,
+    rule: {
+      id: input.id,
+      field: input.field,
+      fieldType: "timestamp",
+      operator: input.operator,
+      dateTime: input.dateTime.trim(),
+    },
+  };
+}
+
+function parseStringConditionRule(input: {
+  id: string;
+  field: string;
+  operator: unknown;
+  value: unknown;
+}): { valid: true; rule: ConditionRule } | { valid: false; error: string } {
+  if (!isStringOperator(input.operator)) {
+    return { valid: false, error: "String operator is invalid" };
+  }
+
+  if (typeof input.value !== "string") {
+    return { valid: false, error: "String conditions require a text value" };
+  }
+
+  return {
+    valid: true,
+    rule: {
+      id: input.id,
+      field: input.field,
+      fieldType: "string",
+      operator: input.operator,
+      value: input.value,
+    },
+  };
+}
+
+function parseNumberConditionRule(input: {
+  id: string;
+  field: string;
+  operator: unknown;
+  value: unknown;
+}): { valid: true; rule: ConditionRule } | { valid: false; error: string } {
+  if (!isNumberOperator(input.operator)) {
+    return { valid: false, error: "Number operator is invalid" };
+  }
+
+  if (typeof input.value !== "number" || !Number.isFinite(input.value)) {
+    return {
+      valid: false,
+      error: "Number conditions require a finite numeric value",
+    };
+  }
+
+  return {
+    valid: true,
+    rule: {
+      id: input.id,
+      field: input.field,
+      fieldType: "number",
+      operator: input.operator,
+      value: input.value,
+    },
+  };
+}
+
+function parseBooleanConditionRule(input: {
+  id: string;
+  field: string;
+  operator: unknown;
+}): { valid: true; rule: ConditionRule } | { valid: false; error: string } {
+  if (!isBooleanOperator(input.operator)) {
+    return { valid: false, error: "Boolean operator is invalid" };
+  }
+
+  return {
+    valid: true,
+    rule: {
+      id: input.id,
+      field: input.field,
+      fieldType: "boolean",
+      operator: input.operator,
+    },
+  };
+}
+
+function parseConditionRule(
+  input: unknown
+): { valid: true; rule: ConditionRule } | { valid: false; error: string } {
+  if (!isRecord(input)) {
+    return { valid: false, error: "Condition must be an object" };
+  }
+
+  if (typeof input.id !== "string" || input.id.trim().length === 0) {
+    return { valid: false, error: "Condition id is required" };
+  }
+
+  if (typeof input.field !== "string" || input.field.trim().length === 0) {
+    return { valid: false, error: "Condition field is required" };
+  }
+
+  if (!isConditionFieldType(input.fieldType)) {
+    return { valid: false, error: "Condition field type is invalid" };
+  }
+
+  const normalized = {
+    id: input.id,
+    field: input.field.trim(),
+    operator: input.operator,
+    value: input.value,
+    amount: input.amount,
+    unit: input.unit,
+    dateTime: input.dateTime,
+  };
+
+  if (input.fieldType === "timestamp") {
+    return parseTimestampConditionRule(normalized);
+  }
+
+  if (input.fieldType === "string") {
+    return parseStringConditionRule(normalized);
+  }
+
+  if (input.fieldType === "number") {
+    return parseNumberConditionRule(normalized);
+  }
+
+  return parseBooleanConditionRule(normalized);
+}
+
+function parseConditionGroup(
+  input: unknown
+): { valid: true; group: ConditionGroup } | { valid: false; error: string } {
+  if (!isRecord(input)) {
+    return { valid: false, error: "Group must be an object" };
+  }
+
+  if (typeof input.id !== "string" || input.id.trim().length === 0) {
+    return { valid: false, error: "Group id is required" };
+  }
+
+  if (!isGroupLogic(input.logic)) {
+    return { valid: false, error: "Group logic is invalid" };
+  }
+
+  if (!Array.isArray(input.conditions) || input.conditions.length === 0) {
+    return {
+      valid: false,
+      error: "Each group must contain at least one condition",
+    };
+  }
+
+  const parsedConditions: ConditionRule[] = [];
+  for (const condition of input.conditions) {
+    const parsedCondition = parseConditionRule(condition);
+    if (!parsedCondition.valid) {
+      return parsedCondition;
+    }
+    parsedConditions.push(parsedCondition.rule);
+  }
+
+  return {
+    valid: true,
+    group: {
+      id: input.id,
+      logic: input.logic,
+      conditions: parsedConditions,
+    },
+  };
+}
+
 export function parseConditionModel(input: unknown): ConditionModelParseResult {
   let parsed: unknown = input;
 
@@ -255,126 +508,36 @@ export function parseConditionModel(input: unknown): ConditionModelParseResult {
     return { valid: false, error: "Condition model must be an object" };
   }
 
-  if (parsed.version !== 1) {
-    return { valid: false, error: "Condition model version must be 1" };
+  if (parsed.version !== 2) {
+    return { valid: false, error: "Condition model version must be 2" };
   }
 
-  if (typeof parsed.field !== "string" || parsed.field.trim().length === 0) {
-    return { valid: false, error: "Condition field is required" };
+  if (!isGroupLogic(parsed.groupLogic)) {
+    return { valid: false, error: "Condition model group logic is invalid" };
   }
 
-  if (!isConditionFieldType(parsed.fieldType)) {
-    return { valid: false, error: "Condition field type is invalid" };
-  }
-
-  if (parsed.fieldType === "timestamp") {
-    if (!isTimestampOperator(parsed.operator)) {
-      return { valid: false, error: "Timestamp operator is invalid" };
-    }
-
-    if (isTimestampRelativeOperator(parsed.operator)) {
-      if (!isPositiveInteger(parsed.amount)) {
-        return {
-          valid: false,
-          error: "Timestamp amount must be a positive integer",
-        };
-      }
-
-      if (!isTimeUnit(parsed.unit)) {
-        return { valid: false, error: "Timestamp unit is invalid" };
-      }
-
-      return {
-        valid: true,
-        model: {
-          version: 1,
-          field: parsed.field,
-          fieldType: "timestamp",
-          operator: parsed.operator,
-          amount: parsed.amount,
-          unit: parsed.unit,
-        },
-      };
-    }
-
-    if (
-      typeof parsed.date !== "string" ||
-      !DATE_ONLY_PATTERN.test(parsed.date.trim())
-    ) {
-      return {
-        valid: false,
-        error: "Timestamp absolute operators require a YYYY-MM-DD date",
-      };
-    }
-
+  if (!Array.isArray(parsed.groups) || parsed.groups.length === 0) {
     return {
-      valid: true,
-      model: {
-        version: 1,
-        field: parsed.field,
-        fieldType: "timestamp",
-        operator: parsed.operator,
-        date: parsed.date.trim(),
-      },
+      valid: false,
+      error: "Condition model must contain at least one group",
     };
   }
 
-  if (parsed.fieldType === "string") {
-    if (!isStringOperator(parsed.operator)) {
-      return { valid: false, error: "String operator is invalid" };
+  const parsedGroups: ConditionGroup[] = [];
+  for (const group of parsed.groups) {
+    const parsedGroup = parseConditionGroup(group);
+    if (!parsedGroup.valid) {
+      return parsedGroup;
     }
-
-    if (typeof parsed.value !== "string") {
-      return { valid: false, error: "String conditions require a text value" };
-    }
-
-    return {
-      valid: true,
-      model: {
-        version: 1,
-        field: parsed.field,
-        fieldType: "string",
-        operator: parsed.operator,
-        value: parsed.value,
-      },
-    };
-  }
-
-  if (parsed.fieldType === "number") {
-    if (!isNumberOperator(parsed.operator)) {
-      return { valid: false, error: "Number operator is invalid" };
-    }
-
-    if (typeof parsed.value !== "number" || !Number.isFinite(parsed.value)) {
-      return {
-        valid: false,
-        error: "Number conditions require a finite numeric value",
-      };
-    }
-
-    return {
-      valid: true,
-      model: {
-        version: 1,
-        field: parsed.field,
-        fieldType: "number",
-        operator: parsed.operator,
-        value: parsed.value,
-      },
-    };
-  }
-
-  if (!isBooleanOperator(parsed.operator)) {
-    return { valid: false, error: "Boolean operator is invalid" };
+    parsedGroups.push(parsedGroup.group);
   }
 
   return {
     valid: true,
     model: {
-      version: 1,
-      field: parsed.field,
-      fieldType: "boolean",
-      operator: parsed.operator,
+      version: 2,
+      groupLogic: parsed.groupLogic,
+      groups: parsedGroups,
     },
   };
 }
@@ -383,12 +546,13 @@ export function serializeConditionModel(model: ConditionModel): string {
   return JSON.stringify(model);
 }
 
-export function createDefaultConditionModel(
-  field: ConditionFieldDefinition
-): ConditionModel {
+export function createDefaultConditionRule(
+  field: ConditionFieldDefinition,
+  id = "rule"
+): ConditionRule {
   if (field.type === "timestamp") {
     return {
-      version: 1,
+      id,
       field: field.path,
       fieldType: "timestamp",
       operator: "within_next",
@@ -399,7 +563,7 @@ export function createDefaultConditionModel(
 
   if (field.type === "number") {
     return {
-      version: 1,
+      id,
       field: field.path,
       fieldType: "number",
       operator: "equals",
@@ -409,7 +573,7 @@ export function createDefaultConditionModel(
 
   if (field.type === "boolean") {
     return {
-      version: 1,
+      id,
       field: field.path,
       fieldType: "boolean",
       operator: "is_true",
@@ -417,7 +581,7 @@ export function createDefaultConditionModel(
   }
 
   return {
-    version: 1,
+    id,
     field: field.path,
     fieldType: "string",
     operator: "equals",
@@ -425,113 +589,213 @@ export function createDefaultConditionModel(
   };
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Compiler keeps one branch per operator for deterministic CEL output.
-export function compileConditionModel(
-  model: ConditionModel
+export function createDefaultConditionModel(
+  field: ConditionFieldDefinition,
+  input?: { groupId?: string; conditionId?: string }
+): ConditionModel {
+  return {
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: input?.groupId ?? "group",
+        logic: "and",
+        conditions: [
+          createDefaultConditionRule(field, input?.conditionId ?? "rule"),
+        ],
+      },
+    ],
+  };
+}
+
+function compileTimestampConditionRule(
+  rule: TimestampRelativeConditionRule | TimestampAbsoluteConditionRule,
+  field: string
 ): ConditionCompileResult {
-  const field = model.field.trim();
-
-  if (!field) {
-    return { valid: false, error: "Condition field is required" };
-  }
-
-  if (model.fieldType === "timestamp") {
-    if (isTimestampRelativeConditionModel(model)) {
-      const amount = model.amount;
-      if (!isPositiveInteger(amount)) {
-        return {
-          valid: false,
-          error: "Timestamp amount must be a positive integer",
-        };
-      }
-
-      if (!isTimeUnit(model.unit)) {
-        return { valid: false, error: "Timestamp unit is invalid" };
-      }
-
-      const unitFunction = model.unit;
-      if (model.operator === "within_next") {
-        return {
-          valid: true,
-          expression: `${field} > now && ${field} < now + ${unitFunction}(${amount})`,
-        };
-      }
-
-      if (model.operator === "more_than_from_now") {
-        return {
-          valid: true,
-          expression: `${field} > now + ${unitFunction}(${amount})`,
-        };
-      }
-
-      if (model.operator === "less_than_ago") {
-        return {
-          valid: true,
-          expression: `${field} > now - ${unitFunction}(${amount})`,
-        };
-      }
-
-      return {
-        valid: true,
-        expression: `${field} < now - ${unitFunction}(${amount})`,
-      };
-    }
-
-    if (!isTimestampAbsoluteConditionModel(model)) {
-      return { valid: false, error: "Timestamp operator is invalid" };
-    }
-
-    if (!DATE_ONLY_PATTERN.test(model.date)) {
+  if (isTimestampRelativeConditionRule(rule)) {
+    const amount = rule.amount;
+    if (!isPositiveInteger(amount)) {
       return {
         valid: false,
-        error: "Timestamp absolute operators require a YYYY-MM-DD date",
+        error: "Timestamp amount must be a positive integer",
       };
     }
 
-    if (model.operator === "before") {
+    if (!isTimeUnit(rule.unit)) {
+      return { valid: false, error: "Timestamp unit is invalid" };
+    }
+
+    const unitFunction = rule.unit;
+    if (rule.operator === "within_next") {
       return {
         valid: true,
-        expression: `${field} < date("${model.date}")`,
+        expression: `${field} > now && ${field} < now + ${unitFunction}(${amount})`,
+      };
+    }
+
+    if (rule.operator === "more_than_from_now") {
+      return {
+        valid: true,
+        expression: `${field} > now + ${unitFunction}(${amount})`,
+      };
+    }
+
+    if (rule.operator === "less_than_ago") {
+      return {
+        valid: true,
+        expression: `${field} > now - ${unitFunction}(${amount})`,
       };
     }
 
     return {
       valid: true,
-      expression: `${field} > date("${model.date}")`,
+      expression: `${field} < now - ${unitFunction}(${amount})`,
     };
   }
 
-  if (model.fieldType === "string") {
-    const value = JSON.stringify(model.value);
-
-    if (model.operator === "equals") {
-      return { valid: true, expression: `${field} == ${value}` };
-    }
-
-    if (model.operator === "not_equals") {
-      return { valid: true, expression: `${field} != ${value}` };
-    }
-
-    return { valid: true, expression: `${field}.contains(${value})` };
+  if (!isDateTimeString(rule.dateTime)) {
+    return {
+      valid: false,
+      error: "Timestamp absolute operators require a valid date-time",
+    };
   }
 
-  if (model.fieldType === "number") {
-    if (!Number.isFinite(model.value)) {
-      return {
-        valid: false,
-        error: "Number conditions require a finite numeric value",
-      };
-    }
-
+  const serializedDateTime = JSON.stringify(rule.dateTime.trim());
+  if (rule.operator === "before") {
     return {
       valid: true,
-      expression: `${field} ${toOperatorExpression(model.operator)} ${model.value}`,
+      expression: `${field} < date(${serializedDateTime})`,
     };
   }
 
-  if (model.operator === "is_true") {
+  return {
+    valid: true,
+    expression: `${field} > date(${serializedDateTime})`,
+  };
+}
+
+function compileStringConditionRule(
+  rule: StringConditionRule,
+  field: string
+): ConditionCompileResult {
+  const value = JSON.stringify(rule.value);
+
+  if (rule.operator === "equals") {
+    return { valid: true, expression: `${field} == ${value}` };
+  }
+
+  if (rule.operator === "not_equals") {
+    return { valid: true, expression: `${field} != ${value}` };
+  }
+
+  return { valid: true, expression: `${field}.contains(${value})` };
+}
+
+function compileNumberConditionRule(
+  rule: NumberConditionRule,
+  field: string
+): ConditionCompileResult {
+  if (!Number.isFinite(rule.value)) {
+    return {
+      valid: false,
+      error: "Number conditions require a finite numeric value",
+    };
+  }
+
+  return {
+    valid: true,
+    expression: `${field} ${toOperatorExpression(rule.operator)} ${rule.value}`,
+  };
+}
+
+function compileBooleanConditionRule(
+  rule: BooleanConditionRule,
+  field: string
+): ConditionCompileResult {
+  if (rule.operator === "is_true") {
     return { valid: true, expression: `${field} == true` };
   }
 
   return { valid: true, expression: `${field} == false` };
+}
+
+function compileConditionRule(rule: ConditionRule): ConditionCompileResult {
+  const field = rule.field.trim();
+  if (!field) {
+    return { valid: false, error: "Condition field is required" };
+  }
+
+  if (rule.fieldType === "timestamp") {
+    return compileTimestampConditionRule(rule, field);
+  }
+
+  if (rule.fieldType === "string") {
+    return compileStringConditionRule(rule, field);
+  }
+
+  if (rule.fieldType === "number") {
+    return compileNumberConditionRule(rule, field);
+  }
+
+  return compileBooleanConditionRule(rule, field);
+}
+
+function compileConditionGroup(group: ConditionGroup): ConditionCompileResult {
+  if (group.conditions.length === 0) {
+    return {
+      valid: false,
+      error: "Each group must contain at least one condition",
+    };
+  }
+
+  const compiledConditions: string[] = [];
+  for (const condition of group.conditions) {
+    const compiledCondition = compileConditionRule(condition);
+    if (!compiledCondition.valid) {
+      return compiledCondition;
+    }
+
+    compiledConditions.push(`(${compiledCondition.expression})`);
+  }
+
+  const separator = group.logic === "and" ? " && " : " || ";
+  return {
+    valid: true,
+    expression: compiledConditions.join(separator),
+  };
+}
+
+export function compileConditionModel(
+  model: ConditionModel
+): ConditionCompileResult {
+  if (!isGroupLogic(model.groupLogic)) {
+    return { valid: false, error: "Condition model group logic is invalid" };
+  }
+
+  if (model.groups.length === 0) {
+    return {
+      valid: false,
+      error: "Condition model must contain at least one group",
+    };
+  }
+
+  const compiledGroups: string[] = [];
+  for (const group of model.groups) {
+    if (!isGroupLogic(group.logic)) {
+      return { valid: false, error: "Group logic is invalid" };
+    }
+
+    const compiledGroup = compileConditionGroup(group);
+    if (!compiledGroup.valid) {
+      return compiledGroup;
+    }
+
+    compiledGroups.push(`(${compiledGroup.expression})`);
+  }
+
+  const separator = model.groupLogic === "and" ? " && " : " || ";
+  return {
+    valid: true,
+    expression: compiledGroups.join(separator),
+  };
 }
