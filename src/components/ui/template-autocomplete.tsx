@@ -28,6 +28,116 @@ type SchemaField = {
   description?: string;
 };
 
+function readConfigString(
+  config: Record<string, unknown> | undefined,
+  key: string
+): string | undefined {
+  const value = config?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSchemaFieldType(value: unknown): value is SchemaField["type"] {
+  return (
+    value === "string" ||
+    value === "number" ||
+    value === "boolean" ||
+    value === "array" ||
+    value === "object"
+  );
+}
+
+function isSchemaItemType(value: unknown): value is NonNullable<SchemaField["itemType"]> {
+  return (
+    value === "string" ||
+    value === "number" ||
+    value === "boolean" ||
+    value === "object"
+  );
+}
+
+function parseSchemaField(value: unknown): SchemaField | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const name = typeof value.name === "string" ? value.name.trim() : "";
+  if (!name) {
+    return null;
+  }
+
+  const type = isSchemaFieldType(value.type) ? value.type : "string";
+  const description =
+    typeof value.description === "string" ? value.description : undefined;
+  const format = value.format === "timestamp" ? "timestamp" : undefined;
+
+  if (type === "object") {
+    const fields = Array.isArray(value.fields)
+      ? value.fields.flatMap((field) => {
+          const parsedField = parseSchemaField(field);
+          return parsedField ? [parsedField] : [];
+        })
+      : [];
+
+    return {
+      name,
+      type,
+      fields,
+      description,
+    };
+  }
+
+  if (type === "array") {
+    const itemType = isSchemaItemType(value.itemType) ? value.itemType : "string";
+    const fields =
+      itemType === "object" && Array.isArray(value.fields)
+        ? value.fields.flatMap((field) => {
+            const parsedField = parseSchemaField(field);
+            return parsedField ? [parsedField] : [];
+          })
+        : undefined;
+
+    return {
+      name,
+      type,
+      itemType,
+      fields,
+      format: itemType === "string" ? format : undefined,
+      description,
+    };
+  }
+
+  return {
+    name,
+    type,
+    format: type === "string" ? format : undefined,
+    description,
+  };
+}
+
+function parseSchemaFields(value: string | undefined): SchemaField[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.flatMap((field) => {
+      const parsedField = parseSchemaField(field);
+      return parsedField ? [parsedField] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
 // Helper to get a display name for a node
 const getNodeDisplayName = (node: WorkflowNode): string => {
   if (node.data.label) {
@@ -35,7 +145,7 @@ const getNodeDisplayName = (node: WorkflowNode): string => {
   }
 
   if (node.data.type === "action") {
-    const actionType = node.data.config?.actionType as string | undefined;
+    const actionType = readConfigString(node.data.config, "actionType");
     if (actionType) {
       // Look up human-readable label from plugin registry
       const action = findActionById(actionType);
@@ -47,7 +157,7 @@ const getNodeDisplayName = (node: WorkflowNode): string => {
   }
 
   if (node.data.type === "trigger") {
-    const triggerType = node.data.config?.triggerType as string | undefined;
+    const triggerType = readConfigString(node.data.config, "triggerType");
     return triggerType || "Webhook";
   }
 
@@ -69,7 +179,7 @@ const schemaToFields = (
       schemaField.type === "array"
         ? `${schemaField.itemType}[]`
         : schemaField.type;
-    const description = schemaField.description || `${typeLabel}`;
+    const description = schemaField.description || typeLabel;
 
     fields.push({ field: fieldPath, description });
 
@@ -99,7 +209,7 @@ const schemaToFields = (
 
 // Get common fields based on node action type
 const getCommonFields = (node: WorkflowNode) => {
-  const actionType = node.data.config?.actionType as string | undefined;
+  const actionType = readConfigString(node.data.config, "actionType");
 
   // Special handling for dynamic outputs (system actions and schema-based)
   if (actionType === "HTTP Request") {
@@ -110,15 +220,11 @@ const getCommonFields = (node: WorkflowNode) => {
   }
 
   if (actionType === "Database Query") {
-    const dbSchema = node.data.config?.dbSchema as string | undefined;
+    const dbSchema = readConfigString(node.data.config, "dbSchema");
     if (dbSchema) {
-      try {
-        const schema = JSON.parse(dbSchema) as SchemaField[];
-        if (schema.length > 0) {
-          return schemaToFields(schema);
-        }
-      } catch {
-        // If schema parsing fails, fall through to default fields
+      const schema = parseSchemaFields(dbSchema);
+      if (schema.length > 0) {
+        return schemaToFields(schema);
       }
     }
     return [
@@ -137,17 +243,13 @@ const getCommonFields = (node: WorkflowNode) => {
 
   // Trigger fields
   if (node.data.type === "trigger") {
-    const triggerType = node.data.config?.triggerType as string | undefined;
-    const webhookSchema = node.data.config?.webhookSchema as string | undefined;
+    const triggerType = readConfigString(node.data.config, "triggerType");
+    const webhookSchema = readConfigString(node.data.config, "webhookSchema");
 
     if (triggerType === "Webhook" && webhookSchema) {
-      try {
-        const schema = JSON.parse(webhookSchema) as SchemaField[];
-        if (schema.length > 0) {
-          return schemaToFields(schema);
-        }
-      } catch {
-        // If schema parsing fails, fall through to default fields
+      const schema = parseSchemaFields(webhookSchema);
+      if (schema.length > 0) {
+        return schemaToFields(schema);
       }
     }
 
@@ -173,13 +275,6 @@ export function TemplateAutocomplete({
   const [edges] = useAtom(edgesAtom);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [mounted, setMounted] = useState(false);
-
-  // Ensure we're mounted before trying to use portal
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
 
   // Find all nodes that come before the current node
   const getUpstreamNodes = () => {
@@ -253,11 +348,10 @@ export function TemplateAutocomplete({
           (opt.field && opt.field.toLowerCase().includes(filter.toLowerCase()))
       )
     : options;
-
-  // Reset selection when filter changes
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [filter]);
+  const selectedOptionIndex =
+    filteredOptions.length === 0
+      ? 0
+      : Math.min(selectedIndex, filteredOptions.length - 1);
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -277,8 +371,8 @@ export function TemplateAutocomplete({
           break;
         case "Enter":
           e.preventDefault();
-          if (filteredOptions[selectedIndex]) {
-            onSelect(filteredOptions[selectedIndex].template);
+          if (filteredOptions[selectedOptionIndex]) {
+            onSelect(filteredOptions[selectedOptionIndex].template);
           }
           break;
         case "Escape":
@@ -290,21 +384,23 @@ export function TemplateAutocomplete({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, filteredOptions, selectedIndex, onSelect, onClose]);
+  }, [isOpen, filteredOptions, selectedOptionIndex, onSelect, onClose]);
 
   // Scroll selected item into view
   useEffect(() => {
     if (menuRef.current) {
-      const selectedElement = menuRef.current.children[
-        selectedIndex
-      ] as HTMLElement;
-      if (selectedElement) {
+      const selectedElement = menuRef.current.children.item(selectedOptionIndex);
+      if (selectedElement instanceof HTMLElement) {
         selectedElement.scrollIntoView({ block: "nearest" });
       }
     }
-  }, [selectedIndex]);
+  }, [selectedOptionIndex]);
 
-  if (!isOpen || filteredOptions.length === 0 || !mounted) {
+  if (
+    !isOpen ||
+    filteredOptions.length === 0 ||
+    typeof document === "undefined"
+  ) {
     return null;
   }
 
@@ -328,7 +424,7 @@ export function TemplateAutocomplete({
           <div
             className={cn(
               "flex cursor-pointer items-center justify-between rounded px-2 py-1.5 text-sm transition-colors",
-              index === selectedIndex
+              index === selectedOptionIndex
                 ? "bg-accent text-accent-foreground"
                 : "hover:bg-accent/50"
             )}
@@ -355,7 +451,7 @@ export function TemplateAutocomplete({
                 </div>
               )}
             </div>
-            {index === selectedIndex && <Check className="h-4 w-4" />}
+            {index === selectedOptionIndex && <Check className="h-4 w-4" />}
           </div>
         ))}
       </div>

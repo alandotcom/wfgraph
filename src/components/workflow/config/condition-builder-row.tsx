@@ -103,6 +103,59 @@ function isBooleanOperatorValue(
   return value === "is_true" || value === "is_false";
 }
 
+function isTimeUnitValue(value: string): value is TimeUnit {
+  return TIME_UNIT_OPTIONS.some((option) => option.value === value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isWebhookSchemaField(value: unknown): value is WebhookSchemaField {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (typeof value.name !== "string") {
+    return false;
+  }
+
+  if (
+    value.type !== "string" &&
+    value.type !== "number" &&
+    value.type !== "boolean" &&
+    value.type !== "array" &&
+    value.type !== "object"
+  ) {
+    return false;
+  }
+
+  if (
+    value.itemType !== undefined &&
+    value.itemType !== "string" &&
+    value.itemType !== "number" &&
+    value.itemType !== "boolean" &&
+    value.itemType !== "object"
+  ) {
+    return false;
+  }
+
+  if (value.format !== undefined && value.format !== "timestamp") {
+    return false;
+  }
+
+  if (value.fields !== undefined) {
+    if (!Array.isArray(value.fields)) {
+      return false;
+    }
+    if (!value.fields.every((field) => isWebhookSchemaField(field))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function getUpstreamNodeIds(
   nodeId: string,
   edges: Array<{ source: string; target: string }>
@@ -127,15 +180,49 @@ function getUpstreamNodeIds(
   return Array.from(upstream.values());
 }
 
+type ConditionBuilderNode = {
+  id: string;
+  data: {
+    type: string;
+    config?: Record<string, unknown>;
+  };
+};
+
+function getWebhookFieldsFromTriggerNode(
+  node: ConditionBuilderNode
+): ConditionFieldDefinition[] {
+  if (node.data.type !== "trigger") {
+    return [];
+  }
+
+  const config = node.data.config;
+  if (!config || config.triggerType !== "Webhook") {
+    return [];
+  }
+
+  const rawSchema = config.webhookSchema;
+  if (typeof rawSchema !== "string" || rawSchema.trim().length === 0) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawSchema);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return getWebhookConditionFields(
+      parsed.filter((field) => isWebhookSchemaField(field))
+    );
+  } catch {
+    // Ignore invalid schema and continue with any other trigger schemas.
+    return [];
+  }
+}
+
 function getUpstreamWebhookFields(input: {
   nodeId: string | null;
-  nodes: Array<{
-    id: string;
-    data: {
-      type: string;
-      config?: Record<string, unknown>;
-    };
-  }>;
+  nodes: ConditionBuilderNode[];
   edges: Array<{ source: string; target: string }>;
 }): ConditionFieldDefinition[] {
   const { nodeId, nodes, edges } = input;
@@ -151,34 +238,15 @@ function getUpstreamWebhookFields(input: {
       continue;
     }
 
-    if (node.data.type !== "trigger") {
-      continue;
-    }
-
-    const config = node.data.config;
-    if (!config || config.triggerType !== "Webhook") {
-      continue;
-    }
-
-    const rawSchema = config.webhookSchema;
-    if (typeof rawSchema !== "string" || rawSchema.trim().length === 0) {
-      continue;
-    }
-
-    try {
-      const parsed = JSON.parse(rawSchema) as WebhookSchemaField[];
-      const fields = getWebhookConditionFields(parsed);
-      for (const field of fields) {
-        if (!fieldsByPath.has(field.path)) {
-          fieldsByPath.set(field.path, field);
-        }
+    const webhookFields = getWebhookFieldsFromTriggerNode(node);
+    for (const field of webhookFields) {
+      if (!fieldsByPath.has(field.path)) {
+        fieldsByPath.set(field.path, field);
       }
-    } catch {
-      // Ignore invalid schema and continue with any other trigger schemas.
     }
   }
 
-  return Array.from(fieldsByPath.values()).sort((a, b) =>
+  return Array.from(fieldsByPath.values()).toSorted((a, b) =>
     a.path.localeCompare(b.path)
   );
 }
@@ -371,9 +439,12 @@ function ConditionValueInput(input: {
           <Select
             disabled={disabled}
             onValueChange={(value) => {
+              if (!isTimeUnitValue(value)) {
+                return;
+              }
               onConditionChange({
                 ...condition,
-                unit: value as TimeUnit,
+                unit: value,
               });
             }}
             value={condition.unit}
@@ -539,7 +610,9 @@ export function ConditionBuilderRow({
       return;
     }
 
-    persistModel(createInitialModel(firstField));
+    queueMicrotask(() => {
+      persistModel(createInitialModel(firstField));
+    });
   }, [availableFields, modelValue.length, optional, parsedModel, persistModel]);
 
   useEffect(() => {
@@ -572,9 +645,11 @@ export function ConditionBuilderRow({
       return;
     }
 
-    persistModel({
-      ...parsedModel,
-      groups,
+    queueMicrotask(() => {
+      persistModel({
+        ...parsedModel,
+        groups,
+      });
     });
   }, [availableFields, fieldByPath, parsedModel, persistModel]);
 

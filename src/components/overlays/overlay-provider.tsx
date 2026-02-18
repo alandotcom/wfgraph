@@ -5,7 +5,6 @@ import {
   useCallback,
   useContext,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import type {
@@ -16,9 +15,8 @@ import type {
 } from "./types";
 
 const OverlayContext = createContext<OverlayContextValue | null>(null);
-
-// Separate context for frozen stack (used during exit animations)
-const FrozenStackContext = createContext<OverlayStackItem[]>([]);
+type OverlayPropsRecord = Record<string, unknown>;
+type AnyOverlayStackItem = OverlayStackItem<OverlayPropsRecord>;
 
 /**
  * Generate a unique ID for overlay instances
@@ -36,26 +34,21 @@ type OverlayProviderProps = {
  * Wrap your app with this to enable the overlay system.
  */
 export function OverlayProvider({ children }: OverlayProviderProps) {
-  const [stack, setStack] = useState<OverlayStackItem[]>([]);
-  const frozenStackRef = useRef<OverlayStackItem[]>([]);
-
-  // Keep frozen stack updated when stack is non-empty
-  // This preserves the last state for exit animations
-  if (stack.length > 0) {
-    frozenStackRef.current = stack;
-  }
+  const [stack, setStack] = useState<AnyOverlayStackItem[]>([]);
 
   const open = useCallback(
-    <P,>(
+    <P extends OverlayPropsRecord>(
       component: ComponentType<OverlayComponentProps<P>>,
       props?: P,
       options?: OverlayOptions
     ): string => {
       const id = generateOverlayId();
-      const item: OverlayStackItem = {
+      const item: AnyOverlayStackItem = {
         id,
-        component: component as ComponentType<OverlayComponentProps>,
-        props: (props ?? {}) as Record<string, unknown>,
+        component: component as ComponentType<
+          OverlayComponentProps<OverlayPropsRecord>
+        >,
+        props: (props ?? {}) as OverlayPropsRecord,
         options: options ?? {},
       };
       setStack([item]);
@@ -65,16 +58,18 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
   );
 
   const push = useCallback(
-    <P,>(
+    <P extends OverlayPropsRecord>(
       component: ComponentType<OverlayComponentProps<P>>,
       props?: P,
       options?: OverlayOptions
     ): string => {
       const id = generateOverlayId();
-      const item: OverlayStackItem = {
+      const item: AnyOverlayStackItem = {
         id,
-        component: component as ComponentType<OverlayComponentProps>,
-        props: (props ?? {}) as Record<string, unknown>,
+        component: component as ComponentType<
+          OverlayComponentProps<OverlayPropsRecord>
+        >,
+        props: (props ?? {}) as OverlayPropsRecord,
         options: options ?? {},
       };
       setStack((prev) => [...prev, item]);
@@ -99,16 +94,18 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
   }, []);
 
   const replace = useCallback(
-    <P,>(
+    <P extends OverlayPropsRecord>(
       component: ComponentType<OverlayComponentProps<P>>,
       props?: P,
       options?: OverlayOptions
     ): string => {
       const id = generateOverlayId();
-      const item: OverlayStackItem = {
+      const item: AnyOverlayStackItem = {
         id,
-        component: component as ComponentType<OverlayComponentProps>,
-        props: (props ?? {}) as Record<string, unknown>,
+        component: component as ComponentType<
+          OverlayComponentProps<OverlayPropsRecord>
+        >,
+        props: (props ?? {}) as OverlayPropsRecord,
         options: options ?? {},
       };
       setStack((prev) => {
@@ -166,11 +163,7 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
   );
 
   return (
-    <OverlayContext.Provider value={value}>
-      <FrozenStackContext.Provider value={frozenStackRef.current}>
-        {children}
-      </FrozenStackContext.Provider>
-    </OverlayContext.Provider>
+    <OverlayContext.Provider value={value}>{children}</OverlayContext.Provider>
   );
 }
 
@@ -193,17 +186,13 @@ export function useOverlay(): OverlayContextValue {
  */
 export function useOverlayPosition(overlayId: string) {
   const { stack } = useOverlay();
-  const frozenStack = useContext(FrozenStackContext);
-
-  // Use frozen stack when real stack is empty (during exit animation)
-  const effectiveStack = stack.length > 0 ? stack : frozenStack;
-  const index = effectiveStack.findIndex((item) => item.id === overlayId);
+  const index = stack.findIndex((item) => item.id === overlayId);
 
   return {
     index,
     isFirst: index === 0,
-    isLast: index === effectiveStack.length - 1,
-    depth: effectiveStack.length,
+    isLast: index === stack.length - 1,
+    depth: stack.length,
     showBackButton: index > 0,
   };
 }

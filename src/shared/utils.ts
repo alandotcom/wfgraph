@@ -5,6 +5,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
  * Extract a meaningful error message from various error types.
  * Handles Error instances, objects with message/error properties, strings,
@@ -33,8 +37,8 @@ export function getErrorMessage(error: unknown): string {
   }
 
   // Handle objects
-  if (typeof error === "object") {
-    const obj = error as Record<string, unknown>;
+  if (isRecord(error)) {
+    const obj = error;
 
     // Check for common error message properties
     if (typeof obj.message === "string" && obj.message) {
@@ -42,17 +46,13 @@ export function getErrorMessage(error: unknown): string {
     }
 
     // Some SDKs wrap errors in responseBody or data
-    if (obj.responseBody && typeof obj.responseBody === "object") {
-      const body = obj.responseBody as Record<string, unknown>;
+    if (isRecord(obj.responseBody)) {
+      const body = obj.responseBody;
       if (typeof body.error === "string") {
         return body.error;
       }
-      if (
-        body.error &&
-        typeof body.error === "object" &&
-        typeof (body.error as Record<string, unknown>).message === "string"
-      ) {
-        return (body.error as Record<string, unknown>).message as string;
+      if (isRecord(body.error) && typeof body.error.message === "string") {
+        return body.error.message;
       }
     }
 
@@ -60,16 +60,16 @@ export function getErrorMessage(error: unknown): string {
     if (typeof obj.error === "string" && obj.error) {
       return obj.error;
     }
-    if (obj.error && typeof obj.error === "object") {
-      const nestedError = obj.error as Record<string, unknown>;
+    if (isRecord(obj.error)) {
+      const nestedError = obj.error;
       if (typeof nestedError.message === "string") {
         return nestedError.message;
       }
     }
 
     // Check for data.error pattern (common in API responses)
-    if (obj.data && typeof obj.data === "object") {
-      const data = obj.data as Record<string, unknown>;
+    if (isRecord(obj.data)) {
+      const data = obj.data;
       if (typeof data.error === "string") {
         return data.error;
       }
@@ -126,14 +126,9 @@ export async function getErrorMessageAsync(error: unknown): Promise<string> {
   }
 
   // Check if it's a thenable (Promise-like)
-  if (
-    error &&
-    typeof error === "object" &&
-    "then" in error &&
-    typeof (error as { then: unknown }).then === "function"
-  ) {
+  if (isRecord(error) && "then" in error && typeof error.then === "function") {
     try {
-      const resolvedValue = await (error as Promise<unknown>);
+      const resolvedValue = await Promise.resolve(error);
       // The promise resolved - check if it contains error info
       return getErrorMessage(resolvedValue);
     } catch (rejectedError) {

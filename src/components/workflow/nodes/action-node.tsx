@@ -12,7 +12,7 @@ import {
   XCircle,
   Zap,
 } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
   integrationIdsAtom,
   integrationsLoadedAtom,
@@ -50,6 +50,31 @@ type RuntimeWaitInput = {
   waitTimezone?: unknown;
   waitTimeout?: unknown;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readConfigString(
+  config: Record<string, unknown> | undefined,
+  key: string,
+  fallback = ""
+): string {
+  const value = config?.[key];
+  return typeof value === "string" ? value : fallback;
+}
+
+function readOptionalConfigString(
+  config: Record<string, unknown> | undefined,
+  key: string
+): string | undefined {
+  const value = config?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function isRuntimeWaitInput(value: unknown): value is RuntimeWaitInput {
+  return isRecord(value);
+}
 
 function hasTemplateExpression(value: unknown): boolean {
   return (
@@ -94,43 +119,11 @@ function formatTriggerTime(date: Date, timeZone?: string): string {
   return `${parts.month} ${parts.day}, ${parts.year} ${parts.hour}:${parts.minute}${dayPeriod}${timezoneSuffix}`;
 }
 
-function serializeWaitConfigValue(value: unknown): string {
-  if (value === null || value === undefined) {
-    return "";
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (
-    typeof value === "number" ||
-    typeof value === "boolean" ||
-    typeof value === "bigint"
-  ) {
-    return `${value}`;
-  }
-
-  if (typeof value === "symbol") {
-    return value.toString();
-  }
-
-  if (typeof value === "object") {
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return "";
-    }
-  }
-
-  return "";
-}
-
 function useWaitPreview(
   actionType: string,
   config: Record<string, unknown> | undefined
 ): WaitPreviewData | null {
-  const waitMode = (config?.waitMode as string) || "delay";
+  const waitMode = readConfigString(config, "waitMode", "delay");
   const shouldShowWaitPreview = actionType === "Wait" && waitMode === "delay";
   const waitDuration = config?.waitDuration;
   const waitUntil = config?.waitUntil;
@@ -145,28 +138,12 @@ function useWaitPreview(
     hasTemplateExpression(waitUntil) ||
     hasTemplateExpression(waitOffset);
 
-  const previewBaseNowMsRef = useRef(Date.now());
-  const waitSignatureRef = useRef("");
-  const waitSignature = [
-    waitMode,
-    serializeWaitConfigValue(waitDuration),
-    serializeWaitConfigValue(waitUntil),
-    serializeWaitConfigValue(waitOffset),
-    serializeWaitConfigValue(waitTimezone),
-  ].join("|");
-
-  if (shouldShowWaitPreview && waitSignatureRef.current !== waitSignature) {
-    waitSignatureRef.current = waitSignature;
-    previewBaseNowMsRef.current = Date.now();
-  }
-
   const resolution = useMemo(() => {
     if (!shouldShowWaitPreview || hasDynamicValue) {
       return null;
     }
 
     return resolveWaitUntil({
-      now: new Date(previewBaseNowMsRef.current),
       waitDuration,
       waitUntil,
       waitOffset,
@@ -200,9 +177,7 @@ function useWaitPreview(
   }
 
   return {
-    countdown: formatCountdown(
-      resolution.waitUntil.getTime() - previewBaseNowMsRef.current
-    ),
+    countdown: "Delay configured",
     triggerTime: formatTriggerTime(resolution.waitUntil, waitTimezone),
   };
 }
@@ -235,24 +210,17 @@ function useRuntimeWaitPreview(
   }, [shouldShowRuntimeWaitPreview]);
 
   const runtimeInput = useMemo(() => {
-    if (
-      !shouldShowRuntimeWaitPreview ||
-      typeof nodeLog?.input !== "object" ||
-      nodeLog.input === null
-    ) {
+    if (!(shouldShowRuntimeWaitPreview && isRuntimeWaitInput(nodeLog?.input))) {
       return null;
     }
 
-    return nodeLog.input as RuntimeWaitInput;
+    return nodeLog.input;
   }, [shouldShowRuntimeWaitPreview, nodeLog?.input]);
 
-  const startedAt = useMemo(() => {
-    if (!shouldShowRuntimeWaitPreview || nodeLog?.startedAt === undefined) {
-      return null;
-    }
-
-    return parseTimestampWithTimezone(nodeLog.startedAt);
-  }, [shouldShowRuntimeWaitPreview, nodeLog?.startedAt]);
+  const startedAt =
+    shouldShowRuntimeWaitPreview && nodeLog?.startedAt !== undefined
+      ? parseTimestampWithTimezone(nodeLog.startedAt)
+      : null;
 
   if (!(shouldShowRuntimeWaitPreview && runtimeInput && startedAt)) {
     return null;
@@ -374,13 +342,11 @@ const getIntegrationFromActionType = (actionType: string): string => {
 
 // Helper to detect if output is a base64 image from generateImage step
 function isBase64ImageOutput(output: unknown): output is { base64: string } {
-  return (
-    typeof output === "object" &&
-    output !== null &&
-    "base64" in output &&
-    typeof (output as { base64: unknown }).base64 === "string" &&
-    (output as { base64: string }).base64.length > 100
-  );
+  if (!isRecord(output)) {
+    return false;
+  }
+  const { base64 } = output;
+  return typeof base64 === "string" && base64.length > 100;
 }
 
 // Helper to check if an action requires an integration
@@ -532,7 +498,7 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   const availableIntegrationIds = useAtomValue(integrationIdsAtom);
   const integrationsLoaded = useAtomValue(integrationsLoadedAtom);
   const nodeLog = executionLogs[id];
-  const actionType = (data?.config?.actionType as string) || "";
+  const actionType = readConfigString(data?.config, "actionType");
   const runtimeWaitPreview = useRuntimeWaitPreview(
     actionType,
     selectedExecutionId,
@@ -553,6 +519,10 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
     actionType === "Generate Image" &&
     nodeLog?.output &&
     isBase64ImageOutput(nodeLog.output);
+  const generatedImageBase64 =
+    hasGeneratedImage && nodeLog?.output && isBase64ImageOutput(nodeLog.output)
+      ? nodeLog.output.base64
+      : null;
 
   // Handle empty action type (new node without selected action)
   if (!actionType) {
@@ -598,9 +568,10 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   // Don't show missing indicator if we're still checking for auto-select
   const isPendingIntegrationCheck = pendingIntegrationNodes.has(id);
   // Check both that integrationId is set AND that it exists in available integrations
-  const configuredIntegrationId = data.config?.integrationId as
-    | string
-    | undefined;
+  const configuredIntegrationId = readOptionalConfigString(
+    data.config,
+    "integrationId"
+  );
   const hasValidIntegration =
     configuredIntegrationId &&
     availableIntegrationIds.has(configuredIntegrationId);
@@ -614,11 +585,13 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   // Get model for AI nodes
   const getAiModel = (): string | null => {
     if (actionType === "Generate Text") {
-      return (data.config?.aiModel as string) || "meta/llama-4-scout";
+      return readConfigString(data.config, "aiModel", "meta/llama-4-scout");
     }
     if (actionType === "Generate Image") {
-      return (
-        (data.config?.imageModel as string) || "google/imagen-4.0-generate"
+      return readConfigString(
+        data.config,
+        "imageModel",
+        "google/imagen-4.0-generate"
       );
     }
     return null;
@@ -656,13 +629,11 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
       <StatusBadge status={status} />
 
       <div className="flex flex-col items-center justify-center gap-3 p-6">
-        {hasGeneratedImage ? (
-          <GeneratedImageThumbnail
-            base64={(nodeLog.output as { base64: string }).base64}
-          />
-        ) : (
-          getProviderLogo(actionType)
-        )}
+        {hasGeneratedImage
+          ? generatedImageBase64 && (
+              <GeneratedImageThumbnail base64={generatedImageBase64} />
+            )
+          : getProviderLogo(actionType)}
         <div className="flex flex-col items-center gap-1 text-center">
           <NodeTitle className="text-base">{displayTitle}</NodeTitle>
           {waitPreview ? (

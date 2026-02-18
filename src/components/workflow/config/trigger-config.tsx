@@ -1,6 +1,6 @@
 import cronstrue from "cronstrue";
 import { Clock, Copy, TriangleAlert, Webhook } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { getRuntimeTriggers } from "@/client/lib/runtime-extensions";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,8 @@ type WebhookPreset = {
   label: string;
   payload: Record<string, unknown>;
 };
+
+type SchemaEditorMode = "builder" | "json";
 
 const WEBHOOK_PRESETS: WebhookPreset[] = [
   {
@@ -79,6 +81,19 @@ const WEBHOOK_PRESETS: WebhookPreset[] = [
   },
 ];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readConfigString(
+  config: Record<string, unknown>,
+  key: string,
+  fallback = ""
+): string {
+  const value = config[key];
+  return typeof value === "string" ? value : fallback;
+}
+
 function readSchema(config: Record<string, unknown>): SchemaField[] {
   if (typeof config.webhookSchema !== "string" || !config.webhookSchema) {
     return [];
@@ -93,6 +108,35 @@ function readSchema(config: Record<string, unknown>): SchemaField[] {
 }
 
 type JsonSchemaType = SchemaField["type"] | SchemaField["itemType"];
+
+function isJsonSchemaType(value: unknown): value is JsonSchemaType {
+  return (
+    value === "string" ||
+    value === "number" ||
+    value === "boolean" ||
+    value === "array" ||
+    value === "object"
+  );
+}
+
+function isSchemaFieldType(value: unknown): value is SchemaField["type"] {
+  return isJsonSchemaType(value) && value !== undefined;
+}
+
+function isSchemaFieldItemType(
+  value: unknown
+): value is NonNullable<SchemaField["itemType"]> {
+  return (
+    value === "string" ||
+    value === "number" ||
+    value === "boolean" ||
+    value === "object"
+  );
+}
+
+function isSchemaEditorMode(value: string): value is SchemaEditorMode {
+  return value === "builder" || value === "json";
+}
 
 function normalizeJsonSchemaType(value: unknown): JsonSchemaType | null {
   if (typeof value === "string") {
@@ -121,9 +165,7 @@ function normalizeJsonSchemaType(value: unknown): JsonSchemaType | null {
       item === "object"
   );
 
-  return typeof firstSupportedType === "string"
-    ? (firstSupportedType as JsonSchemaType)
-    : null;
+  return isJsonSchemaType(firstSupportedType) ? firstSupportedType : null;
 }
 
 function normalizeJsonSchemaFormat(value: unknown): SchemaField["format"] {
@@ -137,11 +179,11 @@ function parseJsonSchemaProperty(
   name: string,
   value: unknown
 ): SchemaField | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (!isRecord(value)) {
     return null;
   }
 
-  const property = value as Record<string, unknown>;
+  const property = value;
   const normalizedType =
     normalizeJsonSchemaType(property.type) ||
     (property.properties ? "object" : null) ||
@@ -180,12 +222,7 @@ function parseJsonSchemaProperty(
     };
   }
 
-  const items =
-    property.items &&
-    typeof property.items === "object" &&
-    !Array.isArray(property.items)
-      ? (property.items as Record<string, unknown>)
-      : null;
+  const items = isRecord(property.items) ? property.items : null;
   const normalizedItemType =
     normalizeJsonSchemaType(items?.type) ||
     (items?.properties ? "object" : null) ||
@@ -227,16 +264,89 @@ function parseJsonSchemaProperties(value: unknown): SchemaField[] {
   });
 }
 
-function parseSchemaFieldsFromUnknown(value: unknown): SchemaField[] | null {
-  if (Array.isArray(value)) {
-    return value as SchemaField[];
-  }
-
-  if (!value || typeof value !== "object") {
+function parseSerializedSchemaField(value: unknown): SchemaField | null {
+  if (!isRecord(value)) {
     return null;
   }
 
-  const root = value as Record<string, unknown>;
+  const name = typeof value.name === "string" ? value.name.trim() : "";
+  if (!name) {
+    return null;
+  }
+
+  const description =
+    typeof value.description === "string" ? value.description : undefined;
+  const normalizedType = normalizeJsonSchemaType(value.type);
+  if (!isSchemaFieldType(normalizedType)) {
+    return null;
+  }
+
+  if (normalizedType === "array") {
+    const normalizedItemType = normalizeJsonSchemaType(value.itemType);
+    const itemType = isSchemaFieldItemType(normalizedItemType)
+      ? normalizedItemType
+      : "string";
+    const fields =
+      itemType === "object" && Array.isArray(value.fields)
+        ? value.fields.flatMap((field) => {
+            const parsedField = parseSerializedSchemaField(field);
+            return parsedField ? [parsedField] : [];
+          })
+        : undefined;
+
+    return {
+      name,
+      type: "array",
+      itemType,
+      fields,
+      format:
+        itemType === "string" && value.format === "timestamp"
+          ? "timestamp"
+          : undefined,
+      description,
+    };
+  }
+
+  if (normalizedType === "object") {
+    const fields = Array.isArray(value.fields)
+      ? value.fields.flatMap((field) => {
+          const parsedField = parseSerializedSchemaField(field);
+          return parsedField ? [parsedField] : [];
+        })
+      : [];
+
+    return {
+      name,
+      type: "object",
+      fields,
+      description,
+    };
+  }
+
+  return {
+    name,
+    type: normalizedType,
+    format:
+      normalizedType === "string" && value.format === "timestamp"
+        ? "timestamp"
+        : undefined,
+    description,
+  };
+}
+
+function parseSchemaFieldsFromUnknown(value: unknown): SchemaField[] | null {
+  if (Array.isArray(value)) {
+    return value.flatMap((field) => {
+      const parsedField = parseSerializedSchemaField(field);
+      return parsedField ? [parsedField] : [];
+    });
+  }
+
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const root = value;
   const rootType =
     normalizeJsonSchemaType(root.type) || (root.properties ? "object" : null);
 
@@ -338,12 +448,12 @@ function inferSchemaField(name: string, value: unknown): SchemaField {
   if (Array.isArray(value)) {
     const first = value.at(0);
 
-    if (first && typeof first === "object" && !Array.isArray(first)) {
+    if (isRecord(first)) {
       return {
         name,
         type: "array",
         itemType: "object",
-        fields: inferSchemaFromPayload(first as Record<string, unknown>),
+        fields: inferSchemaFromPayload(first),
       };
     }
 
@@ -354,11 +464,11 @@ function inferSchemaField(name: string, value: unknown): SchemaField {
     };
   }
 
-  if (value && typeof value === "object") {
+  if (isRecord(value)) {
     return {
       name,
       type: "object",
-      fields: inferSchemaFromPayload(value as Record<string, unknown>),
+      fields: inferSchemaFromPayload(value),
     };
   }
 
@@ -467,10 +577,9 @@ export function TriggerConfig({
   disabled,
   workflowId,
 }: TriggerConfigProps) {
-  const [schemaEditorMode, setSchemaEditorMode] = useState<"builder" | "json">(
-    "builder"
-  );
-  const triggerType = (config?.triggerType as string) || "Webhook";
+  const [schemaEditorMode, setSchemaEditorMode] =
+    useState<SchemaEditorMode>("builder");
+  const triggerType = readConfigString(config, "triggerType", "Webhook");
   const runtimeTriggers = useMemo(
     () =>
       getRuntimeTriggers().filter(
@@ -482,8 +591,8 @@ export function TriggerConfig({
     () => runtimeTriggers.find((trigger) => trigger.type === triggerType),
     [runtimeTriggers, triggerType]
   );
-  const scheduleExpression = (config?.scheduleExpression as string) || "";
-  const scheduleCron = (config?.scheduleCron as string) || "";
+  const scheduleExpression = readConfigString(config, "scheduleExpression");
+  const scheduleCron = readConfigString(config, "scheduleCron");
   const resolvedSchedule = useMemo(
     () => parseScheduleExpression(scheduleExpression || scheduleCron),
     [scheduleExpression, scheduleCron]
@@ -493,16 +602,33 @@ export function TriggerConfig({
     ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/workflows/${workflowId}/webhook`
     : "";
 
-  const eventPath = (config?.webhookEventPath as string) || "event";
-  const correlationPath =
-    (config?.webhookCorrelationPath as string) || "data.id";
-  const createEvents =
-    (config?.webhookCreateEvents as string) || "event.create";
-  const updateEvents =
-    (config?.webhookUpdateEvents as string) || "event.update";
-  const deleteEvents =
-    (config?.webhookDeleteEvents as string) || "event.delete";
-  const mockRequest = (config?.webhookMockRequest as string) || "";
+  const eventPath = readConfigString(config, "webhookEventPath", "event");
+  const correlationPath = readConfigString(
+    config,
+    "webhookCorrelationPath",
+    "data.id"
+  );
+  const createEvents = readConfigString(
+    config,
+    "webhookCreateEvents",
+    "event.create"
+  );
+  const updateEvents = readConfigString(
+    config,
+    "webhookUpdateEvents",
+    "event.update"
+  );
+  const deleteEvents = readConfigString(
+    config,
+    "webhookDeleteEvents",
+    "event.delete"
+  );
+  const mockRequest = readConfigString(config, "webhookMockRequest");
+  const scheduleTimezone = readConfigString(
+    config,
+    "scheduleTimezone",
+    "America/New_York"
+  );
   const schema = readSchema(config);
   const schemaJsonValue = useMemo(
     () => JSON.stringify(schemaFieldsToJsonSchemaDocument(schema), null, 2),
@@ -510,13 +636,6 @@ export function TriggerConfig({
   );
   const [schemaJsonDraft, setSchemaJsonDraft] = useState(schemaJsonValue);
   const [schemaJsonError, setSchemaJsonError] = useState("");
-
-  useEffect(() => {
-    if (schemaEditorMode === "builder") {
-      setSchemaJsonDraft(schemaJsonValue);
-      setSchemaJsonError("");
-    }
-  }, [schemaEditorMode, schemaJsonValue]);
 
   const schemaPathOptions = useMemo(
     () => flattenSchemaPathOptions(schema),
@@ -546,23 +665,23 @@ export function TriggerConfig({
 
   const parsedMockRequest = useMemo(() => {
     if (!mockRequest.trim()) {
-      return { payload: null as unknown, error: "" };
+      return { payload: null, error: "" };
     }
 
     try {
       return {
-        payload: JSON.parse(mockRequest) as unknown,
+        payload: JSON.parse(mockRequest),
         error: "",
       };
     } catch {
       return {
-        payload: null as unknown,
+        payload: null,
         error: "Sample payload is not valid JSON.",
       };
     }
   }, [mockRequest]);
 
-  const parsedCronDescription = useMemo(() => {
+  const parsedCronDescription = (() => {
     if (!(scheduleExpression.trim() || scheduleCron.trim())) {
       return {
         description: "",
@@ -590,12 +709,7 @@ export function TriggerConfig({
         source: resolvedSchedule?.source ?? ("cron" as const),
       };
     }
-  }, [
-    resolvedSchedule?.cron,
-    resolvedSchedule?.source,
-    scheduleCron,
-    scheduleExpression,
-  ]);
+  })();
 
   const handleScheduleExpressionChange = (value: string) => {
     onUpdateConfig("scheduleExpression", value);
@@ -757,7 +871,7 @@ export function TriggerConfig({
     }
 
     try {
-      const parsed = JSON.parse(nextValue) as unknown;
+      const parsed = JSON.parse(nextValue);
       const parsedSchema = parseSchemaFieldsFromUnknown(parsed);
 
       if (!parsedSchema) {
@@ -890,9 +1004,16 @@ export function TriggerConfig({
               Request Schema
             </p>
             <Tabs
-              onValueChange={(value) =>
-                setSchemaEditorMode(value as "builder" | "json")
-              }
+              onValueChange={(value) => {
+                if (!isSchemaEditorMode(value)) {
+                  return;
+                }
+                setSchemaEditorMode(value);
+                if (value === "json") {
+                  setSchemaJsonDraft(schemaJsonValue);
+                  setSchemaJsonError("");
+                }
+              }}
               value={schemaEditorMode}
             >
               <TabsList className="w-fit">
@@ -1218,7 +1339,7 @@ export function TriggerConfig({
               onValueChange={(value) =>
                 onUpdateConfig("scheduleTimezone", value)
               }
-              value={(config?.scheduleTimezone as string) || "America/New_York"}
+              value={scheduleTimezone}
             />
           </div>
         </>

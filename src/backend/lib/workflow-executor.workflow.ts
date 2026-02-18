@@ -64,18 +64,15 @@ const DEFAULT_RUNTIME: WorkflowExecutionRuntime = {
 // System actions that don't have plugins - maps to module import functions
 const SYSTEM_ACTIONS: Record<string, StepImporter> = {
   "Database Query": {
-    // biome-ignore lint/suspicious/noExplicitAny: Dynamic module import
-    importer: () => import("./steps/database-query") as Promise<any>,
+    importer: () => import("./steps/database-query"),
     stepFunction: "databaseQueryStep",
   },
   "HTTP Request": {
-    // biome-ignore lint/suspicious/noExplicitAny: Dynamic module import
-    importer: () => import("./steps/http-request") as Promise<any>,
+    importer: () => import("./steps/http-request"),
     stepFunction: "httpRequestStep",
   },
   Condition: {
-    // biome-ignore lint/suspicious/noExplicitAny: Dynamic module import
-    importer: () => import("./steps/condition") as Promise<any>,
+    importer: () => import("./steps/condition"),
     stepFunction: "conditionStep",
   },
 };
@@ -111,23 +108,61 @@ type ConditionEvalResult = {
   result: boolean;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readConfigString(
+  config: Record<string, unknown> | undefined,
+  key: string
+): string | undefined {
+  const value = config?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function hasSuccessFlag(
+  value: unknown
+): value is { success: boolean; error?: unknown } {
+  return isRecord(value) && typeof value.success === "boolean";
+}
+
+function readStepErrorMessage(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (isRecord(value) && typeof value.message === "string") {
+    return value.message;
+  }
+}
+
+function hasHaltBranch(value: unknown): boolean {
+  return isRecord(value) && value.haltBranch === true;
+}
+
+function isTriggeredFalse(value: unknown): boolean {
+  return isRecord(value) && value.triggered === false;
+}
+
+function readConditionValue(value: unknown): boolean | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return typeof value.condition === "boolean" ? value.condition : undefined;
+}
+
 function mergeConditionContextValue(
   context: Record<string, unknown>,
   value: unknown
 ) {
-  if (!(value && typeof value === "object" && !Array.isArray(value))) {
+  if (!isRecord(value)) {
     return;
   }
 
-  const record = value as Record<string, unknown>;
+  const record = value;
   Object.assign(context, record);
 
   const nestedInput = record.input;
-  if (!(nestedInput && typeof nestedInput === "object")) {
-    return;
-  }
-
-  if (Array.isArray(nestedInput)) {
+  if (!isRecord(nestedInput)) {
     return;
   }
 
@@ -1017,7 +1052,7 @@ export async function executeWorkflow(
       return node.data.label;
     }
     if (node.data.type === "action") {
-      const actionType = node.data.config?.actionType as string;
+      const actionType = readConfigString(node.data.config, "actionType");
       if (actionType) {
         // Look up the human-readable label from the step registry
         const label = getActionLabel(actionType);
@@ -1029,7 +1064,7 @@ export async function executeWorkflow(
     }
     if (node.data.type === "trigger") {
       const triggerDefinition = resolveWorkflowTriggerDefinition(
-        node.data.config as Record<string, unknown> | undefined
+        node.data.config
       );
       return triggerDefinition.label;
     }
@@ -1040,7 +1075,7 @@ export async function executeWorkflow(
     const terminalNodeIds = nodes
       .filter((node) => (edgesBySource.get(node.id) ?? []).length === 0)
       .map((node) => node.id)
-      .sort((a, b) => a.localeCompare(b));
+      .toSorted((a, b) => a.localeCompare(b));
 
     for (const nodeId of terminalNodeIds) {
       const output = results[nodeId]?.data;
@@ -1049,7 +1084,9 @@ export async function executeWorkflow(
       }
     }
 
-    const resultKeys = Object.keys(results).sort((a, b) => a.localeCompare(b));
+    const resultKeys = Object.keys(results).toSorted((a, b) =>
+      a.localeCompare(b)
+    );
     for (const nodeId of resultKeys) {
       const output = results[nodeId]?.data;
       if (output !== undefined) {
@@ -1144,7 +1181,7 @@ export async function executeWorkflow(
         namedNodeLogger.debug("Executing trigger node");
 
         const config = node.data.config;
-        const configRecord = config as Record<string, unknown> | undefined;
+        const configRecord = config;
         const triggerDefinition =
           resolveWorkflowTriggerDefinition(configRecord);
         let triggerData: Record<string, unknown> = {
@@ -1215,7 +1252,7 @@ export async function executeWorkflow(
         };
       } else if (node.data.type === "action") {
         const config = node.data.config || {};
-        const actionType = config.actionType as string | undefined;
+        const actionType = readConfigString(config, "actionType");
         const actionLogger = namedNodeLogger.with({
           actionType: actionType ?? null,
         });
@@ -1356,38 +1393,20 @@ export async function executeWorkflow(
         });
 
         // Check if the step returned an error result
-        const isErrorResult =
-          stepResult &&
-          typeof stepResult === "object" &&
-          "success" in stepResult &&
-          (stepResult as { success: boolean }).success === false;
-
-        if (isErrorResult) {
-          const errorResult = stepResult as {
-            success: false;
-            error?: string | { message: string };
-          };
+        if (hasSuccessFlag(stepResult) && !stepResult.success) {
           // Support both old format (error: string) and new format (error: { message: string })
           const errorMessage =
-            typeof errorResult.error === "string"
-              ? errorResult.error
-              : errorResult.error?.message ||
-                `Step "${actionType}" in node "${node.data.label || node.id}" failed without a specific error message.`;
+            readStepErrorMessage(stepResult.error) ??
+            `Step "${actionType}" in node "${node.data.label || node.id}" failed without a specific error message.`;
           result = {
             success: false,
             error: errorMessage,
           };
         } else {
-          const haltBranch =
-            typeof stepResult === "object" &&
-            stepResult !== null &&
-            "haltBranch" in stepResult &&
-            (stepResult as { haltBranch?: unknown }).haltBranch === true;
-
           result = {
             success: true,
             data: stepResult,
-            haltBranch,
+            haltBranch: hasHaltBranch(stepResult),
           };
         }
       } else {
@@ -1423,8 +1442,7 @@ export async function executeWorkflow(
         if (
           node.data.type === "trigger" &&
           result.data &&
-          typeof result.data === "object" &&
-          (result.data as { triggered?: unknown }).triggered === false
+          isTriggeredFalse(result.data)
         ) {
           namedNodeLogger.info(
             "Skipping downstream nodes because trigger was not fired"
@@ -1446,8 +1464,7 @@ export async function executeWorkflow(
 
         if (isConditionNode && shouldContinueDownstream) {
           // For condition nodes, only execute next nodes if condition is true
-          const conditionResult = (result.data as { condition?: boolean })
-            ?.condition;
+          const conditionResult = readConditionValue(result.data);
           namedNodeLogger.debug("Condition node result", {
             conditionResult,
           });

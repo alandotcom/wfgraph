@@ -41,11 +41,19 @@ import { ActionGrid } from "@/components/workflow/config/action-grid";
 import { TriggerConfig } from "@/components/workflow/config/trigger-config";
 import { WorkflowRuns } from "@/components/workflow/workflow-runs";
 import { findActionById } from "@/plugins";
-import type { IntegrationType } from "@/shared/types/integration";
+import { isIntegrationType } from "@/shared/types/integration";
 import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 import type { OverlayComponentProps } from "./types";
 
 type ConfigurationOverlayProps = OverlayComponentProps;
+
+function readConfigString(
+  config: Record<string, unknown> | undefined,
+  key: string
+): string | undefined {
+  const value = config?.[key];
+  return typeof value === "string" ? value : undefined;
+}
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Complex UI logic with multiple conditions
 export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
@@ -85,21 +93,22 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
       return;
     }
 
-    const actionType = selectedNode.data.config?.actionType as
-      | string
-      | undefined;
-    const currentIntegrationId = selectedNode.data.config?.integrationId as
-      | string
-      | undefined;
+    const actionType = readConfigString(selectedNode.data.config, "actionType");
+    const currentIntegrationId = readConfigString(
+      selectedNode.data.config,
+      "integrationId"
+    );
 
     if (!(actionType && currentIntegrationId)) {
       return;
     }
 
     const action = findActionById(actionType);
-    const integrationType: IntegrationType | undefined =
-      (action?.integration as IntegrationType | undefined) ||
-      SYSTEM_ACTION_INTEGRATIONS[actionType];
+    const actionIntegrationType = isIntegrationType(action?.integration)
+      ? action.integration
+      : undefined;
+    const integrationType =
+      actionIntegrationType || SYSTEM_ACTION_INTEGRATIONS[actionType];
 
     if (!integrationType) {
       return;
@@ -526,7 +535,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
                     disabled={isGenerating || !isOwner}
                     id="label"
                     onChange={(e) => handleUpdateLabel(e.target.value)}
-                    value={selectedNode.data.label as string}
+                    value={selectedNode.data.label}
                   />
                 </div>
                 <div className="space-y-2">
@@ -536,7 +545,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
                     id="description"
                     onChange={(e) => handleUpdateDescription(e.target.value)}
                     placeholder="Optional description"
-                    value={(selectedNode.data.description as string) || ""}
+                    value={selectedNode.data.description ?? ""}
                   />
                 </div>
               </>

@@ -1,4 +1,7 @@
-import type { IntegrationType } from "@/shared/types/integration";
+import {
+  type IntegrationType,
+  isIntegrationType,
+} from "@/shared/types/integration";
 
 /**
  * Select Option
@@ -260,7 +263,10 @@ export function getRuntimeActions(): RuntimeActionDefinition[] {
  * Get an integration plugin
  */
 export function getIntegration(type: string): IntegrationPlugin | undefined {
-  return integrationRegistry.get(type as IntegrationType);
+  if (!isIntegrationType(type)) {
+    return;
+  }
+  return integrationRegistry.get(type);
 }
 
 /**
@@ -368,9 +374,9 @@ export function findActionById(
   // First try parsing as a namespaced ID
   const parsed = parseActionId(actionId);
   if (parsed) {
-    const plugin = integrationRegistry.get(
-      parsed.integration as IntegrationType
-    );
+    const plugin = isIntegrationType(parsed.integration)
+      ? integrationRegistry.get(parsed.integration)
+      : undefined;
     if (plugin) {
       const action = plugin.actions.find((a) => a.slug === parsed.slug);
       if (action) {
@@ -443,7 +449,7 @@ export function getIntegrationDescriptions(): Record<IntegrationType, string> {
  * Get sorted integration types for dropdowns
  */
 export function getSortedIntegrationTypes(): IntegrationType[] {
-  return Array.from(integrationRegistry.keys()).sort();
+  return Array.from(integrationRegistry.keys()).toSorted();
 }
 
 /**
@@ -475,9 +481,10 @@ export function getDependenciesForActions(
     const action = findActionById(actionId);
     if (
       action?.integration &&
-      integrationRegistry.has(action.integration as IntegrationType)
+      isIntegrationType(action.integration) &&
+      integrationRegistry.has(action.integration)
     ) {
-      integrations.add(action.integration as IntegrationType);
+      integrations.add(action.integration);
     }
   }
 

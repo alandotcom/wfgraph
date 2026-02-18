@@ -4,12 +4,21 @@
  * Manually maintained static imports for enabled plugins.
  */
 
-import "./acuity";
-import "./clerk";
-import "./linear";
-import "./resend";
-import "./slack";
-import "./twilio";
+import acuityPlugin from "./acuity";
+import clerkPlugin from "./clerk";
+import linearPlugin from "./linear";
+import resendPlugin from "./resend";
+import slackPlugin from "./slack";
+import twilioPlugin from "./twilio";
+
+export const REGISTERED_PLUGINS = [
+  acuityPlugin,
+  clerkPlugin,
+  linearPlugin,
+  resendPlugin,
+  slackPlugin,
+  twilioPlugin,
+] as const;
 
 export type {
   ActionConfigField,

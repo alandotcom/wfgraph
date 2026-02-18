@@ -82,6 +82,25 @@ function decryptConfig(encryptedConfig: string): Record<string, unknown> {
   }
 }
 
+function toIntegrationConfig(
+  config: Record<string, unknown>
+): IntegrationConfig {
+  const normalized: IntegrationConfig = {};
+  for (const [key, value] of Object.entries(config)) {
+    if (typeof value === "string") {
+      normalized[key] = value;
+    }
+  }
+  return normalized;
+}
+
+function decryptIntegrationConfig(rawConfig: unknown): IntegrationConfig {
+  if (typeof rawConfig !== "string") {
+    return {};
+  }
+  return toIntegrationConfig(decryptConfig(rawConfig));
+}
+
 export type DecryptedIntegration = {
   id: string;
   name: string;
@@ -101,7 +120,7 @@ export async function getIntegrations(
 
   return results.map((integration) => ({
     ...integration,
-    config: decryptConfig(integration.config as string) as IntegrationConfig,
+    config: decryptIntegrationConfig(integration.config),
   }));
 }
 
@@ -120,7 +139,7 @@ export async function getIntegration(
 
   return {
     ...result[0],
-    config: decryptConfig(result[0].config as string) as IntegrationConfig,
+    config: decryptIntegrationConfig(result[0].config),
   };
 }
 
@@ -183,7 +202,7 @@ export async function updateIntegration(
 
   return {
     ...result,
-    config: decryptConfig(result.config as string) as IntegrationConfig,
+    config: decryptIntegrationConfig(result.config),
   };
 }
 

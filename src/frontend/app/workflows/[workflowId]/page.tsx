@@ -1,5 +1,4 @@
 import { Link } from "@tanstack/react-router";
-import { compact } from "es-toolkit/array";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
@@ -31,22 +30,33 @@ import {
 import { Button } from "@/components/ui/button";
 import { WorkflowSidebarPanel } from "@/components/workflow/workflow-sidebar-panel";
 import { findActionById } from "@/plugins";
-import type { IntegrationType } from "@/shared/types/integration";
+import {
+  type IntegrationType,
+  isIntegrationType,
+} from "@/shared/types/integration";
 import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 
 type WorkflowPageProps = {
   workflowId: string;
 };
 
+function readConfigString(
+  config: Record<string, unknown> | undefined,
+  key: string
+): string | undefined {
+  const value = config?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
 // Helper to get required integration type for an action
 function getRequiredIntegrationType(
   actionType: string
 ): IntegrationType | undefined {
   const action = findActionById(actionType);
-  return (
-    (action?.integration as IntegrationType | undefined) ||
-    SYSTEM_ACTION_INTEGRATIONS[actionType]
-  );
+  const actionIntegrationType = isIntegrationType(action?.integration)
+    ? action.integration
+    : undefined;
+  return actionIntegrationType || SYSTEM_ACTION_INTEGRATIONS[actionType];
 }
 
 // Helper to check and fix a single node's integration
@@ -60,7 +70,7 @@ function checkNodeIntegration(
   allIntegrations: { id: string; type: string }[],
   validIntegrationIds: Set<string>
 ): IntegrationFixResult | null {
-  const actionType = node.data.config?.actionType as string | undefined;
+  const actionType = readConfigString(node.data.config, "actionType");
   if (!actionType) {
     return null;
   }
@@ -70,9 +80,10 @@ function checkNodeIntegration(
     return null;
   }
 
-  const currentIntegrationId = node.data.config?.integrationId as
-    | string
-    | undefined;
+  const currentIntegrationId = readConfigString(
+    node.data.config,
+    "integrationId"
+  );
   const hasValidIntegration =
     currentIntegrationId && validIntegrationIds.has(currentIntegrationId);
 
@@ -223,11 +234,9 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
         setIntegrationsLoaded(true);
 
         const validIds = new Set(allIntegrations.map((i) => i.id));
-        const fixes = compact(
-          nodes.map((node) =>
-            checkNodeIntegration(node, allIntegrations, validIds)
-          )
-        ) as IntegrationFixResult[];
+        const fixes = nodes
+          .map((node) => checkNodeIntegration(node, allIntegrations, validIds))
+          .filter((fix): fix is IntegrationFixResult => fix !== null);
 
         for (const fix of fixes) {
           const node = nodes.find((n) => n.id === fix.nodeId);
@@ -334,7 +343,10 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
+      const target = e.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
 
       // Handle save shortcut
       if (handleSaveShortcut(e)) {

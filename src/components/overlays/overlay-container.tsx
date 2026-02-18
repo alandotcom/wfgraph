@@ -96,29 +96,6 @@ function getOverlayXPosition(
 }
 
 /**
- * Hook to track direction of stack changes (push vs pop)
- * Returns 1 for push, -1 for pop
- */
-function useStackDirection(stackLength: number) {
-  const prevLength = useRef(stackLength);
-  const direction = useRef(1);
-
-  // Compute synchronously during render for immediate value
-  if (stackLength > prevLength.current) {
-    direction.current = 1; // pushing
-  } else if (stackLength < prevLength.current) {
-    direction.current = -1; // popping
-  }
-
-  // Update prevLength after render
-  useLayoutEffect(() => {
-    prevLength.current = stackLength;
-  }, [stackLength]);
-
-  return direction.current;
-}
-
-/**
  * Desktop dialog container with internal sliding content
  * Renders all stack items persistently in the same React tree location,
  * using CSS transforms to animate visibility while preserving component state
@@ -128,40 +105,18 @@ function DesktopOverlayContainer() {
   const shouldReduceMotion = useReducedMotion();
   const [minHeight, setMinHeight] = useState<number>(0);
   const contentRef = useRef<HTMLDivElement>(null);
-  const wasOpenRef = useRef(false);
-  const frozenStackRef = useRef(stack);
-  const direction = useStackDirection(stack.length);
 
   const isOpen = stack.length > 0;
 
-  // Freeze the stack when open so content doesn't shift during exit animation
-  // AnimatePresence keeps children mounted during exit, so frozenStack is used then
-  if (isOpen) {
-    frozenStackRef.current = stack;
-  }
-
-  // Use frozen stack for rendering (preserves content during exit)
-  const renderStack = frozenStackRef.current;
+  const renderStack = stack;
   const currentIndex = renderStack.length - 1;
-
-  // DEBUG
-  console.log("[DesktopOverlay]", {
-    isOpen,
-    stackLength: stack.length,
-    frozenStackLength: frozenStackRef.current.length,
-    renderStackLength: renderStack.length,
-  });
 
   // Measure content height when it changes, reset on fresh open
   useLayoutEffect(() => {
-    const isFreshOpen = isOpen && !wasOpenRef.current;
-    wasOpenRef.current = isOpen;
-
-    // Reset minHeight on fresh open (not during push/pop)
-    if (isFreshOpen) {
+    if (!isOpen) {
       setMinHeight(0);
+      return;
     }
-
     if (contentRef.current) {
       const height = contentRef.current.offsetHeight;
       if (height > 0) {
@@ -173,7 +128,6 @@ function DesktopOverlayContainer() {
   // Use live stack for options checks (only when open)
   const currentItem = stack.at(-1);
   const springTransition = shouldReduceMotion ? { duration: 0.01 } : iosSpring;
-  const isPushing = direction === 1;
 
   const handleBackdropClick = useCallback(() => {
     if (currentItem?.options.closeOnBackdropClick !== false) {
@@ -197,20 +151,12 @@ function DesktopOverlayContainer() {
     }
   }, [isOpen, handleEscapeKey]);
 
-  const handleExitComplete = useCallback(() => {
-    console.log("[DesktopOverlay] handleExitComplete called");
-    frozenStackRef.current = [];
-  }, []);
-
-  console.log("[DesktopOverlay] Rendering, isOpen:", isOpen);
-
-  // Don't render Dialog at all when closed - this ensures clean unmount
-  if (!isOpen && frozenStackRef.current.length === 0) {
+  if (!isOpen) {
     return null;
   }
 
   return (
-    <AnimatePresence onExitComplete={handleExitComplete}>
+    <AnimatePresence>
       {isOpen && (
         <Dialog modal={false} open>
           <DialogPortal keepMounted>
@@ -248,8 +194,7 @@ function DesktopOverlayContainer() {
                       // For push onto existing stack: new current item slides in from right
                       // For first overlay (fresh open): no slide, dialog container handles entrance
                       // For pop: returning item is already at -35%, animates to 0%
-                      const shouldSlideIn =
-                        isCurrent && isPushing && renderStack.length > 1;
+                      const shouldSlideIn = isCurrent && renderStack.length > 1;
                       const initialValue = shouldSlideIn
                         ? { x: "100%", scale: 1, opacity: 1 }
                         : false;
@@ -297,31 +242,18 @@ function MobileOverlayContainer() {
   const shouldReduceMotion = useReducedMotion();
   const [minHeight, setMinHeight] = useState<number>(0);
   const contentRef = useRef<HTMLDivElement>(null);
-  const wasOpenRef = useRef(false);
-  const frozenStackRef = useRef(stack);
-  const direction = useStackDirection(stack.length);
 
   const isOpen = stack.length > 0;
 
-  // Freeze the stack when open so content doesn't shift during exit animation
-  if (isOpen) {
-    frozenStackRef.current = stack;
-  }
-
-  // Use frozen stack for rendering (preserves content during exit)
-  const renderStack = frozenStackRef.current;
+  const renderStack = stack;
   const currentIndex = renderStack.length - 1;
 
   // Measure content height when it changes, reset on fresh open
   useLayoutEffect(() => {
-    const isFreshOpen = isOpen && !wasOpenRef.current;
-    wasOpenRef.current = isOpen;
-
-    // Reset minHeight on fresh open (not during push/pop)
-    if (isFreshOpen) {
+    if (!isOpen) {
       setMinHeight(0);
+      return;
     }
-
     if (contentRef.current) {
       const height = contentRef.current.offsetHeight;
       if (height > 0) {
@@ -332,9 +264,7 @@ function MobileOverlayContainer() {
 
   // Use live stack for options checks (only when open)
   const currentItem = stack.at(-1);
-  const renderCurrentItem = renderStack[currentIndex];
   const springTransition = shouldReduceMotion ? { duration: 0.01 } : iosSpring;
-  const isPushing = direction === 1;
 
   const handleEscapeKey = useCallback(
     (e: KeyboardEvent) => {
@@ -352,16 +282,8 @@ function MobileOverlayContainer() {
     }
   }, [isOpen, handleEscapeKey]);
 
-  // Clear frozen stack after drawer closes
-  const handleAnimationEnd = useCallback(() => {
-    if (!isOpen) {
-      frozenStackRef.current = [];
-    }
-  }, [isOpen]);
-
   return (
     <DrawerPrimitive.Root
-      onAnimationEnd={handleAnimationEnd}
       onOpenChange={(open) => {
         if (!open) {
           closeAll();
@@ -382,7 +304,7 @@ function MobileOverlayContainer() {
         >
           {/* Accessible title for screen readers */}
           <DrawerPrimitive.Title className="sr-only">
-            {renderCurrentItem?.options.title || "Dialog"}
+            {currentItem?.options.title || "Dialog"}
           </DrawerPrimitive.Title>
 
           {/* Drag handle */}
@@ -405,8 +327,7 @@ function MobileOverlayContainer() {
                   // For push onto existing stack: new current item slides in from right
                   // For first overlay (fresh open): no slide, drawer container handles entrance
                   // For pop: returning item is already at -35%, animates to 0%
-                  const shouldSlideIn =
-                    isCurrent && isPushing && renderStack.length > 1;
+                  const shouldSlideIn = isCurrent && renderStack.length > 1;
                   const initialValue = shouldSlideIn
                     ? { x: "100%", scale: 1, opacity: 1 }
                     : false;

@@ -152,63 +152,65 @@ async function resumeMatchingWaitHooks(input: {
     return 0;
   }
 
-  let resumedCount = 0;
-
-  for (const waitState of input.waitStates) {
-    if (!waitState.hookToken) {
-      continue;
-    }
-
-    const metadata = waitState.metadata ?? {};
-
-    try {
-      await sendWorkflowWaitSignal({
-        executionId: waitState.executionId,
-        nodeId: waitState.nodeId,
-        token: waitState.hookToken,
-        eventType: input.eventType,
-        correlationKey:
-          typeof metadata.correlationKey === "string"
-            ? metadata.correlationKey
-            : undefined,
-        payload: input.payload,
-      });
-
-      const waitStateUpdated = await markWaitStateStatus({
-        waitStateId: waitState.id,
-        status: "resumed",
-      });
-
-      if (!waitStateUpdated) {
-        continue;
+  const resumeResults = await Promise.all(
+    input.waitStates.map(async (waitState) => {
+      if (!waitState.hookToken) {
+        return 0;
       }
 
-      await markExecutionRunning(waitState.executionId);
+      const metadata = waitState.metadata ?? {};
 
-      await logWorkflowAuditEvent({
-        workflowId: input.workflowId,
-        executionId: waitState.executionId,
-        eventType: "run_resumed",
-        message: `Run resumed from wait on ${input.eventType}`,
-        metadata: {
+      try {
+        await sendWorkflowWaitSignal({
+          executionId: waitState.executionId,
+          nodeId: waitState.nodeId,
+          token: waitState.hookToken,
           eventType: input.eventType,
-        },
-      });
+          correlationKey:
+            typeof metadata.correlationKey === "string"
+              ? metadata.correlationKey
+              : undefined,
+          payload: input.payload,
+        });
 
-      resumedCount += 1;
-    } catch (error) {
-      webhookLogger.error("Failed to resume hook", {
-        workflowId: input.workflowId,
-        eventType: input.eventType,
-        waitStateId: waitState.id,
-        executionId: waitState.executionId,
-        nodeId: waitState.nodeId,
-        error,
-      });
-    }
-  }
+        const waitStateUpdated = await markWaitStateStatus({
+          waitStateId: waitState.id,
+          status: "resumed",
+        });
 
-  return resumedCount;
+        if (!waitStateUpdated) {
+          return 0;
+        }
+
+        await Promise.all([
+          markExecutionRunning(waitState.executionId),
+          logWorkflowAuditEvent({
+            workflowId: input.workflowId,
+            executionId: waitState.executionId,
+            eventType: "run_resumed",
+            message: `Run resumed from wait on ${input.eventType}`,
+            metadata: {
+              eventType: input.eventType,
+            },
+          }),
+        ]);
+
+        return 1;
+      } catch (error) {
+        webhookLogger.error("Failed to resume hook", {
+          workflowId: input.workflowId,
+          eventType: input.eventType,
+          waitStateId: waitState.id,
+          executionId: waitState.executionId,
+          nodeId: waitState.nodeId,
+          error,
+        });
+        return 0;
+      }
+    })
+  );
+
+  return resumeResults.reduce<number>((total, count) => total + count, 0);
 }
 
 function buildIgnoredAuditMessage(input: {
@@ -299,9 +301,7 @@ export async function postWorkflowWebhookResult(input: {
 
     const triggerNode = getTriggerNode(workflowNodes);
 
-    const triggerConfig = (triggerNode?.data.config ?? undefined) as
-      | Record<string, unknown>
-      | undefined;
+    const triggerConfig = triggerNode?.data.config;
     const triggerDefinition = resolveWorkflowTriggerDefinition(triggerConfig);
 
     if (!triggerNode || triggerDefinition.executionType !== "webhook") {

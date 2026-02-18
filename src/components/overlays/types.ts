@@ -78,13 +78,13 @@ export type OverlayContextValue = {
   /** Current stack of overlays */
   stack: OverlayStackItem[];
   /** Open a new overlay, replacing any existing stack */
-  open: <P>(
+  open: <P extends Record<string, unknown>>(
     component: ComponentType<OverlayComponentProps<P>>,
     props?: P,
     options?: OverlayOptions
   ) => string;
   /** Push a new overlay onto the stack (shows back button) */
-  push: <P>(
+  push: <P extends Record<string, unknown>>(
     component: ComponentType<OverlayComponentProps<P>>,
     props?: P,
     options?: OverlayOptions
@@ -92,7 +92,7 @@ export type OverlayContextValue = {
   /** Pop the top overlay from the stack */
   pop: () => void;
   /** Replace the current overlay with a new one */
-  replace: <P>(
+  replace: <P extends Record<string, unknown>>(
     component: ComponentType<OverlayComponentProps<P>>,
     props?: P,
     options?: OverlayOptions

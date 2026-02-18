@@ -15,6 +15,17 @@ export type NodeOutputs = {
   };
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getRecordValue(value: unknown, key: string): unknown {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return value[key];
+}
+
 // Helper function to process new format references (@nodeId:DisplayName)
 function processNewFormatReference(
   trimmed: string,
@@ -140,15 +151,8 @@ export function processConfigTemplates(
   for (const [key, value] of Object.entries(config)) {
     if (typeof value === "string") {
       processed[key] = processTemplate(value, nodeOutputs);
-    } else if (
-      typeof value === "object" &&
-      value !== null &&
-      !Array.isArray(value)
-    ) {
-      processed[key] = processConfigTemplates(
-        value as Record<string, unknown>,
-        nodeOutputs
-      );
+    } else if (isRecord(value)) {
+      processed[key] = processConfigTemplates(value, nodeOutputs);
     } else {
       processed[key] = value;
     }
@@ -167,11 +171,10 @@ function isStandardizedOutput(
   data: unknown
 ): data is { success: boolean; data: unknown } {
   return (
-    data !== null &&
-    typeof data === "object" &&
+    isRecord(data) &&
     "success" in data &&
     "data" in data &&
-    typeof (data as Record<string, unknown>).success === "boolean"
+    typeof data.success === "boolean"
   );
 }
 
@@ -217,7 +220,7 @@ function resolveFieldPath(data: unknown, fieldPath: string): unknown {
     const arrayMatch = trimmedPart.match(ARRAY_ACCESS_PATTERN);
     if (arrayMatch) {
       const [, field, index] = arrayMatch;
-      const fieldValue = (current as Record<string, unknown>)?.[field];
+      const fieldValue = getRecordValue(current, field);
       if (Array.isArray(fieldValue)) {
         current = fieldValue[Number.parseInt(index, 10)];
       } else {
@@ -226,9 +229,9 @@ function resolveFieldPath(data: unknown, fieldPath: string): unknown {
     } else if (Array.isArray(current)) {
       // If current is an array and we're trying to access a field,
       // map over the array and extract that field from each element
-      current = current.map((item) => item?.[trimmedPart]);
+      current = current.map((item) => getRecordValue(item, trimmedPart));
     } else {
-      current = (current as Record<string, unknown>)?.[trimmedPart];
+      current = getRecordValue(current, trimmedPart);
     }
 
     if (current === undefined || current === null) {
@@ -294,7 +297,7 @@ function resolveExpressionById(
     const arrayMatch = part.match(ARRAY_ACCESS_PATTERN);
     if (arrayMatch) {
       const [, field, index] = arrayMatch;
-      const fieldValue = (current as Record<string, unknown>)?.[field];
+      const fieldValue = getRecordValue(current, field);
       if (Array.isArray(fieldValue)) {
         current = fieldValue[Number.parseInt(index, 10)];
       } else {
@@ -303,11 +306,9 @@ function resolveExpressionById(
     } else if (Array.isArray(current)) {
       // If current is an array and we're trying to access a field,
       // map over the array and extract that field from each element
-      current = current.map(
-        (item) => (item as Record<string, unknown>)?.[part]
-      );
+      current = current.map((item) => getRecordValue(item, part));
     } else {
-      current = (current as Record<string, unknown>)?.[part];
+      current = getRecordValue(current, part);
     }
 
     if (current === undefined || current === null) {
@@ -355,7 +356,7 @@ function resolveExpression(
     const arrayMatch = part.match(ARRAY_ACCESS_PATTERN);
     if (arrayMatch) {
       const [, field, index] = arrayMatch;
-      const fieldValue = (current as Record<string, unknown>)?.[field];
+      const fieldValue = getRecordValue(current, field);
       if (Array.isArray(fieldValue)) {
         current = fieldValue[Number.parseInt(index, 10)];
       } else {
@@ -364,11 +365,9 @@ function resolveExpression(
     } else if (Array.isArray(current)) {
       // If current is an array and we're trying to access a field,
       // map over the array and extract that field from each element
-      current = current.map(
-        (item) => (item as Record<string, unknown>)?.[part]
-      );
+      current = current.map((item) => getRecordValue(item, part));
     } else {
-      current = (current as Record<string, unknown>)?.[part];
+      current = getRecordValue(current, part);
     }
 
     if (current === undefined || current === null) {
@@ -429,8 +428,8 @@ function formatValue(value: unknown): string {
     return value.map(formatValue).join(", ");
   }
 
-  if (typeof value === "object") {
-    return formatObjectValue(value as Record<string, unknown>);
+  if (isRecord(value)) {
+    return formatObjectValue(value);
   }
 
   return "";
@@ -533,11 +532,11 @@ function extractFields(
 ): void {
   const { currentPath, maxDepth = 3, currentDepth = 0 } = options;
 
-  if (currentDepth >= maxDepth || !obj || typeof obj !== "object") {
+  if (currentDepth >= maxDepth || !isRecord(obj)) {
     return;
   }
 
-  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+  for (const [key, value] of Object.entries(obj)) {
     const fieldPath = `${currentPath}.${key}}}`;
 
     fields.push({

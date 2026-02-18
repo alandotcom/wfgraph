@@ -1,6 +1,6 @@
 import { useAtomValue, useSetAtom } from "jotai";
 import { HelpCircle, Plus, Settings, Zap } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo } from "react";
 import {
   integrationsAtom,
   integrationsVersionAtom,
@@ -33,7 +33,10 @@ import {
   getActionsByCategory,
   getAllIntegrations,
 } from "@/plugins";
-import type { IntegrationType } from "@/shared/types/integration";
+import {
+  type IntegrationType,
+  isIntegrationType,
+} from "@/shared/types/integration";
 import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
@@ -52,6 +55,117 @@ type CategoryActionOption = {
   logoUrl?: string;
   integration?: string;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readConfigString(
+  config: Record<string, unknown> | undefined,
+  key: string,
+  fallback = ""
+): string {
+  const value = config?.[key];
+  return typeof value === "string" ? value : fallback;
+}
+
+function isSchemaFieldType(value: unknown): value is SchemaField["type"] {
+  return (
+    value === "string" ||
+    value === "number" ||
+    value === "boolean" ||
+    value === "array" ||
+    value === "object"
+  );
+}
+
+function isSchemaFieldItemType(
+  value: unknown
+): value is NonNullable<SchemaField["itemType"]> {
+  return (
+    value === "string" ||
+    value === "number" ||
+    value === "boolean" ||
+    value === "object"
+  );
+}
+
+function parseSchemaField(value: unknown): SchemaField | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const name = typeof value.name === "string" ? value.name.trim() : "";
+  if (!name) {
+    return null;
+  }
+
+  const description =
+    typeof value.description === "string" ? value.description : undefined;
+  const type = isSchemaFieldType(value.type) ? value.type : "string";
+
+  if (type === "array") {
+    const itemType = isSchemaFieldItemType(value.itemType)
+      ? value.itemType
+      : "string";
+    const fields = Array.isArray(value.fields)
+      ? value.fields.flatMap((field) => {
+          const parsedField = parseSchemaField(field);
+          return parsedField ? [parsedField] : [];
+        })
+      : undefined;
+
+    return {
+      name,
+      type,
+      itemType,
+      fields,
+      description,
+    };
+  }
+
+  if (type === "object") {
+    const fields = Array.isArray(value.fields)
+      ? value.fields.flatMap((field) => {
+          const parsedField = parseSchemaField(field);
+          return parsedField ? [parsedField] : [];
+        })
+      : [];
+
+    return {
+      name,
+      type,
+      fields,
+      description,
+    };
+  }
+
+  return {
+    name,
+    type,
+    description,
+  };
+}
+
+function parseSchemaFields(value: unknown): SchemaField[] {
+  if (typeof value !== "string" || !value.trim()) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.flatMap((field) => {
+      const parsedField = parseSchemaField(field);
+      return parsedField ? [parsedField] : [];
+    });
+  } catch {
+    return [];
+  }
+}
 
 function OptionLogo({
   logoUrl,
@@ -107,7 +221,7 @@ function DatabaseQueryFields({
               readOnly: disabled,
               wordWrap: "off",
             }}
-            value={(config?.dbQuery as string) || ""}
+            value={readConfigString(config, "dbQuery")}
           />
         </div>
         <p className="text-muted-foreground text-xs">
@@ -122,11 +236,7 @@ function DatabaseQueryFields({
           onChange={(schema) =>
             onUpdateConfig("dbSchema", JSON.stringify(schema))
           }
-          schema={
-            config?.dbSchema
-              ? (JSON.parse(config.dbSchema as string) as SchemaField[])
-              : []
-          }
+          schema={parseSchemaFields(config.dbSchema)}
         />
       </div>
     </>
@@ -150,7 +260,7 @@ function HttpRequestFields({
         <Select
           disabled={disabled}
           onValueChange={(value) => onUpdateConfig("httpMethod", value)}
-          value={(config?.httpMethod as string) || "POST"}
+          value={readConfigString(config, "httpMethod", "POST")}
         >
           <SelectTrigger className="w-full" id="httpMethod">
             <SelectValue placeholder="Select method" />
@@ -171,7 +281,7 @@ function HttpRequestFields({
           id="endpoint"
           onChange={(value) => onUpdateConfig("endpoint", value)}
           placeholder="https://api.example.com/endpoint or {{NodeName.url}}"
-          value={(config?.endpoint as string) || ""}
+          value={readConfigString(config, "endpoint")}
         />
       </div>
       <div className="space-y-2">
@@ -189,7 +299,7 @@ function HttpRequestFields({
               readOnly: disabled,
               wordWrap: "off",
             }}
-            value={(config?.httpHeaders as string) || "{}"}
+            value={readConfigString(config, "httpHeaders", "{}")}
           />
         </div>
       </div>
@@ -211,7 +321,7 @@ function HttpRequestFields({
               domReadOnly: config?.httpMethod === "GET" || disabled,
               wordWrap: "off",
             }}
-            value={(config?.httpBody as string) || "{}"}
+            value={readConfigString(config, "httpBody", "{}")}
           />
         </div>
         {config?.httpMethod === "GET" && (
@@ -303,12 +413,12 @@ type WaitFieldProps = {
 function getDelayTimingMode(
   config: Record<string, unknown>
 ): "duration" | "until" {
-  const delayTimingModeRaw = (config.waitDelayTimingMode as string) || "";
+  const delayTimingModeRaw = readConfigString(config, "waitDelayTimingMode");
   if (delayTimingModeRaw === "duration" || delayTimingModeRaw === "until") {
     return delayTimingModeRaw;
   }
 
-  const waitUntil = (config.waitUntil as string) || "";
+  const waitUntil = readConfigString(config, "waitUntil");
   if (waitUntil.trim()) {
     return "until";
   }
@@ -317,9 +427,9 @@ function getDelayTimingMode(
 }
 
 function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
-  const waitGateMode = (config.waitGateMode as string) || "off";
-  const configuredWaitUntil = (config.waitUntil as string) || "";
-  const configuredWaitDuration = (config.waitDuration as string) || "";
+  const waitGateMode = readConfigString(config, "waitGateMode", "off");
+  const configuredWaitUntil = readConfigString(config, "waitUntil");
+  const configuredWaitDuration = readConfigString(config, "waitDuration");
   const delayTimingMode = getDelayTimingMode(config);
 
   const handleDelayTimingModeChange = (value: string) => {
@@ -402,7 +512,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
               id="waitOffset"
               onChange={(value) => onUpdateConfig("waitOffset", value)}
               placeholder="-1d, 6h, 30m"
-              value={(config.waitOffset as string) || ""}
+              value={readConfigString(config, "waitOffset")}
             />
             <p className="text-muted-foreground text-xs">
               Example: <code>-1d</code> sends one day before the target time.
@@ -442,7 +552,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           disabled={disabled}
           id="waitTimezone"
           onValueChange={(value) => onUpdateConfig("waitTimezone", value)}
-          value={(config.waitTimezone as string) || "UTC"}
+          value={readConfigString(config, "waitTimezone", "UTC")}
         />
         <p className="text-muted-foreground text-xs">
           Used when the target date/time does not include an offset.
@@ -467,7 +577,7 @@ function HookWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           id="waitForEvents"
           onChange={(value) => onUpdateConfig("waitForEvents", value)}
           placeholder="event.update,event.confirmed"
-          value={(config.waitForEvents as string) || ""}
+          value={readConfigString(config, "waitForEvents")}
         />
         <p className="text-muted-foreground text-xs">
           Leave empty to resume on any matching event for the same entity.
@@ -481,7 +591,7 @@ function HookWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           id="waitTimeout"
           onChange={(value) => onUpdateConfig("waitTimeout", value)}
           placeholder="48h"
-          value={(config.waitTimeout as string) || ""}
+          value={readConfigString(config, "waitTimeout")}
         />
         <p className="text-muted-foreground text-xs">
           Optional safety timeout if the expected event never arrives.
@@ -495,7 +605,7 @@ function HookWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           id="waitHookToken"
           onChange={(value) => onUpdateConfig("waitHookToken", value)}
           placeholder="custom-token-if-you-need-deterministic-resume"
-          value={(config.waitHookToken as string) || ""}
+          value={readConfigString(config, "waitHookToken")}
         />
         <p className="text-muted-foreground text-xs">
           Leave blank unless an external system must target a fixed token.
@@ -507,7 +617,7 @@ function HookWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
 
 // Wait fields component
 function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
-  const waitMode = (config.waitMode as string) || "delay";
+  const waitMode = readConfigString(config, "waitMode", "delay");
 
   return (
     <>
@@ -609,7 +719,7 @@ const SYSTEM_ACTIONS: CategoryActionOption[] = [
   { id: "Wait", label: "Wait" },
 ];
 
-const SYSTEM_ACTION_IDS = SYSTEM_ACTIONS.map((a) => a.id);
+const SYSTEM_ACTION_ID_SET = new Set(SYSTEM_ACTIONS.map((action) => action.id));
 
 // Build category mapping dynamically from plugins + System
 function useCategoryData(): Record<string, CategoryActionOption[]> {
@@ -638,7 +748,7 @@ function useCategoryData(): Record<string, CategoryActionOption[]> {
 // Get category for an action type (supports both new IDs, labels, and legacy labels)
 function getCategoryForAction(actionType: string): string | null {
   // Check system actions first
-  if (SYSTEM_ACTION_IDS.includes(actionType)) {
+  if (SYSTEM_ACTION_ID_SET.has(actionType)) {
     return "System";
   }
 
@@ -654,7 +764,7 @@ function getCategoryForAction(actionType: string): string | null {
 // Normalize action type to new ID format (handles legacy labels via findActionById)
 function normalizeActionType(actionType: string): string {
   // Check system actions first - they use their label as ID
-  if (SYSTEM_ACTION_IDS.includes(actionType)) {
+  if (SYSTEM_ACTION_ID_SET.has(actionType)) {
     return actionType;
   }
 
@@ -673,7 +783,7 @@ export function ActionConfig({
   disabled,
   isOwner = true,
 }: ActionConfigProps) {
-  const actionType = (config?.actionType as string) || "";
+  const actionType = readConfigString(config, "actionType");
   const categories = useCategoryData();
   const integrations = useMemo(() => getAllIntegrations(), []);
   const integrationByLabel = useMemo(
@@ -691,20 +801,12 @@ export function ActionConfig({
     [categories]
   );
 
-  const selectedCategory = actionType ? getCategoryForAction(actionType) : null;
-  const [category, setCategory] = useState<string>(selectedCategory || "");
+  const category = actionType ? getCategoryForAction(actionType) || "" : "";
   const setIntegrationsVersion = useSetAtom(integrationsVersionAtom);
   const globalIntegrations = useAtomValue(integrationsAtom);
   const { push } = useOverlay();
 
-  // Sync category state when actionType changes (e.g., when switching nodes)
-  useEffect(() => {
-    const newCategory = actionType ? getCategoryForAction(actionType) : null;
-    setCategory(newCategory || "");
-  }, [actionType]);
-
   const handleCategoryChange = (newCategory: string) => {
-    setCategory(newCategory);
     // Auto-select the first action in the new category
     const firstAction = categories[newCategory]?.[0];
     if (firstAction) {
@@ -737,7 +839,9 @@ export function ActionConfig({
 
     // Check plugin actions
     const action = findActionById(actionType);
-    return action?.integration as IntegrationType | undefined;
+    return isIntegrationType(action?.integration)
+      ? action.integration
+      : undefined;
   }, [actionType]);
 
   // Check if there are existing connections for this integration type
@@ -833,12 +937,14 @@ export function ActionConfig({
             <SelectContent>
               {category &&
                 categories[category]?.map((action) => {
-                  const integrationType =
+                  const actionIntegrationType =
                     typeof action.integration === "string"
                       ? action.integration
                       : undefined;
-                  const integration = integrationType
-                    ? integrations.find((item) => item.type === integrationType)
+                  const integration = actionIntegrationType
+                    ? integrations.find(
+                        (item) => item.type === actionIntegrationType
+                      )
                     : undefined;
                   let fallbackIcon: ReactNode;
                   if (category === "System") {
@@ -910,21 +1016,21 @@ export function ActionConfig({
             disabled={disabled}
             integrationType={integrationType}
             onChange={(id) => onUpdateConfig("integrationId", id)}
-            value={(config?.integrationId as string) || ""}
+            value={readConfigString(config, "integrationId")}
           />
         </div>
       )}
 
       {/* System actions - hardcoded config fields */}
       <SystemActionFields
-        actionType={(config?.actionType as string) || ""}
+        actionType={readConfigString(config, "actionType")}
         config={config}
         disabled={disabled}
         onUpdateConfig={onUpdateConfig}
       />
 
       {/* Plugin actions - declarative config fields */}
-      {pluginAction && !SYSTEM_ACTION_IDS.includes(actionType) && (
+      {pluginAction && !SYSTEM_ACTION_ID_SET.has(actionType) && (
         <ActionConfigRenderer
           config={config}
           disabled={disabled}

@@ -15,6 +15,14 @@ export interface TemplateBadgeTextareaProps {
   rows?: number;
 }
 
+function readConfigString(
+  config: Record<string, unknown> | undefined,
+  key: string
+): string | undefined {
+  const value = config?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
 // Helper to check if a template references an existing node
 function doesNodeExist(
   template: string,
@@ -49,7 +57,7 @@ function getDisplayTextForTemplate(
   // Get display label: custom label > human-readable action label > fallback
   let displayLabel: string | undefined = node.data.label;
   if (!displayLabel && node.data.type === "action") {
-    const actionType = node.data.config?.actionType as string | undefined;
+    const actionType = readConfigString(node.data.config, "actionType");
     if (actionType) {
       const action = findActionById(actionType);
       displayLabel = action?.label;
@@ -112,6 +120,18 @@ function insertLineBreakAtSelection(): boolean {
   return true;
 }
 
+function addTextWithLineBreaks(container: HTMLElement, text: string): void {
+  const lines = text.split("\n");
+  lines.forEach((line, index) => {
+    if (line) {
+      container.appendChild(document.createTextNode(line));
+    }
+    if (index < lines.length - 1) {
+      container.appendChild(document.createElement("br"));
+    }
+  });
+}
+
 /**
  * A textarea component that renders template variables as styled badges
  * Converts {{@nodeId:DisplayName.field}} to badges showing "DisplayName.field"
@@ -141,14 +161,7 @@ export function TemplateBadgeTextarea({
   const [autocompleteFilter, setAutocompleteFilter] = useState("");
   const [atSignPosition, setAtSignPosition] = useState<number | null>(null);
   const pendingCursorPosition = useRef<number | null>(null);
-
-  // Update internal value when prop changes from outside
-  useEffect(() => {
-    if (value !== internalValue && !isFocused) {
-      setInternalValue(value);
-      shouldUpdateDisplay.current = true;
-    }
-  }, [value, isFocused, internalValue]);
+  const displayValue = isFocused ? internalValue : value;
 
   // Update display when nodes change (to reflect label updates)
   useEffect(() => {
@@ -207,7 +220,10 @@ export function TemplateBadgeTextarea({
           );
         }
       } else if (node.nodeType === Node.ELEMENT_NODE) {
-        const element = node as HTMLElement;
+        if (!(node instanceof HTMLElement)) {
+          continue;
+        }
+        const element = node;
         const template = element.getAttribute("data-template");
         if (template) {
           if (
@@ -270,7 +286,10 @@ export function TemplateBadgeTextarea({
         }
         offset += textLength;
       } else if (node.nodeType === Node.ELEMENT_NODE) {
-        const element = node as HTMLElement;
+        if (!(node instanceof HTMLElement)) {
+          continue;
+        }
+        const element = node;
         const template = element.getAttribute("data-template");
         if (template) {
           if (offset + template.length >= cursorPos.offset) {
@@ -325,7 +344,7 @@ export function TemplateBadgeTextarea({
     if (!(contentRef.current && shouldUpdateDisplay.current)) return;
 
     const container = contentRef.current;
-    const text = internalValue || "";
+    const text = displayValue || "";
 
     // Save cursor position before updating
     let cursorPos = isFocused ? saveCursorPosition() : null;
@@ -395,19 +414,6 @@ export function TemplateBadgeTextarea({
     }
   };
 
-  // Helper to add text with line breaks preserved
-  const addTextWithLineBreaks = (container: HTMLElement, text: string) => {
-    const lines = text.split("\n");
-    lines.forEach((line, index) => {
-      if (line) {
-        container.appendChild(document.createTextNode(line));
-      }
-      if (index < lines.length - 1) {
-        container.appendChild(document.createElement("br"));
-      }
-    });
-  };
-
   // Extract plain text from content
   const extractValue = (): string => {
     if (!contentRef.current) return "";
@@ -447,7 +453,10 @@ export function TemplateBadgeTextarea({
           );
         }
       } else if (node.nodeType === Node.ELEMENT_NODE) {
-        const element = node as HTMLElement;
+        if (!(node instanceof HTMLElement)) {
+          continue;
+        }
+        const element = node;
         const template = element.getAttribute("data-template");
         if (template) {
           result += template;
@@ -633,6 +642,7 @@ export function TemplateBadgeTextarea({
   };
 
   const handleFocus = () => {
+    setInternalValue(value);
     setIsFocused(true);
     shouldUpdateDisplay.current = true;
   };
@@ -674,7 +684,7 @@ export function TemplateBadgeTextarea({
     if (shouldUpdateDisplay.current) {
       updateDisplay();
     }
-  }, [internalValue, isFocused]);
+  });
 
   // Calculate min height based on rows
   const minHeight = `${rows * 1.5}rem`;

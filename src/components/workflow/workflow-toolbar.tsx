@@ -69,7 +69,10 @@ import {
   flattenConfigFields,
   getIntegrationLabels,
 } from "@/plugins";
-import type { IntegrationType } from "@/shared/types/integration";
+import {
+  type IntegrationType,
+  isIntegrationType,
+} from "@/shared/types/integration";
 import {
   SYSTEM_ACTION_INTEGRATIONS,
   SYSTEM_INTEGRATION_LABELS,
@@ -111,6 +114,18 @@ type BrokenTemplateReferenceInfo = {
   }>;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readConfigString(
+  config: Record<string, unknown> | undefined,
+  key: string
+): string | undefined {
+  const value = config?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
 // Extract template variables from a string and check if they reference existing nodes
 function extractTemplateReferences(
   value: unknown
@@ -144,17 +159,8 @@ function extractAllTemplateReferences(
       for (const ref of refs) {
         results.push({ field: fieldPath, ...ref });
       }
-    } else if (
-      typeof value === "object" &&
-      value !== null &&
-      !Array.isArray(value)
-    ) {
-      results.push(
-        ...extractAllTemplateReferences(
-          value as Record<string, unknown>,
-          fieldPath
-        )
-      );
+    } else if (isRecord(value)) {
+      results.push(...extractAllTemplateReferences(value, fieldPath));
     }
   }
 
@@ -174,7 +180,7 @@ function getBrokenTemplateReferences(
       continue;
     }
 
-    const config = node.data.config as Record<string, unknown> | undefined;
+    const config = node.data.config;
     if (!config || typeof config !== "object") {
       continue;
     }
@@ -184,7 +190,7 @@ function getBrokenTemplateReferences(
 
     if (brokenRefs.length > 0) {
       // Get action for label lookups
-      const actionType = config.actionType as string | undefined;
+      const actionType = readConfigString(config, "actionType");
       const action = actionType ? findActionById(actionType) : undefined;
       const flatFields = action ? flattenConfigFields(action.configFields) : [];
 
@@ -248,8 +254,8 @@ function getNodeMissingFields(
     return null;
   }
 
-  const config = node.data.config as Record<string, unknown> | undefined;
-  const actionType = config?.actionType as string | undefined;
+  const config = node.data.config;
+  const actionType = readConfigString(config, "actionType");
   if (!actionType) {
     return null;
   }
@@ -305,8 +311,6 @@ function getMissingIntegrations(
   const userIntegrationIds = new Set(userIntegrations.map((i) => i.id));
   const missingByType = new Map<IntegrationType, string[]>();
   const integrationLabels = getIntegrationLabels();
-  const isKnownIntegrationType = (value: string): value is IntegrationType =>
-    value in integrationLabels || value in SYSTEM_INTEGRATION_LABELS;
 
   for (const node of nodes) {
     // Skip disabled nodes
@@ -314,7 +318,7 @@ function getMissingIntegrations(
       continue;
     }
 
-    const actionType = node.data.config?.actionType as string | undefined;
+    const actionType = readConfigString(node.data.config, "actionType");
     if (!actionType) {
       continue;
     }
@@ -328,7 +332,7 @@ function getMissingIntegrations(
     if (
       !(
         requiredIntegrationTypeRaw &&
-        isKnownIntegrationType(requiredIntegrationTypeRaw)
+        isIntegrationType(requiredIntegrationTypeRaw)
       )
     ) {
       continue;
@@ -338,9 +342,10 @@ function getMissingIntegrations(
 
     // Check if this node has a valid integrationId configured
     // The integration must exist (not just be configured)
-    const configuredIntegrationId = node.data.config?.integrationId as
-      | string
-      | undefined;
+    const configuredIntegrationId = readConfigString(
+      node.data.config,
+      "integrationId"
+    );
     const hasValidIntegration =
       configuredIntegrationId &&
       userIntegrationIds.has(configuredIntegrationId);

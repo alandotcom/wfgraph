@@ -75,6 +75,10 @@ type WorkflowRunsProps = {
   onStartRun?: (executionId: string) => void;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 // Helper to get the output display config for a node type
 function getOutputConfig(nodeType: string): OutputDisplayConfig | undefined {
   return OUTPUT_DISPLAY_CONFIGS[nodeType];
@@ -85,10 +89,10 @@ function getOutputDisplayValue(
   output: unknown,
   config: { type: "image" | "video" | "url"; field: string }
 ): string | undefined {
-  if (typeof output !== "object" || output === null) {
+  if (!isRecord(output)) {
     return;
   }
-  const value = (output as Record<string, unknown>)[config.field];
+  const value = output[config.field];
   if (typeof value === "string" && value.length > 0) {
     return value;
   }
@@ -97,13 +101,10 @@ function getOutputDisplayValue(
 
 // Fallback: detect if output is a base64 image (for legacy support)
 function isBase64ImageOutput(output: unknown): output is { base64: string } {
-  return (
-    typeof output === "object" &&
-    output !== null &&
-    "base64" in output &&
-    typeof (output as { base64: unknown }).base64 === "string" &&
-    (output as { base64: string }).base64.length > 100 // Base64 images are large
-  );
+  if (!isRecord(output)) {
+    return false;
+  }
+  return typeof output.base64 === "string" && output.base64.length > 100;
 }
 
 function getLogStartedAtMs(log: Pick<ExecutionLog, "startedAt">): number {
@@ -313,8 +314,9 @@ function OutputDisplay({
     : undefined;
 
   // Check for legacy base64 image
+  const legacyBase64Output = isBase64ImageOutput(output) ? output.base64 : null;
   const isLegacyBase64 =
-    !(pluginConfig || builtInConfig) && isBase64ImageOutput(output);
+    !(pluginConfig || builtInConfig) && !!legacyBase64Output;
 
   const renderRichResult = () => {
     // Priority 1: Custom component from plugin outputConfig
@@ -366,7 +368,7 @@ function OutputDisplay({
             <div className="overflow-hidden rounded-lg border bg-muted/50">
               <iframe
                 className="h-96 w-full rounded"
-                sandbox="allow-scripts allow-same-origin"
+                sandbox="allow-scripts"
                 src={displayValue}
                 title="Output preview"
               />
@@ -385,7 +387,7 @@ function OutputDisplay({
             alt="AI output"
             className="max-h-96 w-auto rounded"
             height={384}
-            src={`data:image/png;base64,${(output as { base64: string }).base64}`}
+            src={`data:image/png;base64,${legacyBase64Output}`}
             width={384}
           />
         </div>
@@ -427,6 +429,74 @@ function OutputDisplay({
   );
 }
 
+function getStatusIcon(status: string): JSX.Element {
+  switch (status) {
+    case "success":
+      return <Check className="h-3 w-3 text-white" />;
+    case "error":
+      return <X className="h-3 w-3 text-white" />;
+    case "running":
+      return <Loader2 className="h-3 w-3 animate-spin text-white" />;
+    case "waiting":
+      return <Clock className="h-3 w-3 text-white" />;
+    case "cancelled":
+      return <Ban className="h-3 w-3 text-white" />;
+    default:
+      return <Clock className="h-3 w-3 text-white" />;
+  }
+}
+
+function getStatusDotClass(status: string): string {
+  switch (status) {
+    case "success":
+      return "bg-green-600";
+    case "error":
+      return "bg-red-600";
+    case "running":
+      return "bg-blue-600";
+    case "waiting":
+      return "bg-amber-600";
+    case "cancelled":
+      return "bg-slate-600";
+    default:
+      return "bg-muted-foreground";
+  }
+}
+
+function getStatusBadgeClass(status: string): string {
+  switch (status) {
+    case "success":
+      return "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300";
+    case "error":
+      return "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300";
+    case "running":
+      return "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300";
+    case "waiting":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+    case "cancelled":
+      return "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300";
+    default:
+      return "border-muted bg-muted/40 text-muted-foreground";
+  }
+}
+
+function getStatusLabel(status: string): string {
+  switch (status) {
+    case "success":
+      return "Success";
+    case "error":
+      return "Error";
+    case "running":
+      return "Running";
+    case "waiting":
+      return "Waiting";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return "Unknown";
+  }
+}
+
 function applyExecutionStatusToLogs(
   logEntries: ExecutionLog[],
   executionStatus: string
@@ -452,16 +522,16 @@ function ExecutionLogEntry({
   log,
   isExpanded,
   onToggle,
-  getStatusIcon,
-  getStatusDotClass,
+  statusIconFor,
+  statusDotClassFor,
   isFirst,
   isLast,
 }: {
   log: ExecutionLog;
   isExpanded: boolean;
   onToggle: () => void;
-  getStatusIcon: (status: string) => JSX.Element;
-  getStatusDotClass: (status: string) => string;
+  statusIconFor: (status: string) => JSX.Element;
+  statusDotClassFor: (status: string) => string;
   isFirst: boolean;
   isLast: boolean;
 }) {
@@ -475,10 +545,10 @@ function ExecutionLogEntry({
         <div
           className={cn(
             "z-10 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-0",
-            getStatusDotClass(log.status)
+            statusDotClassFor(log.status)
           )}
         >
-          {getStatusIcon(log.status)}
+          {statusIconFor(log.status)}
         </div>
         {!isLast && (
           <div className="absolute top-[calc(0.5rem+1.25rem)] bottom-0 w-px bg-border" />
@@ -907,74 +977,6 @@ export function WorkflowRuns({
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "success":
-        return <Check className="h-3 w-3 text-white" />;
-      case "error":
-        return <X className="h-3 w-3 text-white" />;
-      case "running":
-        return <Loader2 className="h-3 w-3 animate-spin text-white" />;
-      case "waiting":
-        return <Clock className="h-3 w-3 text-white" />;
-      case "cancelled":
-        return <Ban className="h-3 w-3 text-white" />;
-      default:
-        return <Clock className="h-3 w-3 text-white" />;
-    }
-  };
-
-  const getStatusDotClass = (status: string) => {
-    switch (status) {
-      case "success":
-        return "bg-green-600";
-      case "error":
-        return "bg-red-600";
-      case "running":
-        return "bg-blue-600";
-      case "waiting":
-        return "bg-amber-600";
-      case "cancelled":
-        return "bg-slate-600";
-      default:
-        return "bg-muted-foreground";
-    }
-  };
-
-  const getStatusBadgeClass = (status: string) => {
-    switch (status) {
-      case "success":
-        return "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300";
-      case "error":
-        return "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300";
-      case "running":
-        return "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300";
-      case "waiting":
-        return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
-      case "cancelled":
-        return "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300";
-      default:
-        return "border-muted bg-muted/40 text-muted-foreground";
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case "success":
-        return "Success";
-      case "error":
-        return "Error";
-      case "running":
-        return "Running";
-      case "waiting":
-        return "Waiting";
-      case "cancelled":
-        return "Cancelled";
-      default:
-        return "Unknown";
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -1003,7 +1005,7 @@ export function WorkflowRuns({
       {executions.map((execution, index) => {
         const isExpanded = expandedRuns.has(execution.id);
         const isSelected = selectedExecutionId === execution.id;
-        const executionLogs = [...(logs[execution.id] || [])].sort((a, b) => {
+        const executionLogs = (logs[execution.id] || []).toSorted((a, b) => {
           // Sort by startedAt to ensure first to last order
           return (
             new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()
@@ -1174,14 +1176,14 @@ export function WorkflowRuns({
                     <div>
                       {executionLogs.map((log, logIndex) => (
                         <ExecutionLogEntry
-                          getStatusDotClass={getStatusDotClass}
-                          getStatusIcon={getStatusIcon}
                           isExpanded={expandedLogs.has(log.id)}
                           isFirst={logIndex === 0}
                           isLast={logIndex === executionLogs.length - 1}
                           key={log.id}
                           log={log}
                           onToggle={() => toggleLog(log.id)}
+                          statusDotClassFor={getStatusDotClass}
+                          statusIconFor={getStatusIcon}
                         />
                       ))}
                     </div>
