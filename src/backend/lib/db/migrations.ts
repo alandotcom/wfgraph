@@ -24,7 +24,9 @@ async function resolveExistingMigrationsDir(
     ? [resolve(process.cwd(), configuredPath)]
     : MIGRATIONS_DIR_CANDIDATES;
 
-  const findExistingCandidate = async (index: number): Promise<string | null> => {
+  const findExistingCandidate = async (
+    index: number
+  ): Promise<string | null> => {
     const candidate = candidates[index];
     if (!candidate) {
       return null;

@@ -134,7 +134,7 @@ async function httpRequest(
     }
   };
 
-  return runAttempt(1);
+  return await runAttempt(1);
 }
 
 /**

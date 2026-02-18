@@ -1,4 +1,3 @@
-import React from "react";
 import { compact } from "es-toolkit/array";
 import type { ResultComponentProps } from "@/plugins/registry";
 

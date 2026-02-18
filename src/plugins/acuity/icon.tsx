@@ -1,5 +1,3 @@
-import React from "react";
-
 export function AcuityIcon({ className }: { className?: string }) {
   return (
     <svg
