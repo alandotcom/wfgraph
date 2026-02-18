@@ -1,3 +1,4 @@
+import path from "node:path";
 import { serve } from "bun";
 import { createApiApp } from "@/backend/app";
 import {
@@ -16,7 +17,6 @@ import {
 } from "@/backend/lib/inngest/client";
 import { configureAppLogging, getAppLogger } from "@/backend/lib/logger";
 import { initializeWorkflowTriggers } from "@/backend/lib/workflow-trigger-bootstrap";
-import appHtml from "@/client/index.html";
 import {
   type RuntimeActionDefinition,
   registerRuntimeAction,
@@ -80,6 +80,79 @@ function normalizePath(pathname: string): string {
     return pathname.slice(0, -1);
   }
   return pathname;
+}
+
+const DEFAULT_CLIENT_DIST_DIR = "dist/client";
+const CLIENT_ENTRY_FILE = "index.html";
+
+function getClientDistDir(): string {
+  const configuredDir = Bun.env.CLIENT_DIST_DIR?.trim();
+  return configuredDir && configuredDir.length > 0
+    ? configuredDir
+    : DEFAULT_CLIENT_DIST_DIR;
+}
+
+function isSpaPath(pathname: string): boolean {
+  return (
+    pathname === "/" ||
+    pathname === "/workflows" ||
+    pathname.startsWith("/workflows/")
+  );
+}
+
+function resolveClientAssetPath(pathname: string): string | null {
+  if (pathname === "/") {
+    return null;
+  }
+
+  let decodedPath = pathname;
+  try {
+    decodedPath = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+
+  const relativePath = decodedPath.startsWith("/")
+    ? decodedPath.slice(1)
+    : decodedPath;
+  if (!relativePath) {
+    return null;
+  }
+
+  const normalizedPath = path.posix.normalize(relativePath);
+  if (
+    normalizedPath === "." ||
+    normalizedPath.startsWith("../") ||
+    normalizedPath.includes("/../")
+  ) {
+    return null;
+  }
+
+  return path.join(getClientDistDir(), normalizedPath);
+}
+
+async function serveClientEntry(logger: RovaLogger): Promise<Response> {
+  const entryFilePath = path.join(getClientDistDir(), CLIENT_ENTRY_FILE);
+  const entryFile = Bun.file(entryFilePath);
+
+  if (await entryFile.exists()) {
+    return new Response(entryFile, {
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+      },
+    });
+  }
+
+  logger.error("Client bundle entrypoint is missing", {
+    entryFilePath,
+  });
+
+  return Response.json(
+    {
+      error: "Client bundle not found. Run `bun run build:client`.",
+    },
+    { status: 503 }
+  );
 }
 
 function resolveLogger(logger: RovaLogger | undefined): RovaLogger {
@@ -171,17 +244,24 @@ export async function startRovaServer(
     const bunServer = serve({
       port,
       development: Bun.env.NODE_ENV !== "production",
-      routes: {
-        "/": appHtml,
-        "/workflows": appHtml,
-        "/workflows/:workflowId": appHtml,
-      },
-      fetch(req) {
+      fetch: async (req) => {
         const url = new URL(req.url);
         const pathname = normalizePath(url.pathname);
 
         if (pathname.startsWith("/api/")) {
           return apiApp.fetch(req);
+        }
+
+        const clientAssetPath = resolveClientAssetPath(pathname);
+        if (clientAssetPath) {
+          const assetFile = Bun.file(clientAssetPath);
+          if (await assetFile.exists()) {
+            return new Response(assetFile);
+          }
+        }
+
+        if (isSpaPath(pathname)) {
+          return await serveClientEntry(logger);
         }
 
         return Response.json({ error: "Not found" }, { status: 404 });

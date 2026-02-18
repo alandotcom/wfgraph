@@ -1,0 +1,135 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "import", "unicorn"],
+  "jsPlugins": [
+    { "name": "react-hooks-js", "specifier": "eslint-plugin-react-hooks" }
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    "no-unused-vars": "error",
+    "no-undef": "error",
+    "no-console": "off",
+    "no-var": "error",
+    "prefer-const": "error",
+    "react/rules-of-hooks": "off",
+    "react/exhaustive-deps": "off",
+    "react-hooks-js/config": "error",
+    "react-hooks-js/gating": "error",
+    "react-hooks-js/rules-of-hooks": "error",
+    "react-hooks-js/exhaustive-deps": "warn",
+    "react-hooks-js/static-components": "warn",
+    "react-hooks-js/use-memo": "warn",
+    "react-hooks-js/void-use-memo": "warn",
+    "react-hooks-js/component-hook-factories": "warn",
+    "react-hooks-js/preserve-manual-memoization": "warn",
+    "react-hooks-js/incompatible-library": "warn",
+    "react-hooks-js/immutability": "warn",
+    "react-hooks-js/globals": "warn",
+    "react-hooks-js/refs": "warn",
+    "react-hooks-js/set-state-in-effect": "warn",
+    "react-hooks-js/error-boundaries": "warn",
+    "react-hooks-js/purity": "warn",
+    "react-hooks-js/set-state-in-render": "warn",
+    "react-hooks-js/unsupported-syntax": "warn",
+    "typescript/no-deprecated": "error",
+    "typescript/no-floating-promises": [
+      "error",
+      {
+        "allowForKnownSafeCalls": [
+          "navigate",
+          "invalidateQueries",
+          "refetchQueries",
+          "cancelQueries",
+          "resetQueries",
+          "prefetchQuery",
+          "prefetchInfiniteQuery"
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
+      "rules": {
+        "no-undef": "off"
+      }
+    },
+    {
+      "files": [
+        "src/client/**/*.ts",
+        "src/client/**/*.tsx",
+        "src/frontend/**/*.ts",
+        "src/frontend/**/*.tsx",
+        "src/components/**/*.ts",
+        "src/components/**/*.tsx"
+      ],
+      "env": {
+        "browser": true
+      },
+      "rules": {
+        "react/react-in-jsx-scope": "off",
+        "typescript/no-floating-promises": "off",
+        "react-hooks-js/incompatible-library": "off"
+      }
+    },
+    {
+      "files": ["src/scripts/**/*.ts", "drizzle.config.ts", "bunup.config.ts"],
+      "env": {
+        "node": true
+      }
+    },
+    {
+      "files": [
+        "src/client/main.tsx",
+        "src/components/flow-elements/canvas.tsx",
+        "src/components/workflow/workflow-canvas.tsx"
+      ],
+      "rules": {
+        "import/no-unassigned-import": "off"
+      }
+    },
+    {
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx",
+        "**/test-setup.ts",
+        "**/test-matchers.ts",
+        "**/test-utils.ts",
+        "**/test-utils/**/*.ts",
+        "**/test-utils/**/*.tsx",
+        "**/__tests__/**/*.ts",
+        "**/__tests__/**/*.tsx",
+        "**/tests/**/*.ts",
+        "**/tests/**/*.tsx"
+      ],
+      "rules": {
+        "no-undef": "off",
+        "no-console": "off",
+        "no-await-in-loop": "off",
+        "eqeqeq": "off",
+        "import/no-unassigned-import": "off",
+        "react/react-in-jsx-scope": "off",
+        "typescript/no-unnecessary-type-assertion": "off",
+        "typescript/no-unsafe-type-assertion": "off",
+        "typescript/await-thenable": "off",
+        "typescript/require-array-sort-compare": "off",
+        "typescript/no-floating-promises": "off",
+        "typescript/no-base-to-string": "off",
+        "unicorn/no-array-sort": "off",
+        "unicorn/consistent-function-scoping": "off"
+      }
+    }
+  ],
+  "settings": {
+    "typescript": {
+      "tsconfig": "./tsconfig.json"
+    }
+  },
+  "ignorePatterns": ["node_modules", "dist", "*.d.ts"]
+}

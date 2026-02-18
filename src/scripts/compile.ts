@@ -1,5 +1,4 @@
 import { mkdir, rename, rm } from "node:fs/promises";
-import tailwindPlugin from "bun-plugin-tailwind";
 
 const outputPath = "./dist/server";
 const fallbackOutputPath = "./server";
@@ -23,7 +22,6 @@ const result = await Bun.build({
     "process.env.NODE_ENV": '"production"',
     "import.meta.env.DEV": "false",
   },
-  plugins: [tailwindPlugin],
   compile: compileTarget ?? true,
 });
 
