@@ -57,6 +57,13 @@ type IntegrationTestError =
       message: string;
     };
 
+const createDatabaseConnection = (url: string) =>
+  new Bun.SQL(url, {
+    max: 1,
+    idleTimeout: 5,
+    connectionTimeout: 5,
+  });
+
 function getSecretConfigKeys(type: IntegrationType): Set<string> {
   if (type === "database") {
     return new Set(["url"]);
@@ -104,8 +111,10 @@ function mergeIntegrationConfig(
     updates,
     (value, key) =>
       value === undefined ||
-      (secretKeys.has(key as string) &&
-        (value === SECRET_MASK || value.trim().length === 0))
+      (typeof key === "string" &&
+        secretKeys.has(key) &&
+        (value === SECRET_MASK ||
+          (typeof value === "string" && value.trim().length === 0)))
   );
 
   return {
@@ -235,10 +244,7 @@ export async function putIntegrationResult(
         config: mergedConfig,
       },
       isNil
-    ) as {
-      name?: string;
-      config?: IntegrationConfig;
-    };
+    );
 
     const integration = await updateIntegration(integrationId, updatePayload);
 
@@ -420,13 +426,6 @@ export async function postIntegrationTest(integrationId: string) {
 async function testDatabaseConnection(
   databaseUrl?: string
 ): Promise<IntegrationTestResult> {
-  const createDatabaseConnection = (url: string) =>
-    new Bun.SQL(url, {
-      max: 1,
-      idleTimeout: 5,
-      connectionTimeout: 5,
-    });
-
   let connection: ReturnType<typeof createDatabaseConnection> | null = null;
 
   try {

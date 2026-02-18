@@ -14,7 +14,7 @@ export default function WorkflowsPage() {
 
         if (filtered.length > 0) {
           // Sort by updatedAt descending to get most recent
-          const mostRecent = filtered.sort(
+          const mostRecent = filtered.toSorted(
             (a, b) =>
               new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
           )[0];

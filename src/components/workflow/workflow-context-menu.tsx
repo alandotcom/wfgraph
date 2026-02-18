@@ -111,9 +111,10 @@ export function WorkflowContextMenu({
     }
 
     const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target;
       if (
         menuRef.current &&
-        !menuRef.current.contains(event.target as globalThis.Node)
+        !(target instanceof globalThis.Node && menuRef.current.contains(target))
       ) {
         onClose();
       }

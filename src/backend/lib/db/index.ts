@@ -52,18 +52,18 @@ type DatabaseRuntimeState = {
   db: BunSQLDatabase<typeof schema> | null;
 };
 
-const globalForDb = globalThis as unknown as {
-  __rovaDatabaseState?: DatabaseRuntimeState;
-};
+declare global {
+  var __rovaDatabaseState: DatabaseRuntimeState | undefined;
+}
 
-const databaseState: DatabaseRuntimeState = globalForDb.__rovaDatabaseState ?? {
+const databaseState: DatabaseRuntimeState = globalThis.__rovaDatabaseState ?? {
   config: null,
   queryClient: null,
   migrationClient: null,
   db: null,
 };
 
-globalForDb.__rovaDatabaseState = databaseState;
+globalThis.__rovaDatabaseState = databaseState;
 
 function normalizeConnectionCount(
   value: number | undefined,
@@ -178,12 +178,12 @@ export function getMigrationClient(): ReturnType<typeof createSqlClient> {
   return databaseState.migrationClient;
 }
 
-const dbProxy = new Proxy({} as BunSQLDatabase<typeof schema>, {
+const dbProxy: BunSQLDatabase<typeof schema> = new Proxy(Object.create(null), {
   get(_target, property, receiver) {
-    const instance = getDb() as unknown as Record<PropertyKey, unknown>;
+    const instance = getDb();
     const value = Reflect.get(instance, property, receiver);
     return typeof value === "function" ? value.bind(instance) : value;
   },
 });
 
-export const db: BunSQLDatabase<typeof schema> = dbProxy;
+export const db = dbProxy;

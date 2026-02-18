@@ -26,6 +26,15 @@ export type ClerkUpdateUserInput = StepInput &
     integrationId?: string;
   };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseMetadataJson(value: string): Record<string, unknown> | undefined {
+  const parsed: unknown = JSON.parse(value);
+  return isRecord(parsed) ? parsed : undefined;
+}
+
 /**
  * Core logic - portable between app and export
  */
@@ -56,10 +65,13 @@ async function stepHandler(
     let publicMetadata: Record<string, unknown> | undefined;
     if (input.publicMetadata) {
       try {
-        publicMetadata = JSON.parse(input.publicMetadata) as Record<
-          string,
-          unknown
-        >;
+        publicMetadata = parseMetadataJson(input.publicMetadata);
+        if (!publicMetadata) {
+          return {
+            success: false,
+            error: { message: "Invalid JSON format for publicMetadata" },
+          };
+        }
       } catch {
         return {
           success: false,
@@ -71,10 +83,13 @@ async function stepHandler(
     let privateMetadata: Record<string, unknown> | undefined;
     if (input.privateMetadata) {
       try {
-        privateMetadata = JSON.parse(input.privateMetadata) as Record<
-          string,
-          unknown
-        >;
+        privateMetadata = parseMetadataJson(input.privateMetadata);
+        if (!privateMetadata) {
+          return {
+            success: false,
+            error: { message: "Invalid JSON format for privateMetadata" },
+          };
+        }
       } catch {
         return {
           success: false,

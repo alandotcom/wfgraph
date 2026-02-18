@@ -2,7 +2,7 @@ import { motion } from "motion/react";
 import {
   type CSSProperties,
   type ElementType,
-  type JSX,
+  createElement,
   memo,
   useMemo,
 } from "react";
@@ -23,17 +23,15 @@ const ShimmerComponent = ({
   duration = 2,
   spread = 2,
 }: TextShimmerProps) => {
-  const MotionComponent = motion.create(
-    Component as keyof JSX.IntrinsicElements
-  );
-
   const dynamicSpread = useMemo(
     () => (children?.length ?? 0) * spread,
     [children, spread]
   );
 
-  return (
-    <MotionComponent
+  return createElement(
+    Component,
+    {},
+    <motion.span
       animate={{ backgroundPosition: "0% center" }}
       className={cn(
         "relative inline-block bg-[length:250%_100%,auto] bg-clip-text text-transparent",
@@ -55,7 +53,7 @@ const ShimmerComponent = ({
       }}
     >
       {children}
-    </MotionComponent>
+    </motion.span>
   );
 };
 

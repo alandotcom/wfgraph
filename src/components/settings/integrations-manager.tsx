@@ -71,7 +71,7 @@ export function IntegrationsManager({
           integration.type.toLowerCase().includes(filterLower)
         );
       })
-      .sort((a, b) => {
+      .toSorted((a, b) => {
         const labelCompare = a.label.localeCompare(b.label);
         if (labelCompare !== 0) {
           return labelCompare;

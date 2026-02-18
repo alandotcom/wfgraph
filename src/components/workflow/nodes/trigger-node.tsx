@@ -40,18 +40,6 @@ function getScheduleSummary(
   }
 }
 
-function getTriggerIcon(triggerType: string) {
-  if (triggerType === "Schedule") {
-    return Clock;
-  }
-
-  if (triggerType === "Webhook") {
-    return Webhook;
-  }
-
-  return Play;
-}
-
 function TriggerStatusBadge({
   status,
 }: {
@@ -83,12 +71,27 @@ function TriggerStatusBadge({
   );
 }
 
+function renderTriggerIcon(triggerType: string) {
+  if (triggerType === "Schedule") {
+    return <Clock className="size-12 text-blue-500" strokeWidth={1.5} />;
+  }
+
+  if (triggerType === "Webhook") {
+    return <Webhook className="size-12 text-blue-500" strokeWidth={1.5} />;
+  }
+
+  return <Play className="size-12 text-blue-500" strokeWidth={1.5} />;
+}
+
 export const TriggerNode = memo(({ data, selected }: TriggerNodeProps) => {
   if (!data) {
     return null;
   }
 
-  const triggerType = (data.config?.triggerType as string) || "Webhook";
+  const triggerType =
+    typeof data.config?.triggerType === "string"
+      ? data.config.triggerType
+      : "Webhook";
   const displayTitle = data.label || triggerType;
   const scheduleExpression =
     typeof data.config?.scheduleExpression === "string"
@@ -112,7 +115,6 @@ export const TriggerNode = memo(({ data, selected }: TriggerNodeProps) => {
     data.description ||
     (triggerType === "Schedule" ? "Schedule trigger" : "Trigger");
   const status = data.status;
-  const TriggerIcon = getTriggerIcon(triggerType);
 
   return (
     <Node
@@ -126,7 +128,7 @@ export const TriggerNode = memo(({ data, selected }: TriggerNodeProps) => {
       <TriggerStatusBadge status={status} />
 
       <div className="flex flex-col items-center justify-center gap-3 p-6">
-        <TriggerIcon className="size-12 text-blue-500" strokeWidth={1.5} />
+        {renderTriggerIcon(triggerType)}
         <div className="flex flex-col items-center gap-1 text-center">
           <NodeTitle className="text-base">{displayTitle}</NodeTitle>
           {displayDescription && (

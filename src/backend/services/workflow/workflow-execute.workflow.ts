@@ -240,8 +240,8 @@ export async function postWorkflowExecuteResult(
     }
 
     const triggerNode = getTriggerNode(graphValidation.nodes);
-    const triggerConfig = triggerNode?.data.config ?? {};
-    const triggerConfigRecord = triggerConfig as Record<string, unknown>;
+    const triggerConfigRecord: Record<string, unknown> =
+      triggerNode?.data.config ?? {};
     const triggerDefinition =
       resolveWorkflowTriggerDefinition(triggerConfigRecord);
     const isWebhookTrigger = triggerDefinition.executionType === "webhook";

@@ -35,7 +35,12 @@ export async function cancelWaitingRuns(
   const successfulExecutionIds: string[] = [];
   const failedExecutionIds: string[] = [];
 
-  for (const executionId of uniqueExecutionIds) {
+  const dispatchCancelRequests = async (index: number): Promise<void> => {
+    const executionId = uniqueExecutionIds[index];
+    if (!executionId) {
+      return;
+    }
+
     try {
       await sendWorkflowCancelRequested({
         executionId,
@@ -54,7 +59,11 @@ export async function cancelWaitingRuns(
         error,
       });
     }
-  }
+
+    await dispatchCancelRequests(index + 1);
+  };
+
+  await dispatchCancelRequests(0);
 
   const successfulExecutionIdSet = new Set(successfulExecutionIds);
   const waitStateIdsToCancel = input.waitStates
@@ -63,7 +72,14 @@ export async function cancelWaitingRuns(
   const cancelledWaitStateIds =
     await markWaitingStatesCancelled(waitStateIdsToCancel);
 
-  for (const executionId of successfulExecutionIds) {
+  const finalizeExecutionCancellations = async (
+    index: number
+  ): Promise<void> => {
+    const executionId = successfulExecutionIds[index];
+    if (!executionId) {
+      return;
+    }
+
     await markExecutionCancelled({
       executionId,
       error: input.reason,
@@ -78,7 +94,11 @@ export async function cancelWaitingRuns(
         eventType: input.eventType,
       },
     });
-  }
+
+    await finalizeExecutionCancellations(index + 1);
+  };
+
+  await finalizeExecutionCancellations(0);
 
   return {
     cancelledExecutions: successfulExecutionIds.length,

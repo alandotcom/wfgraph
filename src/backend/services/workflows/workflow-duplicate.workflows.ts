@@ -19,11 +19,7 @@ import {
   createSerializedWorkflowGraph,
   toWorkflowGraphData,
 } from "@/shared/workflow/graph";
-import type {
-  SerializedWorkflowGraph,
-  WorkflowEdge,
-  WorkflowNode,
-} from "@/shared/workflow/types";
+import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
 
 function stripIntegrationIds(nodes: WorkflowNode[]): WorkflowNode[] {
   return nodes.map((node) => {
@@ -83,7 +79,7 @@ export async function postWorkflowDuplicate(
       return failure(404, { error: "Workflow not found" });
     }
 
-    const sourceGraph = sourceWorkflow.graph as SerializedWorkflowGraph;
+    const sourceGraph = sourceWorkflow.graph;
     const { nodes: oldNodes, edges: oldEdges } =
       toWorkflowGraphData(sourceGraph);
     const newNodes = stripIntegrationIds(oldNodes);

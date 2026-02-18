@@ -8,6 +8,26 @@ import {
 import { useTheme } from "next-themes";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
+type ToasterStyle = React.CSSProperties &
+  Record<
+    "--normal-bg" | "--normal-text" | "--normal-border" | "--border-radius",
+    string
+  >;
+
+const toasterStyle: ToasterStyle = {
+  "--normal-bg": "var(--popover)",
+  "--normal-text": "var(--popover-foreground)",
+  "--normal-border": "var(--border)",
+  "--border-radius": "var(--radius)",
+};
+
+const resolveToasterTheme = (value: unknown): ToasterProps["theme"] => {
+  if (value === "light" || value === "dark" || value === "system") {
+    return value;
+  }
+  return "system";
+};
+
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme();
 
@@ -21,15 +41,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
         error: <OctagonXIcon className="size-4" />,
         loading: <Loader2Icon className="size-4 animate-spin" />,
       }}
-      style={
-        {
-          "--normal-bg": "var(--popover)",
-          "--normal-text": "var(--popover-foreground)",
-          "--normal-border": "var(--border)",
-          "--border-radius": "var(--radius)",
-        } as React.CSSProperties
-      }
-      theme={theme as ToasterProps["theme"]}
+      style={toasterStyle}
+      theme={resolveToasterTheme(theme)}
       {...props}
     />
   );

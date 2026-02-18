@@ -59,11 +59,13 @@ function collectSelectItems(node: React.ReactNode) {
 }
 
 function Select({ onValueChange, children, ...props }: SelectProps) {
-  const derivedItems = collectSelectItems(children);
-  const labelByValue: Record<string, string> = {};
-  for (const item of derivedItems) {
-    labelByValue[item.value] = item.label;
-  }
+  const labelByValue = React.useMemo(() => {
+    const next: Record<string, string> = {};
+    for (const item of collectSelectItems(children)) {
+      next[item.value] = item.label;
+    }
+    return next;
+  }, [children]);
 
   return (
     <SelectItemsContext.Provider value={labelByValue}>

@@ -16,6 +16,10 @@ function assertUnreachable(value: never): never {
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function mapWebhookDecisionToTriggerDecision(
   decision: WebhookRoutingDecision
 ): TriggerRoutingDecision {
@@ -46,8 +50,8 @@ export function createWebhookTriggerDefinition(): WorkflowTriggerDefinition {
 
       try {
         const parsed = JSON.parse(mockInputRaw);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          return parsed as Record<string, unknown>;
+        if (isRecord(parsed)) {
+          return parsed;
         }
       } catch {
         return;

@@ -63,7 +63,8 @@ export async function validateApiKey(
     };
   }
 
-  const keyPrefix = parsed.key.slice(0, API_KEY_PREFIX_LENGTH);
+  const apiKey = parsed.key;
+  const keyPrefix = apiKey.slice(0, API_KEY_PREFIX_LENGTH);
   const candidates = await db.query.apiKeys.findMany({
     where: eq(apiKeys.keyPrefix, keyPrefix),
     columns: {
@@ -72,33 +73,40 @@ export async function validateApiKey(
     },
   });
 
-  for (const candidate of candidates) {
+  const findMatchingKeyId = async (index: number): Promise<string | null> => {
+    const candidate = candidates[index];
+    if (!candidate) {
+      return null;
+    }
+
     try {
-      const isMatch = await Bun.password.verify(parsed.key, candidate.keyHash);
-      if (!isMatch) {
-        continue;
+      const isMatch = await Bun.password.verify(apiKey, candidate.keyHash);
+      if (isMatch) {
+        return candidate.id;
       }
-
-      db.update(apiKeys)
-        .set({ lastUsedAt: new Date() })
-        .where(eq(apiKeys.id, candidate.id))
-        .catch((error: unknown) => {
-          apiKeyAuthLogger.warn(
-            "Failed to update API key last-used timestamp",
-            {
-              keyId: candidate.id,
-              error,
-            }
-          );
-        });
-
-      return { valid: true, keyId: candidate.id };
     } catch (error) {
       apiKeyAuthLogger.warn("Failed to verify API key candidate hash", {
         keyId: candidate.id,
         error,
       });
     }
+
+    return findMatchingKeyId(index + 1);
+  };
+
+  const matchedKeyId = await findMatchingKeyId(0);
+  if (matchedKeyId) {
+    db.update(apiKeys)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(apiKeys.id, matchedKeyId))
+      .catch((error: unknown) => {
+        apiKeyAuthLogger.warn("Failed to update API key last-used timestamp", {
+          keyId: matchedKeyId,
+          error,
+        });
+      });
+
+    return { valid: true, keyId: matchedKeyId };
   }
 
   return {

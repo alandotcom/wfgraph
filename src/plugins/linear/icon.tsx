@@ -1,3 +1,5 @@
+import React from "react";
+
 export function LinearIcon({ className }: { className?: string }) {
   return (
     <svg

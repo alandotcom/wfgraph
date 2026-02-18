@@ -25,6 +25,82 @@ type FieldProps = {
   disabled?: boolean;
 };
 
+const SCHEMA_TYPES = new Set([
+  "string",
+  "number",
+  "boolean",
+  "array",
+  "object",
+]);
+const SCHEMA_ITEM_TYPES = new Set(["string", "number", "boolean", "object"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isSchemaFieldType(value: unknown): value is SchemaField["type"] {
+  return typeof value === "string" && SCHEMA_TYPES.has(value);
+}
+
+function isSchemaItemType(
+  value: unknown
+): value is NonNullable<SchemaField["itemType"]> {
+  return typeof value === "string" && SCHEMA_ITEM_TYPES.has(value);
+}
+
+function isSchemaField(value: unknown): value is SchemaField {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (typeof value.name !== "string" || !isSchemaFieldType(value.type)) {
+    return false;
+  }
+
+  if ("id" in value && value.id !== undefined && typeof value.id !== "string") {
+    return false;
+  }
+
+  if (
+    "itemType" in value &&
+    value.itemType !== undefined &&
+    !isSchemaItemType(value.itemType)
+  ) {
+    return false;
+  }
+
+  if (
+    "fields" in value &&
+    value.fields !== undefined &&
+    !(Array.isArray(value.fields) && value.fields.every(isSchemaField))
+  ) {
+    return false;
+  }
+
+  if (
+    "format" in value &&
+    value.format !== undefined &&
+    value.format !== "timestamp"
+  ) {
+    return false;
+  }
+
+  return !(
+    "description" in value &&
+    value.description !== undefined &&
+    typeof value.description !== "string"
+  );
+}
+
+function parseSchemaFields(value: string): SchemaField[] {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.every(isSchemaField) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function TemplateInputField({ field, value, onChange, disabled }: FieldProps) {
   return (
     <TemplateBadgeInput
@@ -107,7 +183,7 @@ function SchemaBuilderField(props: FieldProps) {
     <SchemaBuilder
       disabled={props.disabled}
       onChange={(schema) => props.onChange(JSON.stringify(schema))}
-      schema={props.value ? (JSON.parse(props.value) as SchemaField[]) : []}
+      schema={props.value ? parseSchemaFields(props.value) : []}
     />
   );
 }
@@ -141,8 +217,11 @@ function renderField(
     }
   }
 
+  const rawValue = config[field.key];
   const value =
-    (config[field.key] as string | undefined) || field.defaultValue || "";
+    (typeof rawValue === "string" ? rawValue : undefined) ||
+    field.defaultValue ||
+    "";
   const FieldRenderer = FIELD_RENDERERS[field.type];
 
   return (

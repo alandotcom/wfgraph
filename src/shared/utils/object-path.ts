@@ -5,6 +5,10 @@ export function parseCsvSet(value: unknown): Set<string> {
   return parseCsvSetFromCsv(value);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function getValueByPath(
   input: unknown,
   path: string | undefined
@@ -35,8 +39,8 @@ export function getValueByPath(
       continue;
     }
 
-    if (typeof current === "object") {
-      current = (current as Record<string, unknown>)[segment];
+    if (isRecord(current)) {
+      current = current[segment];
       continue;
     }
 

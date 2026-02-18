@@ -4,7 +4,6 @@ import {
   getBezierPath,
   getSimpleBezierPath,
   type InternalNode,
-  type Node,
   Position,
   useInternalNode,
 } from "@xyflow/react";
@@ -42,7 +41,7 @@ const Temporary = ({
 };
 
 const getHandleCoordsByPosition = (
-  node: InternalNode<Node>,
+  node: InternalNode,
   handlePosition: Position
 ) => {
   // Choose the handle type based on position - Left is for target, Right is for source
@@ -86,8 +85,8 @@ const getHandleCoordsByPosition = (
 };
 
 const getEdgeParams = (
-  source: InternalNode<Node>,
-  target: InternalNode<Node>
+  source: InternalNode,
+  target: InternalNode
 ) => {
   const sourcePos = Position.Right;
   const [sx, sy] = getHandleCoordsByPosition(source, sourcePos);

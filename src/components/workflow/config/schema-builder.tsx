@@ -28,6 +28,50 @@ type SchemaBuilderProps = {
   level?: number;
 };
 
+const SCHEMA_FIELD_TYPES = new Set([
+  "string",
+  "number",
+  "boolean",
+  "array",
+  "object",
+]);
+const SCHEMA_ITEM_TYPES = new Set(["string", "number", "boolean", "object"]);
+
+function isSchemaFieldType(value: string): value is SchemaField["type"] {
+  return SCHEMA_FIELD_TYPES.has(value);
+}
+
+function isSchemaItemType(
+  value: string
+): value is NonNullable<SchemaField["itemType"]> {
+  return SCHEMA_ITEM_TYPES.has(value);
+}
+
+function resetDependentFields(
+  field: SchemaField,
+  type: SchemaField["type"]
+): SchemaField {
+  const updated = { ...field };
+
+  if (type !== "array") {
+    updated.itemType = undefined;
+  }
+  if (type !== "object") {
+    updated.fields = undefined;
+  }
+  if (type !== "string") {
+    updated.format = undefined;
+  }
+  if (type === "array" && !updated.itemType) {
+    updated.itemType = "string";
+  }
+  if (type === "object" && !updated.fields) {
+    updated.fields = [];
+  }
+
+  return updated;
+}
+
 export function SchemaBuilder({
   schema,
   onChange,
@@ -36,31 +80,6 @@ export function SchemaBuilder({
 }: SchemaBuilderProps) {
   const addField = () => {
     onChange([...schema, { id: nanoid(), name: "", type: "string" }]);
-  };
-
-  const resetDependentFields = (
-    field: SchemaField,
-    type: SchemaField["type"]
-  ): SchemaField => {
-    const updated = { ...field };
-
-    if (type !== "array") {
-      updated.itemType = undefined;
-    }
-    if (type !== "object") {
-      updated.fields = undefined;
-    }
-    if (type !== "string") {
-      updated.format = undefined;
-    }
-    if (type === "array" && !updated.itemType) {
-      updated.itemType = "string";
-    }
-    if (type === "object" && !updated.fields) {
-      updated.fields = [];
-    }
-
-    return updated;
   };
 
   const updateField = (index: number, updates: Partial<SchemaField>) => {
@@ -118,11 +137,11 @@ export function SchemaBuilder({
                 </Label>
                 <Select
                   disabled={disabled}
-                  onValueChange={(value) =>
-                    updateField(index, {
-                      type: value as SchemaField["type"],
-                    })
-                  }
+                  onValueChange={(value) => {
+                    if (isSchemaFieldType(value)) {
+                      updateField(index, { type: value });
+                    }
+                  }}
                   value={field.type}
                 >
                   <SelectTrigger
@@ -162,11 +181,11 @@ export function SchemaBuilder({
                 </Label>
                 <Select
                   disabled={disabled}
-                  onValueChange={(value) =>
-                    updateField(index, {
-                      itemType: value as SchemaField["itemType"],
-                    })
-                  }
+                  onValueChange={(value) => {
+                    if (isSchemaItemType(value)) {
+                      updateField(index, { itemType: value });
+                    }
+                  }}
                   value={field.itemType || "string"}
                 >
                   <SelectTrigger
@@ -197,10 +216,7 @@ export function SchemaBuilder({
                   disabled={disabled}
                   onValueChange={(value) =>
                     updateField(index, {
-                      format:
-                        value === "timestamp"
-                          ? "timestamp"
-                          : (undefined as SchemaField["format"]),
+                      format: value === "timestamp" ? "timestamp" : undefined,
                     })
                   }
                   value={field.format || "text"}

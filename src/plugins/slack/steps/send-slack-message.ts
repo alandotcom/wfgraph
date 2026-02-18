@@ -68,7 +68,9 @@ async function stepHandler(
 
   try {
     const slackClient = new WebClient(apiKey);
-    const result = await slackClient.chat.postMessage({
+    const postSlackChatMessage =
+      slackClient.chat.postMessage.bind(slackClient.chat);
+    const result = await postSlackChatMessage({
       channel: input.slackChannel,
       text: input.slackMessage,
     });

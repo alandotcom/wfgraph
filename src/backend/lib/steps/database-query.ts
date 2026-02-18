@@ -20,14 +20,14 @@ export type DatabaseQueryInput = StepInput & {
   query?: string;
 };
 
-function validateInput(input: DatabaseQueryInput): string | null {
-  const queryString = input.dbQuery || input.query;
-
+function resolveQueryString(
+  input: DatabaseQueryInput
+): { ok: true; queryString: string } | { ok: false; error: string } {
+  const queryString = input.dbQuery ?? input.query;
   if (!queryString || queryString.trim() === "") {
-    return "SQL query is required";
+    return { ok: false, error: "SQL query is required" };
   }
-
-  return null;
+  return { ok: true, queryString };
 }
 
 function createDatabaseClient(databaseUrl: string) {
@@ -87,9 +87,9 @@ async function cleanupClient(
 async function databaseQuery(
   input: DatabaseQueryInput
 ): Promise<DatabaseQueryResult> {
-  const validationError = validateInput(input);
-  if (validationError) {
-    return { success: false, error: validationError };
+  const queryResult = resolveQueryString(input);
+  if (!queryResult.ok) {
+    return { success: false, error: queryResult.error };
   }
 
   const credentials = input.integrationId
@@ -106,12 +106,11 @@ async function databaseQuery(
     };
   }
 
-  const queryString = (input.dbQuery || input.query) as string;
   let client: ReturnType<typeof createDatabaseClient> | null = null;
 
   try {
     client = createDatabaseClient(databaseUrl);
-    const result = await executeQuery(client, queryString);
+    const result = await executeQuery(client, queryResult.queryString);
     await client.close();
 
     return {

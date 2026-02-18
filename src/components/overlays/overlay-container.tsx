@@ -114,8 +114,8 @@ function DesktopOverlayContainer() {
   // Measure content height when it changes, reset on fresh open
   useLayoutEffect(() => {
     if (!isOpen) {
-      setMinHeight(0);
-      return;
+      const resetTimer = setTimeout(() => setMinHeight(0), 0);
+      return () => clearTimeout(resetTimer);
     }
     if (contentRef.current) {
       const height = contentRef.current.offsetHeight;
@@ -251,8 +251,8 @@ function MobileOverlayContainer() {
   // Measure content height when it changes, reset on fresh open
   useLayoutEffect(() => {
     if (!isOpen) {
-      setMinHeight(0);
-      return;
+      const resetTimer = setTimeout(() => setMinHeight(0), 0);
+      return () => clearTimeout(resetTimer);
     }
     if (contentRef.current) {
       const height = contentRef.current.offsetHeight;

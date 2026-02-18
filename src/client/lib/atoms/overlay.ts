@@ -50,7 +50,7 @@ export const openOverlayAtom = atom(
     const item: OverlayStackItem = {
       id,
       component: params.component as ComponentType<OverlayComponentProps>,
-      props: (params.props ?? {}) as Record<string, unknown>,
+      props: params.props ?? {},
       options: params.options ?? {},
     };
     set(overlayStackAtom, [item]);
@@ -77,7 +77,7 @@ export const pushOverlayAtom = atom(
     const item: OverlayStackItem = {
       id,
       component: params.component as ComponentType<OverlayComponentProps>,
-      props: (params.props ?? {}) as Record<string, unknown>,
+      props: params.props ?? {},
       options: params.options ?? {},
     };
     set(overlayStackAtom, [...get(overlayStackAtom), item]);
@@ -129,7 +129,7 @@ export const replaceOverlayAtom = atom(
     const item: OverlayStackItem = {
       id,
       component: params.component as ComponentType<OverlayComponentProps>,
-      props: (params.props ?? {}) as Record<string, unknown>,
+      props: params.props ?? {},
       options: params.options ?? {},
     };
 

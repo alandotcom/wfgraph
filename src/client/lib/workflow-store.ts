@@ -1,4 +1,4 @@
-import type { EdgeChange, NodeChange } from "@xyflow/react";
+import type { EdgeChange, Node, NodeChange } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import { partition } from "es-toolkit/array";
 import { atom } from "jotai";
@@ -10,6 +10,32 @@ import type {
   WorkflowVisibility,
 } from "@/shared/workflow/types";
 import { api } from "./rpc-client";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isWorkflowNodeData(value: unknown): value is WorkflowNodeData {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value.label === "string" && typeof value.type === "string";
+}
+
+function isWorkflowNode(value: Node): value is WorkflowNode {
+  return isWorkflowNodeData(value.data);
+}
+
+function isWorkflowNodeChange(
+  change: NodeChange
+): change is NodeChange<WorkflowNode> {
+  if (change.type === "add" || change.type === "replace") {
+    return isWorkflowNode(change.item);
+  }
+
+  return true;
+}
 
 export type {
   ExecutionLogEntry,
@@ -110,19 +136,21 @@ export const onNodesChangeAtom = atom(
     const currentNodes = get(nodesAtom);
 
     // Filter out deletion attempts on trigger nodes
-    const filteredChanges = changes.filter((change) => {
-      if (change.type === "remove") {
-        const nodeToRemove = currentNodes.find((n) => n.id === change.id);
-        // Prevent deletion of trigger nodes
-        return nodeToRemove?.data.type !== "trigger";
-      }
-      return true;
-    });
+    const filteredChanges = changes
+      .filter((change) => {
+        if (change.type === "remove") {
+          const nodeToRemove = currentNodes.find((n) => n.id === change.id);
+          // Prevent deletion of trigger nodes
+          return nodeToRemove?.data.type !== "trigger";
+        }
+        return true;
+      })
+      .filter(isWorkflowNodeChange);
 
-    const newNodes = applyNodeChanges(
+    const newNodes = applyNodeChanges<WorkflowNode>(
       filteredChanges,
       currentNodes
-    ) as WorkflowNode[];
+    );
     set(nodesAtom, newNodes);
 
     // Sync selection state with selectedNodeAtom
@@ -170,7 +198,7 @@ export const onEdgesChangeAtom = atom(
   null,
   (get, set, changes: EdgeChange[]) => {
     const currentEdges = get(edgesAtom);
-    const newEdges = applyEdgeChanges(changes, currentEdges) as WorkflowEdge[];
+    const newEdges = applyEdgeChanges(changes, currentEdges);
     set(edgesAtom, newEdges);
 
     // Sync selection state with selectedEdgeAtom
@@ -299,13 +327,9 @@ function updateTemplatesInConfig(
         return `{{@${nodeId}:${newLabel}${fieldPart || ""}}}`;
       });
       updated[key] = newValue;
-    } else if (
-      typeof value === "object" &&
-      value !== null &&
-      !Array.isArray(value)
-    ) {
+    } else if (isRecord(value)) {
       const nestedUpdated = updateTemplatesInConfig(
-        value as Record<string, unknown>,
+        value,
         nodeId,
         oldLabel,
         newLabel
@@ -392,9 +416,11 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
   set(futureAtom, []);
 
   // Get all selected nodes, excluding trigger nodes
-  const selectedNodeIds = currentNodes
-    .filter((node) => node.selected && node.data.type !== "trigger")
-    .map((node) => node.id);
+  const selectedNodeIds = new Set(
+    currentNodes
+      .filter((node) => node.selected && node.data.type !== "trigger")
+      .map((node) => node.id)
+  );
 
   // Delete selected nodes (excluding trigger nodes) and their connected edges
   const newNodes = currentNodes.filter((node) => {
@@ -410,8 +436,8 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
     (edge) =>
       !(
         edge.selected ||
-        selectedNodeIds.includes(edge.source) ||
-        selectedNodeIds.includes(edge.target)
+        selectedNodeIds.has(edge.source) ||
+        selectedNodeIds.has(edge.target)
       )
   );
 

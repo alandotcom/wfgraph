@@ -14,6 +14,22 @@ type WorkflowSidebarPanelProps = {
   enableEntryAnimation?: boolean;
 };
 
+function readInitialSidebarWidth() {
+  if (typeof document === "undefined") {
+    return 30;
+  }
+
+  const widthCookie = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith("sidebar-width="));
+  if (!widthCookie) {
+    return 30;
+  }
+
+  const value = Number.parseFloat(widthCookie.split("=")[1]);
+  return !Number.isNaN(value) && value >= 20 && value <= 50 ? value : 30;
+}
+
 export function WorkflowSidebarPanel({
   enableEntryAnimation = false,
 }: WorkflowSidebarPanelProps) {
@@ -26,7 +42,7 @@ export function WorkflowSidebarPanel({
   const [panelCollapsed, setPanelCollapsed] = useAtom(isSidebarCollapsedAtom);
 
   // Panel width state for resizing
-  const [panelWidth, setPanelWidth] = useState(30); // default percentage
+  const [panelWidth, setPanelWidth] = useState(readInitialSidebarWidth);
   // Keep the panel visible by default; the animation effect can temporarily hide it.
   const [panelVisible, setPanelVisible] = useState(true);
   const [isDraggingResize, setIsDraggingResize] = useState(false);
@@ -39,17 +55,6 @@ export function WorkflowSidebarPanel({
       return;
     }
     hasReadCookies.current = true;
-
-    // Read width
-    const widthCookie = document.cookie
-      .split("; ")
-      .find((row) => row.startsWith("sidebar-width="));
-    if (widthCookie) {
-      const value = Number.parseFloat(widthCookie.split("=")[1]);
-      if (!Number.isNaN(value) && value >= 20 && value <= 50) {
-        setPanelWidth(value);
-      }
-    }
 
     // Read collapsed state
     const collapsedCookie = document.cookie
@@ -83,7 +88,6 @@ export function WorkflowSidebarPanel({
   // Trigger slide-in animation on mount (only for homepage -> workflow transition)
   useEffect(() => {
     if (!enableEntryAnimation) {
-      setPanelVisible(true);
       return;
     }
 
@@ -100,9 +104,11 @@ export function WorkflowSidebarPanel({
     // Skip animation if sidebar has already been shown (switching between workflows)
     // or if we didn't come from homepage (direct load, refresh)
     if (hasSidebarBeenShown || !shouldAnimate) {
-      setPanelVisible(true);
-      setHasSidebarBeenShown(true);
-      return;
+      const readyTimer = setTimeout(() => {
+        setPanelVisible(true);
+        setHasSidebarBeenShown(true);
+      }, 0);
+      return () => clearTimeout(readyTimer);
     }
 
     // Set animating state before starting

@@ -1,3 +1,4 @@
+import React from "react";
 import { compact } from "es-toolkit/array";
 import type { ResultComponentProps } from "@/plugins/registry";
 
@@ -10,11 +11,35 @@ type ClerkUserData = {
   createdAt: number;
 };
 
-export function UserCard({ output }: ResultComponentProps) {
-  const data = output as ClerkUserData;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
-  // Validate we have the expected data shape
-  if (!data || typeof data !== "object" || !("id" in data)) {
+function toNullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function toNumberOrZero(value: unknown): number {
+  return typeof value === "number" ? value : 0;
+}
+
+function parseClerkUserData(output: unknown): ClerkUserData | null {
+  if (!isRecord(output) || typeof output.id !== "string") {
+    return null;
+  }
+
+  return {
+    id: output.id,
+    firstName: toNullableString(output.firstName),
+    lastName: toNullableString(output.lastName),
+    primaryEmailAddress: toNullableString(output.primaryEmailAddress),
+    createdAt: toNumberOrZero(output.createdAt),
+  };
+}
+
+export function UserCard({ output }: ResultComponentProps) {
+  const data = parseClerkUserData(output);
+  if (!data) {
     return null;
   }
 

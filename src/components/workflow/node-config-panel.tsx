@@ -39,7 +39,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { findActionById } from "@/plugins";
-import type { IntegrationType } from "@/shared/types/integration";
+import {
+  type IntegrationType,
+  isIntegrationType,
+} from "@/shared/types/integration";
 import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 import { ActionConfig } from "./config/action-config";
 import { ActionGrid } from "./config/action-grid";
@@ -124,6 +127,25 @@ const MultiSelectionPanel = ({
   );
 };
 
+function getConfigString(
+  config: Record<string, unknown> | undefined,
+  key: string
+): string | undefined {
+  const value = config?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function getActionIntegrationType(
+  actionType: string
+): IntegrationType | undefined {
+  const action = findActionById(actionType);
+  if (isIntegrationType(action?.integration)) {
+    return action.integration;
+  }
+
+  return SYSTEM_ACTION_INTEGRATIONS[actionType];
+}
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Complex UI logic with multiple conditions
 export const PanelInner = () => {
   const store = useStore();
@@ -178,12 +200,11 @@ export const PanelInner = () => {
       return;
     }
 
-    const actionType = selectedNode.data.config?.actionType as
-      | string
-      | undefined;
-    const currentIntegrationId = selectedNode.data.config?.integrationId as
-      | string
-      | undefined;
+    const actionType = getConfigString(selectedNode.data.config, "actionType");
+    const currentIntegrationId = getConfigString(
+      selectedNode.data.config,
+      "integrationId"
+    );
 
     // Skip if no action type or no integration configured
     if (!(actionType && currentIntegrationId)) {
@@ -191,10 +212,7 @@ export const PanelInner = () => {
     }
 
     // Get the required integration type for this action
-    const action = findActionById(actionType);
-    const integrationType: IntegrationType | undefined =
-      (action?.integration as IntegrationType | undefined) ||
-      SYSTEM_ACTION_INTEGRATIONS[actionType];
+    const integrationType = getActionIntegrationType(actionType);
 
     if (!integrationType) {
       return;
@@ -292,10 +310,7 @@ export const PanelInner = () => {
       abortSignal: AbortSignal
     ) => {
       // Get integration type - check plugin registry first, then system actions
-      const action = findActionById(actionType);
-      const integrationType: IntegrationType | undefined =
-        (action?.integration as IntegrationType | undefined) ||
-        SYSTEM_ACTION_INTEGRATIONS[actionType];
+      const integrationType = getActionIntegrationType(actionType);
 
       if (!integrationType) {
         // No integration needed, remove from pending

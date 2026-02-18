@@ -8,11 +8,8 @@ function getInngestBaseUrl() {
       continue;
     }
 
-    try {
-      new URL(candidate);
+    if (URL.canParse(candidate)) {
       return candidate;
-    } catch {
-      // Ignore non-URL values such as INNGEST_DEV=1.
     }
   }
 
@@ -31,18 +28,18 @@ type InngestRuntimeState = {
   client: Inngest | null;
 };
 
-const globalForInngest = globalThis as unknown as {
-  __rovaInngestState?: InngestRuntimeState;
-};
+declare global {
+  var __rovaInngestState: InngestRuntimeState | undefined;
+}
 
 const inngestRuntimeState: InngestRuntimeState =
-  globalForInngest.__rovaInngestState ?? {
+  globalThis.__rovaInngestState ?? {
     clientConfig: null,
     serveConfig: {},
     client: null,
   };
 
-globalForInngest.__rovaInngestState = inngestRuntimeState;
+globalThis.__rovaInngestState = inngestRuntimeState;
 
 function resolveDefaultClientConfig(): InngestClientRuntimeConfig {
   return {

@@ -24,7 +24,12 @@ async function resolveExistingMigrationsDir(
     ? [resolve(process.cwd(), configuredPath)]
     : MIGRATIONS_DIR_CANDIDATES;
 
-  for (const candidate of candidates) {
+  const findExistingCandidate = async (index: number): Promise<string | null> => {
+    const candidate = candidates[index];
+    if (!candidate) {
+      return null;
+    }
+
     const migrationPath = Bun.file(candidate);
     try {
       const stats = await migrationPath.stat();
@@ -34,6 +39,13 @@ async function resolveExistingMigrationsDir(
     } catch {
       // Keep scanning candidates.
     }
+
+    return findExistingCandidate(index + 1);
+  };
+
+  const existingCandidate = await findExistingCandidate(0);
+  if (existingCandidate) {
+    return existingCandidate;
   }
 
   throw new Error(

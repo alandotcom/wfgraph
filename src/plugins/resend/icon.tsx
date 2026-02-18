@@ -1,3 +1,5 @@
+import React from "react";
+
 export function ResendIcon({ className }: { className?: string }) {
   return (
     <svg

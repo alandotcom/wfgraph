@@ -64,15 +64,22 @@ async function queueBuild(): Promise<void> {
 
   isBuilding = true;
 
-  do {
+  const processQueuedBuilds = async (): Promise<void> => {
     rebuildQueued = false;
     const success = await buildClientBundle();
     if (!success) {
       logError("build failed; waiting for file changes");
     }
-  } while (rebuildQueued);
+    if (rebuildQueued) {
+      await processQueuedBuilds();
+    }
+  };
 
-  isBuilding = false;
+  try {
+    await processQueuedBuilds();
+  } finally {
+    isBuilding = false;
+  }
 }
 
 function scheduleRebuild(): void {
@@ -103,20 +110,30 @@ async function collectDirectories(rootDir: string): Promise<string[]> {
   const directories = [rootDir];
   const entries = await readdir(rootDir, { withFileTypes: true });
 
-  for (const entry of entries) {
+  const walkEntries = async (index: number): Promise<void> => {
+    const entry = entries[index];
+    if (!entry) {
+      return;
+    }
+
     if (!entry.isDirectory()) {
-      continue;
+      await walkEntries(index + 1);
+      return;
     }
 
     const fullPath = path.join(rootDir, entry.name);
     const normalized = fullPath.split(path.sep).join("/");
 
     if (shouldIgnoreWatchPath(`/${normalized}/`)) {
-      continue;
+      await walkEntries(index + 1);
+      return;
     }
 
     directories.push(...(await collectDirectories(fullPath)));
-  }
+    await walkEntries(index + 1);
+  };
+
+  await walkEntries(0);
 
   return directories;
 }

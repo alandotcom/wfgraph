@@ -16,13 +16,32 @@ import type {
 
 const OverlayContext = createContext<OverlayContextValue | null>(null);
 type OverlayPropsRecord = Record<string, unknown>;
-type AnyOverlayStackItem = OverlayStackItem<OverlayPropsRecord>;
+type AnyOverlayStackItem = Omit<OverlayStackItem, "component" | "props"> & {
+  // biome-ignore lint/suspicious/noExplicitAny: The overlay stack stores heterogeneous overlay prop shapes.
+  component: ComponentType<OverlayComponentProps<any>>;
+  props: OverlayPropsRecord;
+};
 
 /**
  * Generate a unique ID for overlay instances
  */
 function generateOverlayId(): string {
   return `overlay-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function createOverlayItem<P extends OverlayPropsRecord>(
+  component: ComponentType<OverlayComponentProps<P>>,
+  props: P | undefined,
+  options: OverlayOptions | undefined
+): AnyOverlayStackItem {
+  const id = generateOverlayId();
+
+  return {
+    id,
+    component,
+    props: props ?? {},
+    options: options ?? {},
+  };
 }
 
 type OverlayProviderProps = {
@@ -36,44 +55,20 @@ type OverlayProviderProps = {
 export function OverlayProvider({ children }: OverlayProviderProps) {
   const [stack, setStack] = useState<AnyOverlayStackItem[]>([]);
 
-  const open = useCallback(
-    <P extends OverlayPropsRecord>(
-      component: ComponentType<OverlayComponentProps<P>>,
-      props?: P,
-      options?: OverlayOptions
-    ): string => {
-      const id = generateOverlayId();
-      const item: AnyOverlayStackItem = {
-        id,
-        component: component as ComponentType<
-          OverlayComponentProps<OverlayPropsRecord>
-        >,
-        props: (props ?? {}) as OverlayPropsRecord,
-        options: options ?? {},
-      };
+  const open = useCallback<OverlayContextValue["open"]>(
+    (component, props, options): string => {
+      const item = createOverlayItem(component, props, options);
       setStack([item]);
-      return id;
+      return item.id;
     },
     []
   );
 
-  const push = useCallback(
-    <P extends OverlayPropsRecord>(
-      component: ComponentType<OverlayComponentProps<P>>,
-      props?: P,
-      options?: OverlayOptions
-    ): string => {
-      const id = generateOverlayId();
-      const item: AnyOverlayStackItem = {
-        id,
-        component: component as ComponentType<
-          OverlayComponentProps<OverlayPropsRecord>
-        >,
-        props: (props ?? {}) as OverlayPropsRecord,
-        options: options ?? {},
-      };
+  const push = useCallback<OverlayContextValue["push"]>(
+    (component, props, options): string => {
+      const item = createOverlayItem(component, props, options);
       setStack((prev) => [...prev, item]);
-      return id;
+      return item.id;
     },
     []
   );
@@ -93,21 +88,9 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
     });
   }, []);
 
-  const replace = useCallback(
-    <P extends OverlayPropsRecord>(
-      component: ComponentType<OverlayComponentProps<P>>,
-      props?: P,
-      options?: OverlayOptions
-    ): string => {
-      const id = generateOverlayId();
-      const item: AnyOverlayStackItem = {
-        id,
-        component: component as ComponentType<
-          OverlayComponentProps<OverlayPropsRecord>
-        >,
-        props: (props ?? {}) as OverlayPropsRecord,
-        options: options ?? {},
-      };
+  const replace = useCallback<OverlayContextValue["replace"]>(
+    (component, props, options): string => {
+      const item = createOverlayItem(component, props, options);
       setStack((prev) => {
         if (prev.length === 0) {
           return [item];
@@ -117,7 +100,7 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
         poppedItem?.options.onClose?.();
         return [...prev.slice(0, -1), item];
       });
-      return id;
+      return item.id;
     },
     []
   );

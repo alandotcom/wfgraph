@@ -9,13 +9,17 @@ export function useIsTouch() {
   const [isTouch, setIsTouch] = useState<boolean | undefined>(undefined);
 
   useEffect(() => {
-    const hasTouch =
-      "ontouchstart" in window ||
-      navigator.maxTouchPoints > 0 ||
-      // @ts-expect-error - msMaxTouchPoints is IE-specific
-      navigator.msMaxTouchPoints > 0;
+    const frame = requestAnimationFrame(() => {
+      const hasTouch =
+        "ontouchstart" in window ||
+        navigator.maxTouchPoints > 0 ||
+        // @ts-expect-error - msMaxTouchPoints is IE-specific
+        navigator.msMaxTouchPoints > 0;
 
-    setIsTouch(hasTouch);
+      setIsTouch(hasTouch);
+    });
+
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   return isTouch;

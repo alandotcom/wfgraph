@@ -95,7 +95,7 @@ async function httpRequest(
     };
   }
 
-  for (let attempt = 1; attempt <= HTTP_REQUEST_MAX_ATTEMPTS; attempt += 1) {
+  const runAttempt = async (attempt: number): Promise<HttpRequestResult> => {
     try {
       const response = await fetchWithTimeout(input, HTTP_REQUEST_TIMEOUT_MS);
 
@@ -103,7 +103,7 @@ async function httpRequest(
         const errorText = await response.text().catch(() => "Unknown error");
 
         if (response.status >= 500 && attempt < HTTP_REQUEST_MAX_ATTEMPTS) {
-          continue;
+          return runAttempt(attempt + 1);
         }
 
         return {
@@ -117,7 +117,7 @@ async function httpRequest(
       return { success: true, data, status: response.status };
     } catch (error) {
       if (attempt < HTTP_REQUEST_MAX_ATTEMPTS) {
-        continue;
+        return runAttempt(attempt + 1);
       }
 
       if (isTimeoutError(error)) {
@@ -132,12 +132,9 @@ async function httpRequest(
         error: `HTTP request failed: ${getErrorMessage(error)}`,
       };
     }
-  }
-
-  return {
-    success: false,
-    error: "HTTP request failed after retries",
   };
+
+  return runAttempt(1);
 }
 
 /**

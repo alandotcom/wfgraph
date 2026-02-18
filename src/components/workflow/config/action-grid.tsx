@@ -239,7 +239,7 @@ export function ActionGrid({
     }
 
     // Sort categories: System first, then alphabetically
-    const sortedCategories = Object.keys(groups).sort((a, b) => {
+    const sortedCategories = Object.keys(groups).toSorted((a, b) => {
       if (a === "System") {
         return -1;
       }

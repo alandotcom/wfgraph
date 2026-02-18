@@ -102,7 +102,7 @@ export function createSerializedWorkflowGraph(input: {
 export function parseSerializedWorkflowGraph(
   value: unknown
 ): SerializedWorkflowGraph {
-  return serializedWorkflowGraphSchema.parse(value) as SerializedWorkflowGraph;
+  return serializedWorkflowGraphSchema.parse(value);
 }
 
 export function createGraphFromSerialized(

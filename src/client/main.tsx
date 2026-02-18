@@ -5,6 +5,12 @@ import "@/frontend/app/globals.css";
 import { hydrateRuntimeExtensionsFromApi } from "@/client/lib/runtime-extensions";
 import { router } from "./router";
 
+declare global {
+  interface Window {
+    __resizeObserverPatched?: boolean;
+  }
+}
+
 if (process.env.NODE_ENV === "development") {
   import("react-grab");
 }
@@ -14,10 +20,25 @@ const queryClient = new QueryClient();
 const isResizeObserverLoopMessage = (message: string | undefined): boolean =>
   typeof message === "string" && message.includes("ResizeObserver loop");
 
-const patchResizeObserver = () => {
-  const state = window as unknown as { __resizeObserverPatched?: boolean };
+function getErrorMessage(reason: unknown): string | undefined {
+  if (typeof reason === "string") {
+    return reason;
+  }
 
-  if (state.__resizeObserverPatched || !window.ResizeObserver) {
+  if (
+    typeof reason === "object" &&
+    reason !== null &&
+    "message" in reason &&
+    typeof reason.message === "string"
+  ) {
+    return reason.message;
+  }
+
+  return;
+}
+
+const patchResizeObserver = () => {
+  if (window.__resizeObserverPatched || !window.ResizeObserver) {
     return;
   }
 
@@ -31,7 +52,7 @@ const patchResizeObserver = () => {
     }
   };
 
-  state.__resizeObserverPatched = true;
+  window.__resizeObserverPatched = true;
 };
 
 const suppressResizeObserverLoopErrors = () => {
@@ -43,19 +64,7 @@ const suppressResizeObserverLoopErrors = () => {
   });
 
   window.addEventListener("unhandledrejection", (event) => {
-    const reason = event.reason;
-    let message: string | undefined;
-
-    if (typeof reason === "string") {
-      message = reason;
-    } else if (
-      typeof reason === "object" &&
-      reason !== null &&
-      "message" in reason &&
-      typeof (reason as { message?: unknown }).message === "string"
-    ) {
-      message = (reason as { message: string }).message;
-    }
+    const message = getErrorMessage(event.reason);
 
     if (isResizeObserverLoopMessage(message)) {
       event.preventDefault();

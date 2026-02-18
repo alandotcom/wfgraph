@@ -14,6 +14,14 @@ type ApiKeysOverlayProps = {
   overlayId: string;
 };
 
+function formatDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 /**
  * Overlay for creating a new API key.
  * Pushed onto the stack from ApiKeysOverlay.
@@ -133,13 +141,6 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
     navigator.clipboard.writeText(text);
     toast.success("Copied to clipboard");
   };
-
-  const formatDate = (dateString: string) =>
-    new Date(dateString).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
 
   return (
     <Overlay

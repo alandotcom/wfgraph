@@ -154,14 +154,14 @@ export function WorkflowCanvas() {
     // Skip fitView for homepage -> workflow transition (viewport already set from homepage)
     if (isTransitioningFromHomepage && viewportInitialized.current) {
       fittedViewForWorkflowRef.current = currentWorkflowId;
-      setIsCanvasReady(true);
+      const readyTimer = setTimeout(() => setIsCanvasReady(true), 0);
       // Clear the flag after using it
       setIsTransitioningFromHomepage(false);
-      return;
+      return () => clearTimeout(readyTimer);
     }
 
     // Use fitView after a brief delay to ensure React Flow and nodes are ready
-    setTimeout(() => {
+    const fitTimer = setTimeout(() => {
       fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 0 });
       fittedViewForWorkflowRef.current = currentWorkflowId;
       viewportInitialized.current = true;
@@ -170,6 +170,7 @@ export function WorkflowCanvas() {
       // Clear the flag
       setIsTransitioningFromHomepage(false);
     }, 0);
+    return () => clearTimeout(fitTimer);
   }, [
     currentWorkflowId,
     fitView,
@@ -307,8 +308,10 @@ export function WorkflowCanvas() {
 
   const calculateMenuPosition = useCallback(
     (event: MouseEvent | TouchEvent, clientX: number, clientY: number) => {
-      const reactFlowBounds = (event.target as Element)
-        .closest(".react-flow")
+      const eventTarget =
+        event.target instanceof Element ? event.target : undefined;
+      const reactFlowBounds = eventTarget
+        ?.closest(".react-flow")
         ?.getBoundingClientRect();
 
       const adjustedX = reactFlowBounds
@@ -453,10 +456,14 @@ export function WorkflowCanvas() {
 
       // For touch events, use elementFromPoint to get the actual element at the touch position
       // For mouse events, use event.target as before
-      const target =
-        "changedTouches" in event
-          ? document.elementFromPoint(clientX, clientY)
-          : (event.target as Element);
+      let target: Element | null;
+      if ("changedTouches" in event) {
+        target = document.elementFromPoint(clientX, clientY);
+      } else if (event.target instanceof Element) {
+        target = event.target;
+      } else {
+        target = null;
+      }
 
       if (!target) {
         connectingNodeId.current = null;

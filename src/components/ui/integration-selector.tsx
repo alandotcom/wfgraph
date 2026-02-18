@@ -66,7 +66,10 @@ export function IntegrationSelector({
   }, [setGlobalIntegrations]);
 
   useEffect(() => {
-    loadIntegrations();
+    const timer = setTimeout(() => {
+      void loadIntegrations();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [loadIntegrations, integrationType]);
 
   // Listen for version changes (from other components creating/editing integrations)
@@ -74,7 +77,10 @@ export function IntegrationSelector({
     // Skip initial render - only react to actual version changes
     if (integrationsVersion !== lastVersionRef.current) {
       lastVersionRef.current = integrationsVersion;
-      loadIntegrations();
+      const timer = setTimeout(() => {
+        void loadIntegrations();
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [integrationsVersion, loadIntegrations]);
 
@@ -91,17 +97,20 @@ export function IntegrationSelector({
     }
   }, [integrations, value, disabled, onChange]);
 
-  const handleNewIntegrationCreated = async (integrationId: string) => {
-    await loadIntegrations();
-    onChange(integrationId);
-    // Increment version to trigger re-fetch in other selectors
-    setIntegrationsVersion((v) => v + 1);
-  };
+  const handleNewIntegrationCreated = useCallback(
+    async (integrationId: string) => {
+      await loadIntegrations();
+      onChange(integrationId);
+      // Increment version to trigger re-fetch in other selectors
+      setIntegrationsVersion((v) => v + 1);
+    },
+    [loadIntegrations, onChange, setIntegrationsVersion]
+  );
 
-  const handleIntegrationChange = async () => {
+  const handleIntegrationChange = useCallback(async () => {
     await loadIntegrations();
     setIntegrationsVersion((v) => v + 1);
-  };
+  }, [loadIntegrations, setIntegrationsVersion]);
 
   const openNewConnectionOverlay = useCallback(() => {
     push(ConfigureConnectionOverlay, {

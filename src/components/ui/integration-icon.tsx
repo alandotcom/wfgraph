@@ -1,6 +1,6 @@
 import { Database, HelpCircle } from "lucide-react";
 import { getIntegration } from "@/plugins";
-import type { IntegrationType } from "@/shared/types/integration";
+import { isIntegrationType } from "@/shared/types/integration";
 import { cn } from "@/shared/utils";
 
 interface IntegrationIconProps {
@@ -27,7 +27,9 @@ export function IntegrationIcon({
   }
 
   // Look up plugin from registry
-  const plugin = getIntegration(integration as IntegrationType);
+  const plugin = isIntegrationType(integration)
+    ? getIntegration(integration)
+    : undefined;
 
   if (plugin?.icon) {
     const PluginIcon = plugin.icon;

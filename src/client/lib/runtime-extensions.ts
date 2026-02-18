@@ -23,6 +23,120 @@ const runtimeTriggerRegistry = new Map<string, RuntimeTriggerDefinition>();
 
 let hydrationPromise: Promise<void> | null = null;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isRuntimeActionDefinition(
+  value: unknown
+): value is RuntimeActionDefinition {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.label !== "string" ||
+    typeof value.description !== "string" ||
+    typeof value.category !== "string"
+  ) {
+    return false;
+  }
+
+  if (
+    "logoUrl" in value &&
+    value.logoUrl !== undefined &&
+    typeof value.logoUrl !== "string"
+  ) {
+    return false;
+  }
+
+  if (
+    "integration" in value &&
+    value.integration !== undefined &&
+    typeof value.integration !== "string"
+  ) {
+    return false;
+  }
+
+  if (
+    "configFields" in value &&
+    value.configFields !== undefined &&
+    !Array.isArray(value.configFields)
+  ) {
+    return false;
+  }
+
+  if (
+    "outputFields" in value &&
+    value.outputFields !== undefined &&
+    !Array.isArray(value.outputFields)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function isRuntimeTriggerDefinition(
+  value: unknown
+): value is RuntimeTriggerDefinition {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (
+    typeof value.type !== "string" ||
+    typeof value.label !== "string" ||
+    (value.executionType !== "manual" && value.executionType !== "webhook")
+  ) {
+    return false;
+  }
+
+  if (
+    "description" in value &&
+    value.description !== undefined &&
+    typeof value.description !== "string"
+  ) {
+    return false;
+  }
+
+  if (
+    "logoUrl" in value &&
+    value.logoUrl !== undefined &&
+    typeof value.logoUrl !== "string"
+  ) {
+    return false;
+  }
+
+  if (
+    "configFields" in value &&
+    value.configFields !== undefined &&
+    !Array.isArray(value.configFields)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function parseRuntimeExtensionsPayload(
+  value: unknown
+): RuntimeExtensionsPayload {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  return {
+    actions: Array.isArray(value.actions)
+      ? value.actions.filter(isRuntimeActionDefinition)
+      : undefined,
+    triggers: Array.isArray(value.triggers)
+      ? value.triggers.filter(isRuntimeTriggerDefinition)
+      : undefined,
+  };
+}
+
 export function getRuntimeTriggers(): RuntimeTriggerDefinition[] {
   return Array.from(runtimeTriggerRegistry.values());
 }
@@ -45,7 +159,7 @@ export function hydrateRuntimeExtensionsFromApi(): Promise<void> {
         return;
       }
 
-      const payload = (await response.json()) as RuntimeExtensionsPayload;
+      const payload = parseRuntimeExtensionsPayload(await response.json());
 
       clearRuntimeActions();
       runtimeTriggerRegistry.clear();

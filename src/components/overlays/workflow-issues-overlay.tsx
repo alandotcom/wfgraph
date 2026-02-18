@@ -164,10 +164,10 @@ export function WorkflowIssuesOverlay({
               <div key={broken.nodeId}>
                 <p className="font-medium text-sm">{broken.nodeLabel}</p>
                 <div className="mt-1 space-y-0.5">
-                  {broken.brokenReferences.map((ref, idx) => (
+                  {broken.brokenReferences.map((ref) => (
                     <div
                       className="flex items-center gap-3 py-0.5 pl-3"
-                      key={`${broken.nodeId}-${ref.fieldKey}-${idx}`}
+                      key={`${broken.nodeId}-${ref.fieldKey}-${ref.displayText}-${ref.fieldLabel}`}
                     >
                       <p className="min-w-0 flex-1 text-muted-foreground text-sm">
                         <span className="font-mono">{ref.displayText}</span>

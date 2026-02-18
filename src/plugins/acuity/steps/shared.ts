@@ -135,6 +135,10 @@ type AcuityCustomField = {
   value: string | string[];
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function isStringArray(value: unknown): value is string[] {
   return (
     Array.isArray(value) && value.every((entry) => typeof entry === "string")
@@ -142,20 +146,21 @@ function isStringArray(value: unknown): value is string[] {
 }
 
 function isValidCustomField(value: unknown): value is AcuityCustomField {
-  if (!value || typeof value !== "object") {
+  if (!isRecord(value)) {
     return false;
   }
 
-  const candidate = value as { fieldID?: unknown; value?: unknown };
+  const fieldId = value.fieldID;
 
   if (
-    !Number.isInteger(candidate.fieldID) ||
-    (candidate.fieldID as number) <= 0
+    typeof fieldId !== "number" ||
+    !Number.isInteger(fieldId) ||
+    fieldId <= 0
   ) {
     return false;
   }
 
-  const rawValue = candidate.value;
+  const rawValue = value.value;
   return typeof rawValue === "string" || isStringArray(rawValue);
 }
 

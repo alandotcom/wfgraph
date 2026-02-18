@@ -3,6 +3,7 @@ import {
   type WorkflowExecutionInput,
   type WorkflowExecutionRuntime,
 } from "@/backend/lib/workflow-executor.workflow";
+import { isSerializedWorkflowGraph } from "@/shared/workflow/graph";
 import { getInngestClient } from "./client";
 
 function toDurationString(milliseconds: number): string {
@@ -12,6 +13,55 @@ function toDurationString(milliseconds: number): string {
 
 function escapeInngestExpressionString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string";
+}
+
+function isOptionalRecord(
+  value: unknown
+): value is Record<string, unknown> | undefined {
+  return value === undefined || isRecord(value);
+}
+
+function isValidEventContext(
+  value: unknown
+): value is WorkflowExecutionInput["eventContext"] {
+  if (value === undefined) {
+    return true;
+  }
+
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    isOptionalString(value.eventType) && isOptionalString(value.correlationKey)
+  );
+}
+
+function isWorkflowExecutionInput(
+  value: unknown
+): value is WorkflowExecutionInput {
+  if (!(isRecord(value) && isSerializedWorkflowGraph(value.graph))) {
+    return false;
+  }
+
+  return (
+    isOptionalRecord(value.triggerInput) &&
+    isOptionalRecord(value.requestPayload) &&
+    isOptionalString(value.executionId) &&
+    isOptionalString(value.workflowId) &&
+    isOptionalString(value.workflowName) &&
+    isOptionalString(value.workflowRunId) &&
+    (value.dryRun === undefined || typeof value.dryRun === "boolean") &&
+    isValidEventContext(value.eventContext)
+  );
 }
 
 export function createWorkflowTriggerExpression(workflowId: string): string {
@@ -31,7 +81,11 @@ async function workflowRunRequestedHandler({
     ) => Promise<unknown>;
   };
 }) {
-  const data = event.data as WorkflowExecutionInput;
+  if (!isWorkflowExecutionInput(event.data)) {
+    throw new Error("Invalid workflow execution payload.");
+  }
+
+  const data = event.data;
   const runtime: WorkflowExecutionRuntime = {
     sleep: async (stepId, durationMs) => {
       if (durationMs <= 0) {

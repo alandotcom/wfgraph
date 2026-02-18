@@ -32,6 +32,22 @@ export type SendEmailInput = StepInput &
     integrationId?: string;
   };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isTemplateVariablesRecord(
+  value: unknown
+): value is Record<string, string | number> {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return Object.values(value).every(
+    (entry) => typeof entry === "string" || typeof entry === "number"
+  );
+}
+
 function parseTemplateVariables(
   templateVariables: string | undefined
 ): Record<string, string | number> | undefined {
@@ -40,9 +56,9 @@ function parseTemplateVariables(
   }
 
   try {
-    const parsed = JSON.parse(templateVariables) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, string | number>;
+    const parsed: unknown = JSON.parse(templateVariables);
+    if (isTemplateVariablesRecord(parsed)) {
+      return parsed;
     }
   } catch (error) {
     console.error("[Resend] Failed to parse template variables JSON:", error);

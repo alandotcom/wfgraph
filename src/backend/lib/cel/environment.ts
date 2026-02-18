@@ -7,10 +7,8 @@ const BIGINT_7 = BigInt(7);
 const BIGINT_24 = BigInt(24);
 const BIGINT_60 = BigInt(60);
 
-type DurationConstructor = new (
-  seconds: bigint | number,
-  nanos?: number
-) => unknown;
+type DurationFactory = (seconds: bigint | number, nanos?: number) => unknown;
+type ParsedExpression = (context?: unknown) => unknown;
 
 export type CelValidationResult = { ok: true } | { ok: false; error: string };
 
@@ -19,7 +17,29 @@ export type CelEvaluationResult =
   | { ok: false; error: string };
 
 let sharedEnvironment: Environment | null = null;
-const parsedExpressionCache = new Map<string, (context?: unknown) => unknown>();
+const parsedExpressionCache = new Map<string, ParsedExpression>();
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isParsedExpression(value: unknown): value is ParsedExpression {
+  return typeof value === "function";
+}
+
+function getDurationFactory(value: unknown): DurationFactory | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const maybeConstructor = value.constructor;
+  if (typeof maybeConstructor !== "function") {
+    return null;
+  }
+
+  return (seconds, nanos = 0) =>
+    Reflect.construct(maybeConstructor, [seconds, nanos]);
+}
 
 function normalizeCelInt(value: unknown): bigint {
   if (typeof value === "bigint") {
@@ -34,10 +54,10 @@ function normalizeCelInt(value: unknown): bigint {
 }
 
 function createDuration(
-  ctor: DurationConstructor,
+  factory: DurationFactory,
   totalSeconds: bigint
 ): unknown {
-  return new ctor(totalSeconds, 0);
+  return factory(totalSeconds, 0);
 }
 
 function parseDateStringToTimestamp(value: string): Date {
@@ -65,29 +85,27 @@ function createCelEnvironment(): Environment {
 
   environment.registerVariable("now", TIMESTAMP_TYPE);
 
-  const durationConstructor = environment.evaluate('duration("1s")') as {
-    constructor?: DurationConstructor;
-  };
-
-  const DurationCtor = durationConstructor.constructor;
-  if (!DurationCtor) {
+  const durationFactory = getDurationFactory(
+    environment.evaluate('duration("1s")')
+  );
+  if (!durationFactory) {
     throw new Error("Failed to initialize CEL duration constructor");
   }
 
   environment.registerFunction(`minutes(int): ${DURATION_TYPE}`, (value) => {
     const minutes = normalizeCelInt(value);
-    return createDuration(DurationCtor, minutes * BIGINT_60);
+    return createDuration(durationFactory, minutes * BIGINT_60);
   });
 
   environment.registerFunction(`hours(int): ${DURATION_TYPE}`, (value) => {
     const hours = normalizeCelInt(value);
-    return createDuration(DurationCtor, hours * BIGINT_60 * BIGINT_60);
+    return createDuration(durationFactory, hours * BIGINT_60 * BIGINT_60);
   });
 
   environment.registerFunction(`days(int): ${DURATION_TYPE}`, (value) => {
     const days = normalizeCelInt(value);
     return createDuration(
-      DurationCtor,
+      durationFactory,
       days * BIGINT_24 * BIGINT_60 * BIGINT_60
     );
   });
@@ -95,7 +113,7 @@ function createCelEnvironment(): Environment {
   environment.registerFunction(`weeks(int): ${DURATION_TYPE}`, (value) => {
     const weeks = normalizeCelInt(value);
     return createDuration(
-      DurationCtor,
+      durationFactory,
       weeks * BIGINT_7 * BIGINT_24 * BIGINT_60 * BIGINT_60
     );
   });
@@ -120,17 +138,17 @@ function getEnvironment(): Environment {
   return sharedEnvironment;
 }
 
-function getParsedExpression(
-  expression: string
-): (context?: unknown) => unknown {
+function getParsedExpression(expression: string): ParsedExpression {
   const cached = parsedExpressionCache.get(expression);
   if (cached) {
     return cached;
   }
 
-  const parsed = getEnvironment().parse(expression) as (
-    context?: unknown
-  ) => unknown;
+  const parsed = getEnvironment().parse(expression);
+  if (!isParsedExpression(parsed)) {
+    throw new Error("CEL parser did not return an executable expression");
+  }
+
   parsedExpressionCache.set(expression, parsed);
   return parsed;
 }

@@ -4,9 +4,83 @@ const outputPath = "./dist/server";
 const fallbackOutputPath = "./server";
 const legacyOutputPath = "./dist/notifications-server";
 
-const compileTarget = Bun.env.BUN_COMPILE_TARGET as
-  | Bun.Build.CompileTarget
-  | undefined;
+function isArchitecture(value: string): value is Bun.Build.Architecture {
+  return value === "x64" || value === "arm64";
+}
+
+function isLibc(value: string): value is Bun.Build.Libc {
+  return value === "glibc" || value === "musl";
+}
+
+function isSimd(value: string): value is Bun.Build.SIMD {
+  return value === "baseline" || value === "modern";
+}
+
+function isCompileTarget(value: string): value is Bun.Build.CompileTarget {
+  const segments = value.split("-");
+  if (segments[0] !== "bun") {
+    return false;
+  }
+
+  const platform = segments[1];
+  const architecture = segments[2];
+  if (!(platform && architecture && isArchitecture(architecture))) {
+    return false;
+  }
+
+  if (segments.length === 3) {
+    return (
+      platform === "darwin" || platform === "linux" || platform === "windows"
+    );
+  }
+
+  const fourthSegment = segments[3];
+  if (!fourthSegment) {
+    return false;
+  }
+
+  if (platform === "darwin") {
+    return segments.length === 4 && isSimd(fourthSegment);
+  }
+
+  if (platform === "windows") {
+    return (
+      architecture === "x64" && segments.length === 4 && isSimd(fourthSegment)
+    );
+  }
+
+  if (platform !== "linux") {
+    return false;
+  }
+
+  if (segments.length === 4) {
+    return isLibc(fourthSegment) || isSimd(fourthSegment);
+  }
+
+  if (segments.length === 5) {
+    const fifthSegment = segments[4];
+    return !!fifthSegment && isSimd(fourthSegment) && isLibc(fifthSegment);
+  }
+
+  return false;
+}
+
+function resolveCompileTarget(
+  value: string | undefined
+): Bun.Build.CompileTarget | undefined {
+  if (!value) {
+    return;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return;
+  }
+
+  return isCompileTarget(normalized) ? normalized : undefined;
+}
+
+const compileTarget = resolveCompileTarget(Bun.env.BUN_COMPILE_TARGET);
 
 const result = await Bun.build({
   entrypoints: ["./src/server.ts"],
