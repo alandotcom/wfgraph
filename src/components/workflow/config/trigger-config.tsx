@@ -1,6 +1,6 @@
 import cronstrue from "cronstrue";
 import { Clock, Copy, TriangleAlert, Webhook } from "lucide-react";
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { getRuntimeTriggers } from "@/client/lib/runtime-extensions";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { parseCsvSet } from "@/shared/utils/csv";
 import { getValueByPath } from "@/shared/utils/object-path";
@@ -85,10 +86,240 @@ function readSchema(config: Record<string, unknown>): SchemaField[] {
 
   try {
     const parsed = JSON.parse(config.webhookSchema);
-    return Array.isArray(parsed) ? (parsed as SchemaField[]) : [];
+    return parseSchemaFieldsFromUnknown(parsed) ?? [];
   } catch {
     return [];
   }
+}
+
+type JsonSchemaType = SchemaField["type"] | SchemaField["itemType"];
+
+function normalizeJsonSchemaType(value: unknown): JsonSchemaType | null {
+  if (typeof value === "string") {
+    if (
+      value === "string" ||
+      value === "number" ||
+      value === "boolean" ||
+      value === "array" ||
+      value === "object"
+    ) {
+      return value;
+    }
+    return null;
+  }
+
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const firstSupportedType = value.find(
+    (item) =>
+      item === "string" ||
+      item === "number" ||
+      item === "boolean" ||
+      item === "array" ||
+      item === "object"
+  );
+
+  return typeof firstSupportedType === "string"
+    ? (firstSupportedType as JsonSchemaType)
+    : null;
+}
+
+function normalizeJsonSchemaFormat(value: unknown): SchemaField["format"] {
+  if (value === "date-time" || value === "datetime" || value === "timestamp") {
+    return "timestamp";
+  }
+  return undefined;
+}
+
+function parseJsonSchemaProperty(
+  name: string,
+  value: unknown
+): SchemaField | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const property = value as Record<string, unknown>;
+  const normalizedType =
+    normalizeJsonSchemaType(property.type) ||
+    (property.properties ? "object" : null) ||
+    (property.items ? "array" : null);
+
+  if (!normalizedType) {
+    return null;
+  }
+
+  const description =
+    typeof property.description === "string" ? property.description : undefined;
+
+  if (
+    normalizedType === "string" ||
+    normalizedType === "number" ||
+    normalizedType === "boolean"
+  ) {
+    return {
+      name,
+      type: normalizedType,
+      format:
+        normalizedType === "string"
+          ? normalizeJsonSchemaFormat(property.format)
+          : undefined,
+      description,
+    };
+  }
+
+  if (normalizedType === "object") {
+    const nested = parseJsonSchemaProperties(property.properties);
+    return {
+      name,
+      type: "object",
+      fields: nested,
+      description,
+    };
+  }
+
+  const items =
+    property.items &&
+    typeof property.items === "object" &&
+    !Array.isArray(property.items)
+      ? (property.items as Record<string, unknown>)
+      : null;
+  const normalizedItemType =
+    normalizeJsonSchemaType(items?.type) ||
+    (items?.properties ? "object" : null) ||
+    "string";
+
+  if (
+    normalizedItemType !== "string" &&
+    normalizedItemType !== "number" &&
+    normalizedItemType !== "boolean" &&
+    normalizedItemType !== "object"
+  ) {
+    return null;
+  }
+
+  return {
+    name,
+    type: "array",
+    itemType: normalizedItemType,
+    fields:
+      normalizedItemType === "object"
+        ? parseJsonSchemaProperties(items?.properties)
+        : undefined,
+    format:
+      normalizedItemType === "string"
+        ? normalizeJsonSchemaFormat(items?.format)
+        : undefined,
+    description,
+  };
+}
+
+function parseJsonSchemaProperties(value: unknown): SchemaField[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+
+  return Object.entries(value).flatMap(([name, property]) => {
+    const parsed = parseJsonSchemaProperty(name, property);
+    return parsed ? [parsed] : [];
+  });
+}
+
+function parseSchemaFieldsFromUnknown(value: unknown): SchemaField[] | null {
+  if (Array.isArray(value)) {
+    return value as SchemaField[];
+  }
+
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const root = value as Record<string, unknown>;
+  const rootType =
+    normalizeJsonSchemaType(root.type) || (root.properties ? "object" : null);
+
+  if (rootType && rootType !== "object") {
+    return null;
+  }
+
+  return parseJsonSchemaProperties(root.properties);
+}
+
+function fieldToJsonSchemaNode(field: SchemaField): Record<string, unknown> {
+  const base: Record<string, unknown> = {};
+
+  if (field.description?.trim()) {
+    base.description = field.description.trim();
+  }
+
+  if (
+    field.type === "string" ||
+    field.type === "number" ||
+    field.type === "boolean"
+  ) {
+    return {
+      ...base,
+      type: field.type,
+      ...(field.type === "string" && field.format === "timestamp"
+        ? { format: "date-time" }
+        : {}),
+    };
+  }
+
+  if (field.type === "object") {
+    return {
+      ...base,
+      type: "object",
+      properties: schemaFieldsToJsonSchemaProperties(field.fields ?? []),
+    };
+  }
+
+  if (field.itemType === "object") {
+    return {
+      ...base,
+      type: "array",
+      items: {
+        type: "object",
+        properties: schemaFieldsToJsonSchemaProperties(field.fields ?? []),
+      },
+    };
+  }
+
+  return {
+    ...base,
+    type: "array",
+    items: {
+      type: field.itemType ?? "string",
+      ...(field.itemType === "string" && field.format === "timestamp"
+        ? { format: "date-time" }
+        : {}),
+    },
+  };
+}
+
+function schemaFieldsToJsonSchemaProperties(
+  schema: SchemaField[]
+): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+
+  for (const field of schema) {
+    const name = field.name.trim();
+    if (!name) {
+      continue;
+    }
+    properties[name] = fieldToJsonSchemaNode(field);
+  }
+
+  return properties;
+}
+
+function schemaFieldsToJsonSchemaDocument(schema: SchemaField[]) {
+  return {
+    type: "object",
+    properties: schemaFieldsToJsonSchemaProperties(schema),
+  };
 }
 
 function inferPrimitiveType(value: unknown): "string" | "number" | "boolean" {
@@ -236,6 +467,9 @@ export function TriggerConfig({
   disabled,
   workflowId,
 }: TriggerConfigProps) {
+  const [schemaEditorMode, setSchemaEditorMode] = useState<"builder" | "json">(
+    "builder"
+  );
   const triggerType = (config?.triggerType as string) || "Webhook";
   const runtimeTriggers = useMemo(
     () =>
@@ -270,6 +504,20 @@ export function TriggerConfig({
     (config?.webhookDeleteEvents as string) || "event.delete";
   const mockRequest = (config?.webhookMockRequest as string) || "";
   const schema = readSchema(config);
+  const schemaJsonValue = useMemo(
+    () => JSON.stringify(schemaFieldsToJsonSchemaDocument(schema), null, 2),
+    [schema]
+  );
+  const [schemaJsonDraft, setSchemaJsonDraft] = useState(schemaJsonValue);
+  const [schemaJsonError, setSchemaJsonError] = useState("");
+
+  useEffect(() => {
+    if (schemaEditorMode === "builder") {
+      setSchemaJsonDraft(schemaJsonValue);
+      setSchemaJsonError("");
+    }
+  }, [schemaEditorMode, schemaJsonValue]);
+
   const schemaPathOptions = useMemo(
     () => flattenSchemaPathOptions(schema),
     [schema]
@@ -499,6 +747,33 @@ export function TriggerConfig({
     onUpdateConfig(key, toConfigString(value));
   };
 
+  const handleSchemaJsonChange = (nextValue: string) => {
+    setSchemaJsonDraft(nextValue);
+
+    if (!nextValue.trim()) {
+      onUpdateConfig("webhookSchema", "");
+      setSchemaJsonError("");
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(nextValue) as unknown;
+      const parsedSchema = parseSchemaFieldsFromUnknown(parsed);
+
+      if (!parsedSchema) {
+        setSchemaJsonError(
+          "Schema must be either a field array or a JSON Schema object with top-level properties."
+        );
+        return;
+      }
+
+      onUpdateConfig("webhookSchema", JSON.stringify(parsedSchema));
+      setSchemaJsonError("");
+    } catch {
+      setSchemaJsonError("Schema is not valid JSON.");
+    }
+  };
+
   return (
     <>
       <div className="space-y-2">
@@ -614,13 +889,56 @@ export function TriggerConfig({
             <p className="font-medium text-xs uppercase tracking-wide">
               Request Schema
             </p>
-            <SchemaBuilder
-              disabled={disabled}
-              onChange={(nextSchema) =>
-                onUpdateConfig("webhookSchema", JSON.stringify(nextSchema))
+            <Tabs
+              onValueChange={(value) =>
+                setSchemaEditorMode(value as "builder" | "json")
               }
-              schema={schema}
-            />
+              value={schemaEditorMode}
+            >
+              <TabsList className="w-fit">
+                <TabsTrigger value="builder">Builder</TabsTrigger>
+                <TabsTrigger value="json">JSON Schema</TabsTrigger>
+              </TabsList>
+              <TabsContent className="space-y-3" value="builder">
+                <SchemaBuilder
+                  disabled={disabled}
+                  onChange={(nextSchema) =>
+                    onUpdateConfig("webhookSchema", JSON.stringify(nextSchema))
+                  }
+                  schema={schema}
+                />
+              </TabsContent>
+              <TabsContent className="space-y-3" value="json">
+                <div className="overflow-hidden rounded-md border">
+                  <CodeEditor
+                    defaultLanguage="json"
+                    height="230px"
+                    onChange={(value) => handleSchemaJsonChange(value || "")}
+                    options={{
+                      minimap: { enabled: false },
+                      lineNumbers: "on",
+                      scrollBeyondLastLine: false,
+                      fontSize: 12,
+                      readOnly: disabled,
+                      wordWrap: "on",
+                    }}
+                    value={schemaJsonDraft}
+                  />
+                </div>
+                <div className="min-h-5">
+                  {schemaJsonError ? (
+                    <p className="text-destructive text-xs">
+                      {schemaJsonError}
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      Changes auto-apply when JSON is valid. Supports top-level
+                      JSON Schema <code>properties</code>.
+                    </p>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
             <p className="text-muted-foreground text-xs">
               Define your webhook contract once. Routing fields and autocomplete
               both read from this schema.
