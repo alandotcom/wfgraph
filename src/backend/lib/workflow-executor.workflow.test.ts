@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type { WorkflowExecutionEngine } from "@/backend/lib/workflow-engine/types";
 import { executeWorkflow } from "@/backend/lib/workflow-executor.workflow";
 import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
 import type { WorkflowNode } from "@/shared/workflow/types";
@@ -64,6 +65,27 @@ function createConditionBranchEdge(input: {
 }
 
 describe("executeWorkflow", () => {
+  it("uses an injected execution engine when provided", async () => {
+    const graph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
+    const injectedResult = {
+      success: true,
+      results: {},
+      outputs: {},
+    };
+    let executeCalls = 0;
+    const injectedEngine: WorkflowExecutionEngine = {
+      execute: () => {
+        executeCalls += 1;
+        return Promise.resolve(injectedResult);
+      },
+    };
+
+    const result = await executeWorkflow({ graph }, undefined, injectedEngine);
+
+    expect(executeCalls).toBe(1);
+    expect(result).toEqual(injectedResult);
+  });
+
   it("does not execute a join node until all inbound dependencies are downstream-ready", async () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [

@@ -2,6 +2,8 @@ import type { SerializedWorkflowGraph, WorkflowVisibility } from "./types";
 
 export type ApiErrorPayload = {
   error: string;
+  code?: string;
+  invalidIntegrationIds?: string[];
   message?: string;
   details?: string;
 };

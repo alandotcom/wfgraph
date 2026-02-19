@@ -37,10 +37,11 @@ import {
   type IntegrationType,
   isIntegrationType,
 } from "@/shared/types/integration";
+import { parseWorkflowSchemaFieldsString } from "@/shared/workflow/schema-codec";
 import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
-import { SchemaBuilder, type SchemaField } from "./schema-builder";
+import { SchemaBuilder } from "./schema-builder";
 
 type ActionConfigProps = {
   config: Record<string, unknown>;
@@ -56,10 +57,6 @@ type CategoryActionOption = {
   integration?: string;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function readConfigString(
   config: Record<string, unknown> | undefined,
   key: string,
@@ -67,104 +64,6 @@ function readConfigString(
 ): string {
   const value = config?.[key];
   return typeof value === "string" ? value : fallback;
-}
-
-function isSchemaFieldType(value: unknown): value is SchemaField["type"] {
-  return (
-    value === "string" ||
-    value === "number" ||
-    value === "boolean" ||
-    value === "array" ||
-    value === "object"
-  );
-}
-
-function isSchemaFieldItemType(
-  value: unknown
-): value is NonNullable<SchemaField["itemType"]> {
-  return (
-    value === "string" ||
-    value === "number" ||
-    value === "boolean" ||
-    value === "object"
-  );
-}
-
-function parseSchemaField(value: unknown): SchemaField | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const name = typeof value.name === "string" ? value.name.trim() : "";
-  if (!name) {
-    return null;
-  }
-
-  const description =
-    typeof value.description === "string" ? value.description : undefined;
-  const type = isSchemaFieldType(value.type) ? value.type : "string";
-
-  if (type === "array") {
-    const itemType = isSchemaFieldItemType(value.itemType)
-      ? value.itemType
-      : "string";
-    const fields = Array.isArray(value.fields)
-      ? value.fields.flatMap((field) => {
-          const parsedField = parseSchemaField(field);
-          return parsedField ? [parsedField] : [];
-        })
-      : undefined;
-
-    return {
-      name,
-      type,
-      itemType,
-      fields,
-      description,
-    };
-  }
-
-  if (type === "object") {
-    const fields = Array.isArray(value.fields)
-      ? value.fields.flatMap((field) => {
-          const parsedField = parseSchemaField(field);
-          return parsedField ? [parsedField] : [];
-        })
-      : [];
-
-    return {
-      name,
-      type,
-      fields,
-      description,
-    };
-  }
-
-  return {
-    name,
-    type,
-    description,
-  };
-}
-
-function parseSchemaFields(value: unknown): SchemaField[] {
-  if (typeof value !== "string" || !value.trim()) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.flatMap((field) => {
-      const parsedField = parseSchemaField(field);
-      return parsedField ? [parsedField] : [];
-    });
-  } catch {
-    return [];
-  }
 }
 
 function OptionLogo({
@@ -236,7 +135,9 @@ function DatabaseQueryFields({
           onChange={(schema) =>
             onUpdateConfig("dbSchema", JSON.stringify(schema))
           }
-          schema={parseSchemaFields(config.dbSchema)}
+          schema={parseWorkflowSchemaFieldsString(
+            typeof config.dbSchema === "string" ? config.dbSchema : undefined
+          )}
         />
       </div>
     </>

@@ -1,9 +1,32 @@
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readInvalidIntegrationIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const ids = value.flatMap((item) => {
+    const id = asNonEmptyString(item);
+    return id ? [id] : [];
+  });
+
+  return ids;
+}
+
 export function getRpcErrorMessage(
   payload: unknown,
   fallback = "Request failed"
 ): string {
-  if (typeof payload === "string" && payload.trim().length > 0) {
-    return payload;
+  const payloadString = asNonEmptyString(payload);
+  if (payloadString) {
+    return payloadString;
   }
 
   if (typeof payload !== "object" || payload === null) {
@@ -14,19 +37,24 @@ export function getRpcErrorMessage(
     error?: unknown;
     message?: unknown;
     details?: unknown;
+    code?: unknown;
+    invalidIntegrationIds?: unknown;
   };
 
-  if (typeof value.error === "string" && value.error.trim().length > 0) {
-    return value.error;
+  const baseMessage =
+    asNonEmptyString(value.error) ??
+    asNonEmptyString(value.message) ??
+    asNonEmptyString(value.details) ??
+    fallback;
+
+  if (value.code === "integration_validation_failed") {
+    const invalidIntegrationIds = readInvalidIntegrationIds(
+      value.invalidIntegrationIds
+    );
+    if (invalidIntegrationIds.length > 0) {
+      return `${baseMessage} (invalid integration IDs: ${invalidIntegrationIds.join(", ")})`;
+    }
   }
 
-  if (typeof value.message === "string" && value.message.trim().length > 0) {
-    return value.message;
-  }
-
-  if (typeof value.details === "string" && value.details.trim().length > 0) {
-    return value.details;
-  }
-
-  return fallback;
+  return baseMessage;
 }

@@ -1,6 +1,5 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
-import { validateWorkflowIntegrations } from "@/backend/lib/db/integrations";
 import { workflows } from "@/backend/lib/db/schema";
 import { invalidateInngestFunctionsCache } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
@@ -11,6 +10,7 @@ import {
 } from "@/backend/lib/service-result";
 import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
+import { validateWorkflowIntegrations } from "@/backend/lib/workflow-integration-validation";
 import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
@@ -165,6 +165,8 @@ export async function patchWorkflow(
         );
         return failure(403, {
           error: "Invalid integration references in workflow",
+          code: "integration_validation_failed",
+          invalidIntegrationIds: integrationValidation.invalidIds ?? [],
         });
       }
 

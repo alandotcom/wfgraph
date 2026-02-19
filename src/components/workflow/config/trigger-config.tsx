@@ -20,6 +20,10 @@ import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { parseCsvSet } from "@/shared/utils/csv";
 import { getValueByPath } from "@/shared/utils/object-path";
 import { parseScheduleExpression } from "@/shared/utils/schedule-expression";
+import {
+  parseWorkflowSchemaFieldsOrJsonSchema,
+  workflowSchemaFieldsToJsonSchemaDocument,
+} from "@/shared/workflow/schema-codec";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { SchemaBuilder, type SchemaField } from "./schema-builder";
 
@@ -101,335 +105,14 @@ function readSchema(config: Record<string, unknown>): SchemaField[] {
 
   try {
     const parsed = JSON.parse(config.webhookSchema);
-    return parseSchemaFieldsFromUnknown(parsed) ?? [];
+    return parseWorkflowSchemaFieldsOrJsonSchema(parsed) ?? [];
   } catch {
     return [];
   }
 }
 
-type JsonSchemaType = SchemaField["type"] | SchemaField["itemType"];
-
-function isJsonSchemaType(value: unknown): value is JsonSchemaType {
-  return (
-    value === "string" ||
-    value === "number" ||
-    value === "boolean" ||
-    value === "array" ||
-    value === "object"
-  );
-}
-
-function isSchemaFieldType(value: unknown): value is SchemaField["type"] {
-  return isJsonSchemaType(value) && value !== undefined;
-}
-
-function isSchemaFieldItemType(
-  value: unknown
-): value is NonNullable<SchemaField["itemType"]> {
-  return (
-    value === "string" ||
-    value === "number" ||
-    value === "boolean" ||
-    value === "object"
-  );
-}
-
 function isSchemaEditorMode(value: string): value is SchemaEditorMode {
   return value === "builder" || value === "json";
-}
-
-function normalizeJsonSchemaType(value: unknown): JsonSchemaType | null {
-  if (typeof value === "string") {
-    if (
-      value === "string" ||
-      value === "number" ||
-      value === "boolean" ||
-      value === "array" ||
-      value === "object"
-    ) {
-      return value;
-    }
-    return null;
-  }
-
-  if (!Array.isArray(value)) {
-    return null;
-  }
-
-  const firstSupportedType = value.find(
-    (item) =>
-      item === "string" ||
-      item === "number" ||
-      item === "boolean" ||
-      item === "array" ||
-      item === "object"
-  );
-
-  return isJsonSchemaType(firstSupportedType) ? firstSupportedType : null;
-}
-
-function normalizeJsonSchemaFormat(value: unknown): SchemaField["format"] {
-  if (value === "date-time" || value === "datetime" || value === "timestamp") {
-    return "timestamp";
-  }
-  return undefined;
-}
-
-function parseJsonSchemaProperty(
-  name: string,
-  value: unknown
-): SchemaField | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const property = value;
-  const normalizedType =
-    normalizeJsonSchemaType(property.type) ||
-    (property.properties ? "object" : null) ||
-    (property.items ? "array" : null);
-
-  if (!normalizedType) {
-    return null;
-  }
-
-  const description =
-    typeof property.description === "string" ? property.description : undefined;
-
-  if (
-    normalizedType === "string" ||
-    normalizedType === "number" ||
-    normalizedType === "boolean"
-  ) {
-    return {
-      name,
-      type: normalizedType,
-      format:
-        normalizedType === "string"
-          ? normalizeJsonSchemaFormat(property.format)
-          : undefined,
-      description,
-    };
-  }
-
-  if (normalizedType === "object") {
-    const nested = parseJsonSchemaProperties(property.properties);
-    return {
-      name,
-      type: "object",
-      fields: nested,
-      description,
-    };
-  }
-
-  const items = isRecord(property.items) ? property.items : null;
-  const normalizedItemType =
-    normalizeJsonSchemaType(items?.type) ||
-    (items?.properties ? "object" : null) ||
-    "string";
-
-  if (
-    normalizedItemType !== "string" &&
-    normalizedItemType !== "number" &&
-    normalizedItemType !== "boolean" &&
-    normalizedItemType !== "object"
-  ) {
-    return null;
-  }
-
-  return {
-    name,
-    type: "array",
-    itemType: normalizedItemType,
-    fields:
-      normalizedItemType === "object"
-        ? parseJsonSchemaProperties(items?.properties)
-        : undefined,
-    format:
-      normalizedItemType === "string"
-        ? normalizeJsonSchemaFormat(items?.format)
-        : undefined,
-    description,
-  };
-}
-
-function parseJsonSchemaProperties(value: unknown): SchemaField[] {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return [];
-  }
-
-  return Object.entries(value).flatMap(([name, property]) => {
-    const parsed = parseJsonSchemaProperty(name, property);
-    return parsed ? [parsed] : [];
-  });
-}
-
-function parseSerializedSchemaField(value: unknown): SchemaField | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const name = typeof value.name === "string" ? value.name.trim() : "";
-  if (!name) {
-    return null;
-  }
-
-  const description =
-    typeof value.description === "string" ? value.description : undefined;
-  const normalizedType = normalizeJsonSchemaType(value.type);
-  if (!isSchemaFieldType(normalizedType)) {
-    return null;
-  }
-
-  if (normalizedType === "array") {
-    const normalizedItemType = normalizeJsonSchemaType(value.itemType);
-    const itemType = isSchemaFieldItemType(normalizedItemType)
-      ? normalizedItemType
-      : "string";
-    const fields =
-      itemType === "object" && Array.isArray(value.fields)
-        ? value.fields.flatMap((field) => {
-            const parsedField = parseSerializedSchemaField(field);
-            return parsedField ? [parsedField] : [];
-          })
-        : undefined;
-
-    return {
-      name,
-      type: "array",
-      itemType,
-      fields,
-      format:
-        itemType === "string" && value.format === "timestamp"
-          ? "timestamp"
-          : undefined,
-      description,
-    };
-  }
-
-  if (normalizedType === "object") {
-    const fields = Array.isArray(value.fields)
-      ? value.fields.flatMap((field) => {
-          const parsedField = parseSerializedSchemaField(field);
-          return parsedField ? [parsedField] : [];
-        })
-      : [];
-
-    return {
-      name,
-      type: "object",
-      fields,
-      description,
-    };
-  }
-
-  return {
-    name,
-    type: normalizedType,
-    format:
-      normalizedType === "string" && value.format === "timestamp"
-        ? "timestamp"
-        : undefined,
-    description,
-  };
-}
-
-function parseSchemaFieldsFromUnknown(value: unknown): SchemaField[] | null {
-  if (Array.isArray(value)) {
-    return value.flatMap((field) => {
-      const parsedField = parseSerializedSchemaField(field);
-      return parsedField ? [parsedField] : [];
-    });
-  }
-
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const root = value;
-  const rootType =
-    normalizeJsonSchemaType(root.type) || (root.properties ? "object" : null);
-
-  if (rootType && rootType !== "object") {
-    return null;
-  }
-
-  return parseJsonSchemaProperties(root.properties);
-}
-
-function fieldToJsonSchemaNode(field: SchemaField): Record<string, unknown> {
-  const base: Record<string, unknown> = {};
-
-  if (field.description?.trim()) {
-    base.description = field.description.trim();
-  }
-
-  if (
-    field.type === "string" ||
-    field.type === "number" ||
-    field.type === "boolean"
-  ) {
-    return {
-      ...base,
-      type: field.type,
-      ...(field.type === "string" && field.format === "timestamp"
-        ? { format: "date-time" }
-        : {}),
-    };
-  }
-
-  if (field.type === "object") {
-    return {
-      ...base,
-      type: "object",
-      properties: schemaFieldsToJsonSchemaProperties(field.fields ?? []),
-    };
-  }
-
-  if (field.itemType === "object") {
-    return {
-      ...base,
-      type: "array",
-      items: {
-        type: "object",
-        properties: schemaFieldsToJsonSchemaProperties(field.fields ?? []),
-      },
-    };
-  }
-
-  return {
-    ...base,
-    type: "array",
-    items: {
-      type: field.itemType ?? "string",
-      ...(field.itemType === "string" && field.format === "timestamp"
-        ? { format: "date-time" }
-        : {}),
-    },
-  };
-}
-
-function schemaFieldsToJsonSchemaProperties(
-  schema: SchemaField[]
-): Record<string, unknown> {
-  const properties: Record<string, unknown> = {};
-
-  for (const field of schema) {
-    const name = field.name.trim();
-    if (!name) {
-      continue;
-    }
-    properties[name] = fieldToJsonSchemaNode(field);
-  }
-
-  return properties;
-}
-
-function schemaFieldsToJsonSchemaDocument(schema: SchemaField[]) {
-  return {
-    type: "object",
-    properties: schemaFieldsToJsonSchemaProperties(schema),
-  };
 }
 
 function inferPrimitiveType(value: unknown): "string" | "number" | "boolean" {
@@ -631,7 +314,8 @@ export function TriggerConfig({
   );
   const schema = readSchema(config);
   const schemaJsonValue = useMemo(
-    () => JSON.stringify(schemaFieldsToJsonSchemaDocument(schema), null, 2),
+    () =>
+      JSON.stringify(workflowSchemaFieldsToJsonSchemaDocument(schema), null, 2),
     [schema]
   );
   const [schemaJsonDraft, setSchemaJsonDraft] = useState(schemaJsonValue);
@@ -872,7 +556,7 @@ export function TriggerConfig({
 
     try {
       const parsed = JSON.parse(nextValue);
-      const parsedSchema = parseSchemaFieldsFromUnknown(parsed);
+      const parsedSchema = parseWorkflowSchemaFieldsOrJsonSchema(parsed);
 
       if (!parsedSchema) {
         setSchemaJsonError(

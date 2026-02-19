@@ -75,6 +75,10 @@ import {
   isIntegrationType,
 } from "@/shared/types/integration";
 import {
+  getMissingRequiredFieldsForNodes,
+  type MissingRequiredFieldInfo,
+} from "@/shared/workflow/action-config-validation";
+import {
   SYSTEM_ACTION_INTEGRATIONS,
   SYSTEM_INTEGRATION_LABELS,
 } from "@/shared/workflow/system-action-integrations";
@@ -215,103 +219,14 @@ function getBrokenTemplateReferences(
   return brokenByNode;
 }
 
-// Type for missing required fields info
-type MissingRequiredFieldInfo = {
-  nodeId: string;
-  nodeLabel: string;
-  missingFields: Array<{
-    fieldKey: string;
-    fieldLabel: string;
-  }>;
-};
-
-// Check if a field value is effectively empty
-function isFieldEmpty(value: unknown): boolean {
-  if (value === undefined || value === null) {
-    return true;
-  }
-  if (typeof value === "string" && value.trim() === "") {
-    return true;
-  }
-  return false;
-}
-
-// Check if a conditional field should be shown based on current config
-function shouldShowField(
-  field: { showWhen?: { field: string; equals: string } },
-  config: Record<string, unknown>
-): boolean {
-  if (!field.showWhen) {
-    return true;
-  }
-  return config[field.showWhen.field] === field.showWhen.equals;
-}
-
-// Get missing required fields for a single node
-function getNodeMissingFields(
-  node: WorkflowNode
-): MissingRequiredFieldInfo | null {
-  if (node.data.enabled === false) {
-    return null;
-  }
-
-  const config = node.data.config;
-  const actionType = readConfigString(config, "actionType");
-  if (node.data.type === "action" && !actionType) {
-    return {
-      nodeId: node.id,
-      nodeLabel: node.data.label || "Unnamed Step",
-      missingFields: [
-        {
-          fieldKey: "actionType",
-          fieldLabel: "Action",
-        },
-      ],
-    };
-  }
-
-  if (!actionType) {
-    return null;
-  }
-
-  const action = findActionById(actionType);
-  if (!action) {
-    return null;
-  }
-
-  // Flatten grouped fields to check all required fields
-  const flatFields = flattenConfigFields(action.configFields);
-
-  const missingFields = flatFields
-    .filter(
-      (field) =>
-        field.required &&
-        shouldShowField(field, config || {}) &&
-        isFieldEmpty(config?.[field.key])
-    )
-    .map((field) => ({
-      fieldKey: field.key,
-      fieldLabel: field.label,
-    }));
-
-  if (missingFields.length === 0) {
-    return null;
-  }
-
-  return {
-    nodeId: node.id,
-    nodeLabel: node.data.label || action.label || "Unnamed Step",
-    missingFields,
-  };
-}
-
 // Get missing required fields for workflow nodes
 function getMissingRequiredFields(
   nodes: WorkflowNode[]
 ): MissingRequiredFieldInfo[] {
-  return nodes
-    .map(getNodeMissingFields)
-    .filter((result): result is MissingRequiredFieldInfo => result !== null);
+  return getMissingRequiredFieldsForNodes({
+    nodes,
+    resolveActionByType: (actionType) => findActionById(actionType),
+  });
 }
 
 // Get missing integrations for workflow nodes
@@ -321,7 +236,6 @@ function getMissingIntegrations(
   nodes: WorkflowNode[],
   userIntegrations: Array<{ id: string; type: IntegrationType }>
 ): MissingIntegrationInfo[] {
-  const userIntegrationTypes = new Set(userIntegrations.map((i) => i.type));
   const userIntegrationIds = new Set(userIntegrations.map((i) => i.id));
   const missingByType = new Map<IntegrationType, string[]>();
   const integrationLabels = getIntegrationLabels();
@@ -367,14 +281,10 @@ function getMissingIntegrations(
       continue;
     }
 
-    // Check if user has any integration of this type
-    if (!userIntegrationTypes.has(requiredIntegrationType)) {
-      const existing = missingByType.get(requiredIntegrationType) || [];
-      // Use human-readable label from registry if no custom label
-      const actionInfo = findActionById(actionType);
-      existing.push(node.data.label || actionInfo?.label || actionType);
-      missingByType.set(requiredIntegrationType, existing);
-    }
+    const existing = missingByType.get(requiredIntegrationType) || [];
+    // Use human-readable label from registry if no custom label
+    existing.push(node.data.label || action?.label || actionType);
+    missingByType.set(requiredIntegrationType, existing);
   }
 
   return Array.from(missingByType.entries()).map(
@@ -639,6 +549,8 @@ function useWorkflowHandlers({
     const brokenRefs = getBrokenTemplateReferences(nodes);
     const missingFields = getMissingRequiredFields(nodes);
     const missingIntegrations = getMissingIntegrations(nodes, userIntegrations);
+    const hasBlockingIssues =
+      missingFields.length > 0 || missingIntegrations.length > 0;
 
     // If there are any issues, show the workflow issues overlay
     if (
@@ -653,7 +565,10 @@ function useWorkflowHandlers({
           missingIntegrations,
         },
         onGoToStep: handleGoToStep,
-        onRunAnyway: () => executeWorkflow(dryRun),
+        onRunAnyway: hasBlockingIssues
+          ? undefined
+          : () => executeWorkflow(dryRun),
+        allowRunAnyway: !hasBlockingIssues,
       });
       return;
     }

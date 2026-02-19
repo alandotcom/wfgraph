@@ -1,6 +1,5 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
-import { validateWorkflowIntegrations } from "@/backend/lib/db/integrations";
 import { workflowExecutions, workflows } from "@/backend/lib/db/schema";
 import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { sendWorkflowRunRequested } from "@/backend/lib/inngest/runtime-events";
@@ -15,8 +14,10 @@ import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
 import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
+import { validateWorkflowIntegrations } from "@/backend/lib/workflow-integration-validation";
 import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-wait-state";
 import { orchestrateTriggerExecution } from "@/backend/services/workflows/trigger-orchestrator.workflows";
+import type { ApiErrorPayload } from "@/shared/workflow/api-contracts";
 import type { WorkflowExecuteResponse } from "@/shared/workflow/execution-contracts";
 import {
   evaluateWorkflowTrigger,
@@ -199,11 +200,7 @@ export async function postWorkflowExecuteResult(
     dryRun?: boolean;
   }
 ): Promise<
-  ServiceResult<
-    WorkflowExecuteResponse,
-    400 | 403 | 404 | 500,
-    { error: string }
-  >
+  ServiceResult<WorkflowExecuteResponse, 400 | 403 | 404 | 500, ApiErrorPayload>
 > {
   const requestLogger = executeLogger.with({ workflowId });
   try {
@@ -256,6 +253,8 @@ export async function postWorkflowExecuteResult(
       });
       return failure(403, {
         error: "Workflow contains invalid integration references",
+        code: "integration_validation_failed",
+        invalidIntegrationIds: integrationValidation.invalidIds ?? [],
       });
     }
 

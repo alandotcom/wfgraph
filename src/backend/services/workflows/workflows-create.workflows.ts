@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { db } from "@/backend/lib/db";
-import { validateWorkflowIntegrations } from "@/backend/lib/db/integrations";
 import { workflows } from "@/backend/lib/db/schema";
 import { invalidateInngestFunctionsCache } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
@@ -12,6 +11,7 @@ import {
 } from "@/backend/lib/service-result";
 import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
+import { validateWorkflowIntegrations } from "@/backend/lib/workflow-integration-validation";
 import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers.workflows";
 import { generateId } from "@/shared/utils/id";
 import type {
@@ -117,6 +117,8 @@ export async function postWorkflowsCreate(body: {
       );
       return failure(403, {
         error: "Invalid integration references in workflow",
+        code: "integration_validation_failed",
+        invalidIntegrationIds: integrationValidation.invalidIds ?? [],
       });
     }
 

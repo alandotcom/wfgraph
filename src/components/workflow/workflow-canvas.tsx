@@ -324,13 +324,12 @@ export function WorkflowCanvas() {
         sourceHandle,
         type: "animated",
       };
-      setEdges([...edges, newEdge]);
+      setEdges((currentEdges) => [...currentEdges, newEdge]);
       setHasUnsavedChanges(true);
       // Trigger immediate autosave when nodes are connected
       triggerAutosave({ immediate: true });
     },
     [
-      edges,
       normalizeSourceHandleForConnection,
       setEdges,
       setHasUnsavedChanges,
@@ -494,7 +493,7 @@ export function WorkflowCanvas() {
         targetHandle,
         type: "animated",
       };
-      setEdges([...edges, newEdge]);
+      setEdges((currentEdges) => [...currentEdges, newEdge]);
       setHasUnsavedChanges(true);
       // Trigger immediate autosave for the new edge
       triggerAutosave({ immediate: true });
@@ -509,7 +508,6 @@ export function WorkflowCanvas() {
       calculateMenuPosition,
       screenToFlowPosition,
       addNode,
-      edges,
       setEdges,
       setNodes,
       setSelectedNode,

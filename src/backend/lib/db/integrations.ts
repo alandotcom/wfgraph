@@ -1,6 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
-import { uniq } from "es-toolkit/array";
+import { eq, inArray } from "drizzle-orm";
 import { getAppLogger } from "@/backend/lib/logger";
 import type {
   IntegrationConfig,
@@ -217,33 +216,41 @@ export async function deleteIntegration(
   return result.length > 0;
 }
 
-type WorkflowNodeForValidation = {
-  data?: {
-    config?: {
-      integrationId?: string;
-    };
-  };
-};
-
-export function extractIntegrationIds(
-  nodes: WorkflowNodeForValidation[]
-): string[] {
-  const integrationIds: string[] = [];
-
-  for (const node of nodes) {
-    const integrationId = node.data?.config?.integrationId;
-    if (integrationId && typeof integrationId === "string") {
-      integrationIds.push(integrationId);
-    }
+export async function validateIntegrationIds(
+  integrationIds: string[]
+): Promise<{ valid: boolean; invalidIds?: string[] }> {
+  if (integrationIds.length === 0) {
+    return { valid: true };
   }
 
-  return uniq(integrationIds);
+  const existingIntegrations = await db
+    .select({ id: integrations.id })
+    .from(integrations)
+    .where(inArray(integrations.id, integrationIds));
+  const existingIds = new Set(existingIntegrations.map((row) => row.id));
+  const invalidIds = integrationIds.filter((id) => !existingIds.has(id));
+
+  if (invalidIds.length > 0) {
+    return { valid: false, invalidIds };
+  }
+
+  return { valid: true };
 }
 
-export function validateWorkflowIntegrations(
-  _nodes: WorkflowNodeForValidation[]
-): Promise<{ valid: boolean; invalidIds?: string[] }> {
-  // Stale references to deleted integrations are allowed. Validation stays
-  // permissive by design, so no database existence check is required here.
-  return Promise.resolve({ valid: true });
+export async function getIntegrationTypesByIds(
+  integrationIds: string[]
+): Promise<Record<string, IntegrationType>> {
+  if (integrationIds.length === 0) {
+    return {};
+  }
+
+  const rows = await db
+    .select({ id: integrations.id, type: integrations.type })
+    .from(integrations)
+    .where(inArray(integrations.id, integrationIds));
+
+  return rows.reduce<Record<string, IntegrationType>>((acc, row) => {
+    acc[row.id] = row.type;
+    return acc;
+  }, {});
 }

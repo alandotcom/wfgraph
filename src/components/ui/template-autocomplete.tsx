@@ -1,6 +1,6 @@
 import { useAtom } from "jotai";
 import { Check } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   edgesAtom,
@@ -9,6 +9,10 @@ import {
 } from "@/client/lib/workflow-store";
 import { findActionById } from "@/plugins";
 import { cn } from "@/shared/utils";
+import {
+  parseWorkflowSchemaFieldsString,
+  type WorkflowSchemaField,
+} from "@/shared/workflow/schema-codec";
 
 type TemplateAutocompleteProps = {
   isOpen: boolean;
@@ -19,123 +23,12 @@ type TemplateAutocompleteProps = {
   filter?: string;
 };
 
-type SchemaField = {
-  name: string;
-  type: "string" | "number" | "boolean" | "array" | "object";
-  itemType?: "string" | "number" | "boolean" | "object";
-  fields?: SchemaField[];
-  format?: "timestamp";
-  description?: string;
-};
-
 function readConfigString(
   config: Record<string, unknown> | undefined,
   key: string
 ): string | undefined {
   const value = config?.[key];
   return typeof value === "string" ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isSchemaFieldType(value: unknown): value is SchemaField["type"] {
-  return (
-    value === "string" ||
-    value === "number" ||
-    value === "boolean" ||
-    value === "array" ||
-    value === "object"
-  );
-}
-
-function isSchemaItemType(value: unknown): value is NonNullable<SchemaField["itemType"]> {
-  return (
-    value === "string" ||
-    value === "number" ||
-    value === "boolean" ||
-    value === "object"
-  );
-}
-
-function parseSchemaField(value: unknown): SchemaField | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const name = typeof value.name === "string" ? value.name.trim() : "";
-  if (!name) {
-    return null;
-  }
-
-  const type = isSchemaFieldType(value.type) ? value.type : "string";
-  const description =
-    typeof value.description === "string" ? value.description : undefined;
-  const format = value.format === "timestamp" ? "timestamp" : undefined;
-
-  if (type === "object") {
-    const fields = Array.isArray(value.fields)
-      ? value.fields.flatMap((field) => {
-          const parsedField = parseSchemaField(field);
-          return parsedField ? [parsedField] : [];
-        })
-      : [];
-
-    return {
-      name,
-      type,
-      fields,
-      description,
-    };
-  }
-
-  if (type === "array") {
-    const itemType = isSchemaItemType(value.itemType) ? value.itemType : "string";
-    const fields =
-      itemType === "object" && Array.isArray(value.fields)
-        ? value.fields.flatMap((field) => {
-            const parsedField = parseSchemaField(field);
-            return parsedField ? [parsedField] : [];
-          })
-        : undefined;
-
-    return {
-      name,
-      type,
-      itemType,
-      fields,
-      format: itemType === "string" ? format : undefined,
-      description,
-    };
-  }
-
-  return {
-    name,
-    type,
-    format: type === "string" ? format : undefined,
-    description,
-  };
-}
-
-function parseSchemaFields(value: string | undefined): SchemaField[] {
-  if (!value) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.flatMap((field) => {
-      const parsedField = parseSchemaField(field);
-      return parsedField ? [parsedField] : [];
-    });
-  } catch {
-    return [];
-  }
 }
 
 // Helper to get a display name for a node
@@ -166,7 +59,7 @@ const getNodeDisplayName = (node: WorkflowNode): string => {
 
 // Convert schema fields to field descriptions
 const schemaToFields = (
-  schema: SchemaField[],
+  schema: WorkflowSchemaField[],
   prefix = ""
 ): Array<{ field: string; description: string }> => {
   const fields: Array<{ field: string; description: string }> = [];
@@ -222,7 +115,7 @@ const getCommonFields = (node: WorkflowNode) => {
   if (actionType === "Database Query") {
     const dbSchema = readConfigString(node.data.config, "dbSchema");
     if (dbSchema) {
-      const schema = parseSchemaFields(dbSchema);
+      const schema = parseWorkflowSchemaFieldsString(dbSchema);
       if (schema.length > 0) {
         return schemaToFields(schema);
       }
@@ -247,7 +140,7 @@ const getCommonFields = (node: WorkflowNode) => {
     const webhookSchema = readConfigString(node.data.config, "webhookSchema");
 
     if (triggerType === "Webhook" && webhookSchema) {
-      const schema = parseSchemaFields(webhookSchema);
+      const schema = parseWorkflowSchemaFieldsString(webhookSchema);
       if (schema.length > 0) {
         return schemaToFields(schema);
       }
@@ -276,78 +169,106 @@ export function TemplateAutocomplete({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Find all nodes that come before the current node
-  const getUpstreamNodes = () => {
+  const upstreamNodes = useMemo(() => {
     if (!currentNodeId) {
       return [];
     }
 
-    const visited = new Set<string>();
-    const upstream: string[] = [];
+    const incomingByTarget = new Map<string, string[]>();
+    for (const edge of edges) {
+      const incoming = incomingByTarget.get(edge.target);
+      if (incoming) {
+        incoming.push(edge.source);
+      } else {
+        incomingByTarget.set(edge.target, [edge.source]);
+      }
+    }
 
-    const traverse = (nodeId: string) => {
-      if (visited.has(nodeId)) {
-        return;
+    const visited = new Set<string>();
+    const upstreamIds = new Set<string>();
+    const stack = [currentNodeId];
+
+    while (stack.length > 0) {
+      const nodeId = stack.pop();
+      if (!nodeId || visited.has(nodeId)) {
+        continue;
       }
       visited.add(nodeId);
 
-      const incomingEdges = edges.filter((edge) => edge.target === nodeId);
-      for (const edge of incomingEdges) {
-        upstream.push(edge.source);
-        traverse(edge.source);
+      const incoming = incomingByTarget.get(nodeId);
+      if (!incoming) {
+        continue;
       }
-    };
 
-    traverse(currentNodeId);
+      for (const sourceNodeId of incoming) {
+        upstreamIds.add(sourceNodeId);
+        if (!visited.has(sourceNodeId)) {
+          stack.push(sourceNodeId);
+        }
+      }
+    }
 
-    return nodes.filter((node) => upstream.includes(node.id));
-  };
+    return nodes.filter((node) => upstreamIds.has(node.id));
+  }, [currentNodeId, edges, nodes]);
 
-  const upstreamNodes = getUpstreamNodes();
+  const options = useMemo<
+    Array<{
+      type: "node" | "field";
+      nodeId: string;
+      nodeName: string;
+      field?: string;
+      description?: string;
+      template: string;
+    }>
+  >(() => {
+    const nextOptions: Array<{
+      type: "node" | "field";
+      nodeId: string;
+      nodeName: string;
+      field?: string;
+      description?: string;
+      template: string;
+    }> = [];
 
-  // Build list of all available options (nodes + their fields)
-  const options: Array<{
-    type: "node" | "field";
-    nodeId: string;
-    nodeName: string;
-    field?: string;
-    description?: string;
-    template: string;
-  }> = [];
+    for (const node of upstreamNodes) {
+      const nodeName = getNodeDisplayName(node);
+      const fields = getCommonFields(node);
 
-  for (const node of upstreamNodes) {
-    const nodeName = getNodeDisplayName(node);
-    const fields = getCommonFields(node);
-
-    // Add node itself
-    options.push({
-      type: "node",
-      nodeId: node.id,
-      nodeName,
-      template: `{{@${node.id}:${nodeName}}}`,
-    });
-
-    // Add fields
-    for (const field of fields) {
-      options.push({
-        type: "field",
+      nextOptions.push({
+        type: "node",
         nodeId: node.id,
         nodeName,
-        field: field.field,
-        description: field.description,
-        template: `{{@${node.id}:${nodeName}.${field.field}}}`,
+        template: `{{@${node.id}:${nodeName}}}`,
       });
-    }
-  }
 
-  // Filter options based on search term
-  const filteredOptions = filter
-    ? options.filter(
-        (opt) =>
-          opt.nodeName.toLowerCase().includes(filter.toLowerCase()) ||
-          (opt.field && opt.field.toLowerCase().includes(filter.toLowerCase()))
-      )
-    : options;
+      for (const field of fields) {
+        nextOptions.push({
+          type: "field",
+          nodeId: node.id,
+          nodeName,
+          field: field.field,
+          description: field.description,
+          template: `{{@${node.id}:${nodeName}.${field.field}}}`,
+        });
+      }
+    }
+
+    return nextOptions;
+  }, [upstreamNodes]);
+
+  const filteredOptions = useMemo(() => {
+    const trimmedFilter = filter.trim().toLowerCase();
+    if (!trimmedFilter) {
+      return options;
+    }
+
+    return options.filter(
+      (opt) =>
+        opt.nodeName.toLowerCase().includes(trimmedFilter) ||
+        (opt.field && opt.field.toLowerCase().includes(trimmedFilter))
+    );
+  }, [filter, options]);
+
   const selectedOptionIndex =
     filteredOptions.length === 0
       ? 0

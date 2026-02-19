@@ -88,6 +88,12 @@ export const executionLogsAtom = atom<Record<string, ExecutionLogEntry>>({});
 
 // Autosave functionality
 let autosaveTimeoutId: NodeJS.Timeout | null = null;
+let queuedAutosave: {
+  workflowId: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+} | null = null;
+let isAutosaveFlushRunning = false;
 const AUTOSAVE_DELAY = 1000; // 1 second debounce for field typing
 
 // Autosave atom that handles saving workflow state
@@ -103,28 +109,67 @@ export const autosaveAtom = atom(
       return;
     }
 
-    const saveFunc = async () => {
+    const enqueueAutosave = () => {
+      queuedAutosave = { workflowId, nodes, edges };
+    };
+
+    const flushAutosave = async () => {
+      if (isAutosaveFlushRunning) {
+        return;
+      }
+      isAutosaveFlushRunning = true;
+
       try {
-        await api.workflow.update(workflowId, { nodes, edges });
-        // Clear the unsaved changes indicator after successful save
-        set(hasUnsavedChangesAtom, false);
-      } catch (error) {
-        console.error("[workflow-store] Autosave failed", {
-          workflowId,
-          error,
-        });
+        while (queuedAutosave) {
+          const nextAutosave = queuedAutosave;
+          queuedAutosave = null;
+
+          try {
+            // eslint-disable-next-line no-await-in-loop -- saves must remain sequential to preserve latest-write semantics.
+            await api.workflow.update(nextAutosave.workflowId, {
+              nodes: nextAutosave.nodes,
+              edges: nextAutosave.edges,
+            });
+
+            // Clear unsaved flag only when no newer save is queued and the
+            // saved workflow is still the currently active workflow.
+            if (
+              !queuedAutosave &&
+              get(currentWorkflowIdAtom) === nextAutosave.workflowId
+            ) {
+              set(hasUnsavedChangesAtom, false);
+            }
+          } catch (error) {
+            console.error("[workflow-store] Autosave failed", {
+              workflowId: nextAutosave.workflowId,
+              error,
+            });
+          }
+        }
+      } finally {
+        isAutosaveFlushRunning = false;
       }
     };
 
     if (options?.immediate) {
       // Save immediately (for add/delete/connect operations)
-      await saveFunc();
+      if (autosaveTimeoutId) {
+        clearTimeout(autosaveTimeoutId);
+        autosaveTimeoutId = null;
+      }
+      enqueueAutosave();
+      await flushAutosave();
     } else {
       // Debounce for typing operations
       if (autosaveTimeoutId) {
         clearTimeout(autosaveTimeoutId);
       }
-      autosaveTimeoutId = setTimeout(saveFunc, AUTOSAVE_DELAY);
+      autosaveTimeoutId = setTimeout(() => {
+        enqueueAutosave();
+        flushAutosave().catch((error) => {
+          console.error("[workflow-store] Autosave flush failed", { error });
+        });
+      }, AUTOSAVE_DELAY);
     }
   }
 );

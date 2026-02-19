@@ -45,7 +45,8 @@ type WorkflowIssues = {
 type WorkflowIssuesOverlayProps = OverlayComponentProps<{
   issues: WorkflowIssues;
   onGoToStep: (nodeId: string, fieldKey?: string) => void;
-  onRunAnyway: () => void;
+  onRunAnyway?: () => void;
+  allowRunAnyway?: boolean;
 }>;
 
 export function WorkflowIssuesOverlay({
@@ -53,6 +54,7 @@ export function WorkflowIssuesOverlay({
   issues,
   onGoToStep,
   onRunAnyway,
+  allowRunAnyway = false,
 }: WorkflowIssuesOverlayProps) {
   const { push, closeAll } = useOverlay();
   const setIntegrationsVersion = useSetAtom(integrationsVersionAtom);
@@ -94,16 +96,30 @@ export function WorkflowIssuesOverlay({
   };
 
   const handleRunAnyway = () => {
+    if (!onRunAnyway) {
+      return;
+    }
     closeAll();
     onRunAnyway();
   };
 
+  const blockingIssueCount =
+    missingRequiredFields.length + missingIntegrations.length;
+
   return (
     <Overlay
-      actions={[
-        { label: "Run Anyway", variant: "outline", onClick: handleRunAnyway },
-        { label: "Cancel", onClick: closeAll },
-      ]}
+      actions={
+        allowRunAnyway && onRunAnyway
+          ? [
+              {
+                label: "Run Anyway",
+                variant: "outline",
+                onClick: handleRunAnyway,
+              },
+              { label: "Cancel", onClick: closeAll },
+            ]
+          : [{ label: "Close", onClick: closeAll }]
+      }
       overlayId={overlayId}
       title={`Workflow Issues (${totalIssues})`}
     >
@@ -113,6 +129,11 @@ export function WorkflowIssuesOverlay({
           This workflow has issues that may cause it to fail.
         </p>
       </div>
+      {blockingIssueCount > 0 && (
+        <p className="mt-2 text-destructive text-sm">
+          Resolve blocking issues before running this workflow.
+        </p>
+      )}
 
       <div className="mt-4 space-y-4">
         {/* Missing Connections Section */}

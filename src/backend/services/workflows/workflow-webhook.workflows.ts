@@ -1,6 +1,5 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
-import { validateWorkflowIntegrations } from "@/backend/lib/db/integrations";
 import { workflowExecutions, workflows } from "@/backend/lib/db/schema";
 import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import {
@@ -18,12 +17,14 @@ import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
 import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
+import { validateWorkflowIntegrations } from "@/backend/lib/workflow-integration-validation";
 import {
   listWorkflowWaitingStatesByCorrelation,
   markExecutionRunning,
   markWaitStateStatus,
 } from "@/backend/lib/workflow-wait-state";
 import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
+import type { ApiErrorPayload } from "@/shared/workflow/api-contracts";
 import type { WorkflowWebhookResponse } from "@/shared/workflow/execution-contracts";
 import {
   evaluateWorkflowTrigger,
@@ -299,13 +300,14 @@ export async function postWorkflowWebhook(input: {
   });
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Endpoint orchestration intentionally combines auth, validation, routing, and run lifecycle decisions.
 export async function postWorkflowWebhookResult(input: {
   workflowId: string;
   authHeader: string | null;
   dryRunQuery?: "true" | "false";
   dryRunHeader: string | null;
   body: Record<string, unknown>;
-}): Promise<ServiceResult<WorkflowWebhookResponse, number, { error: string }>> {
+}): Promise<ServiceResult<WorkflowWebhookResponse, number, ApiErrorPayload>> {
   const requestLogger = webhookLogger.with({ workflowId: input.workflowId });
   try {
     const { workflowId, authHeader, dryRunQuery, dryRunHeader, body } = input;
@@ -379,6 +381,8 @@ export async function postWorkflowWebhookResult(input: {
       });
       return failure(403, {
         error: "Workflow contains invalid integration references",
+        code: "integration_validation_failed",
+        invalidIntegrationIds: validation.invalidIds ?? [],
       });
     }
 

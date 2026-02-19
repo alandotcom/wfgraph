@@ -33,6 +33,8 @@ const targetNode = {
 };
 
 mock.module("@xyflow/react", () => ({
+  applyEdgeChanges: (_changes: unknown, edges: unknown[]) => edges,
+  applyNodeChanges: (_changes: unknown, nodes: unknown[]) => nodes,
   BaseEdge: ({
     id,
     path,

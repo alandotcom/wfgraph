@@ -10,16 +10,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { WorkflowSchemaField } from "@/shared/workflow/schema-codec";
 
-export type SchemaField = {
-  id?: string;
-  name: string;
-  type: "string" | "number" | "boolean" | "array" | "object";
-  itemType?: "string" | "number" | "boolean" | "object";
-  fields?: SchemaField[];
-  format?: "timestamp";
-  description?: string;
-};
+export type SchemaField = WorkflowSchemaField & { id?: string };
 
 type SchemaBuilderProps = {
   schema: SchemaField[];

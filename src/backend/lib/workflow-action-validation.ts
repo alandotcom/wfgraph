@@ -1,51 +1,43 @@
+import { findActionById } from "@/plugins";
+import {
+  getMissingRequiredFieldsForNodes,
+  type ResolveActionByType,
+} from "@/shared/workflow/action-config-validation";
 import type { WorkflowNode } from "@/shared/workflow/types";
 
 export type WorkflowActionValidationResult =
   | { valid: true }
   | { valid: false; error: string };
 
-function asNonEmptyString(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function getNodeLabel(node: WorkflowNode): string {
-  const explicitLabel = asNonEmptyString(node.data.label);
-  if (explicitLabel) {
-    return explicitLabel;
-  }
-
-  const configuredAction = asNonEmptyString(node.data.config?.actionType);
-  if (configuredAction) {
-    return configuredAction;
-  }
-
-  return node.id;
-}
-
 export function validateWorkflowActionConfigs(
-  nodes: WorkflowNode[]
+  nodes: WorkflowNode[],
+  resolveActionByType: ResolveActionByType = (actionType) =>
+    findActionById(actionType)
 ): WorkflowActionValidationResult {
-  for (const node of nodes) {
-    if (node.data.type !== "action") {
-      continue;
-    }
+  const missingRequiredFields = getMissingRequiredFieldsForNodes({
+    nodes,
+    resolveActionByType,
+  });
 
-    if (node.data.enabled === false) {
-      continue;
-    }
+  if (missingRequiredFields.length > 0) {
+    const [firstIssue] = missingRequiredFields;
+    const missingLabels = firstIssue.missingFields
+      .map((field) => field.fieldLabel)
+      .join(", ");
 
-    const actionType = asNonEmptyString(node.data.config?.actionType);
-    if (!actionType) {
+    if (
+      firstIssue.missingFields.some((field) => field.fieldKey === "actionType")
+    ) {
       return {
         valid: false,
-        error: `Node "${getNodeLabel(node)}" has no action selected`,
+        error: `Node "${firstIssue.nodeLabel}" has no action selected`,
       };
     }
+
+    return {
+      valid: false,
+      error: `Node "${firstIssue.nodeLabel}" is missing required fields: ${missingLabels}`,
+    };
   }
 
   return { valid: true };
