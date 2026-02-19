@@ -257,6 +257,19 @@ function getNodeMissingFields(
 
   const config = node.data.config;
   const actionType = readConfigString(config, "actionType");
+  if (node.data.type === "action" && !actionType) {
+    return {
+      nodeId: node.id,
+      nodeLabel: node.data.label || "Unnamed Step",
+      missingFields: [
+        {
+          fieldKey: "actionType",
+          fieldLabel: "Action",
+        },
+      ],
+    };
+  }
+
   if (!actionType) {
     return null;
   }
@@ -563,10 +576,10 @@ function useWorkflowHandlers({
       setHasUnsavedChanges(false);
     } catch (error) {
       console.error("Failed to save workflow:", error);
-      const message =
-        error instanceof ApiError
-          ? error.message
-          : "Failed to save workflow. Please try again.";
+      let message = "Failed to save workflow. Please try again.";
+      if (error instanceof ApiError || error instanceof Error) {
+        message = error.message;
+      }
       setWorkflowNameError(message);
     } finally {
       setIsSaving(false);
