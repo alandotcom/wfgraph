@@ -11,6 +11,57 @@ export type WebhookSchemaField = {
   format?: "timestamp";
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function isWebhookSchemaField(
+  value: unknown
+): value is WebhookSchemaField {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (typeof value.name !== "string") {
+    return false;
+  }
+
+  if (
+    value.type !== "string" &&
+    value.type !== "number" &&
+    value.type !== "boolean" &&
+    value.type !== "array" &&
+    value.type !== "object"
+  ) {
+    return false;
+  }
+
+  if (
+    value.itemType !== undefined &&
+    value.itemType !== "string" &&
+    value.itemType !== "number" &&
+    value.itemType !== "boolean" &&
+    value.itemType !== "object"
+  ) {
+    return false;
+  }
+
+  if (value.format !== undefined && value.format !== "timestamp") {
+    return false;
+  }
+
+  if (value.fields !== undefined) {
+    if (!Array.isArray(value.fields)) {
+      return false;
+    }
+    if (!value.fields.every((field) => isWebhookSchemaField(field))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function resolvePrimitiveType(
   type: "string" | "number" | "boolean",
   format: WebhookSchemaField["format"]

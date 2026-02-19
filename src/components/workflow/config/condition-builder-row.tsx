@@ -2,6 +2,7 @@ import { useAtomValue } from "jotai";
 import { Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getRuntimeTriggers } from "@/client/lib/runtime-extensions";
 import {
   edgesAtom,
   nodesAtom,
@@ -41,6 +42,7 @@ import {
 } from "@/shared/workflow/conditions";
 import {
   getWebhookConditionFields,
+  isWebhookSchemaField,
   type WebhookSchemaField,
 } from "@/shared/workflow/webhook-field-registry";
 
@@ -107,55 +109,6 @@ function isTimeUnitValue(value: string): value is TimeUnit {
   return TIME_UNIT_OPTIONS.some((option) => option.value === value);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isWebhookSchemaField(value: unknown): value is WebhookSchemaField {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  if (typeof value.name !== "string") {
-    return false;
-  }
-
-  if (
-    value.type !== "string" &&
-    value.type !== "number" &&
-    value.type !== "boolean" &&
-    value.type !== "array" &&
-    value.type !== "object"
-  ) {
-    return false;
-  }
-
-  if (
-    value.itemType !== undefined &&
-    value.itemType !== "string" &&
-    value.itemType !== "number" &&
-    value.itemType !== "boolean" &&
-    value.itemType !== "object"
-  ) {
-    return false;
-  }
-
-  if (value.format !== undefined && value.format !== "timestamp") {
-    return false;
-  }
-
-  if (value.fields !== undefined) {
-    if (!Array.isArray(value.fields)) {
-      return false;
-    }
-    if (!value.fields.every((field) => isWebhookSchemaField(field))) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 function getUpstreamNodeIds(
   nodeId: string,
   edges: Array<{ source: string; target: string }>
@@ -189,15 +142,24 @@ type ConditionBuilderNode = {
 };
 
 function getWebhookFieldsFromTriggerNode(
-  node: ConditionBuilderNode
+  node: ConditionBuilderNode,
+  customTriggerSchemaByType: Map<string, WebhookSchemaField[]>
 ): ConditionFieldDefinition[] {
   if (node.data.type !== "trigger") {
     return [];
   }
 
   const config = node.data.config;
-  if (!config || config.triggerType !== "Webhook") {
+  if (!config || typeof config.triggerType !== "string") {
     return [];
+  }
+
+  if (config.triggerType !== "Webhook") {
+    const runtimeSchema = customTriggerSchemaByType.get(config.triggerType);
+    if (!runtimeSchema?.length) {
+      return [];
+    }
+    return getWebhookConditionFields(runtimeSchema);
   }
 
   const rawSchema = config.webhookSchema;
@@ -224,8 +186,9 @@ function getUpstreamWebhookFields(input: {
   nodeId: string | null;
   nodes: ConditionBuilderNode[];
   edges: Array<{ source: string; target: string }>;
+  customTriggerSchemaByType: Map<string, WebhookSchemaField[]>;
 }): ConditionFieldDefinition[] {
-  const { nodeId, nodes, edges } = input;
+  const { nodeId, nodes, edges, customTriggerSchemaByType } = input;
   if (!nodeId) {
     return [];
   }
@@ -238,7 +201,10 @@ function getUpstreamWebhookFields(input: {
       continue;
     }
 
-    const webhookFields = getWebhookFieldsFromTriggerNode(node);
+    const webhookFields = getWebhookFieldsFromTriggerNode(
+      node,
+      customTriggerSchemaByType
+    );
     for (const field of webhookFields) {
       if (!fieldsByPath.has(field.path)) {
         fieldsByPath.set(field.path, field);
@@ -535,9 +501,27 @@ export function ConditionBuilderRow({
   optional = false,
 }: ConditionBuilderRowProps) {
   const selectedNodeId = useAtomValue(selectedNodeAtom);
-  const nodes = useAtomValue(nodesAtom);
+  const nodes = useAtomValue(nodesAtom) as ConditionBuilderNode[];
   const edges = useAtomValue(edgesAtom);
   const [compileError, setCompileError] = useState<string | null>(null);
+  const customTriggerSchemaByType = useMemo(() => {
+    const schemaByType = new Map<string, WebhookSchemaField[]>();
+
+    for (const trigger of getRuntimeTriggers()) {
+      if (
+        trigger.type === "Webhook" ||
+        trigger.type === "Schedule" ||
+        !Array.isArray(trigger.conditionSchema) ||
+        trigger.conditionSchema.length === 0
+      ) {
+        continue;
+      }
+
+      schemaByType.set(trigger.type, trigger.conditionSchema);
+    }
+
+    return schemaByType;
+  }, []);
 
   const availableFields = useMemo(
     () =>
@@ -545,8 +529,9 @@ export function ConditionBuilderRow({
         nodeId: selectedNodeId,
         nodes,
         edges,
+        customTriggerSchemaByType,
       }),
-    [selectedNodeId, nodes, edges]
+    [selectedNodeId, nodes, edges, customTriggerSchemaByType]
   );
 
   const fieldByPath = useMemo(
@@ -769,7 +754,7 @@ export function ConditionBuilderRow({
         </Button>
         {availableFields.length === 0 && (
           <p className="text-muted-foreground text-xs">
-            Define webhook schema fields first. Timestamp behavior appears when
+            Define trigger schema fields first. Timestamp behavior appears when
             a field is marked as timestamp.
           </p>
         )}
@@ -784,7 +769,8 @@ export function ConditionBuilderRow({
         <p className="text-muted-foreground text-xs">{description}</p>
         {availableFields.length === 0 ? (
           <p className="text-destructive text-xs">
-            No webhook fields are available. Define a webhook schema first.
+            No trigger schema fields are available. Define a schema for the
+            upstream trigger first.
           </p>
         ) : (
           <Button

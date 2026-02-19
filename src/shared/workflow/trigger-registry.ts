@@ -5,6 +5,7 @@ import {
 } from "@/shared/workflow/triggers/fallback-trigger";
 import { createScheduleTriggerDefinition } from "@/shared/workflow/triggers/schedule-trigger";
 import { createWebhookTriggerDefinition } from "@/shared/workflow/triggers/webhook-trigger";
+import type { WebhookSchemaField } from "@/shared/workflow/webhook-field-registry";
 import { asNonEmptyString } from "@/shared/workflow/webhook-routing";
 
 export type TriggerExecutionType = "manual" | "webhook";
@@ -34,6 +35,7 @@ export type WorkflowTriggerDefinition = {
   description?: string;
   logoUrl?: string;
   configFields?: ActionConfigField[];
+  conditionSchema?: WebhookSchemaField[];
   parseMockInput?: (
     config: Record<string, unknown> | undefined
   ) => Record<string, unknown> | undefined;
@@ -52,6 +54,7 @@ export function createTrigger(
     ...definition,
     logoUrl: logoUrl || undefined,
     configFields: definition.configFields ?? [],
+    conditionSchema: definition.conditionSchema ?? [],
   };
 }
 
@@ -62,6 +65,7 @@ export type WorkflowTriggerMetadata = Pick<
   | "executionType"
   | "description"
   | "configFields"
+  | "conditionSchema"
   | "logoUrl"
 >;
 
@@ -92,6 +96,7 @@ export function listWorkflowTriggers(): WorkflowTriggerMetadata[] {
     description: definition.description,
     logoUrl: definition.logoUrl,
     configFields: definition.configFields ?? [],
+    conditionSchema: definition.conditionSchema ?? [],
   }));
 }
 

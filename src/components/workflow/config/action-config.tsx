@@ -248,7 +248,7 @@ function ConditionFields({
   return (
     <ConditionBuilderRow
       config={config}
-      description="Build a condition using webhook schema fields. Timestamp fields support relative and absolute time filters."
+      description="Build a condition using upstream trigger schema fields. Timestamp fields support relative and absolute time filters."
       disabled={disabled}
       expressionKey="condition"
       label="Condition"
