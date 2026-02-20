@@ -357,7 +357,7 @@ export const PanelInner = () => {
     [updateNodeData, setPendingIntegrationNodes]
   );
 
-  const handleUpdateConfig = (key: string, value: string) => {
+  const handleUpdateConfig = (key: string, value: unknown) => {
     if (!selectedNode) {
       return;
     }
@@ -368,7 +368,8 @@ export const PanelInner = () => {
       return;
     }
 
-    const isActionTypeUpdate = key === "actionType";
+    const isActionTypeUpdate =
+      key === "actionType" && typeof value === "string";
     const shouldClearIntegration =
       isActionTypeUpdate && Boolean(latestNode.data.config?.integrationId);
 

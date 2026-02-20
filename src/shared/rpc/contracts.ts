@@ -160,7 +160,6 @@ const workflowExecutionIgnoredSchema = z
     executionId: z.string().optional(),
     dryRun: z.boolean().optional(),
     reason: ignoredReasonSchema,
-    eventTypePath: z.string().optional(),
   })
   .loose();
 

@@ -15,11 +15,13 @@
     "incremental": true,
     "types": ["bun-types", "node"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "rova-workflows": ["./src/index.ts"]
     },
     "strictNullChecks": true
   },
   "include": [
+    "examples/**/*.ts",
     "src/**/*.ts",
     "src/**/*.tsx",
     "src/**/*.mts",

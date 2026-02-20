@@ -21,7 +21,6 @@ describe("orchestrateTriggerExecution", () => {
       dryRun: false,
       eventType: undefined,
       correlationKey: undefined,
-      eventTypePath: "payload.type",
       routingDecision: { kind: "ignore", reason: "missing_event_type" },
       waitStates: [],
       enableResumes: true,
@@ -39,7 +38,6 @@ describe("orchestrateTriggerExecution", () => {
     expect(result).toEqual({
       status: "ignored",
       reason: "missing_event_type",
-      eventTypePath: "payload.type",
     });
   });
 
@@ -48,7 +46,6 @@ describe("orchestrateTriggerExecution", () => {
       dryRun: false,
       eventType: "event.update",
       correlationKey: "abc",
-      eventTypePath: "event",
       routingDecision: { kind: "restart" },
       waitStates: [],
       enableResumes: true,
@@ -84,7 +81,6 @@ describe("orchestrateTriggerExecution", () => {
       dryRun: true,
       eventType: "event.update",
       correlationKey: "abc",
-      eventTypePath: "event",
       routingDecision: { kind: "restart" },
       waitStates: [
         createWaitState("1", "exec_wait_1"),
@@ -121,7 +117,6 @@ describe("orchestrateTriggerExecution", () => {
       dryRun: false,
       eventType: "event.delete",
       correlationKey: "abc",
-      eventTypePath: "event",
       routingDecision: { kind: "stop" },
       waitStates: [
         createWaitState("1", "exec_wait_1"),
@@ -152,7 +147,6 @@ describe("orchestrateTriggerExecution", () => {
       dryRun: true,
       eventType: "event.update",
       correlationKey: "abc",
-      eventTypePath: "event",
       routingDecision: { kind: "start" },
       waitStates: [
         createWaitState("1", "exec_wait_1", "event.update,event.create"),
@@ -175,6 +169,64 @@ describe("orchestrateTriggerExecution", () => {
       resumedCount: 1,
       dryRun: true,
       simulated: true,
+    });
+  });
+
+  it("ignores event_not_configured decisions even when event type is absent", async () => {
+    const startExecution = vi.fn(async () => ({
+      executionId: "exec_start",
+      dryRun: false,
+    }));
+
+    const result = await orchestrateTriggerExecution({
+      dryRun: false,
+      eventType: undefined,
+      correlationKey: "abc",
+      routingDecision: { kind: "ignore", reason: "event_not_configured" },
+      waitStates: [],
+      enableResumes: false,
+      startExecution,
+      cancelWaitStates: vi.fn(async () => ({
+        cancelledExecutions: 0,
+        cancelledWaits: 0,
+      })),
+      resumeWaitStates: vi.fn(async () => 0),
+    });
+
+    expect(startExecution).toHaveBeenCalledTimes(0);
+    expect(result).toEqual({
+      status: "ignored",
+      reason: "event_not_configured",
+    });
+  });
+
+  it("cancels waiting runs for stop decisions even when event type is absent", async () => {
+    const cancelWaitStates = vi.fn(async () => ({
+      cancelledExecutions: 1,
+      cancelledWaits: 1,
+    }));
+
+    const result = await orchestrateTriggerExecution({
+      dryRun: false,
+      eventType: undefined,
+      correlationKey: "abc",
+      routingDecision: { kind: "stop" },
+      waitStates: [createWaitState("1", "exec_wait_1")],
+      enableResumes: true,
+      startExecution: vi.fn(async () => ({
+        executionId: "exec_start",
+        dryRun: false,
+      })),
+      cancelWaitStates,
+      resumeWaitStates: vi.fn(async () => 0),
+    });
+
+    expect(cancelWaitStates).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      status: "cancelled",
+      dryRun: false,
+      cancelledExecutions: 1,
+      cancelledWaits: 1,
     });
   });
 });

@@ -298,6 +298,8 @@ export default function WorkflowsPage() {
             }
             return next;
           });
+
+          setWorkflows((prev) => prev.filter((w) => !deletedIds.has(w.id)));
         }
 
         await loadWorkflows();

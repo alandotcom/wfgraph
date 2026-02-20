@@ -4,10 +4,6 @@ import {
   type RuntimeActionDefinition,
   registerRuntimeAction,
 } from "@/plugins";
-import {
-  isWebhookSchemaField,
-  type WebhookSchemaField,
-} from "@/shared/workflow/webhook-field-registry";
 
 export type RuntimeTriggerDefinition = {
   type: string;
@@ -16,7 +12,6 @@ export type RuntimeTriggerDefinition = {
   description?: string;
   logoUrl?: string;
   configFields?: ActionConfigField[];
-  conditionSchema?: WebhookSchemaField[];
 };
 
 type RuntimeExtensionsPayload = {
@@ -118,17 +113,6 @@ function isRuntimeTriggerDefinition(
     "configFields" in value &&
     value.configFields !== undefined &&
     !Array.isArray(value.configFields)
-  ) {
-    return false;
-  }
-
-  if (
-    "conditionSchema" in value &&
-    value.conditionSchema !== undefined &&
-    !(
-      Array.isArray(value.conditionSchema) &&
-      value.conditionSchema.every((field) => isWebhookSchemaField(field))
-    )
   ) {
     return false;
   }

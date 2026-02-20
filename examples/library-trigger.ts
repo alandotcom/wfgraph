@@ -1,0 +1,158 @@
+import { config as loadDotEnv } from "dotenv";
+import { createAction, createTrigger, server } from "rova-workflows";
+import { z } from "zod";
+
+const APPOINTMENT_TRIGGER_TYPE = "AppointmentLifecycle";
+const DEFAULT_PORT = 4017;
+const DEFAULT_INNGEST_BASE_URL = "http://localhost:8388";
+const DEFAULT_DATABASE_URL =
+  "postgresql://workflow:workflow@localhost:55437/workflow_builder";
+const appointmentSchema = z.object({
+  id: z.string(),
+  startsAt: z.string(),
+  patientName: z.string(),
+  status: z.string(),
+});
+
+function loadEnvironmentFiles(): void {
+  loadDotEnv({ path: ".env" });
+  loadDotEnv({ path: ".env.local" });
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return;
+  }
+
+  return trimmed;
+}
+
+const appointmentTrigger = createTrigger({
+  type: APPOINTMENT_TRIGGER_TYPE,
+  label: "Appointment Lifecycle",
+  description:
+    "Routes appointment.created/start, appointment.rescheduled/restart, and appointment.canceled/stop.",
+  schema: z.object({
+    event: z.enum([
+      "appointment.created",
+      "appointment.rescheduled",
+      "appointment.canceled",
+    ]),
+    timestamp: z.string(),
+    appointment: appointmentSchema,
+  }),
+  correlationIdPath: "appointment.id",
+  lifecycle: {
+    onStart: ({ payload }) => payload.event === "appointment.created",
+    onRestart: ({ payload }) => payload.event === "appointment.rescheduled",
+    onStop: ({ payload }) => payload.event === "appointment.canceled",
+  },
+});
+
+const cancelAppointmentAction = createAction({
+  id: "appointments/cancel",
+  label: "Cancel Appointment",
+  description: "Cancels an appointment and records the cancellation reason.",
+  category: "Appointments",
+  configFields: [
+    {
+      key: "appointmentId",
+      label: "Appointment ID",
+      type: "template-input",
+      required: true,
+      placeholder: "{{@Trigger.appointment.id}}",
+    },
+    {
+      key: "reason",
+      label: "Reason",
+      type: "template-textarea",
+      required: true,
+      rows: 3,
+      placeholder: "Patient requested cancellation",
+    },
+  ],
+  outputFields: [
+    { field: "appointmentId", description: "Cancelled appointment ID" },
+    { field: "status", description: "Cancellation status" },
+    { field: "cancelledAt", description: "ISO timestamp of cancellation" },
+  ],
+  schema: z.object({
+    appointmentId: appointmentSchema.shape.id,
+    reason: z.string().trim().min(1),
+  }),
+  execute({ payload }) {
+    return {
+      success: true,
+      data: {
+        appointmentId: payload.appointmentId,
+        status: "cancelled",
+        reason: payload.reason,
+        cancelledAt: new Date().toISOString(),
+      },
+    };
+  },
+});
+
+async function main(): Promise<void> {
+  loadEnvironmentFiles();
+
+  const databaseUrl =
+    asNonEmptyString(Bun.env.DATABASE_URL) ?? DEFAULT_DATABASE_URL;
+
+  const portRaw = asNonEmptyString(Bun.env.PORT);
+  const port = portRaw ? Number(portRaw) : DEFAULT_PORT;
+  if (!Number.isFinite(port) || port <= 0) {
+    throw new Error(`Invalid PORT value: ${portRaw}`);
+  }
+
+  const inngestBaseUrl =
+    asNonEmptyString(Bun.env.INNGEST_BASE_URL) ??
+    asNonEmptyString(Bun.env.INNGEST_DEV) ??
+    DEFAULT_INNGEST_BASE_URL;
+  const signingKey = asNonEmptyString(Bun.env.INNGEST_SIGNING_KEY);
+
+  const handle = await server.start({
+    port,
+    configureLogging: false,
+    logger: {
+      info: (...args) => console.log("[example:server]", ...args),
+      warn: (...args) => console.warn("[example:server]", ...args),
+      error: (...args) => console.error("[example:server]", ...args),
+    },
+    database: {
+      url: databaseUrl,
+    },
+    migrations: {
+      runOnStartup: false,
+    },
+    inngest: {
+      client: {
+        id: "appointment-configurable-server-example",
+        isDev: Bun.env.NODE_ENV !== "production",
+        baseUrl: inngestBaseUrl,
+        eventKey: asNonEmptyString(Bun.env.INNGEST_EVENT_KEY),
+        env: asNonEmptyString(Bun.env.INNGEST_ENV),
+      },
+      serve: signingKey ? { signingKey } : undefined,
+    },
+    actions: [cancelAppointmentAction],
+    triggers: [appointmentTrigger],
+  });
+
+  console.log("[example] configurable server started", {
+    url: handle.url.toString(),
+    triggerType: APPOINTMENT_TRIGGER_TYPE,
+    actionId: "appointments/cancel",
+    note: "Use the built-in frontend as usual. Create a workflow with trigger Appointment Lifecycle and add the Cancel Appointment action.",
+  });
+}
+
+main().catch((error) => {
+  console.error("[example] failed to start", error);
+  process.exit(1);
+});

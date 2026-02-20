@@ -2,7 +2,6 @@ import { useAtomValue } from "jotai";
 import { Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getRuntimeTriggers } from "@/client/lib/runtime-extensions";
 import {
   edgesAtom,
   nodesAtom,
@@ -43,7 +42,6 @@ import {
 import {
   getWebhookConditionFields,
   isWebhookSchemaField,
-  type WebhookSchemaField,
 } from "@/shared/workflow/webhook-field-registry";
 
 type ConditionBuilderRowProps = {
@@ -109,6 +107,15 @@ function isTimeUnitValue(value: string): value is TimeUnit {
   return TIME_UNIT_OPTIONS.some((option) => option.value === value);
 }
 
+function isConditionFieldTypeValue(value: string): value is ConditionFieldType {
+  return (
+    value === "timestamp" ||
+    value === "string" ||
+    value === "number" ||
+    value === "boolean"
+  );
+}
+
 function getUpstreamNodeIds(
   nodeId: string,
   edges: Array<{ source: string; target: string }>
@@ -141,9 +148,24 @@ type ConditionBuilderNode = {
   };
 };
 
+const DEFAULT_TRIGGER_FIELD: ConditionFieldDefinition = {
+  path: "event",
+  label: "event",
+  type: "string",
+};
+
+const FIELD_TYPE_OPTIONS: Array<{
+  value: ConditionFieldType;
+  label: string;
+}> = [
+  { value: "string", label: "Text" },
+  { value: "number", label: "Number" },
+  { value: "boolean", label: "Boolean" },
+  { value: "timestamp", label: "Timestamp" },
+];
+
 function getWebhookFieldsFromTriggerNode(
-  node: ConditionBuilderNode,
-  customTriggerSchemaByType: Map<string, WebhookSchemaField[]>
+  node: ConditionBuilderNode
 ): ConditionFieldDefinition[] {
   if (node.data.type !== "trigger") {
     return [];
@@ -155,11 +177,7 @@ function getWebhookFieldsFromTriggerNode(
   }
 
   if (config.triggerType !== "Webhook") {
-    const runtimeSchema = customTriggerSchemaByType.get(config.triggerType);
-    if (!runtimeSchema?.length) {
-      return [];
-    }
-    return getWebhookConditionFields(runtimeSchema);
+    return [];
   }
 
   const rawSchema = config.webhookSchema;
@@ -177,7 +195,7 @@ function getWebhookFieldsFromTriggerNode(
       parsed.filter((field) => isWebhookSchemaField(field))
     );
   } catch {
-    // Ignore invalid schema and continue with any other trigger schemas.
+    // Ignore invalid schema and fall back to manual field-path entry.
     return [];
   }
 }
@@ -186,9 +204,8 @@ function getUpstreamWebhookFields(input: {
   nodeId: string | null;
   nodes: ConditionBuilderNode[];
   edges: Array<{ source: string; target: string }>;
-  customTriggerSchemaByType: Map<string, WebhookSchemaField[]>;
 }): ConditionFieldDefinition[] {
-  const { nodeId, nodes, edges, customTriggerSchemaByType } = input;
+  const { nodeId, nodes, edges } = input;
   if (!nodeId) {
     return [];
   }
@@ -201,10 +218,7 @@ function getUpstreamWebhookFields(input: {
       continue;
     }
 
-    const webhookFields = getWebhookFieldsFromTriggerNode(
-      node,
-      customTriggerSchemaByType
-    );
+    const webhookFields = getWebhookFieldsFromTriggerNode(node);
     for (const field of webhookFields) {
       if (!fieldsByPath.has(field.path)) {
         fieldsByPath.set(field.path, field);
@@ -504,24 +518,6 @@ export function ConditionBuilderRow({
   const nodes = useAtomValue(nodesAtom) as ConditionBuilderNode[];
   const edges = useAtomValue(edgesAtom);
   const [compileError, setCompileError] = useState<string | null>(null);
-  const customTriggerSchemaByType = useMemo(() => {
-    const schemaByType = new Map<string, WebhookSchemaField[]>();
-
-    for (const trigger of getRuntimeTriggers()) {
-      if (
-        trigger.type === "Webhook" ||
-        trigger.type === "Schedule" ||
-        !Array.isArray(trigger.conditionSchema) ||
-        trigger.conditionSchema.length === 0
-      ) {
-        continue;
-      }
-
-      schemaByType.set(trigger.type, trigger.conditionSchema);
-    }
-
-    return schemaByType;
-  }, []);
 
   const availableFields = useMemo(
     () =>
@@ -529,10 +525,10 @@ export function ConditionBuilderRow({
         nodeId: selectedNodeId,
         nodes,
         edges,
-        customTriggerSchemaByType,
       }),
-    [selectedNodeId, nodes, edges, customTriggerSchemaByType]
+    [selectedNodeId, nodes, edges]
   );
+  const seedField = availableFields[0] ?? DEFAULT_TRIGGER_FIELD;
 
   const fieldByPath = useMemo(
     () => new Map(availableFields.map((field) => [field.path, field])),
@@ -573,13 +569,8 @@ export function ConditionBuilderRow({
   }, [expressionKey, modelKey, onUpdateConfig]);
 
   const addConditionModel = useCallback(() => {
-    const firstField = availableFields[0];
-    if (!firstField) {
-      return;
-    }
-
-    persistModel(createInitialModel(firstField));
-  }, [availableFields, persistModel]);
+    persistModel(createInitialModel(seedField));
+  }, [persistModel, seedField]);
 
   useEffect(() => {
     if (optional) {
@@ -590,31 +581,24 @@ export function ConditionBuilderRow({
       return;
     }
 
-    const firstField = availableFields[0];
-    if (!firstField) {
-      return;
-    }
-
     queueMicrotask(() => {
-      persistModel(createInitialModel(firstField));
+      persistModel(createInitialModel(seedField));
     });
-  }, [availableFields, modelValue.length, optional, parsedModel, persistModel]);
+  }, [modelValue.length, optional, parsedModel, persistModel, seedField]);
 
   useEffect(() => {
-    if (!parsedModel || availableFields.length === 0) {
+    if (!parsedModel) {
       return;
     }
 
     let changed = false;
-    const fallbackField = availableFields[0];
 
     const groups = parsedModel.groups.map((group) => ({
       ...group,
       conditions: group.conditions.map((condition) => {
         const selectedField = fieldByPath.get(condition.field);
         if (!selectedField) {
-          changed = true;
-          return createDefaultConditionRule(fallbackField, condition.id);
+          return condition;
         }
 
         if (selectedField.type !== condition.fieldType) {
@@ -636,7 +620,7 @@ export function ConditionBuilderRow({
         groups,
       });
     });
-  }, [availableFields, fieldByPath, parsedModel, persistModel]);
+  }, [fieldByPath, parsedModel, persistModel]);
 
   const updateGroup = (
     groupId: string,
@@ -674,14 +658,9 @@ export function ConditionBuilderRow({
       return;
     }
 
-    const firstField = availableFields[0];
-    if (!firstField) {
-      return;
-    }
-
     updateGroup(groupId, (group) => ({
       ...group,
-      conditions: [...group.conditions, createInitialRule(firstField)],
+      conditions: [...group.conditions, createInitialRule(seedField)],
     }));
   };
 
@@ -709,11 +688,6 @@ export function ConditionBuilderRow({
       return;
     }
 
-    const firstField = availableFields[0];
-    if (!firstField) {
-      return;
-    }
-
     persistModel({
       ...parsedModel,
       groups: [
@@ -721,7 +695,7 @@ export function ConditionBuilderRow({
         {
           id: nanoid(),
           logic: "and",
-          conditions: [createInitialRule(firstField)],
+          conditions: [createInitialRule(seedField)],
         },
       ],
     });
@@ -744,7 +718,7 @@ export function ConditionBuilderRow({
         <Label className="text-sm">{label}</Label>
         <p className="text-muted-foreground text-xs">{description}</p>
         <Button
-          disabled={disabled || availableFields.length === 0}
+          disabled={disabled}
           onClick={addConditionModel}
           size="sm"
           type="button"
@@ -752,12 +726,10 @@ export function ConditionBuilderRow({
         >
           Add run condition
         </Button>
-        {availableFields.length === 0 && (
-          <p className="text-muted-foreground text-xs">
-            Define trigger schema fields first. Timestamp behavior appears when
-            a field is marked as timestamp.
-          </p>
-        )}
+        <p className="text-muted-foreground text-xs">
+          You can reference any trigger payload path (for example `event` or
+          `data.id`).
+        </p>
       </div>
     );
   }
@@ -767,22 +739,15 @@ export function ConditionBuilderRow({
       <div className="space-y-2 rounded-md border bg-muted/30 p-3">
         <Label className="text-sm">{label}</Label>
         <p className="text-muted-foreground text-xs">{description}</p>
-        {availableFields.length === 0 ? (
-          <p className="text-destructive text-xs">
-            No trigger schema fields are available. Define a schema for the
-            upstream trigger first.
-          </p>
-        ) : (
-          <Button
-            disabled={disabled}
-            onClick={addConditionModel}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            Configure condition
-          </Button>
-        )}
+        <Button
+          disabled={disabled}
+          onClick={addConditionModel}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          Configure condition
+        </Button>
         {modelValue && !modelParseResult.valid && (
           <p className="text-destructive text-xs">{modelParseResult.error}</p>
         )}
@@ -833,27 +798,60 @@ export function ConditionBuilderRow({
                   return (
                     <div key={condition.id}>
                       <div className="flex flex-wrap items-center gap-2">
+                        <Input
+                          className="min-w-[220px]"
+                          disabled={disabled}
+                          onChange={(event) => {
+                            updateCondition(
+                              group.id,
+                              condition.id,
+                              (existing) => ({
+                                ...existing,
+                                field: event.target.value,
+                              })
+                            );
+                          }}
+                          placeholder="Field path (for example data.id)"
+                          value={condition.field}
+                        />
+
                         <Select
                           disabled={disabled}
-                          onValueChange={(fieldPath) => {
-                            const field = fieldByPath.get(fieldPath);
-                            if (!field) {
+                          onValueChange={(value) => {
+                            if (!isConditionFieldTypeValue(value)) {
                               return;
                             }
 
-                            updateCondition(group.id, condition.id, () =>
-                              createDefaultConditionRule(field, condition.id)
+                            updateCondition(
+                              group.id,
+                              condition.id,
+                              (existing) =>
+                                createDefaultConditionRule(
+                                  {
+                                    path:
+                                      existing.field.trim() ||
+                                      DEFAULT_TRIGGER_FIELD.path,
+                                    label:
+                                      existing.field.trim() ||
+                                      DEFAULT_TRIGGER_FIELD.label,
+                                    type: value,
+                                  },
+                                  existing.id
+                                )
                             );
                           }}
-                          value={condition.field}
+                          value={condition.fieldType}
                         >
-                          <SelectTrigger className="min-w-[190px]">
-                            <SelectValue placeholder="Select property" />
+                          <SelectTrigger className="min-w-[160px]">
+                            <SelectValue placeholder="Field type" />
                           </SelectTrigger>
                           <SelectContent>
-                            {availableFields.map((field) => (
-                              <SelectItem key={field.path} value={field.path}>
-                                {field.label}
+                            {FIELD_TYPE_OPTIONS.map((option) => (
+                              <SelectItem
+                                key={option.value}
+                                value={option.value}
+                              >
+                                {option.label}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -937,7 +935,7 @@ export function ConditionBuilderRow({
                 })}
 
                 <Button
-                  disabled={disabled || availableFields.length === 0}
+                  disabled={disabled}
                   onClick={() => addConditionToGroup(group.id)}
                   size="sm"
                   type="button"
@@ -969,7 +967,7 @@ export function ConditionBuilderRow({
 
       <div className="flex justify-center">
         <Button
-          disabled={disabled || availableFields.length === 0}
+          disabled={disabled}
           onClick={addGroup}
           size="sm"
           type="button"

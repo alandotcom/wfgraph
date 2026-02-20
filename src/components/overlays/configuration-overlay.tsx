@@ -135,7 +135,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   }, [selectedNode, globalIntegrations, isOwner, updateNodeData]);
 
   const handleUpdateConfig = useCallback(
-    (key: string, value: string) => {
+    (key: string, value: unknown) => {
       if (!selectedNode) {
         return;
       }

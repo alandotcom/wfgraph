@@ -97,7 +97,8 @@ App URL: `http://localhost:4017`
 You can run Rova as an embeddable library and register custom actions/triggers at startup.
 
 ```ts
-import { createAction, createTrigger, server } from "rova";
+import { z } from "zod";
+import { createAction, createTrigger, server } from "rova-workflows";
 
 const action = createAction({
   id: "custom/send-message",
@@ -108,8 +109,11 @@ const action = createAction({
   configFields: [
     { key: "text", label: "Text", type: "template-textarea", required: true },
   ],
-  async execute(input) {
-    return { success: true, data: { echoed: input.text } };
+  schema: z.object({
+    text: z.string().trim().min(1),
+  }),
+  async execute({ payload }) {
+    return { success: true, data: { echoed: payload.text } };
   },
 });
 
@@ -117,16 +121,16 @@ const trigger = createTrigger({
   type: "CustomWebhook",
   label: "Custom Webhook",
   description: "Routes custom webhook events",
-  executionType: "webhook",
   logoUrl: "https://cdn.example.com/logos/custom-trigger.svg",
-  evaluate({ payload }) {
-    return {
-      triggerType: "CustomWebhook",
-      executionType: "webhook",
-      eventType: typeof payload.event === "string" ? payload.event : undefined,
-      correlationKey: typeof payload.id === "string" ? payload.id : undefined,
-      routingDecision: { kind: "start" },
-    };
+  schema: z.object({
+    event: z.enum(["entity.created", "entity.updated", "entity.deleted"]),
+    entity: z.object({ id: z.string() }),
+  }),
+  correlationIdPath: "entity.id",
+  lifecycle: {
+    onStart: ({ payload }) => payload.event === "entity.created",
+    onRestart: ({ payload }) => payload.event === "entity.updated",
+    onStop: ({ payload }) => payload.event === "entity.deleted",
   },
 });
 
@@ -153,6 +157,16 @@ Notes:
 
 - Rova does not spawn `inngest-cli` in library mode.
 - For local app development (`bun run dev`), this repo starts Inngest CLI as a separate process.
+- Action extensions are strict-schema actions via `createAction(...)`:
+  - `schema` validates resolved action input at runtime (Zod or Standard Schema-compatible validators).
+  - `execute({ payload, context })` receives typed payload validated by `schema`.
+  - `id`, `label`, `description`, `category`, `logoUrl`, `configFields`, and `outputFields` define action metadata.
+- Trigger extensions are strict-schema webhook triggers via `createTrigger(...)`:
+  - `type` is the stable trigger ID and must be unique.
+  - `schema` validates inbound payloads at runtime (Zod or Standard Schema-compatible validators).
+  - `correlationIdPath` is required and typed from the payload schema (`string` fields only).
+  - `lifecycle.onStart`, `lifecycle.onRestart`, and `lifecycle.onStop` define routing using typed payload callbacks.
+  - `label`, `description`, `logoUrl`, and `configFields` control editor metadata.
 - `logoUrl` is optional; when provided, it is rendered in trigger/action selectors.
 
 ## Compile Standalone Binary

@@ -25,7 +25,6 @@ type TriggerOrchestratorInput = {
   dryRun: boolean;
   eventType?: string;
   correlationKey?: string;
-  eventTypePath?: string;
   routingDecision: TriggerRoutingDecision;
   waitStates: TriggerWaitState[];
   enableResumes: boolean;
@@ -34,7 +33,7 @@ type TriggerOrchestratorInput = {
     runId?: string;
     dryRun: boolean;
   }>;
-  cancelWaitStates: (eventType: string) => Promise<CancellationSummary>;
+  cancelWaitStates: (eventType?: string) => Promise<CancellationSummary>;
   resumeWaitStates: (
     eventType: string,
     waitStates: TriggerWaitState[]
@@ -80,10 +79,6 @@ async function handleStopOrRestart(
   | WorkflowExecutionIgnoredResponse
   | undefined
 > {
-  if (!input.eventType) {
-    return;
-  }
-
   if (
     input.routingDecision.kind !== "stop" &&
     input.routingDecision.kind !== "restart"
@@ -186,7 +181,6 @@ export async function orchestrateTriggerExecution(
     return {
       status: "ignored",
       reason: "missing_event_type",
-      eventTypePath: input.eventTypePath,
     };
   }
 
@@ -202,8 +196,7 @@ export async function orchestrateTriggerExecution(
 
   if (
     input.routingDecision.kind === "ignore" &&
-    input.routingDecision.reason === "event_not_configured" &&
-    input.eventType
+    input.routingDecision.reason === "event_not_configured"
   ) {
     return {
       status: "ignored",

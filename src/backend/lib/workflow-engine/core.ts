@@ -33,6 +33,7 @@ import {
   evaluateWorkflowTrigger,
   resolveWorkflowTriggerDefinition,
 } from "@/shared/workflow/trigger-registry";
+import { resolveWebhookTriggerRuntimeConfig } from "@/shared/workflow/triggers/webhook-trigger";
 import type {
   ConditionBranch,
   SerializedWorkflowGraph,
@@ -250,6 +251,7 @@ async function executeActionStep(input: {
   context: StepContext;
 }) {
   const { actionType, config, outputs, context } = input;
+  const integrationId = readConfigString(config, "integrationId");
 
   // Build step input WITHOUT credentials, but WITH integrationId reference and logging context
   const stepInput: Record<string, unknown> = {
@@ -304,7 +306,19 @@ async function executeActionStep(input: {
   const stepImporter = getStepImporter(actionType);
   if (stepImporter) {
     if (typeof stepImporter.execute === "function") {
-      return await stepImporter.execute(stepInput);
+      const {
+        actionType: _ignoredActionType,
+        integrationId: _ignoredIntegrationId,
+        ...runtimeActionPayload
+      } = config;
+
+      return await stepImporter.execute({
+        payload: runtimeActionPayload,
+        context: {
+          ...context,
+          integrationId,
+        },
+      });
     }
 
     const module = await stepImporter.importer();
@@ -1083,7 +1097,7 @@ export async function executeWorkflowCore(
       const triggerDefinition = resolveWorkflowTriggerDefinition(
         node.data.config
       );
-      return triggerDefinition.label;
+      return triggerDefinition.ui.label;
     }
     return node.data.type;
   }
@@ -1192,12 +1206,16 @@ export async function executeWorkflowCore(
         const configRecord = config;
         const triggerDefinition =
           resolveWorkflowTriggerDefinition(configRecord);
+        const webhookRuntimeConfig =
+          triggerDefinition.runtime.executionType === "webhook"
+            ? resolveWebhookTriggerRuntimeConfig(configRecord)
+            : undefined;
         let triggerData: Record<string, unknown> = {
           triggered: true,
           timestamp: Date.now(),
         };
 
-        const mockInput = triggerDefinition.parseMockInput?.(configRecord);
+        const mockInput = webhookRuntimeConfig?.mockInput;
         if (
           mockInput &&
           (!triggerInput || Object.keys(triggerInput).length === 0)
@@ -1228,14 +1246,14 @@ export async function executeWorkflowCore(
             ...triggerData,
             triggered: false,
             eventType: triggerEvaluation.eventType,
-            eventTypePath: triggerEvaluation.metadata?.eventTypePath,
+            eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
             ignoredReason: ignoreReason,
           };
 
           namedNodeLogger.info("Trigger ignored by routing rules", {
-            triggerType: triggerDefinition.type,
+            triggerType: triggerDefinition.runtime.type,
             eventType: triggerEvaluation.eventType,
-            eventTypePath: triggerEvaluation.metadata?.eventTypePath,
+            eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
             ignoredReason: ignoreReason,
           });
         }

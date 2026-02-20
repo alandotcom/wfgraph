@@ -35,7 +35,6 @@ export type WorkflowExecutionIgnoredResponse = {
   executionId?: string;
   dryRun?: boolean;
   reason: WorkflowExecutionIgnoredReason;
-  eventTypePath?: string;
 };
 
 export type WorkflowExecutionResumedResponse = {

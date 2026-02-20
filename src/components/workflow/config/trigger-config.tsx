@@ -29,7 +29,7 @@ import { SchemaBuilder, type SchemaField } from "./schema-builder";
 
 type TriggerConfigProps = {
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: string) => void;
+  onUpdateConfig: (key: string, value: unknown) => void;
   disabled: boolean;
   workflowId?: string;
 };
@@ -204,26 +204,6 @@ function flattenSchemaPathOptions(
   }
 
   return paths;
-}
-
-function toConfigString(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (value === undefined || value === null) {
-    return "";
-  }
-
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return "";
-  }
 }
 
 function OptionLogo({
@@ -542,7 +522,7 @@ export function TriggerConfig({
   };
 
   const handleCustomTriggerConfigUpdate = (key: string, value: unknown) => {
-    onUpdateConfig(key, toConfigString(value));
+    onUpdateConfig(key, value);
   };
 
   const handleSchemaJsonChange = (nextValue: string) => {

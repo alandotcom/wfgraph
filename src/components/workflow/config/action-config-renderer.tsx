@@ -16,12 +16,15 @@ import {
   type ActionConfigFieldBase,
   isFieldGroup,
 } from "@/plugins";
-import { parseWorkflowSchemaFieldsString } from "@/shared/workflow/schema-codec";
+import {
+  parseWorkflowSchemaFieldsOrJsonSchema,
+  parseWorkflowSchemaFieldsString,
+} from "@/shared/workflow/schema-codec";
 import { SchemaBuilder } from "./schema-builder";
 
 type FieldProps = {
   field: ActionConfigFieldBase;
-  value: string;
+  value: unknown;
   onChange: (value: unknown) => void;
   disabled?: boolean;
 };
@@ -33,7 +36,7 @@ function TemplateInputField({ field, value, onChange, disabled }: FieldProps) {
       id={field.key}
       onChange={onChange}
       placeholder={field.placeholder}
-      value={value}
+      value={typeof value === "string" ? value : ""}
     />
   );
 }
@@ -51,7 +54,7 @@ function TemplateTextareaField({
       onChange={onChange}
       placeholder={field.placeholder}
       rows={field.rows || 4}
-      value={value}
+      value={typeof value === "string" ? value : ""}
     />
   );
 }
@@ -63,21 +66,37 @@ function TextInputField({ field, value, onChange, disabled }: FieldProps) {
       id={field.key}
       onChange={(e) => onChange(e.target.value)}
       placeholder={field.placeholder}
-      value={value}
+      value={typeof value === "string" ? value : ""}
     />
   );
 }
 
 function NumberInputField({ field, value, onChange, disabled }: FieldProps) {
+  const displayValue =
+    typeof value === "number" || typeof value === "string" ? `${value}` : "";
+
   return (
     <Input
       disabled={disabled}
       id={field.key}
       min={field.min}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(event) => {
+        const next = event.target.value.trim();
+        if (!next) {
+          onChange(undefined);
+          return;
+        }
+
+        const parsed = Number.parseFloat(next);
+        if (!Number.isFinite(parsed)) {
+          return;
+        }
+
+        onChange(parsed);
+      }}
       placeholder={field.placeholder}
       type="number"
-      value={value}
+      value={displayValue}
     />
   );
 }
@@ -88,7 +107,11 @@ function SelectField({ field, value, onChange, disabled }: FieldProps) {
   }
 
   return (
-    <Select disabled={disabled} onValueChange={onChange} value={value}>
+    <Select
+      disabled={disabled}
+      onValueChange={onChange}
+      value={typeof value === "string" ? value : ""}
+    >
       <SelectTrigger className="w-full" id={field.key}>
         <SelectValue placeholder={field.placeholder} />
       </SelectTrigger>
@@ -104,11 +127,16 @@ function SelectField({ field, value, onChange, disabled }: FieldProps) {
 }
 
 function SchemaBuilderField(props: FieldProps) {
+  const schema =
+    typeof props.value === "string"
+      ? parseWorkflowSchemaFieldsString(props.value)
+      : (parseWorkflowSchemaFieldsOrJsonSchema(props.value) ?? []);
+
   return (
     <SchemaBuilder
       disabled={props.disabled}
-      onChange={(schema) => props.onChange(JSON.stringify(schema))}
-      schema={parseWorkflowSchemaFieldsString(props.value)}
+      onChange={(nextSchema) => props.onChange(nextSchema)}
+      schema={schema}
     />
   );
 }
@@ -143,10 +171,7 @@ function renderField(
   }
 
   const rawValue = config[field.key];
-  const value =
-    (typeof rawValue === "string" ? rawValue : undefined) ||
-    field.defaultValue ||
-    "";
+  const value = rawValue ?? field.defaultValue ?? "";
   const FieldRenderer = FIELD_RENDERERS[field.type];
 
   return (

@@ -18,12 +18,14 @@ import {
 import { configureAppLogging, getAppLogger } from "@/backend/lib/logger";
 import { initializeWorkflowTriggers } from "@/backend/lib/workflow-trigger-bootstrap";
 import {
-  type RuntimeActionDefinition,
+  type RuntimeExtensionActionDefinition,
   registerRuntimeAction,
+  unregisterRuntimeAction,
 } from "@/shared/workflow/action-registry";
 import {
+  type RuntimeExtensionTriggerDefinition,
   registerWorkflowTrigger,
-  type WorkflowTriggerDefinition,
+  unregisterWorkflowTrigger,
 } from "@/shared/workflow/trigger-registry";
 
 type RovaLogger = {
@@ -45,8 +47,8 @@ export type RovaServerStartOptions = {
     client: InngestClientRuntimeConfig;
     serve?: InngestServeRuntimeConfig;
   };
-  triggers?: WorkflowTriggerDefinition[];
-  actions?: RuntimeActionDefinition[];
+  triggers?: RuntimeExtensionTriggerDefinition[];
+  actions?: RuntimeExtensionActionDefinition[];
   installSignalHandlers?: boolean;
 };
 
@@ -60,6 +62,8 @@ type RovaServerRuntimeState = {
   activeHandle: RovaServerHandle | null;
   activeKey: string | null;
   starting: Promise<RovaServerHandle> | null;
+  runtimeTriggerTypes: Set<string>;
+  runtimeActionIds: Set<string>;
 };
 
 declare global {
@@ -67,11 +71,23 @@ declare global {
 }
 
 const rovaServerRuntimeState: RovaServerRuntimeState =
-  globalThis.__rovaServerRuntimeState ?? {
-    activeHandle: null,
-    activeKey: null,
-    starting: null,
-  };
+  globalThis.__rovaServerRuntimeState
+    ? {
+        ...globalThis.__rovaServerRuntimeState,
+        runtimeTriggerTypes:
+          globalThis.__rovaServerRuntimeState.runtimeTriggerTypes ??
+          new Set<string>(),
+        runtimeActionIds:
+          globalThis.__rovaServerRuntimeState.runtimeActionIds ??
+          new Set<string>(),
+      }
+    : {
+        activeHandle: null,
+        activeKey: null,
+        starting: null,
+        runtimeTriggerTypes: new Set<string>(),
+        runtimeActionIds: new Set<string>(),
+      };
 
 globalThis.__rovaServerRuntimeState = rovaServerRuntimeState;
 
@@ -248,12 +264,24 @@ function resolveLogger(logger: RovaLogger | undefined): RovaLogger {
 }
 
 function registerRuntimeExtensions(options: RovaServerStartOptions): void {
+  for (const triggerType of rovaServerRuntimeState.runtimeTriggerTypes) {
+    unregisterWorkflowTrigger(triggerType);
+  }
+  rovaServerRuntimeState.runtimeTriggerTypes.clear();
+
+  for (const actionId of rovaServerRuntimeState.runtimeActionIds) {
+    unregisterRuntimeAction(actionId);
+  }
+  rovaServerRuntimeState.runtimeActionIds.clear();
+
   for (const trigger of options.triggers ?? []) {
     registerWorkflowTrigger(trigger);
+    rovaServerRuntimeState.runtimeTriggerTypes.add(trigger.runtime.type.trim());
   }
 
   for (const action of options.actions ?? []) {
     registerRuntimeAction(action);
+    rovaServerRuntimeState.runtimeActionIds.add(action.id.trim());
   }
 }
 
@@ -402,6 +430,14 @@ export async function startRovaServer(
         }
         signalHandlers.clear();
         await stop();
+        for (const triggerType of rovaServerRuntimeState.runtimeTriggerTypes) {
+          unregisterWorkflowTrigger(triggerType);
+        }
+        rovaServerRuntimeState.runtimeTriggerTypes.clear();
+        for (const actionId of rovaServerRuntimeState.runtimeActionIds) {
+          unregisterRuntimeAction(actionId);
+        }
+        rovaServerRuntimeState.runtimeActionIds.clear();
 
         if (rovaServerRuntimeState.activeHandle === handle) {
           rovaServerRuntimeState.activeHandle = null;

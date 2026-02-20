@@ -45,7 +45,7 @@ import { SchemaBuilder } from "./schema-builder";
 
 type ActionConfigProps = {
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: string) => void;
+  onUpdateConfig: (key: string, value: unknown) => void;
   disabled: boolean;
   isOwner?: boolean;
 };
@@ -100,7 +100,7 @@ function DatabaseQueryFields({
   disabled,
 }: {
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: string) => void;
+  onUpdateConfig: (key: string, value: unknown) => void;
   disabled: boolean;
 }) {
   return (
@@ -151,7 +151,7 @@ function HttpRequestFields({
   disabled,
 }: {
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: string) => void;
+  onUpdateConfig: (key: string, value: unknown) => void;
   disabled: boolean;
 }) {
   return (
@@ -242,13 +242,13 @@ function ConditionFields({
   disabled,
 }: {
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: string) => void;
+  onUpdateConfig: (key: string, value: unknown) => void;
   disabled: boolean;
 }) {
   return (
     <ConditionBuilderRow
       config={config}
-      description="Build a condition using upstream trigger schema fields. Timestamp fields support relative and absolute time filters."
+      description="Build a condition using trigger input paths (for example event, data.id). Timestamp fields support relative and absolute time filters."
       disabled={disabled}
       expressionKey="condition"
       label="Condition"
@@ -264,7 +264,7 @@ function RunConditionField({
   disabled,
 }: {
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: string) => void;
+  onUpdateConfig: (key: string, value: unknown) => void;
   disabled: boolean;
 }) {
   return (
@@ -289,7 +289,7 @@ function RunConditionSection({
 }: {
   actionType: string;
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: string) => void;
+  onUpdateConfig: (key: string, value: unknown) => void;
   disabled: boolean;
 }) {
   if (!actionType || actionType === "Condition") {
@@ -307,7 +307,7 @@ function RunConditionSection({
 
 type WaitFieldProps = {
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: string) => void;
+  onUpdateConfig: (key: string, value: unknown) => void;
   disabled: boolean;
 };
 
@@ -571,7 +571,7 @@ function SystemActionFields({
 }: {
   actionType: string;
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: string) => void;
+  onUpdateConfig: (key: string, value: unknown) => void;
   disabled: boolean;
 }) {
   switch (actionType) {
@@ -721,7 +721,7 @@ export function ActionConfig({
 
   // Adapter for plugin config components that expect (key, value: unknown)
   const handlePluginUpdateConfig = (key: string, value: unknown) => {
-    onUpdateConfig(key, String(value));
+    onUpdateConfig(key, value);
   };
 
   // Get dynamic config fields for plugin actions

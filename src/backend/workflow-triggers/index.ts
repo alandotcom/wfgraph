@@ -7,8 +7,8 @@
  * 3. If it should appear as a first-class trigger in the editor:
  *    - Add/extend config validation in `src/shared/workflow/schemas.ts`.
  *    - Add UI fields in `src/components/workflow/config/trigger-config.tsx`.
- * 4. If it accepts inbound events (webhooks, queues, etc.), use
- *    `executionType: "webhook"` and return routing decisions from `evaluate(...)`.
+ * 4. Extension triggers are webhook-trigger only. Provide a strict payload schema,
+ *    `correlationIdPath`, and lifecycle callbacks (`onStart`, `onRestart`, `onStop`).
  * 5. Add tests in `src/shared/workflow/trigger-registry.test.ts` and any trigger-specific test file.
  *
  * Example:
@@ -16,14 +16,16 @@
  *   createTrigger({
  *     type: "MyTrigger",
  *     label: "My Trigger",
- *     executionType: "manual",
- *     evaluate: ({ payload }) => ({
- *       triggerType: "MyTrigger",
- *       executionType: "manual",
- *       eventType: typeof payload.event === "string" ? payload.event : undefined,
- *       correlationKey: undefined,
- *       routingDecision: { kind: "start" },
+ *     schema: z.object({
+ *       event: z.enum(["entity.created", "entity.updated", "entity.deleted"]),
+ *       entity: z.object({ id: z.string() }),
  *     }),
+ *     correlationIdPath: "entity.id",
+ *     lifecycle: {
+ *       onStart: ({ payload }) => payload.event === "entity.created",
+ *       onRestart: ({ payload }) => payload.event === "entity.updated",
+ *       onStop: ({ payload }) => payload.event === "entity.deleted",
+ *     },
  *   })
  * );
  */

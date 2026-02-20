@@ -9,30 +9,18 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
-import { validateWorkflowActionConfigs } from "@/backend/lib/workflow-action-validation";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
-import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
-import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
-import { validateWorkflowIntegrations } from "@/backend/lib/workflow-integration-validation";
 import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-wait-state";
 import { orchestrateTriggerExecution } from "@/backend/services/workflows/trigger-orchestrator.workflows";
+import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight.workflows";
 import type { ApiErrorPayload } from "@/shared/workflow/api-contracts";
 import type { WorkflowExecuteResponse } from "@/shared/workflow/execution-contracts";
-import {
-  evaluateWorkflowTrigger,
-  resolveWorkflowTriggerDefinition,
-} from "@/shared/workflow/trigger-registry";
-import type {
-  SerializedWorkflowGraph,
-  WorkflowNode,
-} from "@/shared/workflow/types";
+import { evaluateWorkflowTrigger } from "@/shared/workflow/trigger-registry";
+import { resolveWebhookTriggerRuntimeConfig } from "@/shared/workflow/triggers/webhook-trigger";
+import type { SerializedWorkflowGraph } from "@/shared/workflow/types";
 
 const executeLogger = getAppLogger("workflow", "execute");
-
-function getTriggerNode(workflowNodes: WorkflowNode[]) {
-  return workflowNodes.find((node) => node.data.type === "trigger");
-}
 
 async function createTerminalExecution(input: {
   workflowId: string;
@@ -212,64 +200,27 @@ export async function postWorkflowExecuteResult(
       return failure(404, { error: "Workflow not found" });
     }
 
-    const graphValidation = validateWorkflowGraph(workflow.graph);
-    if (!graphValidation.valid) {
-      requestLogger.error("Invalid workflow graph", {
-        workflowName: workflow.name,
-        error: graphValidation.error,
-      });
-      return failure(400, { error: "Workflow graph is invalid" });
+    const preflight = await runWorkflowExecutionPreflight({
+      workflow,
+      logger: requestLogger,
+    });
+    if (!preflight.ok) {
+      return preflight;
     }
 
-    const actionValidation = validateWorkflowActionConfigs(
-      graphValidation.nodes
-    );
-    if (!actionValidation.valid) {
-      requestLogger.error("Invalid workflow action configuration", {
-        workflowName: workflow.name,
-        error: actionValidation.error,
-      });
-      return failure(400, { error: actionValidation.error });
-    }
-
-    const conditionValidation = validateWorkflowConditionConfigs(
-      graphValidation.nodes
-    );
-    if (!conditionValidation.valid) {
-      requestLogger.error("Invalid workflow condition configuration", {
-        workflowName: workflow.name,
-        error: conditionValidation.error,
-      });
-      return failure(400, { error: conditionValidation.error });
-    }
-
-    const integrationValidation = await validateWorkflowIntegrations(
-      graphValidation.nodes
-    );
-    if (!integrationValidation.valid) {
-      requestLogger.error("Invalid integration references in workflow", {
-        workflowName: workflow.name,
-        invalidIntegrationIds: integrationValidation.invalidIds,
-      });
-      return failure(403, {
-        error: "Workflow contains invalid integration references",
-        code: "integration_validation_failed",
-        invalidIntegrationIds: integrationValidation.invalidIds ?? [],
-      });
-    }
-
-    const triggerNode = getTriggerNode(graphValidation.nodes);
-    const triggerConfigRecord: Record<string, unknown> =
-      triggerNode?.data.config ?? {};
-    const triggerDefinition =
-      resolveWorkflowTriggerDefinition(triggerConfigRecord);
-    const isWebhookTrigger = triggerDefinition.executionType === "webhook";
+    const { workflowGraph, triggerConfig, triggerDefinition } = preflight.data;
+    const triggerConfigRecord: Record<string, unknown> = triggerConfig ?? {};
+    const isWebhookTrigger =
+      triggerDefinition.runtime.executionType === "webhook";
+    const webhookRuntimeConfig = isWebhookTrigger
+      ? resolveWebhookTriggerRuntimeConfig(triggerConfigRecord)
+      : undefined;
     const input = body.input ?? {};
     const dryRun = body.dryRun === true;
     let effectiveInput = input;
 
     if (isWebhookTrigger && Object.keys(input).length === 0) {
-      const mockInput = triggerDefinition.parseMockInput?.(triggerConfigRecord);
+      const mockInput = webhookRuntimeConfig?.mockInput;
       if (mockInput) {
         effectiveInput = mockInput;
       }
@@ -306,7 +257,7 @@ export async function postWorkflowExecuteResult(
       return success(response);
     }
 
-    const { eventType, correlationKey, routingDecision, metadata } =
+    const { eventType, correlationKey, routingDecision } =
       evaluateWorkflowTrigger({
         config: triggerConfigRecord,
         payload: effectiveInput,
@@ -314,7 +265,7 @@ export async function postWorkflowExecuteResult(
 
     requestLogger.info("Workflow execute request received", {
       workflowName: workflow.name,
-      triggerType: triggerDefinition.type.toLowerCase(),
+      triggerType: triggerDefinition.runtime.type.toLowerCase(),
       dryRun,
       requestPayloadKeys: Object.keys(body.input ?? {}),
       effectiveInputKeys: Object.keys(effectiveInput),
@@ -326,7 +277,7 @@ export async function postWorkflowExecuteResult(
       const startedExecution = await startExecution({
         workflowId,
         workflowName: workflow.name,
-        workflowGraph: graphValidation.graph,
+        workflowGraph,
         triggerType: "manual",
         payload: effectiveInput,
         requestPayload: body.input ?? {},
@@ -356,7 +307,6 @@ export async function postWorkflowExecuteResult(
       dryRun,
       eventType,
       correlationKey,
-      eventTypePath: metadata?.eventTypePath,
       routingDecision,
       waitStates,
       enableResumes: false,
@@ -364,7 +314,7 @@ export async function postWorkflowExecuteResult(
         await startExecution({
           workflowId,
           workflowName: workflow.name,
-          workflowGraph: graphValidation.graph,
+          workflowGraph,
           triggerType: "webhook",
           payload: effectiveInput,
           requestPayload: body.input ?? {},
@@ -377,7 +327,9 @@ export async function postWorkflowExecuteResult(
           workflowId,
           waitStates,
           eventType: currentEventType,
-          reason: `Cancelled by execute event ${currentEventType}`,
+          reason: currentEventType
+            ? `Cancelled by execute event ${currentEventType}`
+            : "Cancelled by execute trigger lifecycle decision",
           logger: executeLogger,
         }),
       resumeWaitStates: async () => 0,
@@ -466,20 +418,19 @@ export async function postWorkflowExecuteResult(
       output: {
         status: "ignored",
         reason: ignoredReason,
-        eventTypePath: orchestrated.eventTypePath,
         dryRun,
       },
       auditEventType: "run_ignored",
       auditMessage: buildIgnoredAuditMessage({
         reason: ignoredReason,
         eventType,
-        eventTypePath: orchestrated.eventTypePath,
+        eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
       }),
       auditMetadata: {
         eventType,
         correlationKey,
         reason: ignoredReason,
-        eventTypePath: orchestrated.eventTypePath,
+        eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
         dryRun,
       },
     });
@@ -489,7 +440,6 @@ export async function postWorkflowExecuteResult(
       executionId: terminalExecution.id,
       dryRun,
       reason: ignoredReason,
-      eventTypePath: orchestrated.eventTypePath,
     };
 
     return success(response);

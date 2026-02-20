@@ -5,5 +5,15 @@ export {
   server,
   startRovaServer,
 } from "@/rova/server";
-export { createAction } from "@/shared/workflow/action-registry";
-export { createTrigger } from "@/shared/workflow/trigger-registry";
+export {
+  type ActionPayloadSchema,
+  type CreateActionInput,
+  createAction,
+  type RuntimeExtensionActionDefinition,
+} from "@/shared/workflow/action-registry";
+export {
+  type CreateTriggerInput,
+  createTrigger,
+  type RuntimeExtensionTriggerDefinition,
+  type TriggerPayloadSchema,
+} from "@/shared/workflow/trigger-registry";
