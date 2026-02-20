@@ -21,6 +21,14 @@ type TemplateAutocompleteProps = {
   onClose: () => void;
   currentNodeId?: string;
   filter?: string;
+  fieldType?: "duration" | "timestamp";
+};
+
+type AutocompleteField = {
+  field: string;
+  description: string;
+  fieldType?: string;
+  fieldFormat?: "timestamp";
 };
 
 function readConfigString(
@@ -61,8 +69,8 @@ const getNodeDisplayName = (node: WorkflowNode): string => {
 const schemaToFields = (
   schema: WorkflowSchemaField[],
   prefix = ""
-): Array<{ field: string; description: string }> => {
-  const fields: Array<{ field: string; description: string }> = [];
+): AutocompleteField[] => {
+  const fields: AutocompleteField[] = [];
 
   for (const schemaField of schema) {
     const fieldPath = prefix
@@ -74,7 +82,12 @@ const schemaToFields = (
         : schemaField.type;
     const description = schemaField.description || typeLabel;
 
-    fields.push({ field: fieldPath, description });
+    fields.push({
+      field: fieldPath,
+      description,
+      fieldType: schemaField.type,
+      fieldFormat: schemaField.format,
+    });
 
     // Add nested fields for objects
     if (
@@ -101,14 +114,18 @@ const schemaToFields = (
 };
 
 // Get common fields based on node action type
-const getCommonFields = (node: WorkflowNode) => {
+const getCommonFields = (node: WorkflowNode): AutocompleteField[] => {
   const actionType = readConfigString(node.data.config, "actionType");
 
   // Special handling for dynamic outputs (system actions and schema-based)
   if (actionType === "HTTP Request") {
     return [
-      { field: "data", description: "Response data" },
-      { field: "status", description: "HTTP status code" },
+      { field: "data", description: "Response data", fieldType: "object" },
+      {
+        field: "status",
+        description: "HTTP status code",
+        fieldType: "number",
+      },
     ];
   }
 
@@ -121,8 +138,12 @@ const getCommonFields = (node: WorkflowNode) => {
       }
     }
     return [
-      { field: "rows", description: "Query result rows" },
-      { field: "count", description: "Number of rows" },
+      { field: "rows", description: "Query result rows", fieldType: "array" },
+      {
+        field: "count",
+        description: "Number of rows",
+        fieldType: "number",
+      },
     ];
   }
 
@@ -130,7 +151,12 @@ const getCommonFields = (node: WorkflowNode) => {
   if (actionType) {
     const action = findActionById(actionType);
     if (action?.outputFields && action.outputFields.length > 0) {
-      return action.outputFields;
+      return action.outputFields.map((f) => ({
+        field: f.field,
+        description: f.description,
+        fieldType: f.type,
+        fieldFormat: f.format,
+      }));
     }
   }
 
@@ -147,14 +173,41 @@ const getCommonFields = (node: WorkflowNode) => {
     }
 
     return [
-      { field: "triggered", description: "Trigger status" },
-      { field: "timestamp", description: "Trigger timestamp" },
-      { field: "input", description: "Input data" },
+      {
+        field: "triggered",
+        description: "Trigger status",
+        fieldType: "boolean",
+      },
+      {
+        field: "timestamp",
+        description: "Trigger timestamp",
+        fieldType: "string",
+        fieldFormat: "timestamp",
+      },
+      { field: "input", description: "Input data", fieldType: "object" },
     ];
   }
 
   return [{ field: "data", description: "Output data" }];
 };
+
+function isFieldCompatible(
+  field: AutocompleteField,
+  targetType: "duration" | "timestamp" | undefined
+): boolean {
+  if (!targetType) return true;
+  if (!field.fieldType) return true;
+
+  if (targetType === "duration") {
+    return field.fieldType === "number";
+  }
+
+  if (targetType === "timestamp") {
+    return field.fieldFormat === "timestamp";
+  }
+
+  return true;
+}
 
 export function TemplateAutocomplete({
   isOpen,
@@ -163,6 +216,7 @@ export function TemplateAutocomplete({
   onClose,
   currentNodeId,
   filter = "",
+  fieldType,
 }: TemplateAutocompleteProps) {
   const [nodes] = useAtom(nodesAtom);
   const [edges] = useAtom(edgesAtom);
@@ -234,14 +288,17 @@ export function TemplateAutocomplete({
       const nodeName = getNodeDisplayName(node);
       const fields = getCommonFields(node);
 
-      nextOptions.push({
-        type: "node",
-        nodeId: node.id,
-        nodeName,
-        template: `{{@${node.id}:${nodeName}}}`,
-      });
+      if (!fieldType) {
+        nextOptions.push({
+          type: "node",
+          nodeId: node.id,
+          nodeName,
+          template: `{{@${node.id}:${nodeName}}}`,
+        });
+      }
 
       for (const field of fields) {
+        if (!isFieldCompatible(field, fieldType)) continue;
         nextOptions.push({
           type: "field",
           nodeId: node.id,
@@ -254,7 +311,7 @@ export function TemplateAutocomplete({
     }
 
     return nextOptions;
-  }, [upstreamNodes]);
+  }, [upstreamNodes, fieldType]);
 
   const filteredOptions = useMemo(() => {
     const trimmedFilter = filter.trim().toLowerCase();
@@ -350,7 +407,11 @@ export function TemplateAutocomplete({
                 : "hover:bg-accent/50"
             )}
             key={`${option.nodeId}-${option.field || "root"}`}
-            onClick={() => onSelect(option.template)}
+            onMouseDown={(event) => {
+              // Select on pointer down so contentEditable inputs don't blur first.
+              event.preventDefault();
+              onSelect(option.template);
+            }}
             onMouseEnter={() => setSelectedIndex(index)}
           >
             <div className="flex-1">

@@ -292,7 +292,7 @@ function RunConditionSection({
   onUpdateConfig: (key: string, value: unknown) => void;
   disabled: boolean;
 }) {
-  if (!actionType || actionType === "Condition") {
+  if (!actionType || actionType === "Condition" || actionType === "Wait") {
     return null;
   }
 
@@ -378,6 +378,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           <Label htmlFor="waitDuration">Wait for (duration)</Label>
           <TemplateBadgeInput
             disabled={disabled}
+            fieldType="duration"
             id="waitDuration"
             onChange={(value) => onUpdateConfig("waitDuration", value)}
             placeholder="24h, 90m, 3600000, or P1D"
@@ -393,6 +394,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             <Label htmlFor="waitUntil">Wait until this date/time</Label>
             <TemplateBadgeInput
               disabled={disabled}
+              fieldType="timestamp"
               id="waitUntil"
               onChange={(value) => onUpdateConfig("waitUntil", value)}
               placeholder="2026-03-10T09:00:00-05:00 or {{Trigger.data.startsAt}}"
@@ -410,6 +412,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             </Label>
             <TemplateBadgeInput
               disabled={disabled}
+              fieldType="duration"
               id="waitOffset"
               onChange={(value) => onUpdateConfig("waitOffset", value)}
               placeholder="-1d, 6h, 30m"
@@ -489,6 +492,7 @@ function HookWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <Label htmlFor="waitTimeout">Stop waiting after (optional)</Label>
         <TemplateBadgeInput
           disabled={disabled}
+          fieldType="duration"
           id="waitTimeout"
           onChange={(value) => onUpdateConfig("waitTimeout", value)}
           placeholder="48h"

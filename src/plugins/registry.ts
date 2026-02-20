@@ -91,6 +91,8 @@ export type ActionConfigField = ActionConfigFieldBase | ActionConfigFieldGroup;
 export type OutputField = {
   field: string;
   description: string;
+  type?: import("@/shared/workflow/schema-codec").WorkflowSchemaFieldType;
+  format?: "timestamp";
 };
 
 /**
@@ -245,14 +247,17 @@ export function parseActionId(actionId: string | undefined | null): {
  */
 export function registerIntegration(plugin: IntegrationPlugin): void {
   integrationRegistry.set(plugin.type, plugin);
+  actionByIdCache.clear();
 }
 
 export function registerRuntimeAction(action: RuntimeActionDefinition): void {
   runtimeActionRegistry.set(action.id, action);
+  actionByIdCache.clear();
 }
 
 export function clearRuntimeActions(): void {
   runtimeActionRegistry.clear();
+  actionByIdCache.clear();
 }
 
 export function getRuntimeActions(): RuntimeActionDefinition[] {
@@ -360,6 +365,8 @@ export function getActionsByCategory(): Record<string, ActionWithFullId[]> {
   return categories;
 }
 
+const actionByIdCache = new Map<string, ActionWithFullId | undefined>();
+
 /**
  * Find an action by full ID (e.g., "resend/send-email")
  * Also supports action label-based IDs (e.g., "Send Email")
@@ -371,6 +378,9 @@ export function findActionById(
     return;
   }
 
+  const cached = actionByIdCache.get(actionId);
+  if (cached !== undefined) return cached;
+
   // First try parsing as a namespaced ID
   const parsed = parseActionId(actionId);
   if (parsed) {
@@ -380,11 +390,13 @@ export function findActionById(
     if (plugin) {
       const action = plugin.actions.find((a) => a.slug === parsed.slug);
       if (action) {
-        return {
+        const result = {
           ...action,
           id: actionId,
           integration: plugin.type,
         };
+        actionByIdCache.set(actionId, result);
+        return result;
       }
     }
   }
@@ -392,7 +404,7 @@ export function findActionById(
   // Fall back to label-based lookup (exact label match)
   for (const runtimeAction of runtimeActionRegistry.values()) {
     if (runtimeAction.id === actionId || runtimeAction.label === actionId) {
-      return {
+      const result: ActionWithFullId = {
         slug: runtimeAction.id,
         label: runtimeAction.label,
         description: runtimeAction.description,
@@ -405,6 +417,8 @@ export function findActionById(
         id: runtimeAction.id,
         integration: runtimeAction.integration,
       };
+      actionByIdCache.set(actionId, result);
+      return result;
     }
   }
 
@@ -412,14 +426,17 @@ export function findActionById(
   for (const plugin of integrationRegistry.values()) {
     const action = plugin.actions.find((a) => a.label === actionId);
     if (action) {
-      return {
+      const result = {
         ...action,
         id: computeActionId(plugin.type, action.slug),
         integration: plugin.type,
       };
+      actionByIdCache.set(actionId, result);
+      return result;
     }
   }
 
+  actionByIdCache.set(actionId, undefined);
   return;
 }
 

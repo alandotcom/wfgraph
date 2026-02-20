@@ -1,6 +1,6 @@
 import { useAtom } from "jotai";
 import { useEffect, useRef, useState } from "react";
-import { nodesAtom, selectedNodeAtom } from "@/client/lib/workflow-store";
+import { nodesAtom } from "@/client/lib/workflow-store";
 import { findActionById } from "@/plugins";
 import { cn } from "@/shared/utils";
 import { TemplateAutocomplete } from "./template-autocomplete";
@@ -13,6 +13,7 @@ export interface TemplateBadgeTextareaProps {
   className?: string;
   id?: string;
   rows?: number;
+  fieldType?: "duration" | "timestamp";
 }
 
 function readConfigString(
@@ -144,13 +145,14 @@ export function TemplateBadgeTextarea({
   className,
   id,
   rows = 3,
+  fieldType,
 }: TemplateBadgeTextareaProps) {
   const [isFocused, setIsFocused] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const [internalValue, setInternalValue] = useState(value);
   const shouldUpdateDisplay = useRef(true);
-  const [selectedNodeId] = useAtom(selectedNodeAtom);
   const [nodes] = useAtom(nodesAtom);
+  const selectedNodeId = nodes.find((n) => n.selected)?.id;
 
   // Autocomplete state
   const [showAutocomplete, setShowAutocomplete] = useState(false);
@@ -176,7 +178,6 @@ export function TemplateBadgeTextarea({
 
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) {
-      console.log("[Textarea] saveCursorPosition: No selection");
       return null;
     }
 
@@ -184,13 +185,6 @@ export function TemplateBadgeTextarea({
     const preCaretRange = range.cloneRange();
     preCaretRange.selectNodeContents(contentRef.current);
     preCaretRange.setEnd(range.endContainer, range.endOffset);
-
-    console.log(
-      "[Textarea] saveCursorPosition: range.endContainer",
-      range.endContainer,
-      "endOffset",
-      range.endOffset
-    );
 
     // Calculate offset considering badges as single characters
     let offset = 0;
@@ -207,17 +201,9 @@ export function TemplateBadgeTextarea({
         if (node === range.endContainer) {
           offset += range.endOffset;
           found = true;
-          console.log(
-            "[Textarea] saveCursorPosition: Found cursor in text node, offset:",
-            offset
-          );
         } else {
           const textLength = (node.textContent || "").length;
           offset += textLength;
-          console.log(
-            "[Textarea] saveCursorPosition: Text node before cursor, length:",
-            textLength
-          );
         }
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         if (!(node instanceof HTMLElement)) {
@@ -232,16 +218,8 @@ export function TemplateBadgeTextarea({
           ) {
             offset += template.length;
             found = true;
-            console.log(
-              "[Textarea] saveCursorPosition: Found cursor in badge, offset:",
-              offset
-            );
           } else {
             offset += template.length;
-            console.log(
-              "[Textarea] saveCursorPosition: Badge before cursor, length:",
-              template.length
-            );
           }
         } else if (element.tagName === "BR") {
           if (
@@ -251,13 +229,11 @@ export function TemplateBadgeTextarea({
             found = true;
           } else {
             offset += 1; // Count line break as 1 character
-            console.log("[Textarea] saveCursorPosition: BR before cursor");
           }
         }
       }
     }
 
-    console.log("[Textarea] saveCursorPosition: Final offset:", offset);
     return { offset };
   };
 
@@ -340,11 +316,11 @@ export function TemplateBadgeTextarea({
   };
 
   // Parse text and render with badges
-  const updateDisplay = () => {
+  const updateDisplay = (nextText?: string) => {
     if (!(contentRef.current && shouldUpdateDisplay.current)) return;
 
     const container = contentRef.current;
-    const text = displayValue || "";
+    const text = (nextText ?? displayValue) || "";
 
     // Save cursor position before updating
     let cursorPos = isFocused ? saveCursorPosition() : null;
@@ -440,17 +416,8 @@ export function TemplateBadgeTextarea({
         }
 
         // Only add text if it's NOT inside a badge
-        if (isInsideBadge) {
-          console.log(
-            "[Textarea] extractValue: Skipping text inside badge:",
-            node.textContent
-          );
-        } else {
+        if (!isInsideBadge) {
           result += node.textContent;
-          console.log(
-            "[Textarea] extractValue: Adding text node:",
-            node.textContent
-          );
         }
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         if (!(node instanceof HTMLElement)) {
@@ -460,15 +427,12 @@ export function TemplateBadgeTextarea({
         const template = element.getAttribute("data-template");
         if (template) {
           result += template;
-          console.log("[Textarea] extractValue: Adding template:", template);
         } else if (element.tagName === "BR") {
           result += "\n";
-          console.log("[Textarea] extractValue: Adding line break");
         }
       }
     }
 
-    console.log("[Textarea] extractValue: Final result:", result);
     return result;
   };
 
@@ -476,17 +440,9 @@ export function TemplateBadgeTextarea({
     // Extract the value from DOM
     const newValue = extractValue();
 
-    console.log("[Textarea] handleInput: newValue:", newValue);
-    console.log("[Textarea] handleInput: internalValue:", internalValue);
-    console.log(
-      "[Textarea] handleInput: DOM innerHTML:",
-      contentRef.current?.innerHTML
-    );
-
     // Check if the value has changed
     if (newValue === internalValue) {
       // No change, ignore (this can happen with badge clicks, etc)
-      console.log("[Textarea] handleInput: No change detected, ignoring");
       return;
     }
 
@@ -497,18 +453,8 @@ export function TemplateBadgeTextarea({
     const newTemplates = (newValue.match(/\{\{@([^:]+):([^}]+)\}\}/g) || [])
       .length;
 
-    console.log(
-      "[Textarea] handleInput: oldTemplates:",
-      oldTemplates,
-      "newTemplates:",
-      newTemplates
-    );
-
     if (newTemplates > oldTemplates) {
       // A new template was added, update display to show badge
-      console.log(
-        "[Textarea] handleInput: New template added, rendering badge"
-      );
       setInternalValue(newValue);
       onChange?.(newValue);
       shouldUpdateDisplay.current = true;
@@ -522,9 +468,6 @@ export function TemplateBadgeTextarea({
     if (newTemplates === oldTemplates && newTemplates > 0) {
       // Same number of templates, just typing around existing badges
       // DON'T update display, just update the value
-      console.log(
-        "[Textarea] handleInput: Typing around existing badges, NOT updating display"
-      );
       setInternalValue(newValue);
       onChange?.(newValue);
       // Don't trigger display update - this prevents cursor reset!
@@ -560,7 +503,6 @@ export function TemplateBadgeTextarea({
 
     if (newTemplates < oldTemplates) {
       // A template was removed (e.g., user deleted a badge or part of template text)
-      console.log("[Textarea] handleInput: Template removed, updating display");
       setInternalValue(newValue);
       onChange?.(newValue);
       shouldUpdateDisplay.current = true;
@@ -569,7 +511,6 @@ export function TemplateBadgeTextarea({
     }
 
     // Normal typing (no badges present)
-    console.log("[Textarea] handleInput: Normal typing, no badges");
     setInternalValue(newValue);
     onChange?.(newValue);
 
@@ -616,33 +557,28 @@ export function TemplateBadgeTextarea({
     // Calculate where cursor should be after the template (right after the badge)
     const targetCursorPosition = beforeAt.length + template.length;
 
-    console.log("[Textarea] Autocomplete select:", {
-      currentText,
-      atSignPosition,
-      filter: autocompleteFilter,
-      template,
-      beforeAt,
-      afterFilter,
-      newText,
-      targetCursorPosition,
-    });
-
     setInternalValue(newText);
     onChange?.(newText);
     shouldUpdateDisplay.current = true;
 
     setShowAutocomplete(false);
     setAtSignPosition(null);
+    setIsFocused(true);
 
     // Set pending cursor position for the next update
     pendingCursorPosition.current = targetCursorPosition;
 
-    // Ensure we focus the input so the display update and cursor restoration works
-    contentRef.current.focus();
+    // Keep focus for cursor restoration without re-triggering focus sync.
+    if (document.activeElement !== contentRef.current) {
+      contentRef.current.focus();
+    }
+    requestAnimationFrame(() => updateDisplay(newText));
   };
 
   const handleFocus = () => {
-    setInternalValue(value);
+    if (pendingCursorPosition.current === null) {
+      setInternalValue(value);
+    }
     setIsFocused(true);
     shouldUpdateDisplay.current = true;
   };
@@ -716,6 +652,7 @@ export function TemplateBadgeTextarea({
 
       <TemplateAutocomplete
         currentNodeId={selectedNodeId || undefined}
+        fieldType={fieldType}
         filter={autocompleteFilter}
         isOpen={showAutocomplete}
         onClose={() => setShowAutocomplete(false)}

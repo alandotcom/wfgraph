@@ -1,6 +1,6 @@
 import { useAtom } from "jotai";
 import { useEffect, useRef, useState } from "react";
-import { nodesAtom, selectedNodeAtom } from "@/client/lib/workflow-store";
+import { nodesAtom } from "@/client/lib/workflow-store";
 import { findActionById } from "@/plugins";
 import { cn } from "@/shared/utils";
 import { TemplateAutocomplete } from "./template-autocomplete";
@@ -12,6 +12,7 @@ export interface TemplateBadgeInputProps {
   disabled?: boolean;
   className?: string;
   id?: string;
+  fieldType?: "duration" | "timestamp";
 }
 
 function readConfigString(
@@ -110,13 +111,14 @@ export function TemplateBadgeInput({
   disabled,
   className,
   id,
+  fieldType,
 }: TemplateBadgeInputProps) {
   const [isFocused, setIsFocused] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const [internalValue, setInternalValue] = useState(value);
   const shouldUpdateDisplay = useRef(true);
-  const [selectedNodeId] = useAtom(selectedNodeAtom);
   const [nodes] = useAtom(nodesAtom);
+  const selectedNodeId = nodes.find((n) => n.selected)?.id;
 
   // Autocomplete state
   const [showAutocomplete, setShowAutocomplete] = useState(false);
@@ -262,11 +264,11 @@ export function TemplateBadgeInput({
   };
 
   // Parse text and render with badges
-  const updateDisplay = () => {
+  const updateDisplay = (nextText?: string) => {
     if (!(contentRef.current && shouldUpdateDisplay.current)) return;
 
     const container = contentRef.current;
-    const text = displayValue || "";
+    const text = (nextText ?? displayValue) || "";
 
     // Save cursor position before updating
     let cursorPos = isFocused ? saveCursorPosition() : null;
@@ -509,16 +511,22 @@ export function TemplateBadgeInput({
 
     setShowAutocomplete(false);
     setAtSignPosition(null);
+    setIsFocused(true);
 
     // Set pending cursor position for the next update
     pendingCursorPosition.current = targetCursorPosition;
 
-    // Ensure we focus the input so the display update and cursor restoration works
-    contentRef.current.focus();
+    // Keep focus for cursor restoration without re-triggering focus sync.
+    if (document.activeElement !== contentRef.current) {
+      contentRef.current.focus();
+    }
+    requestAnimationFrame(() => updateDisplay(newText));
   };
 
   const handleFocus = () => {
-    setInternalValue(value);
+    if (pendingCursorPosition.current === null) {
+      setInternalValue(value);
+    }
     setIsFocused(true);
     shouldUpdateDisplay.current = true;
   };
@@ -577,6 +585,7 @@ export function TemplateBadgeInput({
 
       <TemplateAutocomplete
         currentNodeId={selectedNodeId || undefined}
+        fieldType={fieldType}
         filter={autocompleteFilter}
         isOpen={showAutocomplete}
         onClose={() => setShowAutocomplete(false)}
