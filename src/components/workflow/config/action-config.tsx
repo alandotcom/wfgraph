@@ -248,58 +248,9 @@ function ConditionFields({
   return (
     <ConditionBuilderRow
       config={config}
-      description="Build a condition using trigger input paths (for example event, data.id). Timestamp fields support relative and absolute time filters."
+      description="Build a condition from trigger and upstream action output fields. Timestamp fields support relative and absolute time filters."
       disabled={disabled}
-      expressionKey="condition"
       label="Condition"
-      modelKey="conditionModel"
-      onUpdateConfig={onUpdateConfig}
-    />
-  );
-}
-
-function RunConditionField({
-  config,
-  onUpdateConfig,
-  disabled,
-}: {
-  config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: unknown) => void;
-  disabled: boolean;
-}) {
-  return (
-    <ConditionBuilderRow
-      config={config}
-      description="Optional guard. When false, this step is skipped and execution continues."
-      disabled={disabled}
-      expressionKey="runCondition"
-      label="Run this step only when"
-      modelKey="runConditionModel"
-      onUpdateConfig={onUpdateConfig}
-      optional
-    />
-  );
-}
-
-function RunConditionSection({
-  actionType,
-  config,
-  onUpdateConfig,
-  disabled,
-}: {
-  actionType: string;
-  config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: unknown) => void;
-  disabled: boolean;
-}) {
-  if (!actionType || actionType === "Condition" || actionType === "Wait") {
-    return null;
-  }
-
-  return (
-    <RunConditionField
-      config={config}
-      disabled={disabled}
       onUpdateConfig={onUpdateConfig}
     />
   );
@@ -943,13 +894,6 @@ export function ActionConfig({
           onUpdateConfig={handlePluginUpdateConfig}
         />
       )}
-
-      <RunConditionSection
-        actionType={actionType}
-        config={config}
-        disabled={disabled}
-        onUpdateConfig={onUpdateConfig}
-      />
     </>
   );
 }

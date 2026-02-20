@@ -36,7 +36,7 @@ function validateCompiledExpression(input: {
   node: WorkflowNode;
   expression: string;
   modelRaw: unknown;
-  fieldName: "condition" | "runCondition";
+  fieldName: "condition";
 }): WorkflowConditionsValidationResult {
   const parsedModel = parseConditionModel(input.modelRaw);
   if (!parsedModel.valid) {
@@ -72,7 +72,6 @@ function validateCompiledExpression(input: {
   return { valid: true };
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Validation has explicit branches for each supported condition surface.
 export function validateWorkflowConditionConfigs(
   nodes: WorkflowNode[]
 ): WorkflowConditionsValidationResult {
@@ -115,33 +114,6 @@ export function validateWorkflowConditionConfigs(
       if (!conditionValidation.valid) {
         return conditionValidation;
       }
-
-      continue;
-    }
-
-    const runConditionExpression = asNonEmptyString(config.runCondition);
-    const runConditionModel = asNonEmptyString(config.runConditionModel);
-
-    if (!(runConditionExpression || runConditionModel)) {
-      continue;
-    }
-
-    if (!(runConditionExpression && runConditionModel)) {
-      return {
-        valid: false,
-        error: `Node "${getNodeLabel(node)}" has a partial run condition configuration. Reconfigure this condition in the builder.`,
-      };
-    }
-
-    const runConditionValidation = validateCompiledExpression({
-      node,
-      expression: runConditionExpression,
-      modelRaw: runConditionModel,
-      fieldName: "runCondition",
-    });
-
-    if (!runConditionValidation.valid) {
-      return runConditionValidation;
     }
   }
 

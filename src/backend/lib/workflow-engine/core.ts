@@ -513,68 +513,6 @@ async function executeDryRunAction(input: {
   return { success: true, data: output };
 }
 
-async function executeSkippedAction(input: {
-  actionType: string;
-  context: StepContext;
-  reason: string;
-  executionId?: string;
-  workflowId?: string;
-  eventContext?: {
-    eventType?: string;
-    correlationKey?: string;
-  };
-  runCondition?: unknown;
-}): Promise<Record<string, unknown>> {
-  const output: Record<string, unknown> = {
-    skipped: true,
-    skippedReason: input.reason,
-    actionType: input.actionType,
-    timestamp: new Date().toISOString(),
-  };
-
-  if (input.runCondition !== undefined) {
-    output.runCondition = input.runCondition;
-  }
-
-  if (input.executionId) {
-    const startLog = await stepLogStartStep({
-      executionId: input.executionId,
-      nodeId: input.context.nodeId,
-      nodeName: input.context.nodeName,
-      nodeType: input.actionType,
-      input: {
-        skipped: true,
-        skippedReason: input.reason,
-        runCondition: input.runCondition,
-      },
-    });
-
-    await stepLogCompleteStep({
-      logId: startLog.logId,
-      startTime: startLog.startTime,
-      status: "success",
-      output,
-    });
-  }
-
-  if (input.workflowId) {
-    await workflowAuditStep({
-      workflowId: input.workflowId,
-      executionId: input.executionId,
-      eventType: "run_skipped",
-      message: `Skipped node '${input.context.nodeName}' because run condition evaluated false`,
-      metadata: {
-        nodeId: input.context.nodeId,
-        actionType: input.actionType,
-        reason: input.reason,
-        correlationKey: input.eventContext?.correlationKey,
-      },
-    });
-  }
-
-  return output;
-}
-
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Wait execution has intentional branching for delay/hook/dry-run and cancellation.
 async function executeWaitAction(input: {
   config: Record<string, unknown>;
@@ -1298,9 +1236,7 @@ export async function executeWorkflowCore(
         // Process templates in config, but keep conditions unprocessed for special handling
         const configWithoutCondition = { ...config };
         const originalCondition = config.condition;
-        const originalRunCondition = config.runCondition;
         configWithoutCondition.condition = undefined;
-        configWithoutCondition.runCondition = undefined;
 
         const processedConfig = processTemplates(
           configWithoutCondition,
@@ -1311,9 +1247,6 @@ export async function executeWorkflowCore(
         if (originalCondition !== undefined) {
           processedConfig.condition = originalCondition;
         }
-        if (originalRunCondition !== undefined) {
-          processedConfig.runCondition = originalRunCondition;
-        }
 
         // Build step context for logging (stepHandler will handle the logging)
         const stepContext: StepContext = {
@@ -1322,72 +1255,12 @@ export async function executeWorkflowCore(
           nodeName: getNodeName(node),
           nodeType: actionType,
         };
-        const runConditionExpression = processedConfig.runCondition;
-        processedConfig.runCondition = undefined;
-        const shouldEvaluateRunCondition =
-          actionType !== "Condition" &&
-          runConditionExpression !== undefined &&
-          runConditionExpression !== null &&
-          (typeof runConditionExpression !== "string" ||
-            runConditionExpression.trim().length > 0);
-
         // Execute the action step with stepHandler (logging is handled inside)
         // IMPORTANT: We pass integrationId via config, not actual credentials
         // Steps fetch credentials internally using fetchCredentials(integrationId)
-        actionLogger.debug("Calling executeActionStep", {
-          hasRunCondition: shouldEvaluateRunCondition,
-        });
+        actionLogger.debug("Calling executeActionStep");
         let stepResult: unknown;
-        if (shouldEvaluateRunCondition) {
-          const { result: shouldRun } = evaluateConditionExpression(
-            runConditionExpression,
-            outputs
-          );
-
-          if (!shouldRun) {
-            stepResult = await executeSkippedAction({
-              actionType,
-              context: stepContext,
-              reason: "run_condition_false",
-              executionId,
-              workflowId,
-              eventContext,
-              runCondition: runConditionExpression,
-            });
-          } else if (
-            dryRun &&
-            actionType !== "Condition" &&
-            actionType !== "Wait"
-          ) {
-            stepResult = await executeDryRunAction({
-              actionType,
-              context: stepContext,
-              executionId,
-            });
-          } else if (actionType === "Wait") {
-            stepResult = await executeWaitAction({
-              config: processedConfig,
-              context: stepContext,
-              runtime,
-              executionId,
-              workflowId,
-              workflowRunId: currentWorkflowRunId,
-              dryRun,
-              eventContext,
-            });
-          } else {
-            stepResult = await executeActionStep({
-              actionType,
-              config: processedConfig,
-              outputs,
-              context: stepContext,
-            });
-          }
-        } else if (
-          dryRun &&
-          actionType !== "Condition" &&
-          actionType !== "Wait"
-        ) {
+        if (dryRun && actionType !== "Condition" && actionType !== "Wait") {
           stepResult = await executeDryRunAction({
             actionType,
             context: stepContext,

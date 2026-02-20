@@ -13,6 +13,7 @@ export interface TemplateBadgeInputProps {
   className?: string;
   id?: string;
   fieldType?: "duration" | "timestamp";
+  currentNodeId?: string;
 }
 
 function readConfigString(
@@ -112,6 +113,7 @@ export function TemplateBadgeInput({
   className,
   id,
   fieldType,
+  currentNodeId,
 }: TemplateBadgeInputProps) {
   const [isFocused, setIsFocused] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -119,6 +121,7 @@ export function TemplateBadgeInput({
   const shouldUpdateDisplay = useRef(true);
   const [nodes] = useAtom(nodesAtom);
   const selectedNodeId = nodes.find((n) => n.selected)?.id;
+  const autocompleteNodeId = currentNodeId ?? selectedNodeId;
 
   // Autocomplete state
   const [showAutocomplete, setShowAutocomplete] = useState(false);
@@ -584,7 +587,7 @@ export function TemplateBadgeInput({
       </div>
 
       <TemplateAutocomplete
-        currentNodeId={selectedNodeId || undefined}
+        currentNodeId={autocompleteNodeId || undefined}
         fieldType={fieldType}
         filter={autocompleteFilter}
         isOpen={showAutocomplete}
