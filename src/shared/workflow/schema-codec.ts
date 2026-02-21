@@ -2,17 +2,22 @@ export type WorkflowSchemaFieldType =
   | "string"
   | "number"
   | "boolean"
+  | "timestamp"
   | "array"
   | "object";
 
-export type WorkflowSchemaItemType = "string" | "number" | "boolean" | "object";
+export type WorkflowSchemaItemType =
+  | "string"
+  | "number"
+  | "boolean"
+  | "timestamp"
+  | "object";
 
 export type WorkflowSchemaField = {
   name: string;
   type: WorkflowSchemaFieldType;
   itemType?: WorkflowSchemaItemType;
   fields?: WorkflowSchemaField[];
-  format?: "timestamp";
   description?: string;
 };
 
@@ -29,6 +34,7 @@ export function isWorkflowSchemaFieldType(
     value === "string" ||
     value === "number" ||
     value === "boolean" ||
+    value === "timestamp" ||
     value === "array" ||
     value === "object"
   );
@@ -41,6 +47,7 @@ export function isWorkflowSchemaItemType(
     value === "string" ||
     value === "number" ||
     value === "boolean" ||
+    value === "timestamp" ||
     value === "object"
   );
 }
@@ -62,12 +69,67 @@ function normalizeJsonSchemaType(value: unknown): JsonSchemaType | null {
     : null;
 }
 
-function normalizeSchemaFormat(value: unknown): WorkflowSchemaField["format"] {
+function normalizeSchemaFormat(value: unknown): "timestamp" | undefined {
   if (value === "date-time" || value === "datetime" || value === "timestamp") {
     return "timestamp";
   }
 
   return undefined;
+}
+
+function parseNestedWorkflowSchemaFields(
+  value: unknown
+): WorkflowSchemaField[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((field) => {
+    const parsedField = parseWorkflowSchemaField(field);
+    return parsedField ? [parsedField] : [];
+  });
+}
+
+function resolvePrimitiveWorkflowSchemaType(input: {
+  type: JsonSchemaType;
+  format: unknown;
+}): WorkflowSchemaFieldType {
+  if (
+    input.type === "string" &&
+    normalizeSchemaFormat(input.format) === "timestamp"
+  ) {
+    return "timestamp";
+  }
+
+  return input.type;
+}
+
+function parseArrayWorkflowSchemaField(input: {
+  name: string;
+  value: Record<string, unknown>;
+  description?: string;
+}): WorkflowSchemaField {
+  const { name, value, description } = input;
+  const normalizedItemType = normalizeJsonSchemaType(value.itemType);
+  const normalizedFormat = normalizeSchemaFormat(value.format);
+  let itemType: WorkflowSchemaItemType = "string";
+  if (isWorkflowSchemaItemType(normalizedItemType)) {
+    itemType = normalizedItemType;
+  }
+  if (itemType === "string" && normalizedFormat === "timestamp") {
+    itemType = "timestamp";
+  }
+
+  return {
+    name,
+    type: "array",
+    itemType,
+    fields:
+      itemType === "object"
+        ? parseNestedWorkflowSchemaFields(value.fields)
+        : undefined,
+    description,
+  };
 }
 
 export function parseWorkflowSchemaField(
@@ -91,53 +153,28 @@ export function parseWorkflowSchemaField(
     "string";
 
   if (normalizedType === "array") {
-    const normalizedItemType = normalizeJsonSchemaType(value.itemType);
-    const itemType = isWorkflowSchemaItemType(normalizedItemType)
-      ? normalizedItemType
-      : "string";
-
-    const fields =
-      itemType === "object" && Array.isArray(value.fields)
-        ? value.fields.flatMap((field) => {
-            const parsedField = parseWorkflowSchemaField(field);
-            return parsedField ? [parsedField] : [];
-          })
-        : undefined;
-
-    return {
+    return parseArrayWorkflowSchemaField({
       name,
-      type: "array",
-      itemType,
-      fields,
-      format:
-        itemType === "string" ? normalizeSchemaFormat(value.format) : undefined,
+      value,
       description,
-    };
+    });
   }
 
   if (normalizedType === "object") {
-    const fields = Array.isArray(value.fields)
-      ? value.fields.flatMap((field) => {
-          const parsedField = parseWorkflowSchemaField(field);
-          return parsedField ? [parsedField] : [];
-        })
-      : [];
-
     return {
       name,
       type: "object",
-      fields,
+      fields: parseNestedWorkflowSchemaFields(value.fields),
       description,
     };
   }
 
   return {
     name,
-    type: normalizedType,
-    format:
-      normalizedType === "string"
-        ? normalizeSchemaFormat(value.format)
-        : undefined,
+    type: resolvePrimitiveWorkflowSchemaType({
+      type: normalizedType,
+      format: value.format,
+    }),
     description,
   };
 }
@@ -145,14 +182,7 @@ export function parseWorkflowSchemaField(
 export function parseWorkflowSchemaFields(
   value: unknown
 ): WorkflowSchemaField[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap((field) => {
-    const parsedField = parseWorkflowSchemaField(field);
-    return parsedField ? [parsedField] : [];
-  });
+  return parseNestedWorkflowSchemaFields(value);
 }
 
 export function parseWorkflowSchemaFieldsString(
@@ -193,15 +223,16 @@ function parseJsonSchemaProperty(
   if (
     normalizedType === "string" ||
     normalizedType === "number" ||
-    normalizedType === "boolean"
+    normalizedType === "boolean" ||
+    normalizedType === "timestamp"
   ) {
     return {
       name,
-      type: normalizedType,
-      format:
-        normalizedType === "string"
-          ? normalizeSchemaFormat(value.format)
-          : undefined,
+      type:
+        normalizedType === "string" &&
+        normalizeSchemaFormat(value.format) === "timestamp"
+          ? "timestamp"
+          : normalizedType,
       description,
     };
   }
@@ -216,10 +247,16 @@ function parseJsonSchemaProperty(
   }
 
   const items = isRecord(value.items) ? value.items : null;
-  const normalizedItemType =
+  let normalizedItemType =
     normalizeJsonSchemaType(items?.type) ||
     (items?.properties ? "object" : null) ||
     "string";
+  if (
+    normalizedItemType === "string" &&
+    normalizeSchemaFormat(items?.format) === "timestamp"
+  ) {
+    normalizedItemType = "timestamp";
+  }
 
   if (!isWorkflowSchemaItemType(normalizedItemType)) {
     return null;
@@ -232,10 +269,6 @@ function parseJsonSchemaProperty(
     fields:
       normalizedItemType === "object"
         ? parseJsonSchemaProperties(items?.properties)
-        : undefined,
-    format:
-      normalizedItemType === "string"
-        ? normalizeSchemaFormat(items?.format)
         : undefined,
     description,
   };
@@ -285,14 +318,13 @@ function workflowSchemaFieldToJsonSchemaNode(
   if (
     field.type === "string" ||
     field.type === "number" ||
-    field.type === "boolean"
+    field.type === "boolean" ||
+    field.type === "timestamp"
   ) {
     return {
       ...base,
-      type: field.type,
-      ...(field.type === "string" && field.format === "timestamp"
-        ? { format: "date-time" }
-        : {}),
+      type: field.type === "timestamp" ? "string" : field.type,
+      ...(field.type === "timestamp" ? { format: "date-time" } : {}),
     };
   }
 
@@ -323,10 +355,11 @@ function workflowSchemaFieldToJsonSchemaNode(
     ...base,
     type: "array",
     items: {
-      type: field.itemType ?? "string",
-      ...(field.itemType === "string" && field.format === "timestamp"
-        ? { format: "date-time" }
-        : {}),
+      type:
+        field.itemType === "timestamp"
+          ? "string"
+          : (field.itemType ?? "string"),
+      ...(field.itemType === "timestamp" ? { format: "date-time" } : {}),
     },
   };
 }

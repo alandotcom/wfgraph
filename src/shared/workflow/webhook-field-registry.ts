@@ -5,9 +5,10 @@ import type {
 
 export type WebhookSchemaField = {
   name: string;
-  type: "string" | "number" | "boolean" | "array" | "object";
-  itemType?: "string" | "number" | "boolean" | "object";
+  type: "string" | "number" | "boolean" | "timestamp" | "array" | "object";
+  itemType?: "string" | "number" | "boolean" | "timestamp" | "object";
   fields?: WebhookSchemaField[];
+  // Legacy support for older saved schema payloads.
   format?: "timestamp";
 };
 
@@ -30,6 +31,7 @@ export function isWebhookSchemaField(
     value.type !== "string" &&
     value.type !== "number" &&
     value.type !== "boolean" &&
+    value.type !== "timestamp" &&
     value.type !== "array" &&
     value.type !== "object"
   ) {
@@ -41,6 +43,7 @@ export function isWebhookSchemaField(
     value.itemType !== "string" &&
     value.itemType !== "number" &&
     value.itemType !== "boolean" &&
+    value.itemType !== "timestamp" &&
     value.itemType !== "object"
   ) {
     return false;
@@ -63,9 +66,13 @@ export function isWebhookSchemaField(
 }
 
 function resolvePrimitiveType(
-  type: "string" | "number" | "boolean",
+  type: "string" | "number" | "boolean" | "timestamp",
   format: WebhookSchemaField["format"]
 ): ConditionFieldType {
+  if (type === "timestamp") {
+    return "timestamp";
+  }
+
   if (type === "string" && format === "timestamp") {
     return "timestamp";
   }
@@ -91,7 +98,8 @@ function flattenSchemaFields(input: {
     if (
       field.type === "string" ||
       field.type === "number" ||
-      field.type === "boolean"
+      field.type === "boolean" ||
+      field.type === "timestamp"
     ) {
       output.push({
         path,
@@ -116,7 +124,8 @@ function flattenSchemaFields(input: {
       if (
         field.itemType === "string" ||
         field.itemType === "number" ||
-        field.itemType === "boolean"
+        field.itemType === "boolean" ||
+        field.itemType === "timestamp"
       ) {
         output.push({
           path: `${path}[0]`,

@@ -552,7 +552,19 @@ export const PanelInner = () => {
 
         {selectedNode.data.type !== "action" ||
         selectedNode.data.config?.actionType ? (
-          <>
+          <div
+            className={
+              selectedNode.data.type === "trigger"
+                ? "space-y-3 rounded-md border border-muted/70 bg-muted/20 p-3"
+                : "space-y-4"
+            }
+          >
+            {selectedNode.data.type === "trigger" ? (
+              <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+                Node Metadata
+              </p>
+            ) : null}
+
             <div className="space-y-2">
               <Label htmlFor="label">Label</Label>
               <Input
@@ -573,7 +585,7 @@ export const PanelInner = () => {
                 value={selectedNode.data.description || ""}
               />
             </div>
-          </>
+          </div>
         ) : null}
 
         {isOwner ? null : (

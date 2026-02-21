@@ -69,7 +69,6 @@ function schemaToFields(
       field: fieldPath,
       description,
       fieldType: schemaField.type,
-      fieldFormat: schemaField.format,
     });
 
     if (
@@ -176,8 +175,7 @@ export function getNodeOutputFields(node: WorkflowNode): NodeOutputField[] {
       {
         field: "timestamp",
         description: "Trigger timestamp",
-        fieldType: "string",
-        fieldFormat: "timestamp",
+        fieldType: "timestamp",
       },
       { field: "input", description: "Input data", fieldType: "object" },
     ];
@@ -264,6 +262,10 @@ export function getUpstreamFields(input: {
 }
 
 function toConditionFieldType(field: UpstreamField): ConditionFieldType | null {
+  if (field.fieldType === "timestamp") {
+    return "timestamp";
+  }
+
   if (field.fieldFormat === "timestamp") {
     return "timestamp";
   }

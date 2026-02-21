@@ -39,7 +39,9 @@ function isFieldCompatible(
   }
 
   if (targetType === "timestamp") {
-    return field.fieldFormat === "timestamp";
+    return (
+      field.fieldType === "timestamp" || field.fieldFormat === "timestamp"
+    );
   }
 
   return true;

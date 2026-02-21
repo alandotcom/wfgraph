@@ -17,8 +17,7 @@ describe("parseWorkflowSchemaField", () => {
 
     expect(field).toEqual({
       name: "createdAt",
-      type: "string",
-      format: "timestamp",
+      type: "timestamp",
       description: "Created timestamp",
     });
   });
@@ -42,11 +41,9 @@ describe("parseWorkflowSchemaField", () => {
         {
           name: "eventType",
           type: "string",
-          format: undefined,
           description: undefined,
         },
       ],
-      format: undefined,
       description: undefined,
     });
   });
@@ -84,13 +81,11 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
       {
         name: "id",
         type: "string",
-        format: undefined,
         description: undefined,
       },
       {
         name: "success",
         type: "boolean",
-        format: undefined,
         description: undefined,
       },
       {
@@ -100,12 +95,10 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
         fields: [
           {
             name: "happenedAt",
-            type: "string",
-            format: "timestamp",
+            type: "timestamp",
             description: undefined,
           },
         ],
-        format: undefined,
         description: undefined,
       },
     ]);
@@ -126,8 +119,7 @@ describe("workflowSchemaFieldsToJsonSchemaDocument", () => {
     const document = workflowSchemaFieldsToJsonSchemaDocument([
       {
         name: "createdAt",
-        type: "string",
-        format: "timestamp",
+        type: "timestamp",
         description: "Event creation time",
       },
       {
