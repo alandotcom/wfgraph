@@ -52,6 +52,7 @@ import {
   useContextMenuHandlers,
   WorkflowContextMenu,
 } from "./workflow-context-menu";
+import { layoutWorkflowNodes } from "./workflow-layout";
 
 const nodeTemplates = [
   {
@@ -103,7 +104,11 @@ export function WorkflowCanvas() {
   const connectingHandleId = useRef<string | null>(null);
   const justCreatedNodeFromConnection = useRef(false);
   const viewportInitialized = useRef(false);
+  const canvasContainerRef = useRef<HTMLDivElement | null>(null);
+  const reflowRequestId = useRef(0);
+  const isReflowingRef = useRef(false);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
+  const [isReflowing, setIsReflowing] = useState(false);
   const [contextMenuState, setContextMenuState] =
     useState<ContextMenuState>(null);
 
@@ -119,6 +124,10 @@ export function WorkflowCanvas() {
   const fittedViewForWorkflowRef = useRef<string | null | undefined>(undefined);
   // Track if we have real nodes (not just placeholder "add" node)
   const hasRealNodes = nodes.some((n) => n.type !== "add");
+  const realNodeCount = useMemo(
+    () => nodes.filter((node) => node.type !== "add").length,
+    [nodes]
+  );
   const hadRealNodesRef = useRef(false);
   // Pre-shift viewport when transitioning from homepage (before sidebar animates)
   const hasPreShiftedRef = useRef(false);
@@ -218,6 +227,58 @@ export function WorkflowCanvas() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [fitView]);
+
+  const handleReflow = useCallback(() => {
+    if (isGenerating || realNodeCount < 2 || isReflowingRef.current) {
+      return;
+    }
+
+    isReflowingRef.current = true;
+    setIsReflowing(true);
+    const requestId = reflowRequestId.current + 1;
+    reflowRequestId.current = requestId;
+
+    try {
+      const containerWidth =
+        canvasContainerRef.current?.getBoundingClientRect().width ??
+        (typeof window !== "undefined" ? window.innerWidth : undefined);
+      const { nodes: nextNodes, changed } = layoutWorkflowNodes({
+        nodes,
+        edges,
+        availableWidth: containerWidth,
+      });
+
+      if (requestId !== reflowRequestId.current) {
+        return;
+      }
+
+      if (changed) {
+        setNodes(nextNodes);
+        setHasUnsavedChanges(true);
+        triggerAutosave({ immediate: true });
+      }
+
+      window.requestAnimationFrame(() => {
+        Promise.resolve(
+          fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 300 })
+        ).catch(() => undefined);
+      });
+    } finally {
+      if (requestId === reflowRequestId.current) {
+        isReflowingRef.current = false;
+        setIsReflowing(false);
+      }
+    }
+  }, [
+    edges,
+    fitView,
+    isGenerating,
+    nodes,
+    realNodeCount,
+    setHasUnsavedChanges,
+    setNodes,
+    triggerAutosave,
+  ]);
 
   const nodeTypes = useMemo(
     () => ({
@@ -602,6 +663,7 @@ export function WorkflowCanvas() {
     <div
       className="relative h-full bg-background"
       data-testid="workflow-canvas"
+      ref={canvasContainerRef}
       style={{
         opacity: isCanvasReady ? 1 : 0,
         width: rightPanelWidth ? `calc(100% - ${rightPanelWidth})` : "100%",
@@ -644,7 +706,10 @@ export function WorkflowCanvas() {
           className="workflow-controls-panel border-none bg-transparent p-0"
           position="bottom-left"
         >
-          <Controls />
+          <Controls
+            canReflow={!isGenerating && realNodeCount > 1 && !isReflowing}
+            onReflow={isGenerating ? undefined : handleReflow}
+          />
         </Panel>
         {showMinimap && (
           <MiniMap bgColor="var(--sidebar)" nodeStrokeColor="var(--border)" />

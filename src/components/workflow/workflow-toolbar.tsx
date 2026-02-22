@@ -64,6 +64,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { WorkflowIcon } from "@/components/ui/workflow-icon";
 import { CreateWorkflowDialog } from "@/components/workflow/create-workflow-dialog";
+import {
+  WORKFLOW_NODE_HEIGHT,
+  WORKFLOW_NODE_WIDTH,
+} from "@/components/workflow/workflow-node-dimensions";
 import { UserMenu } from "@/components/workflows/user-menu";
 import {
   findActionById,
@@ -877,11 +881,8 @@ function ToolbarActions({
     const position = screenToFlowPosition({ x: centerX, y: centerY });
 
     // Adjust for node dimensions to center it properly
-    // Action node is 192px wide and 192px tall (w-48 h-48 in Tailwind)
-    const nodeWidth = 192;
-    const nodeHeight = 192;
-    position.x -= nodeWidth / 2;
-    position.y -= nodeHeight / 2;
+    position.x -= WORKFLOW_NODE_WIDTH / 2;
+    position.y -= WORKFLOW_NODE_HEIGHT / 2;
 
     // Check if there's already a node at this position
     const offset = 20; // Offset distance in pixels

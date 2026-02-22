@@ -1,0 +1,2 @@
+export const WORKFLOW_NODE_WIDTH = 192;
+export const WORKFLOW_NODE_HEIGHT = 192;

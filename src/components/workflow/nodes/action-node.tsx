@@ -495,8 +495,8 @@ type ActionNodeProps = NodeProps & {
   id: string;
 };
 
-const CONDITION_TRUE_HANDLE_TOP = "38%";
-const CONDITION_FALSE_HANDLE_TOP = "62%";
+const CONDITION_TRUE_HANDLE_LEFT = "38%";
+const CONDITION_FALSE_HANDLE_LEFT = "62%";
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Complex UI logic with multiple conditions including disabled state
 export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
@@ -632,18 +632,18 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
           ? [
               {
                 id: "true",
-                position: Position.Right,
+                position: Position.Bottom,
                 style: {
-                  top: CONDITION_TRUE_HANDLE_TOP,
+                  left: CONDITION_TRUE_HANDLE_LEFT,
                   width: 12,
                   height: 12,
                 },
               },
               {
                 id: "false",
-                position: Position.Right,
+                position: Position.Bottom,
                 style: {
-                  top: CONDITION_FALSE_HANDLE_TOP,
+                  left: CONDITION_FALSE_HANDLE_LEFT,
                   width: 12,
                   height: 12,
                 },
@@ -671,10 +671,10 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
       <StatusBadge status={status} />
       {isConditionAction && (
         <>
-          <div className="pointer-events-none absolute top-[38%] -right-12 -translate-y-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none">
+          <div className="pointer-events-none absolute -bottom-8 left-[38%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none">
             True
           </div>
-          <div className="pointer-events-none absolute top-[62%] -right-12 -translate-y-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none">
+          <div className="pointer-events-none absolute -bottom-8 left-[62%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none">
             False
           </div>
         </>

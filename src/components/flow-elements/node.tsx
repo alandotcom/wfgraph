@@ -37,7 +37,7 @@ function renderHandles(
   if (config === true) {
     return (
       <Handle
-        position={handleType === "source" ? Position.Right : Position.Left}
+        position={handleType === "source" ? Position.Bottom : Position.Top}
         type={handleType}
       />
     );

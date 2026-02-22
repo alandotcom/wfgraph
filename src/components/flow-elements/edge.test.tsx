@@ -7,12 +7,19 @@ const sourceNode = {
     positionAbsolute: { x: 120, y: 80 },
     handleBounds: {
       source: [
-        { id: "true", position: "right", x: 0, y: 18, width: 12, height: 12 },
+        {
+          id: "true",
+          position: "bottom",
+          x: 70,
+          y: 180,
+          width: 12,
+          height: 12,
+        },
         {
           id: "false",
-          position: "right",
-          x: 0,
-          y: 58,
+          position: "bottom",
+          x: 110,
+          y: 180,
           width: 12,
           height: 12,
         },
@@ -26,7 +33,7 @@ const targetNode = {
     positionAbsolute: { x: 360, y: 120 },
     handleBounds: {
       target: [
-        { id: "in", position: "left", x: 0, y: 24, width: 12, height: 12 },
+        { id: "in", position: "top", x: 88, y: 0, width: 12, height: 12 },
       ],
     },
   },

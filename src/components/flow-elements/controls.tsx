@@ -4,6 +4,7 @@ import {
   MapPin,
   MapPinXInside,
   Maximize2,
+  RefreshCcw,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -11,7 +12,12 @@ import { showMinimapAtom } from "@/client/lib/workflow-store";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 
-export const Controls = () => {
+type ControlsProps = {
+  onReflow?: () => void;
+  canReflow?: boolean;
+};
+
+export const Controls = ({ onReflow, canReflow = true }: ControlsProps) => {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const [showMinimap, setShowMinimap] = useAtom(showMinimapAtom);
 
@@ -73,6 +79,19 @@ export const Controls = () => {
           <MapPinXInside className="size-4" />
         )}
       </Button>
+      {onReflow ? (
+        <Button
+          aria-label="Reflow nodes"
+          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
+          disabled={!canReflow}
+          onClick={onReflow}
+          size="icon"
+          title="Reflow nodes"
+          variant="secondary"
+        >
+          <RefreshCcw className="size-4" />
+        </Button>
+      ) : null}
     </ButtonGroup>
   );
 };

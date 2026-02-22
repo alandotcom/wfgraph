@@ -44,12 +44,10 @@ const Temporary = ({
 
 const getHandleCoordsByPosition = (
   node: InternalNode,
+  handleType: "source" | "target",
   handlePosition: Position,
   handleId?: string | null
 ) => {
-  // Choose the handle type based on position - Left is for target, Right is for source
-  const handleType = handlePosition === Position.Left ? "target" : "source";
-
   const handles = node.internals.handleBounds?.[handleType];
   if (!(handles && handles.length > 0)) {
     return [0, 0] as const;
@@ -101,10 +99,20 @@ const getEdgeParams = (
   sourceHandle?: string | null,
   targetHandle?: string | null
 ) => {
-  const sourcePos = Position.Right;
-  const [sx, sy] = getHandleCoordsByPosition(source, sourcePos, sourceHandle);
-  const targetPos = Position.Left;
-  const [tx, ty] = getHandleCoordsByPosition(target, targetPos, targetHandle);
+  const sourcePos = Position.Bottom;
+  const [sx, sy] = getHandleCoordsByPosition(
+    source,
+    "source",
+    sourcePos,
+    sourceHandle
+  );
+  const targetPos = Position.Top;
+  const [tx, ty] = getHandleCoordsByPosition(
+    target,
+    "target",
+    targetPos,
+    targetHandle
+  );
 
   return {
     sx,
