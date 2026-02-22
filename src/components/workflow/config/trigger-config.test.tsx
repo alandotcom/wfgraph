@@ -107,7 +107,7 @@ describe("TriggerConfig webhook sections", () => {
     });
   });
 
-  it("loads blank sample payload templates without default values", async () => {
+  it("loads sample payload templates with concrete default values", async () => {
     let latestConfig: Record<string, unknown> = {
       triggerType: "Webhook",
       webhookMockRequest: JSON.stringify({
@@ -148,13 +148,13 @@ describe("TriggerConfig webhook sections", () => {
 
       const parsedPayload = JSON.parse(rawPayload as string);
       expect(parsedPayload).toEqual({
-        type: "",
-        timestamp: "",
+        type: "appointment.rescheduled",
+        timestamp: "2026-02-11T19:00:00Z",
         data: {
-          id: "",
-          startsAt: "",
-          timezone: "",
-          status: "",
+          id: "appt_123",
+          startsAt: "2026-02-13T10:00:00-05:00",
+          timezone: "America/New_York",
+          status: "rescheduled",
         },
       });
     });
