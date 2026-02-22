@@ -3,6 +3,7 @@
  */
 
 import { getErrorMessage } from "@/shared/utils";
+import { validateWorkflowOutputAgainstSchema } from "@/shared/workflow/schema-validation";
 import { type StepInput, withStepLogging } from "./step-handler";
 
 type HttpRequestResult =
@@ -14,6 +15,7 @@ export type HttpRequestInput = StepInput & {
   httpMethod: string;
   httpHeaders?: string;
   httpBody?: string;
+  httpOutputSchema?: string;
 };
 
 const HTTP_REQUEST_TIMEOUT_MS = 15_000;
@@ -114,7 +116,21 @@ async function httpRequest(
       }
 
       const data = await parseResponse(response);
-      return { success: true, data, status: response.status };
+      const output = { success: true as const, data, status: response.status };
+      const schemaValidation = validateWorkflowOutputAgainstSchema({
+        schemaValue: input.httpOutputSchema,
+        output,
+        contextLabel: "HTTP Request",
+      });
+
+      if (!schemaValidation.ok) {
+        return {
+          success: false,
+          error: schemaValidation.error,
+        };
+      }
+
+      return output;
     } catch (error) {
       if (attempt < HTTP_REQUEST_MAX_ATTEMPTS) {
         return runAttempt(attempt + 1);

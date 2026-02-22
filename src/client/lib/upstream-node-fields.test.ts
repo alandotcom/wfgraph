@@ -57,7 +57,16 @@ describe("upstream-node-fields", () => {
         id: "http-1",
         type: "action",
         label: "HTTP",
-        config: { actionType: "HTTP Request" },
+        config: {
+          actionType: "HTTP Request",
+          httpOutputSchema: JSON.stringify([
+            {
+              name: "data",
+              type: "object",
+              fields: [{ name: "total", type: "number" }],
+            },
+          ]),
+        },
       }),
       createNode({
         id: "wait-1",
@@ -97,6 +106,7 @@ describe("upstream-node-fields", () => {
     });
 
     expect(fields.some((field) => field.path === "data.id")).toBe(true);
+    expect(fields.some((field) => field.path === "data.total")).toBe(true);
     expect(fields.some((field) => field.path === "status")).toBe(true);
   });
 

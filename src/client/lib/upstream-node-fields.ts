@@ -145,6 +145,23 @@ function readSchemaFields(schemaString: string | undefined): NodeOutputField[] {
   return schemaToFields(schema);
 }
 
+function getHttpRequestOutputFields(
+  config: Record<string, unknown> | undefined
+): NodeOutputField[] {
+  const outputSchemaFields = readSchemaFields(
+    readOutputSchemaString(config, "httpOutputSchema")
+  );
+
+  if (outputSchemaFields.length === 0) {
+    return DEFAULT_HTTP_OUTPUT_FIELDS;
+  }
+
+  return dedupeNodeOutputFields([
+    ...DEFAULT_HTTP_OUTPUT_FIELDS,
+    ...outputSchemaFields,
+  ]);
+}
+
 function getDatabaseQueryOutputFields(
   config: Record<string, unknown> | undefined
 ): NodeOutputField[] {
@@ -218,7 +235,7 @@ export function getNodeOutputFields(node: WorkflowNode): NodeOutputField[] {
   const actionType = readConfigString(node.data.config, "actionType");
 
   if (actionType === "HTTP Request") {
-    return DEFAULT_HTTP_OUTPUT_FIELDS;
+    return getHttpRequestOutputFields(node.data.config);
   }
 
   if (actionType === "Database Query") {

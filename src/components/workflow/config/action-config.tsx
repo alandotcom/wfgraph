@@ -77,9 +77,12 @@ function isSchemaEditorMode(value: string): value is SchemaEditorMode {
   return value === "builder" || value === "json";
 }
 
-function readDatabaseOutputSchema(config: Record<string, unknown>): string {
-  const dbOutputSchema = config.dbOutputSchema;
-  return typeof dbOutputSchema === "string" ? dbOutputSchema : "";
+function readOutputSchema(
+  config: Record<string, unknown>,
+  key: "dbOutputSchema" | "httpOutputSchema"
+): string {
+  const schema = config[key];
+  return typeof schema === "string" ? schema : "";
 }
 
 function OptionLogo({
@@ -109,19 +112,20 @@ function OptionLogo({
   );
 }
 
-// Database Query fields component
-function DatabaseQueryFields({
+function OutputSchemaEditor({
   config,
+  outputSchemaKey,
   onUpdateConfig,
   disabled,
 }: {
   config: Record<string, unknown>;
+  outputSchemaKey: "dbOutputSchema" | "httpOutputSchema";
   onUpdateConfig: (key: string, value: unknown) => void;
   disabled: boolean;
 }) {
   const [schemaEditorMode, setSchemaEditorMode] =
     useState<SchemaEditorMode>("builder");
-  const schemaValue = readDatabaseOutputSchema(config);
+  const schemaValue = readOutputSchema(config, outputSchemaKey);
   const schema = useMemo(
     () => parseWorkflowSchemaFieldsString(schemaValue),
     [schemaValue]
@@ -138,7 +142,7 @@ function DatabaseQueryFields({
     setSchemaJsonDraft(nextValue);
 
     if (!nextValue.trim()) {
-      onUpdateConfig("dbOutputSchema", "");
+      onUpdateConfig(outputSchemaKey, "");
       setSchemaJsonError("");
       return;
     }
@@ -154,13 +158,86 @@ function DatabaseQueryFields({
         return;
       }
 
-      onUpdateConfig("dbOutputSchema", JSON.stringify(parsedSchema));
+      onUpdateConfig(outputSchemaKey, JSON.stringify(parsedSchema));
       setSchemaJsonError("");
     } catch {
       setSchemaJsonError("Schema is not valid JSON.");
     }
   };
 
+  return (
+    <div className="space-y-2">
+      <Label>Output Schema (Optional)</Label>
+      <Tabs
+        onValueChange={(value) => {
+          if (!isSchemaEditorMode(value)) {
+            return;
+          }
+
+          setSchemaEditorMode(value);
+          if (value === "json") {
+            setSchemaJsonDraft(schemaJsonValue);
+            setSchemaJsonError("");
+          }
+        }}
+        value={schemaEditorMode}
+      >
+        <TabsList className="grid w-full max-w-[280px] grid-cols-2">
+          <TabsTrigger value="builder">Builder</TabsTrigger>
+          <TabsTrigger value="json">JSON Schema</TabsTrigger>
+        </TabsList>
+        <TabsContent className="space-y-3" value="builder">
+          <SchemaBuilder
+            disabled={disabled}
+            onChange={(nextSchema) =>
+              onUpdateConfig(outputSchemaKey, JSON.stringify(nextSchema))
+            }
+            schema={schema}
+          />
+        </TabsContent>
+        <TabsContent className="space-y-3" value="json">
+          <div className="overflow-hidden rounded-md border">
+            <CodeEditor
+              defaultLanguage="json"
+              height="230px"
+              onChange={(value) => handleSchemaJsonChange(value || "")}
+              options={{
+                minimap: { enabled: false },
+                lineNumbers: "on",
+                scrollBeyondLastLine: false,
+                fontSize: 12,
+                readOnly: disabled,
+                wordWrap: "on",
+              }}
+              value={schemaJsonDraft}
+            />
+          </div>
+          <div className="min-h-5">
+            {schemaJsonError ? (
+              <p className="text-destructive text-xs">{schemaJsonError}</p>
+            ) : (
+              <p className="text-muted-foreground text-xs">
+                Changes auto-apply when JSON is valid. Supports top-level JSON
+                Schema <code>properties</code>.
+              </p>
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+// Database Query fields component
+function DatabaseQueryFields({
+  config,
+  onUpdateConfig,
+  disabled,
+}: {
+  config: Record<string, unknown>;
+  onUpdateConfig: (key: string, value: unknown) => void;
+  disabled: boolean;
+}) {
   return (
     <>
       <div className="space-y-2">
@@ -186,65 +263,12 @@ function DatabaseQueryFields({
           execute this query.
         </p>
       </div>
-      <div className="space-y-2">
-        <Label>Output Schema (Optional)</Label>
-        <Tabs
-          onValueChange={(value) => {
-            if (!isSchemaEditorMode(value)) {
-              return;
-            }
-
-            setSchemaEditorMode(value);
-            if (value === "json") {
-              setSchemaJsonDraft(schemaJsonValue);
-              setSchemaJsonError("");
-            }
-          }}
-          value={schemaEditorMode}
-        >
-          <TabsList className="grid w-full max-w-[280px] grid-cols-2">
-            <TabsTrigger value="builder">Builder</TabsTrigger>
-            <TabsTrigger value="json">JSON Schema</TabsTrigger>
-          </TabsList>
-          <TabsContent className="space-y-3" value="builder">
-            <SchemaBuilder
-              disabled={disabled}
-              onChange={(nextSchema) =>
-                onUpdateConfig("dbOutputSchema", JSON.stringify(nextSchema))
-              }
-              schema={schema}
-            />
-          </TabsContent>
-          <TabsContent className="space-y-3" value="json">
-            <div className="overflow-hidden rounded-md border">
-              <CodeEditor
-                defaultLanguage="json"
-                height="230px"
-                onChange={(value) => handleSchemaJsonChange(value || "")}
-                options={{
-                  minimap: { enabled: false },
-                  lineNumbers: "on",
-                  scrollBeyondLastLine: false,
-                  fontSize: 12,
-                  readOnly: disabled,
-                  wordWrap: "on",
-                }}
-                value={schemaJsonDraft}
-              />
-            </div>
-            <div className="min-h-5">
-              {schemaJsonError ? (
-                <p className="text-destructive text-xs">{schemaJsonError}</p>
-              ) : (
-                <p className="text-muted-foreground text-xs">
-                  Changes auto-apply when JSON is valid. Supports top-level JSON
-                  Schema <code>properties</code>.
-                </p>
-              )}
-            </div>
-          </TabsContent>
-        </Tabs>
-      </div>
+      <OutputSchemaEditor
+        config={config}
+        disabled={disabled}
+        onUpdateConfig={onUpdateConfig}
+        outputSchemaKey="dbOutputSchema"
+      />
     </>
   );
 }
@@ -336,6 +360,12 @@ function HttpRequestFields({
           </p>
         )}
       </div>
+      <OutputSchemaEditor
+        config={config}
+        disabled={disabled}
+        onUpdateConfig={onUpdateConfig}
+        outputSchemaKey="httpOutputSchema"
+      />
     </>
   );
 }
