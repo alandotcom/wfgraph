@@ -68,6 +68,28 @@ function validateConditionBranchEdges(input: {
   return null;
 }
 
+function validateSingleIncomingEdgePerNode(input: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}): string | null {
+  const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
+  const incomingEdgeByTarget = new Map<string, WorkflowEdge>();
+
+  for (const edge of input.edges) {
+    const existingIncomingEdge = incomingEdgeByTarget.get(edge.target);
+    if (!existingIncomingEdge) {
+      incomingEdgeByTarget.set(edge.target, edge);
+      continue;
+    }
+
+    const targetNode = nodeById.get(edge.target);
+    const targetLabel = targetNode ? getNodeLabel(targetNode) : edge.target;
+    return `Node "${targetLabel}" cannot have multiple incoming edges (found "${existingIncomingEdge.id}" and "${edge.id}")`;
+  }
+
+  return null;
+}
+
 export type WorkflowGraphValidationResult =
   | {
       valid: true;
@@ -190,6 +212,15 @@ export function validateWorkflowGraph(
     return {
       valid: false,
       error: conditionBranchValidationError,
+    };
+  }
+
+  const incomingEdgeValidationError =
+    validateSingleIncomingEdgePerNode(graphData);
+  if (incomingEdgeValidationError) {
+    return {
+      valid: false,
+      error: incomingEdgeValidationError,
     };
   }
 

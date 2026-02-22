@@ -312,22 +312,33 @@ export function WorkflowCanvas() {
 
   const isValidConnection = useCallback(
     (connection: XYFlowConnection | XYFlowEdge) => {
+      const sourceNodeId = connection.source;
+      const targetNodeId = connection.target;
+
       // Ensure we have both source and target
-      if (!(connection.source && connection.target)) {
+      if (!(sourceNodeId && targetNodeId)) {
         return false;
       }
 
       // Prevent self-connections
-      if (connection.source === connection.target) {
+      if (sourceNodeId === targetNodeId) {
         return false;
       }
 
-      // Ensure connection is from source handle to target handle
-      // sourceHandle should be defined if connecting from a specific handle
-      // targetHandle should be defined if connecting to a specific handle
+      const connectionId =
+        "id" in connection && typeof connection.id === "string"
+          ? connection.id
+          : null;
+      const conflictingIncomingEdge = edges.find(
+        (edge) => edge.target === targetNodeId && edge.id !== connectionId
+      );
+      if (conflictingIncomingEdge) {
+        return false;
+      }
+
       return true;
     },
-    []
+    [edges]
   );
 
   const inferConditionBranch = useCallback(
@@ -375,6 +386,10 @@ export function WorkflowCanvas() {
         return;
       }
 
+      if (!isValidConnection(connection)) {
+        return;
+      }
+
       const sourceHandle = normalizeSourceHandleForConnection(
         connection.source,
         connection.sourceHandle
@@ -392,6 +407,7 @@ export function WorkflowCanvas() {
     },
     [
       normalizeSourceHandleForConnection,
+      isValidConnection,
       setEdges,
       setHasUnsavedChanges,
       triggerAutosave,
@@ -484,6 +500,21 @@ export function WorkflowCanvas() {
         return;
       }
 
+      const fromSource = connectingHandleType.current === "source";
+      if (
+        !(
+          fromSource ||
+          isValidConnection({
+            source: "__new_node__",
+            target: sourceNodeId,
+            sourceHandle: null,
+            targetHandle: null,
+          })
+        )
+      ) {
+        return;
+      }
+
       const { adjustedX, adjustedY } = calculateMenuPosition(
         event,
         clientX,
@@ -537,7 +568,6 @@ export function WorkflowCanvas() {
       }, 50);
 
       // Create connection from the source node to the new node
-      const fromSource = connectingHandleType.current === "source";
       const sourceId = fromSource ? sourceNodeId : newNode.id;
       const targetId = fromSource ? newNode.id : sourceNodeId;
       const sourceHandle = normalizeSourceHandleForConnection(
@@ -546,18 +576,12 @@ export function WorkflowCanvas() {
       );
       const targetHandle = fromSource ? null : connectingHandleId.current;
 
-      const newEdge = {
-        id: nanoid(),
+      onConnect({
         source: sourceId,
         target: targetId,
         sourceHandle,
         targetHandle,
-        type: "animated",
-      };
-      setEdges((currentEdges) => [...currentEdges, newEdge]);
-      setHasUnsavedChanges(true);
-      // Trigger immediate autosave for the new edge
-      triggerAutosave({ immediate: true });
+      });
 
       // Set flag to prevent immediate deselection
       justCreatedNodeFromConnection.current = true;
@@ -569,13 +593,12 @@ export function WorkflowCanvas() {
       calculateMenuPosition,
       screenToFlowPosition,
       addNode,
-      setEdges,
       setNodes,
       setSelectedNode,
       setActiveTab,
-      setHasUnsavedChanges,
-      triggerAutosave,
       normalizeSourceHandleForConnection,
+      onConnect,
+      isValidConnection,
     ]
   );
 

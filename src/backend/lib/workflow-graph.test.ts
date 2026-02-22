@@ -224,4 +224,28 @@ describe("validateWorkflowGraph", () => {
       expect(result.error).toContain("Only Condition nodes");
     }
   });
+
+  it("rejects graphs where a node has more than one incoming edge", () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createBaseTriggerNode("trigger_1"),
+        createActionNode("action_1"),
+        createActionNode("action_2"),
+        createActionNode("action_target"),
+      ],
+      edges: [
+        createEdge("trigger_1", "action_1", "edge_trigger_action_1"),
+        createEdge("trigger_1", "action_2", "edge_trigger_action_2"),
+        createEdge("action_1", "action_target", "edge_action_1_target"),
+        createEdge("action_2", "action_target", "edge_action_2_target"),
+      ],
+    });
+
+    const result = validateWorkflowGraph(graph);
+
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.error).toContain("multiple incoming edges");
+    }
+  });
 });
