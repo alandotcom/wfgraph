@@ -333,7 +333,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
       <div className="flex h-full max-h-[80vh] flex-col">
         <SmartOverlayHeader overlayId={overlayId} title="Connection" />
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-6 pt-4 pb-6">
+        <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-6 pt-4 pb-6 [scrollbar-gutter:stable_both-edges]">
           <div className="space-y-2">
             <Label htmlFor="edge-id">Connection ID</Label>
             <Input disabled id="edge-id" value={selectedEdge.id} />
@@ -368,7 +368,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
       <div className="flex h-full max-h-[80vh] flex-col">
         <SmartOverlayHeader overlayId={overlayId} title={getTabTitle()} />
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
           {validWorkflowTab === "properties" && (
             <div className="space-y-4 px-6 pt-4 pb-6">
               <div className="space-y-2">
@@ -442,7 +442,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
                   <Eraser className="size-4" />
                 </Button>
               </div>
-              <div className="flex-1 overflow-y-auto p-4">
+              <div className="flex-1 overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable_both-edges]">
                 <WorkflowRuns
                   isActive={validWorkflowTab === "runs"}
                   onRefreshRef={refreshRunsRef}
@@ -489,7 +489,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
     <div className="flex h-full max-h-[80vh] flex-col">
       <SmartOverlayHeader overlayId={overlayId} title={getTabTitle()} />
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
         {activeTab === "properties" && (
           <div className="space-y-4 px-6 pt-4 pb-6">
             {selectedNode.data.type === "action" &&
@@ -612,7 +612,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
                 Clear All
               </Button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable_both-edges]">
               <WorkflowRuns
                 isActive={activeTab === "runs"}
                 onRefreshRef={refreshRunsRef}

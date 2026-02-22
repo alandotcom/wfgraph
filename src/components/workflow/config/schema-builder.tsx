@@ -107,7 +107,7 @@ export function SchemaBuilder({
 
   const addField = () => {
     const nextId = nanoid();
-    onChange([...schema, { id: nextId, name: "", type: "string" }]);
+    onChange([...schema, { id: nextId, name: "property", type: "string" }]);
     setDetailsExpanded(nextId, false);
   };
 

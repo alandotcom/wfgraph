@@ -48,6 +48,7 @@ describe("SchemaBuilder", () => {
 
     await waitFor(() => {
       expect(latestSchema.length).toBe(1);
+      expect(latestSchema[0]?.name).toBe("property");
       expect(latestSchema[0]?.type).toBe("string");
     });
   });

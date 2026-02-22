@@ -662,7 +662,7 @@ export const PanelInner = () => {
 
         {/* Properties tab */}
         {validActiveTab === "properties" ? (
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
             {renderPropertiesContent()}
           </div>
         ) : null}
@@ -686,7 +686,7 @@ export const PanelInner = () => {
                 </Button>
               </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
               <div className="space-y-4 p-4">
                 <WorkflowRuns
                   isActive={validActiveTab === "runs"}
