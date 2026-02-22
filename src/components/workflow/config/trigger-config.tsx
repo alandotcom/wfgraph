@@ -50,7 +50,8 @@ type WebhookPreset = {
 type SchemaEditorMode = "builder" | "json";
 type WebhookSectionKey =
   | "endpoint"
-  | "schema"
+  | "requestSchema"
+  | "outputSchema"
   | "routing"
   | "payload"
   | "summary";
@@ -59,7 +60,8 @@ type WebhookSectionState = Record<WebhookSectionKey, boolean>;
 
 const DEFAULT_WEBHOOK_SECTION_STATE: WebhookSectionState = {
   endpoint: true,
-  schema: true,
+  requestSchema: true,
+  outputSchema: false,
   routing: false,
   payload: false,
   summary: false,
@@ -124,17 +126,26 @@ function readConfigString(
   return typeof value === "string" ? value : fallback;
 }
 
-function readSchema(config: Record<string, unknown>): SchemaField[] {
-  if (typeof config.webhookSchema !== "string" || !config.webhookSchema) {
+function readSchemaFromConfigKey(
+  config: Record<string, unknown>,
+  key: string
+): SchemaField[] {
+  if (typeof config[key] !== "string" || !config[key]) {
     return [];
   }
 
   try {
-    const parsed = JSON.parse(config.webhookSchema);
+    const parsed = JSON.parse(config[key]);
     return parseWorkflowSchemaFieldsOrJsonSchema(parsed) ?? [];
   } catch {
     return [];
   }
+}
+
+function readWebhookOutputSchema(
+  config: Record<string, unknown>
+): SchemaField[] {
+  return readSchemaFromConfigKey(config, "webhookOutputSchema");
 }
 
 function isSchemaEditorMode(value: string): value is SchemaEditorMode {
@@ -331,7 +342,9 @@ export function TriggerConfig({
   disabled,
   workflowId,
 }: TriggerConfigProps) {
-  const [schemaEditorMode, setSchemaEditorMode] =
+  const [requestSchemaEditorMode, setRequestSchemaEditorMode] =
+    useState<SchemaEditorMode>("builder");
+  const [outputSchemaEditorMode, setOutputSchemaEditorMode] =
     useState<SchemaEditorMode>("builder");
   const triggerType = readConfigString(config, "triggerType", "Webhook");
   const runtimeTriggers = useMemo(
@@ -371,21 +384,41 @@ export function TriggerConfig({
     "scheduleTimezone",
     "America/New_York"
   );
-  const schema = readSchema(config);
-  const schemaJsonValue = useMemo(
+  const requestSchema = readSchemaFromConfigKey(config, "webhookSchema");
+  const requestSchemaJsonValue = useMemo(
     () =>
-      JSON.stringify(workflowSchemaFieldsToJsonSchemaDocument(schema), null, 2),
-    [schema]
+      JSON.stringify(
+        workflowSchemaFieldsToJsonSchemaDocument(requestSchema),
+        null,
+        2
+      ),
+    [requestSchema]
   );
-  const [schemaJsonDraft, setSchemaJsonDraft] = useState(schemaJsonValue);
-  const [schemaJsonError, setSchemaJsonError] = useState("");
+  const outputSchema = readWebhookOutputSchema(config);
+  const outputSchemaJsonValue = useMemo(
+    () =>
+      JSON.stringify(
+        workflowSchemaFieldsToJsonSchemaDocument(outputSchema),
+        null,
+        2
+      ),
+    [outputSchema]
+  );
+  const [requestSchemaJsonDraft, setRequestSchemaJsonDraft] = useState(
+    requestSchemaJsonValue
+  );
+  const [requestSchemaJsonError, setRequestSchemaJsonError] = useState("");
+  const [outputSchemaJsonDraft, setOutputSchemaJsonDraft] = useState(
+    outputSchemaJsonValue
+  );
+  const [outputSchemaJsonError, setOutputSchemaJsonError] = useState("");
   const [webhookSections, setWebhookSections] = useState<WebhookSectionState>(
     DEFAULT_WEBHOOK_SECTION_STATE
   );
 
   const schemaPathOptions = useMemo(
-    () => flattenSchemaPathOptions(schema),
-    [schema]
+    () => flattenSchemaPathOptions(requestSchema),
+    [requestSchema]
   );
   const schemaPaths = useMemo(
     () => schemaPathOptions.map((option) => option.path),
@@ -478,7 +511,7 @@ export function TriggerConfig({
       configItems.push("Entity ID field path is empty.");
     }
 
-    if (schema.length === 0) {
+    if (requestSchema.length === 0) {
       configItems.push(
         "Define a request schema first, then pick routing fields from that schema."
       );
@@ -554,7 +587,7 @@ export function TriggerConfig({
         );
       }
 
-      if (schema.length > 0) {
+      if (requestSchema.length > 0) {
         const missingSchemaPaths = schemaPaths.filter(
           (path) =>
             getValueByPath(parsedMockRequest.payload, path) === undefined
@@ -579,7 +612,7 @@ export function TriggerConfig({
     eventPath,
     parsedMockRequest.error,
     parsedMockRequest.payload,
-    schema,
+    requestSchema,
     schemaPaths,
     updateEvents,
   ]);
@@ -613,6 +646,7 @@ export function TriggerConfig({
 
     const inferredSchema = inferSchemaFromPayload(preset.payload);
     onUpdateConfig("webhookSchema", JSON.stringify(inferredSchema));
+    onUpdateConfig("webhookOutputSchema", JSON.stringify(inferredSchema));
 
     toast.success(`${preset.label} example loaded (schema synced)`);
   };
@@ -621,12 +655,12 @@ export function TriggerConfig({
     onUpdateConfig(key, value);
   };
 
-  const handleSchemaJsonChange = (nextValue: string) => {
-    setSchemaJsonDraft(nextValue);
+  const handleRequestSchemaJsonChange = (nextValue: string) => {
+    setRequestSchemaJsonDraft(nextValue);
 
     if (!nextValue.trim()) {
       onUpdateConfig("webhookSchema", "");
-      setSchemaJsonError("");
+      setRequestSchemaJsonError("");
       return;
     }
 
@@ -635,16 +669,43 @@ export function TriggerConfig({
       const parsedSchema = parseWorkflowSchemaFieldsOrJsonSchema(parsed);
 
       if (!parsedSchema) {
-        setSchemaJsonError(
+        setRequestSchemaJsonError(
           "Schema must be either a field array or a JSON Schema object with top-level properties."
         );
         return;
       }
 
       onUpdateConfig("webhookSchema", JSON.stringify(parsedSchema));
-      setSchemaJsonError("");
+      setRequestSchemaJsonError("");
     } catch {
-      setSchemaJsonError("Schema is not valid JSON.");
+      setRequestSchemaJsonError("Schema is not valid JSON.");
+    }
+  };
+
+  const handleOutputSchemaJsonChange = (nextValue: string) => {
+    setOutputSchemaJsonDraft(nextValue);
+
+    if (!nextValue.trim()) {
+      onUpdateConfig("webhookOutputSchema", "");
+      setOutputSchemaJsonError("");
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(nextValue);
+      const parsedSchema = parseWorkflowSchemaFieldsOrJsonSchema(parsed);
+
+      if (!parsedSchema) {
+        setOutputSchemaJsonError(
+          "Schema must be either a field array or a JSON Schema object with top-level properties."
+        );
+        return;
+      }
+
+      onUpdateConfig("webhookOutputSchema", JSON.stringify(parsedSchema));
+      setOutputSchemaJsonError("");
+    } catch {
+      setOutputSchemaJsonError("Schema is not valid JSON.");
     }
   };
 
@@ -781,8 +842,10 @@ export function TriggerConfig({
             <div className="p-2">
               <WebhookConfigSection
                 description="Define the request contract used by routing and autocomplete."
-                onOpenChange={(open) => setWebhookSectionOpen("schema", open)}
-                open={webhookSections.schema}
+                onOpenChange={(open) =>
+                  setWebhookSectionOpen("requestSchema", open)
+                }
+                open={webhookSections.requestSchema}
                 title="Request Schema"
               >
                 <Tabs
@@ -790,13 +853,13 @@ export function TriggerConfig({
                     if (!isSchemaEditorMode(value)) {
                       return;
                     }
-                    setSchemaEditorMode(value);
+                    setRequestSchemaEditorMode(value);
                     if (value === "json") {
-                      setSchemaJsonDraft(schemaJsonValue);
-                      setSchemaJsonError("");
+                      setRequestSchemaJsonDraft(requestSchemaJsonValue);
+                      setRequestSchemaJsonError("");
                     }
                   }}
-                  value={schemaEditorMode}
+                  value={requestSchemaEditorMode}
                 >
                   <TabsList className="grid w-full max-w-[280px] grid-cols-2">
                     <TabsTrigger value="builder">Builder</TabsTrigger>
@@ -811,7 +874,7 @@ export function TriggerConfig({
                           JSON.stringify(nextSchema)
                         )
                       }
-                      schema={schema}
+                      schema={requestSchema}
                     />
                   </TabsContent>
                   <TabsContent className="space-y-3" value="json">
@@ -820,7 +883,7 @@ export function TriggerConfig({
                         defaultLanguage="json"
                         height="230px"
                         onChange={(value) =>
-                          handleSchemaJsonChange(value || "")
+                          handleRequestSchemaJsonChange(value || "")
                         }
                         options={{
                           minimap: { enabled: false },
@@ -830,13 +893,89 @@ export function TriggerConfig({
                           readOnly: disabled,
                           wordWrap: "on",
                         }}
-                        value={schemaJsonDraft}
+                        value={requestSchemaJsonDraft}
                       />
                     </div>
                     <div className="min-h-5">
-                      {schemaJsonError ? (
+                      {requestSchemaJsonError ? (
                         <p className="text-destructive text-xs">
-                          {schemaJsonError}
+                          {requestSchemaJsonError}
+                        </p>
+                      ) : (
+                        <p className="text-muted-foreground text-xs">
+                          Changes auto-apply when JSON is valid. Supports
+                          top-level JSON Schema <code>properties</code>.
+                        </p>
+                      )}
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </WebhookConfigSection>
+            </div>
+
+            <Separator />
+
+            <div className="p-2">
+              <WebhookConfigSection
+                description="Define the trigger output contract consumed by downstream actions."
+                onOpenChange={(open) =>
+                  setWebhookSectionOpen("outputSchema", open)
+                }
+                open={webhookSections.outputSchema}
+                title="Output Schema"
+              >
+                <Tabs
+                  onValueChange={(value) => {
+                    if (!isSchemaEditorMode(value)) {
+                      return;
+                    }
+                    setOutputSchemaEditorMode(value);
+                    if (value === "json") {
+                      setOutputSchemaJsonDraft(outputSchemaJsonValue);
+                      setOutputSchemaJsonError("");
+                    }
+                  }}
+                  value={outputSchemaEditorMode}
+                >
+                  <TabsList className="grid w-full max-w-[280px] grid-cols-2">
+                    <TabsTrigger value="builder">Builder</TabsTrigger>
+                    <TabsTrigger value="json">JSON Schema</TabsTrigger>
+                  </TabsList>
+                  <TabsContent className="space-y-3" value="builder">
+                    <SchemaBuilder
+                      disabled={disabled}
+                      onChange={(nextSchema) =>
+                        onUpdateConfig(
+                          "webhookOutputSchema",
+                          JSON.stringify(nextSchema)
+                        )
+                      }
+                      schema={outputSchema}
+                    />
+                  </TabsContent>
+                  <TabsContent className="space-y-3" value="json">
+                    <div className="overflow-hidden rounded-md border">
+                      <CodeEditor
+                        defaultLanguage="json"
+                        height="230px"
+                        onChange={(value) =>
+                          handleOutputSchemaJsonChange(value || "")
+                        }
+                        options={{
+                          minimap: { enabled: false },
+                          lineNumbers: "on",
+                          scrollBeyondLastLine: false,
+                          fontSize: 12,
+                          readOnly: disabled,
+                          wordWrap: "on",
+                        }}
+                        value={outputSchemaJsonDraft}
+                      />
+                    </div>
+                    <div className="min-h-5">
+                      {outputSchemaJsonError ? (
+                        <p className="text-destructive text-xs">
+                          {outputSchemaJsonError}
                         </p>
                       ) : (
                         <p className="text-muted-foreground text-xs">

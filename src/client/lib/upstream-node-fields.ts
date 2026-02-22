@@ -29,6 +29,38 @@ function dedupeNodeOutputFields(fields: NodeOutputField[]): NodeOutputField[] {
   return Array.from(fieldsByPath.values());
 }
 
+const DEFAULT_HTTP_OUTPUT_FIELDS: NodeOutputField[] = [
+  { field: "data", description: "Response data", fieldType: "object" },
+  {
+    field: "status",
+    description: "HTTP status code",
+    fieldType: "number",
+  },
+];
+
+const DEFAULT_DATABASE_OUTPUT_FIELDS: NodeOutputField[] = [
+  { field: "rows", description: "Query result rows", fieldType: "array" },
+  {
+    field: "count",
+    description: "Number of rows",
+    fieldType: "number",
+  },
+];
+
+const DEFAULT_TRIGGER_OUTPUT_FIELDS: NodeOutputField[] = [
+  {
+    field: "triggered",
+    description: "Trigger status",
+    fieldType: "boolean",
+  },
+  {
+    field: "timestamp",
+    description: "Trigger timestamp",
+    fieldType: "timestamp",
+  },
+  { field: "input", description: "Input data", fieldType: "object" },
+];
+
 export type UpstreamField = NodeOutputField & {
   sourceNodeId: string;
   sourceNodeName: string;
@@ -93,6 +125,70 @@ function schemaToFields(
   return fields;
 }
 
+function readOutputSchemaString(
+  config: Record<string, unknown> | undefined,
+  outputSchemaKey: string
+): string | undefined {
+  return readConfigString(config, outputSchemaKey);
+}
+
+function readSchemaFields(schemaString: string | undefined): NodeOutputField[] {
+  if (!schemaString) {
+    return [];
+  }
+
+  const schema = parseWorkflowSchemaFieldsString(schemaString);
+  if (schema.length === 0) {
+    return [];
+  }
+
+  return schemaToFields(schema);
+}
+
+function getDatabaseQueryOutputFields(
+  config: Record<string, unknown> | undefined
+): NodeOutputField[] {
+  const outputSchemaFields = readSchemaFields(
+    readOutputSchemaString(config, "dbOutputSchema")
+  );
+
+  if (outputSchemaFields.length > 0) {
+    return outputSchemaFields;
+  }
+
+  return DEFAULT_DATABASE_OUTPUT_FIELDS;
+}
+
+function getTriggerOutputFields(node: WorkflowNode): NodeOutputField[] {
+  const triggerType = readConfigString(node.data.config, "triggerType");
+  const outputSchemaFields = readSchemaFields(
+    readOutputSchemaString(node.data.config, "webhookOutputSchema")
+  );
+
+  if (triggerType !== "Webhook" || outputSchemaFields.length === 0) {
+    return DEFAULT_TRIGGER_OUTPUT_FIELDS;
+  }
+
+  return dedupeNodeOutputFields([
+    ...DEFAULT_TRIGGER_OUTPUT_FIELDS,
+    ...outputSchemaFields,
+  ]);
+}
+
+function getPluginActionOutputFields(actionType: string): NodeOutputField[] {
+  const action = findActionById(actionType);
+  if (!(action?.outputFields && action.outputFields.length > 0)) {
+    return [];
+  }
+
+  return action.outputFields.map((field) => ({
+    field: field.field,
+    description: field.description,
+    fieldType: field.type,
+    fieldFormat: field.format,
+  }));
+}
+
 export function getNodeDisplayName(node: WorkflowNode): string {
   if (node.data.label) {
     return node.data.label;
@@ -122,75 +218,22 @@ export function getNodeOutputFields(node: WorkflowNode): NodeOutputField[] {
   const actionType = readConfigString(node.data.config, "actionType");
 
   if (actionType === "HTTP Request") {
-    return [
-      { field: "data", description: "Response data", fieldType: "object" },
-      {
-        field: "status",
-        description: "HTTP status code",
-        fieldType: "number",
-      },
-    ];
+    return DEFAULT_HTTP_OUTPUT_FIELDS;
   }
 
   if (actionType === "Database Query") {
-    const dbSchema = readConfigString(node.data.config, "dbSchema");
-    if (dbSchema) {
-      const schema = parseWorkflowSchemaFieldsString(dbSchema);
-      if (schema.length > 0) {
-        return schemaToFields(schema);
-      }
-    }
-
-    return [
-      { field: "rows", description: "Query result rows", fieldType: "array" },
-      {
-        field: "count",
-        description: "Number of rows",
-        fieldType: "number",
-      },
-    ];
+    return getDatabaseQueryOutputFields(node.data.config);
   }
 
   if (actionType) {
-    const action = findActionById(actionType);
-    if (action?.outputFields && action.outputFields.length > 0) {
-      return action.outputFields.map((field) => ({
-        field: field.field,
-        description: field.description,
-        fieldType: field.type,
-        fieldFormat: field.format,
-      }));
+    const pluginFields = getPluginActionOutputFields(actionType);
+    if (pluginFields.length > 0) {
+      return pluginFields;
     }
   }
 
   if (node.data.type === "trigger") {
-    const triggerType = readConfigString(node.data.config, "triggerType");
-    const webhookSchema = readConfigString(node.data.config, "webhookSchema");
-    const fallbackTriggerFields: NodeOutputField[] = [
-      {
-        field: "triggered",
-        description: "Trigger status",
-        fieldType: "boolean",
-      },
-      {
-        field: "timestamp",
-        description: "Trigger timestamp",
-        fieldType: "timestamp",
-      },
-      { field: "input", description: "Input data", fieldType: "object" },
-    ];
-
-    if (triggerType === "Webhook" && webhookSchema) {
-      const schema = parseWorkflowSchemaFieldsString(webhookSchema);
-      if (schema.length > 0) {
-        return dedupeNodeOutputFields([
-          ...fallbackTriggerFields,
-          ...schemaToFields(schema),
-        ]);
-      }
-    }
-
-    return fallbackTriggerFields;
+    return getTriggerOutputFields(node);
   }
 
   return [{ field: "data", description: "Output data" }];

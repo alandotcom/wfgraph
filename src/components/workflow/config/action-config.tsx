@@ -1,6 +1,6 @@
 import { useAtomValue, useSetAtom } from "jotai";
 import { HelpCircle, Plus, Settings, Zap } from "lucide-react";
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import {
   integrationsAtom,
   integrationsVersionAtom,
@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TemplateBadgeInput } from "@/components/ui/template-badge-input";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
 import {
@@ -37,7 +38,11 @@ import {
   type IntegrationType,
   isIntegrationType,
 } from "@/shared/types/integration";
-import { parseWorkflowSchemaFieldsString } from "@/shared/workflow/schema-codec";
+import {
+  parseWorkflowSchemaFieldsOrJsonSchema,
+  parseWorkflowSchemaFieldsString,
+  workflowSchemaFieldsToJsonSchemaDocument,
+} from "@/shared/workflow/schema-codec";
 import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
@@ -57,6 +62,8 @@ type CategoryActionOption = {
   integration?: string;
 };
 
+type SchemaEditorMode = "builder" | "json";
+
 function readConfigString(
   config: Record<string, unknown> | undefined,
   key: string,
@@ -64,6 +71,15 @@ function readConfigString(
 ): string {
   const value = config?.[key];
   return typeof value === "string" ? value : fallback;
+}
+
+function isSchemaEditorMode(value: string): value is SchemaEditorMode {
+  return value === "builder" || value === "json";
+}
+
+function readDatabaseOutputSchema(config: Record<string, unknown>): string {
+  const dbOutputSchema = config.dbOutputSchema;
+  return typeof dbOutputSchema === "string" ? dbOutputSchema : "";
 }
 
 function OptionLogo({
@@ -103,6 +119,48 @@ function DatabaseQueryFields({
   onUpdateConfig: (key: string, value: unknown) => void;
   disabled: boolean;
 }) {
+  const [schemaEditorMode, setSchemaEditorMode] =
+    useState<SchemaEditorMode>("builder");
+  const schemaValue = readDatabaseOutputSchema(config);
+  const schema = useMemo(
+    () => parseWorkflowSchemaFieldsString(schemaValue),
+    [schemaValue]
+  );
+  const schemaJsonValue = useMemo(
+    () =>
+      JSON.stringify(workflowSchemaFieldsToJsonSchemaDocument(schema), null, 2),
+    [schema]
+  );
+  const [schemaJsonDraft, setSchemaJsonDraft] = useState(schemaJsonValue);
+  const [schemaJsonError, setSchemaJsonError] = useState("");
+
+  const handleSchemaJsonChange = (nextValue: string) => {
+    setSchemaJsonDraft(nextValue);
+
+    if (!nextValue.trim()) {
+      onUpdateConfig("dbOutputSchema", "");
+      setSchemaJsonError("");
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(nextValue);
+      const parsedSchema = parseWorkflowSchemaFieldsOrJsonSchema(parsed);
+
+      if (!parsedSchema) {
+        setSchemaJsonError(
+          "Schema must be either a field array or a JSON Schema object with top-level properties."
+        );
+        return;
+      }
+
+      onUpdateConfig("dbOutputSchema", JSON.stringify(parsedSchema));
+      setSchemaJsonError("");
+    } catch {
+      setSchemaJsonError("Schema is not valid JSON.");
+    }
+  };
+
   return (
     <>
       <div className="space-y-2">
@@ -129,16 +187,63 @@ function DatabaseQueryFields({
         </p>
       </div>
       <div className="space-y-2">
-        <Label>Schema (Optional)</Label>
-        <SchemaBuilder
-          disabled={disabled}
-          onChange={(schema) =>
-            onUpdateConfig("dbSchema", JSON.stringify(schema))
-          }
-          schema={parseWorkflowSchemaFieldsString(
-            typeof config.dbSchema === "string" ? config.dbSchema : undefined
-          )}
-        />
+        <Label>Output Schema (Optional)</Label>
+        <Tabs
+          onValueChange={(value) => {
+            if (!isSchemaEditorMode(value)) {
+              return;
+            }
+
+            setSchemaEditorMode(value);
+            if (value === "json") {
+              setSchemaJsonDraft(schemaJsonValue);
+              setSchemaJsonError("");
+            }
+          }}
+          value={schemaEditorMode}
+        >
+          <TabsList className="grid w-full max-w-[280px] grid-cols-2">
+            <TabsTrigger value="builder">Builder</TabsTrigger>
+            <TabsTrigger value="json">JSON Schema</TabsTrigger>
+          </TabsList>
+          <TabsContent className="space-y-3" value="builder">
+            <SchemaBuilder
+              disabled={disabled}
+              onChange={(nextSchema) =>
+                onUpdateConfig("dbOutputSchema", JSON.stringify(nextSchema))
+              }
+              schema={schema}
+            />
+          </TabsContent>
+          <TabsContent className="space-y-3" value="json">
+            <div className="overflow-hidden rounded-md border">
+              <CodeEditor
+                defaultLanguage="json"
+                height="230px"
+                onChange={(value) => handleSchemaJsonChange(value || "")}
+                options={{
+                  minimap: { enabled: false },
+                  lineNumbers: "on",
+                  scrollBeyondLastLine: false,
+                  fontSize: 12,
+                  readOnly: disabled,
+                  wordWrap: "on",
+                }}
+                value={schemaJsonDraft}
+              />
+            </div>
+            <div className="min-h-5">
+              {schemaJsonError ? (
+                <p className="text-destructive text-xs">{schemaJsonError}</p>
+              ) : (
+                <p className="text-muted-foreground text-xs">
+                  Changes auto-apply when JSON is valid. Supports top-level JSON
+                  Schema <code>properties</code>.
+                </p>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </>
   );

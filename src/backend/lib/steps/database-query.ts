@@ -8,6 +8,7 @@
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sql";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
+import { validateWorkflowOutputAgainstSchema } from "@/shared/workflow/schema-validation";
 import { type StepInput, withStepLogging } from "./step-handler";
 
 type DatabaseQueryResult =
@@ -18,6 +19,7 @@ export type DatabaseQueryInput = StepInput & {
   integrationId?: string;
   dbQuery?: string;
   query?: string;
+  dbOutputSchema?: string;
 };
 
 function resolveQueryString(
@@ -113,10 +115,28 @@ async function databaseQuery(
     const result = await executeQuery(client, queryResult.queryString);
     await client.close();
 
-    return {
-      success: true,
+    const output = {
+      success: true as const,
       rows: result,
       count: Array.isArray(result) ? result.length : 0,
+    };
+    const schemaValidation = validateWorkflowOutputAgainstSchema({
+      schemaValue: input.dbOutputSchema,
+      output,
+      contextLabel: "Database Query",
+    });
+
+    if (!schemaValidation.ok) {
+      return {
+        success: false,
+        error: schemaValidation.error,
+      };
+    }
+
+    return {
+      success: output.success,
+      rows: output.rows,
+      count: output.count,
     };
   } catch (error) {
     await cleanupClient(client);

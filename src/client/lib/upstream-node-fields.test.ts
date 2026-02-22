@@ -44,7 +44,7 @@ describe("upstream-node-fields", () => {
         label: "Webhook",
         config: {
           triggerType: "Webhook",
-          webhookSchema: JSON.stringify([
+          webhookOutputSchema: JSON.stringify([
             {
               name: "data",
               type: "object",

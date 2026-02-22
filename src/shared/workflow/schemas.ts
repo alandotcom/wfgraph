@@ -6,6 +6,7 @@ export const webhookTriggerConfigSchema = z
   .object({
     triggerType: z.literal("Webhook"),
     webhookSchema: z.string().optional(),
+    webhookOutputSchema: z.string().optional(),
     webhookEventPath: z.string().optional(),
     webhookCorrelationPath: z.string().optional(),
     webhookCreateEvents: z.string().optional(),

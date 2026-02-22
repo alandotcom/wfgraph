@@ -29,6 +29,7 @@ import { getErrorMessageAsync } from "@/shared/utils";
 import { resolveWaitUntil } from "@/shared/utils/wait-time";
 import { normalizeConditionBranch } from "@/shared/workflow/condition-branch";
 import { toWorkflowGraphData } from "@/shared/workflow/graph";
+import { validateWorkflowOutputAgainstSchema } from "@/shared/workflow/schema-validation";
 import {
   evaluateWorkflowTrigger,
   resolveWorkflowTriggerDefinition,
@@ -1135,13 +1136,15 @@ export async function executeWorkflowCore(
     }
 
     try {
-      let result: ExecutionResult;
+      let result: ExecutionResult = {
+        success: false,
+        error: "Node execution did not produce a result.",
+      };
 
       if (node.data.type === "trigger") {
         namedNodeLogger.debug("Executing trigger node");
 
-        const config = node.data.config;
-        const configRecord = config;
+        const configRecord = node.data.config ?? {};
         const triggerDefinition =
           resolveWorkflowTriggerDefinition(configRecord);
         const webhookRuntimeConfig =
@@ -1196,24 +1199,47 @@ export async function executeWorkflowCore(
           });
         }
 
-        // Build context for logging
-        const triggerContext: StepContext = {
-          executionId,
-          nodeId: node.id,
-          nodeName,
-          nodeType: node.data.type,
-        };
+        let shouldExecuteTriggerStep = true;
 
-        // Execute trigger step (handles logging internally)
-        const triggerResult = await triggerStep({
-          triggerData,
-          _context: triggerContext,
-        });
+        if (!ignoreReason && triggerDefinition.runtime.type === "Webhook") {
+          const schemaValidation = validateWorkflowOutputAgainstSchema({
+            schemaValue: configRecord.webhookOutputSchema,
+            output: triggerData,
+            contextLabel: "Webhook trigger",
+          });
 
-        result = {
-          success: triggerResult.success,
-          data: triggerResult.data,
-        };
+          if (!schemaValidation.ok) {
+            result = {
+              success: false,
+              error: schemaValidation.error,
+            };
+            shouldExecuteTriggerStep = false;
+            namedNodeLogger.error("Webhook output schema validation failed", {
+              error: schemaValidation.error,
+            });
+          }
+        }
+
+        if (shouldExecuteTriggerStep) {
+          // Build context for logging
+          const triggerContext: StepContext = {
+            executionId,
+            nodeId: node.id,
+            nodeName,
+            nodeType: node.data.type,
+          };
+
+          // Execute trigger step (handles logging internally)
+          const triggerResult = await triggerStep({
+            triggerData,
+            _context: triggerContext,
+          });
+
+          result = {
+            success: triggerResult.success,
+            data: triggerResult.data,
+          };
+        }
       } else if (node.data.type === "action") {
         const config = node.data.config || {};
         const actionType = readConfigString(config, "actionType");
