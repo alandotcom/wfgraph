@@ -1,3 +1,5 @@
+import { omitBy } from "es-toolkit/object";
+import { isNil } from "es-toolkit/predicate";
 import twilio from "twilio";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import {
@@ -133,14 +135,15 @@ async function stepHandler(
     const message = await twilioClient.messages.create({
       to: input.smsTo,
       body: input.smsBody,
-      ...(senderFrom && { from: senderFrom }),
-      ...(senderMessagingServiceSid && {
-        messagingServiceSid: senderMessagingServiceSid,
-      }),
-      ...(input.smsStatusCallback && {
-        statusCallback: input.smsStatusCallback,
-      }),
-      ...(mediaUrls.length > 0 && { mediaUrl: mediaUrls }),
+      ...omitBy(
+        {
+          from: senderFrom || undefined,
+          messagingServiceSid: senderMessagingServiceSid || undefined,
+          statusCallback: input.smsStatusCallback || undefined,
+          mediaUrl: mediaUrls.length > 0 ? mediaUrls : undefined,
+        },
+        isNil
+      ),
     });
 
     return {

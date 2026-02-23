@@ -1,3 +1,5 @@
+import { omitBy } from "es-toolkit/object";
+import { isNil } from "es-toolkit/predicate";
 import { type CreateEmailOptions, Resend } from "resend";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import {
@@ -131,12 +133,17 @@ async function stepHandler(
       from: senderEmail,
       to: input.emailTo,
       subject: input.emailSubject,
-      ...(input.emailCc && { cc: input.emailCc }),
-      ...(input.emailBcc && { bcc: input.emailBcc }),
-      ...(input.emailReplyTo && { replyTo: input.emailReplyTo }),
-      ...(input.emailScheduledAt && { scheduledAt: input.emailScheduledAt }),
-      ...(input.emailTopicId && { topicId: input.emailTopicId }),
-      ...(input.emailTags && { tags: parseTags(input.emailTags) }),
+      ...omitBy(
+        {
+          cc: input.emailCc,
+          bcc: input.emailBcc,
+          replyTo: input.emailReplyTo,
+          scheduledAt: input.emailScheduledAt,
+          topicId: input.emailTopicId,
+          tags: input.emailTags ? parseTags(input.emailTags) : undefined,
+        },
+        isNil
+      ),
     };
 
     let payload: CreateEmailOptions;
@@ -155,9 +162,10 @@ async function stepHandler(
         ...basePayload,
         template: {
           id: input.emailTemplateId,
-          ...(input.emailTemplateVariables && {
-            variables: parseTemplateVariables(input.emailTemplateVariables),
-          }),
+          ...omitBy(
+            { variables: parseTemplateVariables(input.emailTemplateVariables) },
+            isNil
+          ),
         },
       };
     } else if (contentMode === "html") {
@@ -173,7 +181,7 @@ async function stepHandler(
       payload = {
         ...basePayload,
         html: input.emailHtml,
-        ...(input.emailBody && { text: input.emailBody }),
+        ...omitBy({ text: input.emailBody }, isNil),
       };
     } else {
       if (!input.emailBody) {
@@ -188,7 +196,7 @@ async function stepHandler(
       payload = {
         ...basePayload,
         text: input.emailBody,
-        ...(input.emailHtml && { html: input.emailHtml }),
+        ...omitBy({ html: input.emailHtml }, isNil),
       };
     }
 
