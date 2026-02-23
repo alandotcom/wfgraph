@@ -329,11 +329,15 @@ export function applyWaitAllowedHours(input: {
     };
   }
 
-  // Guaranteed non-null after validation
-  const startMinutes = parseTimeOfDayMinutes(
-    input.waitAllowedStartTime
-  ) as number;
-  const endMinutes = parseTimeOfDayMinutes(input.waitAllowedEndTime) as number;
+  const startMinutes = parseTimeOfDayMinutes(input.waitAllowedStartTime);
+  const endMinutes = parseTimeOfDayMinutes(input.waitAllowedEndTime);
+
+  if (startMinutes === null || endMinutes === null) {
+    return {
+      date: input.candidate,
+      error: "Invalid allowed-hours time format after validation.",
+    };
+  }
 
   return {
     date: applyDailyWindow(

@@ -361,9 +361,9 @@ function runLifecycleHandler<TPayload extends Record<string, unknown>>(input: {
   }
 }
 
-function buildInngestEventTriggerConfig(
-  input: CreateTriggerInputEvent<Record<string, unknown>>
-): InngestEventTriggerConfig {
+function buildInngestEventTriggerConfig<
+  TPayload extends Record<string, unknown>,
+>(input: CreateTriggerInputEvent<TPayload>): InngestEventTriggerConfig {
   const rawEvents = Array.isArray(input.event) ? input.event : [input.event];
   const eventNames = rawEvents.map((e) => e.trim());
 
@@ -428,9 +428,7 @@ export function createTrigger<TPayload extends Record<string, unknown>>(
 
   const inngestEventTrigger =
     input.event !== undefined
-      ? buildInngestEventTriggerConfig(
-          input as CreateTriggerInputEvent<Record<string, unknown>>
-        )
+      ? buildInngestEventTriggerConfig(input)
       : undefined;
 
   const executionType: TriggerExecutionType = inngestEventTrigger
