@@ -5,6 +5,7 @@ import {
   markExecutionRunning,
   markWaitStateStatus,
 } from "@/backend/lib/workflow-wait-state";
+import { parseCsvSet } from "@/shared/utils/csv";
 
 const logger = getAppLogger("workflow", "wait-resume");
 
@@ -20,7 +21,8 @@ export async function resumeMatchingWaitHooks(input: {
     metadata: Record<string, unknown> | null;
   }>;
 }) {
-  if (!input.eventType) {
+  const { eventType } = input;
+  if (!eventType) {
     return 0;
   }
 
@@ -32,12 +34,17 @@ export async function resumeMatchingWaitHooks(input: {
 
       const metadata = waitState.metadata ?? {};
 
+      const waitForEvents = parseCsvSet(metadata.waitForEvents);
+      if (waitForEvents.size > 0 && !waitForEvents.has(eventType)) {
+        return 0;
+      }
+
       try {
         await sendWorkflowWaitSignal({
           executionId: waitState.executionId,
           nodeId: waitState.nodeId,
           token: waitState.hookToken,
-          eventType: input.eventType,
+          eventType,
           correlationKey:
             typeof metadata.correlationKey === "string"
               ? metadata.correlationKey
@@ -60,9 +67,9 @@ export async function resumeMatchingWaitHooks(input: {
             workflowId: input.workflowId,
             executionId: waitState.executionId,
             eventType: "run_resumed",
-            message: `Run resumed from wait on ${input.eventType}`,
+            message: `Run resumed from wait on ${eventType}`,
             metadata: {
-              eventType: input.eventType,
+              eventType,
             },
           }),
         ]);
@@ -71,7 +78,7 @@ export async function resumeMatchingWaitHooks(input: {
       } catch (error) {
         logger.error("Failed to resume hook", {
           workflowId: input.workflowId,
-          eventType: input.eventType,
+          eventType,
           waitStateId: waitState.id,
           executionId: waitState.executionId,
           nodeId: waitState.nodeId,

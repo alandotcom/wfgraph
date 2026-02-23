@@ -293,4 +293,96 @@ describe("resumeMatchingWaitHooks", () => {
       },
     });
   });
+
+  describe("waitForEvents filtering", () => {
+    it("resumes when eventType matches one of the waitForEvents entries", async () => {
+      const result = await resumeMatchingWaitHooks({
+        workflowId: "workflow_1",
+        eventType: "appointment.confirmed",
+        payload: {},
+        waitStates: [
+          createWaitState("1", "exec_1", {
+            metadata: {
+              waitForEvents: "appointment.confirmed,appointment.cancelled",
+            },
+          }),
+        ],
+      });
+
+      expect(result).toBe(1);
+      expect(sendWorkflowWaitSignalMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("skips when eventType does not match any waitForEvents entry", async () => {
+      const result = await resumeMatchingWaitHooks({
+        workflowId: "workflow_1",
+        eventType: "appointment.rescheduled",
+        payload: {},
+        waitStates: [
+          createWaitState("1", "exec_1", {
+            metadata: {
+              waitForEvents: "appointment.confirmed,appointment.cancelled",
+            },
+          }),
+        ],
+      });
+
+      expect(result).toBe(0);
+      expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
+    });
+
+    it("resumes when waitForEvents is empty (matches any event)", async () => {
+      const result = await resumeMatchingWaitHooks({
+        workflowId: "workflow_1",
+        eventType: "anything.happened",
+        payload: {},
+        waitStates: [
+          createWaitState("1", "exec_1", {
+            metadata: { waitForEvents: "" },
+          }),
+        ],
+      });
+
+      expect(result).toBe(1);
+      expect(sendWorkflowWaitSignalMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("resumes when waitForEvents is not set in metadata", async () => {
+      const result = await resumeMatchingWaitHooks({
+        workflowId: "workflow_1",
+        eventType: "anything.happened",
+        payload: {},
+        waitStates: [
+          createWaitState("1", "exec_1", {
+            metadata: { correlationKey: "corr_1" },
+          }),
+        ],
+      });
+
+      expect(result).toBe(1);
+      expect(sendWorkflowWaitSignalMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("filters independently per wait state", async () => {
+      const result = await resumeMatchingWaitHooks({
+        workflowId: "workflow_1",
+        eventType: "appointment.confirmed",
+        payload: {},
+        waitStates: [
+          createWaitState("1", "exec_1", {
+            metadata: { waitForEvents: "appointment.confirmed" },
+          }),
+          createWaitState("2", "exec_2", {
+            metadata: { waitForEvents: "appointment.cancelled" },
+          }),
+          createWaitState("3", "exec_3", {
+            metadata: { waitForEvents: "" },
+          }),
+        ],
+      });
+
+      expect(result).toBe(2);
+      expect(sendWorkflowWaitSignalMock).toHaveBeenCalledTimes(2);
+    });
+  });
 });

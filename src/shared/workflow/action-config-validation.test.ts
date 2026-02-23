@@ -178,6 +178,32 @@ describe("getNodeMissingRequiredFields", () => {
     ]);
   });
 
+  it("accepts wait nodes with event mode (no required fields)", () => {
+    const result = getNodeMissingRequiredFields({
+      node: createActionNode({
+        actionType: "Wait",
+        waitMode: "event",
+      }),
+      resolveActionByType,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it("does not require delay fields when waitMode is event", () => {
+    const result = getNodeMissingRequiredFields({
+      node: createActionNode({
+        actionType: "Wait",
+        waitMode: "event",
+        waitDuration: "",
+        waitUntil: "",
+      }),
+      resolveActionByType,
+    });
+
+    expect(result).toBeNull();
+  });
+
   it("ignores disabled action nodes", () => {
     const result = getNodeMissingRequiredFields({
       node: createActionNode(

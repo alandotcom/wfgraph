@@ -129,7 +129,8 @@ function useWaitPreview(
   config: Record<string, unknown> | undefined
 ): WaitPreviewData | null {
   const waitMode = readConfigString(config, "waitMode", "delay");
-  const shouldShowWaitPreview = actionType === "Wait" && waitMode === "delay";
+  const shouldShowWaitPreview =
+    actionType === "Wait" && (waitMode === "delay" || waitMode === "event");
   const waitDuration = config?.waitDuration;
   const waitUntil = config?.waitUntil;
   const waitOffset = config?.waitOffset;
@@ -144,7 +145,7 @@ function useWaitPreview(
     hasTemplateExpression(waitOffset);
 
   const resolution = useMemo(() => {
-    if (!shouldShowWaitPreview || hasDynamicValue) {
+    if (!shouldShowWaitPreview || hasDynamicValue || waitMode === "event") {
       return null;
     }
 
@@ -157,6 +158,7 @@ function useWaitPreview(
   }, [
     shouldShowWaitPreview,
     hasDynamicValue,
+    waitMode,
     waitDuration,
     waitUntil,
     waitOffset,
@@ -165,6 +167,13 @@ function useWaitPreview(
 
   if (!shouldShowWaitPreview) {
     return null;
+  }
+
+  if (waitMode === "event") {
+    return {
+      countdown: "Waiting for event",
+      triggerTime: "Resumes when a correlated event arrives",
+    };
   }
 
   if (hasDynamicValue) {
@@ -241,7 +250,7 @@ function useRuntimeWaitPreview(
       ? runtimeInput.waitTimezone.trim()
       : undefined;
 
-  if (waitMode === "hook") {
+  if (waitMode === "hook" || waitMode === "event") {
     const timeoutResolution = resolveWaitUntil({
       now: startedAt,
       waitDuration: runtimeInput.waitTimeout,

@@ -616,12 +616,13 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   );
 }
 
-function HookWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
+function SharedHookWaitFields({
+  config,
+  onUpdateConfig,
+  disabled,
+}: WaitFieldProps) {
   return (
-    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <p className="font-medium text-xs uppercase tracking-wide">
-        Event-Based Wait
-      </p>
+    <>
       <div className="space-y-2">
         <Label htmlFor="waitForEvents">
           Resume when event is (comma separated)
@@ -630,11 +631,12 @@ function HookWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           disabled={disabled}
           id="waitForEvents"
           onChange={(value) => onUpdateConfig("waitForEvents", value)}
-          placeholder="event.update,event.confirmed"
+          placeholder="appointment.confirmed,appointment.cancelled"
           value={readConfigString(config, "waitForEvents")}
         />
         <p className="text-muted-foreground text-xs">
-          Leave empty to resume on any matching event for the same entity.
+          Leave empty to resume on any matching event for the same correlation
+          key.
         </p>
       </div>
 
@@ -652,7 +654,58 @@ function HookWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           Optional safety timeout if the expected event never arrives.
         </p>
       </div>
+    </>
+  );
+}
 
+function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
+  return (
+    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+      <p className="font-medium text-xs uppercase tracking-wide">
+        Wait for Event
+      </p>
+      <SharedHookWaitFields
+        config={config}
+        disabled={disabled}
+        onUpdateConfig={onUpdateConfig}
+      />
+      <div className="space-y-2">
+        <Label htmlFor="waitTimeoutBehavior">On timeout</Label>
+        <Select
+          disabled={disabled}
+          onValueChange={(value) =>
+            onUpdateConfig("waitTimeoutBehavior", value)
+          }
+          value={readConfigString(config, "waitTimeoutBehavior", "continue")}
+        >
+          <SelectTrigger className="w-full" id="waitTimeoutBehavior">
+            <SelectValue placeholder="Select timeout behavior" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="continue">Continue workflow</SelectItem>
+            <SelectItem value="skip">Skip remaining branch</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-muted-foreground text-xs">
+          Choose whether to continue downstream nodes or halt the branch when
+          the timeout expires.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function HookWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
+  return (
+    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+      <p className="font-medium text-xs uppercase tracking-wide">
+        Event-Based Wait
+      </p>
+      <SharedHookWaitFields
+        config={config}
+        disabled={disabled}
+        onUpdateConfig={onUpdateConfig}
+      />
       <div className="space-y-2">
         <Label htmlFor="waitHookToken">Explicit hook token (optional)</Label>
         <TemplateBadgeInput
@@ -688,17 +741,25 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="delay">Wait for time</SelectItem>
+            <SelectItem value="event">Wait for event</SelectItem>
             <SelectItem value="hook">Wait for webhook event</SelectItem>
           </SelectContent>
         </Select>
         <p className="text-muted-foreground text-xs">
-          Choose between time-based waiting or waiting for a follow-up webhook
-          event.
+          Time-based delay, correlated event, or explicit webhook hook.
         </p>
       </div>
 
       {waitMode === "delay" && (
         <DelayWaitFields
+          config={config}
+          disabled={disabled}
+          onUpdateConfig={onUpdateConfig}
+        />
+      )}
+
+      {waitMode === "event" && (
+        <EventWaitFields
           config={config}
           disabled={disabled}
           onUpdateConfig={onUpdateConfig}

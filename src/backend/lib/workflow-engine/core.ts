@@ -545,9 +545,12 @@ function executeWaitAction(input: {
     correlationKey?: string;
   };
 }): Promise<ExecutionResult> {
-  const waitModeRawOuter = input.config.waitMode;
+  const waitModeRawOuter =
+    typeof input.config.waitMode === "string"
+      ? input.config.waitMode.trim()
+      : "";
   const waitTypeOuter =
-    typeof waitModeRawOuter === "string" && waitModeRawOuter.trim() === "hook"
+    waitModeRawOuter === "hook" || waitModeRawOuter === "event"
       ? "hook"
       : "delay";
 
@@ -594,13 +597,12 @@ async function executeWaitActionInner(input: {
     };
   }
 
-  const waitModeRaw = config.waitMode;
-  const waitMode =
-    typeof waitModeRaw === "string" && waitModeRaw.trim()
-      ? waitModeRaw.trim()
-      : "delay";
+  const waitModeRaw =
+    typeof config.waitMode === "string" ? config.waitMode.trim() : "";
+  const waitMode: "delay" | "hook" | "event" =
+    waitModeRaw === "hook" || waitModeRaw === "event" ? waitModeRaw : "delay";
 
-  const waitType = waitMode === "hook" ? "hook" : "delay";
+  const waitType = waitMode === "delay" ? "delay" : "hook";
   const runId = workflowRunId || runtime.runId || executionId;
   const waitTimezone =
     typeof config.waitTimezone === "string" ? config.waitTimezone : undefined;
@@ -614,6 +616,28 @@ async function executeWaitActionInner(input: {
     waitAllowedStartTime: config.waitAllowedStartTime,
     waitAllowedEndTime: config.waitAllowedEndTime,
   };
+
+  if (waitMode === "event" && !eventContext?.correlationKey) {
+    const errorMessage =
+      "Wait mode 'event' requires a correlation key from the trigger. Ensure the workflow trigger has a correlation path configured.";
+    const earlyLog = await stepLogStartStep({
+      executionId,
+      nodeId: context.nodeId,
+      nodeName: context.nodeName,
+      nodeType: "Wait",
+      input: { waitMode },
+    });
+    await stepLogCompleteStep({
+      logId: earlyLog.logId,
+      startTime: earlyLog.startTime,
+      status: "error",
+      error: errorMessage,
+    });
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
 
   const startLog = await stepLogStartStep({
     executionId,
@@ -906,16 +930,18 @@ async function executeWaitActionInner(input: {
     correlationKey: eventContext?.correlationKey,
     metadata: {
       waitForEvents,
-      waitMode: "hook",
+      waitMode,
       waitTimeout: config.waitTimeout,
     },
   });
+
+  const waitModeLabel = waitMode === "event" ? "event" : "hook";
 
   await workflowAuditStep({
     workflowId,
     executionId,
     eventType: "run_waiting",
-    message: `Run waiting on hook in node '${context.nodeName}'`,
+    message: `Run waiting on ${waitModeLabel} in node '${context.nodeName}'`,
     metadata: {
       nodeId: context.nodeId,
       hookToken,
@@ -968,20 +994,51 @@ async function executeWaitActionInner(input: {
     executionId,
     eventType: timedOut ? "run_timed_out" : "run_resumed",
     message: timedOut
-      ? `Run timed out in hook wait node '${context.nodeName}'`
-      : `Run resumed from hook in node '${context.nodeName}'`,
+      ? `Run timed out in ${waitModeLabel} wait node '${context.nodeName}'`
+      : `Run resumed from ${waitModeLabel} in node '${context.nodeName}'`,
     metadata: {
       nodeId: context.nodeId,
       hookToken,
+      waitMode,
     },
   });
 
+  if (
+    timedOut &&
+    waitMode === "event" &&
+    config.waitTimeoutBehavior === "skip"
+  ) {
+    const output = {
+      waitType,
+      waitMode,
+      hookToken,
+      timedOut,
+      resumedAt: new Date().toISOString(),
+      skipped: true,
+      skippedReason: "timeout_skip",
+    };
+
+    await stepLogCompleteStep({
+      logId: startLog.logId,
+      startTime: startLog.startTime,
+      status: "success",
+      output,
+    });
+
+    return {
+      success: true,
+      data: output,
+      haltBranch: true,
+    };
+  }
+
   const output = {
-    waitType: "hook",
+    waitType,
+    waitMode,
     hookToken,
     timedOut,
     resumedAt: new Date().toISOString(),
-    payload: hookPayload,
+    ...(timedOut ? {} : { payload: hookPayload }),
   };
 
   await stepLogCompleteStep({

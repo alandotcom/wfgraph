@@ -118,8 +118,14 @@ function getPluginMissingRequiredFields(input: {
     }));
 }
 
-function getWaitMode(config: Record<string, unknown>): "delay" | "hook" {
-  return asNonEmptyString(config.waitMode) === "hook" ? "hook" : "delay";
+function getWaitMode(
+  config: Record<string, unknown>
+): "delay" | "hook" | "event" {
+  const mode = asNonEmptyString(config.waitMode);
+  if (mode === "hook" || mode === "event") {
+    return mode;
+  }
+  return "delay";
 }
 
 function getDelayTimingMode(
@@ -142,7 +148,8 @@ function getDelayTimingMode(
 function getWaitMissingRequiredFields(
   config: Record<string, unknown>
 ): MissingRequiredField[] {
-  if (getWaitMode(config) === "hook") {
+  const waitMode = getWaitMode(config);
+  if (waitMode === "hook" || waitMode === "event") {
     return [];
   }
 
