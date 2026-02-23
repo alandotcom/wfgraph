@@ -8,7 +8,7 @@ import { createScheduleTriggerDefinition } from "@/shared/workflow/triggers/sche
 import { createWebhookTriggerDefinition } from "@/shared/workflow/triggers/webhook-trigger";
 import { asNonEmptyString } from "@/shared/workflow/webhook-routing";
 
-export type TriggerExecutionType = "manual" | "webhook";
+export type TriggerExecutionType = "manual" | "webhook" | "event";
 
 export type TriggerRoutingDecision =
   | { kind: "start" }
@@ -117,9 +117,31 @@ export type TriggerLifecycleInput<TPayload extends Record<string, unknown>> = {
   onStop: (input: TriggerLifecycleHandlerInput<TPayload>) => boolean;
 };
 
+export type InngestConcurrencyOption =
+  | number
+  | { limit: number; key?: string; scope?: "fn" | "env" | "account" }
+  | Array<{ limit: number; key?: string; scope?: "fn" | "env" | "account" }>;
+
+export type InngestFunctionOptions = {
+  rateLimit?: { limit: number; period: string; key?: string };
+  throttle?: { limit: number; period: string; key?: string; burst?: number };
+  debounce?: { period: string; key?: string; timeout?: string };
+  priority?: { run: string };
+  timeouts?: { start?: string; finish?: string };
+  retries?: number;
+  cancelOn?: Array<{ event: string; if?: string; timeout?: string }>;
+  [key: string]: unknown;
+};
+
+export type InngestEventTriggerConfig = {
+  eventNames: string[];
+  functionOptions: Record<string, unknown>;
+};
+
 export type WorkflowTriggerRuntimeDefinition = {
   type: string;
   executionType: TriggerExecutionType;
+  inngestEventTrigger?: InngestEventTriggerConfig;
   evaluate: (input: {
     config: Record<string, unknown> | undefined;
     payload: Record<string, unknown>;
@@ -142,7 +164,7 @@ export type RuntimeExtensionTriggerDefinition = WorkflowTriggerDefinition & {
   readonly __runtimeExtensionTriggerBrand: true;
 };
 
-export type CreateTriggerInput<TPayload extends Record<string, unknown>> = {
+type CreateTriggerInputBase<TPayload extends Record<string, unknown>> = {
   type: string;
   label: string;
   schema: TriggerPayloadSchema<TPayload>;
@@ -152,6 +174,26 @@ export type CreateTriggerInput<TPayload extends Record<string, unknown>> = {
   logoUrl?: string;
   configFields?: ActionConfigField[];
 };
+
+type CreateTriggerInputWebhook<TPayload extends Record<string, unknown>> =
+  CreateTriggerInputBase<TPayload> & {
+    event?: undefined;
+    idempotency?: never;
+    concurrency?: never;
+    inngest?: never;
+  };
+
+type CreateTriggerInputEvent<TPayload extends Record<string, unknown>> =
+  CreateTriggerInputBase<TPayload> & {
+    event: string | string[];
+    idempotency?: string;
+    concurrency?: InngestConcurrencyOption;
+    inngest?: InngestFunctionOptions;
+  };
+
+export type CreateTriggerInput<TPayload extends Record<string, unknown>> =
+  | CreateTriggerInputWebhook<TPayload>
+  | CreateTriggerInputEvent<TPayload>;
 
 function normalizeTriggerDefinition(
   definition: WorkflowTriggerDefinition
@@ -319,6 +361,40 @@ function runLifecycleHandler<TPayload extends Record<string, unknown>>(input: {
   }
 }
 
+function buildInngestEventTriggerConfig(
+  input: CreateTriggerInputEvent<Record<string, unknown>>
+): InngestEventTriggerConfig {
+  const rawEvents = Array.isArray(input.event) ? input.event : [input.event];
+  const eventNames = rawEvents.map((e) => e.trim());
+
+  for (const name of eventNames) {
+    if (!name) {
+      throw new Error("Trigger event names must be non-empty strings");
+    }
+  }
+
+  const functionOptions: Record<string, unknown> = {};
+
+  if (input.idempotency !== undefined) {
+    functionOptions.idempotency = input.idempotency;
+  }
+
+  if (input.concurrency !== undefined) {
+    functionOptions.concurrency = input.concurrency;
+  }
+
+  if (input.inngest !== undefined) {
+    if ("batchEvents" in input.inngest) {
+      throw new Error(
+        "batchEvents is not supported — it changes the handler signature and is incompatible with event listener triggers"
+      );
+    }
+    Object.assign(functionOptions, input.inngest);
+  }
+
+  return { eventNames, functionOptions };
+}
+
 export function createTrigger<TPayload extends Record<string, unknown>>(
   input: CreateTriggerInput<TPayload>
 ): RuntimeExtensionTriggerDefinition {
@@ -350,10 +426,22 @@ export function createTrigger<TPayload extends Record<string, unknown>>(
     throw new Error("Trigger lifecycle.onStop must be a function");
   }
 
+  const inngestEventTrigger =
+    input.event !== undefined
+      ? buildInngestEventTriggerConfig(
+          input as CreateTriggerInputEvent<Record<string, unknown>>
+        )
+      : undefined;
+
+  const executionType: TriggerExecutionType = inngestEventTrigger
+    ? "event"
+    : "webhook";
+
   const definition = normalizeTriggerDefinition({
     runtime: {
       type: triggerType,
-      executionType: "webhook",
+      executionType,
+      inngestEventTrigger,
       evaluate({ config: _config, payload }) {
         const validatedPayload = validateTriggerPayload(input.schema, payload);
         if (!validatedPayload) {

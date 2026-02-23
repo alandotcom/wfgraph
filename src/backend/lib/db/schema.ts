@@ -65,7 +65,7 @@ export const workflowExecutions = pgTable(
       .$type<
         "pending" | "running" | "waiting" | "success" | "error" | "cancelled"
       >(),
-    triggerType: text("trigger_type").$type<"manual" | "webhook">(),
+    triggerType: text("trigger_type").$type<"manual" | "webhook" | "event">(),
     isDryRun: boolean("is_dry_run").notNull().default(false),
     triggerEventType: text("trigger_event_type"),
     correlationKey: text("correlation_key"),

@@ -10,6 +10,7 @@ import { validateWorkflowIntegrations } from "@/backend/lib/workflow-integration
 import type { ApiErrorPayload } from "@/shared/workflow/api-contracts";
 import {
   resolveWorkflowTriggerDefinition,
+  type TriggerExecutionType,
   type WorkflowTriggerDefinition,
 } from "@/shared/workflow/trigger-registry";
 import type {
@@ -37,11 +38,11 @@ export type WorkflowExecutionPreflight = {
 export async function runWorkflowExecutionPreflight(input: {
   workflow: WorkflowForPreflight;
   logger: PreflightLogger;
-  requireWebhookTrigger?: boolean;
+  requireExecutionType?: TriggerExecutionType;
 }): Promise<
   ServiceResult<WorkflowExecutionPreflight, 400 | 403, ApiErrorPayload>
 > {
-  const { workflow, logger, requireWebhookTrigger = false } = input;
+  const { workflow, logger, requireExecutionType } = input;
 
   const graphValidation = validateWorkflowGraph(workflow.graph);
   if (!graphValidation.valid) {
@@ -94,11 +95,12 @@ export async function runWorkflowExecutionPreflight(input: {
   const triggerDefinition = resolveWorkflowTriggerDefinition(triggerConfig);
 
   if (
-    requireWebhookTrigger &&
-    (!triggerNode || triggerDefinition.runtime.executionType !== "webhook")
+    requireExecutionType &&
+    (!triggerNode ||
+      triggerDefinition.runtime.executionType !== requireExecutionType)
   ) {
     return failure(400, {
-      error: "This workflow is not configured for webhook triggers",
+      error: `This workflow is not configured for ${requireExecutionType} triggers`,
     });
   }
 

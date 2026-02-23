@@ -8,7 +8,7 @@ import {
 export type RuntimeTriggerDefinition = {
   type: string;
   label: string;
-  executionType: "manual" | "webhook";
+  executionType: "manual" | "webhook" | "event";
   description?: string;
   logoUrl?: string;
   configFields?: ActionConfigField[];
@@ -88,7 +88,9 @@ function isRuntimeTriggerDefinition(
   if (
     typeof value.type !== "string" ||
     typeof value.label !== "string" ||
-    (value.executionType !== "manual" && value.executionType !== "webhook")
+    (value.executionType !== "manual" &&
+      value.executionType !== "webhook" &&
+      value.executionType !== "event")
   ) {
     return false;
   }

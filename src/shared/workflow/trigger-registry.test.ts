@@ -244,6 +244,224 @@ describe("registerWorkflowTrigger", () => {
     );
   });
 
+  it("sets executionType to 'event' and builds inngestEventTrigger for single event", () => {
+    const trigger = createTrigger({
+      type: "SingleEventTrigger",
+      label: "Single Event Trigger",
+      event: "app/order.created",
+      schema: z.object({
+        event: z.string(),
+        order: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "order.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.executionType).toBe("event");
+    expect(trigger.runtime.inngestEventTrigger).toBeDefined();
+    expect(trigger.runtime.inngestEventTrigger?.eventNames).toEqual([
+      "app/order.created",
+    ]);
+    expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({});
+
+    unregisterWorkflowTrigger("SingleEventTrigger");
+  });
+
+  it("sets executionType to 'event' and builds inngestEventTrigger for multiple events", () => {
+    const trigger = createTrigger({
+      type: "MultiEventTrigger",
+      label: "Multi Event Trigger",
+      event: ["app/order.created", "app/order.updated"],
+      schema: z.object({
+        event: z.string(),
+        order: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "order.id",
+      lifecycle: {
+        onStart: ({ payload }) => payload.event === "order.created",
+        onRestart: ({ payload }) => payload.event === "order.updated",
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.executionType).toBe("event");
+    expect(trigger.runtime.inngestEventTrigger?.eventNames).toEqual([
+      "app/order.created",
+      "app/order.updated",
+    ]);
+
+    unregisterWorkflowTrigger("MultiEventTrigger");
+  });
+
+  it("passes idempotency and concurrency into functionOptions", () => {
+    const trigger = createTrigger({
+      type: "IdempotentEventTrigger",
+      label: "Idempotent Event Trigger",
+      event: "app/payment.received",
+      idempotency: "event.data.paymentId",
+      concurrency: { limit: 1, key: "event.data.accountId" },
+      schema: z.object({
+        event: z.string(),
+        data: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "data.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
+      idempotency: "event.data.paymentId",
+      concurrency: { limit: 1, key: "event.data.accountId" },
+    });
+
+    unregisterWorkflowTrigger("IdempotentEventTrigger");
+  });
+
+  it("merges inngest function options into functionOptions", () => {
+    const trigger = createTrigger({
+      type: "ThrottledEventTrigger",
+      label: "Throttled Event Trigger",
+      event: "app/notification.sent",
+      inngest: {
+        rateLimit: { limit: 10, period: "1m" },
+        retries: 3,
+      },
+      schema: z.object({
+        event: z.string(),
+        notification: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "notification.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
+      rateLimit: { limit: 10, period: "1m" },
+      retries: 3,
+    });
+
+    unregisterWorkflowTrigger("ThrottledEventTrigger");
+  });
+
+  it("throws when event name is empty string", () => {
+    expect(() =>
+      createTrigger({
+        type: "EmptyEventTrigger",
+        label: "Empty Event Trigger",
+        event: "",
+        schema: z.object({
+          event: z.string(),
+          data: z.object({ id: z.string() }),
+        }),
+        correlationIdPath: "data.id",
+        lifecycle: {
+          onStart: () => true,
+          onRestart: () => false,
+          onStop: () => false,
+        },
+      })
+    ).toThrow("Trigger event names must be non-empty strings");
+  });
+
+  it("throws when event array contains empty string", () => {
+    expect(() =>
+      createTrigger({
+        type: "EmptyArrayEventTrigger",
+        label: "Empty Array Event Trigger",
+        event: ["app/valid.event", "  "],
+        schema: z.object({
+          event: z.string(),
+          data: z.object({ id: z.string() }),
+        }),
+        correlationIdPath: "data.id",
+        lifecycle: {
+          onStart: () => true,
+          onRestart: () => false,
+          onStop: () => false,
+        },
+      })
+    ).toThrow("Trigger event names must be non-empty strings");
+  });
+
+  it("throws when inngest options include batchEvents", () => {
+    expect(() =>
+      createTrigger({
+        type: "BatchEventTrigger",
+        label: "Batch Event Trigger",
+        event: "app/batch.event",
+        inngest: {
+          batchEvents: { maxSize: 10, timeout: "5s" },
+        } as Record<string, unknown>,
+        schema: z.object({
+          event: z.string(),
+          data: z.object({ id: z.string() }),
+        }),
+        correlationIdPath: "data.id",
+        lifecycle: {
+          onStart: () => true,
+          onRestart: () => false,
+          onStop: () => false,
+        },
+      })
+    ).toThrow("batchEvents is not supported");
+  });
+
+  it("trims whitespace from event names", () => {
+    const trigger = createTrigger({
+      type: "WhitespaceEventTrigger",
+      label: "Whitespace Event Trigger",
+      event: "  app/trimmed.event  ",
+      schema: z.object({
+        event: z.string(),
+        data: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "data.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.inngestEventTrigger?.eventNames).toEqual([
+      "app/trimmed.event",
+    ]);
+
+    unregisterWorkflowTrigger("WhitespaceEventTrigger");
+  });
+
+  it("sets executionType to 'webhook' when event is not provided", () => {
+    const trigger = createTrigger({
+      type: "NoEventWebhookTrigger",
+      label: "No Event Webhook Trigger",
+      schema: z.object({
+        event: z.string(),
+        data: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "data.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.executionType).toBe("webhook");
+    expect(trigger.runtime.inngestEventTrigger).toBeUndefined();
+
+    unregisterWorkflowTrigger("NoEventWebhookTrigger");
+  });
+
   it("supports unregistering custom trigger types while keeping built-ins", () => {
     const ephemeralTrigger = createTrigger({
       type: "EphemeralRuntimeTrigger",

@@ -24,7 +24,7 @@ const executeLogger = getAppLogger("workflow", "execute");
 
 async function createTerminalExecution(input: {
   workflowId: string;
-  triggerType: "manual" | "webhook";
+  triggerType: "manual" | "webhook" | "event";
   isDryRun: boolean;
   triggerEventType?: string;
   correlationKey?: string;
@@ -70,7 +70,7 @@ async function startExecution(input: {
   workflowId: string;
   workflowName: string;
   workflowGraph: SerializedWorkflowGraph;
-  triggerType: "manual" | "webhook";
+  triggerType: "manual" | "webhook" | "event";
   payload: Record<string, unknown>;
   requestPayload: Record<string, unknown>;
   eventType?: string;
@@ -210,16 +210,18 @@ export async function postWorkflowExecuteResult(
 
     const { workflowGraph, triggerConfig, triggerDefinition } = preflight.data;
     const triggerConfigRecord: Record<string, unknown> = triggerConfig ?? {};
-    const isWebhookTrigger =
-      triggerDefinition.runtime.executionType === "webhook";
-    const webhookRuntimeConfig = isWebhookTrigger
-      ? resolveWebhookTriggerRuntimeConfig(triggerConfigRecord)
-      : undefined;
+    const triggerExecutionType = triggerDefinition.runtime.executionType;
+    const isOrchestratedTrigger =
+      triggerExecutionType === "webhook" || triggerExecutionType === "event";
+    const webhookRuntimeConfig =
+      triggerExecutionType === "webhook"
+        ? resolveWebhookTriggerRuntimeConfig(triggerConfigRecord)
+        : undefined;
     const input = body.input ?? {};
     const dryRun = body.dryRun === true;
     let effectiveInput = input;
 
-    if (isWebhookTrigger && Object.keys(input).length === 0) {
+    if (triggerExecutionType === "webhook" && Object.keys(input).length === 0) {
       const mockInput = webhookRuntimeConfig?.mockInput;
       if (mockInput) {
         effectiveInput = mockInput;
@@ -273,7 +275,7 @@ export async function postWorkflowExecuteResult(
       correlationKey,
     });
 
-    if (!isWebhookTrigger) {
+    if (!isOrchestratedTrigger) {
       const startedExecution = await startExecution({
         workflowId,
         workflowName: workflow.name,
@@ -315,7 +317,7 @@ export async function postWorkflowExecuteResult(
           workflowId,
           workflowName: workflow.name,
           workflowGraph,
-          triggerType: "webhook",
+          triggerType: triggerExecutionType,
           payload: effectiveInput,
           requestPayload: body.input ?? {},
           eventType,
@@ -359,7 +361,7 @@ export async function postWorkflowExecuteResult(
 
       const terminalExecution = await createTerminalExecution({
         workflowId,
-        triggerType: "webhook",
+        triggerType: triggerExecutionType,
         isDryRun: orchestrated.dryRun,
         triggerEventType: eventType,
         correlationKey,
@@ -409,7 +411,7 @@ export async function postWorkflowExecuteResult(
     const ignoredReason = orchestrated.reason;
     const terminalExecution = await createTerminalExecution({
       workflowId,
-      triggerType: "webhook",
+      triggerType: triggerExecutionType,
       isDryRun: dryRun,
       triggerEventType: eventType,
       correlationKey,

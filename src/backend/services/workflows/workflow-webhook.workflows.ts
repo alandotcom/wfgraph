@@ -2,10 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
 import { workflowExecutions, workflows } from "@/backend/lib/db/schema";
 import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
-import {
-  sendWorkflowRunRequested,
-  sendWorkflowWaitSignal,
-} from "@/backend/lib/inngest/runtime-events";
+import { sendWorkflowRunRequested } from "@/backend/lib/inngest/runtime-events";
 import { getAppLogger } from "@/backend/lib/logger";
 import {
   failure,
@@ -14,11 +11,8 @@ import {
 } from "@/backend/lib/service-result";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
-import {
-  listWorkflowWaitingStatesByCorrelation,
-  markExecutionRunning,
-  markWaitStateStatus,
-} from "@/backend/lib/workflow-wait-state";
+import { resumeMatchingWaitHooks } from "@/backend/lib/workflow-wait-resume";
+import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-wait-state";
 import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
 import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight.workflows";
 import type { ApiErrorPayload } from "@/shared/workflow/api-contracts";
@@ -167,83 +161,6 @@ async function createTerminalWebhookExecution(input: {
   return execution;
 }
 
-async function resumeMatchingWaitHooks(input: {
-  workflowId: string;
-  eventType?: string;
-  payload: Record<string, unknown>;
-  waitStates: Array<{
-    id: string;
-    executionId: string;
-    nodeId: string;
-    hookToken: string | null;
-    metadata: Record<string, unknown> | null;
-  }>;
-}) {
-  if (!input.eventType) {
-    return 0;
-  }
-
-  const resumeResults = await Promise.all(
-    input.waitStates.map(async (waitState) => {
-      if (!waitState.hookToken) {
-        return 0;
-      }
-
-      const metadata = waitState.metadata ?? {};
-
-      try {
-        await sendWorkflowWaitSignal({
-          executionId: waitState.executionId,
-          nodeId: waitState.nodeId,
-          token: waitState.hookToken,
-          eventType: input.eventType,
-          correlationKey:
-            typeof metadata.correlationKey === "string"
-              ? metadata.correlationKey
-              : undefined,
-          payload: input.payload,
-        });
-
-        const waitStateUpdated = await markWaitStateStatus({
-          waitStateId: waitState.id,
-          status: "resumed",
-        });
-
-        if (!waitStateUpdated) {
-          return 0;
-        }
-
-        await Promise.all([
-          markExecutionRunning(waitState.executionId),
-          logWorkflowAuditEvent({
-            workflowId: input.workflowId,
-            executionId: waitState.executionId,
-            eventType: "run_resumed",
-            message: `Run resumed from wait on ${input.eventType}`,
-            metadata: {
-              eventType: input.eventType,
-            },
-          }),
-        ]);
-
-        return 1;
-      } catch (error) {
-        webhookLogger.error("Failed to resume hook", {
-          workflowId: input.workflowId,
-          eventType: input.eventType,
-          waitStateId: waitState.id,
-          executionId: waitState.executionId,
-          nodeId: waitState.nodeId,
-          error,
-        });
-        return 0;
-      }
-    })
-  );
-
-  return resumeResults.reduce<number>((total, count) => total + count, 0);
-}
-
 function buildIgnoredAuditMessage(input: {
   reason:
     | "missing_event_type"
@@ -318,7 +235,7 @@ export async function postWorkflowWebhookResult(input: {
     const preflight = await runWorkflowExecutionPreflight({
       workflow,
       logger: requestLogger,
-      requireWebhookTrigger: true,
+      requireExecutionType: "webhook",
     });
     if (!preflight.ok) {
       return preflight;

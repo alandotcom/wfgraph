@@ -71,7 +71,7 @@ const workflowExecutionSchema = z.object({
   id: idSchema,
   workflowId: idSchema,
   status: workflowExecutionStatusSchema,
-  triggerType: z.enum(["manual", "webhook"]).nullable(),
+  triggerType: z.enum(["manual", "webhook", "event"]).nullable(),
   isDryRun: z.boolean(),
   triggerEventType: z.string().nullable(),
   correlationKey: z.string().nullable(),

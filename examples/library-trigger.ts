@@ -32,9 +32,27 @@ function asNonEmptyString(value: unknown): string | undefined {
   return trimmed;
 }
 
+// When `event` is set, workflows using this trigger listen for the named
+// Inngest event instead of requiring webhook HTTP calls. Send events from
+// your app with:
+//
+//   inngest.send({
+//     name: "app/appointment.updated",
+//     data: { event: "appointment.created", timestamp: "...", appointment: { ... } },
+//   });
+// Event triggers support Inngest function options:
+//   idempotency  — CEL expression for deduplication
+//   concurrency  — limit concurrent executions
+//   inngest      — rateLimit, throttle, debounce, retries, etc.
+//
+// Multi-event example:
+//   event: ["app/appointment.created", "app/appointment.updated"],
 const appointmentTrigger = createTrigger({
   type: APPOINTMENT_TRIGGER_TYPE,
   label: "Appointment Lifecycle",
+  event: "app/appointment.updated",
+  idempotency: "event.data.appointment.id",
+  concurrency: { limit: 1, key: "event.data.appointment.id" },
   description:
     "Routes appointment.created/start, appointment.rescheduled/restart, and appointment.canceled/stop.",
   schema: z.object({
@@ -128,7 +146,7 @@ async function main(): Promise<void> {
       url: databaseUrl,
     },
     migrations: {
-      runOnStartup: false,
+      runOnStartup: true,
     },
     inngest: {
       client: {
