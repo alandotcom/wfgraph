@@ -200,6 +200,7 @@ function KeyValueField({ value, onChange, disabled }: FieldProps) {
             value={entry.name}
           />
           <TemplateBadgeInput
+            className="flex-1"
             disabled={disabled}
             onChange={(val) =>
               updateEntry(entry._id, "value", String(val ?? ""))
@@ -285,10 +286,12 @@ function renderField(
 
   return (
     <div className="space-y-2" key={field.key}>
-      <Label className="ml-1" htmlFor={field.key}>
-        {field.label}
-        {field.required && <span className="text-red-500">*</span>}
-      </Label>
+      {field.label && (
+        <Label className="ml-1" htmlFor={field.key}>
+          {field.label}
+          {field.required && <span className="text-red-500">*</span>}
+        </Label>
+      )}
       <FieldRenderer
         disabled={disabled}
         field={field}

@@ -793,458 +793,448 @@ export function TriggerConfig({
       )}
 
       {triggerType === "Webhook" && (
-        <div className="space-y-3 rounded-lg border bg-muted/10 p-3">
-          <div className="space-y-1 px-1">
-            <p className="font-medium text-sm">Webhook Configuration</p>
-            <p className="text-muted-foreground text-xs">
-              Define how incoming events should start, restart, or stop runs.
-            </p>
+        <div className="overflow-hidden rounded-md border">
+          <div className="p-2">
+            <WebhookConfigSection
+              description="Send events to this endpoint to trigger workflow runs."
+              onOpenChange={(open) => setWebhookSectionOpen("endpoint", open)}
+              open={webhookSections.endpoint}
+              title="Webhook Endpoint"
+            >
+              <div className="space-y-2">
+                <Label className="ml-1" htmlFor="webhookUrl">
+                  Webhook URL
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    className="font-mono text-xs"
+                    disabled
+                    id="webhookUrl"
+                    value={
+                      webhookUrl || "Save workflow to generate webhook URL"
+                    }
+                  />
+                  <Button
+                    aria-label="Copy webhook URL"
+                    disabled={!webhookUrl}
+                    onClick={handleCopyWebhookUrl}
+                    size="icon"
+                    type="button"
+                    variant="outline"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </WebhookConfigSection>
           </div>
 
-          <div className="overflow-hidden rounded-md border bg-background">
-            <div className="p-2">
-              <WebhookConfigSection
-                description="Send events to this endpoint to trigger workflow runs."
-                onOpenChange={(open) => setWebhookSectionOpen("endpoint", open)}
-                open={webhookSections.endpoint}
-                title="Webhook Endpoint"
+          <Separator />
+
+          <div className="p-2">
+            <WebhookConfigSection
+              description="Define the request contract used by routing and autocomplete."
+              onOpenChange={(open) =>
+                setWebhookSectionOpen("requestSchema", open)
+              }
+              open={webhookSections.requestSchema}
+              title="Request Schema"
+            >
+              <Tabs
+                onValueChange={(value) => {
+                  if (!isSchemaEditorMode(value)) {
+                    return;
+                  }
+                  setRequestSchemaEditorMode(value);
+                  if (value === "json") {
+                    setRequestSchemaJsonDraft(requestSchemaJsonValue);
+                    setRequestSchemaJsonError("");
+                  }
+                }}
+                value={requestSchemaEditorMode}
               >
-                <div className="space-y-2">
-                  <Label className="ml-1" htmlFor="webhookUrl">
-                    Webhook URL
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      className="font-mono text-xs"
-                      disabled
-                      id="webhookUrl"
-                      value={
-                        webhookUrl || "Save workflow to generate webhook URL"
+                <TabsList className="grid w-full max-w-[280px] grid-cols-2">
+                  <TabsTrigger value="builder">Builder</TabsTrigger>
+                  <TabsTrigger value="json">JSON Schema</TabsTrigger>
+                </TabsList>
+                <TabsContent className="space-y-3" value="builder">
+                  <SchemaBuilder
+                    disabled={disabled}
+                    onChange={(nextSchema) =>
+                      onUpdateConfig(
+                        "webhookSchema",
+                        JSON.stringify(nextSchema)
+                      )
+                    }
+                    schema={requestSchema}
+                  />
+                </TabsContent>
+                <TabsContent className="space-y-3" value="json">
+                  <div className="overflow-hidden rounded-md border">
+                    <CodeEditor
+                      defaultLanguage="json"
+                      height="230px"
+                      onChange={(value) =>
+                        handleRequestSchemaJsonChange(value || "")
                       }
+                      options={{
+                        minimap: { enabled: false },
+                        lineNumbers: "on",
+                        scrollBeyondLastLine: false,
+                        fontSize: 12,
+                        readOnly: disabled,
+                        wordWrap: "on",
+                      }}
+                      value={requestSchemaJsonDraft}
                     />
-                    <Button
-                      aria-label="Copy webhook URL"
-                      disabled={!webhookUrl}
-                      onClick={handleCopyWebhookUrl}
-                      size="icon"
-                      type="button"
-                      variant="outline"
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
                   </div>
-                </div>
-              </WebhookConfigSection>
-            </div>
-
-            <Separator />
-
-            <div className="p-2">
-              <WebhookConfigSection
-                description="Define the request contract used by routing and autocomplete."
-                onOpenChange={(open) =>
-                  setWebhookSectionOpen("requestSchema", open)
-                }
-                open={webhookSections.requestSchema}
-                title="Request Schema"
-              >
-                <Tabs
-                  onValueChange={(value) => {
-                    if (!isSchemaEditorMode(value)) {
-                      return;
-                    }
-                    setRequestSchemaEditorMode(value);
-                    if (value === "json") {
-                      setRequestSchemaJsonDraft(requestSchemaJsonValue);
-                      setRequestSchemaJsonError("");
-                    }
-                  }}
-                  value={requestSchemaEditorMode}
-                >
-                  <TabsList className="grid w-full max-w-[280px] grid-cols-2">
-                    <TabsTrigger value="builder">Builder</TabsTrigger>
-                    <TabsTrigger value="json">JSON Schema</TabsTrigger>
-                  </TabsList>
-                  <TabsContent className="space-y-3" value="builder">
-                    <SchemaBuilder
-                      disabled={disabled}
-                      onChange={(nextSchema) =>
-                        onUpdateConfig(
-                          "webhookSchema",
-                          JSON.stringify(nextSchema)
-                        )
-                      }
-                      schema={requestSchema}
-                    />
-                  </TabsContent>
-                  <TabsContent className="space-y-3" value="json">
-                    <div className="overflow-hidden rounded-md border">
-                      <CodeEditor
-                        defaultLanguage="json"
-                        height="230px"
-                        onChange={(value) =>
-                          handleRequestSchemaJsonChange(value || "")
-                        }
-                        options={{
-                          minimap: { enabled: false },
-                          lineNumbers: "on",
-                          scrollBeyondLastLine: false,
-                          fontSize: 12,
-                          readOnly: disabled,
-                          wordWrap: "on",
-                        }}
-                        value={requestSchemaJsonDraft}
-                      />
-                    </div>
-                    <div className="min-h-5">
-                      {requestSchemaJsonError ? (
-                        <p className="text-destructive text-xs">
-                          {requestSchemaJsonError}
-                        </p>
-                      ) : (
-                        <p className="text-muted-foreground text-xs">
-                          Changes auto-apply when JSON is valid. Supports
-                          top-level JSON Schema <code>properties</code>.
-                        </p>
-                      )}
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </WebhookConfigSection>
-            </div>
-
-            <Separator />
-
-            <div className="p-2">
-              <WebhookConfigSection
-                description="Define the trigger output contract consumed by downstream actions."
-                onOpenChange={(open) =>
-                  setWebhookSectionOpen("outputSchema", open)
-                }
-                open={webhookSections.outputSchema}
-                title="Output Schema"
-              >
-                <Tabs
-                  onValueChange={(value) => {
-                    if (!isSchemaEditorMode(value)) {
-                      return;
-                    }
-                    setOutputSchemaEditorMode(value);
-                    if (value === "json") {
-                      setOutputSchemaJsonDraft(outputSchemaJsonValue);
-                      setOutputSchemaJsonError("");
-                    }
-                  }}
-                  value={outputSchemaEditorMode}
-                >
-                  <TabsList className="grid w-full max-w-[280px] grid-cols-2">
-                    <TabsTrigger value="builder">Builder</TabsTrigger>
-                    <TabsTrigger value="json">JSON Schema</TabsTrigger>
-                  </TabsList>
-                  <TabsContent className="space-y-3" value="builder">
-                    <SchemaBuilder
-                      disabled={disabled}
-                      onChange={(nextSchema) =>
-                        onUpdateConfig(
-                          "webhookOutputSchema",
-                          JSON.stringify(nextSchema)
-                        )
-                      }
-                      schema={outputSchema}
-                    />
-                  </TabsContent>
-                  <TabsContent className="space-y-3" value="json">
-                    <div className="overflow-hidden rounded-md border">
-                      <CodeEditor
-                        defaultLanguage="json"
-                        height="230px"
-                        onChange={(value) =>
-                          handleOutputSchemaJsonChange(value || "")
-                        }
-                        options={{
-                          minimap: { enabled: false },
-                          lineNumbers: "on",
-                          scrollBeyondLastLine: false,
-                          fontSize: 12,
-                          readOnly: disabled,
-                          wordWrap: "on",
-                        }}
-                        value={outputSchemaJsonDraft}
-                      />
-                    </div>
-                    <div className="min-h-5">
-                      {outputSchemaJsonError ? (
-                        <p className="text-destructive text-xs">
-                          {outputSchemaJsonError}
-                        </p>
-                      ) : (
-                        <p className="text-muted-foreground text-xs">
-                          Changes auto-apply when JSON is valid. Supports
-                          top-level JSON Schema <code>properties</code>.
-                        </p>
-                      )}
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </WebhookConfigSection>
-            </div>
-
-            <Separator />
-
-            <div className="p-2">
-              <WebhookConfigSection
-                description="Map webhook payload values to workflow start, restart, and stop behavior."
-                onOpenChange={(open) => setWebhookSectionOpen("routing", open)}
-                open={routingSectionOpen}
-                title="Routing Rules"
-                warningCount={configWarnings.length}
-              >
-                <div className="space-y-2">
-                  <Label htmlFor="guidedEventPath">
-                    Which schema field contains the event value?
-                  </Label>
-                  <Select
-                    disabled={disabled || schemaPathOptions.length === 0}
-                    onValueChange={(value) => {
-                      setWebhookSectionOpen("routing", true);
-                      onUpdateConfig("webhookEventPath", value);
-                    }}
-                    value={eventPath}
-                  >
-                    <SelectTrigger id="guidedEventPath">
-                      <SelectValue placeholder="Select a schema path" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {eventPathOptions.map((option) => (
-                        <SelectItem
-                          key={`event-path-${option.path}`}
-                          value={option.path}
-                        >
-                          {option.path}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-muted-foreground text-xs">
-                    This should point to a string field like <code>event</code>{" "}
-                    or <code>meta.action</code>.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="guidedCorrelationPath">
-                    Which schema field identifies the entity?
-                  </Label>
-                  <Select
-                    disabled={disabled || schemaPathOptions.length === 0}
-                    onValueChange={(value) => {
-                      setWebhookSectionOpen("routing", true);
-                      onUpdateConfig("webhookCorrelationPath", value);
-                    }}
-                    value={correlationPath}
-                  >
-                    <SelectTrigger id="guidedCorrelationPath">
-                      <SelectValue placeholder="Select a schema path" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {correlationPathOptions.map((option) => (
-                        <SelectItem
-                          key={`correlation-path-${option.path}`}
-                          value={option.path}
-                        >
-                          {option.path}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-muted-foreground text-xs">
-                    Runs with the same value here are cancelled or resumed
-                    together.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="guidedCreateEvents">
-                    Values that start a run
-                  </Label>
-                  <Input
-                    disabled={disabled}
-                    id="guidedCreateEvents"
-                    onChange={(e) => {
-                      setWebhookSectionOpen("routing", true);
-                      onUpdateConfig("webhookCreateEvents", e.target.value);
-                    }}
-                    placeholder="appointment.create"
-                    value={createEvents}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="guidedUpdateEvents">
-                    Values that restart timing
-                  </Label>
-                  <Input
-                    disabled={disabled}
-                    id="guidedUpdateEvents"
-                    onChange={(e) => {
-                      setWebhookSectionOpen("routing", true);
-                      onUpdateConfig("webhookUpdateEvents", e.target.value);
-                    }}
-                    placeholder="appointment.rescheduled"
-                    value={updateEvents}
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    Matching waiting runs are cancelled first, then a new run
-                    starts.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="guidedDeleteEvents">
-                    Values that stop runs
-                  </Label>
-                  <Input
-                    disabled={disabled}
-                    id="guidedDeleteEvents"
-                    onChange={(e) => {
-                      setWebhookSectionOpen("routing", true);
-                      onUpdateConfig("webhookDeleteEvents", e.target.value);
-                    }}
-                    placeholder="appointment.canceled"
-                    value={deleteEvents}
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    Matching waiting runs are cancelled and no new run is
-                    created.
-                  </p>
-                </div>
-
-                {schemaPathOptions.length === 0 ? (
-                  <p className="text-muted-foreground text-xs">
-                    Add request schema properties first to enable routing field
-                    selection.
-                  </p>
-                ) : null}
-
-                {configWarnings.length > 0 ? (
-                  <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
-                    <div className="flex items-center gap-2">
-                      <TriangleAlert className="h-4 w-4 text-amber-600" />
-                      <p className="font-medium text-amber-700 text-sm dark:text-amber-300">
-                        Configuration Warnings
+                  <div className="min-h-5">
+                    {requestSchemaJsonError ? (
+                      <p className="text-destructive text-xs">
+                        {requestSchemaJsonError}
                       </p>
-                    </div>
-                    <div className="space-y-1">
-                      {configWarnings.map((warning) => (
-                        <p
-                          className="text-amber-700 text-xs dark:text-amber-200"
-                          key={warning}
-                        >
-                          {warning}
-                        </p>
-                      ))}
-                    </div>
+                    ) : (
+                      <p className="text-muted-foreground text-xs">
+                        Changes auto-apply when JSON is valid. Supports
+                        top-level JSON Schema <code>properties</code>.
+                      </p>
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </WebhookConfigSection>
+          </div>
+
+          <Separator />
+
+          <div className="p-2">
+            <WebhookConfigSection
+              description="Define the trigger output contract consumed by downstream actions."
+              onOpenChange={(open) =>
+                setWebhookSectionOpen("outputSchema", open)
+              }
+              open={webhookSections.outputSchema}
+              title="Output Schema"
+            >
+              <Tabs
+                onValueChange={(value) => {
+                  if (!isSchemaEditorMode(value)) {
+                    return;
+                  }
+                  setOutputSchemaEditorMode(value);
+                  if (value === "json") {
+                    setOutputSchemaJsonDraft(outputSchemaJsonValue);
+                    setOutputSchemaJsonError("");
+                  }
+                }}
+                value={outputSchemaEditorMode}
+              >
+                <TabsList className="grid w-full max-w-[280px] grid-cols-2">
+                  <TabsTrigger value="builder">Builder</TabsTrigger>
+                  <TabsTrigger value="json">JSON Schema</TabsTrigger>
+                </TabsList>
+                <TabsContent className="space-y-3" value="builder">
+                  <SchemaBuilder
+                    disabled={disabled}
+                    onChange={(nextSchema) =>
+                      onUpdateConfig(
+                        "webhookOutputSchema",
+                        JSON.stringify(nextSchema)
+                      )
+                    }
+                    schema={outputSchema}
+                  />
+                </TabsContent>
+                <TabsContent className="space-y-3" value="json">
+                  <div className="overflow-hidden rounded-md border">
+                    <CodeEditor
+                      defaultLanguage="json"
+                      height="230px"
+                      onChange={(value) =>
+                        handleOutputSchemaJsonChange(value || "")
+                      }
+                      options={{
+                        minimap: { enabled: false },
+                        lineNumbers: "on",
+                        scrollBeyondLastLine: false,
+                        fontSize: 12,
+                        readOnly: disabled,
+                        wordWrap: "on",
+                      }}
+                      value={outputSchemaJsonDraft}
+                    />
+                  </div>
+                  <div className="min-h-5">
+                    {outputSchemaJsonError ? (
+                      <p className="text-destructive text-xs">
+                        {outputSchemaJsonError}
+                      </p>
+                    ) : (
+                      <p className="text-muted-foreground text-xs">
+                        Changes auto-apply when JSON is valid. Supports
+                        top-level JSON Schema <code>properties</code>.
+                      </p>
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </WebhookConfigSection>
+          </div>
+
+          <Separator />
+
+          <div className="p-2">
+            <WebhookConfigSection
+              description="Map webhook payload values to workflow start, restart, and stop behavior."
+              onOpenChange={(open) => setWebhookSectionOpen("routing", open)}
+              open={routingSectionOpen}
+              title="Routing Rules"
+              warningCount={configWarnings.length}
+            >
+              <div className="space-y-2">
+                <Label htmlFor="guidedEventPath">
+                  Which schema field contains the event value?
+                </Label>
+                <Select
+                  disabled={disabled || schemaPathOptions.length === 0}
+                  onValueChange={(value) => {
+                    setWebhookSectionOpen("routing", true);
+                    onUpdateConfig("webhookEventPath", value);
+                  }}
+                  value={eventPath}
+                >
+                  <SelectTrigger id="guidedEventPath">
+                    <SelectValue placeholder="Select a schema path" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {eventPathOptions.map((option) => (
+                      <SelectItem
+                        key={`event-path-${option.path}`}
+                        value={option.path}
+                      >
+                        {option.path}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">
+                  This should point to a string field like <code>event</code> or{" "}
+                  <code>meta.action</code>.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="guidedCorrelationPath">
+                  Which schema field identifies the entity?
+                </Label>
+                <Select
+                  disabled={disabled || schemaPathOptions.length === 0}
+                  onValueChange={(value) => {
+                    setWebhookSectionOpen("routing", true);
+                    onUpdateConfig("webhookCorrelationPath", value);
+                  }}
+                  value={correlationPath}
+                >
+                  <SelectTrigger id="guidedCorrelationPath">
+                    <SelectValue placeholder="Select a schema path" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {correlationPathOptions.map((option) => (
+                      <SelectItem
+                        key={`correlation-path-${option.path}`}
+                        value={option.path}
+                      >
+                        {option.path}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">
+                  Runs with the same value here are cancelled or resumed
+                  together.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="guidedCreateEvents">
+                  Values that start a run
+                </Label>
+                <Input
+                  disabled={disabled}
+                  id="guidedCreateEvents"
+                  onChange={(e) => {
+                    setWebhookSectionOpen("routing", true);
+                    onUpdateConfig("webhookCreateEvents", e.target.value);
+                  }}
+                  placeholder="appointment.create"
+                  value={createEvents}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="guidedUpdateEvents">
+                  Values that restart timing
+                </Label>
+                <Input
+                  disabled={disabled}
+                  id="guidedUpdateEvents"
+                  onChange={(e) => {
+                    setWebhookSectionOpen("routing", true);
+                    onUpdateConfig("webhookUpdateEvents", e.target.value);
+                  }}
+                  placeholder="appointment.rescheduled"
+                  value={updateEvents}
+                />
+                <p className="text-muted-foreground text-xs">
+                  Matching waiting runs are cancelled first, then a new run
+                  starts.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="guidedDeleteEvents">
+                  Values that stop runs
+                </Label>
+                <Input
+                  disabled={disabled}
+                  id="guidedDeleteEvents"
+                  onChange={(e) => {
+                    setWebhookSectionOpen("routing", true);
+                    onUpdateConfig("webhookDeleteEvents", e.target.value);
+                  }}
+                  placeholder="appointment.canceled"
+                  value={deleteEvents}
+                />
+                <p className="text-muted-foreground text-xs">
+                  Matching waiting runs are cancelled and no new run is created.
+                </p>
+              </div>
+
+              {schemaPathOptions.length === 0 ? (
+                <p className="text-muted-foreground text-xs">
+                  Add request schema properties first to enable routing field
+                  selection.
+                </p>
+              ) : null}
+
+              {configWarnings.length > 0 ? (
+                <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+                  <div className="flex items-center gap-2">
+                    <TriangleAlert className="h-4 w-4 text-amber-600" />
+                    <p className="font-medium text-amber-700 text-sm dark:text-amber-300">
+                      Configuration Warnings
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    {configWarnings.map((warning) => (
+                      <p
+                        className="text-amber-700 text-xs dark:text-amber-200"
+                        key={warning}
+                      >
+                        {warning}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </WebhookConfigSection>
+          </div>
+
+          <Separator />
+
+          <div className="p-2">
+            <WebhookConfigSection
+              description="Use local examples to validate routing and schema assumptions."
+              onOpenChange={(open) => setWebhookSectionOpen("payload", open)}
+              open={payloadSectionOpen}
+              title="Sample Payload"
+              warningCount={payloadWarnings.length}
+            >
+              <Label htmlFor="webhookMockRequest">
+                Sample Payload (Optional)
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                {WEBHOOK_PRESETS.map((preset) => (
+                  <Button
+                    disabled={disabled}
+                    key={preset.id}
+                    onClick={() => handleLoadPreset(preset)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
+              <div className="overflow-hidden rounded-md border">
+                <CodeEditor
+                  defaultLanguage="json"
+                  height="190px"
+                  onChange={(value) => {
+                    setWebhookSectionOpen("payload", true);
+                    onUpdateConfig("webhookMockRequest", value || "");
+                  }}
+                  options={{
+                    minimap: { enabled: false },
+                    lineNumbers: "on",
+                    scrollBeyondLastLine: false,
+                    fontSize: 12,
+                    readOnly: disabled,
+                    wordWrap: "on",
+                  }}
+                  value={mockRequest}
+                />
+              </div>
+              <div className="min-h-5">
+                {payloadWarnings.length > 0 ? (
+                  <div className="space-y-1">
+                    {payloadWarnings.map((warning) => (
+                      <p
+                        className="text-amber-700 text-xs dark:text-amber-200"
+                        key={warning}
+                      >
+                        {warning}
+                      </p>
+                    ))}
                   </div>
                 ) : null}
-              </WebhookConfigSection>
-            </div>
+              </div>
+            </WebhookConfigSection>
+          </div>
 
-            <Separator />
+          <Separator />
 
-            <div className="p-2">
-              <WebhookConfigSection
-                description="Use local examples to validate routing and schema assumptions."
-                onOpenChange={(open) => setWebhookSectionOpen("payload", open)}
-                open={payloadSectionOpen}
-                title="Sample Payload"
-                warningCount={payloadWarnings.length}
-              >
-                <Label htmlFor="webhookMockRequest">
-                  Sample Payload (Optional)
-                </Label>
-                <div className="flex flex-wrap gap-2">
-                  {WEBHOOK_PRESETS.map((preset) => (
-                    <Button
-                      disabled={disabled}
-                      key={preset.id}
-                      onClick={() => handleLoadPreset(preset)}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      {preset.label}
-                    </Button>
-                  ))}
-                </div>
-                <div className="overflow-hidden rounded-md border">
-                  <CodeEditor
-                    defaultLanguage="json"
-                    height="190px"
-                    onChange={(value) => {
-                      setWebhookSectionOpen("payload", true);
-                      onUpdateConfig("webhookMockRequest", value || "");
-                    }}
-                    options={{
-                      minimap: { enabled: false },
-                      lineNumbers: "on",
-                      scrollBeyondLastLine: false,
-                      fontSize: 12,
-                      readOnly: disabled,
-                      wordWrap: "on",
-                    }}
-                    value={mockRequest}
-                  />
-                </div>
-                <div className="min-h-5">
-                  {payloadWarnings.length > 0 ? (
-                    <div className="space-y-1">
-                      {payloadWarnings.map((warning) => (
-                        <p
-                          className="text-amber-700 text-xs dark:text-amber-200"
-                          key={warning}
-                        >
-                          {warning}
-                        </p>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              </WebhookConfigSection>
-            </div>
-
-            <Separator />
-
-            <div className="p-2">
-              <WebhookConfigSection
-                description="Quick reference for how current event values map to runtime behavior."
-                onOpenChange={(open) => setWebhookSectionOpen("summary", open)}
-                open={webhookSections.summary}
-                title="Behavior Summary"
-              >
-                <p className="text-sm">
-                  Start runs when event is:{" "}
-                  <span className="font-mono text-xs">
-                    {createEvents.trim() || "(none)"}
-                  </span>
-                </p>
-                <p className="text-sm">
-                  Restart runs when event is:{" "}
-                  <span className="font-mono text-xs">
-                    {updateEvents.trim() || "(none)"}
-                  </span>
-                </p>
-                <p className="text-sm">
-                  Stop runs when event is:{" "}
-                  <span className="font-mono text-xs">
-                    {deleteEvents.trim() || "(none)"}
-                  </span>
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  Need more complex matching logic? Add a Condition step after
-                  this trigger.
-                </p>
-              </WebhookConfigSection>
-            </div>
+          <div className="p-2">
+            <WebhookConfigSection
+              description="Quick reference for how current event values map to runtime behavior."
+              onOpenChange={(open) => setWebhookSectionOpen("summary", open)}
+              open={webhookSections.summary}
+              title="Behavior Summary"
+            >
+              <p className="text-sm">
+                Start runs when event is:{" "}
+                <span className="font-mono text-xs">
+                  {createEvents.trim() || "(none)"}
+                </span>
+              </p>
+              <p className="text-sm">
+                Restart runs when event is:{" "}
+                <span className="font-mono text-xs">
+                  {updateEvents.trim() || "(none)"}
+                </span>
+              </p>
+              <p className="text-sm">
+                Stop runs when event is:{" "}
+                <span className="font-mono text-xs">
+                  {deleteEvents.trim() || "(none)"}
+                </span>
+              </p>
+              <p className="text-muted-foreground text-xs">
+                Need more complex matching logic? Add a Condition step after
+                this trigger.
+              </p>
+            </WebhookConfigSection>
           </div>
         </div>
       )}

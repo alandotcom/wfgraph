@@ -176,7 +176,7 @@ const resendPlugin: IntegrationPlugin = {
           fields: [
             {
               key: "emailTags",
-              label: "Tags",
+              label: "",
               type: "key-value",
             },
           ],
