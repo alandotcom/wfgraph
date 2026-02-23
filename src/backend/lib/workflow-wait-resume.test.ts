@@ -30,7 +30,10 @@ const { resumeMatchingWaitHooks } = await import("./workflow-wait-resume");
 function createWaitState(
   id: string,
   executionId: string,
-  opts?: { hookToken?: string | null; metadata?: Record<string, unknown> | null }
+  opts?: {
+    hookToken?: string | null;
+    metadata?: Record<string, unknown> | null;
+  }
 ) {
   return {
     id,
@@ -189,9 +192,7 @@ describe("resumeMatchingWaitHooks", () => {
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: {},
-      waitStates: [
-        createWaitState("1", "exec_1", { metadata: null }),
-      ],
+      waitStates: [createWaitState("1", "exec_1", { metadata: null })],
     });
 
     expect(result).toBe(1);

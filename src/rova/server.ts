@@ -15,8 +15,13 @@ import {
   type InngestClientRuntimeConfig,
   type InngestServeRuntimeConfig,
 } from "@/backend/lib/inngest/client";
-import { configureAppLogging, getAppLogger } from "@/backend/lib/logger";
+import {
+  configureAppLogging,
+  configureAppLoggingWithBridge,
+  getAppLogger,
+} from "@/backend/lib/logger";
 import { initializeWorkflowTriggers } from "@/backend/lib/workflow-trigger-bootstrap";
+import type { RovaLogger } from "@/shared/types/logger";
 import {
   type RuntimeExtensionActionDefinition,
   registerRuntimeAction,
@@ -28,12 +33,7 @@ import {
   unregisterWorkflowTrigger,
 } from "@/shared/workflow/trigger-registry";
 
-type RovaLogger = {
-  info: (...args: unknown[]) => void;
-  warn: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-  debug?: (...args: unknown[]) => void;
-};
+export type { RovaLogger } from "@/shared/types/logger";
 
 export type RovaServerStartOptions = {
   port?: number;
@@ -337,7 +337,9 @@ export async function startRovaServer(
   }
 
   const startupPromise = (async (): Promise<RovaServerHandle> => {
-    if (options.configureLogging !== false) {
+    if (options.logger) {
+      configureAppLoggingWithBridge(options.logger);
+    } else if (options.configureLogging !== false) {
       configureAppLogging();
     }
 

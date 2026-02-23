@@ -5,8 +5,11 @@ import {
   getLogger,
   isLogLevel,
   type LogLevel,
+  type LogRecord,
+  resetSync,
 } from "@logtape/logtape";
 import { getPrettyFormatter } from "@logtape/pretty";
+import type { RovaLogger } from "@/shared/types/logger";
 
 const LOGGER_ROOT = "app";
 
@@ -94,6 +97,75 @@ export function configureAppLogging(): void {
       {
         category: ["logtape", "meta"],
         sinks: ["console"],
+        lowestLevel: "error",
+      },
+    ],
+  });
+
+  isConfigured = true;
+}
+
+function renderLogMessage(message: readonly unknown[]): string {
+  let result = "";
+  for (let i = 0; i < message.length; i += 2) {
+    result += message[i];
+    if (i + 1 < message.length) {
+      const value = message[i + 1];
+      result +=
+        typeof value === "string" ? value : (JSON.stringify(value) ?? "");
+    }
+  }
+  return result;
+}
+
+export function configureAppLoggingWithBridge(logger: RovaLogger): void {
+  if (isConfigured) {
+    resetSync();
+  }
+
+  const bridgeSink = (record: LogRecord): void => {
+    const category = record.category.join(".");
+    const message = `[${category}] ${renderLogMessage(record.message)}`;
+    const properties =
+      Object.keys(record.properties).length > 0 ? record.properties : undefined;
+
+    switch (record.level) {
+      case "trace":
+      case "debug":
+        logger.debug?.(message, properties);
+        break;
+      case "info":
+        logger.info(message, properties);
+        break;
+      case "warning":
+        logger.warn(message, properties);
+        break;
+      case "error":
+      case "fatal":
+        logger.error(message, properties);
+        break;
+      default:
+        logger.info(message, properties);
+        break;
+    }
+  };
+
+  configureSync({
+    sinks: { bridge: bridgeSink },
+    loggers: [
+      {
+        category: LOGGER_ROOT,
+        sinks: ["bridge"],
+        lowestLevel: resolveDefaultLogLevel(),
+      },
+      {
+        category: "logtape",
+        sinks: ["bridge"],
+        lowestLevel: "error",
+      },
+      {
+        category: ["logtape", "meta"],
+        sinks: ["bridge"],
         lowestLevel: "error",
       },
     ],

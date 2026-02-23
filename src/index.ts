@@ -1,5 +1,6 @@
 // biome-ignore lint/performance/noBarrelFile: Public library entrypoint intentionally re-exports API.
 export {
+  type RovaLogger,
   type RovaServerHandle,
   type RovaServerStartOptions,
   server,

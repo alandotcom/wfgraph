@@ -25,6 +25,7 @@ import {
   type StepContext,
 } from "@/backend/lib/steps/step-handler";
 import { triggerStep } from "@/backend/lib/steps/trigger";
+import { withSpan } from "@/backend/lib/telemetry";
 import { getErrorMessageAsync } from "@/shared/utils";
 import { resolveWaitUntil } from "@/shared/utils/wait-time";
 import { normalizeConditionBranch } from "@/shared/workflow/condition-branch";
@@ -245,7 +246,24 @@ function evaluateConditionExpression(
  * IMPORTANT: Steps receive only the integration ID as a reference to fetch credentials.
  * This prevents credentials from being logged in Vercel's workflow observability.
  */
-async function executeActionStep(input: {
+function executeActionStep(input: {
+  actionType: string;
+  config: Record<string, unknown>;
+  outputs: NodeOutputs;
+  context: StepContext;
+}) {
+  return withSpan(
+    "rova.workflow.action.execute",
+    {
+      "rova.action.type": input.actionType,
+      "rova.node.id": input.context.nodeId,
+      "rova.node.name": input.context.nodeName,
+    },
+    () => executeActionStepInner(input)
+  );
+}
+
+async function executeActionStepInner(input: {
   actionType: string;
   config: Record<string, unknown>;
   outputs: NodeOutputs;
@@ -514,8 +532,38 @@ async function executeDryRunAction(input: {
   return { success: true, data: output };
 }
 
+function executeWaitAction(input: {
+  config: Record<string, unknown>;
+  context: StepContext;
+  runtime: WorkflowExecutionRuntime;
+  executionId?: string;
+  workflowId?: string;
+  workflowRunId?: string;
+  dryRun?: boolean;
+  eventContext?: {
+    eventType?: string;
+    correlationKey?: string;
+  };
+}): Promise<ExecutionResult> {
+  const waitModeRawOuter = input.config.waitMode;
+  const waitTypeOuter =
+    typeof waitModeRawOuter === "string" && waitModeRawOuter.trim() === "hook"
+      ? "hook"
+      : "delay";
+
+  return withSpan(
+    "rova.workflow.wait",
+    {
+      "rova.wait.type": waitTypeOuter,
+      "rova.node.id": input.context.nodeId,
+      "rova.node.name": input.context.nodeName,
+    },
+    () => executeWaitActionInner(input)
+  );
+}
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Wait execution has intentional branching for delay/hook/dry-run and cancellation.
-async function executeWaitAction(input: {
+async function executeWaitActionInner(input: {
   config: Record<string, unknown>;
   context: StepContext;
   runtime: WorkflowExecutionRuntime;
@@ -943,8 +991,24 @@ async function executeWaitAction(input: {
 /**
  * Main workflow executor function
  */
+export function executeWorkflowCore(
+  input: WorkflowExecutionInput,
+  runtime: WorkflowExecutionRuntime = DEFAULT_RUNTIME
+) {
+  return withSpan(
+    "rova.workflow.execution",
+    {
+      "rova.workflow.id": input.workflowId,
+      "rova.execution.id": input.executionId,
+      "rova.workflow.name": input.workflowName,
+      "rova.execution.dry_run": input.dryRun ?? false,
+    },
+    () => executeWorkflowCoreInner(input, runtime)
+  );
+}
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Main executor coordinates triggers, actions, branching, waits, and terminal run state.
-export async function executeWorkflowCore(
+async function executeWorkflowCoreInner(
   input: WorkflowExecutionInput,
   runtime: WorkflowExecutionRuntime = DEFAULT_RUNTIME
 ) {
@@ -1070,7 +1134,6 @@ export async function executeWorkflowCore(
   // Helper to execute a single node
   // The persisted graph is validated as a DAG before execution, so we avoid
   // per-call cycle-tracking allocations on this hot path.
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Node execution requires type checking and error handling
   async function executeNode(nodeId: string) {
     const nodeLogger = executionLogger.with({ nodeId });
     nodeLogger.debug("Executing node");
@@ -1105,11 +1168,38 @@ export async function executeWorkflowCore(
 
     inProgressNodes.add(nodeId);
     const nodeName = getNodeName(node);
+    const actionType =
+      node.data.type === "action"
+        ? readConfigString(node.data.config, "actionType")
+        : undefined;
     const namedNodeLogger = nodeLogger.with({
       nodeName,
       nodeType: node.data.type,
     });
 
+    try {
+      await withSpan(
+        "rova.workflow.node.execute",
+        {
+          "rova.node.id": nodeId,
+          "rova.node.name": nodeName,
+          "rova.node.type": node.data.type,
+          "rova.action.type": actionType,
+        },
+        () => executeNodeInner(nodeId, node, nodeName, namedNodeLogger)
+      );
+    } finally {
+      inProgressNodes.delete(nodeId);
+    }
+  }
+
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Node execution inner logic split from span wrapper
+  async function executeNodeInner(
+    nodeId: string,
+    node: WorkflowNode,
+    nodeName: string,
+    namedNodeLogger: ReturnType<typeof executionLogger.with>
+  ) {
     // Skip disabled nodes
     if (node.data.enabled === false) {
       namedNodeLogger.info("Skipping disabled node");
@@ -1451,8 +1541,6 @@ export async function executeWorkflowCore(
       completedNodes.add(nodeId);
       // Note: stepHandler already logged the error for action steps
       // Trigger steps don't throw, so this catch is mainly for unexpected errors
-    } finally {
-      inProgressNodes.delete(nodeId);
     }
   }
 
