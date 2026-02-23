@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "skills": {
+    "react-flow": {
+      "source": "existential-birds/beagle",
+      "sourceType": "github",
+      "computedHash": "2e0b696ee5d7d3407263fb8330c1ed455837eb86f52464688e3bc7c60304b7b7"
+    },
+    "react-flow-advanced": {
+      "source": "existential-birds/beagle",
+      "sourceType": "github",
+      "computedHash": "8584b77e9491af20225a185bebdb3823bbc3e66e1da74d2e5e9dc5114559ef19"
+    },
+    "react-flow-architecture": {
+      "source": "existential-birds/beagle",
+      "sourceType": "github",
+      "computedHash": "5cd5f71fb064348da0e8fe00e162c71e4d03e36cfdbf72e45dcb5b1dac238427"
+    },
+    "react-flow-code-review": {
+      "source": "existential-birds/beagle",
+      "sourceType": "github",
+      "computedHash": "3aad2d3d4cd1b79b585d3c17dfcc61952fccde59f35fb864fa7852cfde1fe958"
+    },
+    "react-state-management": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "computedHash": "ab7ca5f3ff515b873a8446bdf88b9edc156741cf32c07accbbb3804f25543179"
+    }
+  }
+}

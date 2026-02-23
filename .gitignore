@@ -48,9 +48,7 @@ next-env.d.ts
 
 tmp/
 
-.agents/
 .npm-cache/
 *.log
-.claude/skills
 .inngest/*.db
 dist/
