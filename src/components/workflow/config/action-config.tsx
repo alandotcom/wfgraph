@@ -9,6 +9,7 @@ import { ConfigureConnectionOverlay } from "@/components/overlays/add-connection
 import { useOverlay } from "@/components/overlays/overlay-provider";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
+import { Input } from "@/components/ui/input";
 import { IntegrationIcon } from "@/components/ui/integration-icon";
 import { IntegrationSelector } from "@/components/ui/integration-selector";
 import { Label } from "@/components/ui/label";
@@ -418,6 +419,8 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   const configuredWaitUntil = readConfigString(config, "waitUntil");
   const configuredWaitDuration = readConfigString(config, "waitDuration");
   const delayTimingMode = getDelayTimingMode(config);
+  const isWindowEnabled =
+    readConfigString(config, "waitAllowedHoursMode") === "daily_window";
 
   const handleDelayTimingModeChange = (value: string) => {
     onUpdateConfig("waitDelayTimingMode", value);
@@ -537,7 +540,66 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="waitTimezone">Timezone (optional)</Label>
+        <Label htmlFor="waitAllowedHoursMode">Allowed send window</Label>
+        <Select
+          disabled={disabled}
+          onValueChange={(value) =>
+            onUpdateConfig("waitAllowedHoursMode", value)
+          }
+          value={readConfigString(config, "waitAllowedHoursMode", "off")}
+        >
+          <SelectTrigger className="w-full" id="waitAllowedHoursMode">
+            <SelectValue placeholder="Select window mode" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="off">Off (allow any time)</SelectItem>
+            <SelectItem value="daily_window">Daily window</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-muted-foreground text-xs">
+          When enabled, times outside the window shift to the next allowed
+          start.
+        </p>
+      </div>
+
+      {isWindowEnabled && (
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-2">
+            <Label htmlFor="waitAllowedStartTime">Window start</Label>
+            <Input
+              disabled={disabled}
+              id="waitAllowedStartTime"
+              onChange={(e) =>
+                onUpdateConfig("waitAllowedStartTime", e.target.value)
+              }
+              placeholder="09:00"
+              value={readConfigString(config, "waitAllowedStartTime")}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="waitAllowedEndTime">Window end</Label>
+            <Input
+              disabled={disabled}
+              id="waitAllowedEndTime"
+              onChange={(e) =>
+                onUpdateConfig("waitAllowedEndTime", e.target.value)
+              }
+              placeholder="17:00"
+              value={readConfigString(config, "waitAllowedEndTime")}
+            />
+          </div>
+          <p className="col-span-2 text-muted-foreground text-xs">
+            Use 24-hour format (HH:MM). Start must be before end. Requires
+            timezone below.
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <Label htmlFor="waitTimezone">
+          Timezone
+          {isWindowEnabled ? " (required for send window)" : " (optional)"}
+        </Label>
         <TimezoneSelect
           disabled={disabled}
           id="waitTimezone"
@@ -546,6 +608,8 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         />
         <p className="text-muted-foreground text-xs">
           Used when the target date/time does not include an offset.
+          {isWindowEnabled &&
+            " Also determines when the daily send window applies."}
         </p>
       </div>
     </div>

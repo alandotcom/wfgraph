@@ -609,6 +609,12 @@ async function executeWaitActionInner(input: {
       ? "require_actual_wait"
       : "off";
 
+  const allowedHoursConfig = {
+    waitAllowedHoursMode: config.waitAllowedHoursMode,
+    waitAllowedStartTime: config.waitAllowedStartTime,
+    waitAllowedEndTime: config.waitAllowedEndTime,
+  };
+
   const startLog = await stepLogStartStep({
     executionId,
     nodeId: context.nodeId,
@@ -621,6 +627,7 @@ async function executeWaitActionInner(input: {
       waitOffset: config.waitOffset,
       waitTimezone,
       waitGateMode,
+      ...allowedHoursConfig,
       waitForEvents: config.waitForEvents,
       waitTimeout: config.waitTimeout,
     },
@@ -634,6 +641,7 @@ async function executeWaitActionInner(input: {
             waitUntil: config.waitUntil,
             waitOffset: config.waitOffset,
             waitTimezone,
+            ...allowedHoursConfig,
           })
         : { waitUntil: undefined, error: undefined };
 
@@ -717,6 +725,7 @@ async function executeWaitActionInner(input: {
       waitUntil: config.waitUntil,
       waitOffset: config.waitOffset,
       waitTimezone,
+      ...allowedHoursConfig,
     });
 
     if (!resolved.waitUntil) {

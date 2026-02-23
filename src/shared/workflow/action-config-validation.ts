@@ -1,3 +1,4 @@
+import { parseTimeOfDayMinutes } from "@/shared/utils/wait-allowed-hours";
 import type { WorkflowNode } from "@/shared/workflow/types";
 
 export type MissingRequiredField = {
@@ -138,6 +139,57 @@ function getDelayTimingMode(
   return hasWaitUntil ? "until" : "duration";
 }
 
+function getWaitMissingRequiredFields(
+  config: Record<string, unknown>
+): MissingRequiredField[] {
+  if (getWaitMode(config) === "hook") {
+    return [];
+  }
+
+  const missing: MissingRequiredField[] = [];
+
+  if (getDelayTimingMode(config) === "until") {
+    if (isFieldEmpty(config.waitUntil)) {
+      missing.push({
+        fieldKey: "waitUntil",
+        fieldLabel: "Wait until this date/time",
+      });
+    }
+  } else if (isFieldEmpty(config.waitDuration)) {
+    missing.push({
+      fieldKey: "waitDuration",
+      fieldLabel: "Wait for (duration)",
+    });
+  }
+
+  if (asNonEmptyString(config.waitAllowedHoursMode) === "daily_window") {
+    const startStr = asNonEmptyString(config.waitAllowedStartTime);
+    if (!startStr || parseTimeOfDayMinutes(startStr) === null) {
+      missing.push({
+        fieldKey: "waitAllowedStartTime",
+        fieldLabel: "Window start (HH:MM)",
+      });
+    }
+
+    const endStr = asNonEmptyString(config.waitAllowedEndTime);
+    if (!endStr || parseTimeOfDayMinutes(endStr) === null) {
+      missing.push({
+        fieldKey: "waitAllowedEndTime",
+        fieldLabel: "Window end (HH:MM)",
+      });
+    }
+
+    if (isFieldEmpty(config.waitTimezone)) {
+      missing.push({
+        fieldKey: "waitTimezone",
+        fieldLabel: "Timezone",
+      });
+    }
+  }
+
+  return missing;
+}
+
 function getSystemMissingRequiredFields(input: {
   actionType: string;
   config: Record<string, unknown>;
@@ -178,31 +230,8 @@ function getSystemMissingRequiredFields(input: {
           ]
         : [];
     }
-    case "Wait": {
-      if (getWaitMode(config) === "hook") {
-        return [];
-      }
-
-      if (getDelayTimingMode(config) === "until") {
-        return isFieldEmpty(config.waitUntil)
-          ? [
-              {
-                fieldKey: "waitUntil",
-                fieldLabel: "Wait until this date/time",
-              },
-            ]
-          : [];
-      }
-
-      return isFieldEmpty(config.waitDuration)
-        ? [
-            {
-              fieldKey: "waitDuration",
-              fieldLabel: "Wait for (duration)",
-            },
-          ]
-        : [];
-    }
+    case "Wait":
+      return getWaitMissingRequiredFields(config);
     default:
       return [];
   }

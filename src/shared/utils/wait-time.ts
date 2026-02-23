@@ -1,3 +1,9 @@
+import {
+  normalizeWaitAllowedHoursMode,
+  parseTimeOfDayMinutes,
+  validateWaitAllowedHoursConfig,
+} from "./wait-allowed-hours";
+
 const DURATION_TOKEN_PATTERN = /(-?\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)/gi;
 const ISO_OFFSET_PATTERN = /(Z|[+-]\d{2}:\d{2})$/i;
 const ISO_DURATION_PATTERN =
@@ -248,18 +254,114 @@ function parseZonedOrNativeTimestamp(
   return createValidDate(value);
 }
 
+/**
+ * Shift a UTC candidate date into a daily allowed window in the given timezone.
+ * If the candidate falls before the window, it shifts to the window start same day.
+ * If the candidate falls at or after the window end, it shifts to the window start next day.
+ */
+export function applyDailyWindow(
+  candidate: Date,
+  startMinutes: number,
+  endMinutes: number,
+  timeZone: string
+): Date {
+  const offset = getTimeZoneOffsetMs(candidate, timeZone);
+  const localMs = candidate.getTime() + offset;
+  const localDate = new Date(localMs);
+  const currentMinutes =
+    localDate.getUTCHours() * 60 + localDate.getUTCMinutes();
+
+  if (currentMinutes >= startMinutes && currentMinutes < endMinutes) {
+    return candidate;
+  }
+
+  const startHour = Math.floor(startMinutes / 60);
+  const startMinute = startMinutes % 60;
+  const dayOffset = currentMinutes < startMinutes ? 0 : 1;
+
+  // Build target local time then convert to UTC with DST stabilization
+  const target = new Date(localMs);
+  target.setUTCDate(target.getUTCDate() + dayOffset);
+  target.setUTCHours(startHour, startMinute, 0, 0);
+
+  const firstPass = new Date(target.getTime() - offset);
+  const refinedOffset = getTimeZoneOffsetMs(firstPass, timeZone);
+  if (refinedOffset !== offset) {
+    return new Date(target.getTime() - refinedOffset);
+  }
+  return firstPass;
+}
+
+/**
+ * Apply allowed-hours window enforcement to a candidate date.
+ * If mode is "off" or config is invalid, returns the candidate unchanged.
+ */
+export function applyWaitAllowedHours(input: {
+  candidate: Date;
+  waitAllowedHoursMode?: unknown;
+  waitAllowedStartTime?: unknown;
+  waitAllowedEndTime?: unknown;
+  timeZone?: string;
+}): { date: Date; error?: string } {
+  const mode = normalizeWaitAllowedHoursMode(input.waitAllowedHoursMode);
+
+  if (mode === "off") {
+    return { date: input.candidate };
+  }
+
+  const issues = validateWaitAllowedHoursConfig({
+    mode,
+    startTime: input.waitAllowedStartTime,
+    endTime: input.waitAllowedEndTime,
+  });
+
+  if (issues.length > 0) {
+    return {
+      date: input.candidate,
+      error: issues.map((i) => i.message).join(" "),
+    };
+  }
+
+  if (!input.timeZone) {
+    return {
+      date: input.candidate,
+      error: "Timezone is required when allowed-hours window is enabled.",
+    };
+  }
+
+  // Guaranteed non-null after validation
+  const startMinutes = parseTimeOfDayMinutes(
+    input.waitAllowedStartTime
+  ) as number;
+  const endMinutes = parseTimeOfDayMinutes(input.waitAllowedEndTime) as number;
+
+  return {
+    date: applyDailyWindow(
+      input.candidate,
+      startMinutes,
+      endMinutes,
+      input.timeZone
+    ),
+  };
+}
+
 export function resolveWaitUntil(input: {
   now?: Date;
   waitUntil?: unknown;
   waitDuration?: unknown;
   waitOffset?: unknown;
   waitTimezone?: string;
+  waitAllowedHoursMode?: unknown;
+  waitAllowedStartTime?: unknown;
+  waitAllowedEndTime?: unknown;
 }): WaitTimeResolution {
   const now = input.now ?? new Date();
   const waitTimezone =
     typeof input.waitTimezone === "string" && input.waitTimezone.trim()
       ? input.waitTimezone.trim()
       : undefined;
+
+  let candidate: Date;
 
   if (input.waitUntil !== undefined && input.waitUntil !== "") {
     const parsed = parseTimestampWithTimezone(input.waitUntil, waitTimezone);
@@ -281,20 +383,31 @@ export function resolveWaitUntil(input: {
       };
     }
 
-    return {
-      waitUntil: new Date(parsed.getTime() + (offsetMs ?? 0)),
-    };
+    candidate = new Date(parsed.getTime() + (offsetMs ?? 0));
+  } else {
+    const durationMs = parseDurationMs(input.waitDuration);
+    if (durationMs === null) {
+      return {
+        error:
+          "Invalid waitDuration value. Use milliseconds, duration tokens (e.g. 24h), or ISO duration.",
+      };
+    }
+
+    candidate = new Date(now.getTime() + durationMs);
   }
 
-  const durationMs = parseDurationMs(input.waitDuration);
-  if (durationMs === null) {
-    return {
-      error:
-        "Invalid waitDuration value. Use milliseconds, duration tokens (e.g. 24h), or ISO duration.",
-    };
+  // Apply allowed-hours window enforcement
+  const windowResult = applyWaitAllowedHours({
+    candidate,
+    waitAllowedHoursMode: input.waitAllowedHoursMode,
+    waitAllowedStartTime: input.waitAllowedStartTime,
+    waitAllowedEndTime: input.waitAllowedEndTime,
+    timeZone: waitTimezone,
+  });
+
+  if (windowResult.error) {
+    return { error: windowResult.error };
   }
 
-  return {
-    waitUntil: new Date(now.getTime() + durationMs),
-  };
+  return { waitUntil: windowResult.date };
 }

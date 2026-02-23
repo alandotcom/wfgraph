@@ -16,6 +16,7 @@ Never use npm or yarn.
 - Prefer the latest stable package versions by default.
 - Do not upgrade to latest if it is likely to break existing behavior; verify compatibility first.
 - For UI primitives/components, use Base UI (https://base-ui.com/llms.txt) and do not introduce Radix UI unless explicitly requested.
+- Bundle size is not a concern; this is a backend package. Do not optimize for or flag bundle size.
 
 ## Required Checks Before Finishing Work
 
