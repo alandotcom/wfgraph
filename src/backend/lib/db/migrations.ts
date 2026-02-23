@@ -8,8 +8,7 @@ const logger = getAppLogger("migrations");
 
 const MIGRATIONS_DIR_CANDIDATES = [
   resolve(process.cwd(), "drizzle"),
-  resolve(import.meta.dir, "../../../../drizzle"),
-  resolve(import.meta.dir, "../../../drizzle"),
+  resolve(import.meta.dir, "../drizzle"), // dist/lib/ → dist/drizzle/
 ];
 
 export type MigrationsRuntimeOptions = {
