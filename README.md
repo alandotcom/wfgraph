@@ -1,6 +1,6 @@
-# Rova
+# Rova Workflow Builder
 
-A Bun-based workflow automation app with a visual editor, typed API routes, and plugin-driven integrations.
+A visual workflow automation platform with a node-based editor, typed API routes, and plugin-driven integrations. Inspired by [Vercel's AI Workflow Builder](https://workflow-builder.dev/).
 
 ## Runtime Overview
 
@@ -94,7 +94,7 @@ App URL: `http://localhost:4017`
 
 ## Library Extension API
 
-You can run Rova as an embeddable library and register custom actions/triggers at startup.
+You can run Rova Workflow Builder as an embeddable library and register custom actions/triggers at startup.
 
 ```ts
 import { z } from "zod";
@@ -155,7 +155,7 @@ await server.start({
 
 Notes:
 
-- Rova does not spawn `inngest-cli` in library mode.
+- Rova Workflow Builder does not spawn `inngest-cli` in library mode.
 - For local app development (`bun run dev`), this repo starts Inngest CLI as a separate process.
 - Action extensions are strict-schema actions via `createAction(...)`:
   - `schema` validates resolved action input at runtime (Zod or Standard Schema-compatible validators).
@@ -198,7 +198,7 @@ RUN_DB_MIGRATIONS=true PORT=4017 DATABASE_URL=postgresql://workflow:workflow@loc
 Build image:
 
 ```bash
-docker build -t notifications-workflow .
+docker build -t rova-workflow-builder .
 ```
 
 Run container:
@@ -208,7 +208,7 @@ docker run --rm \
   -p 4017:4017 \
   -e DATABASE_URL=postgresql://workflow:workflow@host.docker.internal:55437/workflow_builder \
   -e RUN_DB_MIGRATIONS=true \
-  notifications-workflow
+  rova-workflow-builder
 ```
 
 ## Scripts
@@ -305,3 +305,7 @@ bun run type-check
 bun run fix
 bun run test
 ```
+
+## Roadmap
+
+- [ ] Authentication (user login, session management, role-based access)

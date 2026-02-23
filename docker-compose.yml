@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: notifications-workflow-postgres
+    container_name: rova-workflow-builder-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: workflow_builder
