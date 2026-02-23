@@ -30,7 +30,8 @@ export type ActionConfigFieldBase = {
     | "text" // Regular text input
     | "number" // Number input
     | "select" // Dropdown select
-    | "schema-builder"; // Schema builder for structured output
+    | "schema-builder" // Schema builder for structured output
+    | "key-value"; // Dynamic key-value pair list
 
   // Placeholder text
   placeholder?: string;

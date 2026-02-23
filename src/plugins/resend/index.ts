@@ -170,6 +170,17 @@ const resendPlugin: IntegrationPlugin = {
             },
           ],
         },
+        {
+          type: "group",
+          label: "Tags",
+          fields: [
+            {
+              key: "emailTags",
+              label: "Tags",
+              type: "key-value",
+            },
+          ],
+        },
       ],
     },
   ],

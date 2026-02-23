@@ -24,6 +24,7 @@ export type SendEmailCoreInput = {
   emailReplyTo?: string;
   emailScheduledAt?: string;
   emailTopicId?: string;
+  emailTags?: string;
   idempotencyKey?: string;
 };
 
@@ -46,6 +47,29 @@ function isTemplateVariablesRecord(
   return Object.values(value).every(
     (entry) => typeof entry === "string" || typeof entry === "number"
   );
+}
+
+function isTag(value: unknown): value is { name: string; value: string } {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.value === "string"
+  );
+}
+
+function parseTags(
+  tagsJson: string
+): Array<{ name: string; value: string }> | undefined {
+  try {
+    const parsed: unknown = JSON.parse(tagsJson);
+    if (Array.isArray(parsed) && parsed.every(isTag)) {
+      return parsed;
+    }
+  } catch (error) {
+    console.error("[Resend] Failed to parse tags JSON:", error);
+  }
+
+  return;
 }
 
 function parseTemplateVariables(
@@ -112,6 +136,7 @@ async function stepHandler(
       ...(input.emailReplyTo && { replyTo: input.emailReplyTo }),
       ...(input.emailScheduledAt && { scheduledAt: input.emailScheduledAt }),
       ...(input.emailTopicId && { topicId: input.emailTopicId }),
+      ...(input.emailTags && { tags: parseTags(input.emailTags) }),
     };
 
     let payload: CreateEmailOptions;

@@ -1,5 +1,6 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Plus, X } from "lucide-react";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -126,6 +127,113 @@ function SelectField({ field, value, onChange, disabled }: FieldProps) {
   );
 }
 
+type KeyValueEntry = { name: string; value: string };
+type KeyValueEntryWithId = KeyValueEntry & { _id: string };
+
+let kvIdCounter = 0;
+function nextKvId(): string {
+  return `kv-${++kvIdCounter}`;
+}
+
+function isKeyValueEntry(e: unknown): e is KeyValueEntry {
+  if (typeof e !== "object" || e === null) {
+    return false;
+  }
+  if (!("name" in e && "value" in e)) {
+    return false;
+  }
+  return typeof e.name === "string" && typeof e.value === "string";
+}
+
+function parseKeyValueJson(raw: unknown): KeyValueEntry[] {
+  if (typeof raw !== "string" || !raw) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(isKeyValueEntry);
+    }
+  } catch {
+    // invalid JSON, return empty
+  }
+  return [];
+}
+
+function KeyValueField({ value, onChange, disabled }: FieldProps) {
+  const [rows, setRows] = useState<KeyValueEntryWithId[]>(() =>
+    parseKeyValueJson(value).map((e) => ({ ...e, _id: nextKvId() }))
+  );
+
+  function sync(next: KeyValueEntryWithId[]) {
+    setRows(next);
+    onChange(
+      JSON.stringify(next.map(({ name, value: v }) => ({ name, value: v })))
+    );
+  }
+
+  function addEntry() {
+    sync([...rows, { name: "", value: "", _id: nextKvId() }]);
+  }
+
+  function removeEntry(id: string) {
+    sync(rows.filter((r) => r._id !== id));
+  }
+
+  function updateEntry(
+    id: string,
+    field: "name" | "value",
+    fieldValue: string
+  ) {
+    sync(rows.map((r) => (r._id === id ? { ...r, [field]: fieldValue } : r)));
+  }
+
+  return (
+    <div className="space-y-2">
+      {rows.map((entry) => (
+        <div className="flex items-center gap-2" key={entry._id}>
+          <Input
+            className="flex-1"
+            disabled={disabled}
+            onChange={(e) => updateEntry(entry._id, "name", e.target.value)}
+            placeholder="Name"
+            value={entry.name}
+          />
+          <TemplateBadgeInput
+            disabled={disabled}
+            onChange={(val) =>
+              updateEntry(entry._id, "value", String(val ?? ""))
+            }
+            placeholder="Value"
+            value={entry.value}
+          />
+          <Button
+            className="h-8 w-8 shrink-0"
+            disabled={disabled}
+            onClick={() => removeEntry(entry._id)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      ))}
+      <Button
+        className="h-8"
+        disabled={disabled}
+        onClick={addEntry}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        <Plus className="mr-1 h-3.5 w-3.5" />
+        Add
+      </Button>
+    </div>
+  );
+}
+
 function SchemaBuilderField(props: FieldProps) {
   const schema =
     typeof props.value === "string"
@@ -151,6 +259,7 @@ const FIELD_RENDERERS: Record<
   number: NumberInputField,
   select: SelectField,
   "schema-builder": SchemaBuilderField,
+  "key-value": KeyValueField,
 };
 
 /**
