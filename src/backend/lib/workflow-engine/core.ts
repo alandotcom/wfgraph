@@ -417,15 +417,13 @@ function processTemplates(
 
           const fieldPath = rest.substring(dotIndex + 1);
           const fields = fieldPath.split(".");
-          // biome-ignore lint/suspicious/noExplicitAny: Dynamic output data traversal
-          let current: any = output.data;
+          let current: unknown = output.data;
 
           // For standardized outputs { success, data, error }, automatically look inside data
           // unless explicitly accessing success/data/error
           const firstField = fields[0];
           if (
-            current &&
-            typeof current === "object" &&
+            isRecord(current) &&
             "success" in current &&
             "data" in current &&
             firstField !== "success" &&
@@ -436,7 +434,7 @@ function processTemplates(
           }
 
           for (const field of fields) {
-            if (current && typeof current === "object") {
+            if (isRecord(current) && field in current) {
               current = current[field];
             } else {
               // Field access failed, return empty string
@@ -451,7 +449,13 @@ function processTemplates(
           if (typeof current === "object") {
             return JSON.stringify(current);
           }
-          return String(current);
+          if (typeof current === "string") {
+            return current;
+          }
+          if (typeof current === "number" || typeof current === "boolean") {
+            return String(current);
+          }
+          return "";
         }
       );
 
