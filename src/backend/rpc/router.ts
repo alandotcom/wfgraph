@@ -126,6 +126,7 @@ export const rpcRouter = rpc.router({
           name: input.name,
           description: input.description,
           graph: input.graph,
+          mode: input.mode,
         })
       )
     ),
@@ -149,24 +150,14 @@ export const rpcRouter = rpc.router({
       rpcHandler(({ input }) =>
         postWorkflowExecuteResult(input.workflowId, {
           input: input.input,
-          dryRun: input.dryRun,
         })
       )
     ),
     triggerWebhook: rpc.workflow.triggerWebhook.handler(
       rpcHandler(({ context, input }) => {
-        let dryRunQuery: "true" | "false" | undefined;
-        if (input.dryRun === true) {
-          dryRunQuery = "true";
-        } else if (input.dryRun === false) {
-          dryRunQuery = "false";
-        }
-
         return postWorkflowWebhookResult({
           workflowId: input.workflowId,
           authHeader: context.headers.get("Authorization"),
-          dryRunQuery,
-          dryRunHeader: null,
           body: input.input ?? {},
         });
       })

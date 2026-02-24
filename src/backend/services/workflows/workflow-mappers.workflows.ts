@@ -9,6 +9,7 @@ type WorkflowPayloadSource = Pick<
   | "description"
   | "graph"
   | "isPaused"
+  | "mode"
   | "visibility"
   | "createdAt"
   | "updatedAt"
@@ -18,6 +19,7 @@ type WorkflowUpdateInput = {
   name?: string;
   description?: string;
   graph?: SerializedWorkflowGraph;
+  mode?: "live" | "test";
 };
 
 export function toWorkflowApiPayload(
@@ -29,6 +31,7 @@ export function toWorkflowApiPayload(
     description: workflow.description ?? undefined,
     graph: workflow.graph,
     isPaused: workflow.isPaused,
+    mode: workflow.mode,
     visibility: workflow.visibility,
     isOwner: true,
     createdAt: workflow.createdAt.toISOString(),
@@ -40,9 +43,9 @@ export function buildWorkflowUpdateData(
   body: WorkflowUpdateInput,
   updatedAt: Date = new Date()
 ): Pick<Workflow, "updatedAt"> &
-  Partial<Pick<Workflow, "name" | "description" | "graph">> {
+  Partial<Pick<Workflow, "name" | "description" | "graph" | "mode">> {
   const updateData: Pick<Workflow, "updatedAt"> &
-    Partial<Pick<Workflow, "name" | "description" | "graph">> = {
+    Partial<Pick<Workflow, "name" | "description" | "graph" | "mode">> = {
     updatedAt,
   };
 
@@ -54,6 +57,9 @@ export function buildWorkflowUpdateData(
   }
   if (body.graph !== undefined) {
     updateData.graph = body.graph;
+  }
+  if (body.mode !== undefined) {
+    updateData.mode = body.mode;
   }
 
   return updateData;

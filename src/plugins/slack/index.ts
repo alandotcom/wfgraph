@@ -56,6 +56,16 @@ const slackPlugin: IntegrationPlugin = {
           example: "Hello from my workflow!",
           required: true,
         },
+        {
+          key: "testBehavior",
+          label: "Test Mode Behavior",
+          type: "select",
+          defaultValue: "log_only",
+          options: [
+            { value: "log_only", label: "Log only (do nothing)" },
+            { value: "send_message", label: "Send real Slack message" },
+          ],
+        },
       ],
     },
   ],

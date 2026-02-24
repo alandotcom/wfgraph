@@ -22,7 +22,7 @@ type CancellationSummary = {
 };
 
 type TriggerOrchestratorInput = {
-  dryRun: boolean;
+  runMode: "live" | "test";
   eventType?: string;
   correlationKey?: string;
   routingDecision: TriggerRoutingDecision;
@@ -31,7 +31,7 @@ type TriggerOrchestratorInput = {
   startExecution: () => Promise<{
     executionId: string;
     runId?: string;
-    dryRun: boolean;
+    runMode: "live" | "test";
   }>;
   cancelWaitStates: (eventType?: string) => Promise<CancellationSummary>;
   resumeWaitStates: (
@@ -45,16 +45,6 @@ export type TriggerOrchestratorResult =
   | WorkflowExecutionCancelledResponse
   | WorkflowExecutionIgnoredResponse
   | WorkflowExecutionResumedResponse;
-
-function toCancellationSummary(
-  waitStates: TriggerWaitState[]
-): CancellationSummary {
-  return {
-    cancelledExecutions: new Set(waitStates.map((state) => state.executionId))
-      .size,
-    cancelledWaits: waitStates.length,
-  };
-}
 
 function countResumableWaitStates(
   waitStates: TriggerWaitState[],
@@ -89,40 +79,26 @@ async function handleStopOrRestart(
   if (input.waitStates.length === 0) {
     return {
       status: "ignored",
+      runMode: input.runMode,
       reason: "no_waiting_runs",
     };
   }
 
   if (input.routingDecision.kind === "stop") {
-    if (input.dryRun) {
-      return {
-        status: "cancelled",
-        dryRun: true,
-        simulated: true,
-        ...toCancellationSummary(input.waitStates),
-      };
-    }
-
     return {
       status: "cancelled",
-      dryRun: false,
+      runMode: input.runMode,
       ...(await input.cancelWaitStates(input.eventType)),
     };
   }
 
-  const cancellationSummary = input.dryRun
-    ? {
-        ...toCancellationSummary(input.waitStates),
-        simulated: true,
-      }
-    : await input.cancelWaitStates(input.eventType);
-
+  const cancellationSummary = await input.cancelWaitStates(input.eventType);
   const execution = await input.startExecution();
   return {
     status: "running",
     executionId: execution.executionId,
     runId: execution.runId,
-    dryRun: execution.dryRun,
+    runMode: execution.runMode,
     ...cancellationSummary,
   };
 }
@@ -141,19 +117,11 @@ async function handleResumes(
     return;
   }
 
-  if (input.dryRun) {
-    const resumableCount = countResumableWaitStates(
-      input.waitStates,
-      input.eventType
-    );
-    if (resumableCount > 0) {
-      return {
-        status: "resumed",
-        resumedCount: resumableCount,
-        dryRun: true,
-        simulated: true,
-      };
-    }
+  const resumableCount = countResumableWaitStates(
+    input.waitStates,
+    input.eventType
+  );
+  if (resumableCount === 0) {
     return;
   }
 
@@ -165,6 +133,7 @@ async function handleResumes(
     return {
       status: "resumed",
       resumedCount,
+      runMode: input.runMode,
     };
   }
 
@@ -180,6 +149,7 @@ export async function orchestrateTriggerExecution(
   ) {
     return {
       status: "ignored",
+      runMode: input.runMode,
       reason: "missing_event_type",
     };
   }
@@ -200,6 +170,7 @@ export async function orchestrateTriggerExecution(
   ) {
     return {
       status: "ignored",
+      runMode: input.runMode,
       reason: "event_not_configured",
     };
   }
@@ -209,6 +180,6 @@ export async function orchestrateTriggerExecution(
     status: "running",
     executionId: execution.executionId,
     runId: execution.runId,
-    dryRun: execution.dryRun,
+    runMode: execution.runMode,
   };
 }

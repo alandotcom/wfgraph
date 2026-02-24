@@ -9,7 +9,7 @@ import {
 import type { ResendCredentials } from "@/plugins/resend/credentials";
 
 type SendEmailResult =
-  | { success: true; data: { id: string } }
+  | { success: true; data: { id: string; reasonCode?: string } }
   | { success: false; error: { message: string } };
 
 export type SendEmailCoreInput = {
@@ -33,7 +33,20 @@ export type SendEmailCoreInput = {
 export type SendEmailInput = StepInput &
   SendEmailCoreInput & {
     integrationId?: string;
+    testBehavior?: string;
+    testEmailTo?: string;
   };
+
+type ResendTestBehavior = "log_only" | "send_to_test_email";
+const TEST_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function resolveResendTestBehavior(value: unknown): ResendTestBehavior {
+  return value === "send_to_test_email" ? "send_to_test_email" : "log_only";
+}
+
+function isValidTestEmailAddress(value: string): boolean {
+  return TEST_EMAIL_PATTERN.test(value);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -240,13 +253,59 @@ async function stepHandler(
 export async function sendEmailStep(
   input: SendEmailInput
 ): Promise<SendEmailResult> {
+  const runMode = input._context?.runMode ?? "live";
+  const idempotencyKey = input._context?.executionId;
+  const syntheticIdSuffix = idempotencyKey ?? "no_execution";
+  const testBehavior = resolveResendTestBehavior(input.testBehavior);
+
+  if (runMode === "test" && testBehavior === "log_only") {
+    return withStepLogging(input, async () => ({
+      success: true,
+      data: {
+        id: `resend:test-log-only:${syntheticIdSuffix}`,
+        reasonCode: "test_mode_log_only",
+      },
+    }));
+  }
+
+  const testRecipientRaw =
+    typeof input.testEmailTo === "string" ? input.testEmailTo.trim() : "";
+  const shouldRouteToTestRecipient =
+    runMode === "test" && testBehavior === "send_to_test_email";
+
+  if (shouldRouteToTestRecipient && testRecipientRaw.length === 0) {
+    return withStepLogging(input, async () => ({
+      success: true,
+      data: {
+        id: `resend:test-log-fallback:${syntheticIdSuffix}`,
+        reasonCode: "test_mode_log_fallback_missing_test_email",
+      },
+    }));
+  }
+
+  if (
+    shouldRouteToTestRecipient &&
+    !isValidTestEmailAddress(testRecipientRaw)
+  ) {
+    return withStepLogging(input, async () => ({
+      success: true,
+      data: {
+        id: `resend:test-log-fallback:${syntheticIdSuffix}`,
+        reasonCode: "test_mode_log_fallback_invalid_test_email",
+      },
+    }));
+  }
+
   const credentials = input.integrationId
     ? await fetchCredentials(input.integrationId)
     : {};
 
   const coreInput: SendEmailCoreInput = {
     ...input,
-    idempotencyKey: input._context?.executionId,
+    emailTo: shouldRouteToTestRecipient ? testRecipientRaw : input.emailTo,
+    emailCc: shouldRouteToTestRecipient ? undefined : input.emailCc,
+    emailBcc: shouldRouteToTestRecipient ? undefined : input.emailBcc,
+    idempotencyKey,
   };
 
   return withStepLogging(input, () => stepHandler(coreInput, credentials));

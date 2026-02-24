@@ -30,22 +30,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-function parseBooleanFlag(value: string | null): boolean | undefined {
-  if (value === null) {
-    return;
-  }
-
-  const normalized = value.trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(normalized)) {
-    return true;
-  }
-  if (["0", "false", "no", "off"].includes(normalized)) {
-    return false;
-  }
-
-  return;
-}
-
 async function startWebhookExecution(input: {
   workflowId: string;
   workflowName: string;
@@ -53,7 +37,7 @@ async function startWebhookExecution(input: {
   payload: Record<string, unknown>;
   eventType?: string;
   correlationKey?: string;
-  dryRun?: boolean;
+  runMode: "live" | "test";
 }) {
   const [execution] = await db
     .insert(workflowExecutions)
@@ -61,7 +45,7 @@ async function startWebhookExecution(input: {
       workflowId: input.workflowId,
       status: "running",
       triggerType: "webhook",
-      isDryRun: input.dryRun === true,
+      runMode: input.runMode,
       triggerEventType: input.eventType,
       correlationKey: input.correlationKey,
       input: input.payload,
@@ -75,7 +59,7 @@ async function startWebhookExecution(input: {
     executionId: execution.id,
     workflowId: input.workflowId,
     workflowName: input.workflowName,
-    dryRun: input.dryRun === true,
+    runMode: input.runMode,
     eventContext: {
       eventType: input.eventType,
       correlationKey: input.correlationKey,
@@ -103,10 +87,10 @@ async function startWebhookExecution(input: {
     workflowId: input.workflowId,
     executionId: execution.id,
     eventType: "run_started",
-    message: `${input.dryRun ? "Webhook dry run started" : "Webhook run started"}${input.eventType ? ` for ${input.eventType}` : ""}`,
+    message: `${input.runMode === "test" ? "Webhook test mode run started" : "Webhook run started"}${input.eventType ? ` for ${input.eventType}` : ""}`,
     metadata: {
       triggerType: "webhook",
-      dryRun: input.dryRun === true,
+      runMode: input.runMode,
       eventType: input.eventType,
       correlationKey: input.correlationKey,
       runId: run.eventId,
@@ -116,14 +100,14 @@ async function startWebhookExecution(input: {
   return {
     executionId: execution.id,
     runId: run.eventId,
-    dryRun: input.dryRun === true,
+    runMode: input.runMode,
   };
 }
 
 async function createTerminalWebhookExecution(input: {
   workflowId: string;
   payload: Record<string, unknown>;
-  dryRun: boolean;
+  runMode: "live" | "test";
   status: "success" | "cancelled";
   eventType?: string;
   correlationKey?: string;
@@ -139,7 +123,7 @@ async function createTerminalWebhookExecution(input: {
       workflowId: input.workflowId,
       status: input.status,
       triggerType: "webhook",
-      isDryRun: input.dryRun,
+      runMode: input.runMode,
       triggerEventType: input.eventType,
       correlationKey: input.correlationKey,
       input: input.payload,
@@ -196,8 +180,6 @@ export function optionsWorkflowWebhook() {
 export async function postWorkflowWebhook(input: {
   workflowId: string;
   authHeader: string | null;
-  dryRunQuery?: "true" | "false";
-  dryRunHeader: string | null;
   body: Record<string, unknown>;
 }) {
   return responseFromServiceResult(await postWorkflowWebhookResult(input), {
@@ -208,13 +190,11 @@ export async function postWorkflowWebhook(input: {
 export async function postWorkflowWebhookResult(input: {
   workflowId: string;
   authHeader: string | null;
-  dryRunQuery?: "true" | "false";
-  dryRunHeader: string | null;
   body: Record<string, unknown>;
 }): Promise<ServiceResult<WorkflowWebhookResponse, number, ApiErrorPayload>> {
   const requestLogger = webhookLogger.with({ workflowId: input.workflowId });
   try {
-    const { workflowId, authHeader, dryRunQuery, dryRunHeader, body } = input;
+    const { workflowId, authHeader, body } = input;
 
     const workflow = await db.query.workflows.findFirst({
       where: eq(workflows.id, workflowId),
@@ -245,20 +225,18 @@ export async function postWorkflowWebhookResult(input: {
     const webhookRuntimeConfig =
       resolveWebhookTriggerRuntimeConfig(triggerConfig);
 
-    const dryRunFromQuery = parseBooleanFlag(dryRunQuery ?? null);
-    const dryRunFromHeader = parseBooleanFlag(dryRunHeader);
-    const dryRun = dryRunFromQuery ?? dryRunFromHeader ?? false;
+    const runMode = workflow.mode;
 
     if (workflow.isPaused) {
       const ignoredExecution = await createTerminalWebhookExecution({
         workflowId,
         payload: body,
-        dryRun,
+        runMode,
         status: "success",
         output: {
           status: "ignored",
           reason: "workflow_paused",
-          dryRun,
+          runMode,
         },
         auditEventType: "run_ignored",
         auditMessage: buildIgnoredAuditMessage({
@@ -266,14 +244,14 @@ export async function postWorkflowWebhookResult(input: {
         }),
         auditMetadata: {
           reason: "workflow_paused",
-          dryRun,
+          runMode,
         },
       });
 
       return success({
         status: "ignored",
         executionId: ignoredExecution.id,
-        dryRun,
+        runMode,
         reason: "workflow_paused",
       });
     }
@@ -288,7 +266,7 @@ export async function postWorkflowWebhookResult(input: {
 
     requestLogger.info("Webhook request received", {
       workflowName: workflow.name,
-      dryRun,
+      runMode,
       eventTypePath,
       correlationPath,
       eventType,
@@ -303,7 +281,7 @@ export async function postWorkflowWebhookResult(input: {
       metadata: {
         eventType,
         correlationKey,
-        dryRun,
+        runMode,
       },
     });
 
@@ -313,10 +291,11 @@ export async function postWorkflowWebhookResult(input: {
         : await listWorkflowWaitingStatesByCorrelation({
             workflowId,
             correlationKey,
+            runMode,
           });
 
     const outcome = await orchestrateTriggerExecution({
-      dryRun,
+      runMode,
       eventType,
       correlationKey,
       routingDecision,
@@ -330,7 +309,7 @@ export async function postWorkflowWebhookResult(input: {
           payload: body,
           eventType,
           correlationKey,
-          dryRun,
+          runMode,
         }),
       cancelWaitStates: async (currentEventType) =>
         await cancelWaitingRuns({
@@ -365,7 +344,7 @@ export async function postWorkflowWebhookResult(input: {
           eventTypePath,
           correlationPath,
           correlationKey,
-          dryRun,
+          runMode,
           reason: outcome.reason,
         },
       });

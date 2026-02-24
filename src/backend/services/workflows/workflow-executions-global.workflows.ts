@@ -30,7 +30,7 @@ type GlobalExecutionItem = {
   workflowIsPaused: boolean;
   status: "pending" | "running" | "waiting" | "success" | "error" | "cancelled";
   triggerType: "manual" | "webhook" | "event" | null;
-  isDryRun: boolean;
+  runMode: "live" | "test";
   triggerEventType: string | null;
   correlationKey: string | null;
   workflowRunId: string | null;
@@ -119,7 +119,7 @@ function toGlobalExecutionItem(row: {
   workflowIsPaused: boolean;
   status: "pending" | "running" | "waiting" | "success" | "error" | "cancelled";
   triggerType: "manual" | "webhook" | "event" | null;
-  isDryRun: boolean;
+  runMode: "live" | "test";
   triggerEventType: string | null;
   correlationKey: string | null;
   workflowRunId: string | null;
@@ -139,7 +139,7 @@ function toGlobalExecutionItem(row: {
     workflowIsPaused: row.workflowIsPaused,
     status: row.status,
     triggerType: row.triggerType,
-    isDryRun: row.isDryRun,
+    runMode: row.runMode,
     triggerEventType: row.triggerEventType,
     correlationKey: row.correlationKey,
     workflowRunId: row.workflowRunId,
@@ -213,7 +213,7 @@ export async function getWorkflowExecutionsGlobalResult(
         workflowIsPaused: workflows.isPaused,
         status: workflowExecutions.status,
         triggerType: workflowExecutions.triggerType,
-        isDryRun: workflowExecutions.isDryRun,
+        runMode: workflowExecutions.runMode,
         triggerEventType: workflowExecutions.triggerEventType,
         correlationKey: workflowExecutions.correlationKey,
         workflowRunId: workflowExecutions.workflowRunId,

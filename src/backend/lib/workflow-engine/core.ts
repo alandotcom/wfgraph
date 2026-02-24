@@ -103,7 +103,7 @@ export type WorkflowExecutionInput = {
   workflowId?: string; // Used by steps to fetch credentials
   workflowName?: string;
   workflowRunId?: string;
-  dryRun?: boolean;
+  runMode?: "live" | "test";
   eventContext?: {
     eventType?: string;
     correlationKey?: string;
@@ -498,44 +498,6 @@ function isCancellationError(error: unknown): boolean {
   );
 }
 
-async function executeDryRunAction(input: {
-  actionType: string;
-  context: StepContext;
-  executionId?: string;
-}): Promise<ExecutionResult> {
-  const output = {
-    dryRun: true,
-    simulated: true,
-    actionType: input.actionType,
-    message: `Dry run skipped side effects for '${input.actionType}'`,
-    timestamp: new Date().toISOString(),
-  };
-
-  if (!input.executionId) {
-    return { success: true, data: output };
-  }
-
-  const startLog = await stepLogStartStep({
-    executionId: input.executionId,
-    nodeId: input.context.nodeId,
-    nodeName: input.context.nodeName,
-    nodeType: input.actionType,
-    input: {
-      dryRun: true,
-      actionType: input.actionType,
-    },
-  });
-
-  await stepLogCompleteStep({
-    logId: startLog.logId,
-    startTime: startLog.startTime,
-    status: "success",
-    output,
-  });
-
-  return { success: true, data: output };
-}
-
 function executeWaitAction(input: {
   config: Record<string, unknown>;
   context: StepContext;
@@ -543,7 +505,6 @@ function executeWaitAction(input: {
   executionId?: string;
   workflowId?: string;
   workflowRunId?: string;
-  dryRun?: boolean;
   eventContext?: {
     eventType?: string;
     correlationKey?: string;
@@ -569,7 +530,7 @@ function executeWaitAction(input: {
   );
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Wait execution has intentional branching for delay/hook/dry-run and cancellation.
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Wait execution has intentional branching for delay/hook and cancellation.
 async function executeWaitActionInner(input: {
   config: Record<string, unknown>;
   context: StepContext;
@@ -577,7 +538,6 @@ async function executeWaitActionInner(input: {
   executionId?: string;
   workflowId?: string;
   workflowRunId?: string;
-  dryRun?: boolean;
   eventContext?: {
     eventType?: string;
     correlationKey?: string;
@@ -590,7 +550,6 @@ async function executeWaitActionInner(input: {
     executionId,
     workflowId,
     workflowRunId,
-    dryRun,
     eventContext,
   } = input;
 
@@ -660,92 +619,6 @@ async function executeWaitActionInner(input: {
       waitTimeout: config.waitTimeout,
     },
   });
-
-  if (dryRun) {
-    const resolvedDelay =
-      waitType === "delay"
-        ? resolveWaitUntil({
-            waitDuration: config.waitDuration,
-            waitUntil: config.waitUntil,
-            waitOffset: config.waitOffset,
-            waitTimezone,
-            ...allowedHoursConfig,
-          })
-        : { waitUntil: undefined, error: undefined };
-
-    if (resolvedDelay.error) {
-      await stepLogCompleteStep({
-        logId: startLog.logId,
-        startTime: startLog.startTime,
-        status: "error",
-        error: resolvedDelay.error,
-      });
-
-      return {
-        success: false,
-        error: resolvedDelay.error,
-      };
-    }
-
-    if (waitType === "delay" && resolvedDelay.waitUntil) {
-      const plannedWaitMs = resolvedDelay.waitUntil.getTime() - Date.now();
-      const didActuallyWait = plannedWaitMs > 0;
-
-      if (waitGateMode === "require_actual_wait" && !didActuallyWait) {
-        const output = {
-          dryRun: true,
-          simulated: true,
-          waitType,
-          waitUntil: resolvedDelay.waitUntil.toISOString(),
-          waitGateMode,
-          skipped: true,
-          skippedReason: "past_due_no_wait",
-          plannedWaitMs,
-          didActuallyWait,
-          resumedAt: new Date().toISOString(),
-          message:
-            "Dry run would skip this branch because no actual wait time remained.",
-        };
-
-        await stepLogCompleteStep({
-          logId: startLog.logId,
-          startTime: startLog.startTime,
-          status: "success",
-          output,
-        });
-
-        return {
-          success: true,
-          data: output,
-          haltBranch: true,
-        };
-      }
-    }
-
-    const output = {
-      dryRun: true,
-      simulated: true,
-      waitType,
-      waitUntil: resolvedDelay.waitUntil?.toISOString(),
-      waitGateMode,
-      waitForEvents:
-        typeof config.waitForEvents === "string" ? config.waitForEvents : null,
-      resumedAt: new Date().toISOString(),
-      message: "Dry run skipped waiting and resumed immediately",
-    };
-
-    await stepLogCompleteStep({
-      logId: startLog.logId,
-      startTime: startLog.startTime,
-      status: "success",
-      output,
-    });
-
-    return {
-      success: true,
-      data: output,
-    };
-  }
 
   if (waitType === "delay") {
     const resolved = resolveWaitUntil({
@@ -1071,7 +944,7 @@ export function executeWorkflowCore(
       "rova.workflow.id": input.workflowId,
       "rova.execution.id": input.executionId,
       "rova.workflow.name": input.workflowName,
-      "rova.execution.dry_run": input.dryRun ?? false,
+      "rova.execution.run_mode": input.runMode ?? "live",
     },
     () => executeWorkflowCoreInner(input, runtime)
   );
@@ -1090,7 +963,7 @@ async function executeWorkflowCoreInner(
     workflowId,
     workflowName,
     workflowRunId,
-    dryRun = false,
+    runMode = "live",
     eventContext,
   } = input;
   const { nodes, edges } = toWorkflowGraphData(graph);
@@ -1103,7 +976,7 @@ async function executeWorkflowCoreInner(
     workflowName: workflowName ?? null,
     executionId: executionId ?? null,
     workflowRunId: currentWorkflowRunId ?? null,
-    dryRun,
+    runMode,
   });
 
   executionLogger.info("Starting workflow execution", {
@@ -1111,7 +984,7 @@ async function executeWorkflowCoreInner(
     edgeCount: edges.length,
     hasExecutionId: !!executionId,
     hasWorkflowId: !!workflowId,
-    dryRun,
+    runMode,
     eventContext,
     triggerInput,
     requestPayload: requestPayload ?? triggerInput,
@@ -1434,25 +1307,33 @@ async function executeWorkflowCoreInner(
           processedConfig.condition = originalCondition;
         }
 
+        // In test mode, keep test destination overrides as authored literals.
+        // This prevents trigger/runtime payload templates from steering where
+        // test-recipient messages are sent.
+        if (runMode === "test") {
+          if (actionType === "resend/send-email") {
+            processedConfig.testEmailTo = config.testEmailTo;
+          }
+
+          if (actionType === "twilio/send-sms") {
+            processedConfig.testPhoneTo = config.testPhoneTo;
+          }
+        }
+
         // Build step context for logging (stepHandler will handle the logging)
         const stepContext: StepContext = {
           executionId,
           nodeId: node.id,
           nodeName: getNodeName(node),
           nodeType: actionType,
+          runMode,
         };
         // Execute the action step with stepHandler (logging is handled inside)
         // IMPORTANT: We pass integrationId via config, not actual credentials
         // Steps fetch credentials internally using fetchCredentials(integrationId)
         actionLogger.debug("Calling executeActionStep");
         let stepResult: unknown;
-        if (dryRun && actionType !== "Condition" && actionType !== "Wait") {
-          stepResult = await executeDryRunAction({
-            actionType,
-            context: stepContext,
-            executionId,
-          });
-        } else if (actionType === "Wait") {
+        if (actionType === "Wait") {
           stepResult = await executeWaitAction({
             config: processedConfig,
             context: stepContext,
@@ -1460,7 +1341,6 @@ async function executeWorkflowCoreInner(
             executionId,
             workflowId,
             workflowRunId: currentWorkflowRunId,
-            dryRun,
             eventContext,
           });
         } else {
@@ -1651,10 +1531,10 @@ async function executeWorkflowCoreInner(
 
       if (workflowId) {
         let runCompletedMessage: string;
-        if (dryRun) {
+        if (runMode === "test") {
           runCompletedMessage = finalSuccess
-            ? "Dry run completed successfully"
-            : "Dry run completed with errors";
+            ? "Test mode completed successfully"
+            : "Test mode completed with errors";
         } else {
           runCompletedMessage = finalSuccess
             ? "Run completed successfully"
@@ -1669,7 +1549,7 @@ async function executeWorkflowCoreInner(
           metadata: {
             duration,
             resultCount: Object.keys(results).length,
-            dryRun,
+            runMode,
           },
         });
       }
@@ -1706,10 +1586,10 @@ async function executeWorkflowCoreInner(
 
       if (workflowId) {
         let runFailedMessage: string;
-        if (dryRun) {
+        if (runMode === "test") {
           runFailedMessage = cancelled
-            ? "Dry run cancelled"
-            : "Dry run failed with fatal error";
+            ? "Test mode cancelled"
+            : "Test mode failed with fatal error";
         } else {
           runFailedMessage = cancelled
             ? "Run cancelled while waiting"
@@ -1723,7 +1603,7 @@ async function executeWorkflowCoreInner(
           message: runFailedMessage,
           metadata: {
             error: errorMessage,
-            dryRun,
+            runMode,
           },
         });
       }

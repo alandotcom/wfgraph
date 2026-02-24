@@ -10,6 +10,7 @@ import {
 import { api } from "@/client/lib/rpc-client";
 import {
   currentWorkflowIdAtom,
+  currentWorkflowModeAtom,
   currentWorkflowNameAtom,
   currentWorkflowVisibilityAtom,
   edgesAtom,
@@ -123,6 +124,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
   const setCurrentWorkflowVisibility = useSetAtom(
     currentWorkflowVisibilityAtom
   );
+  const setCurrentWorkflowMode = useSetAtom(currentWorkflowModeAtom);
   const [isOwner, setIsWorkflowOwner] = useAtom(isWorkflowOwnerAtom);
   const setGlobalIntegrations = useSetAtom(integrationsAtom);
   const setIntegrationsLoaded = useSetAtom(integrationsLoadedAtom);
@@ -172,6 +174,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
       setCurrentWorkflowVisibility(
         (workflow.visibility as WorkflowVisibility) ?? "private"
       );
+      setCurrentWorkflowMode(workflow.mode ?? "live");
       setIsWorkflowOwner(workflow.isOwner !== false); // Default to true if not set
       setHasUnsavedChanges(false);
       setWorkflowNotFound(false);
@@ -191,6 +194,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
     setCurrentWorkflowId,
     setCurrentWorkflowName,
     setCurrentWorkflowVisibility,
+    setCurrentWorkflowMode,
     setIsWorkflowOwner,
     setHasUnsavedChanges,
     setWorkflowNotFound,

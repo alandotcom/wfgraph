@@ -25,7 +25,7 @@ const executeLogger = getAppLogger("workflow", "execute");
 async function createTerminalExecution(input: {
   workflowId: string;
   triggerType: "manual" | "webhook" | "event";
-  isDryRun: boolean;
+  runMode: "live" | "test";
   triggerEventType?: string;
   correlationKey?: string;
   payload: Record<string, unknown>;
@@ -43,7 +43,7 @@ async function createTerminalExecution(input: {
       workflowId: input.workflowId,
       status: input.status,
       triggerType: input.triggerType,
-      isDryRun: input.isDryRun,
+      runMode: input.runMode,
       triggerEventType: input.triggerEventType,
       correlationKey: input.correlationKey,
       input: input.payload,
@@ -75,7 +75,7 @@ async function startExecution(input: {
   requestPayload: Record<string, unknown>;
   eventType?: string;
   correlationKey?: string;
-  dryRun: boolean;
+  runMode: "live" | "test";
 }) {
   const [startedExecution] = await db
     .insert(workflowExecutions)
@@ -83,7 +83,7 @@ async function startExecution(input: {
       workflowId: input.workflowId,
       status: "running",
       triggerType: input.triggerType,
-      isDryRun: input.dryRun,
+      runMode: input.runMode,
       triggerEventType: input.eventType,
       correlationKey: input.correlationKey,
       input: input.payload,
@@ -97,7 +97,7 @@ async function startExecution(input: {
     executionId: startedExecution.id,
     workflowId: input.workflowId,
     workflowName: input.workflowName,
-    dryRun: input.dryRun,
+    runMode: input.runMode,
     eventContext: {
       eventType: input.eventType,
       correlationKey: input.correlationKey,
@@ -123,10 +123,13 @@ async function startExecution(input: {
     workflowId: input.workflowId,
     executionId: startedExecution.id,
     eventType: "run_started",
-    message: input.dryRun ? "Manual dry run started" : "Manual run started",
+    message:
+      input.runMode === "test"
+        ? "Manual test mode run started"
+        : "Manual run started",
     metadata: {
       triggerType: input.triggerType,
-      dryRun: input.dryRun,
+      runMode: input.runMode,
       eventType: input.eventType,
       correlationKey: input.correlationKey,
       runId: run.eventId,
@@ -136,7 +139,7 @@ async function startExecution(input: {
   return {
     executionId: startedExecution.id,
     runId: run.eventId,
-    dryRun: input.dryRun,
+    runMode: input.runMode,
   };
 }
 
@@ -172,7 +175,6 @@ export async function postWorkflowExecute(
   workflowId: string,
   body: {
     input?: Record<string, unknown>;
-    dryRun?: boolean;
   }
 ) {
   return responseFromServiceResult(
@@ -185,7 +187,6 @@ export async function postWorkflowExecuteResult(
   workflowId: string,
   body: {
     input?: Record<string, unknown>;
-    dryRun?: boolean;
   }
 ): Promise<
   ServiceResult<WorkflowExecuteResponse, 400 | 403 | 404 | 500, ApiErrorPayload>
@@ -218,7 +219,7 @@ export async function postWorkflowExecuteResult(
         ? resolveWebhookTriggerRuntimeConfig(triggerConfigRecord)
         : undefined;
     const input = body.input ?? {};
-    const dryRun = body.dryRun === true;
+    const runMode = workflow.mode;
     let effectiveInput = input;
 
     if (triggerExecutionType === "webhook" && Object.keys(input).length === 0) {
@@ -232,13 +233,13 @@ export async function postWorkflowExecuteResult(
       const ignoredExecution = await createTerminalExecution({
         workflowId,
         triggerType: "manual",
-        isDryRun: dryRun,
+        runMode,
         payload: effectiveInput,
         status: "success",
         output: {
           status: "ignored",
           reason: "workflow_paused",
-          dryRun,
+          runMode,
         },
         auditEventType: "run_ignored",
         auditMessage: buildIgnoredAuditMessage({
@@ -246,14 +247,14 @@ export async function postWorkflowExecuteResult(
         }),
         auditMetadata: {
           reason: "workflow_paused",
-          dryRun,
+          runMode,
         },
       });
 
       const response: WorkflowExecuteResponse = {
         status: "ignored",
         executionId: ignoredExecution.id,
-        dryRun,
+        runMode,
         reason: "workflow_paused",
       };
       return success(response);
@@ -268,7 +269,7 @@ export async function postWorkflowExecuteResult(
     requestLogger.info("Workflow execute request received", {
       workflowName: workflow.name,
       triggerType: triggerDefinition.runtime.type.toLowerCase(),
-      dryRun,
+      runMode,
       requestPayloadKeys: Object.keys(body.input ?? {}),
       effectiveInputKeys: Object.keys(effectiveInput),
       eventType,
@@ -285,14 +286,14 @@ export async function postWorkflowExecuteResult(
         requestPayload: body.input ?? {},
         eventType,
         correlationKey,
-        dryRun,
+        runMode,
       });
 
       const response: WorkflowExecuteResponse = {
         status: "running",
         executionId: startedExecution.executionId,
         runId: startedExecution.runId,
-        dryRun,
+        runMode,
       };
       return success(response);
     }
@@ -303,10 +304,11 @@ export async function postWorkflowExecuteResult(
         : await listWorkflowWaitingStatesByCorrelation({
             workflowId,
             correlationKey,
+            runMode,
           });
 
     const orchestrated = await orchestrateTriggerExecution({
-      dryRun,
+      runMode,
       eventType,
       correlationKey,
       routingDecision,
@@ -322,7 +324,7 @@ export async function postWorkflowExecuteResult(
           requestPayload: body.input ?? {},
           eventType,
           correlationKey,
-          dryRun,
+          runMode,
         }),
       cancelWaitStates: async (currentEventType) =>
         await cancelWaitingRuns({
@@ -342,10 +344,9 @@ export async function postWorkflowExecuteResult(
         status: "running",
         executionId: orchestrated.executionId,
         runId: orchestrated.runId,
-        dryRun: orchestrated.dryRun,
+        runMode: orchestrated.runMode,
         cancelledExecutions: orchestrated.cancelledExecutions,
         cancelledWaits: orchestrated.cancelledWaits,
-        simulated: orchestrated.simulated,
       };
       return success(response);
     }
@@ -353,24 +354,21 @@ export async function postWorkflowExecuteResult(
     if (orchestrated.status === "cancelled") {
       let cancellationAuditMessage =
         "Cancelled waiting runs from execute request";
-      if (eventType && dryRun) {
-        cancellationAuditMessage = `Simulated cancellation by execute event ${eventType}`;
-      } else if (eventType) {
+      if (eventType) {
         cancellationAuditMessage = `Cancelled by execute event ${eventType}`;
       }
 
       const terminalExecution = await createTerminalExecution({
         workflowId,
         triggerType: triggerExecutionType,
-        isDryRun: orchestrated.dryRun,
+        runMode: orchestrated.runMode,
         triggerEventType: eventType,
         correlationKey,
         payload: effectiveInput,
         status: "cancelled",
         output: {
           status: orchestrated.status,
-          dryRun: orchestrated.dryRun,
-          simulated: orchestrated.simulated,
+          runMode: orchestrated.runMode,
           cancelledExecutions: orchestrated.cancelledExecutions,
           cancelledWaits: orchestrated.cancelledWaits,
           failedExecutions: orchestrated.failedExecutions,
@@ -383,18 +381,16 @@ export async function postWorkflowExecuteResult(
           cancelledExecutions: orchestrated.cancelledExecutions,
           cancelledWaits: orchestrated.cancelledWaits,
           failedExecutions: orchestrated.failedExecutions,
-          simulated: orchestrated.simulated,
         },
       });
 
       const response: WorkflowExecuteResponse = {
         status: "cancelled",
         executionId: terminalExecution.id,
-        dryRun: orchestrated.dryRun,
+        runMode: orchestrated.runMode,
         cancelledExecutions: orchestrated.cancelledExecutions,
         cancelledWaits: orchestrated.cancelledWaits,
         failedExecutions: orchestrated.failedExecutions,
-        simulated: orchestrated.simulated,
       };
       return success(response);
     }
@@ -412,7 +408,7 @@ export async function postWorkflowExecuteResult(
     const terminalExecution = await createTerminalExecution({
       workflowId,
       triggerType: triggerExecutionType,
-      isDryRun: dryRun,
+      runMode,
       triggerEventType: eventType,
       correlationKey,
       payload: effectiveInput,
@@ -420,7 +416,7 @@ export async function postWorkflowExecuteResult(
       output: {
         status: "ignored",
         reason: ignoredReason,
-        dryRun,
+        runMode,
       },
       auditEventType: "run_ignored",
       auditMessage: buildIgnoredAuditMessage({
@@ -433,14 +429,14 @@ export async function postWorkflowExecuteResult(
         correlationKey,
         reason: ignoredReason,
         eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
-        dryRun,
+        runMode,
       },
     });
 
     const response: WorkflowExecuteResponse = {
       status: "ignored",
       executionId: terminalExecution.id,
-      dryRun,
+      runMode,
       reason: ignoredReason,
     };
 

@@ -116,9 +116,9 @@ function SummaryContent({
           >
             {getStatusLabel(execution.status)}
           </span>
-          {execution.isDryRun ? (
+          {execution.runMode === "test" ? (
             <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 font-medium text-[10px] text-amber-700 uppercase dark:text-amber-300">
-              Dry Run
+              Test Mode
             </span>
           ) : null}
         </div>

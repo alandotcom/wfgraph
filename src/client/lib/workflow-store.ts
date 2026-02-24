@@ -5,6 +5,7 @@ import { atom } from "jotai";
 import type {
   ExecutionLogEntry,
   WorkflowEdge,
+  WorkflowMode,
   WorkflowNode,
   WorkflowNodeData,
   WorkflowVisibility,
@@ -59,6 +60,7 @@ export const currentWorkflowNameAtom = atom<string>("");
 export const workflowNameErrorAtom = atom<string | null>(null);
 export const currentWorkflowVisibilityAtom =
   atom<WorkflowVisibility>("private");
+export const currentWorkflowModeAtom = atom<WorkflowMode>("live");
 export const isWorkflowOwnerAtom = atom<boolean>(true); // Whether current user owns this workflow
 
 // UI state atoms

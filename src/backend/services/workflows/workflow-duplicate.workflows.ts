@@ -113,6 +113,7 @@ export async function postWorkflowDuplicate(
         name: workflowName,
         description: sourceWorkflow.description,
         graph: newGraph,
+        mode: sourceWorkflow.mode,
         visibility: "private",
       })
       .returning();

@@ -10,7 +10,7 @@ const BASE_EXECUTION: WorkflowExecution = {
   duration: "1200",
   error: null,
   id: "exec_1",
-  isDryRun: true,
+  runMode: "test",
   startedAt: new Date("2026-02-22T10:00:00Z"),
   status: "success",
   triggerEventType: "appointment.updated",
@@ -83,5 +83,29 @@ describe("WorkflowRunSummaryRow", () => {
     const cancelButton = view.getByRole("button", { name: "Cancel" });
     fireEvent.click(cancelButton);
     expect(onCancel).toHaveBeenCalledWith("exec_waiting");
+  });
+
+  it("shows test mode badge only for test executions", () => {
+    const view = render(
+      <WorkflowRunSummaryRow
+        execution={BASE_EXECUTION}
+        leading={{ type: "spacer" }}
+        runNumber={4}
+        trailing={{ type: "spacer" }}
+      />
+    );
+
+    expect(view.getByText("Test Mode")).toBeTruthy();
+
+    view.rerender(
+      <WorkflowRunSummaryRow
+        execution={{ ...BASE_EXECUTION, id: "exec_live", runMode: "live" }}
+        leading={{ type: "spacer" }}
+        runNumber={5}
+        trailing={{ type: "spacer" }}
+      />
+    );
+
+    expect(view.queryByText("Test Mode")).toBeNull();
   });
 });

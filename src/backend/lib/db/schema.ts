@@ -14,6 +14,7 @@ import type { SerializedWorkflowGraph } from "@/shared/workflow/types";
 
 // Workflow visibility type
 export type WorkflowVisibility = "private" | "public";
+export type WorkflowMode = "live" | "test";
 
 export const workflows = pgTable(
   "workflows",
@@ -25,6 +26,7 @@ export const workflows = pgTable(
     description: text("description"),
     graph: jsonb("graph").notNull().$type<SerializedWorkflowGraph>(),
     isPaused: boolean("is_paused").notNull().default(false),
+    mode: text("mode").notNull().default("live").$type<WorkflowMode>(),
     visibility: text("visibility")
       .notNull()
       .default("private")
@@ -66,7 +68,7 @@ export const workflowExecutions = pgTable(
         "pending" | "running" | "waiting" | "success" | "error" | "cancelled"
       >(),
     triggerType: text("trigger_type").$type<"manual" | "webhook" | "event">(),
-    isDryRun: boolean("is_dry_run").notNull().default(false),
+    runMode: text("run_mode").notNull().default("live").$type<WorkflowMode>(),
     triggerEventType: text("trigger_event_type"),
     correlationKey: text("correlation_key"),
     // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level

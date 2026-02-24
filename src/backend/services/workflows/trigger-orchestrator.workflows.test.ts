@@ -18,7 +18,7 @@ function createWaitState(
 describe("orchestrateTriggerExecution", () => {
   it("ignores missing event type when routing requires it", async () => {
     const result = await orchestrateTriggerExecution({
-      dryRun: false,
+      runMode: "live",
       eventType: undefined,
       correlationKey: undefined,
       routingDecision: { kind: "ignore", reason: "missing_event_type" },
@@ -26,7 +26,7 @@ describe("orchestrateTriggerExecution", () => {
       enableResumes: true,
       startExecution: vi.fn(async () => ({
         executionId: "exec_1",
-        dryRun: false,
+        runMode: "live" as const,
       })),
       cancelWaitStates: vi.fn(async () => ({
         cancelledExecutions: 0,
@@ -37,13 +37,14 @@ describe("orchestrateTriggerExecution", () => {
 
     expect(result).toEqual({
       status: "ignored",
+      runMode: "live",
       reason: "missing_event_type",
     });
   });
 
   it("ignores restart events when no waiting runs exist", async () => {
     const result = await orchestrateTriggerExecution({
-      dryRun: false,
+      runMode: "live",
       eventType: "event.update",
       correlationKey: "abc",
       routingDecision: { kind: "restart" },
@@ -51,7 +52,7 @@ describe("orchestrateTriggerExecution", () => {
       enableResumes: true,
       startExecution: vi.fn(async () => ({
         executionId: "exec_1",
-        dryRun: false,
+        runMode: "live" as const,
       })),
       cancelWaitStates: vi.fn(async () => ({
         cancelledExecutions: 0,
@@ -62,23 +63,24 @@ describe("orchestrateTriggerExecution", () => {
 
     expect(result).toEqual({
       status: "ignored",
+      runMode: "live",
       reason: "no_waiting_runs",
     });
   });
 
-  it("starts a dry-run restart and returns simulated cancellation summary", async () => {
+  it("restarts by cancelling waits and starting a new run", async () => {
     const startExecution = vi.fn(async () => ({
       executionId: "exec_restart",
       runId: "run_restart",
-      dryRun: true,
+      runMode: "test" as const,
     }));
     const cancelWaitStates = vi.fn(async () => ({
-      cancelledExecutions: 9,
-      cancelledWaits: 9,
+      cancelledExecutions: 2,
+      cancelledWaits: 3,
     }));
 
     const result = await orchestrateTriggerExecution({
-      dryRun: true,
+      runMode: "test",
       eventType: "event.update",
       correlationKey: "abc",
       routingDecision: { kind: "restart" },
@@ -93,14 +95,13 @@ describe("orchestrateTriggerExecution", () => {
       resumeWaitStates: vi.fn(async () => 0),
     });
 
+    expect(cancelWaitStates).toHaveBeenCalledTimes(1);
     expect(startExecution).toHaveBeenCalledTimes(1);
-    expect(cancelWaitStates).toHaveBeenCalledTimes(0);
     expect(result).toEqual({
       status: "running",
       executionId: "exec_restart",
       runId: "run_restart",
-      dryRun: true,
-      simulated: true,
+      runMode: "test",
       cancelledExecutions: 2,
       cancelledWaits: 3,
     });
@@ -114,7 +115,7 @@ describe("orchestrateTriggerExecution", () => {
     }));
 
     const result = await orchestrateTriggerExecution({
-      dryRun: false,
+      runMode: "live",
       eventType: "event.delete",
       correlationKey: "abc",
       routingDecision: { kind: "stop" },
@@ -126,7 +127,7 @@ describe("orchestrateTriggerExecution", () => {
       enableResumes: true,
       startExecution: vi.fn(async () => ({
         executionId: "exec_start",
-        dryRun: false,
+        runMode: "live" as const,
       })),
       cancelWaitStates,
       resumeWaitStates: vi.fn(async () => 0),
@@ -135,16 +136,22 @@ describe("orchestrateTriggerExecution", () => {
     expect(cancelWaitStates).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
       status: "cancelled",
-      dryRun: false,
+      runMode: "live",
       cancelledExecutions: 2,
       cancelledWaits: 3,
       failedExecutions: ["exec_failed"],
     });
   });
 
-  it("simulates resume counts for dry-run webhooks", async () => {
+  it("resumes matching waiting runs when enabled", async () => {
+    const resumeWaitStates = vi.fn(async () => 1);
+    const startExecution = vi.fn(async () => ({
+      executionId: "exec_start",
+      runMode: "test" as const,
+    }));
+
     const result = await orchestrateTriggerExecution({
-      dryRun: true,
+      runMode: "test",
       eventType: "event.update",
       correlationKey: "abc",
       routingDecision: { kind: "start" },
@@ -153,33 +160,31 @@ describe("orchestrateTriggerExecution", () => {
         createWaitState("2", "exec_wait_2", "event.delete"),
       ],
       enableResumes: true,
-      startExecution: vi.fn(async () => ({
-        executionId: "exec_start",
-        dryRun: true,
-      })),
+      startExecution,
       cancelWaitStates: vi.fn(async () => ({
         cancelledExecutions: 0,
         cancelledWaits: 0,
       })),
-      resumeWaitStates: vi.fn(async () => 0),
+      resumeWaitStates,
     });
 
+    expect(resumeWaitStates).toHaveBeenCalledTimes(1);
+    expect(startExecution).toHaveBeenCalledTimes(0);
     expect(result).toEqual({
       status: "resumed",
       resumedCount: 1,
-      dryRun: true,
-      simulated: true,
+      runMode: "test",
     });
   });
 
-  it("ignores event_not_configured decisions even when event type is absent", async () => {
+  it("ignores event_not_configured decisions", async () => {
     const startExecution = vi.fn(async () => ({
       executionId: "exec_start",
-      dryRun: false,
+      runMode: "live" as const,
     }));
 
     const result = await orchestrateTriggerExecution({
-      dryRun: false,
+      runMode: "live",
       eventType: undefined,
       correlationKey: "abc",
       routingDecision: { kind: "ignore", reason: "event_not_configured" },
@@ -196,6 +201,7 @@ describe("orchestrateTriggerExecution", () => {
     expect(startExecution).toHaveBeenCalledTimes(0);
     expect(result).toEqual({
       status: "ignored",
+      runMode: "live",
       reason: "event_not_configured",
     });
   });
@@ -207,7 +213,7 @@ describe("orchestrateTriggerExecution", () => {
     }));
 
     const result = await orchestrateTriggerExecution({
-      dryRun: false,
+      runMode: "live",
       eventType: undefined,
       correlationKey: "abc",
       routingDecision: { kind: "stop" },
@@ -215,7 +221,7 @@ describe("orchestrateTriggerExecution", () => {
       enableResumes: true,
       startExecution: vi.fn(async () => ({
         executionId: "exec_start",
-        dryRun: false,
+        runMode: "live" as const,
       })),
       cancelWaitStates,
       resumeWaitStates: vi.fn(async () => 0),
@@ -224,7 +230,7 @@ describe("orchestrateTriggerExecution", () => {
     expect(cancelWaitStates).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
       status: "cancelled",
-      dryRun: false,
+      runMode: "live",
       cancelledExecutions: 1,
       cancelledWaits: 1,
     });

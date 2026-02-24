@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, getTableColumns, inArray } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
 import {
   workflowExecutions,
@@ -140,12 +140,31 @@ export async function listExecutionWaitingStates(executionId: string) {
 export async function listWorkflowWaitingStatesByCorrelation(input: {
   workflowId: string;
   correlationKey: string;
+  runMode?: "live" | "test";
 }) {
-  return await db.query.workflowWaitStates.findMany({
-    where: and(
-      eq(workflowWaitStates.workflowId, input.workflowId),
-      eq(workflowWaitStates.correlationKey, input.correlationKey),
-      eq(workflowWaitStates.status, "waiting")
-    ),
-  });
+  if (!input.runMode) {
+    return await db.query.workflowWaitStates.findMany({
+      where: and(
+        eq(workflowWaitStates.workflowId, input.workflowId),
+        eq(workflowWaitStates.correlationKey, input.correlationKey),
+        eq(workflowWaitStates.status, "waiting")
+      ),
+    });
+  }
+
+  return await db
+    .select(getTableColumns(workflowWaitStates))
+    .from(workflowWaitStates)
+    .innerJoin(
+      workflowExecutions,
+      eq(workflowWaitStates.executionId, workflowExecutions.id)
+    )
+    .where(
+      and(
+        eq(workflowWaitStates.workflowId, input.workflowId),
+        eq(workflowWaitStates.correlationKey, input.correlationKey),
+        eq(workflowWaitStates.status, "waiting"),
+        eq(workflowExecutions.runMode, input.runMode)
+      )
+    );
 }

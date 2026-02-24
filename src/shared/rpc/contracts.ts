@@ -52,11 +52,13 @@ const workflowApiPayloadSchema = z.object({
   description: z.string().optional(),
   graph: serializedWorkflowGraphSchema,
   isPaused: z.boolean().optional(),
+  mode: z.enum(["live", "test"]).optional(),
   visibility: z.enum(["private", "public"]).optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
   isOwner: z.boolean().optional(),
 });
+const workflowRunModeSchema = z.enum(["live", "test"]);
 
 const workflowExecutionStatusSchema = z.enum([
   "pending",
@@ -72,7 +74,7 @@ const workflowExecutionSchema = z.object({
   workflowId: idSchema,
   status: workflowExecutionStatusSchema,
   triggerType: z.enum(["manual", "webhook", "event"]).nullable(),
-  isDryRun: z.boolean(),
+  runMode: workflowRunModeSchema,
   triggerEventType: z.string().nullable(),
   correlationKey: z.string().nullable(),
   workflowRunId: z.string().nullable(),
@@ -135,10 +137,9 @@ const workflowExecutionRunningSchema = z
     status: z.literal("running"),
     executionId: z.string(),
     runId: z.string().optional(),
-    dryRun: z.boolean(),
+    runMode: workflowRunModeSchema,
     cancelledExecutions: z.number().optional(),
     cancelledWaits: z.number().optional(),
-    simulated: z.boolean().optional(),
   })
   .loose();
 
@@ -146,10 +147,9 @@ const workflowExecutionCancelledSchema = z
   .object({
     status: z.literal("cancelled"),
     executionId: z.string().optional(),
-    dryRun: z.boolean(),
+    runMode: workflowRunModeSchema,
     cancelledExecutions: z.number(),
     cancelledWaits: z.number(),
-    simulated: z.boolean().optional(),
     failedExecutions: z.array(z.string()).optional(),
   })
   .loose();
@@ -158,7 +158,7 @@ const workflowExecutionIgnoredSchema = z
   .object({
     status: z.literal("ignored"),
     executionId: z.string().optional(),
-    dryRun: z.boolean().optional(),
+    runMode: workflowRunModeSchema,
     reason: ignoredReasonSchema,
   })
   .loose();
@@ -167,8 +167,7 @@ const workflowExecutionResumedSchema = z
   .object({
     status: z.literal("resumed"),
     resumedCount: z.number(),
-    dryRun: z.boolean().optional(),
-    simulated: z.boolean().optional(),
+    runMode: workflowRunModeSchema,
   })
   .loose();
 
@@ -179,7 +178,7 @@ const workflowExecuteResponseSchema = z.discriminatedUnion("status", [
   }),
   workflowExecutionIgnoredSchema.extend({
     executionId: z.string(),
-    dryRun: z.boolean(),
+    runMode: workflowRunModeSchema,
   }),
 ]);
 
@@ -345,6 +344,7 @@ export const rpcContract = {
           name: z.string().optional(),
           description: z.string().optional(),
           graph: serializedWorkflowGraphSchema.optional(),
+          mode: workflowRunModeSchema.optional(),
         })
       )
       .output(workflowApiPayloadSchema),
@@ -382,7 +382,6 @@ export const rpcContract = {
         z.object({
           workflowId: idSchema,
           input: z.record(z.string(), z.unknown()).optional(),
-          dryRun: z.boolean().optional(),
         })
       )
       .output(workflowExecuteResponseSchema),
@@ -392,7 +391,6 @@ export const rpcContract = {
         z.object({
           workflowId: idSchema,
           input: z.record(z.string(), z.unknown()).optional(),
-          dryRun: z.boolean().optional(),
         })
       )
       .output(workflowWebhookResponseSchema),

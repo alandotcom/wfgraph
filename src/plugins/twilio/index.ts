@@ -70,6 +70,26 @@ const twilioPlugin: IntegrationPlugin = {
           required: true,
         },
         {
+          key: "testBehavior",
+          label: "Test Mode Behavior",
+          type: "select",
+          defaultValue: "log_only",
+          options: [
+            { value: "log_only", label: "Log only (do nothing)" },
+            { value: "send_to_test_phone", label: "Send to test phone" },
+          ],
+        },
+        {
+          key: "testPhoneTo",
+          label: "Test Phone Number",
+          type: "text",
+          placeholder: "+15557654321",
+          showWhen: {
+            field: "testBehavior",
+            equals: "send_to_test_phone",
+          },
+        },
+        {
           key: "smsBody",
           label: "Message",
           type: "template-textarea",

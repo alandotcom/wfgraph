@@ -17,6 +17,7 @@ type SendSmsResult =
         to: string;
         from?: string;
         messagingServiceSid?: string;
+        reasonCode?: string;
       };
     }
   | { success: false; error: { message: string } };
@@ -33,7 +34,20 @@ export type SendSmsCoreInput = {
 export type SendSmsInput = StepInput &
   SendSmsCoreInput & {
     integrationId?: string;
+    testBehavior?: string;
+    testPhoneTo?: string;
   };
+
+type TwilioTestBehavior = "log_only" | "send_to_test_phone";
+const E164_PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
+
+function resolveTwilioTestBehavior(value: unknown): TwilioTestBehavior {
+  return value === "send_to_test_phone" ? "send_to_test_phone" : "log_only";
+}
+
+function isValidTestPhoneNumber(value: string): boolean {
+  return E164_PHONE_PATTERN.test(value);
+}
 
 function parseMediaUrls(value: string | undefined): string[] {
   if (!value) {
@@ -170,11 +184,61 @@ async function stepHandler(
  * App entry point - fetches credentials and wraps with logging
  */
 export async function sendSmsStep(input: SendSmsInput): Promise<SendSmsResult> {
+  const runMode = input._context?.runMode ?? "live";
+  const testBehavior = resolveTwilioTestBehavior(input.testBehavior);
+  const executionId = input._context?.executionId ?? "no_execution";
+
+  if (runMode === "test" && testBehavior === "log_only") {
+    return withStepLogging(input, async () => ({
+      success: true,
+      data: {
+        sid: `twilio:test-log-only:${executionId}`,
+        status: "queued",
+        to: input.smsTo,
+        reasonCode: "test_mode_log_only",
+      },
+    }));
+  }
+
+  const testPhoneRaw =
+    typeof input.testPhoneTo === "string" ? input.testPhoneTo.trim() : "";
+  const shouldRouteToTestPhone =
+    runMode === "test" && testBehavior === "send_to_test_phone";
+
+  if (shouldRouteToTestPhone && testPhoneRaw.length === 0) {
+    return withStepLogging(input, async () => ({
+      success: true,
+      data: {
+        sid: `twilio:test-log-fallback:${executionId}`,
+        status: "queued",
+        to: input.smsTo,
+        reasonCode: "test_mode_log_fallback_missing_test_phone",
+      },
+    }));
+  }
+
+  if (shouldRouteToTestPhone && !isValidTestPhoneNumber(testPhoneRaw)) {
+    return withStepLogging(input, async () => ({
+      success: true,
+      data: {
+        sid: `twilio:test-log-fallback:${executionId}`,
+        status: "queued",
+        to: input.smsTo,
+        reasonCode: "test_mode_log_fallback_invalid_test_phone",
+      },
+    }));
+  }
+
   const credentials = input.integrationId
     ? await fetchCredentials(input.integrationId)
     : {};
 
-  return withStepLogging(input, () => stepHandler(input, credentials));
+  const coreInput: SendSmsCoreInput = {
+    ...input,
+    smsTo: shouldRouteToTestPhone ? testPhoneRaw : input.smsTo,
+  };
+
+  return withStepLogging(input, () => stepHandler(coreInput, credentials));
 }
 sendSmsStep.maxRetries = 0;
 

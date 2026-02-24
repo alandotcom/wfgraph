@@ -15,7 +15,7 @@ type SlackWebApiError = {
 };
 
 type SendSlackMessageResult =
-  | { success: true; ts: string; channel: string }
+  | { success: true; ts: string; channel: string; reasonCode?: string }
   | { success: false; error: string };
 
 export type SendSlackMessageCoreInput = {
@@ -23,10 +23,17 @@ export type SendSlackMessageCoreInput = {
   slackMessage: string;
 };
 
+type SlackTestBehavior = "log_only" | "send_message";
+
 export type SendSlackMessageInput = StepInput &
   SendSlackMessageCoreInput & {
     integrationId?: string;
+    testBehavior?: string;
   };
+
+function resolveSlackTestBehavior(value: unknown): SlackTestBehavior {
+  return value === "send_message" ? "send_message" : "log_only";
+}
 
 function getSlackErrorMessage(error: unknown): string {
   if (!error || typeof error !== "object") {
@@ -95,6 +102,18 @@ async function stepHandler(
 export async function sendSlackMessageStep(
   input: SendSlackMessageInput
 ): Promise<SendSlackMessageResult> {
+  const runMode = input._context?.runMode ?? "live";
+  const testBehavior = resolveSlackTestBehavior(input.testBehavior);
+
+  if (runMode === "test" && testBehavior === "log_only") {
+    return withStepLogging(input, async () => ({
+      success: true,
+      ts: "",
+      channel: input.slackChannel,
+      reasonCode: "test_mode_log_only",
+    }));
+  }
+
   const credentials = input.integrationId
     ? await fetchCredentials(input.integrationId)
     : {};

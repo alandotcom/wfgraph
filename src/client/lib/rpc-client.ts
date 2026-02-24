@@ -11,6 +11,7 @@ import {
 import type {
   SerializedWorkflowGraph,
   WorkflowEdge,
+  WorkflowMode,
   WorkflowNode,
   WorkflowVisibility,
 } from "@/shared/workflow/types";
@@ -25,6 +26,7 @@ export type WorkflowData = {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   isPaused?: boolean;
+  mode?: WorkflowMode;
   visibility?: WorkflowVisibility;
 };
 
@@ -32,6 +34,7 @@ export type SavedWorkflow = WorkflowData & {
   id: string;
   name: string;
   isPaused: boolean;
+  mode: WorkflowMode;
   visibility: WorkflowVisibility;
   createdAt: string;
   updatedAt: string;
@@ -177,6 +180,7 @@ function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
     nodes: graphData.nodes,
     edges: graphData.edges,
     isPaused: payload.isPaused ?? false,
+    mode: payload.mode ?? "live",
     visibility: payload.visibility ?? "private",
     createdAt: payload.createdAt ?? new Date(0).toISOString(),
     updatedAt: payload.updatedAt ?? new Date(0).toISOString(),
@@ -252,6 +256,7 @@ export const workflowApi = {
         name: workflow.name,
         description: workflow.description,
         graph,
+        mode: workflow.mode,
       })
       .then(toSavedWorkflow);
   },
@@ -278,24 +283,20 @@ export const workflowApi = {
 
   execute: (
     id: string,
-    input: Record<string, unknown> = {},
-    options?: { dryRun?: boolean }
+    input: Record<string, unknown> = {}
   ): Promise<WorkflowExecuteResult> =>
     rpc.workflow.execute({
       workflowId: id,
       input,
-      dryRun: options?.dryRun === true,
     }),
 
   triggerWebhook: (
     id: string,
-    input: Record<string, unknown> = {},
-    options?: { dryRun?: boolean }
+    input: Record<string, unknown> = {}
   ): Promise<WorkflowWebhookResult> =>
     rpc.workflow.triggerWebhook({
       workflowId: id,
       input,
-      dryRun: options?.dryRun,
     }),
 
   getExecutions: (id: string): Promise<WorkflowExecutionsResult> =>

@@ -60,6 +60,26 @@ const resendPlugin: IntegrationPlugin = {
           required: true,
         },
         {
+          key: "testBehavior",
+          label: "Test Mode Behavior",
+          type: "select",
+          defaultValue: "log_only",
+          options: [
+            { value: "log_only", label: "Log only (do nothing)" },
+            { value: "send_to_test_email", label: "Send to test email" },
+          ],
+        },
+        {
+          key: "testEmailTo",
+          label: "Test Email Address",
+          type: "text",
+          placeholder: "test@example.com",
+          showWhen: {
+            field: "testBehavior",
+            equals: "send_to_test_email",
+          },
+        },
+        {
           key: "emailSubject",
           label: "Subject",
           type: "template-input",

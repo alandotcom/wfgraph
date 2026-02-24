@@ -24,6 +24,7 @@ export type SerializedWorkflowNode = SerializedWorkflowGraph["nodes"][number];
 export type SerializedWorkflowEdge = SerializedWorkflowGraph["edges"][number];
 
 export type WorkflowVisibility = "private" | "public";
+export type WorkflowMode = "live" | "test";
 
 export type ExecutionLogEntry = {
   nodeId: string;

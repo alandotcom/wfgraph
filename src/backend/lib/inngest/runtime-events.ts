@@ -9,7 +9,7 @@ export type WorkflowRunRequestedEventData = {
   executionId?: string;
   workflowId: string;
   workflowRunId?: string;
-  dryRun?: boolean;
+  runMode?: "live" | "test";
   eventContext?: {
     eventType?: string;
     correlationKey?: string;

@@ -12,6 +12,7 @@ function createWorkflow(overrides: Partial<Workflow> = {}): Workflow {
     description: null,
     graph: { nodes: [], edges: [] },
     isPaused: false,
+    mode: "live",
     visibility: "public",
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-02T00:00:00.000Z"),
@@ -28,6 +29,7 @@ describe("workflow mappers", () => {
     expect(payload.updatedAt).toBe("2026-01-02T00:00:00.000Z");
     expect(payload.description).toBeUndefined();
     expect(payload.isPaused).toBe(false);
+    expect(payload.mode).toBe("live");
   });
 
   it("builds patch update payload without forcing visibility", () => {
@@ -42,5 +44,15 @@ describe("workflow mappers", () => {
       updatedAt,
     });
     expect(Object.hasOwn(updateData, "visibility")).toBe(false);
+  });
+
+  it("builds patch update payload with mode when provided", () => {
+    const updatedAt = new Date("2026-01-04T00:00:00.000Z");
+    const updateData = buildWorkflowUpdateData({ mode: "test" }, updatedAt);
+
+    expect(updateData).toEqual({
+      mode: "test",
+      updatedAt,
+    });
   });
 });

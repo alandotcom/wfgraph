@@ -30,6 +30,7 @@ async function startEventExecution(input: {
   payload: Record<string, unknown>;
   eventType?: string;
   correlationKey?: string;
+  runMode: "live" | "test";
 }) {
   const [execution] = await db
     .insert(workflowExecutions)
@@ -37,7 +38,7 @@ async function startEventExecution(input: {
       workflowId: input.workflowId,
       status: "running",
       triggerType: "event",
-      isDryRun: false,
+      runMode: input.runMode,
       triggerEventType: input.eventType,
       correlationKey: input.correlationKey,
       input: input.payload,
@@ -51,7 +52,7 @@ async function startEventExecution(input: {
     executionId: execution.id,
     workflowId: input.workflowId,
     workflowName: input.workflowName,
-    dryRun: false,
+    runMode: input.runMode,
     eventContext: {
       eventType: input.eventType,
       correlationKey: input.correlationKey,
@@ -77,9 +78,10 @@ async function startEventExecution(input: {
     workflowId: input.workflowId,
     executionId: execution.id,
     eventType: "run_started",
-    message: `Event-triggered run started${input.eventType ? ` for ${input.eventType}` : ""}`,
+    message: `${input.runMode === "test" ? "Event-triggered test mode run started" : "Event-triggered run started"}${input.eventType ? ` for ${input.eventType}` : ""}`,
     metadata: {
       triggerType: "event",
+      runMode: input.runMode,
       eventType: input.eventType,
       correlationKey: input.correlationKey,
       runId: run.eventId,
@@ -89,7 +91,7 @@ async function startEventExecution(input: {
   return {
     executionId: execution.id,
     runId: run.eventId,
-    dryRun: false,
+    runMode: input.runMode,
   };
 }
 
@@ -144,7 +146,7 @@ export function createInngestEventListenerFunction(input: {
           workflowId: input.workflowId,
           eventType: "run_ignored",
           message: "Ignored event because workflow is paused",
-          metadata: { inngestEventName: eventLabel },
+          metadata: { inngestEventName: eventLabel, runMode: workflow.mode },
         });
         return { status: "ignored", reason: "workflow_paused" };
       }
@@ -157,6 +159,7 @@ export function createInngestEventListenerFunction(input: {
 
       requestLogger.info("Event trigger received", {
         workflowName: workflow.name,
+        runMode: workflow.mode,
         eventType,
         correlationKey,
         payloadKeys: Object.keys(payload),
@@ -166,7 +169,7 @@ export function createInngestEventListenerFunction(input: {
         workflowId: input.workflowId,
         eventType: "trigger_received",
         message: `Event received: ${eventLabel}${eventType ? ` (${eventType})` : ""}`,
-        metadata: { eventType, correlationKey },
+        metadata: { eventType, correlationKey, runMode: workflow.mode },
       });
 
       const waitingStates =
@@ -175,10 +178,11 @@ export function createInngestEventListenerFunction(input: {
           : await listWorkflowWaitingStatesByCorrelation({
               workflowId: input.workflowId,
               correlationKey,
+              runMode: workflow.mode,
             });
 
       const outcome = await orchestrateTriggerExecution({
-        dryRun: false,
+        runMode: workflow.mode,
         eventType,
         correlationKey,
         routingDecision,
@@ -192,6 +196,7 @@ export function createInngestEventListenerFunction(input: {
             payload,
             eventType,
             correlationKey,
+            runMode: workflow.mode,
           }),
         cancelWaitStates: async (currentEventType) =>
           await cancelWaitingRuns({
@@ -221,6 +226,7 @@ export function createInngestEventListenerFunction(input: {
             eventType,
             correlationKey,
             reason: outcome.reason,
+            runMode: workflow.mode,
           },
         });
       }

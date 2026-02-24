@@ -1,4 +1,8 @@
-import type { SerializedWorkflowGraph, WorkflowVisibility } from "./types";
+import type {
+  SerializedWorkflowGraph,
+  WorkflowMode,
+  WorkflowVisibility,
+} from "./types";
 
 export type ApiErrorPayload = {
   error: string;
@@ -14,6 +18,7 @@ export type WorkflowApiPayload = {
   description?: string;
   graph: SerializedWorkflowGraph;
   isPaused?: boolean;
+  mode?: WorkflowMode;
   visibility?: WorkflowVisibility;
   createdAt?: string;
   updatedAt?: string;

@@ -18,6 +18,7 @@ export type StepContext = {
   nodeId: string;
   nodeName: string;
   nodeType: string;
+  runMode?: "live" | "test";
 };
 
 /**

@@ -367,11 +367,13 @@ export default function WorkflowsPage() {
             </th>
             <th className="px-2 py-2">Name</th>
             <th className="px-2 py-2">State</th>
+            <th className="px-2 py-2">Mode</th>
             <th className="px-2 py-2">Updated</th>
             <th className="px-4 py-2 text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
+          {/* biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Row rendering includes per-item state/mode/action controls and is clearer in a single map callback. */}
           {workflowRows.map((workflow) => {
             const isSelected = selectedWorkflowIds.has(workflow.id);
             const canMutate = workflow.isOwner !== false;
@@ -379,6 +381,11 @@ export default function WorkflowsPage() {
               ? "border-amber-500/30 bg-amber-500/10 text-amber-700"
               : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
             const stateLabel = workflow.isPaused ? "Paused" : "Active";
+            const modeClass =
+              workflow.mode === "test"
+                ? "border-destructive/30 bg-destructive/10 text-destructive"
+                : "border-zinc-500/30 bg-zinc-500/10 text-zinc-700";
+            const modeLabel = workflow.mode === "test" ? "Test" : "Live";
             const toggleAction = workflow.isPaused ? "resume" : "pause";
             const toggleActionLabel = workflow.isPaused ? "Resume" : "Pause";
 
@@ -416,11 +423,58 @@ export default function WorkflowsPage() {
                     {stateLabel}
                   </span>
                 </td>
+                <td className="px-2 py-3">
+                  <span
+                    className={`inline-flex rounded border px-2 py-0.5 font-medium text-xs uppercase transition-colors duration-200 ${modeClass}`}
+                  >
+                    {modeLabel}
+                  </span>
+                </td>
                 <td className="px-2 py-3 text-muted-foreground text-xs">
                   {getRelativeTime(workflow.updatedAt)}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex justify-end gap-2">
+                    <Button
+                      disabled={!canMutate || lifecycleAction !== null}
+                      onClick={async () => {
+                        try {
+                          const nextMode =
+                            workflow.mode === "test" ? "live" : "test";
+                          const updatedWorkflow = await api.workflow.update(
+                            workflow.id,
+                            {
+                              mode: nextMode,
+                            }
+                          );
+                          setWorkflows((current) =>
+                            current.map((item) =>
+                              item.id === updatedWorkflow.id
+                                ? { ...item, ...updatedWorkflow }
+                                : item
+                            )
+                          );
+                          toast.success(
+                            nextMode === "test"
+                              ? "Switched workflow to Test mode"
+                              : "Switched workflow to Live mode"
+                          );
+                        } catch (error) {
+                          console.error(
+                            "Failed to switch workflow mode:",
+                            error
+                          );
+                          toast.error("Failed to switch workflow mode");
+                        }
+                      }}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      {workflow.mode === "test"
+                        ? "Switch to Live"
+                        : "Switch to Test"}
+                    </Button>
                     <Button
                       disabled={!canMutate || lifecycleAction !== null}
                       onClick={() => {
@@ -474,6 +528,7 @@ export default function WorkflowsPage() {
             <th className="px-2 py-2">Status</th>
             <th className="px-2 py-2">Started</th>
             <th className="px-2 py-2">Trigger</th>
+            <th className="px-2 py-2">Mode</th>
             <th className="px-2 py-2">Duration</th>
             <th className="px-4 py-2 text-right">Open</th>
           </tr>
@@ -502,6 +557,17 @@ export default function WorkflowsPage() {
               <td className="px-2 py-3 text-muted-foreground text-xs">
                 {run.triggerType ?? "-"}
                 {run.triggerEventType ? ` / ${run.triggerEventType}` : ""}
+              </td>
+              <td className="px-2 py-3 text-muted-foreground text-xs">
+                {run.runMode === "test" ? (
+                  <span className="rounded border border-destructive/30 bg-destructive/10 px-2 py-0.5 font-medium text-[10px] text-destructive uppercase">
+                    Test
+                  </span>
+                ) : (
+                  <span className="rounded border border-zinc-500/30 bg-zinc-500/10 px-2 py-0.5 font-medium text-[10px] text-zinc-700 uppercase">
+                    Live
+                  </span>
+                )}
               </td>
               <td className="px-2 py-3 text-muted-foreground text-xs">
                 {formatDuration(run.duration)}
@@ -547,7 +613,8 @@ export default function WorkflowsPage() {
           </div>
           <p className="text-muted-foreground text-sm">
             Manage workflows in bulk and review runs across every workflow.
-            Paused workflows block new manual, webhook, and schedule starts.
+            Paused workflows block new starts. Test mode makes runs execute with
+            test-mode action behavior.
           </p>
         </div>
 

@@ -77,12 +77,14 @@ export async function getWorkflow(
   }
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Patch handles name, graph, mode, and integration validation in one transactional service boundary.
 export async function patchWorkflow(
   workflowId: string,
   body: {
     name?: string;
     description?: string;
     graph?: unknown;
+    mode?: "live" | "test";
   }
 ): Promise<PatchWorkflowResult> {
   const requestLogger = workflowServiceLogger.with({ workflowId });
@@ -90,10 +92,17 @@ export async function patchWorkflow(
     name?: string;
     description?: string;
     graph?: SerializedWorkflowGraph;
+    mode?: "live" | "test";
   } = {};
 
   if (body.description !== undefined) {
     updateInput.description = body.description;
+  }
+  if (body.mode !== undefined) {
+    if (body.mode !== "live" && body.mode !== "test") {
+      return failure(400, { error: "Workflow mode must be live or test" });
+    }
+    updateInput.mode = body.mode;
   }
 
   try {
@@ -187,9 +196,21 @@ export async function patchWorkflow(
 
     invalidateInngestFunctionsCache();
 
+    const modeChanged =
+      updateInput.mode !== undefined &&
+      updateInput.mode !== existingWorkflow.mode;
+    if (modeChanged) {
+      requestLogger.info("Workflow mode changed", {
+        previousMode: existingWorkflow.mode,
+        nextMode: updatedWorkflow.mode,
+      });
+    }
+
     requestLogger.info("Workflow updated", {
       workflowName: updatedWorkflow.name,
       hasGraph: updateInput.graph !== undefined,
+      mode: updatedWorkflow.mode,
+      modeChanged,
     });
 
     return success(toWorkflowApiPayload(updatedWorkflow));

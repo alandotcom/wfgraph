@@ -25,6 +25,7 @@ import {
   canUndoAtom,
   clearWorkflowAtom,
   currentWorkflowIdAtom,
+  currentWorkflowModeAtom,
   currentWorkflowNameAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
@@ -303,7 +304,7 @@ function getMissingIntegrations(
   );
 }
 
-type ExecuteTestWorkflowParams = {
+type ExecuteWorkflowRunParams = {
   workflowId: string;
   nodes: WorkflowNode[];
   updateNodeData: (update: {
@@ -312,18 +313,16 @@ type ExecuteTestWorkflowParams = {
   }) => void;
   setIsExecuting: (value: boolean) => void;
   setSelectedExecutionId: (value: string | null) => void;
-  dryRun?: boolean;
 };
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Execution lifecycle combines API kickoff, polling, node status sync, and cancellation handling.
-async function executeTestWorkflow({
+async function executeWorkflowRun({
   workflowId,
   nodes,
   updateNodeData,
   setIsExecuting,
   setSelectedExecutionId,
-  dryRun = false,
-}: ExecuteTestWorkflowParams) {
+}: ExecuteWorkflowRunParams) {
   // Set all nodes to idle first
   updateNodesStatus(nodes, updateNodeData, "idle");
 
@@ -335,7 +334,7 @@ async function executeTestWorkflow({
   }
 
   try {
-    const result = await api.workflow.execute(workflowId, {}, { dryRun });
+    const result = await api.workflow.execute(workflowId, {});
 
     if (result.status !== "running" || !result.executionId) {
       if (result.status === "cancelled") {
@@ -500,13 +499,13 @@ function useWorkflowHandlers({
     }
   };
 
-  const executeWorkflow = async (dryRun = false) => {
+  const executeWorkflow = async () => {
     if (!currentWorkflowId) {
       toast.error("Please save the workflow before executing");
       return;
     }
 
-    // Switch to Runs tab when starting a test run
+    // Switch to Runs tab when starting a run
     setActiveTab("runs");
 
     // Deselect all nodes and edges
@@ -515,13 +514,12 @@ function useWorkflowHandlers({
     setSelectedNodeId(null);
 
     setIsExecuting(true);
-    await executeTestWorkflow({
+    await executeWorkflowRun({
       workflowId: currentWorkflowId,
       nodes,
       updateNodeData,
       setIsExecuting,
       setSelectedExecutionId,
-      dryRun,
     });
     // Don't set executing to false here - let polling handle it
   };
@@ -542,13 +540,11 @@ function useWorkflowHandlers({
     }
   };
 
-  const handleExecute = async (options?: { dryRun?: boolean }) => {
+  const handleExecute = async () => {
     // Guard against concurrent executions
     if (isExecuting) {
       return;
     }
-    const dryRun = options?.dryRun === true;
-
     // Collect all workflow issues at once
     const brokenRefs = getBrokenTemplateReferences(nodes);
     const missingFields = getMissingRequiredFields(nodes);
@@ -569,15 +565,13 @@ function useWorkflowHandlers({
           missingIntegrations,
         },
         onGoToStep: handleGoToStep,
-        onRunAnyway: hasBlockingIssues
-          ? undefined
-          : () => executeWorkflow(dryRun),
+        onRunAnyway: hasBlockingIssues ? undefined : () => executeWorkflow(),
         allowRunAnyway: !hasBlockingIssues,
       });
       return;
     }
 
-    await executeWorkflow(dryRun);
+    await executeWorkflow();
   };
 
   return {
@@ -598,6 +592,9 @@ function useWorkflowState() {
   const setCurrentWorkflowId = useSetAtom(currentWorkflowIdAtom);
   const [workflowName, setCurrentWorkflowName] = useAtom(
     currentWorkflowNameAtom
+  );
+  const [workflowMode, setCurrentWorkflowMode] = useAtom(
+    currentWorkflowModeAtom
   );
   const setWorkflowNameError = useSetAtom(workflowNameErrorAtom);
   const setIsTransitioningFromHomepage = useSetAtom(
@@ -652,7 +649,9 @@ function useWorkflowState() {
     currentWorkflowId,
     setCurrentWorkflowId,
     workflowName,
+    workflowMode,
     setCurrentWorkflowName,
+    setCurrentWorkflowMode,
     setWorkflowNameError,
     setIsTransitioningFromHomepage,
     isOwner,
@@ -688,7 +687,9 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     currentWorkflowId,
     setCurrentWorkflowId,
     workflowName,
+    workflowMode,
     setCurrentWorkflowName,
+    setCurrentWorkflowMode,
     setWorkflowNameError,
     setIsTransitioningFromHomepage,
     nodes,
@@ -808,6 +809,32 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     }
   };
 
+  const handleSetWorkflowMode = async (mode: "live" | "test") => {
+    if (!currentWorkflowId || workflowMode === mode) {
+      return;
+    }
+
+    try {
+      const updatedWorkflow = await api.workflow.update(currentWorkflowId, {
+        mode,
+      });
+      setCurrentWorkflowMode(updatedWorkflow.mode);
+      setAllWorkflows((current) =>
+        current.map((workflow) =>
+          workflow.id === updatedWorkflow.id ? updatedWorkflow : workflow
+        )
+      );
+      toast.success(
+        mode === "test"
+          ? "Workflow set to Test mode"
+          : "Workflow set to Live mode"
+      );
+    } catch (error) {
+      console.error("Failed to update workflow mode:", error);
+      toast.error("Failed to update workflow mode");
+    }
+  };
+
   return {
     handleSave,
     handleExecute,
@@ -815,6 +842,7 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     handleDeleteWorkflow,
     loadWorkflows,
     handleDuplicate,
+    handleSetWorkflowMode,
   };
 }
 
@@ -1041,6 +1069,28 @@ function ToolbarActions({
       </ButtonGroup>
 
       <RunButtonGroup actions={actions} state={state} />
+      {workflowId && (
+        <ButtonGroup className="flex" orientation="horizontal">
+          <Button
+            className="border"
+            disabled={state.isSaving || state.isGenerating}
+            onClick={() => actions.handleSetWorkflowMode("live")}
+            size="sm"
+            variant={state.workflowMode === "live" ? "secondary" : "outline"}
+          >
+            Live
+          </Button>
+          <Button
+            className="border"
+            disabled={state.isSaving || state.isGenerating}
+            onClick={() => actions.handleSetWorkflowMode("test")}
+            size="sm"
+            variant={state.workflowMode === "test" ? "secondary" : "outline"}
+          >
+            Test
+          </Button>
+        </ButtonGroup>
+      )}
     </>
   );
 }
@@ -1106,38 +1156,6 @@ function RunButtonGroup({
           <Play className="size-4" />
         )}
       </Button>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-              disabled={isDisabled}
-              size="icon"
-              title="Run options"
-              variant="secondary"
-            />
-          }
-        >
-          <ChevronDown className="size-4" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            className="flex items-center gap-2"
-            onClick={() => actions.handleExecute()}
-          >
-            <Play className="size-4" />
-            Run
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="flex items-center gap-2"
-            onClick={() => actions.handleExecute({ dryRun: true })}
-          >
-            <Play className="size-4" />
-            Dry Run
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
     </ButtonGroup>
   );
 }
@@ -1310,6 +1328,11 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
             state={state}
             workflowId={workflowId}
           />
+          {workflowId && state.workflowMode === "test" && (
+            <span className="rounded border border-destructive/40 bg-destructive/10 px-2 py-1 font-semibold text-[10px] text-destructive uppercase">
+              Test Mode
+            </span>
+          )}
           {workflowId && !state.isOwner && (
             <span className="hidden text-muted-foreground text-xs uppercase lg:inline">
               Read-only
@@ -1336,6 +1359,17 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
           </div>
         </div>
       </div>
+      {workflowId && state.workflowMode === "test" && (
+        <div className="pointer-events-none absolute right-4 bottom-4 z-10 max-w-xl rounded border border-destructive/30 bg-destructive/10 px-4 py-2 text-xs">
+          <p className="font-semibold text-destructive uppercase tracking-wide">
+            Test mode active
+          </p>
+          <p className="font-medium text-foreground">
+            No real email or SMS is sent unless a node is configured to route to
+            a test recipient.
+          </p>
+        </div>
+      )}
     </>
   );
 };

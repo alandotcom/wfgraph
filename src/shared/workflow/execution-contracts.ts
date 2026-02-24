@@ -14,43 +14,37 @@ export type WorkflowExecutionRunningResponse = {
   status: "running";
   executionId: string;
   runId?: string;
-  dryRun: boolean;
+  runMode: "live" | "test";
   cancelledExecutions?: number;
   cancelledWaits?: number;
-  simulated?: boolean;
 };
 
 export type WorkflowExecutionCancelledResponse = {
   status: "cancelled";
   executionId?: string;
-  dryRun: boolean;
+  runMode: "live" | "test";
   cancelledExecutions: number;
   cancelledWaits: number;
-  simulated?: boolean;
   failedExecutions?: string[];
 };
 
 export type WorkflowExecutionIgnoredResponse = {
   status: "ignored";
   executionId?: string;
-  dryRun?: boolean;
+  runMode: "live" | "test";
   reason: WorkflowExecutionIgnoredReason;
 };
 
 export type WorkflowExecutionResumedResponse = {
   status: "resumed";
   resumedCount: number;
-  dryRun?: boolean;
-  simulated?: boolean;
+  runMode: "live" | "test";
 };
 
 export type WorkflowExecuteResponse =
   | WorkflowExecutionRunningResponse
   | (WorkflowExecutionCancelledResponse & { executionId: string })
-  | (WorkflowExecutionIgnoredResponse & {
-      executionId: string;
-      dryRun: boolean;
-    });
+  | (WorkflowExecutionIgnoredResponse & { executionId: string });
 
 export type WorkflowWebhookResponse =
   | WorkflowExecutionRunningResponse

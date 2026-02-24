@@ -26,9 +26,6 @@ import { listCustomWorkflowTriggers } from "@/shared/workflow/trigger-registry";
 const idSchema = z.string().trim().min(1);
 const workflowIdParamsSchema = z.object({ workflowId: idSchema });
 const tokenParamsSchema = z.object({ token: idSchema });
-const webhookQuerySchema = z.object({
-  dryRun: z.enum(["true", "false"]).optional(),
-});
 
 const webhookBodySchema = z.record(z.string(), z.unknown());
 const resumeBodySchema = z.record(z.string(), z.unknown());
@@ -299,14 +296,11 @@ export function createApiApp() {
     .post(
       "/workflows/:workflowId/webhook",
       zValidator("param", workflowIdParamsSchema),
-      zValidator("query", webhookQuerySchema),
       zValidator("json", webhookBodySchema),
       (c) =>
         postWorkflowWebhook({
           workflowId: c.req.valid("param").workflowId,
           authHeader: c.req.header("Authorization") ?? null,
-          dryRunQuery: c.req.valid("query").dryRun,
-          dryRunHeader: c.req.header("x-workflow-dry-run") ?? null,
           body: c.req.valid("json"),
         })
     )

@@ -59,7 +59,9 @@ function isWorkflowExecutionInput(
     isOptionalString(value.workflowId) &&
     isOptionalString(value.workflowName) &&
     isOptionalString(value.workflowRunId) &&
-    (value.dryRun === undefined || typeof value.dryRun === "boolean") &&
+    (value.runMode === undefined ||
+      value.runMode === "live" ||
+      value.runMode === "test") &&
     isValidEventContext(value.eventContext)
   );
 }

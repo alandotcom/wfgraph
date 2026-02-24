@@ -22,7 +22,7 @@ type WorkflowExecutionItem = {
   workflowId: string;
   status: "pending" | "running" | "waiting" | "success" | "error" | "cancelled";
   triggerType: "manual" | "webhook" | "event" | null;
-  isDryRun: boolean;
+  runMode: "live" | "test";
   triggerEventType: string | null;
   correlationKey: string | null;
   workflowRunId: string | null;
@@ -47,7 +47,7 @@ function toWorkflowExecutionItem(input: {
   workflowId: string;
   status: "pending" | "running" | "waiting" | "success" | "error" | "cancelled";
   triggerType: "manual" | "webhook" | "event" | null;
-  isDryRun: boolean;
+  runMode: "live" | "test";
   triggerEventType: string | null;
   correlationKey: string | null;
   workflowRunId: string | null;
