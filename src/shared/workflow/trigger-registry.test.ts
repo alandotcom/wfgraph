@@ -297,18 +297,17 @@ describe("registerWorkflowTrigger", () => {
     unregisterWorkflowTrigger("MultiEventTrigger");
   });
 
-  it("passes idempotency and concurrency into functionOptions", () => {
+  it("passes concurrency into functionOptions with event.data prefix", () => {
     const trigger = createTrigger({
-      type: "IdempotentEventTrigger",
-      label: "Idempotent Event Trigger",
+      type: "ConcurrentEventTrigger",
+      label: "Concurrent Event Trigger",
       event: "app/payment.received",
-      idempotency: "event.data.paymentId",
-      concurrency: { limit: 1, key: "event.data.accountId" },
+      concurrency: { limit: 1, key: "payment.id" },
       schema: z.object({
         event: z.string(),
-        data: z.object({ id: z.string() }),
+        payment: z.object({ id: z.string() }),
       }),
-      correlationIdPath: "data.id",
+      correlationIdPath: "payment.id",
       lifecycle: {
         onStart: () => true,
         onRestart: () => false,
@@ -317,11 +316,36 @@ describe("registerWorkflowTrigger", () => {
     });
 
     expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
-      idempotency: "event.data.paymentId",
-      concurrency: { limit: 1, key: "event.data.accountId" },
+      concurrency: { limit: 1, key: "event.data.payment.id" },
     });
 
-    unregisterWorkflowTrigger("IdempotentEventTrigger");
+    unregisterWorkflowTrigger("ConcurrentEventTrigger");
+  });
+
+  it("throws when concurrency is set on both the trigger and inngest options", () => {
+    expect(() =>
+      createTrigger({
+        type: "ConflictConcurrencyTrigger",
+        label: "Conflict Concurrency Trigger",
+        event: "app/conflict.event",
+        concurrency: { limit: 1, key: "entity.id" },
+        inngest: {
+          concurrency: { limit: 2, key: "event.data.entity.id" },
+        } as never,
+        schema: z.object({
+          event: z.string(),
+          entity: z.object({ id: z.string() }),
+        }),
+        correlationIdPath: "entity.id",
+        lifecycle: {
+          onStart: () => true,
+          onRestart: () => false,
+          onStop: () => false,
+        },
+      })
+    ).toThrow(
+      "concurrency cannot be set on both the trigger and inngest options"
+    );
   });
 
   it("merges inngest function options into functionOptions", () => {
@@ -351,6 +375,398 @@ describe("registerWorkflowTrigger", () => {
     });
 
     unregisterWorkflowTrigger("ThrottledEventTrigger");
+  });
+
+  it("prefixes inngest.rateLimit.key with event.data.", () => {
+    const trigger = createTrigger({
+      type: "RateLimitKeyTrigger",
+      label: "Rate Limit Key Trigger",
+      event: "app/rate.limited",
+      inngest: {
+        rateLimit: { limit: 5, period: "1m", key: "entity.id" },
+      },
+      schema: z.object({
+        event: z.string(),
+        entity: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "entity.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
+      rateLimit: { limit: 5, period: "1m", key: "event.data.entity.id" },
+    });
+
+    unregisterWorkflowTrigger("RateLimitKeyTrigger");
+  });
+
+  it("prefixes inngest.throttle.key with event.data.", () => {
+    const trigger = createTrigger({
+      type: "ThrottleKeyTrigger",
+      label: "Throttle Key Trigger",
+      event: "app/throttled",
+      inngest: {
+        throttle: { limit: 10, period: "1h", key: "entity.id" },
+      },
+      schema: z.object({
+        event: z.string(),
+        entity: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "entity.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
+      throttle: { limit: 10, period: "1h", key: "event.data.entity.id" },
+    });
+
+    unregisterWorkflowTrigger("ThrottleKeyTrigger");
+  });
+
+  it("rewrites priority.run CEL identifiers with event.data. prefix", () => {
+    const trigger = createTrigger({
+      type: "PriorityRunTrigger",
+      label: "Priority Run Trigger",
+      event: "app/priority.event",
+      inngest: {
+        priority: { run: 'appointment.priority == "high" ? 100 : 50' },
+      },
+      schema: z.object({
+        event: z.string(),
+        appointment: z.object({
+          id: z.string(),
+          priority: z.string(),
+        }),
+      }),
+      correlationIdPath: "appointment.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
+      priority: {
+        run: 'event.data.appointment.priority == "high" ? 100 : 50',
+      },
+    });
+
+    unregisterWorkflowTrigger("PriorityRunTrigger");
+  });
+
+  it("throws when priority.run contains invalid identifiers", () => {
+    expect(() =>
+      createTrigger({
+        type: "InvalidPriorityTrigger",
+        label: "Invalid Priority Trigger",
+        event: "app/invalid.priority",
+        inngest: {
+          priority: { run: 'unknownVar == "high" ? 100 : 50' },
+        },
+        schema: z.object({
+          event: z.string(),
+          entity: z.object({ id: z.string() }),
+        }),
+        correlationIdPath: "entity.id",
+        lifecycle: {
+          onStart: () => true,
+          onRestart: () => false,
+          onStop: () => false,
+        },
+      })
+    ).toThrow('Invalid identifier "unknownVar" in priority.run CEL expression');
+  });
+
+  it("passes concurrency as a plain number without key prefixing", () => {
+    const trigger = createTrigger({
+      type: "NumericConcurrencyTrigger",
+      label: "Numeric Concurrency Trigger",
+      event: "app/numeric.concurrency",
+      concurrency: 5,
+      schema: z.object({
+        event: z.string(),
+        entity: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "entity.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
+      concurrency: 5,
+    });
+
+    unregisterWorkflowTrigger("NumericConcurrencyTrigger");
+  });
+
+  it("prefixes keys in concurrency array entries", () => {
+    const trigger = createTrigger({
+      type: "ArrayConcurrencyTrigger",
+      label: "Array Concurrency Trigger",
+      event: "app/array.concurrency",
+      concurrency: [
+        { limit: 1, key: "entity.id", scope: "fn" },
+        { limit: 5, scope: "env" },
+      ],
+      schema: z.object({
+        event: z.string(),
+        entity: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "entity.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
+      concurrency: [
+        { limit: 1, key: "event.data.entity.id", scope: "fn" },
+        { limit: 5, scope: "env" },
+      ],
+    });
+
+    unregisterWorkflowTrigger("ArrayConcurrencyTrigger");
+  });
+
+  it("prefixes inngest.debounce.key with event.data.", () => {
+    const trigger = createTrigger({
+      type: "DebounceKeyTrigger",
+      label: "Debounce Key Trigger",
+      event: "app/debounced",
+      inngest: {
+        debounce: { period: "5s", key: "entity.id", timeout: "1h" },
+      },
+      schema: z.object({
+        event: z.string(),
+        entity: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "entity.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
+      debounce: {
+        period: "5s",
+        key: "event.data.entity.id",
+        timeout: "1h",
+      },
+    });
+
+    unregisterWorkflowTrigger("DebounceKeyTrigger");
+  });
+
+  it("passes rateLimit without key unchanged (no spurious prefix)", () => {
+    const trigger = createTrigger({
+      type: "RateLimitNoKeyTrigger",
+      label: "Rate Limit No Key Trigger",
+      event: "app/rate.nokey",
+      inngest: {
+        rateLimit: { limit: 10, period: "1m" },
+      },
+      schema: z.object({
+        event: z.string(),
+        entity: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "entity.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
+      rateLimit: { limit: 10, period: "1m" },
+    });
+
+    unregisterWorkflowTrigger("RateLimitNoKeyTrigger");
+  });
+
+  it("passes inngest.timeouts through without modification", () => {
+    const trigger = createTrigger({
+      type: "TimeoutsTrigger",
+      label: "Timeouts Trigger",
+      event: "app/timeout.event",
+      inngest: {
+        timeouts: { start: "1h", finish: "2h" },
+      },
+      schema: z.object({
+        event: z.string(),
+        entity: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "entity.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
+      timeouts: { start: "1h", finish: "2h" },
+    });
+
+    unregisterWorkflowTrigger("TimeoutsTrigger");
+  });
+
+  it("passes inngest.retries through as-is", () => {
+    const trigger = createTrigger({
+      type: "RetriesTrigger",
+      label: "Retries Trigger",
+      event: "app/retry.event",
+      inngest: {
+        retries: 5,
+      },
+      schema: z.object({
+        event: z.string(),
+        entity: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "entity.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
+      retries: 5,
+    });
+
+    unregisterWorkflowTrigger("RetriesTrigger");
+  });
+
+  it("leaves priority.run unchanged when expression has no identifiers", () => {
+    const trigger = createTrigger({
+      type: "ConstantPriorityTrigger",
+      label: "Constant Priority Trigger",
+      event: "app/constant.priority",
+      inngest: {
+        priority: { run: "100" },
+      },
+      schema: z.object({
+        event: z.string(),
+        entity: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "entity.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
+      priority: { run: "100" },
+    });
+
+    unregisterWorkflowTrigger("ConstantPriorityTrigger");
+  });
+
+  it("rewrites multiple distinct identifiers in priority.run", () => {
+    const trigger = createTrigger({
+      type: "MultiIdPriorityTrigger",
+      label: "Multi Id Priority Trigger",
+      event: "app/multi.priority",
+      inngest: {
+        priority: {
+          run: 'entity.priority == "high" ? 100 : (event == "urgent" ? 80 : 0)',
+        },
+      },
+      schema: z.object({
+        event: z.string(),
+        entity: z.object({ id: z.string(), priority: z.string() }),
+      }),
+      correlationIdPath: "entity.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    const run = trigger.runtime.inngestEventTrigger?.functionOptions
+      ?.priority as { run: string } | undefined;
+    expect(run?.run).toContain("event.data.entity.priority");
+    expect(run?.run).toContain("event.data.event");
+
+    unregisterWorkflowTrigger("MultiIdPriorityTrigger");
+  });
+
+  it("throws on syntactically invalid CEL in priority.run", () => {
+    expect(() =>
+      createTrigger({
+        type: "BadCelTrigger",
+        label: "Bad CEL Trigger",
+        event: "app/bad.cel",
+        inngest: {
+          priority: { run: "== invalid ++" },
+        },
+        schema: z.object({
+          event: z.string(),
+          entity: z.object({ id: z.string() }),
+        }),
+        correlationIdPath: "entity.id",
+        lifecycle: {
+          onStart: () => true,
+          onRestart: () => false,
+          onStop: () => false,
+        },
+      })
+    ).toThrow("Invalid CEL expression in priority.run");
+  });
+
+  it("combines concurrency with inngest options (non-concurrency) correctly", () => {
+    const trigger = createTrigger({
+      type: "CombinedOptionsTrigger",
+      label: "Combined Options Trigger",
+      event: "app/combined.event",
+      concurrency: { limit: 3, key: "entity.id" },
+      inngest: {
+        rateLimit: { limit: 10, period: "1m", key: "entity.id" },
+        throttle: { limit: 5, period: "30s" },
+        retries: 2,
+        timeouts: { finish: "5m" },
+      },
+      schema: z.object({
+        event: z.string(),
+        entity: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "entity.id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
+      concurrency: { limit: 3, key: "event.data.entity.id" },
+      rateLimit: { limit: 10, period: "1m", key: "event.data.entity.id" },
+      throttle: { limit: 5, period: "30s" },
+      retries: 2,
+      timeouts: { finish: "5m" },
+    });
+
+    unregisterWorkflowTrigger("CombinedOptionsTrigger");
   });
 
   it("throws when event name is empty string", () => {
@@ -401,7 +817,7 @@ describe("registerWorkflowTrigger", () => {
         event: "app/batch.event",
         inngest: {
           batchEvents: { maxSize: 10, timeout: "5s" },
-        } as Record<string, unknown>,
+        } as never,
         schema: z.object({
           event: z.string(),
           data: z.object({ id: z.string() }),

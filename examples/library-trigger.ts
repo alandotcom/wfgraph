@@ -40,10 +40,12 @@ function asNonEmptyString(value: unknown): string | undefined {
 //     name: "app/appointment.updated",
 //     data: { event: "appointment.created", timestamp: "...", appointment: { ... } },
 //   });
+//
 // Event triggers support Inngest function options:
-//   idempotency  — CEL expression for deduplication
-//   concurrency  — limit concurrent executions
-//   inngest      — rateLimit, throttle, debounce, retries, etc.
+//   concurrency  — limit concurrent executions; `key` is schema-relative (auto-prefixed with `event.data.`)
+//   inngest      — rateLimit, throttle, debounce, priority, timeouts, retries
+//                  `key` fields are schema-relative (auto-prefixed with `event.data.`)
+//                  `priority.run` accepts schema-relative CEL expressions (identifiers rewritten to `event.data.`)
 //
 // Multi-event example:
 //   event: ["app/appointment.created", "app/appointment.updated"],
@@ -51,8 +53,7 @@ const appointmentTrigger = createTrigger({
   type: APPOINTMENT_TRIGGER_TYPE,
   label: "Appointment Lifecycle",
   event: "app/appointment.updated",
-  idempotency: "event.data.appointment.id",
-  concurrency: { limit: 1, key: "event.data.appointment.id" },
+  concurrency: { limit: 1, key: "appointment.id" },
   description:
     "Routes appointment.created/start, appointment.rescheduled/restart, and appointment.canceled/stop.",
   schema: z.object({

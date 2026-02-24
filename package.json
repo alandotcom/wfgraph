@@ -1,6 +1,6 @@
 {
   "name": "rova-workflows",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "private": true,
   "main": "./dist/lib/index.mjs",
   "types": "./dist/lib/index.d.mts",

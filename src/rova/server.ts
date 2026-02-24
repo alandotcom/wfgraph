@@ -102,14 +102,22 @@ function normalizePath(pathname: string): string {
   return pathname;
 }
 
-const DEFAULT_CLIENT_DIST_DIR = "dist/client";
 const CLIENT_ENTRY_FILE = "index.html";
 
-function getClientDistDir(): string {
-  const configuredDir = Bun.env.CLIENT_DIST_DIR?.trim();
-  return configuredDir && configuredDir.length > 0
-    ? configuredDir
-    : DEFAULT_CLIENT_DIST_DIR;
+async function resolveClientDistDir(): Promise<string> {
+  const cwdRelative = path.resolve(process.cwd(), "dist/client");
+  const cwdEntry = Bun.file(path.join(cwdRelative, CLIENT_ENTRY_FILE));
+  if (await cwdEntry.exists()) {
+    return cwdRelative;
+  }
+
+  const moduleRelative = path.resolve(import.meta.dir, "../client");
+  const moduleEntry = Bun.file(path.join(moduleRelative, CLIENT_ENTRY_FILE));
+  if (await moduleEntry.exists()) {
+    return moduleRelative;
+  }
+
+  return moduleRelative;
 }
 
 function isSpaPath(pathname: string): boolean {
@@ -120,7 +128,10 @@ function isSpaPath(pathname: string): boolean {
   );
 }
 
-function resolveClientAssetPath(pathname: string): string | null {
+function resolveClientAssetPath(
+  clientDistDir: string,
+  pathname: string
+): string | null {
   if (pathname === "/") {
     return null;
   }
@@ -148,11 +159,14 @@ function resolveClientAssetPath(pathname: string): string | null {
     return null;
   }
 
-  return path.join(getClientDistDir(), normalizedPath);
+  return path.join(clientDistDir, normalizedPath);
 }
 
-async function serveClientEntry(logger: RovaLogger): Promise<Response> {
-  const entryFilePath = path.join(getClientDistDir(), CLIENT_ENTRY_FILE);
+async function serveClientEntry(
+  clientDistDir: string,
+  logger: RovaLogger
+): Promise<Response> {
+  const entryFilePath = path.join(clientDistDir, CLIENT_ENTRY_FILE);
   const entryFile = Bun.file(entryFilePath);
 
   if (await entryFile.exists()) {
@@ -359,6 +373,7 @@ export async function startRovaServer(
 
     const apiApp = createApiApp();
     const port = getResolvedPort(options);
+    const clientDistDir = await resolveClientDistDir();
     const bunServer = serve({
       port,
       development: Bun.env.NODE_ENV !== "production",
@@ -370,7 +385,7 @@ export async function startRovaServer(
           return apiApp.fetch(req);
         }
 
-        const clientAssetPath = resolveClientAssetPath(pathname);
+        const clientAssetPath = resolveClientAssetPath(clientDistDir, pathname);
         if (clientAssetPath) {
           const assetFile = Bun.file(clientAssetPath);
           if (await assetFile.exists()) {
@@ -379,7 +394,7 @@ export async function startRovaServer(
         }
 
         if (isSpaPath(pathname)) {
-          return await serveClientEntry(logger);
+          return await serveClientEntry(clientDistDir, logger);
         }
 
         return Response.json({ error: "Not found" }, { status: 404 });

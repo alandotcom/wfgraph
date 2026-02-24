@@ -105,7 +105,6 @@ describe("event trigger detection in function registry", () => {
       type: EVENT_TRIGGER_TYPE,
       label: "Test Event Trigger",
       event: "app/test.event",
-      idempotency: "event.data.entityId",
       schema: z.object({
         event: z.string(),
         entity: z.object({ id: z.string() }),

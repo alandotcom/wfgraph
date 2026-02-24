@@ -56,13 +56,42 @@ export type RuntimeActionResult =
   | { success: false; error?: string | { message?: string } };
 
 export type RuntimeActionDefinition = {
+  /**
+   * Unique identifier in `"category/slug"` format (e.g. `"appointments/cancel"`).
+   * Used internally to dispatch execution and register the action.
+   */
   id: string;
+
+  /** Human-readable name shown in the action selector (e.g. `"Cancel Appointment"`). */
   label: string;
+
+  /** Short description shown beneath the action label in the editor. */
   description: string;
+
+  /**
+   * Grouping category in the action selector (e.g. `"Appointments"`).
+   * Defaults to `"Custom"` if omitted.
+   */
   category?: string;
+
+  /** Optional URL to a logo/icon displayed next to the action in the editor. */
   logoUrl?: string;
+
+  /**
+   * Declarative field definitions rendered as the action's configuration form.
+   * Each field maps to a key in the action's config object. Supported types
+   * include `"template-input"`, `"template-textarea"`, `"text"`, `"number"`,
+   * `"select"`, `"schema-builder"`, and `"key-value"`.
+   */
   configFields?: ActionConfigField[];
+
+  /**
+   * Describes the fields available in this action's output for downstream
+   * template autocomplete (e.g. `{{ @NodeLabel.appointmentId }}`).
+   * Field paths should not include the `data.` prefix -- they are unwrapped automatically.
+   */
   outputFields?: OutputField[];
+
   execute: (
     input: RuntimeActionExecuteInput
   ) => RuntimeActionResult | Promise<RuntimeActionResult>;
@@ -76,9 +105,26 @@ export type CreateActionInput<TPayload extends Record<string, unknown>> = Omit<
   RuntimeActionDefinition,
   "execute"
 > & {
+  /**
+   * Zod or Standard Schema that validates the resolved config values
+   * before they reach your `execute` function. If validation fails,
+   * the action returns a structured error automatically.
+   */
   schema: ActionPayloadSchema<TPayload>;
+
+  /**
+   * Action implementation. Receives the validated `payload` (config values
+   * after template resolution) and an execution `context` with metadata
+   * like `executionId`, `nodeId`, and `integrationId`.
+   *
+   * Return `{ success: true, data: { ... } }` on success or
+   * `{ success: false, error: { message: "..." } }` on failure.
+   * Thrown exceptions are caught and wrapped in the error format automatically.
+   */
   execute: (input: {
+    /** Config values validated against `schema`. */
     payload: TPayload;
+    /** Execution metadata (IDs, integration reference). */
     context: RuntimeActionExecutionContext;
   }) => RuntimeActionResult | Promise<RuntimeActionResult>;
 };
@@ -195,6 +241,39 @@ function getActionErrorMessage(error: unknown): string {
   return "Action execution failed";
 }
 
+/**
+ * Create a typed action definition for use with `server.start({ actions })`.
+ *
+ * Actions are the executable steps in a workflow. When a workflow reaches
+ * an action node, the engine resolves template variables in the config,
+ * validates the result against `schema`, and calls `execute` with the
+ * typed payload.
+ *
+ * @example
+ * ```ts
+ * const action = createAction({
+ *   id: "appointments/cancel",
+ *   label: "Cancel Appointment",
+ *   description: "Cancels an appointment and records the reason.",
+ *   category: "Appointments",
+ *   configFields: [
+ *     { key: "appointmentId", label: "Appointment ID", type: "template-input", required: true },
+ *     { key: "reason", label: "Reason", type: "template-textarea", required: true },
+ *   ],
+ *   outputFields: [
+ *     { field: "appointmentId", description: "Cancelled appointment ID" },
+ *     { field: "status", description: "Cancellation status" },
+ *   ],
+ *   schema: z.object({
+ *     appointmentId: z.string(),
+ *     reason: z.string().min(1),
+ *   }),
+ *   execute({ payload }) {
+ *     return { success: true, data: { appointmentId: payload.appointmentId, status: "cancelled" } };
+ *   },
+ * });
+ * ```
+ */
 export function createAction<TPayload extends Record<string, unknown>>(
   input: CreateActionInput<TPayload>
 ): RuntimeExtensionActionDefinition {
