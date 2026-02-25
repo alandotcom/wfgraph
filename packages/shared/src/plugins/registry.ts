@@ -274,6 +274,14 @@ export function registerIntegration(plugin: IntegrationPlugin): void {
   actionByIdCache.clear();
 }
 
+/**
+ * Unregister an integration plugin by type
+ */
+export function unregisterIntegration(type: IntegrationType): void {
+  integrationRegistry.delete(type);
+  actionByIdCache.clear();
+}
+
 export function registerRuntimeAction(action: RuntimeActionDefinition): void {
   runtimeActionRegistry.set(action.id, action);
   actionByIdCache.clear();

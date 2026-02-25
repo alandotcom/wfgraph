@@ -22,6 +22,19 @@ import {
   configureAppLoggingWithBridge,
 } from "@/backend/lib/logger";
 import { initializeWorkflowTriggers } from "@/backend/lib/workflow-trigger-bootstrap";
+// Built-in integration plugins — auto-register on import
+import "@/plugins/acuity";
+import "@/plugins/clerk";
+import "@/plugins/linear";
+import "@/plugins/resend";
+import "@/plugins/slack";
+import "@/plugins/twilio";
+
+import { unregisterIntegration } from "@/shared/plugins/registry";
+import {
+  type IntegrationType,
+  isIntegrationType,
+} from "@/shared/types/integration";
 import type { RovaLogger } from "@/shared/types/logger";
 import {
   type RuntimeExtensionActionDefinition,
@@ -39,9 +52,15 @@ export type {
   InngestClientRuntimeConfig,
   InngestServeRuntimeConfig,
 } from "@/backend/lib/inngest/client";
+export type { IntegrationType } from "@/shared/types/integration";
 export type { RovaLogger } from "@/shared/types/logger";
 export type { RuntimeExtensionActionDefinition } from "@/shared/workflow/action-registry";
 export type { RuntimeExtensionTriggerDefinition } from "@/shared/workflow/trigger-registry";
+
+export type PluginConfig = {
+  /** Whether this plugin is enabled (default: true) */
+  enabled?: boolean;
+};
 
 export type RovaAppOptions = {
   logger?: RovaLogger;
@@ -56,6 +75,8 @@ export type RovaAppOptions = {
   };
   triggers?: RuntimeExtensionTriggerDefinition[];
   actions?: RuntimeExtensionActionDefinition[];
+  /** Per-plugin configuration (all enabled by default) */
+  plugins?: Partial<Record<IntegrationType, PluginConfig>>;
   serveClient?: boolean;
 };
 
@@ -181,6 +202,14 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
 
   if (!options.inngest.client.id?.trim()) {
     throw new Error("createRovaApp requires inngest.client.id");
+  }
+
+  if (options.plugins) {
+    for (const [type, config] of Object.entries(options.plugins)) {
+      if (config?.enabled === false && isIntegrationType(type)) {
+        unregisterIntegration(type);
+      }
+    }
   }
 
   if (options.logger) {

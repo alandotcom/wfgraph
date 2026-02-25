@@ -21,6 +21,11 @@ import {
   getAppLogger,
 } from "@/backend/lib/logger";
 import { initializeWorkflowTriggers } from "@/backend/lib/workflow-trigger-bootstrap";
+import { unregisterIntegration } from "@/shared/plugins/registry";
+import {
+  type IntegrationType,
+  isIntegrationType,
+} from "@/shared/types/integration";
 import type { RovaLogger } from "@/shared/types/logger";
 import {
   type RuntimeExtensionActionDefinition,
@@ -34,6 +39,11 @@ import {
 } from "@/shared/workflow/trigger-registry";
 
 export type { RovaLogger } from "@/shared/types/logger";
+
+export type PluginConfig = {
+  /** Whether this plugin is enabled (default: true) */
+  enabled?: boolean;
+};
 
 export type RovaServerStartOptions = {
   port?: number;
@@ -49,6 +59,8 @@ export type RovaServerStartOptions = {
   };
   triggers?: RuntimeExtensionTriggerDefinition[];
   actions?: RuntimeExtensionActionDefinition[];
+  /** Per-plugin configuration (all enabled by default) */
+  plugins?: Partial<Record<IntegrationType, PluginConfig>>;
   installSignalHandlers?: boolean;
 };
 
@@ -372,6 +384,15 @@ export async function startRovaServer(
     configureInngestServe(options.inngest.serve);
 
     registerRuntimeExtensions(options);
+
+    if (options.plugins) {
+      for (const [type, config] of Object.entries(options.plugins)) {
+        if (config?.enabled === false && isIntegrationType(type)) {
+          unregisterIntegration(type);
+        }
+      }
+    }
+
     initializeWorkflowTriggers();
 
     await runMigrations({
