@@ -710,6 +710,7 @@ function schemaFieldToOutputField(field: WorkflowSchemaField): OutputField {
     type: field.type,
     ...(field.type === "timestamp" ? { format: "timestamp" as const } : {}),
     ...(field.nullable ? { nullable: true } : {}),
+    ...(field.enumValues ? { enumValues: field.enumValues } : {}),
   };
 }
 

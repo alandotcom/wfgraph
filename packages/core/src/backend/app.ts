@@ -31,6 +31,7 @@ const webhookBodySchema = z.record(z.string(), z.unknown());
 const resumeBodySchema = z.record(z.string(), z.unknown());
 
 const httpLogger = getAppLogger("http", "hono");
+const rpcLogger = getAppLogger("rpc");
 
 const BODY_LOG_LIMIT = 8192;
 const isDevelopmentEnvironment = ["development", "dev"].includes(
@@ -243,6 +244,18 @@ export function createApiApp(options?: CreateApiAppOptions) {
       });
 
       if (matched) {
+        if (response.status >= 400) {
+          try {
+            const body = safeParseJson(await response.clone().text());
+            rpcLogger.warn(`RPC error ${response.status} ${c.req.path}`, {
+              status: response.status,
+              path: c.req.path,
+              body,
+            });
+          } catch {
+            /* never break the response */
+          }
+        }
         return c.newResponse(response.body, response);
       }
 

@@ -44,6 +44,7 @@ export type WorkflowSchemaField = {
   fields?: WorkflowSchemaField[];
   description?: string;
   nullable?: boolean;
+  enumValues?: string[];
 };
 
 type JsonSchemaType = WorkflowSchemaFieldType | WorkflowSchemaItemType;
@@ -77,6 +78,22 @@ export function isWorkflowSchemaItemType(
   );
 }
 
+function extractEnumValues(
+  value: Record<string, unknown>
+): string[] | undefined {
+  if (!Array.isArray(value.enum)) {
+    return undefined;
+  }
+
+  const values = value.enum
+    .filter(
+      (item: unknown) => typeof item === "string" || typeof item === "number"
+    )
+    .map(String);
+
+  return values.length > 0 ? values : undefined;
+}
+
 function normalizeJsonSchemaType(value: unknown): JsonSchemaType | null {
   if (typeof value === "string") {
     return isWorkflowSchemaFieldType(value) ? value : null;
@@ -105,6 +122,20 @@ function normalizeSchemaFormat(value: unknown): "timestamp" | undefined {
   }
 
   return undefined;
+}
+
+function isIsoDatePattern(value: unknown): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
+  return value.startsWith("^([+-]?\\d{4}") && value.includes("0[1-9]|1[0-2]");
+}
+
+function isTimestampString(prop: Record<string, unknown>): boolean {
+  return (
+    normalizeSchemaFormat(prop.format) === "timestamp" ||
+    isIsoDatePattern(prop.pattern)
+  );
 }
 
 function parseNestedWorkflowSchemaFields(
@@ -199,6 +230,15 @@ export function parseWorkflowSchemaField(
     };
   }
 
+  const enumValues = Array.isArray(value.enumValues)
+    ? value.enumValues
+        .filter(
+          (item: unknown) =>
+            typeof item === "string" || typeof item === "number"
+        )
+        .map(String)
+    : undefined;
+
   return {
     name,
     type: resolvePrimitiveWorkflowSchemaType({
@@ -206,6 +246,7 @@ export function parseWorkflowSchemaField(
       format: value.format,
     }),
     description,
+    ...(enumValues && enumValues.length > 0 ? { enumValues } : {}),
   };
 }
 
@@ -228,6 +269,37 @@ export function parseWorkflowSchemaFieldsString(
   } catch {
     return [];
   }
+}
+
+function resolveConstBranches(
+  nonNullBranches: unknown[],
+  description: unknown
+): Record<string, unknown> | null {
+  const allConst = nonNullBranches.every(
+    (b: unknown) => isRecord(b) && "const" in b
+  );
+  if (!allConst) {
+    return null;
+  }
+
+  const constValues: string[] = [];
+  for (const b of nonNullBranches) {
+    if (
+      isRecord(b) &&
+      (typeof b.const === "string" || typeof b.const === "number")
+    ) {
+      constValues.push(String(b.const));
+    }
+  }
+
+  const result: Record<string, unknown> = { type: "string" };
+  if (constValues.length > 0) {
+    result.enum = constValues;
+  }
+  if (typeof description === "string") {
+    result.description = description;
+  }
+  return result;
 }
 
 /**
@@ -268,18 +340,7 @@ function resolveNullableJsonSchema(
   }
 
   // Multiple non-null `const` branches (e.g. `"'A' | 'B' | null"` → treat as string)
-  const allConst = nonNullBranches.every(
-    (b: unknown) => isRecord(b) && "const" in b
-  );
-  if (allConst) {
-    const result: Record<string, unknown> = { type: "string" };
-    if (typeof value.description === "string") {
-      result.description = value.description;
-    }
-    return result;
-  }
-
-  return null;
+  return resolveConstBranches(nonNullBranches, value.description);
 }
 
 function parseNonNullableJsonSchemaProperty(
@@ -304,14 +365,15 @@ function parseNonNullableJsonSchemaProperty(
     normalizedType === "boolean" ||
     normalizedType === "timestamp"
   ) {
+    const enumValues = extractEnumValues(value);
     return {
       name,
       type:
-        normalizedType === "string" &&
-        normalizeSchemaFormat(value.format) === "timestamp"
+        normalizedType === "string" && isTimestampString(value)
           ? "timestamp"
           : normalizedType,
       description,
+      ...(enumValues ? { enumValues } : {}),
     };
   }
 
@@ -329,10 +391,7 @@ function parseNonNullableJsonSchemaProperty(
     normalizeJsonSchemaType(items?.type) ||
     (items?.properties ? "object" : null) ||
     "string";
-  if (
-    normalizedItemType === "string" &&
-    normalizeSchemaFormat(items?.format) === "timestamp"
-  ) {
+  if (normalizedItemType === "string" && items && isTimestampString(items)) {
     normalizedItemType = "timestamp";
   }
 

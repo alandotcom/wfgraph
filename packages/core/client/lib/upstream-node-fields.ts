@@ -17,6 +17,7 @@ type NodeOutputField = {
   fieldType?: WorkflowSchemaFieldType;
   fieldFormat?: "timestamp";
   nullable?: boolean;
+  enumValues?: string[];
 };
 
 function dedupeNodeOutputFields(fields: NodeOutputField[]): NodeOutputField[] {
@@ -74,6 +75,7 @@ export type ConditionSelectableField = ConditionFieldDefinition & {
   sourceNodeLabel: string;
   sourceNodeLabels: string[];
   nullable?: boolean;
+  enumValues?: string[];
 };
 
 function readConfigString(
@@ -105,6 +107,7 @@ function schemaToFields(
       description,
       fieldType: schemaField.type,
       ...(schemaField.nullable ? { nullable: true } : {}),
+      ...(schemaField.enumValues ? { enumValues: schemaField.enumValues } : {}),
     });
 
     if (
@@ -213,6 +216,7 @@ function getTriggerOutputFields(node: WorkflowNode): NodeOutputField[] {
           fieldType: field.type,
           fieldFormat: field.format,
           ...(field.nullable ? { nullable: true } : {}),
+          ...(field.enumValues ? { enumValues: field.enumValues } : {}),
         })
       );
 
@@ -238,6 +242,7 @@ function getPluginActionOutputFields(actionType: string): NodeOutputField[] {
     fieldType: field.type,
     fieldFormat: field.format,
     ...(field.nullable ? { nullable: true } : {}),
+    ...(field.enumValues ? { enumValues: field.enumValues } : {}),
   }));
 }
 
@@ -417,6 +422,7 @@ export function getUpstreamConditionFields(input: {
       sourceNodeLabel: field.sourceNodeName,
       sourceNodeLabels: [field.sourceNodeName],
       ...(field.nullable ? { nullable: true } : {}),
+      ...(field.enumValues ? { enumValues: field.enumValues } : {}),
     });
   }
 

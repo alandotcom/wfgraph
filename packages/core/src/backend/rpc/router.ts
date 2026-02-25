@@ -1,4 +1,5 @@
 import { implement } from "@orpc/server";
+import { getAppLogger } from "@/backend/lib/logger";
 import { deleteApiKeyResult } from "@/backend/services/api-keys/api-key.api-keys";
 import {
   getApiKeysResult,
@@ -41,12 +42,54 @@ import { rpcContract } from "@/shared/rpc/contracts";
 import type { RpcContext } from "./context";
 import { type RpcCompatibleResult, toRpcData } from "./errors";
 
+const rpcLogger = getAppLogger("rpc", "handler");
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function summarizeRpcInput(args: unknown[]): unknown {
+  if (args.length === 0) {
+    return undefined;
+  }
+  const first = args[0];
+  if (!isRecord(first)) {
+    return undefined;
+  }
+
+  const input = first.input;
+  if (!isRecord(input)) {
+    return undefined;
+  }
+
+  const summary: Record<string, unknown> = {};
+  for (const key of Object.keys(input)) {
+    const value = input[key];
+    if (isRecord(value)) {
+      summary[key] = `{${Object.keys(value).join(", ")}}`;
+    } else {
+      summary[key] = value;
+    }
+  }
+  return summary;
+}
+
 function rpcHandler<TArgs extends unknown[], TOutput>(
   handler: (
     ...args: TArgs
   ) => RpcCompatibleResult<TOutput> | Promise<RpcCompatibleResult<TOutput>>
 ): (...args: TArgs) => Promise<TOutput> {
-  return (...args) => toRpcData(handler(...args));
+  return async (...args) => {
+    const result = await handler(...args);
+    if (!result.ok) {
+      rpcLogger.warn("RPC handler returned failure", {
+        status: result.status,
+        error: result.error,
+        input: summarizeRpcInput(args),
+      });
+    }
+    return toRpcData(Promise.resolve(result));
+  };
 }
 
 const rpc = implement(rpcContract)

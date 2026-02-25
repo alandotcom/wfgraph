@@ -296,9 +296,11 @@ function ConditionValueInput(input: {
   condition: ConditionRule;
   disabled: boolean;
   currentNodeId?: string;
+  enumValues?: string[];
   onConditionChange: (condition: ConditionRule) => void;
 }) {
-  const { condition, disabled, currentNodeId, onConditionChange } = input;
+  const { condition, disabled, currentNodeId, enumValues, onConditionChange } =
+    input;
 
   // Null-check operators need no value input
   if (isNullCheckConditionRule(condition)) {
@@ -375,6 +377,38 @@ function ConditionValueInput(input: {
   }
 
   if (condition.fieldType === "string") {
+    if (
+      enumValues &&
+      enumValues.length > 0 &&
+      (condition.operator === "equals" || condition.operator === "not_equals")
+    ) {
+      const options = enumValues.includes(condition.value)
+        ? enumValues
+        : [...enumValues, condition.value];
+
+      return (
+        <Select
+          disabled={disabled}
+          onValueChange={(value) => {
+            onConditionChange({ ...condition, value });
+          }}
+          value={condition.value}
+        >
+          <SelectTrigger className="min-w-[240px]">
+            <SelectValue placeholder="Select value" />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((opt) => (
+              <SelectItem key={opt} value={opt}>
+                {opt}
+                {enumValues.includes(opt) ? "" : " (custom)"}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    }
+
     return (
       <TemplateBadgeInput
         className="min-w-[240px]"
@@ -814,6 +848,7 @@ export function ConditionBuilderRow({
                           condition={condition}
                           currentNodeId={selectedNodeId ?? undefined}
                           disabled={disabled}
+                          enumValues={selectedFieldDef?.enumValues}
                           onConditionChange={(nextCondition) => {
                             updateCondition(
                               group.id,

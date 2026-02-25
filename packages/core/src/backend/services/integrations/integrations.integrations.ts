@@ -17,6 +17,7 @@ import {
 } from "@/backend/lib/service-result";
 import {
   getCredentialMapping,
+  getIntegrationTypes,
   getIntegration as getPluginFromRegistry,
 } from "@/plugins/registry";
 import type {
@@ -310,7 +311,10 @@ export async function postIntegrationsTestResult(body: {
 }): Promise<
   ServiceResult<IntegrationTestResult, 400 | 500, IntegrationTestError>
 > {
-  const requestLogger = integrationsLogger.with({ type: body.type });
+  const requestLogger = integrationsLogger.with({
+    type: body.type,
+    configKeys: Object.keys(body.config),
+  });
   try {
     if (body.type === "database") {
       const result = await testDatabaseConnection(body.config.url);
@@ -320,7 +324,9 @@ export async function postIntegrationsTestResult(body: {
     const plugin = getPluginFromRegistry(body.type);
 
     if (!plugin) {
-      requestLogger.warn("Invalid integration type for test");
+      requestLogger.warn("Invalid integration type for test", {
+        availableTypes: getIntegrationTypes(),
+      });
       return failure(400, { error: "Invalid integration type" });
     }
 
@@ -331,7 +337,16 @@ export async function postIntegrationsTestResult(body: {
     }
 
     const credentials = getCredentialMapping(plugin, body.config);
+    requestLogger.debug("Testing credentials", {
+      credentialKeys: Object.keys(credentials),
+    });
     const testResult = await testFn(credentials);
+
+    if (!testResult.success) {
+      requestLogger.warn("Integration test returned failure", {
+        error: testResult.error,
+      });
+    }
 
     return success({
       status: testResult.success ? "success" : "error",

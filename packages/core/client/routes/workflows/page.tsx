@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
+import { MoreHorizontalIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -13,6 +14,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CreateWorkflowDialog } from "@/components/workflow/create-workflow-dialog";
 import { api, type SavedWorkflow } from "@/lib/rpc-client";
 import { getRelativeTime } from "@/shared/utils/time";
@@ -369,7 +377,7 @@ export default function WorkflowsPage() {
             <th className="px-2 py-2">State</th>
             <th className="px-2 py-2">Mode</th>
             <th className="px-2 py-2">Updated</th>
-            <th className="px-4 py-2 text-right">Actions</th>
+            <th className="w-10" />
           </tr>
         </thead>
         <tbody>
@@ -433,71 +441,69 @@ export default function WorkflowsPage() {
                 <td className="px-2 py-3 text-muted-foreground text-xs">
                   {getRelativeTime(workflow.updatedAt)}
                 </td>
-                <td className="px-4 py-3">
-                  <div className="flex justify-end gap-2">
-                    <Button
+                <td className="px-2 py-3">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      className="inline-flex size-8 items-center justify-center rounded-md border border-input bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
                       disabled={!canMutate || lifecycleAction !== null}
-                      onClick={async () => {
-                        try {
-                          const nextMode =
-                            workflow.mode === "test" ? "live" : "test";
-                          const updatedWorkflow = await api.workflow.update(
-                            workflow.id,
-                            {
-                              mode: nextMode,
-                            }
-                          );
-                          setWorkflows((current) =>
-                            current.map((item) =>
-                              item.id === updatedWorkflow.id
-                                ? { ...item, ...updatedWorkflow }
-                                : item
-                            )
-                          );
-                          toast.success(
-                            nextMode === "test"
-                              ? "Switched workflow to Test mode"
-                              : "Switched workflow to Live mode"
-                          );
-                        } catch (error) {
-                          console.error(
-                            "Failed to switch workflow mode:",
-                            error
-                          );
-                          toast.error("Failed to switch workflow mode");
-                        }
-                      }}
-                      size="sm"
-                      type="button"
-                      variant="outline"
                     >
-                      {workflow.mode === "test"
-                        ? "Switch to Live"
-                        : "Switch to Test"}
-                    </Button>
-                    <Button
-                      disabled={!canMutate || lifecycleAction !== null}
-                      onClick={() => {
-                        runLifecycleAction(toggleAction, [workflow.id]);
-                      }}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      {toggleActionLabel}
-                    </Button>
-                    <Button
-                      disabled={!canMutate || lifecycleAction !== null}
-                      onClick={() => {
-                        openDeleteConfirmation([workflow.id]);
-                      }}
-                      size="sm"
-                      type="button"
-                      variant="destructive"
-                    >
-                      Delete
-                    </Button>
-                  </div>
+                      <MoreHorizontalIcon className="size-4" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={async () => {
+                          try {
+                            const nextMode =
+                              workflow.mode === "test" ? "live" : "test";
+                            const updatedWorkflow = await api.workflow.update(
+                              workflow.id,
+                              {
+                                mode: nextMode,
+                              }
+                            );
+                            setWorkflows((current) =>
+                              current.map((item) =>
+                                item.id === updatedWorkflow.id
+                                  ? { ...item, ...updatedWorkflow }
+                                  : item
+                              )
+                            );
+                            toast.success(
+                              nextMode === "test"
+                                ? "Switched workflow to Test mode"
+                                : "Switched workflow to Live mode"
+                            );
+                          } catch (error) {
+                            console.error(
+                              "Failed to switch workflow mode:",
+                              error
+                            );
+                            toast.error("Failed to switch workflow mode");
+                          }
+                        }}
+                      >
+                        {workflow.mode === "test"
+                          ? "Switch to Live"
+                          : "Switch to Test"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          runLifecycleAction(toggleAction, [workflow.id]);
+                        }}
+                      >
+                        {toggleActionLabel}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => {
+                          openDeleteConfirmation([workflow.id]);
+                        }}
+                        variant="destructive"
+                      >
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </td>
               </tr>
             );
@@ -527,8 +533,6 @@ export default function WorkflowsPage() {
             <th className="px-4 py-2">Workflow</th>
             <th className="px-2 py-2">Status</th>
             <th className="px-2 py-2">Started</th>
-            <th className="px-2 py-2">Trigger</th>
-            <th className="px-2 py-2">Mode</th>
             <th className="px-2 py-2">Duration</th>
             <th className="px-4 py-2 text-right">Open</th>
           </tr>
@@ -553,21 +557,6 @@ export default function WorkflowsPage() {
               </td>
               <td className="px-2 py-3 text-muted-foreground text-xs">
                 {getRelativeTime(run.startedAt)}
-              </td>
-              <td className="px-2 py-3 text-muted-foreground text-xs">
-                {run.triggerType ?? "-"}
-                {run.triggerEventType ? ` / ${run.triggerEventType}` : ""}
-              </td>
-              <td className="px-2 py-3 text-muted-foreground text-xs">
-                {run.runMode === "test" ? (
-                  <span className="rounded border border-destructive/30 bg-destructive/10 px-2 py-0.5 font-medium text-[10px] text-destructive uppercase">
-                    Test
-                  </span>
-                ) : (
-                  <span className="rounded border border-zinc-500/30 bg-zinc-500/10 px-2 py-0.5 font-medium text-[10px] text-zinc-700 uppercase">
-                    Live
-                  </span>
-                )}
               </td>
               <td className="px-2 py-3 text-muted-foreground text-xs">
                 {formatDuration(run.duration)}
@@ -618,7 +607,7 @@ export default function WorkflowsPage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_1.6fr]">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1.5fr]">
           <section className="rounded-xl border bg-card">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
               <div>

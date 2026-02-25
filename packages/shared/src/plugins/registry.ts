@@ -92,6 +92,7 @@ export type OutputField = {
   type?: import("@/workflow/schema-codec").WorkflowSchemaFieldType;
   format?: "timestamp";
   nullable?: boolean;
+  enumValues?: string[];
 };
 
 /**
@@ -210,9 +211,33 @@ export type RuntimeActionDefinition = {
 /**
  * Integration Registry
  * Auto-populated by plugin files
+ *
+ * Uses Symbol.for keys on globalThis so the registries remain true singletons
+ * even when this module is duplicated across bundles (e.g. the @rova/core
+ * library build inlines @rova/shared while @rova/plugins imports it separately).
  */
-const integrationRegistry = new Map<IntegrationType, IntegrationPlugin>();
-const runtimeActionRegistry = new Map<string, RuntimeActionDefinition>();
+// eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- cross-bundle singleton via Symbol.for
+const _g = globalThis as Record<symbol, unknown>;
+
+const _intKey = Symbol.for("@rova/integration-registry");
+const _rtKey = Symbol.for("@rova/runtime-action-registry");
+const _cacheKey = Symbol.for("@rova/action-by-id-cache");
+
+if (!_g[_intKey]) _g[_intKey] = new Map<IntegrationType, IntegrationPlugin>();
+if (!_g[_rtKey]) _g[_rtKey] = new Map<string, RuntimeActionDefinition>();
+if (!_g[_cacheKey])
+  _g[_cacheKey] = new Map<string, ActionWithFullId | undefined>();
+
+// eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- initialized above
+const integrationRegistry = _g[_intKey] as Map<
+  IntegrationType,
+  IntegrationPlugin
+>;
+// eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- initialized above
+const runtimeActionRegistry = _g[_rtKey] as Map<
+  string,
+  RuntimeActionDefinition
+>;
 
 /**
  * Compute full action ID from integration type and action slug
@@ -364,7 +389,11 @@ export function getActionsByCategory(): Record<string, ActionWithFullId[]> {
   return categories;
 }
 
-const actionByIdCache = new Map<string, ActionWithFullId | undefined>();
+// eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- cross-bundle singleton
+const actionByIdCache = _g[_cacheKey] as Map<
+  string,
+  ActionWithFullId | undefined
+>;
 
 /**
  * Find an action by full ID (e.g., "resend/send-email")

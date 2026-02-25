@@ -48,7 +48,7 @@ describe("jsonSchemaLibraryOptions with Arktype", () => {
     expect(dateStr.type).toBe("string");
   });
 
-  it("handles string.date.iso without morph (stays as string)", () => {
+  it("handles string.date.iso with pattern detection", () => {
     const schema = type({ isoDate: "string.date.iso" });
     const jsonSchema = schema["~standard"].jsonSchema.output({
       target: "draft-2020-12",
@@ -58,6 +58,7 @@ describe("jsonSchemaLibraryOptions with Arktype", () => {
     const props = jsonSchema.properties as Record<string, unknown>;
     const isoDate = props.isoDate as Record<string, unknown>;
     expect(isoDate.type).toBe("string");
+    expect(isoDate.pattern).toBeString();
   });
 
   it("handles mixed schema with dates and plain fields", () => {
@@ -139,6 +140,47 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema with date formats", () => {
   });
 });
 
+const ISO_DATE_PATTERN =
+  "^([+-]?\\d{4}(?!\\d{2}\\b))((-?)((0[1-9]|1[0-2])(\\3([12]\\d|0[1-9]|3[01]))?|W([0-4]\\d|5[0-3])(-?[1-7])?|(00[1-9]|0[1-9]\\d|[12]\\d{2}|3([0-5]\\d|6[1-6])))(T((([01]\\d|2[0-3])((:?)[0-5]\\d)?|24:?00)([,.]\\d+(?!:))?)?(\\17[0-5]\\d([,.]\\d+)?)?([Zz]|([+-])([01]\\d|2[0-3]):?([0-5]\\d)?)?)?)?$";
+
+describe("parseWorkflowSchemaFieldsOrJsonSchema with ISO date patterns", () => {
+  it("recognizes ISO date pattern as timestamp", () => {
+    const fields = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        nextEligibleDate: { type: "string", pattern: ISO_DATE_PATTERN },
+      },
+    });
+
+    expect(fields).toEqual([
+      { name: "nextEligibleDate", type: "timestamp", description: undefined },
+    ]);
+  });
+
+  it("recognizes nullable ISO date pattern as nullable timestamp", () => {
+    const fields = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        dateOfBirth: {
+          anyOf: [
+            { type: "string", pattern: ISO_DATE_PATTERN },
+            { type: "null" },
+          ],
+        },
+      },
+    });
+
+    expect(fields).toEqual([
+      {
+        name: "dateOfBirth",
+        type: "timestamp",
+        description: undefined,
+        nullable: true,
+      },
+    ]);
+  });
+});
+
 describe("parseWorkflowSchemaFieldsOrJsonSchema with nullable types", () => {
   it("handles anyOf with null branch (string | null)", () => {
     const fields = parseWorkflowSchemaFieldsOrJsonSchema({
@@ -200,6 +242,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema with nullable types", () => {
         name: "bloodType",
         type: "string",
         description: undefined,
+        enumValues: ["A", "B", "AB"],
         nullable: true,
       },
     ]);
@@ -369,6 +412,12 @@ describe("createAction with Arktype schemas", () => {
     expect(fieldNames).toContain("hasPermanentDeferral");
     expect(fieldNames).toContain("createdAt");
     expect(fields).toHaveLength(9);
+
+    // string.date.iso fields should be detected as timestamps via pattern
+    expect(fields.find((f) => f.field === "dateOfBirth")?.type).toBe(
+      "timestamp"
+    );
+    expect(fields.find((f) => f.field === "createdAt")?.type).toBe("timestamp");
   });
 
   it("validates payload with Arktype schema", async () => {
