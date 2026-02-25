@@ -6,21 +6,10 @@
       "name": "rova-workflows",
       "dependencies": {
         "@base-ui/react": "1.2.0",
-        "@clerk/backend": "^2.30.1",
         "@dagrejs/dagre": "^2.0.4",
-        "@fountain-bio/acuity": "^0.0.25",
-        "@hono/zod-validator": "^0.7.6",
-        "@linear/sdk": "^75.0.0",
-        "@logtape/logtape": "^2.0.2",
-        "@logtape/pretty": "^2.0.2",
-        "@marcbachmann/cel-js": "^7.5.1",
         "@opentelemetry/api": "^1.9.0",
-        "@orpc/client": "^1.13.5",
-        "@orpc/contract": "^1.13.5",
-        "@orpc/openapi": "^1.13.5",
-        "@orpc/server": "^1.13.5",
-        "@orpc/zod": "^1.13.5",
-        "@slack/web-api": "^7.14.0",
+        "@rova/core": "workspace:*",
+        "@rova/plugins": "workspace:*",
         "@tanstack/react-query": "^5.90.21",
         "@tanstack/react-router": "^1.159.5",
         "@xyflow/react": "^12.10.0",
@@ -29,12 +18,8 @@
         "cronstrue": "^3.12.0",
         "d3-hierarchy": "^3.1.2",
         "dotenv": "^17.3.1",
-        "drizzle-orm": "^0.45.1",
         "es-toolkit": "^1.44.0",
-        "graphology": "^0.26.0",
-        "graphology-dag": "^0.4.1",
         "hono": "^4.11.9",
-        "inngest": "^3.52.0",
         "jotai": "^2.17.1",
         "lucide-react": "^0.563.0",
         "motion": "^12.34.0",
@@ -44,10 +29,8 @@
         "react": "19.2.4",
         "react-dom": "19.2.4",
         "react-resizable-panels": "^4.6.2",
-        "resend": "^6.9.2",
         "sonner": "^2.0.7",
         "tailwind-merge": "^3.4.0",
-        "twilio": "^5.12.1",
         "vaul": "^1.1.2",
         "zod": "^4.3.6",
       },
@@ -58,11 +41,14 @@
         "@happy-dom/global-registrator": "^20.6.2",
         "@inngest/test": "^0.1.9",
         "@opentelemetry/sdk-trace-base": "^1.25.0",
+        "@standard-schema/spec": "^1.1.0",
         "@tailwindcss/postcss": "^4.1.18",
         "@testing-library/dom": "^10.4.1",
         "@testing-library/react": "^16.3.2",
         "@testing-library/user-event": "^14.6.1",
         "@types/babel__core": "^7.20.5",
+        "@types/bcryptjs": "^3.0.0",
+        "@types/bun": "^1.3.9",
         "@types/d3-hierarchy": "^3.1.7",
         "@types/node": "^24.10.13",
         "@types/react": "^19.2.14",
@@ -86,6 +72,59 @@
       },
       "optionalDependencies": {
         "inngest-cli": "^1.17.0",
+      },
+    },
+    "packages/core": {
+      "name": "@rova/core",
+      "version": "0.0.0",
+      "dependencies": {
+        "@hono/zod-validator": "^0.7.6",
+        "@logtape/logtape": "^2.0.2",
+        "@logtape/pretty": "^2.0.2",
+        "@marcbachmann/cel-js": "^7.5.1",
+        "@orpc/client": "^1.13.5",
+        "@orpc/contract": "^1.13.5",
+        "@orpc/openapi": "^1.13.5",
+        "@orpc/server": "^1.13.5",
+        "@orpc/zod": "^1.13.5",
+        "@rova/shared": "workspace:*",
+        "bcryptjs": "^3.0.3",
+        "drizzle-orm": "^0.45.1",
+        "es-toolkit": "^1.44.0",
+        "graphology": "^0.26.0",
+        "graphology-dag": "^0.4.1",
+        "inngest": "^3.52.0",
+        "nanoid": "^5.1.6",
+        "postgres": "^3.4.8",
+        "zod": "^4.3.6",
+      },
+      "devDependencies": {
+        "bunup": "^0.16.26",
+      },
+      "peerDependencies": {
+        "hono": "^4.11.9",
+      },
+    },
+    "packages/plugins": {
+      "name": "@rova/plugins",
+      "version": "0.0.0",
+      "dependencies": {
+        "@clerk/backend": "^2.30.1",
+        "@fountain-bio/acuity": "^0.0.25",
+        "@linear/sdk": "^75.0.0",
+        "@rova/core": "workspace:*",
+        "@rova/shared": "workspace:*",
+        "@slack/web-api": "^7.14.0",
+        "resend": "^6.9.2",
+        "twilio": "^5.12.1",
+      },
+    },
+    "packages/shared": {
+      "name": "@rova/shared",
+      "version": "0.0.0",
+      "dependencies": {
+        "es-toolkit": "^1.44.0",
+        "zod": "^4.3.6",
       },
     },
   },
@@ -903,6 +942,12 @@
 
     "@react-grab/cli": ["@react-grab/cli@0.1.14", "", { "dependencies": { "@antfu/ni": "^0.23.0", "commander": "^14.0.0", "ora": "^8.2.0", "picocolors": "^1.1.1", "prompts": "^2.4.2" }, "bin": { "react-grab": "dist/cli.js" } }, "sha512-somP139Nj+qGGUQtDDr9jU5IW4M5SEpUxqUhE+U4l5n7MjeFSVDY4fOohnSzLrlPPCKRe/vHTov1GC5CPv+8yA=="],
 
+    "@rova/core": ["@rova/core@workspace:packages/core"],
+
+    "@rova/plugins": ["@rova/plugins@workspace:packages/plugins"],
+
+    "@rova/shared": ["@rova/shared@workspace:packages/shared"],
+
     "@slack/logger": ["@slack/logger@4.0.0", "", { "dependencies": { "@types/node": "24.10.0" } }, "sha512-Wz7QYfPAlG/DR+DfABddUZeNgoeY7d1J39OCR2jR+v7VBsB8ezulDK5szTnDDPDwLH5IWhLvXIHlCFZV7MSKgA=="],
 
     "@slack/types": ["@slack/types@2.20.0", "", {}, "sha512-PVF6P6nxzDMrzPC8fSCsnwaI+kF8YfEpxf3MqXmdyjyWTYsZQURpkK7WWUWvP5QpH55pB7zyYL9Qem/xSgc5VA=="],
@@ -982,6 +1027,10 @@
     "@types/babel__template": ["@types/babel__template@7.4.4", "", { "dependencies": { "@babel/parser": "^7.1.0", "@babel/types": "^7.0.0" } }, "sha512-h/NUaSyG5EyxBIp8YRxo4RMe2/qQgvyowRwVMzhYhBCONbW8PUsg4lkFMrhgZhUe5z3L3MiLDuvyJ/CaPa2A8A=="],
 
     "@types/babel__traverse": ["@types/babel__traverse@7.28.0", "", { "dependencies": { "@babel/types": "^7.28.2" } }, "sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q=="],
+
+    "@types/bcryptjs": ["@types/bcryptjs@3.0.0", "", { "dependencies": { "bcryptjs": "*" } }, "sha512-WRZOuCuaz8UcZZE4R5HXTco2goQSI2XxjGY3hbM/xDvwmqFWd4ivooImsMx65OKM6CtNKbnZ5YL+YwAwK7c1dg=="],
+
+    "@types/bun": ["@types/bun@1.3.9", "", { "dependencies": { "bun-types": "1.3.9" } }, "sha512-KQ571yULOdWJiMH+RIWIOZ7B2RXQGpL1YQrBtLIV3FqDcCu6FsbFUBwhdKUlCKUpS3PJDsHlJ1QKlpxoVR+xtw=="],
 
     "@types/bunyan": ["@types/bunyan@1.8.11", "", { "dependencies": { "@types/node": "24.10.0" } }, "sha512-758fRH7umIMk5qt5ELmRMff4mLDlN+xyYzC+dkPTdKwbSkJFvz6xwyScrytPU0QIBbRRwbiE8/BIg8bpajerNQ=="],
 
@@ -1070,6 +1119,8 @@
     "balanced-match": ["balanced-match@1.0.2", "", {}, "sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw=="],
 
     "baseline-browser-mapping": ["baseline-browser-mapping@2.9.19", "", { "bin": { "baseline-browser-mapping": "dist/cli.js" } }, "sha512-ipDqC8FrAl/76p2SSWKSI+H9tFwm7vYqXQrItCuiVPt26Km0jS+NzSsBWAaBusvSbQcfJG+JitdMm+wZAgTYqg=="],
+
+    "bcryptjs": ["bcryptjs@3.0.3", "", { "bin": { "bcrypt": "bin/bcrypt" } }, "sha512-GlF5wPWnSa/X5LKM1o0wz0suXIINz1iHRLvTS+sLyi7XPbe5ycmYI3DlZqVGZZtDgl4DmasFg7gOB3JYbphV5g=="],
 
     "bignumber.js": ["bignumber.js@9.3.1", "", {}, "sha512-Ko0uX15oIUS7wJ3Rb30Fs6SkVbLmPBAKdlm7q9+ak9bbIeFf0MwuBsQV6z7+X768/cHsfg+WlysDWJcmthjsjQ=="],
 
@@ -1578,6 +1629,8 @@
     "postal-mime": ["postal-mime@2.7.3", "", {}, "sha512-MjhXadAJaWgYzevi46+3kLak8y6gbg0ku14O1gO/LNOuay8dO+1PtcSGvAdgDR0DoIsSaiIA8y/Ddw6MnrO0Tw=="],
 
     "postcss": ["postcss@8.5.6", "", { "dependencies": { "nanoid": "3.3.11", "picocolors": "1.1.1", "source-map-js": "1.2.1" } }, "sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg=="],
+
+    "postgres": ["postgres@3.4.8", "", {}, "sha512-d+JFcLM17njZaOLkv6SCev7uoLaBtfK86vMUXhW1Z4glPWh4jozno9APvW/XKFJ3CCxVoC7OL38BqRydtu5nGg=="],
 
     "postgres-array": ["postgres-array@2.0.0", "", {}, "sha512-VpZrUqU5A69eQyW2c5CA1jtLecCsN2U/bD6VilrFDWq5+5UIEVO7nazS3TEcHf1zuPYO/sqGvUvW62g86RXZuA=="],
 

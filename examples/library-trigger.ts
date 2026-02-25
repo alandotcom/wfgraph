@@ -1,5 +1,5 @@
+import { createAction, createTrigger, server } from "@rova/core";
 import { config as loadDotEnv } from "dotenv";
-import { createAction, createTrigger, server } from "rova-workflows";
 import { z } from "zod";
 
 const APPOINTMENT_TRIGGER_TYPE = "AppointmentLifecycle";

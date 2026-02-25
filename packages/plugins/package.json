@@ -1,0 +1,20 @@
+{
+  "name": "@rova/plugins",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./register-steps": "./src/register-steps.ts"
+  },
+  "dependencies": {
+    "@rova/shared": "workspace:*",
+    "@rova/core": "workspace:*",
+    "@clerk/backend": "^2.30.1",
+    "@fountain-bio/acuity": "^0.0.25",
+    "@linear/sdk": "^75.0.0",
+    "@slack/web-api": "^7.14.0",
+    "resend": "^6.9.2",
+    "twilio": "^5.12.1"
+  }
+}

@@ -14,19 +14,41 @@
     "jsx": "react-jsx",
     "incremental": true,
     "types": ["bun-types", "node"],
+    "strictNullChecks": true,
     "paths": {
-      "@/*": ["./src/*"],
-      "rova-workflows": ["./src/index.ts"]
-    },
-    "strictNullChecks": true
+      "@rova/shared": ["./packages/shared/src"],
+      "@rova/core": ["./packages/core/src/index.ts"],
+      "@rova/core/*": ["./packages/core/src/*"],
+      "@rova/plugins": ["./packages/plugins/src/index.ts"],
+      "@rova/plugins/*": ["./packages/plugins/src/*"],
+      "@/shared/*": ["./packages/shared/src/*"],
+      "@/backend/*": ["./packages/core/src/backend/*"],
+      "@/plugins/*": [
+        "./packages/shared/src/plugins/*",
+        "./packages/plugins/src/*"
+      ],
+      "@/*": [
+        "./packages/shared/src/*",
+        "./packages/core/src/*",
+        "./packages/core/client/*",
+        "./packages/plugins/src/*"
+      ]
+    }
   },
   "include": [
+    "server.ts",
     "examples/**/*.ts",
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "src/**/*.mts",
-    "src/**/*.d.ts",
-    "drizzle.config.ts"
+    "scripts/**/*.ts",
+    "packages/shared/src/**/*.ts",
+    "packages/shared/src/**/*.tsx",
+    "packages/core/src/**/*.ts",
+    "packages/core/src/**/*.tsx",
+    "packages/core/client/**/*.ts",
+    "packages/core/client/**/*.tsx",
+    "packages/core/drizzle.config.ts",
+    "packages/core/bunup.config.ts",
+    "packages/plugins/src/**/*.ts",
+    "packages/plugins/src/**/*.tsx"
   ],
   "exclude": ["node_modules", "_upstream_template/**/*", "tmp/**/*"]
 }

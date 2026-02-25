@@ -1,0 +1,50 @@
+{
+  "name": "@rova/core",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./hono": {
+      "bun": "./src/hono.ts",
+      "types": "./dist/hono.d.mts",
+      "default": "./dist/hono.mjs"
+    }
+  },
+  "scripts": {
+    "build": "bunup"
+  },
+  "dependencies": {
+    "@rova/shared": "workspace:*",
+    "@hono/zod-validator": "^0.7.6",
+    "@logtape/logtape": "^2.0.2",
+    "@logtape/pretty": "^2.0.2",
+    "@marcbachmann/cel-js": "^7.5.1",
+    "@orpc/client": "^1.13.5",
+    "@orpc/contract": "^1.13.5",
+    "@orpc/openapi": "^1.13.5",
+    "@orpc/server": "^1.13.5",
+    "@orpc/zod": "^1.13.5",
+    "bcryptjs": "^3.0.3",
+    "drizzle-orm": "^0.45.1",
+    "es-toolkit": "^1.44.0",
+    "graphology": "^0.26.0",
+    "graphology-dag": "^0.4.1",
+    "inngest": "^3.52.0",
+    "nanoid": "^5.1.6",
+    "postgres": "^3.4.8",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "hono": "^4.11.9"
+  },
+  "devDependencies": {
+    "bunup": "^0.16.26"
+  }
+}

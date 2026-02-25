@@ -13,7 +13,7 @@
   },
   "overrides": [
     {
-      "includes": ["src/client/**", "src/components/**", "src/frontend/**"],
+      "includes": ["packages/core/client/**"],
       "linter": {
         "rules": {
           "style": {
@@ -37,7 +37,7 @@
       }
     },
     {
-      "includes": ["src/backend/**"],
+      "includes": ["packages/core/src/backend/**"],
       "javascript": {
         "globals": ["Bun"]
       },
@@ -67,7 +67,7 @@
       }
     },
     {
-      "includes": ["src/shared/**"],
+      "includes": ["packages/shared/src/**"],
       "linter": {
         "rules": {
           "style": {
@@ -95,7 +95,7 @@
       }
     },
     {
-      "includes": ["src/plugins/**"],
+      "includes": ["packages/plugins/src/**"],
       "linter": {
         "rules": {
           "a11y": {
@@ -127,8 +127,8 @@
     },
     {
       "includes": [
-        "src/backend/server/index.ts",
-        "src/client/lib/rpc-client.ts"
+        "packages/core/src/backend/server/index.ts",
+        "packages/core/client/lib/rpc-client.ts"
       ],
       "linter": {
         "rules": {
@@ -142,9 +142,9 @@
   "files": {
     "includes": [
       "**/*",
-      "!src/components/ui",
-      "!src/components/flow-elements",
-      "!src/hooks/use-mobile.ts"
+      "!packages/core/client/components/ui",
+      "!packages/core/client/components/flow-elements",
+      "!packages/core/client/hooks/use-mobile.ts"
     ]
   }
 }

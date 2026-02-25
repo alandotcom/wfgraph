@@ -1,0 +1,44 @@
+import { findActionById } from "@/plugins/registry";
+import {
+  getMissingRequiredFieldsForNodes,
+  type ResolveActionByType,
+} from "@/shared/workflow/action-config-validation";
+import type { WorkflowNode } from "@/shared/workflow/types";
+
+export type WorkflowActionValidationResult =
+  | { valid: true }
+  | { valid: false; error: string };
+
+export function validateWorkflowActionConfigs(
+  nodes: WorkflowNode[],
+  resolveActionByType: ResolveActionByType = (actionType) =>
+    findActionById(actionType)
+): WorkflowActionValidationResult {
+  const missingRequiredFields = getMissingRequiredFieldsForNodes({
+    nodes,
+    resolveActionByType,
+  });
+
+  if (missingRequiredFields.length > 0) {
+    const [firstIssue] = missingRequiredFields;
+    const missingLabels = firstIssue.missingFields
+      .map((field) => field.fieldLabel)
+      .join(", ");
+
+    if (
+      firstIssue.missingFields.some((field) => field.fieldKey === "actionType")
+    ) {
+      return {
+        valid: false,
+        error: `Node "${firstIssue.nodeLabel}" has no action selected`,
+      };
+    }
+
+    return {
+      valid: false,
+      error: `Node "${firstIssue.nodeLabel}" is missing required fields: ${missingLabels}`,
+    };
+  }
+
+  return { valid: true };
+}

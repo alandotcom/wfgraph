@@ -1,0 +1,10 @@
+{
+  "name": "@rova/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "es-toolkit": "^1.44.0",
+    "zod": "^4.3.6"
+  }
+}

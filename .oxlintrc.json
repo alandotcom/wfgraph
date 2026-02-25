@@ -60,14 +60,10 @@
     },
     {
       "files": [
-        "src/client/**/*.ts",
-        "src/client/**/*.tsx",
-        "src/frontend/**/*.ts",
-        "src/frontend/**/*.tsx",
-        "src/components/**/*.ts",
-        "src/components/**/*.tsx",
-        "src/plugins/**/*.ts",
-        "src/plugins/**/*.tsx"
+        "packages/core/client/**/*.ts",
+        "packages/core/client/**/*.tsx",
+        "packages/plugins/src/**/*.ts",
+        "packages/plugins/src/**/*.tsx"
       ],
       "env": {
         "browser": true
@@ -79,16 +75,21 @@
       }
     },
     {
-      "files": ["src/scripts/**/*.ts", "drizzle.config.ts", "bunup.config.ts"],
+      "files": [
+        "scripts/**/*.ts",
+        "packages/core/drizzle.config.ts",
+        "packages/core/bunup.config.ts"
+      ],
       "env": {
         "node": true
       }
     },
     {
       "files": [
-        "src/client/main.tsx",
-        "src/components/flow-elements/canvas.tsx",
-        "src/components/workflow/workflow-canvas.tsx"
+        "server.ts",
+        "packages/core/client/main.tsx",
+        "packages/core/client/components/flow-elements/canvas.tsx",
+        "packages/core/client/components/workflow/workflow-canvas.tsx"
       ],
       "rules": {
         "import/no-unassigned-import": "off"

@@ -4,15 +4,15 @@ A visual workflow automation platform with a node-based editor, typed API routes
 
 ## Runtime Overview
 
-This project runs as a Bun server with a React SPA frontend.
+The backend is a Hono API that runs on any JavaScript runtime (Node.js, Bun, Deno). Local development uses Bun as the dev server. The frontend is a standalone React SPA.
 
-- HTTP server: Bun (`src/server.ts`)
 - API: Hono (`src/backend/app.ts`)
+- Database: PostgreSQL via postgres.js + Drizzle ORM
+- Async execution/events: Inngest
 - Frontend: React SPA + TanStack Router (`src/client/main.tsx`, `src/client/router.tsx`)
 - State: Jotai
 - Data fetching/cache: TanStack Query
-- Database: PostgreSQL + Drizzle ORM
-- Async execution/events: Inngest
+- Dev server: Bun (`src/server.ts`)
 
 All source code lives under `src/`.
 
@@ -92,13 +92,15 @@ bun run dev
 
 App URL: `http://localhost:4017`
 
-## Library Extension API
+## Embedding
 
-You can run Rova Workflow Builder as an embeddable library and register custom actions/triggers at startup.
+Rova Workflow Builder is an embeddable Hono app. Import `rova-workflows/hono` to get a mountable sub-application, and `rova-workflows` for the `createAction`/`createTrigger` helpers. Works on Node.js, Bun, or any runtime that supports Hono.
 
 ```ts
+import { Hono } from "hono";
 import { z } from "zod";
-import { createAction, createTrigger, server } from "rova-workflows";
+import { createAction, createTrigger } from "rova-workflows";
+import { createRovaApp } from "rova-workflows/hono";
 
 const action = createAction({
   id: "custom/send-message",
@@ -134,10 +136,9 @@ const trigger = createTrigger({
   },
 });
 
-await server.start({
-  port: 5000,
+const rova = await createRovaApp({
   database: { url: process.env.DATABASE_URL! },
-  migrations: { runOnStartup: false },
+  migrations: { runOnStartup: true },
   inngest: {
     client: {
       id: "my-rova-app",
@@ -151,17 +152,44 @@ await server.start({
   actions: [action],
   triggers: [trigger],
 });
+
+const app = new Hono();
+app.route("/api", rova.app);
+// Routes: /api/rpc/..., /api/inngest, /api/extensions, /api/workflows/:id/webhook
+
+export default app;
 ```
 
-Notes:
+### Package exports
 
-- Rova Workflow Builder does not spawn `inngest-cli` in library mode.
-- For local app development (`bun run dev`), this repo starts Inngest CLI as a separate process.
+- `rova-workflows` -- `createAction`, `createTrigger`, and related types.
+- `rova-workflows/hono` -- `createRovaApp` factory, `RovaAppOptions`, `RovaApp`, and re-exported config types.
+
+### createRovaApp options
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `database.url` | Yes | PostgreSQL connection string |
+| `inngest.client.id` | Yes | Inngest application ID |
+| `inngest.client.*` | No | Inngest client config (baseUrl, eventKey, env, isDev) |
+| `inngest.serve` | No | Inngest serve config (signingKey, etc.) |
+| `migrations.runOnStartup` | No | Run Drizzle migrations at startup (default `false`) |
+| `migrations.migrationsDir` | No | Custom migrations directory |
+| `logger` | No | Custom logger conforming to `RovaLogger` interface |
+| `configureLogging` | No | Enable built-in structured logging (default `true`) |
+| `triggers` | No | Array of custom trigger definitions |
+| `actions` | No | Array of custom action definitions |
+
+### Notes
+
+- The consumer is responsible for running Inngest (either self-hosted or cloud). Rova does not spawn `inngest-cli`.
+- For local development in this repo, `bun run dev` starts Inngest CLI as a separate process.
+- `createRovaApp` returns `{ app, dispose }`. Call `dispose()` to unregister runtime triggers/actions.
 - Action extensions are strict-schema actions via `createAction(...)`:
   - `schema` validates resolved action input at runtime (Zod or Standard Schema-compatible validators).
   - `execute({ payload, context })` receives typed payload validated by `schema`.
   - `id`, `label`, `description`, `category`, `logoUrl`, `configFields`, and `outputFields` define action metadata.
-- Trigger extensions are strict-schema webhook triggers via `createTrigger(...)`:
+- Trigger extensions are strict-schema triggers via `createTrigger(...)`:
   - `type` is the stable trigger ID and must be unique.
   - `schema` validates inbound payloads at runtime (Zod or Standard Schema-compatible validators).
   - `correlationIdPath` is required and typed from the payload schema (`string` fields only).
@@ -216,7 +244,7 @@ docker run --rm \
 - `bun run dev` - run app and inngest dev processes
 - `bun run dev:app` - run only Bun app server
 - `bun run dev:inngest` - run only inngest dev process
-- `bun run build` - build Bun-only library artifacts to `dist/lib` (`.mjs` + `.d.mts`)
+- `bun run build` - build library artifacts to `dist/lib` (`.mjs` + `.d.mts`)
 - `bun run build:lib` - alias for `bun run build`
 - `bun run compile` - build standalone executable to `dist/server`
 - `bun run start` - run standalone compiled server (`./dist/server`)

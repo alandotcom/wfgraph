@@ -1,0 +1,212 @@
+import type { IntegrationPlugin } from "@/shared/plugins/registry";
+import { registerIntegration } from "@/shared/plugins/registry";
+import { ResendIcon } from "./icon";
+
+const resendPlugin: IntegrationPlugin = {
+  type: "resend",
+  label: "Resend",
+  description: "Send transactional emails",
+
+  icon: ResendIcon,
+
+  formFields: [
+    {
+      id: "apiKey",
+      label: "API Key",
+      type: "password",
+      placeholder: "re_...",
+      configKey: "apiKey",
+      envVar: "RESEND_API_KEY",
+      helpText: "Get your API key from ",
+      helpLink: {
+        text: "resend.com/api-keys",
+        url: "https://resend.com/api-keys",
+      },
+    },
+    {
+      id: "fromEmail",
+      label: "Default Sender",
+      type: "text",
+      placeholder: "Your Name <noreply@yourdomain.com>",
+      configKey: "fromEmail",
+      envVar: "RESEND_FROM_EMAIL",
+      helpText: "The name and email that will appear as the sender",
+    },
+  ],
+
+  actions: [
+    {
+      slug: "send-email",
+      label: "Send Email",
+      description: "Send an email via Resend",
+      category: "Resend",
+      stepFunction: "sendEmailStep",
+      stepImportPath: "send-email",
+      outputFields: [{ field: "id", description: "Email ID" }],
+      configFields: [
+        {
+          key: "emailFrom",
+          label: "From (Sender)",
+          type: "template-input",
+          placeholder: "Your Name <noreply@example.com>",
+          example: "Support <support@example.com>",
+        },
+        {
+          key: "emailTo",
+          label: "To",
+          type: "template-input",
+          placeholder: "recipient@example.com",
+          example: "user@example.com",
+          required: true,
+        },
+        {
+          key: "testBehavior",
+          label: "Test Mode Behavior",
+          type: "select",
+          defaultValue: "log_only",
+          options: [
+            { value: "log_only", label: "Log only (do nothing)" },
+            { value: "send_to_test_email", label: "Send to test email" },
+          ],
+        },
+        {
+          key: "testEmailTo",
+          label: "Test Email Address",
+          type: "text",
+          placeholder: "test@example.com",
+          showWhen: {
+            field: "testBehavior",
+            equals: "send_to_test_email",
+          },
+        },
+        {
+          key: "emailSubject",
+          label: "Subject",
+          type: "template-input",
+          placeholder: "Subject or {{NodeName.title}}",
+          example: "Hello from my workflow",
+          required: true,
+        },
+        {
+          key: "emailContentMode",
+          label: "Content Mode",
+          type: "select",
+          defaultValue: "text",
+          options: [
+            { value: "text", label: "Text" },
+            { value: "html", label: "HTML" },
+            { value: "template", label: "Template" },
+          ],
+        },
+        {
+          key: "emailBody",
+          label: "Text Body",
+          type: "template-textarea",
+          placeholder: "Email content or {{NodeName.description}}",
+          rows: 5,
+          example: "This is the email body content.",
+          required: true,
+          showWhen: {
+            field: "emailContentMode",
+            equals: "text",
+          },
+        },
+        {
+          key: "emailHtml",
+          label: "HTML Body",
+          type: "template-textarea",
+          placeholder: "<p>Hello {{NodeName.name}}</p>",
+          rows: 8,
+          showWhen: {
+            field: "emailContentMode",
+            equals: "html",
+          },
+        },
+        {
+          key: "emailTemplateId",
+          label: "Template ID",
+          type: "template-input",
+          placeholder: "tpl_xxxxxxxx",
+          showWhen: {
+            field: "emailContentMode",
+            equals: "template",
+          },
+        },
+        {
+          key: "emailTemplateVariables",
+          label: "Template Variables (JSON)",
+          type: "template-textarea",
+          rows: 6,
+          placeholder: '{"FIRST_NAME":"Alice","APPOINTMENT_AT":"2026-03-10"}',
+          showWhen: {
+            field: "emailContentMode",
+            equals: "template",
+          },
+        },
+        {
+          type: "group",
+          label: "Additional Recipients",
+          fields: [
+            {
+              key: "emailCc",
+              label: "CC",
+              type: "template-input",
+              placeholder: "cc@example.com",
+              example: "manager@example.com",
+            },
+            {
+              key: "emailBcc",
+              label: "BCC",
+              type: "template-input",
+              placeholder: "bcc@example.com",
+              example: "archive@example.com",
+            },
+            {
+              key: "emailReplyTo",
+              label: "Reply-To",
+              type: "template-input",
+              placeholder: "reply@example.com",
+              example: "support@example.com",
+            },
+          ],
+        },
+        {
+          type: "group",
+          label: "Scheduling",
+          fields: [
+            {
+              key: "emailScheduledAt",
+              label: "Schedule At (ISO 8601)",
+              type: "template-input",
+              placeholder: "2024-12-25T09:00:00Z",
+              example: "2024-12-25T09:00:00Z",
+            },
+            {
+              key: "emailTopicId",
+              label: "Topic ID",
+              type: "template-input",
+              placeholder: "topic_abc123",
+              example: "topic_abc123",
+            },
+          ],
+        },
+        {
+          type: "group",
+          label: "Tags",
+          fields: [
+            {
+              key: "emailTags",
+              label: "",
+              type: "key-value",
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+// Auto-register on import
+registerIntegration(resendPlugin);
+
+export default resendPlugin;
