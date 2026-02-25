@@ -13,7 +13,8 @@ const currentDir = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR_CANDIDATES = [
   resolve(process.cwd(), "drizzle"),
   resolve(currentDir, "../../../../drizzle"), // src/backend/lib/db/ → packages/core/drizzle/
-  resolve(currentDir, "../drizzle"), // dist/lib/ → dist/drizzle/
+  resolve(currentDir, "../../drizzle"), // dist/shared/ → packages/core/drizzle/ (bundled layout)
+  resolve(currentDir, "../drizzle"), // dist/ → dist/drizzle/ (copied migrations)
 ];
 
 export type MigrationsRuntimeOptions = {

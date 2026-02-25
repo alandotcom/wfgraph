@@ -28,11 +28,14 @@ export type NumberOperator =
 
 export type BooleanOperator = "is_true" | "is_false";
 
+export type NullCheckOperator = "is_set" | "is_not_set";
+
 export type ConditionOperator =
   | TimestampOperator
   | StringOperator
   | NumberOperator
-  | BooleanOperator;
+  | BooleanOperator
+  | NullCheckOperator;
 
 export type ConditionFieldDefinition = {
   path: string;
@@ -76,12 +79,17 @@ export type BooleanConditionRule = ConditionRuleBase & {
   operator: BooleanOperator;
 };
 
+export type NullCheckConditionRule = ConditionRuleBase & {
+  operator: NullCheckOperator;
+};
+
 export type ConditionRule =
   | TimestampRelativeConditionRule
   | TimestampAbsoluteConditionRule
   | StringConditionRule
   | NumberConditionRule
-  | BooleanConditionRule;
+  | BooleanConditionRule
+  | NullCheckConditionRule;
 
 export type ConditionGroup = {
   id: string;
@@ -157,6 +165,14 @@ export const BOOLEAN_OPERATOR_OPTIONS: Array<{
 }> = [
   { value: "is_true", label: "is true" },
   { value: "is_false", label: "is false" },
+];
+
+export const NULLCHECK_OPERATOR_OPTIONS: Array<{
+  value: NullCheckOperator;
+  label: string;
+}> = [
+  { value: "is_set", label: "is set" },
+  { value: "is_not_set", label: "is not set" },
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -237,6 +253,18 @@ function isNumberOperator(value: unknown): value is NumberOperator {
 
 function isBooleanOperator(value: unknown): value is BooleanOperator {
   return value === "is_true" || value === "is_false";
+}
+
+export function isNullCheckOperator(
+  value: unknown
+): value is NullCheckOperator {
+  return value === "is_set" || value === "is_not_set";
+}
+
+export function isNullCheckConditionRule(
+  rule: ConditionRule
+): rule is NullCheckConditionRule {
+  return isNullCheckOperator(rule.operator);
 }
 
 function isDateTimeString(value: unknown): value is string {
@@ -420,6 +448,19 @@ function parseConditionRule(
 
   if (!isConditionFieldType(input.fieldType)) {
     return { valid: false, error: "Condition field type is invalid" };
+  }
+
+  // Null-check operators are type-agnostic and take no value
+  if (isNullCheckOperator(input.operator)) {
+    return {
+      valid: true,
+      rule: {
+        id: input.id,
+        field: input.field.trim(),
+        fieldType: input.fieldType,
+        operator: input.operator,
+      },
+    };
   }
 
   const normalized = {
@@ -719,10 +760,25 @@ function compileBooleanConditionRule(
   return { valid: true, expression: `${field} == false` };
 }
 
+function compileNullCheckConditionRule(
+  rule: NullCheckConditionRule,
+  field: string
+): ConditionCompileResult {
+  if (rule.operator === "is_set") {
+    return { valid: true, expression: `${field} != null` };
+  }
+
+  return { valid: true, expression: `${field} == null` };
+}
+
 function compileConditionRule(rule: ConditionRule): ConditionCompileResult {
   const field = rule.field.trim();
   if (!field) {
     return { valid: false, error: "Condition field is required" };
+  }
+
+  if (isNullCheckConditionRule(rule)) {
+    return compileNullCheckConditionRule(rule, field);
   }
 
   if (rule.fieldType === "timestamp") {

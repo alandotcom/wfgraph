@@ -1,6 +1,27 @@
 import { startCase } from "es-toolkit/string";
 import type { ActionConfigFieldBase } from "@/plugins/registry";
 
+/**
+ * Library-specific options passed through StandardSchema's `libraryOptions`.
+ * Arktype spreads these into `toJsonSchema()`. Other libraries ignore them.
+ * Handles non-JSON-representable output types (Date, morphs, predicates).
+ */
+export const jsonSchemaLibraryOptions: Record<string, unknown> = {
+  fallback: {
+    date: (ctx: { base: Record<string, unknown> }) => ({
+      ...ctx.base,
+      type: "string",
+      format: "date-time",
+    }),
+    morph: (ctx: {
+      base: Record<string, unknown>;
+      out: Record<string, unknown> | null;
+    }) => ctx.out ?? ctx.base,
+    predicate: (ctx: { base: Record<string, unknown> }) => ctx.base,
+    default: (ctx: { base: Record<string, unknown> }) => ctx.base,
+  },
+};
+
 export type WorkflowSchemaFieldType =
   | "string"
   | "number"
@@ -22,6 +43,7 @@ export type WorkflowSchemaField = {
   itemType?: WorkflowSchemaItemType;
   fields?: WorkflowSchemaField[];
   description?: string;
+  nullable?: boolean;
 };
 
 type JsonSchemaType = WorkflowSchemaFieldType | WorkflowSchemaItemType;
@@ -73,7 +95,12 @@ function normalizeJsonSchemaType(value: unknown): JsonSchemaType | null {
 }
 
 function normalizeSchemaFormat(value: unknown): "timestamp" | undefined {
-  if (value === "date-time" || value === "datetime" || value === "timestamp") {
+  if (
+    value === "date-time" ||
+    value === "datetime" ||
+    value === "date" ||
+    value === "timestamp"
+  ) {
     return "timestamp";
   }
 
@@ -203,14 +230,62 @@ export function parseWorkflowSchemaFieldsString(
   }
 }
 
-function parseJsonSchemaProperty(
-  name: string,
-  value: unknown
-): WorkflowSchemaField | null {
-  if (!isRecord(value)) {
+/**
+ * Resolve nullable JSON Schema unions (`anyOf`/`oneOf` containing a `{ type: "null" }` branch).
+ * Returns the non-null branch (preserving top-level description) so the caller can
+ * parse it as a normal typed property, or `null` if the shape isn't a recognizable
+ * nullable union.
+ */
+function resolveNullableJsonSchema(
+  value: Record<string, unknown>
+): Record<string, unknown> | null {
+  let branches: unknown[] | null = null;
+  if (Array.isArray(value.anyOf)) {
+    branches = value.anyOf;
+  } else if (Array.isArray(value.oneOf)) {
+    branches = value.oneOf;
+  }
+
+  if (!branches || branches.length < 2) {
     return null;
   }
 
+  const nonNullBranches = branches.filter(
+    (b: unknown) => isRecord(b) && b.type !== "null"
+  );
+
+  if (nonNullBranches.length === 0) {
+    return null;
+  }
+
+  // Single non-null branch (e.g. `"string | null"` → `{ anyOf: [{type:"string"}, {type:"null"}] }`)
+  if (nonNullBranches.length === 1 && isRecord(nonNullBranches[0])) {
+    const branch = nonNullBranches[0];
+    if (typeof value.description === "string" && !branch.description) {
+      return { ...branch, description: value.description };
+    }
+    return branch;
+  }
+
+  // Multiple non-null `const` branches (e.g. `"'A' | 'B' | null"` → treat as string)
+  const allConst = nonNullBranches.every(
+    (b: unknown) => isRecord(b) && "const" in b
+  );
+  if (allConst) {
+    const result: Record<string, unknown> = { type: "string" };
+    if (typeof value.description === "string") {
+      result.description = value.description;
+    }
+    return result;
+  }
+
+  return null;
+}
+
+function parseNonNullableJsonSchemaProperty(
+  name: string,
+  value: Record<string, unknown>
+): WorkflowSchemaField | null {
   const normalizedType =
     normalizeJsonSchemaType(value.type) ||
     (value.properties ? "object" : null) ||
@@ -275,6 +350,26 @@ function parseJsonSchemaProperty(
         : undefined,
     description,
   };
+}
+
+function parseJsonSchemaProperty(
+  name: string,
+  value: unknown
+): WorkflowSchemaField | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const resolved = resolveNullableJsonSchema(value);
+  if (resolved) {
+    const field = parseNonNullableJsonSchemaProperty(name, resolved);
+    if (field) {
+      field.nullable = true;
+    }
+    return field;
+  }
+
+  return parseNonNullableJsonSchemaProperty(name, value);
 }
 
 function parseJsonSchemaProperties(value: unknown): WorkflowSchemaField[] {

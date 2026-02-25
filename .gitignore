@@ -44,7 +44,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-packages/**/*.d.ts
+*.d.ts
 !packages/**/src/types/**/*.d.ts
 .env*.local
 

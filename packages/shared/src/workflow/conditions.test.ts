@@ -146,4 +146,85 @@ describe("conditions", () => {
     );
     expect(parsed.valid).toBe(false);
   });
+
+  it("compiles is_set null-check operator", () => {
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: "middleInitial",
+              fieldType: "string",
+              operator: "is_set",
+            },
+          ],
+        },
+      ],
+    };
+
+    const compiled = compileConditionModel(model);
+    expect(compiled.valid).toBe(true);
+    if (compiled.valid) {
+      expect(compiled.expression).toBe("((middleInitial != null))");
+    }
+  });
+
+  it("compiles is_not_set null-check operator", () => {
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: "dateOfBirth",
+              fieldType: "timestamp",
+              operator: "is_not_set",
+            },
+          ],
+        },
+      ],
+    };
+
+    const compiled = compileConditionModel(model);
+    expect(compiled.valid).toBe(true);
+    if (compiled.valid) {
+      expect(compiled.expression).toBe("((dateOfBirth == null))");
+    }
+  });
+
+  it("parses null-check conditions from JSON", () => {
+    const json = JSON.stringify({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "g1",
+          logic: "and",
+          conditions: [
+            {
+              id: "c1",
+              field: "phone",
+              fieldType: "string",
+              operator: "is_set",
+            },
+          ],
+        },
+      ],
+    });
+
+    const parsed = parseConditionModel(json);
+    expect(parsed.valid).toBe(true);
+    if (parsed.valid) {
+      expect(parsed.model.groups[0].conditions[0].operator).toBe("is_set");
+    }
+  });
 });

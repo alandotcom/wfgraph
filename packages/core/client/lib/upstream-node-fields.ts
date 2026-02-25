@@ -16,6 +16,7 @@ type NodeOutputField = {
   description: string;
   fieldType?: WorkflowSchemaFieldType;
   fieldFormat?: "timestamp";
+  nullable?: boolean;
 };
 
 function dedupeNodeOutputFields(fields: NodeOutputField[]): NodeOutputField[] {
@@ -72,6 +73,7 @@ export type ConditionSelectableField = ConditionFieldDefinition & {
   sourceNodeId: string;
   sourceNodeLabel: string;
   sourceNodeLabels: string[];
+  nullable?: boolean;
 };
 
 function readConfigString(
@@ -102,6 +104,7 @@ function schemaToFields(
       field: fieldPath,
       description,
       fieldType: schemaField.type,
+      ...(schemaField.nullable ? { nullable: true } : {}),
     });
 
     if (
@@ -209,6 +212,7 @@ function getTriggerOutputFields(node: WorkflowNode): NodeOutputField[] {
           description: field.description,
           fieldType: field.type,
           fieldFormat: field.format,
+          ...(field.nullable ? { nullable: true } : {}),
         })
       );
 
@@ -233,6 +237,7 @@ function getPluginActionOutputFields(actionType: string): NodeOutputField[] {
     description: field.description,
     fieldType: field.type,
     fieldFormat: field.format,
+    ...(field.nullable ? { nullable: true } : {}),
   }));
 }
 
@@ -411,6 +416,7 @@ export function getUpstreamConditionFields(input: {
       sourceNodeId: field.sourceNodeId,
       sourceNodeLabel: field.sourceNodeName,
       sourceNodeLabels: [field.sourceNodeName],
+      ...(field.nullable ? { nullable: true } : {}),
     });
   }
 

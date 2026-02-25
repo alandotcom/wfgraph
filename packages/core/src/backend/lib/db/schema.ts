@@ -3,6 +3,7 @@ import {
   boolean,
   index,
   jsonb,
+  type PgSchema,
   pgSchema,
   text,
   timestamp,
@@ -12,7 +13,7 @@ import type { IntegrationType } from "@/shared/types/integration";
 import { generateId } from "@/shared/utils/id";
 import type { SerializedWorkflowGraph } from "@/shared/workflow/types";
 
-export const workflowsSchema = pgSchema("_workflows");
+export const workflowsSchema: PgSchema<"_workflows"> = pgSchema("_workflows");
 
 // Workflow visibility type
 export type WorkflowVisibility = "private" | "public";

@@ -190,4 +190,4 @@ const dbProxy: PostgresJsDatabase<typeof schema> = new Proxy(
   }
 );
 
-export const db = dbProxy;
+export const db: PostgresJsDatabase<typeof schema> = dbProxy;

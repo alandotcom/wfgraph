@@ -23,6 +23,7 @@ import {
 import {
   logWorkflowComplete,
   type StepContext,
+  withStepLogging,
 } from "@/backend/lib/steps/step-handler";
 import { triggerStep } from "@/backend/lib/steps/trigger";
 import { withSpan } from "@/backend/lib/telemetry";
@@ -331,13 +332,16 @@ async function executeActionStepInner(input: {
         ...runtimeActionPayload
       } = config;
 
-      return await stepImporter.execute({
-        payload: runtimeActionPayload,
-        context: {
-          ...context,
-          integrationId,
-        },
-      });
+      const executeFn = stepImporter.execute;
+      return await withStepLogging({ _context: context }, async () =>
+        executeFn({
+          payload: runtimeActionPayload,
+          context: {
+            ...context,
+            integrationId,
+          },
+        })
+      );
     }
 
     const module = await stepImporter.importer();

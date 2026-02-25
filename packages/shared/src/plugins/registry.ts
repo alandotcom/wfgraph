@@ -91,6 +91,7 @@ export type OutputField = {
   description: string;
   type?: import("@/workflow/schema-codec").WorkflowSchemaFieldType;
   format?: "timestamp";
+  nullable?: boolean;
 };
 
 /**

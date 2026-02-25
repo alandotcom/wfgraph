@@ -10,6 +10,7 @@ import type {
 import type { WorkflowSchemaField } from "@/workflow/schema-codec";
 import {
   configFieldsFromJsonSchema,
+  jsonSchemaLibraryOptions,
   parseWorkflowSchemaFieldsOrJsonSchema,
 } from "@/workflow/schema-codec";
 
@@ -205,10 +206,15 @@ function validateActionPayload<TPayload extends Record<string, unknown>>(
 function configFieldsFromInputSchema(
   schema: InputSchema<Record<string, unknown>>
 ): ActionConfigFieldBase[] {
-  const jsonSchema = schema["~standard"].jsonSchema.input({
-    target: "draft-2020-12",
-  });
-  return configFieldsFromJsonSchema(jsonSchema);
+  try {
+    const jsonSchema = schema["~standard"].jsonSchema.input({
+      target: "draft-2020-12",
+      libraryOptions: jsonSchemaLibraryOptions,
+    });
+    return configFieldsFromJsonSchema(jsonSchema);
+  } catch {
+    return [];
+  }
 }
 
 function normalizeRuntimeActionDefinition(
@@ -255,15 +261,29 @@ function schemaFieldToOutputField(field: WorkflowSchemaField): OutputField {
     description: field.description ?? field.name,
     type: field.type,
     ...(field.type === "timestamp" ? { format: "timestamp" as const } : {}),
+    ...(field.nullable ? { nullable: true } : {}),
   };
 }
 
 function outputFieldsFromStandardSchema(
   schema: OutputSchema<Record<string, unknown>>
 ): OutputField[] {
-  const jsonSchema = schema["~standard"].jsonSchema.output({
-    target: "draft-2020-12",
-  });
+  let jsonSchema: Record<string, unknown>;
+  try {
+    jsonSchema = schema["~standard"].jsonSchema.output({
+      target: "draft-2020-12",
+      libraryOptions: jsonSchemaLibraryOptions,
+    });
+  } catch {
+    try {
+      jsonSchema = schema["~standard"].jsonSchema.input({
+        target: "draft-2020-12",
+        libraryOptions: jsonSchemaLibraryOptions,
+      });
+    } catch {
+      return [];
+    }
+  }
   const fields = parseWorkflowSchemaFieldsOrJsonSchema(jsonSchema);
   if (fields) {
     return fields.map(schemaFieldToOutputField);

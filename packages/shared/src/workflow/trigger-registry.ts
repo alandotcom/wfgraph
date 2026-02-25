@@ -5,6 +5,7 @@ import type { InputSchema } from "@/workflow/action-registry";
 import type { WorkflowSchemaField } from "@/workflow/schema-codec";
 import {
   configFieldsFromJsonSchema,
+  jsonSchemaLibraryOptions,
   parseWorkflowSchemaFieldsOrJsonSchema,
 } from "@/workflow/schema-codec";
 import {
@@ -708,6 +709,7 @@ function schemaFieldToOutputField(field: WorkflowSchemaField): OutputField {
     description: field.description ?? field.name,
     type: field.type,
     ...(field.type === "timestamp" ? { format: "timestamp" as const } : {}),
+    ...(field.nullable ? { nullable: true } : {}),
   };
 }
 
@@ -736,7 +738,10 @@ function extractStandardSchemaOutputFields(
       return undefined;
     }
 
-    const jsonSchema: unknown = inputFn({ target: "draft-2020-12" });
+    const jsonSchema: unknown = inputFn({
+      target: "draft-2020-12",
+      libraryOptions: jsonSchemaLibraryOptions,
+    });
     if (!isRecord(jsonSchema)) {
       return undefined;
     }
@@ -890,10 +895,15 @@ export function createTrigger<TPayload extends Record<string, unknown>>(
 
   let configFields: ActionConfigField[] | undefined;
   if (input.configSchema) {
-    const jsonSchema = input.configSchema["~standard"].jsonSchema.input({
-      target: "draft-2020-12",
-    });
-    configFields = configFieldsFromJsonSchema(jsonSchema);
+    try {
+      const jsonSchema = input.configSchema["~standard"].jsonSchema.input({
+        target: "draft-2020-12",
+        libraryOptions: jsonSchemaLibraryOptions,
+      });
+      configFields = configFieldsFromJsonSchema(jsonSchema);
+    } catch {
+      configFields = undefined;
+    }
   }
 
   const outputFields = outputFieldsFromTriggerSchema(input.schema);

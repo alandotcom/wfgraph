@@ -27,8 +27,10 @@ import {
   createDefaultConditionModel,
   createDefaultConditionRule,
   GROUP_LOGIC_OPTIONS,
+  isNullCheckConditionRule,
   isTimestampAbsoluteConditionRule,
   isTimestampRelativeConditionRule,
+  NULLCHECK_OPERATOR_OPTIONS,
   NUMBER_OPERATOR_OPTIONS,
   parseConditionModel,
   STRING_OPERATOR_OPTIONS,
@@ -100,20 +102,25 @@ function isTimeUnitValue(value: string): value is TimeUnit {
   return TIME_UNIT_OPTIONS.some((option) => option.value === value);
 }
 
-function getOperatorOptionsByFieldType(fieldType: ConditionFieldType) {
+function getOperatorOptionsByFieldType(
+  fieldType: ConditionFieldType,
+  nullable?: boolean
+) {
+  const nullOpts = nullable ? NULLCHECK_OPERATOR_OPTIONS : [];
+
   if (fieldType === "timestamp") {
-    return TIMESTAMP_OPERATOR_OPTIONS;
+    return [...TIMESTAMP_OPERATOR_OPTIONS, ...nullOpts];
   }
 
   if (fieldType === "string") {
-    return STRING_OPERATOR_OPTIONS;
+    return [...STRING_OPERATOR_OPTIONS, ...nullOpts];
   }
 
   if (fieldType === "number") {
-    return NUMBER_OPERATOR_OPTIONS;
+    return [...NUMBER_OPERATOR_OPTIONS, ...nullOpts];
   }
 
-  return BOOLEAN_OPERATOR_OPTIONS;
+  return [...BOOLEAN_OPERATOR_OPTIONS, ...nullOpts];
 }
 
 function toLocalDateTimeInput(isoDateTime: string): string {
@@ -184,13 +191,41 @@ function buildTimestampOperatorRule(input: {
   return null;
 }
 
+function isNullCheckOperatorValue(
+  value: string
+): value is "is_set" | "is_not_set" {
+  return value === "is_set" || value === "is_not_set";
+}
+
 function applyOperatorValueToCondition(
   condition: ConditionRule,
   operatorValue: string
 ): ConditionRule | null {
+  const base = { id: condition.id, field: condition.field };
+
+  // Null-check operators work with any field type
+  if (isNullCheckOperatorValue(operatorValue)) {
+    return {
+      ...base,
+      fieldType: condition.fieldType,
+      operator: operatorValue,
+    };
+  }
+
   if (condition.fieldType === "timestamp") {
+    // Switching from null-check back to timestamp — supply defaults
+    const tsCondition: Extract<ConditionRule, { fieldType: "timestamp" }> =
+      isNullCheckConditionRule(condition)
+        ? {
+            ...base,
+            fieldType: "timestamp" as const,
+            operator: "within_next" as const,
+            amount: 1,
+            unit: "days" as const,
+          }
+        : condition;
     return buildTimestampOperatorRule({
-      condition,
+      condition: tsCondition,
       operatorValue,
     });
   }
@@ -199,32 +234,29 @@ function applyOperatorValueToCondition(
     if (!isStringOperatorValue(operatorValue)) {
       return null;
     }
-
-    return {
-      ...condition,
-      operator: operatorValue,
-    };
+    const value =
+      !isNullCheckConditionRule(condition) && "value" in condition
+        ? condition.value
+        : "";
+    return { ...base, fieldType: "string", operator: operatorValue, value };
   }
 
   if (condition.fieldType === "number") {
     if (!isNumberOperatorValue(operatorValue)) {
       return null;
     }
-
-    return {
-      ...condition,
-      operator: operatorValue,
-    };
+    const value =
+      !isNullCheckConditionRule(condition) && "value" in condition
+        ? condition.value
+        : 0;
+    return { ...base, fieldType: "number", operator: operatorValue, value };
   }
 
   if (!isBooleanOperatorValue(operatorValue)) {
     return null;
   }
 
-  return {
-    ...condition,
-    operator: operatorValue,
-  };
+  return { ...base, fieldType: "boolean", operator: operatorValue };
 }
 
 function LogicToggle({
@@ -267,6 +299,11 @@ function ConditionValueInput(input: {
   onConditionChange: (condition: ConditionRule) => void;
 }) {
   const { condition, disabled, currentNodeId, onConditionChange } = input;
+
+  // Null-check operators need no value input
+  if (isNullCheckConditionRule(condition)) {
+    return null;
+  }
 
   if (condition.fieldType === "timestamp") {
     if (isTimestampRelativeConditionRule(condition)) {
@@ -660,13 +697,13 @@ export function ConditionBuilderRow({
 
               <div className="space-y-3 p-3">
                 {group.conditions.map((condition, conditionIndex) => {
+                  const selectedFieldDef = fieldByPath.get(condition.field);
                   const operatorOptions = getOperatorOptionsByFieldType(
-                    condition.fieldType
+                    condition.fieldType,
+                    selectedFieldDef?.nullable
                   );
                   const canDeleteCondition = group.conditions.length > 1;
-                  const isSelectedFieldUnavailable = !fieldByPath.has(
-                    condition.field
-                  );
+                  const isSelectedFieldUnavailable = !selectedFieldDef;
 
                   return (
                     <div key={condition.id}>
@@ -711,7 +748,14 @@ export function ConditionBuilderRow({
                                     value={field.path}
                                   >
                                     <span className="flex w-full flex-col items-start">
-                                      <span>{field.path}</span>
+                                      <span className="flex items-center gap-1.5">
+                                        {field.path}
+                                        {field.nullable && (
+                                          <span className="rounded bg-muted px-1 py-0.5 font-normal text-[10px] text-muted-foreground leading-none">
+                                            nullable
+                                          </span>
+                                        )}
+                                      </span>
                                       {field.sourceNodeLabels.length > 1 && (
                                         <span className="text-muted-foreground text-xs">
                                           Also from{" "}
