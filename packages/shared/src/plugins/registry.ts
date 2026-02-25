@@ -223,10 +223,15 @@ const _intKey = Symbol.for("@rova/integration-registry");
 const _rtKey = Symbol.for("@rova/runtime-action-registry");
 const _cacheKey = Symbol.for("@rova/action-by-id-cache");
 
-if (!_g[_intKey]) _g[_intKey] = new Map<IntegrationType, IntegrationPlugin>();
-if (!_g[_rtKey]) _g[_rtKey] = new Map<string, RuntimeActionDefinition>();
-if (!_g[_cacheKey])
+if (!_g[_intKey]) {
+  _g[_intKey] = new Map<IntegrationType, IntegrationPlugin>();
+}
+if (!_g[_rtKey]) {
+  _g[_rtKey] = new Map<string, RuntimeActionDefinition>();
+}
+if (!_g[_cacheKey]) {
   _g[_cacheKey] = new Map<string, ActionWithFullId | undefined>();
+}
 
 // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- initialized above
 const integrationRegistry = _g[_intKey] as Map<
@@ -635,6 +640,37 @@ export function flattenConfigFields(
   return result;
 }
 
+function getFieldExampleValue(
+  field: ReturnType<typeof flattenConfigFields>[number]
+): string | number {
+  if (field.example !== undefined) {
+    return field.example;
+  }
+  if (field.defaultValue !== undefined) {
+    return field.defaultValue;
+  }
+  if (field.type === "number") {
+    return 10;
+  }
+  if (field.type === "select" && field.options?.[0]) {
+    return field.options[0].value;
+  }
+  return `Your ${field.label.toLowerCase()}`;
+}
+
+function buildActionExampleConfig(
+  fullId: string,
+  configFields: Parameters<typeof flattenConfigFields>[0]
+): Record<string, string | number> {
+  const config: Record<string, string | number> = { actionType: fullId };
+  for (const field of flattenConfigFields(configFields)) {
+    if (!field.showWhen) {
+      config[field.key] = getFieldExampleValue(field);
+    }
+  }
+  return config;
+}
+
 /**
  * Generate AI prompt section for all available actions
  * This dynamically builds the action types documentation for the AI
@@ -645,34 +681,10 @@ export function generateAIActionPrompts(): string {
   for (const plugin of integrationRegistry.values()) {
     for (const action of plugin.actions) {
       const fullId = computeActionId(plugin.type, action.slug);
-
-      // Build example config from configFields (flatten groups)
-      const exampleConfig: Record<string, string | number> = {
-        actionType: fullId,
-      };
-
-      const flatFields = flattenConfigFields(action.configFields);
-
-      for (const field of flatFields) {
-        // Skip conditional fields in the example
-        if (field.showWhen) {
-          continue;
-        }
-
-        // Use example, defaultValue, or a sensible default based on type
-        if (field.example !== undefined) {
-          exampleConfig[field.key] = field.example;
-        } else if (field.defaultValue !== undefined) {
-          exampleConfig[field.key] = field.defaultValue;
-        } else if (field.type === "number") {
-          exampleConfig[field.key] = 10;
-        } else if (field.type === "select" && field.options?.[0]) {
-          exampleConfig[field.key] = field.options[0].value;
-        } else {
-          exampleConfig[field.key] = `Your ${field.label.toLowerCase()}`;
-        }
-      }
-
+      const exampleConfig = buildActionExampleConfig(
+        fullId,
+        action.configFields
+      );
       lines.push(
         `- ${action.label} (${fullId}): ${JSON.stringify(exampleConfig)}`
       );
