@@ -6,15 +6,27 @@ A visual workflow automation platform with a node-based editor, typed API routes
 
 The backend is a Hono API that runs on any JavaScript runtime (Node.js, Bun, Deno). Local development uses Bun as the dev server. The frontend is a standalone React SPA.
 
-- API: Hono (`src/backend/app.ts`)
+- API: Hono (`packages/core/src/backend/app.ts`)
 - Database: PostgreSQL via postgres.js + Drizzle ORM
 - Async execution/events: Inngest
-- Frontend: React SPA + TanStack Router (`src/client/main.tsx`, `src/client/router.tsx`)
+- Frontend: React SPA + TanStack Router (`packages/core/client/main.tsx`, `packages/core/client/router.tsx`)
 - State: Jotai
 - Data fetching/cache: TanStack Query
-- Dev server: Bun (`src/server.ts`)
+- Dev server: Bun (`server.ts`)
 
-All source code lives under `src/`.
+## Project Structure
+
+This is a Bun workspace monorepo with three packages:
+
+```
+packages/
+  shared/    @rova/shared   Runtime-agnostic types, schemas, registries
+  core/      @rova/core     Library entrypoints, backend, and frontend SPA
+  plugins/   @rova/plugins  Integration plugins (Acuity, Clerk, Linear, Resend, Slack, Twilio)
+```
+
+- `server.ts` -- root dev server entrypoint (imports plugins, starts server)
+- `scripts/` -- build and compile scripts
 
 ## Integrations
 
@@ -28,7 +40,7 @@ Supported integration types:
 - Slack
 - Twilio
 
-Plugin definitions and steps are under `src/plugins`.
+Plugin definitions and steps are under `packages/plugins/src`.
 
 ## Prerequisites
 
@@ -62,7 +74,7 @@ The server can run Drizzle migrations automatically during startup.
 
 - Controlled by `RUN_DB_MIGRATIONS` (default `false`)
 - Migration folder is `MIGRATIONS_DIR` (default `drizzle`)
-- Startup migrations run before the HTTP server starts (`src/server.ts`)
+- Startup migrations run before the HTTP server starts (`server.ts`)
 
 Examples:
 
@@ -94,13 +106,12 @@ App URL: `http://localhost:4017`
 
 ## Embedding
 
-Rova Workflow Builder is an embeddable Hono app. Import `rova-workflows/hono` to get a mountable sub-application, and `rova-workflows` for the `createAction`/`createTrigger` helpers. Works on Node.js, Bun, or any runtime that supports Hono.
+Rova Workflow Builder is an embeddable Hono app. Import `@rova/core/hono` to get a mountable sub-application, and `@rova/core` for the `createAction`/`createTrigger` helpers. Works on Node.js, Bun, or any runtime that supports Hono.
 
 ```ts
-import { Hono } from "hono";
 import { z } from "zod";
-import { createAction, createTrigger } from "rova-workflows";
-import { createRovaApp } from "rova-workflows/hono";
+import { createAction, createTrigger } from "@rova/core";
+import { createRovaApp } from "@rova/core/hono";
 
 const action = createAction({
   id: "custom/send-message",
@@ -153,17 +164,28 @@ const rova = await createRovaApp({
   triggers: [trigger],
 });
 
-const app = new Hono();
-app.route("/api", rova.app);
-// Routes: /api/rpc/..., /api/inngest, /api/extensions, /api/workflows/:id/webhook
-
-export default app;
+// rova.app is a full Hono app with API at /api/* and optional SPA at /*
+Bun.serve({ port: 3000, fetch: rova.app.fetch });
 ```
 
 ### Package exports
 
-- `rova-workflows` -- `createAction`, `createTrigger`, and related types.
-- `rova-workflows/hono` -- `createRovaApp` factory, `RovaAppOptions`, `RovaApp`, and re-exported config types.
+- `@rova/core` -- `createAction`, `createTrigger`, and related types.
+- `@rova/core/hono` -- `createRovaApp` factory, `RovaAppOptions`, `RovaApp`, and re-exported config types.
+
+### Linking for development
+
+To use `@rova/core` from another project during development:
+
+```bash
+# Register the package (once, from this repo)
+cd packages/core && bun link
+
+# Link it in the consumer project
+cd /path/to/consumer && bun link @rova/core
+```
+
+The `@rova/core` package.json includes a `"bun"` export condition that resolves to source files, so Bun consumers get live source resolution without building first.
 
 ### createRovaApp options
 
@@ -179,12 +201,14 @@ export default app;
 | `configureLogging` | No | Enable built-in structured logging (default `true`) |
 | `triggers` | No | Array of custom trigger definitions |
 | `actions` | No | Array of custom action definitions |
+| `serveClient` | No | Serve the workflow builder SPA (default `true`) |
 
 ### Notes
 
 - The consumer is responsible for running Inngest (either self-hosted or cloud). Rova does not spawn `inngest-cli`.
 - For local development in this repo, `bun run dev` starts Inngest CLI as a separate process.
 - `createRovaApp` returns `{ app, dispose }`. Call `dispose()` to unregister runtime triggers/actions.
+- `rova.app` is a complete Hono app with API routes at `/api/*` and SPA serving at `/*`. Pass `rova.app.fetch` directly to your server.
 - Action extensions are strict-schema actions via `createAction(...)`:
   - `schema` validates resolved action input at runtime (Zod or Standard Schema-compatible validators).
   - `execute({ payload, context })` receives typed payload validated by `schema`.
@@ -241,14 +265,16 @@ docker run --rm \
 
 ## Scripts
 
-- `bun run dev` - run app and inngest dev processes
+- `bun run dev` - run app, client watcher, and inngest dev processes
 - `bun run dev:app` - run only Bun app server
+- `bun run dev:client` - run client build in watch mode
 - `bun run dev:inngest` - run only inngest dev process
-- `bun run build` - build library artifacts to `dist/lib` (`.mjs` + `.d.mts`)
-- `bun run build:lib` - alias for `bun run build`
+- `bun run build` - build library + client + copy migrations
+- `bun run build:lib` - build library artifacts (`packages/core/dist/`)
+- `bun run build:client` - build client SPA (`packages/core/dist/client/`)
 - `bun run compile` - build standalone executable to `dist/server`
 - `bun run start` - run standalone compiled server (`./dist/server`)
-- `bun run test` - run Vitest tests
+- `bun run test` - run tests
 - `bun run type-check` - run TypeScript checks
 - `bun run check` - lint/format check
 - `bun run fix` - lint/format auto-fix
@@ -306,15 +332,15 @@ Base path: `/api`
 
 ## Typed Client
 
-Use the typed client from `src/client/lib/rpc-client.ts`:
+Use the typed client from `packages/core/client/lib/rpc-client.ts`:
 
 ```ts
-import { api } from "@/client/lib/rpc-client";
+import { api } from "@/lib/rpc-client";
 ```
 
 ## Database Tables
 
-Defined in `src/backend/lib/db/schema.ts`:
+Defined in `packages/core/src/backend/lib/db/schema.ts`:
 
 - `workflows`
 - `integrations`

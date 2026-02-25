@@ -92,13 +92,13 @@ Server-side barrel files are allowed.
 - Inngest is mounted inside the API at `/api/inngest` using `serveInngest(...)`.
 - Local repo development starts `inngest-cli` as a separate process via `bun run dev:inngest`.
 - Embedded mode (`createRovaApp(...)` from `packages/core/src/hono.ts`) returns a mountable Hono sub-application. The consumer is responsible for HTTP serving and running Inngest.
-- The main package export (`rova-workflows`) provides `createAction` and `createTrigger` only -- no server code.
-- The `/hono` export (`rova-workflows/hono`) provides `createRovaApp` and related types.
+- The main package export (`@rova/core`) provides `createAction` and `createTrigger` only -- no server code.
+- The `/hono` export (`@rova/core/hono`) provides `createRovaApp` and related types.
 
 ### API Composition and Boundaries
 
 - `packages/core/src/backend/app.ts` is the canonical API composition root via `createApiApp()`:
-  - Accepts optional `basePath` for standalone mode (e.g. `"/api"`); omitting it computes the mount prefix dynamically per-request for embedded use.
+  - Accepts `basePath` (e.g. `"/api"`) to prefix all API routes. Both standalone (`server.ts`) and embedded (`hono.ts`) pass `basePath: "/api"`.
   - Declares request schemas with Zod.
   - Applies `zValidator` to params/query/body at route boundaries.
   - Adds centralized request/response logging middleware and `onError` handling.
