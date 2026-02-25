@@ -11,6 +11,7 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
+import { getErrorMessage } from "@/shared/utils";
 
 const executionEventsLogger = getAppLogger("workflow", "execution-events");
 
@@ -65,7 +66,10 @@ export async function getExecutionEventsResult(
       })),
     });
   } catch (error) {
-    requestLogger.error("Failed to get execution events", { error });
+    requestLogger.error(
+      `Failed to get execution events: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error

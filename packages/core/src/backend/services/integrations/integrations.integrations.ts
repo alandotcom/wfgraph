@@ -24,6 +24,7 @@ import type {
   IntegrationConfig,
   IntegrationType,
 } from "@/shared/types/integration";
+import { getErrorMessage } from "@/shared/utils";
 import { getIntegrationTestFunction } from "./integration-test-loaders";
 
 const integrationsLogger = getAppLogger("integrations");
@@ -166,7 +167,10 @@ export async function getIntegrationsResult(
     const integrations = await getIntegrationsAll(type);
     return success(integrations.map(toIntegrationSummary));
   } catch (error) {
-    requestLogger.error("Failed to get integrations", { error });
+    requestLogger.error(
+      `Failed to get integrations: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error: "Failed to get integrations",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -198,7 +202,10 @@ export async function getIntegrationResult(
 
     return success(toIntegrationWithConfig(integration));
   } catch (error) {
-    requestLogger.error("Failed to get integration", { error });
+    requestLogger.error(
+      `Failed to get integration: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error: "Failed to get integration",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -257,7 +264,10 @@ export async function putIntegrationResult(
 
     return success(toIntegrationWithConfig(integration));
   } catch (error) {
-    requestLogger.error("Failed to update integration", { error });
+    requestLogger.error(
+      `Failed to update integration: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error: "Failed to update integration",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -291,7 +301,10 @@ export async function deleteIntegrationResult(
 
     return success({ success: true });
   } catch (error) {
-    requestLogger.error("Failed to delete integration", { error });
+    requestLogger.error(
+      `Failed to delete integration: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error: "Failed to delete integration",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -343,9 +356,12 @@ export async function postIntegrationsTestResult(body: {
     const testResult = await testFn(credentials);
 
     if (!testResult.success) {
-      requestLogger.warn("Integration test returned failure", {
-        error: testResult.error,
-      });
+      requestLogger.warn(
+        `Integration test returned failure: ${testResult.error}`,
+        {
+          error: testResult.error,
+        }
+      );
     }
 
     return success({
@@ -355,7 +371,10 @@ export async function postIntegrationsTestResult(body: {
         : testResult.error || "Connection failed",
     });
   } catch (error) {
-    requestLogger.error("Failed to test integration connection", { error });
+    requestLogger.error(
+      `Failed to test integration connection: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       status: "error",
       message:
@@ -487,7 +506,10 @@ export async function postIntegrationsResult(body: {
 
     return success(toIntegrationSummary(integration));
   } catch (error) {
-    requestLogger.error("Failed to create integration", { error });
+    requestLogger.error(
+      `Failed to create integration: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error: "Failed to create integration",
       details: error instanceof Error ? error.message : "Unknown error",

@@ -9,6 +9,7 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
+import { getErrorMessage } from "@/shared/utils";
 
 const workflowGlobalExecutionsLogger = getAppLogger(
   "workflow",
@@ -240,7 +241,10 @@ export async function getWorkflowExecutionsGlobalResult(
       nextCursor: buildNextCursor({ hasMore, pageRows }),
     });
   } catch (error) {
-    requestLogger.error("Failed to get global workflow executions", { error });
+    requestLogger.error(
+      `Failed to get global workflow executions: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error

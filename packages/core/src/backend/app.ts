@@ -20,6 +20,7 @@ import {
   optionsWorkflowWebhook,
   postWorkflowWebhook,
 } from "@/backend/services/workflows/workflow-webhook.workflows";
+import { getErrorMessage } from "@/shared/utils";
 import { listRuntimeActions } from "@/shared/workflow/action-registry";
 import { listCustomWorkflowTriggers } from "@/shared/workflow/trigger-registry";
 
@@ -183,12 +184,15 @@ export function createApiApp(options?: CreateApiAppOptions) {
     try {
       await next();
     } catch (error) {
-      requestLogger.error(`xx> ${method} ${path} [${requestId}]`, {
-        method,
-        path,
-        durationMs: Date.now() - startTime,
-        error,
-      });
+      requestLogger.error(
+        `xx> ${method} ${path} [${requestId}]: ${getErrorMessage(error)}`,
+        {
+          method,
+          path,
+          durationMs: Date.now() - startTime,
+          error,
+        }
+      );
       throw error;
     }
 
@@ -216,7 +220,7 @@ export function createApiApp(options?: CreateApiAppOptions) {
   });
 
   app.onError((error, c) => {
-    httpLogger.error("Unhandled API error", {
+    httpLogger.error(`Unhandled API error: ${getErrorMessage(error)}`, {
       method: c.req.method.toUpperCase(),
       path: c.req.path,
       query: c.req.query(),

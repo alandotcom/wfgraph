@@ -8,6 +8,7 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
+import { getErrorMessage } from "@/shared/utils";
 
 const apiKeyLogger = getAppLogger("api-keys");
 
@@ -30,7 +31,9 @@ export async function deleteApiKeyResult(
 
     return success({ success: true });
   } catch (error) {
-    requestLogger.error("Failed to delete API key", { error });
+    requestLogger.error(`Failed to delete API key: ${getErrorMessage(error)}`, {
+      error,
+    });
     return failure(500, { error: "Failed to delete API key" });
   }
 }

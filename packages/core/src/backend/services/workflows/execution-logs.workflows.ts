@@ -12,6 +12,7 @@ import {
   success,
 } from "@/backend/lib/service-result";
 import { redactSensitiveData } from "@/backend/lib/utils/redact";
+import { getErrorMessage } from "@/shared/utils";
 
 const executionLogsLogger = getAppLogger("workflow", "execution-logs");
 
@@ -113,7 +114,10 @@ export async function getExecutionLogsResult(
       logs: redactedLogs,
     });
   } catch (error) {
-    requestLogger.error("Failed to get execution logs", { error });
+    requestLogger.error(
+      `Failed to get execution logs: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error ? error.message : "Failed to get execution logs",

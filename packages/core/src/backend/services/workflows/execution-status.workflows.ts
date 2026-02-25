@@ -11,6 +11,7 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
+import { getErrorMessage } from "@/shared/utils";
 
 const executionStatusLogger = getAppLogger("workflow", "execution-status");
 
@@ -64,7 +65,10 @@ export async function getExecutionStatusResult(
       nodeStatuses,
     });
   } catch (error) {
-    requestLogger.error("Failed to get execution status", { error });
+    requestLogger.error(
+      `Failed to get execution status: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error

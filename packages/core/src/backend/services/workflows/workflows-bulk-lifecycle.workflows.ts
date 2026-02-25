@@ -9,6 +9,7 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
+import { getErrorMessage } from "@/shared/utils";
 import { deleteWorkflow } from "./workflow.workflows";
 
 const workflowsBulkLifecycleLogger = getAppLogger("workflow", "bulk-lifecycle");
@@ -147,7 +148,10 @@ export async function postWorkflowsBulkLifecycleResult(
       results,
     });
   } catch (error) {
-    requestLogger.error("Failed bulk workflow lifecycle action", { error });
+    requestLogger.error(
+      `Failed bulk workflow lifecycle action: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error

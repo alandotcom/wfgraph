@@ -15,6 +15,7 @@ import {
   markWaitStateStatus,
 } from "@/backend/lib/workflow-wait-state";
 import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
+import { getErrorMessage } from "@/shared/utils";
 
 const workflowResumeLogger = getAppLogger("workflow", "resume");
 
@@ -92,7 +93,10 @@ export async function postWorkflowResumeResult(
       executionId: waitState.executionId,
     });
   } catch (error) {
-    requestLogger.error("Failed to resume wait hook", { error });
+    requestLogger.error(
+      `Failed to resume wait hook: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error ? error.message : "Failed to resume wait hook",

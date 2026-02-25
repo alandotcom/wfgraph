@@ -15,6 +15,7 @@ import { resumeMatchingWaitHooks } from "@/backend/lib/workflow-wait-resume";
 import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-wait-state";
 import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
 import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight.workflows";
+import { getErrorMessage } from "@/shared/utils";
 import type { ApiErrorPayload } from "@/shared/workflow/api-contracts";
 import type { WorkflowWebhookResponse } from "@/shared/workflow/execution-contracts";
 import { evaluateWorkflowTrigger } from "@/shared/workflow/trigger-registry";
@@ -352,7 +353,10 @@ export async function postWorkflowWebhookResult(input: {
 
     return success(outcome);
   } catch (error) {
-    requestLogger.error("Failed to start workflow execution", { error });
+    requestLogger.error(
+      `Failed to start workflow execution: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error ? error.message : "Failed to execute workflow",

@@ -8,6 +8,7 @@ import {
   success,
 } from "@/backend/lib/service-result";
 import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers.workflows";
+import { getErrorMessage } from "@/shared/utils";
 import type {
   ApiErrorPayload,
   WorkflowApiPayload,
@@ -33,7 +34,10 @@ export async function getWorkflows(): Promise<GetWorkflowsResult> {
 
     return success(mappedWorkflows);
   } catch (error) {
-    workflowsLogger.error("Failed to get workflows", { error });
+    workflowsLogger.error(
+      `Failed to get workflows: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error: error instanceof Error ? error.message : "Failed to get workflows",
     });

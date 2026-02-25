@@ -7,6 +7,7 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
+import { getErrorMessage } from "@/shared/utils";
 import { createApiKeyRecord } from "./auth.api-keys";
 
 const apiKeysLogger = getAppLogger("api-keys");
@@ -55,7 +56,9 @@ export async function getApiKeysResult(): Promise<
       }))
     );
   } catch (error) {
-    apiKeysLogger.error("Failed to list API keys", { error });
+    apiKeysLogger.error(`Failed to list API keys: ${getErrorMessage(error)}`, {
+      error,
+    });
     return failure(500, { error: "Failed to list API keys" });
   }
 }
@@ -95,7 +98,9 @@ export async function postApiKeysResult(body: {
       key,
     });
   } catch (error) {
-    apiKeysLogger.error("Failed to create API key", { error });
+    apiKeysLogger.error(`Failed to create API key: ${getErrorMessage(error)}`, {
+      error,
+    });
     return failure(500, { error: "Failed to create API key" });
   }
 }

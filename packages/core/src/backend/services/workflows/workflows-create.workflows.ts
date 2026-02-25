@@ -13,6 +13,7 @@ import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditi
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import { validateWorkflowIntegrations } from "@/backend/lib/workflow-integration-validation";
 import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers.workflows";
+import { getErrorMessage } from "@/shared/utils";
 import { generateId } from "@/shared/utils/id";
 import type {
   ApiErrorPayload,
@@ -145,7 +146,10 @@ export async function postWorkflowsCreate(body: {
 
     return success(toWorkflowApiPayload(newWorkflow));
   } catch (error) {
-    workflowCreateLogger.error("Failed to create workflow", { error });
+    workflowCreateLogger.error(
+      `Failed to create workflow: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error ? error.message : "Failed to create workflow",

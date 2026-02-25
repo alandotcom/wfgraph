@@ -15,6 +15,7 @@ import {
   markExecutionCancelled,
   markWaitingStatesCancelled,
 } from "@/backend/lib/workflow-wait-state";
+import { getErrorMessage } from "@/shared/utils";
 
 const executionCancelLogger = getAppLogger("workflow", "execution-cancel");
 
@@ -97,7 +98,10 @@ export async function postExecutionCancelResult(
       cancelledWaitStates: cancelledWaitStateIds.length,
     });
   } catch (error) {
-    requestLogger.error("Failed to cancel execution", { error });
+    requestLogger.error(
+      `Failed to cancel execution: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error ? error.message : "Failed to cancel execution",

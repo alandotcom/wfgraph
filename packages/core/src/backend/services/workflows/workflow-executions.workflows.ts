@@ -14,6 +14,7 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
+import { getErrorMessage } from "@/shared/utils";
 
 const workflowExecutionsLogger = getAppLogger("workflow", "executions");
 
@@ -94,7 +95,10 @@ export async function getWorkflowExecutionsResult(
 
     return success(executions.map(toWorkflowExecutionItem));
   } catch (error) {
-    requestLogger.error("Failed to get workflow executions", { error });
+    requestLogger.error(
+      `Failed to get workflow executions: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error ? error.message : "Failed to get executions",
@@ -159,7 +163,10 @@ export async function deleteWorkflowExecutionsResult(
       deletedCount: executionIds.length,
     });
   } catch (error) {
-    requestLogger.error("Failed to delete workflow executions", { error });
+    requestLogger.error(
+      `Failed to delete workflow executions: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error ? error.message : "Failed to delete executions",

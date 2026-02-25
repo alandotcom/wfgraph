@@ -4,6 +4,7 @@
  */
 
 import { getAppLogger } from "@/backend/lib/logger";
+import { getErrorMessage } from "@/shared/utils";
 
 const redactLogger = getAppLogger("utils", "redact");
 
@@ -162,7 +163,9 @@ export function redactSensitiveData(data: unknown): unknown {
   try {
     return redactObject(data);
   } catch (error) {
-    redactLogger.error("Error redacting data", { error });
+    redactLogger.error(`Error redacting data: ${getErrorMessage(error)}`, {
+      error,
+    });
     return "[REDACTION_ERROR]";
   }
 }

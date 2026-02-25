@@ -15,6 +15,7 @@ import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
 } from "@/backend/services/workflows/workflow-mappers.workflows";
+import { getErrorMessage } from "@/shared/utils";
 import type {
   ApiErrorPayload,
   WorkflowApiPayload,
@@ -215,7 +216,10 @@ export async function patchWorkflow(
 
     return success(toWorkflowApiPayload(updatedWorkflow));
   } catch (error) {
-    requestLogger.error("Failed to update workflow", { error });
+    requestLogger.error(
+      `Failed to update workflow: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error ? error.message : "Failed to update workflow",
@@ -243,7 +247,10 @@ export async function deleteWorkflow(
 
     return success({ success: true as const });
   } catch (error) {
-    requestLogger.error("Failed to delete workflow", { error });
+    requestLogger.error(
+      `Failed to delete workflow: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error ? error.message : "Failed to delete workflow",

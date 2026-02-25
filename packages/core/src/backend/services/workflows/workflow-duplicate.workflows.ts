@@ -10,6 +10,7 @@ import {
   success,
 } from "@/backend/lib/service-result";
 import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers.workflows";
+import { getErrorMessage } from "@/shared/utils";
 import { generateId } from "@/shared/utils/id";
 import type {
   ApiErrorPayload,
@@ -128,7 +129,10 @@ export async function postWorkflowDuplicate(
 
     return success(toWorkflowApiPayload(newWorkflow));
   } catch (error) {
-    requestLogger.error("Failed to duplicate workflow", { error });
+    requestLogger.error(
+      `Failed to duplicate workflow: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error ? error.message : "Failed to duplicate workflow",

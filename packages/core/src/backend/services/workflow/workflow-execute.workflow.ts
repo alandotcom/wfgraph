@@ -14,6 +14,7 @@ import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
 import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-wait-state";
 import { orchestrateTriggerExecution } from "@/backend/services/workflows/trigger-orchestrator.workflows";
 import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight.workflows";
+import { getErrorMessage } from "@/shared/utils";
 import type { ApiErrorPayload } from "@/shared/workflow/api-contracts";
 import type { WorkflowExecuteResponse } from "@/shared/workflow/execution-contracts";
 import { evaluateWorkflowTrigger } from "@/shared/workflow/trigger-registry";
@@ -442,7 +443,10 @@ export async function postWorkflowExecuteResult(
 
     return success(response);
   } catch (error) {
-    requestLogger.error("Failed to start workflow execution", { error });
+    requestLogger.error(
+      `Failed to start workflow execution: ${getErrorMessage(error)}`,
+      { error }
+    );
     return failure(500, {
       error:
         error instanceof Error ? error.message : "Failed to execute workflow",
