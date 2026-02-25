@@ -8,6 +8,10 @@ import {
   type DatabaseRuntimeConfig,
 } from "@/backend/lib/db";
 import {
+  configureEncryptionKey,
+  type EncryptionRuntimeConfig,
+} from "@/backend/lib/db/integrations";
+import {
   type MigrationsRuntimeOptions,
   runMigrations,
 } from "@/backend/lib/db/migrations";
@@ -48,6 +52,7 @@ import {
 } from "@/shared/workflow/trigger-registry";
 
 export type { DatabaseRuntimeConfig } from "@/backend/lib/db";
+export type { EncryptionRuntimeConfig } from "@/backend/lib/db/integrations";
 export type {
   InngestClientRuntimeConfig,
   InngestServeRuntimeConfig,
@@ -69,6 +74,7 @@ export type RovaAppOptions = {
   migrations?: Omit<MigrationsRuntimeOptions, "runOnStartup"> & {
     runOnStartup?: boolean;
   };
+  encryption: EncryptionRuntimeConfig;
   inngest: {
     client: InngestClientRuntimeConfig;
     serve?: InngestServeRuntimeConfig;
@@ -217,6 +223,8 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
   } else if (options.configureLogging !== false) {
     configureAppLogging();
   }
+
+  configureEncryptionKey(options.encryption);
 
   configureDatabaseRuntime(options.database);
   configureInngestClient(options.inngest.client);

@@ -3,6 +3,7 @@ import type { IntegrationType } from "@/shared/types/integration";
 export type IntegrationTestResult = {
   success: boolean;
   error?: string;
+  details?: Record<string, unknown>;
 };
 
 export type IntegrationTestFunction = (

@@ -15,15 +15,23 @@ export async function testResend(credentials: Record<string, string>) {
     const { error } = await resend.domains.list();
 
     if (error) {
+      const details = {
+        statusCode: error.statusCode,
+        errorName: error.name,
+        errorMessage: error.message,
+      };
+
       if (error.statusCode === 401 || error.statusCode === 403) {
         return {
           success: false,
           error: "Invalid API key. Please check your Resend API key.",
+          details,
         };
       }
       return {
         success: false,
         error: `API validation failed: HTTP ${error.statusCode ?? "unknown"}`,
+        details,
       };
     }
 

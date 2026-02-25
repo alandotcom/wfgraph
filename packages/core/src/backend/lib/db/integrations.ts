@@ -13,20 +13,64 @@ const IV_LENGTH = 16;
 const ENCRYPTION_KEY_ENV = "INTEGRATION_ENCRYPTION_KEY";
 const integrationsDbLogger = getAppLogger("integrations", "db");
 
-function getEncryptionKey(): Buffer {
-  const keyHex = process.env[ENCRYPTION_KEY_ENV];
+export type EncryptionRuntimeConfig = {
+  key: string;
+};
 
-  if (!keyHex) {
-    throw new Error(
-      `${ENCRYPTION_KEY_ENV} environment variable is required for encrypting integration credentials`
-    );
-  }
+type EncryptionRuntimeState = {
+  config: EncryptionRuntimeConfig | null;
+};
 
-  if (keyHex.length !== 64) {
+declare global {
+  var __rovaEncryptionState: EncryptionRuntimeState | undefined;
+}
+
+const encryptionState: EncryptionRuntimeState =
+  globalThis.__rovaEncryptionState ?? { config: null };
+
+globalThis.__rovaEncryptionState = encryptionState;
+
+function validateKeyFormat(key: string): void {
+  if (key.length !== 64) {
     throw new Error(
       `${ENCRYPTION_KEY_ENV} must be a 64-character hex string (32 bytes)`
     );
   }
+}
+
+export function configureEncryptionKey(config: EncryptionRuntimeConfig): void {
+  const trimmed = config.key.trim();
+  if (!trimmed) {
+    throw new Error("Encryption key configuration requires a non-empty key.");
+  }
+  validateKeyFormat(trimmed);
+  encryptionState.config = { key: trimmed };
+}
+
+function resolveEncryptionKey(): string | undefined {
+  return encryptionState.config?.key ?? process.env[ENCRYPTION_KEY_ENV];
+}
+
+export function validateEncryptionKeyAvailable(): void {
+  const key = resolveEncryptionKey();
+  if (!key) {
+    throw new Error(
+      `Integration encryption key is required. Provide it via the encryption.key option or set the ${ENCRYPTION_KEY_ENV} environment variable (64-character hex string).`
+    );
+  }
+  validateKeyFormat(key);
+}
+
+function getEncryptionKey(): Buffer {
+  const keyHex = resolveEncryptionKey();
+
+  if (!keyHex) {
+    throw new Error(
+      `Integration encryption key is required. Provide it via the encryption.key option or set the ${ENCRYPTION_KEY_ENV} environment variable (64-character hex string).`
+    );
+  }
+
+  validateKeyFormat(keyHex);
 
   return Buffer.from(keyHex, "hex");
 }

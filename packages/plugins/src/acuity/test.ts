@@ -1,3 +1,4 @@
+import { AcuityError } from "@fountain-bio/acuity";
 import type { AcuityCredentials } from "./credentials";
 import { createAcuityClient, getAcuityErrorMessage } from "./steps/client";
 
@@ -33,17 +34,29 @@ export async function testAcuity(credentials: Record<string, string>) {
       error instanceof Error ? error.message : String(error)
     );
 
+    const details: Record<string, unknown> = {
+      message: error instanceof Error ? error.message : String(error),
+    };
+
+    if (error instanceof AcuityError) {
+      details.status = error.status;
+      details.code = error.code;
+      details.payload = error.payload;
+    }
+
     if (message.toLowerCase().includes("unauthorized")) {
       return {
         success: false,
         error:
           "Invalid Acuity credentials. Please check your User ID and API key.",
+        details,
       };
     }
 
     return {
       success: false,
       error: message,
+      details,
     };
   }
 }

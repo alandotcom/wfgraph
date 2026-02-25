@@ -27,9 +27,24 @@ export async function testClerk(credentials: Record<string, string>) {
 
     return { success: true };
   } catch (error) {
+    const details: Record<string, unknown> = {};
+
+    if (error && typeof error === "object") {
+      const clerkError = error as {
+        status?: number;
+        errors?: unknown[];
+        message?: string;
+      };
+      if (clerkError.status !== undefined) details.status = clerkError.status;
+      if (clerkError.errors !== undefined) details.errors = clerkError.errors;
+      if (clerkError.message !== undefined)
+        details.message = clerkError.message;
+    }
+
     return {
       success: false,
       error: getClerkApiErrorMessage(error),
+      details,
     };
   }
 }

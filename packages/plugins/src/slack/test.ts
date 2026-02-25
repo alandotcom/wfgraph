@@ -25,6 +25,12 @@ export async function testSlack(credentials: Record<string, string>) {
   } catch (error) {
     if (error && typeof error === "object") {
       const slackError = error as SlackWebApiError;
+      const details: Record<string, unknown> = {
+        code: slackError.code,
+        statusCode: slackError.statusCode,
+        dataError: slackError.data?.error,
+        message: slackError.message,
+      };
 
       if (
         slackError.code === ErrorCode.PlatformError &&
@@ -33,6 +39,7 @@ export async function testSlack(credentials: Record<string, string>) {
         return {
           success: false,
           error: slackError.data.error,
+          details,
         };
       }
 
@@ -43,6 +50,7 @@ export async function testSlack(credentials: Record<string, string>) {
         return {
           success: false,
           error: `API validation failed: HTTP ${slackError.statusCode}`,
+          details,
         };
       }
     }
@@ -50,6 +58,9 @@ export async function testSlack(credentials: Record<string, string>) {
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
+      details: {
+        message: error instanceof Error ? error.message : String(error),
+      },
     };
   }
 }

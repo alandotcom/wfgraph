@@ -78,11 +78,17 @@ export async function testLinear(credentials: Record<string, string>) {
     return { success: true };
   } catch (error) {
     const linearError = toLinearError(error);
+    const details: Record<string, unknown> = {
+      type: linearError.type,
+      message: linearError.message,
+      errors: linearError.errors,
+    };
 
     if (linearError.type === LinearErrorType.AuthenticationError) {
       return {
         success: false,
         error: "Invalid API key. Please check your Linear API key.",
+        details,
       };
     }
 
@@ -92,6 +98,7 @@ export async function testLinear(credentials: Record<string, string>) {
         linearError.errors?.[0]?.message ||
         linearError.message ||
         (error instanceof Error ? error.message : String(error)),
+      details,
     };
   }
 }

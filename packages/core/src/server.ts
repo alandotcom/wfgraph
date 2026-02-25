@@ -6,6 +6,11 @@ import {
   type DatabaseRuntimeConfig,
 } from "@/backend/lib/db";
 import {
+  configureEncryptionKey,
+  type EncryptionRuntimeConfig,
+  validateEncryptionKeyAvailable,
+} from "@/backend/lib/db/integrations";
+import {
   type MigrationsRuntimeOptions,
   runMigrations,
 } from "@/backend/lib/db/migrations";
@@ -50,6 +55,7 @@ export type RovaServerStartOptions = {
   logger?: RovaLogger;
   configureLogging?: boolean;
   database: DatabaseRuntimeConfig;
+  encryption?: EncryptionRuntimeConfig;
   migrations?: Omit<MigrationsRuntimeOptions, "runOnStartup"> & {
     runOnStartup?: boolean;
   };
@@ -327,6 +333,11 @@ function assertRequiredConfig(options: RovaServerStartOptions): void {
   if (!options.inngest.client.id?.trim()) {
     throw new Error("server.start requires inngest.client.id");
   }
+
+  if (options.encryption) {
+    configureEncryptionKey(options.encryption);
+  }
+  validateEncryptionKeyAvailable();
 }
 
 function getResolvedPort(options: RovaServerStartOptions): number {

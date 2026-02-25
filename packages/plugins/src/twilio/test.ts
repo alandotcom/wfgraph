@@ -26,6 +26,12 @@ export async function testTwilio(credentials: Record<string, string>) {
       return {
         success: false,
         error: `API validation failed: HTTP ${error.status}`,
+        details: {
+          status: error.status,
+          code: error.code,
+          message: error.message,
+          moreInfo: error.moreInfo,
+        },
       };
     }
 
@@ -35,6 +41,10 @@ export async function testTwilio(credentials: Record<string, string>) {
         return {
           success: false,
           error: `API validation failed: HTTP ${twilioError.status}`,
+          details: {
+            status: twilioError.status,
+            message: twilioError.message,
+          },
         };
       }
     }
@@ -42,6 +52,9 @@ export async function testTwilio(credentials: Record<string, string>) {
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
+      details: {
+        message: error instanceof Error ? error.message : String(error),
+      },
     };
   }
 }

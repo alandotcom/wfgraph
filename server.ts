@@ -26,6 +26,9 @@ await startRovaServer({
   database: {
     url: Bun.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
   },
+  encryption: Bun.env.INTEGRATION_ENCRYPTION_KEY
+    ? { key: Bun.env.INTEGRATION_ENCRYPTION_KEY }
+    : undefined,
   migrations: {
     runOnStartup: Bun.env.RUN_DB_MIGRATIONS === "true",
     migrationsDir: Bun.env.MIGRATIONS_DIR,

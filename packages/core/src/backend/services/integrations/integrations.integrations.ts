@@ -350,8 +350,15 @@ export async function postIntegrationsTestResult(body: {
     }
 
     const credentials = getCredentialMapping(plugin, body.config);
-    requestLogger.debug("Testing credentials", {
+    const credentialPresence = Object.fromEntries(
+      Object.entries(credentials).map(([key, value]) => [
+        key,
+        value ? "present" : "empty",
+      ])
+    );
+    requestLogger.info("Testing integration credentials", {
       credentialKeys: Object.keys(credentials),
+      credentialPresence,
     });
     const testResult = await testFn(credentials);
 
@@ -360,6 +367,7 @@ export async function postIntegrationsTestResult(body: {
         `Integration test returned failure: ${testResult.error}`,
         {
           error: testResult.error,
+          details: testResult.details,
         }
       );
     }
@@ -433,7 +441,28 @@ export async function postIntegrationTestResult(
     }
 
     const credentials = getCredentialMapping(plugin, integration.config);
+    const credentialPresence = Object.fromEntries(
+      Object.entries(credentials).map(([key, value]) => [
+        key,
+        value ? "present" : "empty",
+      ])
+    );
+    requestLogger.info("Testing integration credentials", {
+      type: integration.type,
+      credentialKeys: Object.keys(credentials),
+      credentialPresence,
+    });
     const testResult = await testFn(credentials);
+
+    if (!testResult.success) {
+      requestLogger.warn(
+        `Integration test returned failure: ${testResult.error}`,
+        {
+          error: testResult.error,
+          details: testResult.details,
+        }
+      );
+    }
 
     return success({
       status: testResult.success ? "success" : "error",
