@@ -15,6 +15,12 @@ export async function testResend(credentials: Record<string, string>) {
     const { error } = await resend.domains.list();
 
     if (error) {
+      // A send-only key returns "restricted_api_key" on non-send endpoints.
+      // That confirms the key is valid — it just can't list domains, which is fine.
+      if (error.name === "restricted_api_key") {
+        return { success: true };
+      }
+
       const details = {
         statusCode: error.statusCode,
         errorName: error.name,
