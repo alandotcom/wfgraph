@@ -1,4 +1,4 @@
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   Eraser,
   Eye,
@@ -57,6 +57,7 @@ function readConfigString(
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Complex UI logic with multiple conditions
 export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
+  const store = useStore();
   const { push, closeAll } = useOverlay();
   const [selectedNodeId] = useAtom(selectedNodeAtom);
   const [selectedEdgeId] = useAtom(selectedEdgeAtom);
@@ -139,14 +140,23 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
       if (!selectedNode) {
         return;
       }
+
+      const latestNodes = store.get(nodesAtom);
+      const latestNode = latestNodes.find(
+        (node) => node.id === selectedNode.id
+      );
+      if (!latestNode) {
+        return;
+      }
+
       updateNodeData({
         id: selectedNode.id,
         data: {
-          config: { ...selectedNode.data.config, [key]: value },
+          config: { ...latestNode.data.config, [key]: value },
         },
       });
     },
-    [selectedNode, updateNodeData]
+    [selectedNode, updateNodeData, store]
   );
 
   const handleUpdateLabel = useCallback(

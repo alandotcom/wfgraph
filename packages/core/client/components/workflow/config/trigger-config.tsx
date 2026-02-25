@@ -676,6 +676,7 @@ export function TriggerConfig({
       }
 
       onUpdateConfig("webhookSchema", JSON.stringify(parsedSchema));
+      onUpdateConfig("webhookOutputSchema", JSON.stringify(parsedSchema));
       setRequestSchemaJsonError("");
     } catch {
       setRequestSchemaJsonError("Schema is not valid JSON.");
@@ -860,12 +861,11 @@ export function TriggerConfig({
                 <TabsContent className="space-y-3" value="builder">
                   <SchemaBuilder
                     disabled={disabled}
-                    onChange={(nextSchema) =>
-                      onUpdateConfig(
-                        "webhookSchema",
-                        JSON.stringify(nextSchema)
-                      )
-                    }
+                    onChange={(nextSchema) => {
+                      const schemaJson = JSON.stringify(nextSchema);
+                      onUpdateConfig("webhookSchema", schemaJson);
+                      onUpdateConfig("webhookOutputSchema", schemaJson);
+                    }}
                     schema={requestSchema}
                   />
                 </TabsContent>
@@ -1174,6 +1174,24 @@ export function TriggerConfig({
                   onChange={(value) => {
                     setWebhookSectionOpen("payload", true);
                     onUpdateConfig("webhookMockRequest", value || "");
+
+                    if (value?.trim()) {
+                      try {
+                        const parsed = JSON.parse(value);
+                        if (
+                          parsed &&
+                          typeof parsed === "object" &&
+                          !Array.isArray(parsed)
+                        ) {
+                          const inferredSchema = inferSchemaFromPayload(parsed);
+                          const schemaJson = JSON.stringify(inferredSchema);
+                          onUpdateConfig("webhookSchema", schemaJson);
+                          onUpdateConfig("webhookOutputSchema", schemaJson);
+                        }
+                      } catch {
+                        // Invalid JSON — don't sync schemas
+                      }
+                    }
                   }}
                   options={{
                     minimap: { enabled: false },
