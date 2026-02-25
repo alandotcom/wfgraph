@@ -5,36 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1771035473314,
-      "tag": "0000_baseline",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1771093178532,
-      "tag": "0001_red_kinsey_walden",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1771443114382,
-      "tag": "0002_bizarre_imperial_guard",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1771449168922,
-      "tag": "0003_green_mesmero",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1771900323922,
-      "tag": "0004_workflow_run_mode",
+      "when": 1771978312455,
+      "tag": "0000_clever_joystick",
       "breakpoints": true
     }
   ]

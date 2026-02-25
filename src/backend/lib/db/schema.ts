@@ -3,7 +3,7 @@ import {
   boolean,
   index,
   jsonb,
-  pgTable,
+  pgSchema,
   text,
   timestamp,
   uniqueIndex,
@@ -12,11 +12,13 @@ import type { IntegrationType } from "@/shared/types/integration";
 import { generateId } from "@/shared/utils/id";
 import type { SerializedWorkflowGraph } from "@/shared/workflow/types";
 
+export const workflowsSchema = pgSchema("_workflows");
+
 // Workflow visibility type
 export type WorkflowVisibility = "private" | "public";
 export type WorkflowMode = "live" | "test";
 
-export const workflows = pgTable(
+export const workflows = workflowsSchema.table(
   "workflows",
   {
     id: text("id")
@@ -39,7 +41,7 @@ export const workflows = pgTable(
   ]
 );
 
-export const integrations = pgTable("integrations", {
+export const integrations = workflowsSchema.table("integrations", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => generateId()),
@@ -52,7 +54,7 @@ export const integrations = pgTable("integrations", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const workflowExecutions = pgTable(
+export const workflowExecutions = workflowsSchema.table(
   "workflow_executions",
   {
     id: text("id")
@@ -97,7 +99,7 @@ export const workflowExecutions = pgTable(
   ]
 );
 
-export const workflowExecutionLogs = pgTable(
+export const workflowExecutionLogs = workflowsSchema.table(
   "workflow_execution_logs",
   {
     id: text("id")
@@ -131,7 +133,7 @@ export const workflowExecutionLogs = pgTable(
   ]
 );
 
-export const workflowWaitStates = pgTable(
+export const workflowWaitStates = workflowsSchema.table(
   "workflow_wait_states",
   {
     id: text("id")
@@ -174,7 +176,7 @@ export const workflowWaitStates = pgTable(
   ]
 );
 
-export const workflowExecutionEvents = pgTable(
+export const workflowExecutionEvents = workflowsSchema.table(
   "workflow_execution_events",
   {
     id: text("id")
@@ -204,7 +206,7 @@ export const workflowExecutionEvents = pgTable(
   ]
 );
 
-export const apiKeys = pgTable(
+export const apiKeys = workflowsSchema.table(
   "api_keys",
   {
     id: text("id")

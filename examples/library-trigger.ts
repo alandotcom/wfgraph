@@ -78,31 +78,14 @@ const cancelAppointmentAction = createAction({
   label: "Cancel Appointment",
   description: "Cancels an appointment and records the cancellation reason.",
   category: "Appointments",
-  configFields: [
-    {
-      key: "appointmentId",
-      label: "Appointment ID",
-      type: "template-input",
-      required: true,
-      placeholder: "{{@Trigger.appointment.id}}",
-    },
-    {
-      key: "reason",
-      label: "Reason",
-      type: "template-textarea",
-      required: true,
-      rows: 3,
-      placeholder: "Patient requested cancellation",
-    },
-  ],
   outputFields: [
     { field: "appointmentId", description: "Cancelled appointment ID" },
     { field: "status", description: "Cancellation status" },
     { field: "cancelledAt", description: "ISO timestamp of cancellation" },
   ],
   schema: z.object({
-    appointmentId: appointmentSchema.shape.id,
-    reason: z.string().trim().min(1),
+    appointmentId: appointmentSchema.shape.id.describe("Appointment ID"),
+    reason: z.string().trim().min(1).describe("Cancellation reason"),
   }),
   execute({ payload }) {
     return {

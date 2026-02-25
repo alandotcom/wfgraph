@@ -338,6 +338,11 @@ function toConditionFieldType(field: UpstreamField): ConditionFieldType | null {
     return field.fieldType;
   }
 
+  // Fields without an explicit type (common for custom action outputFields) default to string
+  if (field.fieldType === undefined) {
+    return "string";
+  }
+
   return null;
 }
 

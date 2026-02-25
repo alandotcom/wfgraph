@@ -7,10 +7,13 @@ export {
   startRovaServer,
 } from "@/rova/server";
 export {
-  type ActionPayloadSchema,
   type CreateActionInput,
+  type CreateActionInputWithOutput,
   createAction,
+  type InputSchema,
+  type OutputSchema,
   type RuntimeExtensionActionDefinition,
+  type TypedActionResult,
 } from "@/shared/workflow/action-registry";
 export {
   type CreateTriggerInput,

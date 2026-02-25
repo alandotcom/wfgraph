@@ -1,12 +1,12 @@
 {
-  "id": "f30b4752-e68d-41e0-82a9-229c4cee69ec",
+  "id": "ca9a5046-0367-408f-bc61-08b73246392b",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.api_keys": {
+    "_workflows.api_keys": {
       "name": "api_keys",
-      "schema": "",
+      "schema": "_workflows",
       "columns": {
         "id": {
           "name": "id",
@@ -70,9 +70,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.integrations": {
+    "_workflows.integrations": {
       "name": "integrations",
-      "schema": "",
+      "schema": "_workflows",
       "columns": {
         "id": {
           "name": "id",
@@ -128,9 +128,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.workflow_execution_events": {
+    "_workflows.workflow_execution_events": {
       "name": "workflow_execution_events",
-      "schema": "",
+      "schema": "_workflows",
       "columns": {
         "id": {
           "name": "id",
@@ -225,18 +225,20 @@
           "name": "workflow_execution_events_workflow_id_workflows_id_fk",
           "tableFrom": "workflow_execution_events",
           "tableTo": "workflows",
+          "schemaTo": "_workflows",
           "columnsFrom": ["workflow_id"],
           "columnsTo": ["id"],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "workflow_execution_events_execution_id_workflow_executions_id_fk": {
           "name": "workflow_execution_events_execution_id_workflow_executions_id_fk",
           "tableFrom": "workflow_execution_events",
           "tableTo": "workflow_executions",
+          "schemaTo": "_workflows",
           "columnsFrom": ["execution_id"],
           "columnsTo": ["id"],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -246,9 +248,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.workflow_execution_logs": {
+    "_workflows.workflow_execution_logs": {
       "name": "workflow_execution_logs",
-      "schema": "",
+      "schema": "_workflows",
       "columns": {
         "id": {
           "name": "id",
@@ -331,15 +333,53 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "workflow_execution_logs_execution_id_idx": {
+          "name": "workflow_execution_logs_execution_id_idx",
+          "columns": [
+            {
+              "expression": "execution_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workflow_execution_logs_execution_id_timestamp_idx": {
+          "name": "workflow_execution_logs_execution_id_timestamp_idx",
+          "columns": [
+            {
+              "expression": "execution_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "timestamp",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "workflow_execution_logs_execution_id_workflow_executions_id_fk": {
           "name": "workflow_execution_logs_execution_id_workflow_executions_id_fk",
           "tableFrom": "workflow_execution_logs",
           "tableTo": "workflow_executions",
+          "schemaTo": "_workflows",
           "columnsFrom": ["execution_id"],
           "columnsTo": ["id"],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -349,9 +389,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.workflow_executions": {
+    "_workflows.workflow_executions": {
       "name": "workflow_executions",
-      "schema": "",
+      "schema": "_workflows",
       "columns": {
         "id": {
           "name": "id",
@@ -383,12 +423,12 @@
           "primaryKey": false,
           "notNull": false
         },
-        "is_dry_run": {
-          "name": "is_dry_run",
-          "type": "boolean",
+        "run_mode": {
+          "name": "run_mode",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": false
+          "default": "'live'"
         },
         "trigger_event_type": {
           "name": "trigger_event_type",
@@ -516,9 +556,10 @@
           "name": "workflow_executions_workflow_id_workflows_id_fk",
           "tableFrom": "workflow_executions",
           "tableTo": "workflows",
+          "schemaTo": "_workflows",
           "columnsFrom": ["workflow_id"],
           "columnsTo": ["id"],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -528,9 +569,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.workflow_wait_states": {
+    "_workflows.workflow_wait_states": {
       "name": "workflow_wait_states",
-      "schema": "",
+      "schema": "_workflows",
       "columns": {
         "id": {
           "name": "id",
@@ -709,18 +750,20 @@
           "name": "workflow_wait_states_execution_id_workflow_executions_id_fk",
           "tableFrom": "workflow_wait_states",
           "tableTo": "workflow_executions",
+          "schemaTo": "_workflows",
           "columnsFrom": ["execution_id"],
           "columnsTo": ["id"],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "workflow_wait_states_workflow_id_workflows_id_fk": {
           "name": "workflow_wait_states_workflow_id_workflows_id_fk",
           "tableFrom": "workflow_wait_states",
           "tableTo": "workflows",
+          "schemaTo": "_workflows",
           "columnsFrom": ["workflow_id"],
           "columnsTo": ["id"],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -730,9 +773,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.workflows": {
+    "_workflows.workflows": {
       "name": "workflows",
-      "schema": "",
+      "schema": "_workflows",
       "columns": {
         "id": {
           "name": "id",
@@ -757,6 +800,20 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
+        },
+        "is_paused": {
+          "name": "is_paused",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'live'"
         },
         "visibility": {
           "name": "visibility",
@@ -806,7 +863,9 @@
     }
   },
   "enums": {},
-  "schemas": {},
+  "schemas": {
+    "_workflows": "_workflows"
+  },
   "sequences": {},
   "roles": {},
   "policies": {},

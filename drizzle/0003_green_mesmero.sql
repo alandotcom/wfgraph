@@ -1,1 +1,0 @@
-ALTER TABLE "workflows" ADD COLUMN "is_paused" boolean DEFAULT false NOT NULL;

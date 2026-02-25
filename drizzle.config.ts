@@ -7,6 +7,7 @@ export default {
   schema: "./src/backend/lib/db/schema.ts",
   out: "./drizzle",
   dialect: "postgresql",
+  schemaFilter: ["_workflows"],
   dbCredentials: {
     url:
       Bun.env.DATABASE_URL ||

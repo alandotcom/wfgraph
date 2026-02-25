@@ -106,7 +106,24 @@ async function workflowRunRequestedHandler({
       }),
   };
 
-  return await executeWorkflow(data, runtime);
+  const result = await executeWorkflow(data, runtime);
+  if ("success" in result && !result.success) {
+    let message = "Workflow execution failed";
+    if (typeof result.error === "string") {
+      message = result.error;
+    } else if (result.results) {
+      const failed = Object.entries(
+        result.results as Record<string, { success: boolean; error?: string }>
+      )
+        .filter(([, r]) => !r.success && r.error)
+        .map(([nodeId, r]) => `${nodeId}: ${r.error}`);
+      if (failed.length > 0) {
+        message = failed.join("; ");
+      }
+    }
+    throw new Error(message);
+  }
+  return result;
 }
 
 export function createWorkflowRunRequestedFunction(input: {

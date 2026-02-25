@@ -1,3 +1,6 @@
+import { startCase } from "es-toolkit/string";
+import type { ActionConfigFieldBase } from "@/plugins/registry";
+
 export type WorkflowSchemaFieldType =
   | "string"
   | "number"
@@ -388,4 +391,116 @@ export function workflowSchemaFieldsToJsonSchemaDocument(
     type: "object",
     properties: workflowSchemaFieldsToJsonSchemaProperties(schema),
   };
+}
+
+function deriveConfigFieldType(
+  property: Record<string, unknown>
+): ActionConfigFieldBase["type"] {
+  if (Array.isArray(property.enum)) {
+    return "select";
+  }
+
+  const type = typeof property.type === "string" ? property.type : undefined;
+
+  switch (type) {
+    case "number":
+    case "integer":
+      return "number";
+    case "boolean":
+      return "select";
+    case "object":
+      return "key-value";
+    default:
+      return "template-input";
+  }
+}
+
+function deriveConfigFieldLabel(
+  key: string,
+  property: Record<string, unknown>
+): string {
+  return typeof property.description === "string" && property.description.trim()
+    ? property.description.trim()
+    : startCase(key);
+}
+
+function deriveSelectOptions(
+  property: Record<string, unknown>
+): ActionConfigFieldBase["options"] {
+  if (Array.isArray(property.enum)) {
+    return property.enum.map((v: unknown) => ({
+      value: String(v),
+      label: String(v),
+    }));
+  }
+  return [
+    { value: "true", label: "Yes" },
+    { value: "false", label: "No" },
+  ];
+}
+
+function jsonSchemaPropertyToConfigField(
+  key: string,
+  property: Record<string, unknown>,
+  required: boolean
+): ActionConfigFieldBase {
+  const fieldType = deriveConfigFieldType(property);
+
+  const field: ActionConfigFieldBase = {
+    key,
+    label: deriveConfigFieldLabel(key, property),
+    type: fieldType,
+  };
+
+  if (required) {
+    field.required = true;
+  }
+
+  if (property.default !== undefined) {
+    field.defaultValue =
+      typeof property.default === "string"
+        ? property.default
+        : JSON.stringify(property.default);
+  }
+
+  if (
+    Array.isArray(property.examples) &&
+    property.examples.length > 0 &&
+    property.examples[0] !== undefined
+  ) {
+    field.example = String(property.examples[0]);
+  }
+
+  if (fieldType === "number" && typeof property.minimum === "number") {
+    field.min = property.minimum;
+  }
+
+  if (fieldType === "select") {
+    field.options = deriveSelectOptions(property);
+  }
+
+  return field;
+}
+
+export function configFieldsFromJsonSchema(
+  jsonSchema: Record<string, unknown>
+): ActionConfigFieldBase[] {
+  const properties = isRecord(jsonSchema.properties)
+    ? jsonSchema.properties
+    : undefined;
+
+  if (!properties) {
+    return [];
+  }
+
+  const requiredSet = new Set(
+    Array.isArray(jsonSchema.required) ? jsonSchema.required : []
+  );
+
+  return Object.entries(properties).flatMap(([key, value]) => {
+    if (!isRecord(value)) {
+      return [];
+    }
+    return [jsonSchemaPropertyToConfigField(key, value, requiredSet.has(key))];
+  });
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  configFieldsFromJsonSchema,
   parseWorkflowSchemaField,
   parseWorkflowSchemaFieldsOrJsonSchema,
   parseWorkflowSchemaFieldsString,
@@ -156,5 +157,161 @@ describe("workflowSchemaFieldsToJsonSchemaDocument", () => {
         },
       },
     });
+  });
+});
+
+describe("configFieldsFromJsonSchema", () => {
+  it("maps string properties to template-input", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Full Name" },
+      },
+    });
+
+    expect(fields).toEqual([
+      { key: "name", label: "Full Name", type: "template-input" },
+    ]);
+  });
+
+  it("maps number properties with minimum to number fields", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        count: { type: "number", description: "Item Count", minimum: 0 },
+      },
+    });
+
+    expect(fields).toEqual([
+      { key: "count", label: "Item Count", type: "number", min: 0 },
+    ]);
+  });
+
+  it("maps integer properties to number fields", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        retries: { type: "integer", description: "Retry Count" },
+      },
+    });
+
+    expect(fields).toEqual([
+      { key: "retries", label: "Retry Count", type: "number" },
+    ]);
+  });
+
+  it("maps boolean properties to select with Yes/No options", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        active: { type: "boolean", description: "Is Active" },
+      },
+    });
+
+    expect(fields).toEqual([
+      {
+        key: "active",
+        label: "Is Active",
+        type: "select",
+        options: [
+          { value: "true", label: "Yes" },
+          { value: "false", label: "No" },
+        ],
+      },
+    ]);
+  });
+
+  it("maps enum properties to select with options", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: ["active", "inactive"],
+          description: "Status",
+        },
+      },
+    });
+
+    expect(fields).toEqual([
+      {
+        key: "status",
+        label: "Status",
+        type: "select",
+        options: [
+          { value: "active", label: "active" },
+          { value: "inactive", label: "inactive" },
+        ],
+      },
+    ]);
+  });
+
+  it("maps object properties to key-value", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        headers: { type: "object", description: "HTTP Headers" },
+      },
+    });
+
+    expect(fields).toEqual([
+      { key: "headers", label: "HTTP Headers", type: "key-value" },
+    ]);
+  });
+
+  it("uses startCase(key) as label when description is missing", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        appointmentId: { type: "string" },
+      },
+    });
+
+    expect(fields[0]?.label).toBe("Appointment Id");
+  });
+
+  it("sets required on fields listed in the required array", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      required: ["email"],
+      properties: {
+        email: { type: "string", description: "Email" },
+        phone: { type: "string", description: "Phone" },
+      },
+    });
+
+    expect(fields.find((f) => f.key === "email")?.required).toBe(true);
+    expect(fields.find((f) => f.key === "phone")?.required).toBeUndefined();
+  });
+
+  it("maps default values to defaultValue as string", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        retries: { type: "number", description: "Retries", default: 3 },
+      },
+    });
+
+    expect(fields[0]?.defaultValue).toBe("3");
+  });
+
+  it("maps examples[0] to example as string", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "Webhook URL",
+          examples: ["https://example.com/webhook"],
+        },
+      },
+    });
+
+    expect(fields[0]?.example).toBe("https://example.com/webhook");
+  });
+
+  it("returns empty array for schema without properties", () => {
+    expect(configFieldsFromJsonSchema({})).toEqual([]);
+    expect(configFieldsFromJsonSchema({ type: "object" })).toEqual([]);
   });
 });

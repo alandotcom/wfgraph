@@ -1,6 +1,8 @@
 import { parse as parseCel } from "@marcbachmann/cel-js";
 import type { ActionConfigField } from "@/plugins/registry";
 import { getValueByPath } from "@/shared/utils/object-path";
+import type { InputSchema } from "@/shared/workflow/action-registry";
+import { configFieldsFromJsonSchema } from "@/shared/workflow/schema-codec";
 import {
   createDefaultTriggerDefinition,
   createUnknownTriggerDefinition,
@@ -196,11 +198,11 @@ type CreateTriggerInputBase<TPayload extends Record<string, unknown>> = {
   logoUrl?: string;
 
   /**
-   * Optional configuration fields rendered in the trigger config panel.
-   * Lets workflow authors customize trigger behavior per-workflow
-   * (e.g. select which event subtypes to listen for).
+   * Optional Standard Schema for per-workflow trigger configuration.
+   * Auto-derives `configFields` for the trigger config panel.
+   * Different from `schema` which validates incoming event payloads.
    */
-  configFields?: ActionConfigField[];
+  configSchema?: InputSchema<Record<string, unknown>>;
 };
 
 /**
@@ -464,8 +466,13 @@ function isSafeParseSchema<TPayload>(
 function isStandardSchema<TPayload>(
   schema: TriggerPayloadSchema<TPayload>
 ): schema is TriggerSchemaStandard<TPayload> {
+  if (
+    schema == null ||
+    (typeof schema !== "object" && typeof schema !== "function")
+  ) {
+    return false;
+  }
   return (
-    isRecord(schema) &&
     "~standard" in schema &&
     isRecord(schema["~standard"]) &&
     typeof schema["~standard"].validate === "function"
@@ -808,6 +815,14 @@ export function createTrigger<TPayload extends Record<string, unknown>>(
     ? "event"
     : "webhook";
 
+  let configFields: ActionConfigField[] | undefined;
+  if (input.configSchema) {
+    const jsonSchema = input.configSchema["~standard"].jsonSchema.input({
+      target: "draft-2020-12",
+    });
+    configFields = configFieldsFromJsonSchema(jsonSchema);
+  }
+
   const definition = normalizeTriggerDefinition({
     runtime: {
       type: triggerType,
@@ -879,7 +894,7 @@ export function createTrigger<TPayload extends Record<string, unknown>>(
       label,
       description: input.description,
       logoUrl: input.logoUrl,
-      configFields: input.configFields,
+      configFields,
     },
   });
 

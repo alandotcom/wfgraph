@@ -1,8 +1,9 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import {
   getUpstreamConditionFields,
   getUpstreamNodes,
 } from "@/client/lib/upstream-node-fields";
+import { clearRuntimeActions, registerRuntimeAction } from "@/plugins/registry";
 import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
 
 function createNode(input: {
@@ -144,6 +145,63 @@ describe("upstream-node-fields", () => {
         expect.objectContaining({ path: "timestamp", type: "timestamp" }),
       ])
     );
+  });
+
+  it("surfaces runtime action fields without explicit type as string", () => {
+    registerRuntimeAction({
+      id: "custom/test-action",
+      label: "Test Action",
+      description: "Action with typeless output fields",
+      category: "Custom",
+      outputFields: [
+        { field: "appointmentId", description: "Appointment ID" },
+        { field: "status", description: "Status" },
+      ],
+    });
+
+    afterEach(() => {
+      clearRuntimeActions();
+    });
+
+    const nodes: WorkflowNode[] = [
+      createNode({
+        id: "trigger-1",
+        type: "trigger",
+        label: "Webhook",
+        config: { triggerType: "Webhook" },
+      }),
+      createNode({
+        id: "action-1",
+        type: "action",
+        label: "Test Action",
+        config: { actionType: "custom/test-action" },
+      }),
+      createNode({
+        id: "condition-1",
+        type: "action",
+        label: "Condition",
+        config: { actionType: "Condition" },
+      }),
+    ];
+
+    const edges: WorkflowEdge[] = [
+      createEdge({ id: "e1", source: "trigger-1", target: "action-1" }),
+      createEdge({ id: "e2", source: "action-1", target: "condition-1" }),
+    ];
+
+    const fields = getUpstreamConditionFields({
+      currentNodeId: "condition-1",
+      nodes,
+      edges,
+    });
+
+    const appointmentField = fields.find((f) => f.path === "appointmentId");
+    expect(appointmentField).toBeDefined();
+    expect(appointmentField?.type).toBe("string");
+
+    const statusField = fields.find((f) => f.path === "status");
+    expect(statusField).toBeDefined();
+    expect(statusField?.type).toBe("string");
   });
 
   it("includes only condition-compatible primitive fields", () => {

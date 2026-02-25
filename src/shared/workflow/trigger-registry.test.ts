@@ -211,15 +211,9 @@ describe("registerWorkflowTrigger", () => {
           onRestart: ({ payload }) => payload.event === "entity.updated",
           onStop: ({ payload }) => payload.event === "entity.deleted",
         },
-        configFields: [
-          {
-            key: "eventPath",
-            label: "Event Path",
-            type: "text",
-            required: true,
-            placeholder: "event.name",
-          },
-        ],
+        configSchema: z.object({
+          eventPath: z.string().describe("Event Path"),
+        }),
       })
     );
 
@@ -242,6 +236,12 @@ describe("registerWorkflowTrigger", () => {
     expect(firstField && "key" in firstField ? firstField.key : undefined).toBe(
       "eventPath"
     );
+    expect(
+      firstField && "label" in firstField ? firstField.label : undefined
+    ).toBe("Event Path");
+    expect(
+      firstField && "type" in firstField ? firstField.type : undefined
+    ).toBe("template-input");
   });
 
   it("sets executionType to 'event' and builds inngestEventTrigger for single event", () => {

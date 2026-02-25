@@ -42,7 +42,13 @@ describe("orchestrateTriggerExecution", () => {
     });
   });
 
-  it("ignores restart events when no waiting runs exist", async () => {
+  it("starts a new execution for restart when no waiting runs exist", async () => {
+    const startExecution = vi.fn(async () => ({
+      executionId: "exec_1",
+      runId: "run_1",
+      runMode: "live" as const,
+    }));
+
     const result = await orchestrateTriggerExecution({
       runMode: "live",
       eventType: "event.update",
@@ -50,10 +56,7 @@ describe("orchestrateTriggerExecution", () => {
       routingDecision: { kind: "restart" },
       waitStates: [],
       enableResumes: true,
-      startExecution: vi.fn(async () => ({
-        executionId: "exec_1",
-        runMode: "live" as const,
-      })),
+      startExecution,
       cancelWaitStates: vi.fn(async () => ({
         cancelledExecutions: 0,
         cancelledWaits: 0,
@@ -61,10 +64,12 @@ describe("orchestrateTriggerExecution", () => {
       resumeWaitStates: vi.fn(async () => 0),
     });
 
+    expect(startExecution).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
-      status: "ignored",
+      status: "running",
+      executionId: "exec_1",
+      runId: "run_1",
       runMode: "live",
-      reason: "no_waiting_runs",
     });
   });
 

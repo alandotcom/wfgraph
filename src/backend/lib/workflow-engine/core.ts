@@ -1363,6 +1363,12 @@ async function executeWorkflowCoreInner(
           const errorMessage =
             readStepErrorMessage(stepResult.error) ??
             `Step "${actionType}" in node "${node.data.label || node.id}" failed without a specific error message.`;
+          actionLogger.error("Action step failed", {
+            actionType,
+            nodeId: node.id,
+            nodeLabel: node.data.label,
+            error: errorMessage,
+          });
           result = {
             success: false,
             error: errorMessage,

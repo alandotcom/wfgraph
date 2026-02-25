@@ -77,11 +77,15 @@ async function handleStopOrRestart(
   }
 
   if (input.waitStates.length === 0) {
-    return {
-      status: "ignored",
-      runMode: input.runMode,
-      reason: "no_waiting_runs",
-    };
+    if (input.routingDecision.kind === "stop") {
+      return {
+        status: "ignored",
+        runMode: input.runMode,
+        reason: "no_waiting_runs",
+      };
+    }
+    // restart with nothing running → fall through to start a new execution
+    return;
   }
 
   if (input.routingDecision.kind === "stop") {

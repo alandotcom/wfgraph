@@ -74,6 +74,7 @@ export async function runMigrations(
   const migrationDb = drizzle(getMigrationClient());
   await migrate(migrationDb, {
     migrationsFolder,
+    migrationsSchema: "_workflows_drizzle_migrations",
   });
 
   logger.info("Database migrations completed");

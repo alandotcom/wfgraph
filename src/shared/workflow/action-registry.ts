@@ -1,42 +1,31 @@
-import type { ActionConfigField, OutputField } from "@/plugins/registry";
+import type {
+  StandardJSONSchemaV1,
+  StandardSchemaV1,
+} from "@standard-schema/spec";
+import type {
+  ActionConfigField,
+  ActionConfigFieldBase,
+  OutputField,
+} from "@/plugins/registry";
+import type { WorkflowSchemaField } from "@/shared/workflow/schema-codec";
+import {
+  configFieldsFromJsonSchema,
+  parseWorkflowSchemaFieldsOrJsonSchema,
+} from "@/shared/workflow/schema-codec";
 
-type ActionSchemaSafeParseResult<TPayload> =
-  | { success: true; data: TPayload }
-  | { success: false; error?: unknown };
-
-type ActionSchemaSafeParse<TPayload> = {
-  safeParse: (value: unknown) => ActionSchemaSafeParseResult<TPayload>;
-};
-
-type ActionSchemaStandardSuccess<TPayload> = {
-  value: TPayload;
-  issues?: undefined;
-};
-
-type ActionSchemaStandardFailure = {
-  issues: ReadonlyArray<{
-    message: string;
-    path?: ReadonlyArray<PropertyKey | { key: PropertyKey }>;
-  }>;
-};
-
-type ActionSchemaStandardResult<TPayload> =
-  | ActionSchemaStandardSuccess<TPayload>
-  | ActionSchemaStandardFailure;
-
-type ActionSchemaStandard<TPayload> = {
-  "~standard": {
-    validate: (
-      value: unknown
-    ) =>
-      | ActionSchemaStandardResult<TPayload>
-      | Promise<ActionSchemaStandardResult<TPayload>>;
+/**
+ * A Standard Schema that supports both validation and JSON Schema generation.
+ * Zod v4 and arktype satisfy this interface.
+ *
+ * Used for `schema` in `createAction` so the framework can:
+ * 1. Validate resolved config values at runtime (`~standard.validate`)
+ * 2. Derive `configFields` from `~standard.jsonSchema.input()` at registration
+ */
+export type InputSchema<TPayload> = {
+  readonly "~standard": StandardSchemaV1.Props<unknown, TPayload> & {
+    readonly jsonSchema: StandardJSONSchemaV1.Converter;
   };
 };
-
-export type ActionPayloadSchema<TPayload> =
-  | ActionSchemaSafeParse<TPayload>
-  | ActionSchemaStandard<TPayload>;
 
 export type RuntimeActionExecutionContext = {
   executionId?: string;
@@ -103,14 +92,18 @@ export type RuntimeExtensionActionDefinition = RuntimeActionDefinition & {
 
 export type CreateActionInput<TPayload extends Record<string, unknown>> = Omit<
   RuntimeActionDefinition,
-  "execute"
+  "execute" | "configFields"
 > & {
   /**
-   * Zod or Standard Schema that validates the resolved config values
-   * before they reach your `execute` function. If validation fails,
-   * the action returns a structured error automatically.
+   * Standard Schema that validates the resolved config values before they
+   * reach your `execute` function. Must support both `~standard.validate`
+   * (runtime validation) and `~standard.jsonSchema` (configFields derivation).
+   * Zod v4 satisfies this interface.
+   *
+   * `configFields` are auto-derived from the schema's JSON Schema representation.
+   * Use `.describe()` on schema fields to set human-readable labels.
    */
-  schema: ActionPayloadSchema<TPayload>;
+  schema: InputSchema<TPayload>;
 
   /**
    * Action implementation. Receives the validated `payload` (config values
@@ -127,6 +120,42 @@ export type CreateActionInput<TPayload extends Record<string, unknown>> = Omit<
     /** Execution metadata (IDs, integration reference). */
     context: RuntimeActionExecutionContext;
   }) => RuntimeActionResult | Promise<RuntimeActionResult>;
+};
+
+/** Typed success result when outputSchema is provided. */
+export type TypedActionResult<TOutput extends Record<string, unknown>> =
+  | { success: true; data: TOutput }
+  | { success: false; error?: string | { message?: string } };
+
+/**
+ * A Standard Schema that also implements the JSON Schema interface
+ * (`StandardJSONSchemaV1`). Both arktype and Zod v4 satisfy this.
+ *
+ * Used for `outputSchema` so `createAction` can:
+ * 1. Infer `TOutput` from the schema's output type (compile-time)
+ * 2. Call `~standard.jsonSchema.output()` to derive `outputFields` (runtime)
+ */
+export type OutputSchema<TOutput> = StandardJSONSchemaV1<unknown, TOutput>;
+
+export type CreateActionInputWithOutput<
+  TPayload extends Record<string, unknown>,
+  TOutput extends Record<string, unknown>,
+> = Omit<
+  RuntimeActionDefinition,
+  "execute" | "configFields" | "outputFields"
+> & {
+  schema: InputSchema<TPayload>;
+  /**
+   * Standard Schema with JSON Schema support. Auto-derives `outputFields`
+   * via `~standard.jsonSchema.output()` and types the `execute` return.
+   */
+  outputSchema: OutputSchema<TOutput>;
+  /** Manual overrides merged on top of auto-derived output fields. */
+  outputFields?: OutputField[];
+  execute: (input: {
+    payload: TPayload;
+    context: RuntimeActionExecutionContext;
+  }) => TypedActionResult<TOutput> | Promise<TypedActionResult<TOutput>>;
 };
 
 export type RuntimeActionMetadata = Omit<RuntimeActionDefinition, "execute">;
@@ -146,41 +175,11 @@ function isPromiseLike<T>(value: unknown): value is Promise<T> {
   );
 }
 
-function isSafeParseSchema<TPayload>(
-  schema: ActionPayloadSchema<TPayload>
-): schema is ActionSchemaSafeParse<TPayload> {
-  return "safeParse" in schema && typeof schema.safeParse === "function";
-}
-
-function isStandardSchema<TPayload>(
-  schema: ActionPayloadSchema<TPayload>
-): schema is ActionSchemaStandard<TPayload> {
-  return (
-    isRecord(schema) &&
-    "~standard" in schema &&
-    isRecord(schema["~standard"]) &&
-    typeof schema["~standard"].validate === "function"
-  );
-}
-
 function validateActionPayload<TPayload extends Record<string, unknown>>(
-  schema: ActionPayloadSchema<TPayload>,
+  schema: InputSchema<TPayload>,
   payload: Record<string, unknown>
 ): TPayload | undefined {
-  if (isSafeParseSchema(schema)) {
-    const parsed = schema.safeParse(payload);
-    if (!(parsed.success && isRecord(parsed.data))) {
-      return;
-    }
-    return parsed.data;
-  }
-
-  if (!isStandardSchema(schema)) {
-    return;
-  }
-
-  const standardSchema = schema["~standard"];
-  const parsed = standardSchema.validate(payload);
+  const parsed = schema["~standard"].validate(payload);
 
   if (isPromiseLike(parsed)) {
     throw new Error(
@@ -201,6 +200,15 @@ function validateActionPayload<TPayload extends Record<string, unknown>>(
   }
 
   return parsed.value;
+}
+
+function configFieldsFromInputSchema(
+  schema: InputSchema<Record<string, unknown>>
+): ActionConfigFieldBase[] {
+  const jsonSchema = schema["~standard"].jsonSchema.input({
+    target: "draft-2020-12",
+  });
+  return configFieldsFromJsonSchema(jsonSchema);
 }
 
 function normalizeRuntimeActionDefinition(
@@ -241,6 +249,42 @@ function getActionErrorMessage(error: unknown): string {
   return "Action execution failed";
 }
 
+function schemaFieldToOutputField(field: WorkflowSchemaField): OutputField {
+  return {
+    field: field.name,
+    description: field.description ?? field.name,
+    type: field.type,
+    ...(field.type === "timestamp" ? { format: "timestamp" as const } : {}),
+  };
+}
+
+function outputFieldsFromStandardSchema(
+  schema: OutputSchema<Record<string, unknown>>
+): OutputField[] {
+  const jsonSchema = schema["~standard"].jsonSchema.output({
+    target: "draft-2020-12",
+  });
+  const fields = parseWorkflowSchemaFieldsOrJsonSchema(jsonSchema);
+  if (fields) {
+    return fields.map(schemaFieldToOutputField);
+  }
+  return [];
+}
+
+function mergeOutputFields(
+  derived: OutputField[],
+  manual: OutputField[]
+): OutputField[] {
+  const merged = new Map<string, OutputField>();
+  for (const field of derived) {
+    merged.set(field.field, field);
+  }
+  for (const field of manual) {
+    merged.set(field.field, field);
+  }
+  return Array.from(merged.values());
+}
+
 /**
  * Create a typed action definition for use with `server.start({ actions })`.
  *
@@ -256,17 +300,9 @@ function getActionErrorMessage(error: unknown): string {
  *   label: "Cancel Appointment",
  *   description: "Cancels an appointment and records the reason.",
  *   category: "Appointments",
- *   configFields: [
- *     { key: "appointmentId", label: "Appointment ID", type: "template-input", required: true },
- *     { key: "reason", label: "Reason", type: "template-textarea", required: true },
- *   ],
- *   outputFields: [
- *     { field: "appointmentId", description: "Cancelled appointment ID" },
- *     { field: "status", description: "Cancellation status" },
- *   ],
  *   schema: z.object({
- *     appointmentId: z.string(),
- *     reason: z.string().min(1),
+ *     appointmentId: z.string().describe("Appointment ID"),
+ *     reason: z.string().min(1).describe("Cancellation reason"),
  *   }),
  *   execute({ payload }) {
  *     return { success: true, data: { appointmentId: payload.appointmentId, status: "cancelled" } };
@@ -274,18 +310,44 @@ function getActionErrorMessage(error: unknown): string {
  * });
  * ```
  */
+export function createAction<
+  TPayload extends Record<string, unknown>,
+  TOutput extends Record<string, unknown>,
+>(
+  input: CreateActionInputWithOutput<TPayload, TOutput>
+): RuntimeExtensionActionDefinition;
 export function createAction<TPayload extends Record<string, unknown>>(
   input: CreateActionInput<TPayload>
+): RuntimeExtensionActionDefinition;
+export function createAction<TPayload extends Record<string, unknown>>(
+  input:
+    | CreateActionInput<TPayload>
+    | CreateActionInputWithOutput<TPayload, Record<string, unknown>>
 ): RuntimeExtensionActionDefinition {
+  const derivedConfigFields = configFieldsFromInputSchema(
+    input.schema as InputSchema<Record<string, unknown>>
+  );
+
+  let resolvedOutputFields = input.outputFields;
+  if ("outputSchema" in input && input.outputSchema) {
+    const derived = outputFieldsFromStandardSchema(input.outputSchema);
+    resolvedOutputFields = input.outputFields
+      ? mergeOutputFields(derived, input.outputFields)
+      : derived;
+  }
+
   const normalizedDefinition = normalizeRuntimeActionDefinition({
     ...input,
+    configFields: derivedConfigFields,
+    outputFields: resolvedOutputFields,
     execute: async ({ payload, context }) => {
       const validatedPayload = validateActionPayload(input.schema, payload);
       if (!validatedPayload) {
+        const payloadKeys = Object.keys(payload);
         return {
           success: false,
           error: {
-            message: `Action "${input.id}" received an invalid payload.`,
+            message: `Action "${input.id}" received an invalid payload. Payload keys: [${payloadKeys.join(", ")}]`,
           },
         };
       }
