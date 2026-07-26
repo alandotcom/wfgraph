@@ -46,6 +46,16 @@
   "[toml]": {
     "editor.defaultFormatter": "oxc.oxc-vscode"
   },
+  // Points the editor's language server at the TypeScript 7.0.2 this repo pins,
+  // so hovers and errors in the editor agree with what `bun run type-check`
+  // reports. TypeScript 7's lib directory holds no tsserver.js, which makes this
+  // path look dead; it is live. The TypeScript 7 extension
+  // (TypeScriptTeam.native-preview) reads `typescript.tsdk`, walks one level up
+  // to the package root, and launches the platform binary from
+  // @typescript/typescript-<platform>-<arch>/lib with `--lsp`. A tsdk carrying no
+  // tsserver.js is precisely how it recognises a native TypeScript 7 install.
+  // Deleting this line makes the extension fall back to its own bundled compiler,
+  // which can drift from the pinned version.
   "typescript.tsdk": "node_modules/typescript/lib",
   "editor.formatOnSave": true,
   // oxfmt formats whole files only, so a save that asked for just the changed
