@@ -4,7 +4,17 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@marcbachmann/cel-js": "^7.5.1",
+    "@orpc/contract": "^1.13.5",
+    "clsx": "^2.1.1",
     "es-toolkit": "^1.44.0",
+    "graphology": "^0.26.0",
+    "nanoid": "^5.1.6",
+    "tailwind-merge": "^3.4.0",
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@standard-schema/spec": "^1.1.0",
+    "@xyflow/react": "^12.10.0"
   }
 }
