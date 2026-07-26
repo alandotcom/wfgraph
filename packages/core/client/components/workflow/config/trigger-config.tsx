@@ -32,7 +32,16 @@ import {
   workflowSchemaFieldsToJsonSchemaDocument,
 } from "@/shared/workflow/schema-codec";
 import { ActionConfigRenderer } from "./action-config-renderer";
-import { SchemaBuilder, type SchemaField } from "./schema-builder";
+import { SchemaBuilder } from "./schema-builder";
+import {
+  flattenSchemaPathOptions,
+  inferSchemaFromPayload,
+  isSchemaEditorMode,
+  readConfigString,
+  readWebhookOutputSchema,
+  readWebhookRequestSchema,
+  type SchemaEditorMode,
+} from "./webhook-schema";
 
 type TriggerConfigProps = {
   config: Record<string, unknown>;
@@ -47,7 +56,6 @@ type WebhookPreset = {
   payload: Record<string, unknown>;
 };
 
-type SchemaEditorMode = "builder" | "json";
 type WebhookSectionKey =
   | "endpoint"
   | "requestSchema"
@@ -109,158 +117,6 @@ const WEBHOOK_PRESETS: WebhookPreset[] = [
     },
   },
 ];
-
-const ISO8601_TIMESTAMP_REGEX =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readConfigString(
-  config: Record<string, unknown>,
-  key: string,
-  fallback = ""
-): string {
-  const value = config[key];
-  return typeof value === "string" ? value : fallback;
-}
-
-function readSchemaFromConfigKey(
-  config: Record<string, unknown>,
-  key: string
-): SchemaField[] {
-  if (typeof config[key] !== "string" || !config[key]) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(config[key]);
-    return parseWorkflowSchemaFieldsOrJsonSchema(parsed) ?? [];
-  } catch {
-    return [];
-  }
-}
-
-function readWebhookOutputSchema(
-  config: Record<string, unknown>
-): SchemaField[] {
-  return readSchemaFromConfigKey(config, "webhookOutputSchema");
-}
-
-function isSchemaEditorMode(value: string): value is SchemaEditorMode {
-  return value === "builder" || value === "json";
-}
-
-function isIso8601Timestamp(value: string): boolean {
-  const normalized = value.trim();
-  if (!normalized) {
-    return false;
-  }
-
-  if (!ISO8601_TIMESTAMP_REGEX.test(normalized)) {
-    return false;
-  }
-
-  return !Number.isNaN(Date.parse(normalized));
-}
-
-function inferPrimitiveType(
-  value: unknown
-): "string" | "number" | "boolean" | "timestamp" {
-  if (typeof value === "number") {
-    return "number";
-  }
-
-  if (typeof value === "boolean") {
-    return "boolean";
-  }
-
-  if (typeof value === "string" && isIso8601Timestamp(value)) {
-    return "timestamp";
-  }
-
-  return "string";
-}
-
-function inferSchemaField(name: string, value: unknown): SchemaField {
-  if (Array.isArray(value)) {
-    const first = value.at(0);
-
-    if (isRecord(first)) {
-      return {
-        name,
-        type: "array",
-        itemType: "object",
-        fields: inferSchemaFromPayload(first),
-      };
-    }
-
-    return {
-      name,
-      type: "array",
-      itemType: inferPrimitiveType(first),
-    };
-  }
-
-  if (isRecord(value)) {
-    return {
-      name,
-      type: "object",
-      fields: inferSchemaFromPayload(value),
-    };
-  }
-
-  return {
-    name,
-    type: inferPrimitiveType(value),
-  };
-}
-
-function inferSchemaFromPayload(
-  payload: Record<string, unknown>
-): SchemaField[] {
-  return Object.entries(payload).map(([key, value]) =>
-    inferSchemaField(key, value)
-  );
-}
-
-type SchemaPathOption = {
-  path: string;
-  type: SchemaField["type"] | SchemaField["itemType"];
-};
-
-function flattenSchemaPathOptions(
-  schema: SchemaField[],
-  prefix = ""
-): SchemaPathOption[] {
-  const paths: SchemaPathOption[] = [];
-
-  for (const field of schema) {
-    const fieldName = field.name.trim();
-
-    if (!fieldName) {
-      continue;
-    }
-
-    const currentPath = prefix ? `${prefix}.${fieldName}` : fieldName;
-    paths.push({ path: currentPath, type: field.type });
-
-    if (field.type === "object" && field.fields?.length) {
-      paths.push(...flattenSchemaPathOptions(field.fields, currentPath));
-    }
-
-    if (
-      field.type === "array" &&
-      field.itemType === "object" &&
-      field.fields?.length
-    ) {
-      paths.push(...flattenSchemaPathOptions(field.fields, `${currentPath}.0`));
-    }
-  }
-
-  return paths;
-}
 
 function OptionLogo({
   logoUrl,
@@ -384,7 +240,7 @@ export function TriggerConfig({
     "scheduleTimezone",
     "America/New_York"
   );
-  const requestSchema = readSchemaFromConfigKey(config, "webhookSchema");
+  const requestSchema = readWebhookRequestSchema(config);
   const requestSchemaJsonValue = useMemo(
     () =>
       JSON.stringify(
