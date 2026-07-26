@@ -48,6 +48,7 @@
     "@rova/plugins": "workspace:*",
     "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-router": "^1.159.5",
+    "@testing-library/react": "^16.3.2",
     "@xyflow/react": "catalog:",
     "class-variance-authority": "^0.7.1",
     "cronstrue": "^3.12.0",
