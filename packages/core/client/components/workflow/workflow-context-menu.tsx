@@ -146,7 +146,7 @@ export function WorkflowContextMenu({
   // Check if the node is a trigger (can't be deleted)
   const isTriggerNode = Boolean(
     menuState.nodeId &&
-      nodes.find((n) => n.id === menuState.nodeId)?.data.type === "trigger"
+    nodes.find((n) => n.id === menuState.nodeId)?.data.type === "trigger"
   );
 
   const getNodeLabel = () => {

@@ -120,9 +120,8 @@ async function buildEventListenerFunctions(
     return [];
   }
 
-  const { createInngestEventListenerFunction } = await import(
-    "./event-listener-function"
-  );
+  const { createInngestEventListenerFunction } =
+    await import("./event-listener-function");
 
   return eventTriggers.map((trigger) =>
     createInngestEventListenerFunction({

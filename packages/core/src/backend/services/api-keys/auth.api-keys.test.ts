@@ -43,9 +43,8 @@ mock.module("bcryptjs", () => ({
   compare: async (value: string, hashed: string) => hashed === `hash:${value}`,
 }));
 
-const { createApiKeyRecord, validateApiKey } = await import(
-  "@/backend/services/api-keys/auth.api-keys"
-);
+const { createApiKeyRecord, validateApiKey } =
+  await import("@/backend/services/api-keys/auth.api-keys");
 
 describe("api key auth", () => {
   beforeEach(() => {

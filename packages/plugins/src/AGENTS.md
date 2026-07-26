@@ -7,6 +7,7 @@ This document guides AI agents through creating and modifying workflow builder p
 Plugins are now registered via manual static files (no scaffold/discovery scripts).
 
 When creating or modifying a plugin, update these files manually:
+
 1. `plugins/index.ts` - add/remove plugin import
 2. `shared/types/integration.ts` - update `IntegrationType` union
 3. `backend/lib/step-registry.ts` - add/remove action step importers and labels
@@ -53,10 +54,10 @@ const myServicePlugin: IntegrationPlugin = {
     {
       id: "apiKey",
       label: "API Key",
-      type: "password",        // "password" | "text" | "url"
+      type: "password", // "password" | "text" | "url"
       placeholder: "sk_...",
-      configKey: "apiKey",     // Key stored in database
-      envVar: "MY_SERVICE_API_KEY",  // Environment variable name
+      configKey: "apiKey", // Key stored in database
+      envVar: "MY_SERVICE_API_KEY", // Environment variable name
       helpText: "Get your API key from ",
       helpLink: {
         text: "myservice.com/api-keys",
@@ -81,7 +82,7 @@ const myServicePlugin: IntegrationPlugin = {
         {
           key: "inputField",
           label: "Input Field",
-          type: "template-input",  // Supports {{NodeName.field}} syntax
+          type: "template-input", // Supports {{NodeName.field}} syntax
           placeholder: "Enter value or use {{NodeName.field}}",
           example: "example value",
           required: true,
@@ -112,13 +113,15 @@ Step functions follow a two-layer pattern:
 
 ```typescript
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
-import { type StepInput, withStepLogging } from "@/backend/lib/steps/step-handler";
+import {
+  type StepInput,
+  withStepLogging,
+} from "@/backend/lib/steps/step-handler";
 import type { MyServiceCredentials } from "../credentials";
 
 // Result type - use discriminated union
 type DoSomethingResult =
-  | { success: true; id: string }
-  | { success: false; error: string };
+  { success: true; id: string } | { success: false; error: string };
 
 // Core input - fields from configFields
 export type DoSomethingCoreInput = {
@@ -145,7 +148,8 @@ async function stepHandler(
   if (!apiKey) {
     return {
       success: false,
-      error: "MY_SERVICE_API_KEY is not configured. Please add it in Project Integrations.",
+      error:
+        "MY_SERVICE_API_KEY is not configured. Please add it in Project Integrations.",
     };
   }
 
@@ -168,7 +172,6 @@ async function stepHandler(
 export async function doSomethingStep(
   input: DoSomethingInput
 ): Promise<DoSomethingResult> {
-
   const credentials = input.integrationId
     ? await fetchCredentials(input.integrationId)
     : {};
@@ -255,15 +258,15 @@ const plugin: IntegrationPlugin = {
 
 Available types for action `configFields`:
 
-| Type | Description | Supports Variables |
-|------|-------------|-------------------|
-| `template-input` | Single-line input with `{{NodeName.field}}` support | Yes |
-| `template-textarea` | Multi-line textarea with variable support | Yes |
-| `text` | Plain text input | No |
-| `number` | Numeric input | No |
-| `select` | Dropdown with predefined options | No |
-| `schema-builder` | Structured output schema builder | No |
-| `group` | Groups related fields in collapsible section | N/A |
+| Type                | Description                                         | Supports Variables |
+| ------------------- | --------------------------------------------------- | ------------------ |
+| `template-input`    | Single-line input with `{{NodeName.field}}` support | Yes                |
+| `template-textarea` | Multi-line textarea with variable support           | Yes                |
+| `text`              | Plain text input                                    | No                 |
+| `number`            | Numeric input                                       | No                 |
+| `select`            | Dropdown with predefined options                    | No                 |
+| `schema-builder`    | Structured output schema builder                    | No                 |
+| `group`             | Groups related fields in collapsible section        | N/A                |
 
 ### Select Field Example
 
@@ -352,6 +355,7 @@ Once your plugin is tested and working, create a PR:
 **Title:** `feat: add [Plugin Name] plugin`
 
 **Body:**
+
 ```
 ## Summary
 Adds [Plugin Name] plugin with the following actions:
@@ -399,7 +403,7 @@ Some plugins may work without credentials (using defaults or public APIs):
 ```typescript
 const credentials = input.integrationId
   ? await fetchCredentials(input.integrationId)
-  : {};  // Empty object if no integrationId
+  : {}; // Empty object if no integrationId
 
 // Handle missing credentials gracefully
 const apiKey = credentials.API_KEY || Bun.env.DEFAULT_API_KEY;

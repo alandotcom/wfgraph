@@ -189,19 +189,19 @@ The `@rova/core` package.json includes a `"bun"` export condition that resolves 
 
 ### createRovaApp options
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `database.url` | Yes | PostgreSQL connection string |
-| `inngest.client.id` | Yes | Inngest application ID |
-| `inngest.client.*` | No | Inngest client config (baseUrl, eventKey, env, isDev) |
-| `inngest.serve` | No | Inngest serve config (signingKey, etc.) |
-| `migrations.runOnStartup` | No | Run Drizzle migrations at startup (default `false`) |
-| `migrations.migrationsDir` | No | Custom migrations directory |
-| `logger` | No | Custom logger conforming to `RovaLogger` interface |
-| `configureLogging` | No | Enable built-in structured logging (default `true`) |
-| `triggers` | No | Array of custom trigger definitions |
-| `actions` | No | Array of custom action definitions |
-| `serveClient` | No | Serve the workflow builder SPA (default `true`) |
+| Option                     | Required | Description                                           |
+| -------------------------- | -------- | ----------------------------------------------------- |
+| `database.url`             | Yes      | PostgreSQL connection string                          |
+| `inngest.client.id`        | Yes      | Inngest application ID                                |
+| `inngest.client.*`         | No       | Inngest client config (baseUrl, eventKey, env, isDev) |
+| `inngest.serve`            | No       | Inngest serve config (signingKey, etc.)               |
+| `migrations.runOnStartup`  | No       | Run Drizzle migrations at startup (default `false`)   |
+| `migrations.migrationsDir` | No       | Custom migrations directory                           |
+| `logger`                   | No       | Custom logger conforming to `RovaLogger` interface    |
+| `configureLogging`         | No       | Enable built-in structured logging (default `true`)   |
+| `triggers`                 | No       | Array of custom trigger definitions                   |
+| `actions`                  | No       | Array of custom action definitions                    |
+| `serveClient`              | No       | Serve the workflow builder SPA (default `true`)       |
 
 ### Notes
 

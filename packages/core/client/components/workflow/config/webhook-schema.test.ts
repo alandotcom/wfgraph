@@ -237,15 +237,15 @@ describe("config readers", () => {
 
   it("returns nothing when the stored value is absent or unparseable", () => {
     expect(readSchemaFromConfigKey({}, "webhookSchema")).toEqual([]);
-    expect(readSchemaFromConfigKey({ webhookSchema: "" }, "webhookSchema")).toEqual(
-      []
-    );
+    expect(
+      readSchemaFromConfigKey({ webhookSchema: "" }, "webhookSchema")
+    ).toEqual([]);
     expect(
       readSchemaFromConfigKey({ webhookSchema: "{not json" }, "webhookSchema")
     ).toEqual([]);
-    expect(readSchemaFromConfigKey({ webhookSchema: 5 }, "webhookSchema")).toEqual(
-      []
-    );
+    expect(
+      readSchemaFromConfigKey({ webhookSchema: 5 }, "webhookSchema")
+    ).toEqual([]);
   });
 
   it("reads the request and output schemas from their own keys", () => {
@@ -331,7 +331,9 @@ describe("parseSchemaJsonEdit", () => {
 
   it("accepts a JSON Schema document", () => {
     expect(
-      parseSchemaJsonEdit('{"type":"object","properties":{"event":{"type":"string"}}}')
+      parseSchemaJsonEdit(
+        '{"type":"object","properties":{"event":{"type":"string"}}}'
+      )
     ).toEqual({ ok: true, schema: [{ name: "event", type: "string" }] });
   });
 

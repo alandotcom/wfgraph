@@ -53,7 +53,9 @@ function describeSchemaField(field: WorkflowSchemaField): string {
     return field.description.trim();
   }
 
-  return field.type === "array" ? `${field.itemType ?? "string"}[]` : field.type;
+  return field.type === "array"
+    ? `${field.itemType ?? "string"}[]`
+    : field.type;
 }
 
 /**
@@ -199,7 +201,10 @@ export function parseTemplate(value: string): TemplateSegment[] {
 
   for (const token of findTemplateTokens(value)) {
     if (token.start > cursor) {
-      segments.push({ kind: "literal", text: value.slice(cursor, token.start) });
+      segments.push({
+        kind: "literal",
+        text: value.slice(cursor, token.start),
+      });
     }
     segments.push({ kind: "token", token });
     cursor = token.end;
@@ -238,7 +243,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isStepWrapper(
   value: unknown
 ): value is { success: boolean; data: unknown } {
-  return isRecord(value) && typeof value.success === "boolean" && "data" in value;
+  return (
+    isRecord(value) && typeof value.success === "boolean" && "data" in value
+  );
 }
 
 /**

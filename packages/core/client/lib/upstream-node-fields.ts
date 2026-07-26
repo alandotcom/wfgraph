@@ -105,10 +105,7 @@ function getHttpRequestOutputFields(
     return DEFAULT_HTTP_OUTPUT_FIELDS;
   }
 
-  return dedupeByPath([
-    ...DEFAULT_HTTP_OUTPUT_FIELDS,
-    ...outputSchemaFields,
-  ]);
+  return dedupeByPath([...DEFAULT_HTTP_OUTPUT_FIELDS, ...outputSchemaFields]);
 }
 
 function getDatabaseQueryOutputFields(

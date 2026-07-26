@@ -46,9 +46,8 @@ mock.module("@/backend/lib/logger", () => ({
   getAppLogger: () => mocks.logger,
 }));
 
-const { getIntegration, putIntegration } = await import(
-  "@/backend/services/integrations/integrations.integrations"
-);
+const { getIntegration, putIntegration } =
+  await import("@/backend/services/integrations/integrations.integrations");
 
 describe("integration service secret handling", () => {
   beforeEach(() => {

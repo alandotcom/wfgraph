@@ -44,9 +44,8 @@ mock.module("@/backend/services/workflows/workflow.workflows", () => ({
   deleteWorkflow: mocks.deleteWorkflow,
 }));
 
-const { postWorkflowsBulkLifecycleResult } = await import(
-  "@/backend/services/workflows/workflows-bulk-lifecycle.workflows"
-);
+const { postWorkflowsBulkLifecycleResult } =
+  await import("@/backend/services/workflows/workflows-bulk-lifecycle.workflows");
 
 describe("postWorkflowsBulkLifecycleResult", () => {
   beforeEach(() => {

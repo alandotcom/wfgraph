@@ -29,9 +29,8 @@ mock.module("@/backend/lib/workflow-engine/db-store", () => ({
   dbWorkflowStore: noopWorkflowStore,
 }));
 
-const { createWorkflowRunRequestedFunction } = await import(
-  "./workflow-function"
-);
+const { createWorkflowRunRequestedFunction } =
+  await import("./workflow-function");
 
 const EMAIL_ACTION_ID = "test/e2e-email";
 const FOLLOWUP_ACTION_ID = "test/e2e-followup";
@@ -41,11 +40,19 @@ function triggerNode(id: string): WorkflowNode {
     id,
     type: "trigger",
     position: { x: 0, y: 0 },
-    data: { label: "Trigger", type: "trigger", config: { triggerType: "Trigger" } },
+    data: {
+      label: "Trigger",
+      type: "trigger",
+      config: { triggerType: "Trigger" },
+    },
   };
 }
 
-function actionNode(id: string, actionType: string, label: string): WorkflowNode {
+function actionNode(
+  id: string,
+  actionType: string,
+  label: string
+): WorkflowNode {
   return {
     id,
     type: "action",

@@ -156,9 +156,7 @@ describe("matchTemplateToken", () => {
 
 describe("findTemplateTokens", () => {
   it("returns every token in order with its position", () => {
-    const tokens = findTemplateTokens(
-      "{{@a:First.x}} then {{@b:Second}} done"
-    );
+    const tokens = findTemplateTokens("{{@a:First.x}} then {{@b:Second}} done");
 
     expect(tokens.map((token) => token.nodeId)).toEqual(["a", "b"]);
     expect(tokens.map((token) => token.start)).toEqual([0, 20]);
@@ -197,7 +195,9 @@ describe("parseTemplate", () => {
   });
 
   it("treats a string with no tokens as one literal", () => {
-    expect(parseTemplate("plain")).toEqual([{ kind: "literal", text: "plain" }]);
+    expect(parseTemplate("plain")).toEqual([
+      { kind: "literal", text: "plain" },
+    ]);
   });
 
   it("produces nothing for an empty string", () => {
@@ -251,7 +251,12 @@ describe("resolveOutputPath", () => {
 
     expect(resolveOutputPath(output, "success")).toBe(true);
     expect(resolveOutputPath(output, "data.id")).toBe("cus_1");
-    expect(resolveOutputPath({ success: false, error: { message: "no" }, data: null }, "error.message")).toBe("no");
+    expect(
+      resolveOutputPath(
+        { success: false, error: { message: "no" }, data: null },
+        "error.message"
+      )
+    ).toBe("no");
   });
 
   it("leaves an object that merely has a data key alone", () => {
@@ -305,8 +310,8 @@ describe("resolveOutputPath", () => {
       },
     ]);
 
-    expect(resolveOutputPath({ items: [{ sku: "SKU-1" }] }, itemPath.path)).toBe(
-      "SKU-1"
-    );
+    expect(
+      resolveOutputPath({ items: [{ sku: "SKU-1" }] }, itemPath.path)
+    ).toBe("SKU-1");
   });
 });

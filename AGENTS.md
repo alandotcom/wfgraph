@@ -21,17 +21,20 @@ Never use npm or yarn.
 ## Required Checks Before Finishing Work
 
 1. Run type checking:
+
 ```bash
 bun run type-check
 ```
 
 2. Run auto-fix formatting/linting:
+
 ```bash
 bun run lint
 bun run fix
 ```
 
 3. If relevant to your changes, run tests:
+
 ```bash
 bun run test
 ```
@@ -47,6 +50,7 @@ The project is a Bun workspace monorepo with three packages under `packages/`:
 - `@rova/plugins` (`packages/plugins`) - integration plugins and steps
 
 Important paths:
+
 - `packages/core/src/backend/server` - Hono API server
 - `packages/core/src/backend/rpc` - oRPC router that binds contract procedures to service modules
 - `packages/core/src/backend/services` - domain service logic
@@ -319,9 +323,11 @@ Server-side barrel files are allowed.
 ## API Client Usage
 
 Use the typed RPC client in:
+
 - `@/lib/rpc-client`
 
 Import pattern:
+
 ```ts
 import { api } from "@/lib/rpc-client";
 ```

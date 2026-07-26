@@ -225,8 +225,9 @@ describe("upstream-node-fields", () => {
     }));
 
     // Re-import to pick up mock
-    const { getNodeOutputFields: getNodeOutputFieldsMocked } =
-      require("@/lib/upstream-node-fields");
+    const {
+      getNodeOutputFields: getNodeOutputFieldsMocked,
+    } = require("@/lib/upstream-node-fields");
 
     const triggerNode = createNode({
       id: "trigger-1",
@@ -244,9 +245,7 @@ describe("upstream-node-fields", () => {
     expect(fields.some((f: { path: string }) => f.path === "timestamp")).toBe(
       true
     );
-    expect(fields.some((f: { path: string }) => f.path === "input")).toBe(
-      true
-    );
+    expect(fields.some((f: { path: string }) => f.path === "input")).toBe(true);
 
     // Should include custom trigger schema fields
     expect(fields.some((f: { path: string }) => f.path === "donorUuid")).toBe(
@@ -255,9 +254,7 @@ describe("upstream-node-fields", () => {
     expect(fields.some((f: { path: string }) => f.path === "status")).toBe(
       true
     );
-    expect(fields.some((f: { path: string }) => f.path === "score")).toBe(
-      true
-    );
+    expect(fields.some((f: { path: string }) => f.path === "score")).toBe(true);
   });
 
   it("includes only condition-compatible primitive fields", () => {
