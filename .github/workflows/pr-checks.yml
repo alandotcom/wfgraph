@@ -32,5 +32,12 @@ jobs:
       - name: Run type check
         run: bun run typecheck
 
+      # The suite is self-contained: it was run with the local .env moved aside to
+      # confirm all 398 tests pass with no environment file, database or other
+      # service, which is what this runner gives it. bunfig.toml's [test] preload
+      # registers happy-dom, so the client-side tests get their DOM here too.
+      - name: Run tests
+        run: bun run test
+
       - name: Run build
         run: bun run build
