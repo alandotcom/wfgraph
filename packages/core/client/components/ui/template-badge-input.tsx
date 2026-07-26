@@ -3,6 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import { nodesAtom } from "@/lib/workflow-store";
 import { findActionById } from "@/plugins/registry";
 import { cn } from "@/shared/utils";
+import {
+  findTemplateTokens,
+  parseTemplate,
+  type TemplateToken,
+} from "@/shared/workflow/node-references";
 import { TemplateAutocomplete } from "./template-autocomplete";
 
 export interface TemplateBadgeInputProps {
@@ -24,42 +29,32 @@ function readConfigString(
   return typeof value === "string" ? value : undefined;
 }
 
-// Helper to check if a template references an existing node
+// A badge is only "live" while the node its token names is still on the canvas.
 function doesNodeExist(
-  template: string,
+  token: TemplateToken,
   nodes: ReturnType<typeof useAtom<typeof nodesAtom>>[0]
 ): boolean {
-  const match = template.match(/\{\{@([^:]+):([^}]+)\}\}/);
-  if (!match) {
-    return false;
-  }
-
-  const nodeId = match[1];
-  return nodes.some((n) => n.id === nodeId);
+  return nodes.some((n) => n.id === token.nodeId);
 }
 
-// Helper to get display text from template by looking up current node label
-function getDisplayTextForTemplate(
-  template: string,
+/**
+ * Badge text for a token. The label baked into the token can be stale, so the
+ * node's current label wins whenever the node is still around.
+ */
+function getDisplayTextForToken(
+  token: TemplateToken,
   nodes: ReturnType<typeof useAtom<typeof nodesAtom>>[0]
 ): string {
-  // Extract nodeId and field from template: {{@nodeId:OldLabel.field}}
-  const match = template.match(/\{\{@([^:]+):([^}]+)\}\}/);
-  if (!match) {
-    return template;
-  }
+  const storedText = token.fieldPath
+    ? `${token.nodeLabel}.${token.fieldPath}`
+    : token.nodeLabel;
 
-  const nodeId = match[1];
-  const rest = match[2]; // e.g., "OldLabel.field" or "OldLabel"
-
-  // Find the current node
-  const node = nodes.find((n) => n.id === nodeId);
+  const node = nodes.find((n) => n.id === token.nodeId);
   if (!node) {
-    // Node not found, return as-is
-    return rest;
+    return storedText;
   }
 
-  // Get display label: custom label > human-readable action label > fallback
+  // Display label: custom label > human-readable action label > stored label
   let displayLabel: string | undefined = node.data.label;
   if (!displayLabel && node.data.type === "action") {
     const actionType = readConfigString(node.data.config, "actionType");
@@ -69,22 +64,11 @@ function getDisplayTextForTemplate(
     }
   }
 
-  const dotIndex = rest.indexOf(".");
-
-  if (dotIndex === -1) {
-    // No field, just the node: {{@nodeId:Label}}
-    return displayLabel ?? rest;
-  }
-
-  // Has field: {{@nodeId:Label.field}}
-  const field = rest.substring(dotIndex + 1);
-
-  // If no display label, fall back to the original label from the template
   if (!displayLabel) {
-    return rest;
+    return storedText;
   }
 
-  return `${displayLabel}.${field}`;
+  return token.fieldPath ? `${displayLabel}.${token.fieldPath}` : displayLabel;
 }
 
 function insertTextAtSelection(text: string): boolean {
@@ -299,42 +283,23 @@ export function TemplateBadgeInput({
       return;
     }
 
-    // Match template patterns: {{@nodeId:DisplayName.field}} or {{@nodeId:DisplayName}}
-    const pattern = /\{\{@([^:]+):([^}]+)\}\}/g;
-    let lastIndex = 0;
-    let match;
-
-    while ((match = pattern.exec(text)) !== null) {
-      const [fullMatch] = match;
-      const matchStart = match.index;
-
-      // Add text before the template
-      if (matchStart > lastIndex) {
-        const textBefore = text.slice(lastIndex, matchStart);
-        const textNode = document.createTextNode(textBefore);
-        container.appendChild(textNode);
+    // Every node reference becomes a badge; everything between stays plain text.
+    for (const segment of parseTemplate(text)) {
+      if (segment.kind === "literal") {
+        container.appendChild(document.createTextNode(segment.text));
+        continue;
       }
 
-      // Create badge for template
       const badge = document.createElement("span");
-      const nodeExists = doesNodeExist(fullMatch, nodes);
+      const nodeExists = doesNodeExist(segment.token, nodes);
       badge.className = nodeExists
         ? "inline-flex items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-blue-600 dark:text-blue-400 font-mono text-xs border border-blue-500/20 mx-0.5"
         : "inline-flex items-center gap-1 rounded bg-red-500/10 px-1.5 py-0.5 text-red-600 dark:text-red-400 font-mono text-xs border border-red-500/20 mx-0.5";
       badge.contentEditable = "false";
-      badge.setAttribute("data-template", fullMatch);
-      // Use current node label for display
-      badge.textContent = getDisplayTextForTemplate(fullMatch, nodes);
+      // The raw token is what `extractValue` reads back out of the DOM.
+      badge.setAttribute("data-template", segment.token.raw);
+      badge.textContent = getDisplayTextForToken(segment.token, nodes);
       container.appendChild(badge);
-
-      lastIndex = pattern.lastIndex;
-    }
-
-    // Add remaining text
-    if (lastIndex < text.length) {
-      const textAfter = text.slice(lastIndex);
-      const textNode = document.createTextNode(textAfter);
-      container.appendChild(textNode);
     }
 
     // If empty and focused, ensure we can type
@@ -408,11 +373,8 @@ export function TemplateBadgeInput({
     }
 
     // Count templates in old and new values
-    const oldTemplates = (
-      internalValue.match(/\{\{@([^:]+):([^}]+)\}\}/g) || []
-    ).length;
-    const newTemplates = (newValue.match(/\{\{@([^:]+):([^}]+)\}\}/g) || [])
-      .length;
+    const oldTemplates = findTemplateTokens(internalValue).length;
+    const newTemplates = findTemplateTokens(newValue).length;
 
     if (newTemplates > oldTemplates) {
       // A new template was added, update display to show badge

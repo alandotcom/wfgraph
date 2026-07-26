@@ -57,9 +57,9 @@ const twilioPlugin: IntegrationPlugin = {
       stepFunction: "sendSmsStep",
       stepImportPath: "send-sms",
       outputFields: [
-        { field: "sid", description: "Message SID" },
-        { field: "status", description: "Delivery status" },
-        { field: "to", description: "Recipient phone number" },
+        { path: "sid", description: "Message SID" },
+        { path: "status", description: "Delivery status" },
+        { path: "to", description: "Recipient phone number" },
       ],
       configFields: [
         {

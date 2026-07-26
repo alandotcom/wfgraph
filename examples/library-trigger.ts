@@ -79,9 +79,9 @@ const cancelAppointmentAction = createAction({
   description: "Cancels an appointment and records the cancellation reason.",
   category: "Appointments",
   outputFields: [
-    { field: "appointmentId", description: "Cancelled appointment ID" },
-    { field: "status", description: "Cancellation status" },
-    { field: "cancelledAt", description: "ISO timestamp of cancellation" },
+    { path: "appointmentId", description: "Cancelled appointment ID" },
+    { path: "status", description: "Cancellation status" },
+    { path: "cancelledAt", description: "ISO timestamp of cancellation" },
   ],
   schema: z.object({
     appointmentId: appointmentSchema.shape.id.describe("Appointment ID"),

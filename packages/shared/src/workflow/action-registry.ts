@@ -5,9 +5,11 @@ import type {
 import type {
   ActionConfigField,
   ActionConfigFieldBase,
-  OutputField,
 } from "@/plugins/registry";
-import type { WorkflowSchemaField } from "@/workflow/schema-codec";
+import {
+  type ReferenceField,
+  schemaFieldToReferenceField,
+} from "@/workflow/node-references";
 import {
   configFieldsFromJsonSchema,
   jsonSchemaLibraryOptions,
@@ -80,7 +82,7 @@ export type RuntimeActionDefinition = {
    * template autocomplete (e.g. `{{ @NodeLabel.appointmentId }}`).
    * Field paths should not include the `data.` prefix -- they are unwrapped automatically.
    */
-  outputFields?: OutputField[];
+  outputFields?: ReferenceField[];
 
   execute: (
     input: RuntimeActionExecuteInput
@@ -152,7 +154,7 @@ export type CreateActionInputWithOutput<
    */
   outputSchema: OutputSchema<TOutput>;
   /** Manual overrides merged on top of auto-derived output fields. */
-  outputFields?: OutputField[];
+  outputFields?: ReferenceField[];
   execute: (input: {
     payload: TPayload;
     context: RuntimeActionExecutionContext;
@@ -255,20 +257,9 @@ function getActionErrorMessage(error: unknown): string {
   return "Action execution failed";
 }
 
-function schemaFieldToOutputField(field: WorkflowSchemaField): OutputField {
-  return {
-    field: field.name,
-    description: field.description ?? field.name,
-    type: field.type,
-    ...(field.type === "timestamp" ? { format: "timestamp" as const } : {}),
-    ...(field.nullable ? { nullable: true } : {}),
-    ...(field.enumValues ? { enumValues: field.enumValues } : {}),
-  };
-}
-
 function outputFieldsFromStandardSchema(
   schema: OutputSchema<Record<string, unknown>>
-): OutputField[] {
+): ReferenceField[] {
   let jsonSchema: Record<string, unknown>;
   try {
     jsonSchema = schema["~standard"].jsonSchema.output({
@@ -287,21 +278,21 @@ function outputFieldsFromStandardSchema(
   }
   const fields = parseWorkflowSchemaFieldsOrJsonSchema(jsonSchema);
   if (fields) {
-    return fields.map(schemaFieldToOutputField);
+    return fields.map((field) => schemaFieldToReferenceField(field));
   }
   return [];
 }
 
 function mergeOutputFields(
-  derived: OutputField[],
-  manual: OutputField[]
-): OutputField[] {
-  const merged = new Map<string, OutputField>();
+  derived: ReferenceField[],
+  manual: ReferenceField[]
+): ReferenceField[] {
+  const merged = new Map<string, ReferenceField>();
   for (const field of derived) {
-    merged.set(field.field, field);
+    merged.set(field.path, field);
   }
   for (const field of manual) {
-    merged.set(field.field, field);
+    merged.set(field.path, field);
   }
   return Array.from(merged.values());
 }

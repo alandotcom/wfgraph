@@ -56,9 +56,15 @@ function describeSchemaField(field: WorkflowSchemaField): string {
   return field.type === "array" ? `${field.itemType ?? "string"}[]` : field.type;
 }
 
-function toReferenceField(
+/**
+ * Turn one schema-tree node into the flat reference field that addresses it.
+ *
+ * The path defaults to the field's own name, which is what a caller wants when
+ * it is converting a top-level schema without descending into children.
+ */
+export function schemaFieldToReferenceField(
   field: WorkflowSchemaField,
-  path: string
+  path: string = field.name
 ): ReferenceField {
   return {
     path,
@@ -91,7 +97,7 @@ export function flattenSchemaToReferenceFields(
     }
 
     const path = prefix ? `${prefix}.${name}` : name;
-    fields.push(toReferenceField(field, path));
+    fields.push(schemaFieldToReferenceField(field, path));
 
     const children = field.fields ?? [];
     if (children.length === 0) {

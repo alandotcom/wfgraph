@@ -155,8 +155,8 @@ describe("upstream-node-fields", () => {
       description: "Action with typeless output fields",
       category: "Custom",
       outputFields: [
-        { field: "appointmentId", description: "Appointment ID" },
-        { field: "status", description: "Status" },
+        { path: "appointmentId", description: "Appointment ID" },
+        { path: "status", description: "Status" },
       ],
     });
 
@@ -211,9 +211,9 @@ describe("upstream-node-fields", () => {
       label: "Donor Eligibility",
       executionType: "webhook",
       outputFields: [
-        { field: "donorUuid", description: "Donor UUID", type: "string" },
-        { field: "status", description: "Eligibility status", type: "string" },
-        { field: "score", description: "Eligibility score", type: "number" },
+        { path: "donorUuid", description: "Donor UUID", type: "string" },
+        { path: "status", description: "Eligibility status", type: "string" },
+        { path: "score", description: "Eligibility score", type: "number" },
       ],
     };
 
@@ -238,24 +238,24 @@ describe("upstream-node-fields", () => {
     const fields = getNodeOutputFieldsMocked(triggerNode);
 
     // Should include default trigger fields
-    expect(fields.some((f: { field: string }) => f.field === "triggered")).toBe(
+    expect(fields.some((f: { path: string }) => f.path === "triggered")).toBe(
       true
     );
-    expect(fields.some((f: { field: string }) => f.field === "timestamp")).toBe(
+    expect(fields.some((f: { path: string }) => f.path === "timestamp")).toBe(
       true
     );
-    expect(fields.some((f: { field: string }) => f.field === "input")).toBe(
+    expect(fields.some((f: { path: string }) => f.path === "input")).toBe(
       true
     );
 
     // Should include custom trigger schema fields
-    expect(fields.some((f: { field: string }) => f.field === "donorUuid")).toBe(
+    expect(fields.some((f: { path: string }) => f.path === "donorUuid")).toBe(
       true
     );
-    expect(fields.some((f: { field: string }) => f.field === "status")).toBe(
+    expect(fields.some((f: { path: string }) => f.path === "status")).toBe(
       true
     );
-    expect(fields.some((f: { field: string }) => f.field === "score")).toBe(
+    expect(fields.some((f: { path: string }) => f.path === "score")).toBe(
       true
     );
   });

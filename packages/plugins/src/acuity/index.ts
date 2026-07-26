@@ -40,10 +40,10 @@ const acuityPlugin: IntegrationPlugin = {
       stepImportPath: "list-appointment-types",
       outputFields: [
         {
-          field: "appointmentTypes",
+          path: "appointmentTypes",
           description: "Array of appointment types",
         },
-        { field: "count", description: "Number of appointment types returned" },
+        { path: "count", description: "Number of appointment types returned" },
       ],
       configFields: [],
     },
@@ -55,8 +55,8 @@ const acuityPlugin: IntegrationPlugin = {
       stepFunction: "listAppointmentsStep",
       stepImportPath: "list-appointments",
       outputFields: [
-        { field: "appointments", description: "Array of appointments" },
-        { field: "count", description: "Number of appointments returned" },
+        { path: "appointments", description: "Array of appointments" },
+        { path: "count", description: "Number of appointments returned" },
       ],
       configFields: [
         {
@@ -153,9 +153,9 @@ const acuityPlugin: IntegrationPlugin = {
       stepFunction: "getAppointmentStep",
       stepImportPath: "get-appointment",
       outputFields: [
-        { field: "appointment", description: "The appointment details" },
-        { field: "id", description: "Appointment ID" },
-        { field: "datetime", description: "Appointment datetime" },
+        { path: "appointment", description: "The appointment details" },
+        { path: "id", description: "Appointment ID" },
+        { path: "datetime", description: "Appointment datetime" },
       ],
       configFields: [
         {
@@ -185,8 +185,8 @@ const acuityPlugin: IntegrationPlugin = {
       stepFunction: "getAvailabilityDatesStep",
       stepImportPath: "get-availability-dates",
       outputFields: [
-        { field: "dates", description: "Available dates" },
-        { field: "count", description: "Number of dates returned" },
+        { path: "dates", description: "Available dates" },
+        { path: "count", description: "Number of dates returned" },
       ],
       configFields: [
         {
@@ -225,8 +225,8 @@ const acuityPlugin: IntegrationPlugin = {
       stepFunction: "getAvailabilityTimesStep",
       stepImportPath: "get-availability-times",
       outputFields: [
-        { field: "slots", description: "Available time slots" },
-        { field: "count", description: "Number of slots returned" },
+        { path: "slots", description: "Available time slots" },
+        { path: "count", description: "Number of slots returned" },
       ],
       configFields: [
         {
@@ -271,9 +271,9 @@ const acuityPlugin: IntegrationPlugin = {
       stepFunction: "createAppointmentStep",
       stepImportPath: "create-appointment",
       outputFields: [
-        { field: "appointment", description: "Created appointment payload" },
-        { field: "id", description: "Created appointment ID" },
-        { field: "datetime", description: "Created appointment datetime" },
+        { path: "appointment", description: "Created appointment payload" },
+        { path: "id", description: "Created appointment ID" },
+        { path: "datetime", description: "Created appointment datetime" },
       ],
       configFields: [
         {
@@ -395,11 +395,11 @@ const acuityPlugin: IntegrationPlugin = {
       stepImportPath: "reschedule-appointment",
       outputFields: [
         {
-          field: "appointment",
+          path: "appointment",
           description: "Rescheduled appointment payload",
         },
-        { field: "id", description: "Appointment ID" },
-        { field: "datetime", description: "New appointment datetime" },
+        { path: "id", description: "Appointment ID" },
+        { path: "datetime", description: "New appointment datetime" },
       ],
       configFields: [
         {
@@ -460,9 +460,9 @@ const acuityPlugin: IntegrationPlugin = {
       stepFunction: "cancelAppointmentStep",
       stepImportPath: "cancel-appointment",
       outputFields: [
-        { field: "appointment", description: "Canceled appointment payload" },
-        { field: "id", description: "Canceled appointment ID" },
-        { field: "canceled", description: "Cancellation flag" },
+        { path: "appointment", description: "Canceled appointment payload" },
+        { path: "id", description: "Canceled appointment ID" },
+        { path: "canceled", description: "Cancellation flag" },
       ],
       configFields: [
         {

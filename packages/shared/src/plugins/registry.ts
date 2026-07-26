@@ -1,4 +1,5 @@
 import { type IntegrationType, isIntegrationType } from "@/types/integration";
+import type { ReferenceField } from "@/workflow/node-references";
 
 /**
  * Select Option
@@ -83,19 +84,6 @@ export type ActionConfigFieldGroup = {
 export type ActionConfigField = ActionConfigFieldBase | ActionConfigFieldGroup;
 
 /**
- * Output Field Definition
- * Describes an output field available for template autocomplete
- */
-export type OutputField = {
-  field: string;
-  description: string;
-  type?: import("@/workflow/schema-codec").WorkflowSchemaFieldType;
-  format?: "timestamp";
-  nullable?: boolean;
-  enumValues?: string[];
-};
-
-/**
  * Result Component Props
  * Props passed to custom result components
  */
@@ -148,7 +136,7 @@ export type PluginAction = {
   configFields: ActionConfigField[];
 
   // Output fields for template autocomplete (what this action returns)
-  outputFields?: OutputField[];
+  outputFields?: ReferenceField[];
 
   // Output display configuration (how to render output in workflow runs panel)
   outputConfig?: OutputDisplayConfig;
@@ -204,7 +192,7 @@ export type RuntimeActionDefinition = {
   category: string;
   logoUrl?: string;
   configFields?: ActionConfigField[];
-  outputFields?: OutputField[];
+  outputFields?: ReferenceField[];
   integration?: string;
 };
 

@@ -2,6 +2,10 @@ import type { EdgeChange, Node, NodeChange } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import { partition } from "es-toolkit/array";
 import { atom } from "jotai";
+import {
+  formatTemplateToken,
+  parseTemplate,
+} from "@/shared/workflow/node-references";
 import type {
   ExecutionLogEntry,
   WorkflowEdge,
@@ -351,7 +355,14 @@ export const updateNodeDataAtom = atom(
   }
 );
 
-// Helper function to update templates in a config object when a node label changes
+/**
+ * Rewrite the label baked into every token that names `nodeId`.
+ *
+ * Tokens carry a label purely so the editor can show something readable, so a
+ * rename has to sweep the configs that reference the renamed node. Tokens
+ * already carrying the new label are left alone, which is what keeps a rename
+ * from marking the workflow dirty when nothing actually moved.
+ */
 function updateTemplatesInConfig(
   config: Record<string, unknown>,
   nodeId: string,
@@ -363,17 +374,25 @@ function updateTemplatesInConfig(
 
   for (const [key, value] of Object.entries(config)) {
     if (typeof value === "string") {
-      // Update template references to this node
-      // Pattern: {{@nodeId:OldLabel}} or {{@nodeId:OldLabel.field}}
-      const pattern = new RegExp(
-        `\\{\\{@${escapeRegex(nodeId)}:${escapeRegex(oldLabel)}(\\.[^}]+)?\\}\\}`,
-        "g"
-      );
-      const newValue = value.replace(pattern, (_match, fieldPart) => {
-        hasChanges = true;
-        return `{{@${nodeId}:${newLabel}${fieldPart || ""}}}`;
-      });
-      updated[key] = newValue;
+      updated[key] = parseTemplate(value)
+        .map((segment) => {
+          if (segment.kind === "literal") {
+            return segment.text;
+          }
+
+          const { token } = segment;
+          if (token.nodeId !== nodeId || token.nodeLabel !== oldLabel) {
+            return token.raw;
+          }
+
+          hasChanges = true;
+          return formatTemplateToken({
+            nodeId,
+            nodeLabel: newLabel,
+            fieldPath: token.fieldPath,
+          });
+        })
+        .join("");
     } else if (isRecord(value)) {
       const nestedUpdated = updateTemplatesInConfig(
         value,
@@ -391,11 +410,6 @@ function updateTemplatesInConfig(
   }
 
   return hasChanges ? updated : config;
-}
-
-// Helper to escape special regex characters
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {

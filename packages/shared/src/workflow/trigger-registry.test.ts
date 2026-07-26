@@ -939,9 +939,9 @@ describe("registerWorkflowTrigger", () => {
     expect(trigger.ui.outputFields).toBeDefined();
     expect(trigger.ui.outputFields).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ field: "donorUuid" }),
-        expect.objectContaining({ field: "status" }),
-        expect.objectContaining({ field: "score" }),
+        expect.objectContaining({ path: "donorUuid" }),
+        expect.objectContaining({ path: "status" }),
+        expect.objectContaining({ path: "score" }),
       ])
     );
 
@@ -975,8 +975,8 @@ describe("registerWorkflowTrigger", () => {
     expect(metadata?.outputFields).toBeDefined();
     expect(metadata?.outputFields).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ field: "entityId" }),
-        expect.objectContaining({ field: "active" }),
+        expect.objectContaining({ path: "entityId" }),
+        expect.objectContaining({ path: "active" }),
       ])
     );
 

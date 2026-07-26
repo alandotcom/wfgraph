@@ -9,6 +9,10 @@ import {
 } from "@/lib/upstream-node-fields";
 import { edgesAtom, nodesAtom } from "@/lib/workflow-store";
 import { cn } from "@/shared/utils";
+import {
+  formatTemplateToken,
+  type ReferenceField,
+} from "@/shared/workflow/node-references";
 
 type TemplateAutocompleteProps = {
   isOpen: boolean;
@@ -20,30 +24,23 @@ type TemplateAutocompleteProps = {
   fieldType?: "duration" | "timestamp";
 };
 
-type AutocompleteField = {
-  field: string;
-  description: string;
-  fieldType?: string;
-  fieldFormat?: "timestamp";
-};
-
 function isFieldCompatible(
-  field: AutocompleteField,
+  field: ReferenceField,
   targetType: "duration" | "timestamp" | undefined
 ): boolean {
   if (!targetType) {
     return true;
   }
-  if (!field.fieldType) {
+  if (!field.type) {
     return true;
   }
 
   if (targetType === "duration") {
-    return field.fieldType === "number";
+    return field.type === "number";
   }
 
   if (targetType === "timestamp") {
-    return field.fieldType === "timestamp" || field.fieldFormat === "timestamp";
+    return field.type === "timestamp" || field.format === "timestamp";
   }
 
   return true;
@@ -92,18 +89,20 @@ export function TemplateAutocomplete({
 
     for (const node of upstreamNodes) {
       const nodeName = getNodeDisplayName(node);
-      const fields: AutocompleteField[] = getNodeOutputFields(node);
 
       if (!fieldType && node.data.type !== "trigger") {
         nextOptions.push({
           type: "node",
           nodeId: node.id,
           nodeName,
-          template: `{{@${node.id}:${nodeName}}}`,
+          template: formatTemplateToken({
+            nodeId: node.id,
+            nodeLabel: nodeName,
+          }),
         });
       }
 
-      for (const field of fields) {
+      for (const field of getNodeOutputFields(node)) {
         if (!isFieldCompatible(field, fieldType)) {
           continue;
         }
@@ -111,9 +110,13 @@ export function TemplateAutocomplete({
           type: "field",
           nodeId: node.id,
           nodeName,
-          field: field.field,
+          field: field.path,
           description: field.description,
-          template: `{{@${node.id}:${nodeName}.${field.field}}}`,
+          template: formatTemplateToken({
+            nodeId: node.id,
+            nodeLabel: nodeName,
+            fieldPath: field.path,
+          }),
         });
       }
     }

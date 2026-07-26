@@ -343,11 +343,11 @@ describe("createAction with Arktype schemas", () => {
     const fields = action.outputFields ?? [];
     expect(fields.length).toBe(2);
 
-    const nameField = fields.find((f) => f.field === "name");
+    const nameField = fields.find((f) => f.path === "name");
     expect(nameField).toBeDefined();
     expect(nameField?.type).toBe("string");
 
-    const createdAtField = fields.find((f) => f.field === "createdAt");
+    const createdAtField = fields.find((f) => f.path === "createdAt");
     expect(createdAtField).toBeDefined();
     expect(createdAtField?.type).toBe("timestamp");
     expect(createdAtField?.format).toBe("timestamp");
@@ -373,8 +373,8 @@ describe("createAction with Arktype schemas", () => {
 
     const fields = action.outputFields ?? [];
     expect(fields.length).toBe(2);
-    expect(fields.find((f) => f.field === "name")?.type).toBe("string");
-    expect(fields.find((f) => f.field === "dateStr")?.type).toBe("string");
+    expect(fields.find((f) => f.path === "name")?.type).toBe("string");
+    expect(fields.find((f) => f.path === "dateStr")?.type).toBe("string");
   });
 
   it("derives outputFields from Arktype output schema with nullable fields", () => {
@@ -400,7 +400,7 @@ describe("createAction with Arktype schemas", () => {
     });
 
     const fields = action.outputFields ?? [];
-    const fieldNames = fields.map((f) => f.field).sort();
+    const fieldNames = fields.map((f) => f.path).sort();
 
     expect(fieldNames).toContain("uuid");
     expect(fieldNames).toContain("firstName");
@@ -414,10 +414,10 @@ describe("createAction with Arktype schemas", () => {
     expect(fields).toHaveLength(9);
 
     // string.date.iso fields should be detected as timestamps via pattern
-    expect(fields.find((f) => f.field === "dateOfBirth")?.type).toBe(
+    expect(fields.find((f) => f.path === "dateOfBirth")?.type).toBe(
       "timestamp"
     );
-    expect(fields.find((f) => f.field === "createdAt")?.type).toBe("timestamp");
+    expect(fields.find((f) => f.path === "createdAt")?.type).toBe("timestamp");
   });
 
   it("validates payload with Arktype schema", async () => {

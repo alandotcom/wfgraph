@@ -27,7 +27,6 @@ export type {
   ActionConfigFieldGroup,
   ActionWithFullId,
   IntegrationPlugin,
-  OutputField,
   PluginAction,
   RuntimeActionDefinition,
 } from "@/shared/plugins/registry";
@@ -57,3 +56,6 @@ export {
   registerIntegration,
   registerRuntimeAction,
 } from "@/shared/plugins/registry";
+
+// The flat field shape an action or trigger declares in `outputFields`.
+export type { ReferenceField } from "@/shared/workflow/node-references";

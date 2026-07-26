@@ -210,15 +210,15 @@ describe("createAction with outputSchema", () => {
     const fields = action.outputFields ?? [];
     expect(fields.length).toBe(3);
 
-    const nameField = fields.find((f) => f.field === "name");
+    const nameField = fields.find((f) => f.path === "name");
     expect(nameField).toBeDefined();
     expect(nameField?.type).toBe("string");
 
-    const ageField = fields.find((f) => f.field === "age");
+    const ageField = fields.find((f) => f.path === "age");
     expect(ageField).toBeDefined();
     expect(ageField?.type).toBe("number");
 
-    const activeField = fields.find((f) => f.field === "active");
+    const activeField = fields.find((f) => f.path === "active");
     expect(activeField).toBeDefined();
     expect(activeField?.type).toBe("boolean");
   });
@@ -234,8 +234,8 @@ describe("createAction with outputSchema", () => {
         score: z.number(),
       }),
       outputFields: [
-        { field: "name", description: "Full legal name" },
-        { field: "extra", description: "Extra field not in schema" },
+        { path: "name", description: "Full legal name" },
+        { path: "extra", description: "Extra field not in schema" },
       ],
       execute() {
         return { success: true, data: { name: "Bob", score: 99 } };
@@ -245,13 +245,13 @@ describe("createAction with outputSchema", () => {
     const fields = action.outputFields ?? [];
     expect(fields.length).toBe(3);
 
-    const nameField = fields.find((f) => f.field === "name");
+    const nameField = fields.find((f) => f.path === "name");
     expect(nameField?.description).toBe("Full legal name");
 
-    const scoreField = fields.find((f) => f.field === "score");
+    const scoreField = fields.find((f) => f.path === "score");
     expect(scoreField).toBeDefined();
 
-    const extraField = fields.find((f) => f.field === "extra");
+    const extraField = fields.find((f) => f.path === "extra");
     expect(extraField?.description).toBe("Extra field not in schema");
   });
 
@@ -261,14 +261,14 @@ describe("createAction with outputSchema", () => {
       label: "No Output Schema",
       description: "Action without output schema",
       schema: z.object({ text: z.string() }),
-      outputFields: [{ field: "result", description: "Manual result field" }],
+      outputFields: [{ path: "result", description: "Manual result field" }],
       execute() {
         return { success: true, data: { result: "ok" } };
       },
     });
 
     expect(action.outputFields).toEqual([
-      { field: "result", description: "Manual result field" },
+      { path: "result", description: "Manual result field" },
     ]);
   });
 });

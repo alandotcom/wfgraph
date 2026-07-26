@@ -35,10 +35,10 @@ const clerkPlugin: IntegrationPlugin = {
       stepFunction: "clerkGetUserStep",
       stepImportPath: "get-user",
       outputFields: [
-        { field: "id", description: "User ID" },
-        { field: "firstName", description: "First name" },
-        { field: "lastName", description: "Last name" },
-        { field: "primaryEmailAddress", description: "Primary email address" },
+        { path: "id", description: "User ID" },
+        { path: "firstName", description: "First name" },
+        { path: "lastName", description: "Last name" },
+        { path: "primaryEmailAddress", description: "Primary email address" },
       ],
       outputConfig: {
         type: "component",
@@ -63,10 +63,10 @@ const clerkPlugin: IntegrationPlugin = {
       stepFunction: "clerkCreateUserStep",
       stepImportPath: "create-user",
       outputFields: [
-        { field: "id", description: "User ID" },
-        { field: "firstName", description: "First name" },
-        { field: "lastName", description: "Last name" },
-        { field: "primaryEmailAddress", description: "Primary email address" },
+        { path: "id", description: "User ID" },
+        { path: "firstName", description: "First name" },
+        { path: "lastName", description: "Last name" },
+        { path: "primaryEmailAddress", description: "Primary email address" },
       ],
       outputConfig: {
         type: "component",
@@ -133,10 +133,10 @@ const clerkPlugin: IntegrationPlugin = {
       stepFunction: "clerkUpdateUserStep",
       stepImportPath: "update-user",
       outputFields: [
-        { field: "id", description: "User ID" },
-        { field: "firstName", description: "First name" },
-        { field: "lastName", description: "Last name" },
-        { field: "primaryEmailAddress", description: "Primary email address" },
+        { path: "id", description: "User ID" },
+        { path: "firstName", description: "First name" },
+        { path: "lastName", description: "Last name" },
+        { path: "primaryEmailAddress", description: "Primary email address" },
       ],
       outputConfig: {
         type: "component",
@@ -193,7 +193,7 @@ const clerkPlugin: IntegrationPlugin = {
       category: "Clerk",
       stepFunction: "clerkDeleteUserStep",
       stepImportPath: "delete-user",
-      outputFields: [{ field: "deleted", description: "Deletion success" }],
+      outputFields: [{ path: "deleted", description: "Deletion success" }],
       configFields: [
         {
           key: "userId",

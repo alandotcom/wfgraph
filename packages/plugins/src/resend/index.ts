@@ -42,7 +42,7 @@ const resendPlugin: IntegrationPlugin = {
       category: "Resend",
       stepFunction: "sendEmailStep",
       stepImportPath: "send-email",
-      outputFields: [{ field: "id", description: "Email ID" }],
+      outputFields: [{ path: "id", description: "Email ID" }],
       configFields: [
         {
           key: "emailFrom",

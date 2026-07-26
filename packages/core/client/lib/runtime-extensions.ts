@@ -1,10 +1,10 @@
 import {
   type ActionConfigField,
   clearRuntimeActions,
-  type OutputField,
   type RuntimeActionDefinition,
   registerRuntimeAction,
 } from "@/plugins/registry";
+import type { ReferenceField } from "@/shared/workflow/node-references";
 
 export type RuntimeTriggerDefinition = {
   type: string;
@@ -13,7 +13,7 @@ export type RuntimeTriggerDefinition = {
   description?: string;
   logoUrl?: string;
   configFields?: ActionConfigField[];
-  outputFields?: OutputField[];
+  outputFields?: ReferenceField[];
 };
 
 type RuntimeExtensionsPayload = {

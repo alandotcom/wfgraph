@@ -5,69 +5,57 @@ import type {
   ConditionFieldType,
 } from "@/shared/workflow/conditions";
 import {
-  parseWorkflowSchemaFieldsString,
-  type WorkflowSchemaField,
-  type WorkflowSchemaFieldType,
-} from "@/shared/workflow/schema-codec";
+  flattenSchemaToReferenceFields,
+  type ReferenceField,
+  type UpstreamField,
+} from "@/shared/workflow/node-references";
+import { parseWorkflowSchemaFieldsString } from "@/shared/workflow/schema-codec";
 import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
 
-type NodeOutputField = {
-  field: string;
-  description: string;
-  fieldType?: WorkflowSchemaFieldType;
-  fieldFormat?: "timestamp";
-  nullable?: boolean;
-  enumValues?: string[];
-};
-
-function dedupeNodeOutputFields(fields: NodeOutputField[]): NodeOutputField[] {
-  const fieldsByPath = new Map<string, NodeOutputField>();
+/** First declaration of a path wins, so defaults stay ahead of schema extras. */
+function dedupeByPath(fields: ReferenceField[]): ReferenceField[] {
+  const fieldsByPath = new Map<string, ReferenceField>();
 
   for (const field of fields) {
-    if (!fieldsByPath.has(field.field)) {
-      fieldsByPath.set(field.field, field);
+    if (!fieldsByPath.has(field.path)) {
+      fieldsByPath.set(field.path, field);
     }
   }
 
   return Array.from(fieldsByPath.values());
 }
 
-const DEFAULT_HTTP_OUTPUT_FIELDS: NodeOutputField[] = [
-  { field: "data", description: "Response data", fieldType: "object" },
+const DEFAULT_HTTP_OUTPUT_FIELDS: ReferenceField[] = [
+  { path: "data", description: "Response data", type: "object" },
   {
-    field: "status",
+    path: "status",
     description: "HTTP status code",
-    fieldType: "number",
+    type: "number",
   },
 ];
 
-const DEFAULT_DATABASE_OUTPUT_FIELDS: NodeOutputField[] = [
-  { field: "rows", description: "Query result rows", fieldType: "array" },
+const DEFAULT_DATABASE_OUTPUT_FIELDS: ReferenceField[] = [
+  { path: "rows", description: "Query result rows", type: "array" },
   {
-    field: "count",
+    path: "count",
     description: "Number of rows",
-    fieldType: "number",
+    type: "number",
   },
 ];
 
-const DEFAULT_TRIGGER_OUTPUT_FIELDS: NodeOutputField[] = [
+const DEFAULT_TRIGGER_OUTPUT_FIELDS: ReferenceField[] = [
   {
-    field: "triggered",
+    path: "triggered",
     description: "Trigger status",
-    fieldType: "boolean",
+    type: "boolean",
   },
   {
-    field: "timestamp",
+    path: "timestamp",
     description: "Trigger timestamp",
-    fieldType: "timestamp",
+    type: "timestamp",
   },
-  { field: "input", description: "Input data", fieldType: "object" },
+  { path: "input", description: "Input data", type: "object" },
 ];
-
-export type UpstreamField = NodeOutputField & {
-  sourceNodeId: string;
-  sourceNodeName: string;
-};
 
 export type ConditionSelectableField = ConditionFieldDefinition & {
   description: string;
@@ -86,52 +74,6 @@ function readConfigString(
   return typeof value === "string" ? value : undefined;
 }
 
-function schemaToFields(
-  schema: WorkflowSchemaField[],
-  prefix = ""
-): NodeOutputField[] {
-  const fields: NodeOutputField[] = [];
-
-  for (const schemaField of schema) {
-    const fieldPath = prefix
-      ? `${prefix}.${schemaField.name}`
-      : schemaField.name;
-    const typeLabel =
-      schemaField.type === "array"
-        ? `${schemaField.itemType}[]`
-        : schemaField.type;
-    const description = schemaField.description || typeLabel;
-
-    fields.push({
-      field: fieldPath,
-      description,
-      fieldType: schemaField.type,
-      ...(schemaField.nullable ? { nullable: true } : {}),
-      ...(schemaField.enumValues ? { enumValues: schemaField.enumValues } : {}),
-    });
-
-    if (
-      schemaField.type === "object" &&
-      schemaField.fields &&
-      schemaField.fields.length > 0
-    ) {
-      fields.push(...schemaToFields(schemaField.fields, fieldPath));
-    }
-
-    if (
-      schemaField.type === "array" &&
-      schemaField.itemType === "object" &&
-      schemaField.fields &&
-      schemaField.fields.length > 0
-    ) {
-      const arrayItemPath = `${fieldPath}[0]`;
-      fields.push(...schemaToFields(schemaField.fields, arrayItemPath));
-    }
-  }
-
-  return fields;
-}
-
 function readOutputSchemaString(
   config: Record<string, unknown> | undefined,
   outputSchemaKey: string
@@ -139,7 +81,7 @@ function readOutputSchemaString(
   return readConfigString(config, outputSchemaKey);
 }
 
-function readSchemaFields(schemaString: string | undefined): NodeOutputField[] {
+function readSchemaFields(schemaString: string | undefined): ReferenceField[] {
   if (!schemaString) {
     return [];
   }
@@ -149,12 +91,12 @@ function readSchemaFields(schemaString: string | undefined): NodeOutputField[] {
     return [];
   }
 
-  return schemaToFields(schema);
+  return flattenSchemaToReferenceFields(schema);
 }
 
 function getHttpRequestOutputFields(
   config: Record<string, unknown> | undefined
-): NodeOutputField[] {
+): ReferenceField[] {
   const outputSchemaFields = readSchemaFields(
     readOutputSchemaString(config, "httpOutputSchema")
   );
@@ -163,7 +105,7 @@ function getHttpRequestOutputFields(
     return DEFAULT_HTTP_OUTPUT_FIELDS;
   }
 
-  return dedupeNodeOutputFields([
+  return dedupeByPath([
     ...DEFAULT_HTTP_OUTPUT_FIELDS,
     ...outputSchemaFields,
   ]);
@@ -171,7 +113,7 @@ function getHttpRequestOutputFields(
 
 function getDatabaseQueryOutputFields(
   config: Record<string, unknown> | undefined
-): NodeOutputField[] {
+): ReferenceField[] {
   const outputSchemaFields = readSchemaFields(
     readOutputSchemaString(config, "dbOutputSchema")
   );
@@ -183,7 +125,7 @@ function getDatabaseQueryOutputFields(
   return DEFAULT_DATABASE_OUTPUT_FIELDS;
 }
 
-function getTriggerOutputFields(node: WorkflowNode): NodeOutputField[] {
+function getTriggerOutputFields(node: WorkflowNode): ReferenceField[] {
   const triggerType = readConfigString(node.data.config, "triggerType");
 
   // Webhook triggers: use webhookOutputSchema from node config
@@ -196,7 +138,7 @@ function getTriggerOutputFields(node: WorkflowNode): NodeOutputField[] {
       return DEFAULT_TRIGGER_OUTPUT_FIELDS;
     }
 
-    return dedupeNodeOutputFields([
+    return dedupeByPath([
       ...DEFAULT_TRIGGER_OUTPUT_FIELDS,
       ...outputSchemaFields,
     ]);
@@ -209,20 +151,9 @@ function getTriggerOutputFields(node: WorkflowNode): NodeOutputField[] {
       runtimeTrigger?.outputFields &&
       runtimeTrigger.outputFields.length > 0
     ) {
-      const triggerFields: NodeOutputField[] = runtimeTrigger.outputFields.map(
-        (field) => ({
-          field: field.field,
-          description: field.description,
-          fieldType: field.type,
-          fieldFormat: field.format,
-          ...(field.nullable ? { nullable: true } : {}),
-          ...(field.enumValues ? { enumValues: field.enumValues } : {}),
-        })
-      );
-
-      return dedupeNodeOutputFields([
+      return dedupeByPath([
         ...DEFAULT_TRIGGER_OUTPUT_FIELDS,
-        ...triggerFields,
+        ...runtimeTrigger.outputFields,
       ]);
     }
   }
@@ -230,20 +161,13 @@ function getTriggerOutputFields(node: WorkflowNode): NodeOutputField[] {
   return DEFAULT_TRIGGER_OUTPUT_FIELDS;
 }
 
-function getPluginActionOutputFields(actionType: string): NodeOutputField[] {
+function getPluginActionOutputFields(actionType: string): ReferenceField[] {
   const action = findActionById(actionType);
   if (!(action?.outputFields && action.outputFields.length > 0)) {
     return [];
   }
 
-  return action.outputFields.map((field) => ({
-    field: field.field,
-    description: field.description,
-    fieldType: field.type,
-    fieldFormat: field.format,
-    ...(field.nullable ? { nullable: true } : {}),
-    ...(field.enumValues ? { enumValues: field.enumValues } : {}),
-  }));
+  return action.outputFields;
 }
 
 export function getNodeDisplayName(node: WorkflowNode): string {
@@ -271,7 +195,7 @@ export function getNodeDisplayName(node: WorkflowNode): string {
   return "Node";
 }
 
-export function getNodeOutputFields(node: WorkflowNode): NodeOutputField[] {
+export function getNodeOutputFields(node: WorkflowNode): ReferenceField[] {
   const actionType = readConfigString(node.data.config, "actionType");
 
   if (actionType === "HTTP Request") {
@@ -293,7 +217,7 @@ export function getNodeOutputFields(node: WorkflowNode): NodeOutputField[] {
     return getTriggerOutputFields(node);
   }
 
-  return [{ field: "data", description: "Output data" }];
+  return [{ path: "data", description: "Output data" }];
 }
 
 export function getUpstreamNodes(input: {
@@ -362,24 +286,20 @@ export function getUpstreamFields(input: {
 }
 
 function toConditionFieldType(field: UpstreamField): ConditionFieldType | null {
-  if (field.fieldType === "timestamp") {
-    return "timestamp";
-  }
-
-  if (field.fieldFormat === "timestamp") {
+  if (field.type === "timestamp" || field.format === "timestamp") {
     return "timestamp";
   }
 
   if (
-    field.fieldType === "string" ||
-    field.fieldType === "number" ||
-    field.fieldType === "boolean"
+    field.type === "string" ||
+    field.type === "number" ||
+    field.type === "boolean"
   ) {
-    return field.fieldType;
+    return field.type;
   }
 
   // Fields without an explicit type (common for custom action outputFields) default to string
-  if (field.fieldType === undefined) {
+  if (field.type === undefined) {
     return "string";
   }
 
@@ -394,7 +314,7 @@ export function getUpstreamConditionFields(input: {
   const fieldsByPath = new Map<string, ConditionSelectableField>();
 
   for (const field of getUpstreamFields(input)) {
-    const path = field.field.trim();
+    const path = field.path.trim();
     if (!path) {
       continue;
     }

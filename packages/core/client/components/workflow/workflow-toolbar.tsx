@@ -83,6 +83,7 @@ import {
   getMissingRequiredFieldsForNodes,
   type MissingRequiredFieldInfo,
 } from "@/shared/workflow/action-config-validation";
+import { findTemplateTokens } from "@/shared/workflow/node-references";
 import {
   SYSTEM_ACTION_INTEGRATIONS,
   SYSTEM_INTEGRATION_LABELS,
@@ -144,12 +145,12 @@ function extractTemplateReferences(
     return [];
   }
 
-  const pattern = /\{\{@([^:]+):([^}]+)\}\}/g;
-  const matches = value.matchAll(pattern);
-
-  return Array.from(matches).map((match) => ({
-    nodeId: match[1],
-    displayText: match[2],
+  return findTemplateTokens(value).map((token) => ({
+    nodeId: token.nodeId,
+    // What the author sees in the token, label and field path together.
+    displayText: token.fieldPath
+      ? `${token.nodeLabel}.${token.fieldPath}`
+      : token.nodeLabel,
   }));
 }
 

@@ -1,8 +1,11 @@
 import { parse as parseCel } from "@marcbachmann/cel-js";
-import type { ActionConfigField, OutputField } from "@/plugins/registry";
+import type { ActionConfigField } from "@/plugins/registry";
 import { getValueByPath } from "@/utils/object-path";
 import type { InputSchema } from "@/workflow/action-registry";
-import type { WorkflowSchemaField } from "@/workflow/schema-codec";
+import {
+  type ReferenceField,
+  schemaFieldToReferenceField,
+} from "@/workflow/node-references";
 import {
   configFieldsFromJsonSchema,
   jsonSchemaLibraryOptions,
@@ -150,7 +153,7 @@ export type WorkflowTriggerUiDefinition = {
   description?: string;
   logoUrl?: string;
   configFields?: ActionConfigField[];
-  outputFields?: OutputField[];
+  outputFields?: ReferenceField[];
 };
 
 export type WorkflowTriggerDefinition = {
@@ -703,20 +706,9 @@ function prefixInngestOptions<TPayload extends Record<string, unknown>>(
   return result;
 }
 
-function schemaFieldToOutputField(field: WorkflowSchemaField): OutputField {
-  return {
-    field: field.name,
-    description: field.description ?? field.name,
-    type: field.type,
-    ...(field.type === "timestamp" ? { format: "timestamp" as const } : {}),
-    ...(field.nullable ? { nullable: true } : {}),
-    ...(field.enumValues ? { enumValues: field.enumValues } : {}),
-  };
-}
-
 function extractStandardSchemaOutputFields(
   schema: TriggerPayloadSchema<Record<string, unknown>>
-): OutputField[] | undefined {
+): ReferenceField[] | undefined {
   if (!isStandardSchema(schema)) {
     return undefined;
   }
@@ -749,7 +741,7 @@ function extractStandardSchemaOutputFields(
 
     const fields = parseWorkflowSchemaFieldsOrJsonSchema(jsonSchema);
     return fields && fields.length > 0
-      ? fields.map(schemaFieldToOutputField)
+      ? fields.map((field) => schemaFieldToReferenceField(field))
       : undefined;
   } catch {
     return undefined;
@@ -758,7 +750,7 @@ function extractStandardSchemaOutputFields(
 
 function outputFieldsFromTriggerSchema<
   TPayload extends Record<string, unknown>,
->(schema: TriggerPayloadSchema<TPayload>): OutputField[] {
+>(schema: TriggerPayloadSchema<TPayload>): ReferenceField[] {
   const standardFields = extractStandardSchemaOutputFields(schema);
   if (standardFields) {
     return standardFields;
@@ -768,7 +760,7 @@ function outputFieldsFromTriggerSchema<
   const schemaKeys = extractSchemaKeys(schema);
   if (schemaKeys && schemaKeys.length > 0) {
     return schemaKeys.map((key) => ({
-      field: key,
+      path: key,
       description: key,
     }));
   }
