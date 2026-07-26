@@ -1,4 +1,8 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import {
+  registerRuntimeAction,
+  unregisterRuntimeAction,
+} from "@/shared/workflow/action-registry";
 import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
 import type { WorkflowNode } from "@/shared/workflow/types";
 import { executeWorkflow } from "./core";
@@ -31,7 +35,12 @@ function createTriggerNode(id: string): WorkflowNode {
   };
 }
 
-function createConditionNode(id: string, condition: boolean): WorkflowNode {
+// `condition` is stored either as a literal boolean or as the CEL expression the
+// condition editor compiles, which the engine evaluates against upstream outputs.
+function createConditionNode(
+  id: string,
+  condition: boolean | string
+): WorkflowNode {
   return {
     id,
     type: "action",
@@ -238,6 +247,116 @@ describe("executeWorkflow branch traversal", () => {
     expect(result.success).toBe(true);
     expect(result.results.true_node_a?.success).toBe(true);
     expect(result.results.true_node_b?.success).toBe(true);
+    expect(result.results.false_node).toBeUndefined();
+  });
+});
+
+/**
+ * A CEL condition reads bare field names out of one flat context merged from every
+ * upstream node's output. Runtime and plugin steps return their fields inside a
+ * `{ success, data }` wrapper, so these tests pin that the wrapper is transparent
+ * here in the same way it is transparent to a template token.
+ */
+describe("condition context from upstream outputs", () => {
+  const WRAPPED_ACTION_ID = "test/wrapped-output-action";
+  let store: RecordingWorkflowStore;
+
+  beforeEach(() => {
+    store = createRecordingWorkflowStore();
+    registerRuntimeAction({
+      id: WRAPPED_ACTION_ID,
+      label: "Wrapped Output",
+      description: "Returns its fields inside the standard step wrapper",
+      execute: () => ({ success: true, data: { donorId: "abc" } }),
+    });
+  });
+
+  afterEach(() => {
+    unregisterRuntimeAction(WRAPPED_ACTION_ID);
+  });
+
+  function createConditionRoutingGraph(expression: string) {
+    return createSerializedWorkflowGraph({
+      nodes: [
+        createTriggerNode("trigger_1"),
+        {
+          id: "action_1",
+          type: "action",
+          position: { x: 100, y: 100 },
+          data: {
+            label: "Wrapped Output",
+            type: "action",
+            config: { actionType: WRAPPED_ACTION_ID },
+          },
+        },
+        createConditionNode("condition_node", expression),
+        createConditionNode("true_node", true),
+        createConditionNode("false_node", true),
+      ],
+      edges: [
+        { id: "edge_t_a", source: "trigger_1", target: "action_1" },
+        { id: "edge_a_c", source: "action_1", target: "condition_node" },
+        createConditionBranchEdge({
+          id: "edge_c_true",
+          source: "condition_node",
+          target: "true_node",
+          branch: "true",
+        }),
+        createConditionBranchEdge({
+          id: "edge_c_false",
+          source: "condition_node",
+          target: "false_node",
+          branch: "false",
+        }),
+      ],
+    });
+  }
+
+  it("reads a field out of a step's success/data wrapper", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createConditionRoutingGraph('donorId == "abc"'),
+        executionId: "exec_wrapped_condition",
+        workflowId: "workflow_wrapped_condition",
+      },
+      undefined,
+      store
+    );
+
+    expect(result.results.condition_node?.success).toBe(true);
+    expect(result.results.true_node?.success).toBe(true);
+    expect(result.results.false_node).toBeUndefined();
+  });
+
+  it("routes to the false branch when the wrapped field does not match", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createConditionRoutingGraph('donorId == "someone-else"'),
+        executionId: "exec_wrapped_condition_false",
+        workflowId: "workflow_wrapped_condition",
+      },
+      undefined,
+      store
+    );
+
+    expect(result.results.true_node).toBeUndefined();
+    expect(result.results.false_node?.success).toBe(true);
+  });
+
+  it("still reads a field from an output that carries no wrapper", async () => {
+    // Trigger output is a plain record, so its fields sit directly in the context.
+    const result = await executeWorkflow(
+      {
+        graph: createConditionRoutingGraph('plan == "premium"'),
+        executionId: "exec_plain_condition",
+        workflowId: "workflow_plain_condition",
+        triggerInput: { plan: "premium" },
+      },
+      undefined,
+      store
+    );
+
+    expect(result.results.true_node?.success).toBe(true);
     expect(result.results.false_node).toBeUndefined();
   });
 });

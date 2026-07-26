@@ -21,6 +21,7 @@ import {
   parseTemplate,
   resolveOutputPath,
   type TemplateToken,
+  unwrapStepOutput,
 } from "@/shared/workflow/node-references";
 import { validateWorkflowOutputAgainstSchema } from "@/shared/workflow/schema-validation";
 import {
@@ -241,15 +242,27 @@ function getConditionNextNodeIds(input: {
     .map((edge) => edge.target);
 }
 
+/**
+ * Fold one node's output into the flat namespace a CEL condition reads from.
+ *
+ * Steps return their fields inside a `{ success, data }` wrapper, and a condition
+ * names those fields bare (`donorId == "abc"`), so the output goes through the same
+ * unwrapping a template token gets before its keys are lifted into the context.
+ *
+ * Known hazard, deliberately left alone: the namespace is flat across every node,
+ * so two nodes that both produce a field called `id` collide, and the node that
+ * runs later wins. Node-qualifying the context would need a migration over stored
+ * graphs, which persist both the compiled CEL string and the structured rules.
+ */
 function mergeConditionContextValue(
   context: Record<string, unknown>,
   value: unknown
 ) {
-  if (!isRecord(value)) {
+  const record = unwrapStepOutput(value);
+  if (!isRecord(record)) {
     return;
   }
 
-  const record = value;
   Object.assign(context, record);
 
   const nestedInput = record.input;

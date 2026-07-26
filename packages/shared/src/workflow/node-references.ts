@@ -235,6 +235,17 @@ function isStepWrapper(
   return isRecord(value) && typeof value.success === "boolean" && "data" in value;
 }
 
+/**
+ * Step through a `{ success, data }` wrapper to the payload a reader means.
+ *
+ * Every reader of a node output goes through here, so the wrapper is transparent
+ * in the same way everywhere: to a template token that names a field, and to a
+ * CEL condition that reads bare field names out of a merged context.
+ */
+export function unwrapStepOutput(output: unknown): unknown {
+  return isStepWrapper(output) ? output.data : output;
+}
+
 function parsePathSegments(path: string): PathSegment[] {
   return path.split(".").flatMap((part) => {
     const trimmed = part.trim();
@@ -282,8 +293,7 @@ export function resolveOutputPath(output: unknown, path: string): unknown {
   const namesWrapperKey =
     firstKey === "success" || firstKey === "data" || firstKey === "error";
 
-  let current: unknown =
-    isStepWrapper(output) && !namesWrapperKey ? output.data : output;
+  let current: unknown = namesWrapperKey ? output : unwrapStepOutput(output);
 
   for (const segment of segments) {
     if (current === null || current === undefined) {
