@@ -42,10 +42,12 @@ yarn-error.log*
 .vercel
 
 # typescript
+# Generated declarations land in dist/, which is ignored below. A blanket
+# *.d.ts rule used to live here and it silently hid ~100 stale declarations
+# that had been emitted next to their sources; without it, a stray emit shows
+# up in git status instead of shadowing the real .ts files during a search.
 *.tsbuildinfo
 next-env.d.ts
-*.d.ts
-!packages/**/src/types/**/*.d.ts
 .env*.local
 
 tmp/
