@@ -16,7 +16,7 @@
     }
   },
   "scripts": {
-    "build": "bunup"
+    "build": "tsdown"
   },
   "dependencies": {
     "@rova/shared": "workspace:*",
@@ -52,7 +52,6 @@
     "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-router": "^1.159.5",
     "@xyflow/react": "catalog:",
-    "bunup": "^0.16.29",
     "class-variance-authority": "^0.7.1",
     "cronstrue": "^3.12.0",
     "d3-hierarchy": "^3.1.2",

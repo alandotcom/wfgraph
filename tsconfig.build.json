@@ -1,0 +1,51 @@
+{
+  // tsdown reads this file for two things: module/path resolution while rolldown
+  // bundles, and the program that tsgo compiles to produce the .d.ts inputs.
+  //
+  // It lives at the repo root rather than next to packages/core because
+  // rolldown-plugin-dts runs tsgo with `--rootDir <dirname of this file>`.
+  // @rova/shared and @rova/plugins are private workspace packages with no build
+  // of their own, so their sources are pulled into the bundle through the path
+  // aliases below. Anchoring the root here is what lets tsgo emit declarations
+  // for those sibling packages; from inside packages/core they would sit outside
+  // rootDir and be skipped, leaving the .d.ts bundle with missing modules.
+  //
+  // The TypeScript emitter never runs from here (tsgo is driven with its own
+  // flags), so declaration settings in this file would be dead config.
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "types": ["bun-types", "node"],
+    "paths": {
+      "@rova/shared": ["./packages/shared/src"],
+      "@rova/plugins": ["./packages/plugins/src/index.ts"],
+      "@rova/plugins/*": ["./packages/plugins/src/*"],
+      "@/shared/*": ["./packages/shared/src/*"],
+      "@/backend/*": ["./packages/core/src/backend/*"],
+      "@/plugins/*": [
+        "./packages/shared/src/plugins/*",
+        "./packages/plugins/src/*"
+      ],
+      "@/*": [
+        "./packages/shared/src/*",
+        "./packages/core/src/*",
+        "./packages/core/client/*",
+        "./packages/plugins/src/*"
+      ]
+    }
+  },
+  // Only the library sources. The client SPA is built separately by
+  // scripts/build-client.ts and is not part of the published entrypoints.
+  // Sources in packages/shared and packages/plugins enter the program as
+  // imports of these files.
+  "include": ["packages/core/src/**/*.ts", "packages/core/src/**/*.tsx"]
+}

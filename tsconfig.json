@@ -46,7 +46,7 @@
     "packages/core/client/**/*.ts",
     "packages/core/client/**/*.tsx",
     "packages/core/drizzle.config.ts",
-    "packages/core/bunup.config.ts",
+    "packages/core/tsdown.config.ts",
     "packages/plugins/src/**/*.ts",
     "packages/plugins/src/**/*.tsx"
   ],
