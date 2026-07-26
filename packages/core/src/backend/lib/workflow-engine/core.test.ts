@@ -236,3 +236,134 @@ describe("run persistence through the store port", () => {
     expect(store.calls).toHaveLength(0);
   });
 });
+
+/**
+ * Template tokens are minted by the editor's autocomplete, which offers an
+ * array element as `field[0].child`. These tests pin the live engine path so an
+ * offered token resolves to the value a user sees in the picker.
+ */
+describe("template resolution into action config", () => {
+  const PRODUCER_ACTION_ID = "test/producer-action";
+  const CONSUMER_ACTION_ID = "test/consumer-action";
+
+  let capturedPayload: Record<string, unknown> = {};
+
+  beforeEach(() => {
+    capturedPayload = {};
+
+    registerRuntimeAction({
+      id: PRODUCER_ACTION_ID,
+      label: "Producer",
+      description: "Produces the output later nodes reference",
+      execute: () => ({
+        success: true,
+        data: {
+          items: [{ name: "Widget" }, { name: "Gadget" }],
+          customer: { name: "Ada" },
+          count: 2,
+        },
+      }),
+    });
+
+    registerRuntimeAction({
+      id: CONSUMER_ACTION_ID,
+      label: "Consumer",
+      description: "Records the config it was handed",
+      execute: ({ payload }) => {
+        capturedPayload = payload;
+        return { success: true, data: {} };
+      },
+    });
+  });
+
+  afterEach(() => {
+    unregisterRuntimeAction(PRODUCER_ACTION_ID);
+    unregisterRuntimeAction(CONSUMER_ACTION_ID);
+  });
+
+  async function runWithConsumerConfig(
+    config: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createTriggerNode("trigger_1"),
+        {
+          id: "action_1",
+          type: "action",
+          position: { x: 100, y: 100 },
+          data: {
+            label: "Producer",
+            type: "action",
+            config: { actionType: PRODUCER_ACTION_ID },
+          },
+        },
+        {
+          id: "action_2",
+          type: "action",
+          position: { x: 200, y: 200 },
+          data: {
+            label: "Consumer",
+            type: "action",
+            config: { actionType: CONSUMER_ACTION_ID, ...config },
+          },
+        },
+      ],
+      edges: [
+        { id: "edge_1", source: "trigger_1", target: "action_1" },
+        { id: "edge_2", source: "action_1", target: "action_2" },
+      ],
+    });
+
+    await executeWorkflow(
+      {
+        graph,
+        executionId: "exec_templates",
+        workflowId: "workflow_templates",
+      },
+      createInMemoryWorkflowRuntime(),
+      createRecordingWorkflowStore()
+    );
+
+    return capturedPayload;
+  }
+
+  it("resolves the array element path the autocomplete offers", async () => {
+    const payload = await runWithConsumerConfig({
+      subject: "{{@action_1:Producer.items[0].name}}",
+    });
+
+    expect(payload.subject).toBe("Widget");
+  });
+
+  it("resolves an array element past the first one", async () => {
+    const payload = await runWithConsumerConfig({
+      subject: "Order for {{@action_1:Producer.items[1].name}}",
+    });
+
+    expect(payload.subject).toBe("Order for Gadget");
+  });
+
+  it("still resolves a plain dotted path", async () => {
+    const payload = await runWithConsumerConfig({
+      subject: "{{@action_1:Producer.customer.name}}",
+    });
+
+    expect(payload.subject).toBe("Ada");
+  });
+
+  it("resolves an out-of-range index to an empty string", async () => {
+    const payload = await runWithConsumerConfig({
+      subject: "{{@action_1:Producer.items[5].name}}",
+    });
+
+    expect(payload.subject).toBe("");
+  });
+
+  it("resolves a bracket segment on a non-array to an empty string", async () => {
+    const payload = await runWithConsumerConfig({
+      subject: "{{@action_1:Producer.count[0]}}",
+    });
+
+    expect(payload.subject).toBe("");
+  });
+});

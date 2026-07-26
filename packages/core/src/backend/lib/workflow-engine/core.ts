@@ -17,6 +17,11 @@ import { getErrorMessageAsync } from "@/shared/utils";
 import { resolveWaitUntil } from "@/shared/utils/wait-time";
 import { normalizeConditionBranch } from "@/shared/workflow/condition-branch";
 import { toWorkflowGraphData } from "@/shared/workflow/graph";
+import {
+  parseTemplate,
+  resolveOutputPath,
+  type TemplateToken,
+} from "@/shared/workflow/node-references";
 import { validateWorkflowOutputAgainstSchema } from "@/shared/workflow/schema-validation";
 import {
   evaluateWorkflowTrigger,
@@ -431,7 +436,57 @@ async function executeActionStepInner(input: {
 }
 
 /**
- * Process template variables in config
+ * Render a resolved value back into the surrounding template string. Objects and
+ * arrays become JSON so a whole node output can be dropped into a text field.
+ * A missing value renders as empty text, which is what an upstream node that was
+ * disabled or that failed to produce the field leaves behind.
+ */
+function stringifyTemplateValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return `${value}`;
+  }
+  if (typeof value === "symbol") {
+    return value.toString();
+  }
+  return "";
+}
+
+function resolveTemplateToken(
+  token: TemplateToken,
+  outputs: NodeOutputs
+): string {
+  // Outputs are keyed by a sanitized node id (see where they are stored below).
+  const output = outputs[token.nodeId.replace(/[^a-zA-Z0-9]/g, "_")];
+  if (!output) {
+    // The token names a node that has not run, so the authored text stays put.
+    return token.raw;
+  }
+
+  return stringifyTemplateValue(
+    resolveOutputPath(output.data, token.fieldPath)
+  );
+}
+
+/**
+ * Replace every `{{@nodeId:Label.field}}` reference in the config's string values
+ * with the upstream value it names.
+ *
+ * Both the grammar and the path walking come from `node-references`, the module
+ * the editor's autocomplete builds its suggestions with, so a path it offers
+ * (`items[0].name`, say) resolves to the same value here at run time.
  */
 function processTemplates(
   config: Record<string, unknown>,
@@ -440,100 +495,18 @@ function processTemplates(
   const processed: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(config)) {
-    if (typeof value === "string") {
-      // Process template variables like {{@nodeId:Label.field}}
-      let processedValue = value;
-      const templatePattern = /\{\{@([^:]+):([^}]+)\}\}/g;
-      processedValue = processedValue.replace(
-        templatePattern,
-        // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Template processing requires nested logic
-        (match, nodeId, rest) => {
-          const sanitizedNodeId = nodeId.replace(/[^a-zA-Z0-9]/g, "_");
-          const output = outputs[sanitizedNodeId];
-          if (!output) {
-            return match;
-          }
-
-          const dotIndex = rest.indexOf(".");
-          if (dotIndex === -1) {
-            // No field path, return the entire output data
-            const data = output.data;
-            if (data === null || data === undefined) {
-              // Return empty string for null/undefined data (e.g., from disabled nodes)
-              return "";
-            }
-            if (typeof data === "object") {
-              return JSON.stringify(data);
-            }
-            if (typeof data === "string") {
-              return data;
-            }
-            if (
-              typeof data === "number" ||
-              typeof data === "boolean" ||
-              typeof data === "bigint"
-            ) {
-              return `${data}`;
-            }
-            if (typeof data === "symbol") {
-              return data.toString();
-            }
-            return "";
-          }
-
-          // If data is null/undefined, return empty string instead of trying to access fields
-          if (output.data === null || output.data === undefined) {
-            return "";
-          }
-
-          const fieldPath = rest.substring(dotIndex + 1);
-          const fields = fieldPath.split(".");
-          let current: unknown = output.data;
-
-          // For standardized outputs { success, data, error }, automatically look inside data
-          // unless explicitly accessing success/data/error
-          const firstField = fields[0];
-          if (
-            isRecord(current) &&
-            "success" in current &&
-            "data" in current &&
-            firstField !== "success" &&
-            firstField !== "data" &&
-            firstField !== "error"
-          ) {
-            current = current.data;
-          }
-
-          for (const field of fields) {
-            if (isRecord(current) && field in current) {
-              current = current[field];
-            } else {
-              // Field access failed, return empty string
-              return "";
-            }
-          }
-
-          // Convert value to string, using JSON.stringify for objects/arrays
-          if (current === null || current === undefined) {
-            return "";
-          }
-          if (typeof current === "object") {
-            return JSON.stringify(current);
-          }
-          if (typeof current === "string") {
-            return current;
-          }
-          if (typeof current === "number" || typeof current === "boolean") {
-            return String(current);
-          }
-          return "";
-        }
-      );
-
-      processed[key] = processedValue;
-    } else {
+    if (typeof value !== "string") {
       processed[key] = value;
+      continue;
     }
+
+    processed[key] = parseTemplate(value)
+      .map((segment) =>
+        segment.kind === "literal"
+          ? segment.text
+          : resolveTemplateToken(segment.token, outputs)
+      )
+      .join("");
   }
 
   return processed;
