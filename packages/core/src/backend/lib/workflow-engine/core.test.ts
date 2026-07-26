@@ -1,8 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import type {
-  LogStepCompleteParams,
-  LogStepStartParams,
-} from "@/backend/lib/workflow-logging";
 import {
   type RuntimeActionResult,
   registerRuntimeAction,
@@ -16,25 +12,6 @@ import {
   type RecordingWorkflowStore,
 } from "./recording-store";
 import { createInMemoryWorkflowRuntime } from "./runtime";
-
-// Per-action step logs are still written by step-handler's withStepLogging,
-// which plugin steps call themselves and which has not moved behind the
-// WorkflowStore port. These stubs exist only to keep that path off a real
-// database - everything the engine itself persists is asserted through the
-// recording store below.
-const logStepStartDb = mock<
-  (params: LogStepStartParams) => Promise<{ logId: string; startTime: number }>
->(() => Promise.resolve({ logId: "mock-log-id", startTime: Date.now() }));
-const logStepCompleteDb = mock<
-  (params: LogStepCompleteParams) => Promise<void>
->(() => Promise.resolve());
-const logWorkflowCompleteDb = mock(() => Promise.resolve());
-
-mock.module("@/backend/lib/workflow-logging", () => ({
-  logStepStartDb,
-  logStepCompleteDb,
-  logWorkflowCompleteDb,
-}));
 
 const RUNTIME_ACTION_ID = "test/runtime-action";
 
@@ -95,9 +72,6 @@ describe("runtime action execution", () => {
     });
 
     store = createRecordingWorkflowStore();
-    logStepStartDb.mockClear();
-    logStepCompleteDb.mockClear();
-    logWorkflowCompleteDb.mockClear();
     executeFn.mockClear();
     executeFn.mockImplementation(() => ({
       success: true,
@@ -136,11 +110,11 @@ describe("runtime action execution", () => {
       store
     );
 
-    const startCall = logStepStartDb.mock.calls.find(
-      (call) => call[0].nodeId === "action_1"
-    );
-    expect(startCall?.[0].nodeName).toBe("Look Up Donor");
-    expect(startCall?.[0].executionId).toBe("exec_123");
+    const startCall = store
+      .callsOf("startStepLog")
+      .find((call) => call.nodeId === "action_1");
+    expect(startCall?.nodeName).toBe("Look Up Donor");
+    expect(startCall?.executionId).toBe("exec_123");
   });
 
   it("reports a failing runtime action as a failed node result", async () => {

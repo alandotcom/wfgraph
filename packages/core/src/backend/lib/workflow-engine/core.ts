@@ -10,10 +10,7 @@ import {
   getStepImporter,
   type StepImporter,
 } from "@/backend/lib/step-registry";
-import {
-  type StepContext,
-  withStepLogging,
-} from "@/backend/lib/steps/step-handler";
+import type { StepContext } from "@/backend/lib/steps/step-handler";
 import { triggerStep } from "@/backend/lib/steps/trigger";
 import { withSpan } from "@/backend/lib/telemetry";
 import { getErrorMessageAsync } from "@/shared/utils";
@@ -146,6 +143,77 @@ function hasHaltBranch(value: unknown): boolean {
   return isRecord(value) && value.haltBranch === true;
 }
 
+/** Unwraps a standardized `{ success, data }` step result for logging. */
+function readStepData(value: unknown): unknown {
+  return isRecord(value) && "data" in value ? value.data : value;
+}
+
+/**
+ * Opens a step-log row around a runtime-extension action, then closes it with
+ * the outcome. Plugin and system steps do their own logging inside the step
+ * module; runtime actions have no such wrapper, so the engine logs them here.
+ *
+ * Routed through the store port rather than the database helpers directly, so
+ * the engine stays free of db imports and tests can assert on a recording
+ * store. A logging failure must never fail the step it is describing, so every
+ * write is best-effort.
+ */
+async function withStoreStepLogging<TOutput>(
+  store: WorkflowStore,
+  context: StepContext,
+  // Runtime actions may be written sync or async; accept either.
+  runStep: () => TOutput | Promise<TOutput>
+): Promise<TOutput> {
+  const { executionId } = context;
+  // No execution to attach rows to (a store that persists still needs an id).
+  const handle = executionId
+    ? await store
+        .startStepLog({
+          executionId,
+          nodeId: context.nodeId,
+          nodeName: context.nodeName,
+          nodeType: context.nodeType,
+          // Matches the previous wrapper, which stripped every internal field
+          // and so logged an empty input for this path.
+          input: {},
+        })
+        .catch(() => undefined)
+    : undefined;
+
+  const complete = async (
+    status: "success" | "error",
+    output?: unknown,
+    error?: string
+  ) => {
+    if (!handle?.logId) {
+      return;
+    }
+    await store
+      .completeStepLog({ ...handle, status, output, error })
+      .catch(() => undefined);
+  };
+
+  try {
+    const result = await runStep();
+
+    if (hasSuccessFlag(result) && !result.success) {
+      const message =
+        readStepErrorMessage(result.error) ?? "Step execution failed";
+      await complete("error", result.error ?? { message }, message);
+    } else if (hasSuccessFlag(result)) {
+      // Standardized results log their payload rather than the wrapper.
+      await complete("success", readStepData(result));
+    } else {
+      await complete("success", result);
+    }
+
+    return result;
+  } catch (error) {
+    await complete("error", undefined, await getErrorMessageAsync(error));
+    throw error;
+  }
+}
+
 function isTriggeredFalse(value: unknown): boolean {
   return isRecord(value) && value.triggered === false;
 }
@@ -249,6 +317,7 @@ function executeActionStep(input: {
   config: Record<string, unknown>;
   outputs: NodeOutputs;
   context: StepContext;
+  store: WorkflowStore;
 }) {
   return withSpan(
     "rova.workflow.action.execute",
@@ -266,8 +335,9 @@ async function executeActionStepInner(input: {
   config: Record<string, unknown>;
   outputs: NodeOutputs;
   context: StepContext;
+  store: WorkflowStore;
 }) {
-  const { actionType, config, outputs, context } = input;
+  const { actionType, config, outputs, context, store } = input;
   const integrationId = readConfigString(config, "integrationId");
 
   // Build step input WITHOUT credentials, but WITH integrationId reference and logging context
@@ -330,7 +400,7 @@ async function executeActionStepInner(input: {
       } = config;
 
       const executeFn = stepImporter.execute;
-      return await withStepLogging({ _context: context }, async () =>
+      return await withStoreStepLogging(store, context, () =>
         executeFn({
           payload: runtimeActionPayload,
           context: {
@@ -1613,6 +1683,7 @@ async function executeWorkflowInner(
           config: processedConfig,
           outputs,
           context: stepContext,
+          store,
         });
       }
 

@@ -8,6 +8,7 @@
  */
 
 import { logWorkflowComplete } from "@/backend/lib/steps/step-handler";
+import { redactSensitiveData } from "@/backend/lib/utils/redact";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import {
   logStepCompleteDb,
@@ -21,9 +22,14 @@ import {
 import type { WorkflowStore } from "./store";
 
 export const dbWorkflowStore: WorkflowStore = {
-  startStepLog: (input) => logStepStartDb(input),
+  // Step payloads can carry secrets pulled in through templates, so they are
+  // scrubbed here rather than at each call site - this is the last point before
+  // they reach a table.
+  startStepLog: (input) =>
+    logStepStartDb({ ...input, input: redactSensitiveData(input.input) }),
 
-  completeStepLog: (input) => logStepCompleteDb(input),
+  completeStepLog: (input) =>
+    logStepCompleteDb({ ...input, output: redactSensitiveData(input.output) }),
 
   recordAuditEvent: (input) => logWorkflowAuditEvent(input),
 

@@ -24,15 +24,6 @@ import {
 } from "./recording-store";
 import { createInMemoryWorkflowRuntime } from "./runtime";
 
-// Per-action step logs still go through step-handler's withStepLogging, which
-// is not behind the store port; this stub keeps that path off a database.
-mock.module("@/backend/lib/workflow-logging", () => ({
-  logStepStartDb: () =>
-    Promise.resolve({ logId: "mock-log-id", startTime: Date.now() }),
-  logStepCompleteDb: () => Promise.resolve(),
-  logWorkflowCompleteDb: () => Promise.resolve(),
-}));
-
 const EMAIL_ACTION_ID = "test/replay-email";
 const FOLLOWUP_ACTION_ID = "test/replay-followup";
 const BRANCH_ACTION_ID = "test/replay-branch";
