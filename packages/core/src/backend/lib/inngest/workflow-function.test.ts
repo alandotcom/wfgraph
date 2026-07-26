@@ -1,19 +1,43 @@
-import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  vi,
+} from "bun:test";
 import { InngestTestEngine } from "@inngest/test";
 import { dbWorkflowStore } from "@/backend/lib/workflow-engine/db-store";
 import type { WorkflowExecutionRuntime } from "@/backend/lib/workflow-engine/runtime";
 import type { WorkflowStore } from "@/backend/lib/workflow-engine/store";
 import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
 
+// Bun applies module mocks process-wide, so replacing the engine outright would
+// also replace it for every other file in the run - `replay-e2e.test.ts` needs
+// the real one to observe an actual suspend. Capture the real module first and
+// delegate to it by default; a test that wants a stub installs one per case.
+const realCore = await import("@/backend/lib/workflow-engine/core");
+// Bind the real function now. A module namespace is a live view, so reading
+// `realCore.executeWorkflow` after the mock is installed would return the mock
+// and recurse forever.
+const realExecuteWorkflow = realCore.executeWorkflow;
+const executeWorkflowMock = vi.fn();
+
+// Mocks install when this file loads, but other files' tests may run before or
+// after this one, so the stub is off by default and switched on only while the
+// cases below execute.
+let stubEngine = false;
+
 mock.module("../workflow-engine/core", () => ({
-  executeWorkflow: vi.fn(),
+  ...realCore,
+  executeWorkflow: (...args: Parameters<typeof realExecuteWorkflow>) =>
+    stubEngine ? executeWorkflowMock(...args) : realExecuteWorkflow(...args),
 }));
 
-const { executeWorkflow } = await import("@/backend/lib/workflow-engine/core");
 const { createWorkflowRunRequestedFunction, createWorkflowTriggerExpression } =
   await import("./workflow-function");
-
-const executeWorkflowMock = executeWorkflow as ReturnType<typeof vi.fn>;
 
 function createTestFunction() {
   return createWorkflowRunRequestedFunction({
@@ -59,6 +83,14 @@ async function executeWorkflowFunctionForTest() {
 }
 
 describe("workflowRunRequestedFunction", () => {
+  beforeAll(() => {
+    stubEngine = true;
+  });
+
+  afterAll(() => {
+    stubEngine = false;
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
