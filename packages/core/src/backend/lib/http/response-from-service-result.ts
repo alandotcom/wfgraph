@@ -7,6 +7,7 @@ import type {
 // resume) speak HTTP directly, so this is where a domain failure kind picks up a status.
 const FAILURE_KIND_TO_HTTP_STATUS = {
   invalid: 400,
+  unauthorized: 401,
   not_found: 404,
   conflict: 409,
   internal: 500,

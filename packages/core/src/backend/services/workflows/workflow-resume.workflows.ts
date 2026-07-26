@@ -34,7 +34,7 @@ export async function postWorkflowResumeResult(
 ): Promise<
   ServiceResult<
     WorkflowResumeSuccess,
-    "invalid" | "not_found" | "conflict" | "internal",
+    "invalid" | "unauthorized" | "not_found" | "conflict" | "internal",
     WorkflowResumeError
   >
 > {
@@ -60,9 +60,9 @@ export async function postWorkflowResumeResult(
 
     if (!apiKeyValidation.valid) {
       requestLogger.warn("Workflow resume rejected due to invalid API key", {
-        statusCode: apiKeyValidation.statusCode ?? 401,
+        reason: apiKeyValidation.error,
       });
-      return failure("invalid", {
+      return failure("unauthorized", {
         error: apiKeyValidation.error,
       });
     }

@@ -7,6 +7,7 @@ import { getRpcErrorMessage } from "@/shared/rpc/error-message";
 
 const FAILURE_KIND_TO_ORPC_CODE = {
   invalid: "BAD_REQUEST",
+  unauthorized: "UNAUTHORIZED",
   not_found: "NOT_FOUND",
   conflict: "CONFLICT",
   internal: "INTERNAL_SERVER_ERROR",

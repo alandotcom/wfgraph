@@ -55,7 +55,7 @@ export async function postWorkflowWebhookResult(input: {
 }): Promise<
   ServiceResult<
     WorkflowWebhookResponse,
-    "invalid" | "not_found" | "internal",
+    "invalid" | "unauthorized" | "not_found" | "internal",
     ApiErrorPayload
   >
 > {
@@ -74,7 +74,7 @@ export async function postWorkflowWebhookResult(input: {
     const apiKeyValidation = await validateApiKey(authHeader);
 
     if (!apiKeyValidation.valid) {
-      return failure("invalid", {
+      return failure("unauthorized", {
         error: apiKeyValidation.error,
       });
     }
