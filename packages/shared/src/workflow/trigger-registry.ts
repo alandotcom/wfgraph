@@ -462,7 +462,7 @@ function isPromiseLike<T>(value: unknown): value is Promise<T> {
     (typeof value === "object" || typeof value === "function") &&
     value !== null &&
     "then" in value &&
-    typeof (value as { then: unknown }).then === "function"
+    typeof value.then === "function"
   );
 }
 
@@ -635,7 +635,7 @@ function rewriteCelExpression(
   let ast: CelAstNode;
   try {
     const parsed = parseCel(expression);
-    ast = parsed.ast as CelAstNode;
+    ast = parsed.ast;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Invalid CEL expression in priority.run: ${message}`, {

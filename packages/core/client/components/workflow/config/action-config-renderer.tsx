@@ -203,9 +203,7 @@ function KeyValueField({ value, onChange, disabled }: FieldProps) {
           <TemplateBadgeInput
             className="flex-1"
             disabled={disabled}
-            onChange={(val) =>
-              updateEntry(entry._id, "value", String(val ?? ""))
-            }
+            onChange={(val) => updateEntry(entry._id, "value", val ?? "")}
             placeholder="Value"
             value={entry.value}
           />

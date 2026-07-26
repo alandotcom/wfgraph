@@ -56,7 +56,7 @@ function normalizeClientConfig(
 ): InngestClientRuntimeConfig {
   return {
     ...config,
-    id: String(config.id ?? "").trim(),
+    id: (config.id ?? "").trim(),
   };
 }
 

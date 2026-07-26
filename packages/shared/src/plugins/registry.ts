@@ -479,7 +479,7 @@ export function getIntegrationLabels(): Record<IntegrationType, string> {
   for (const plugin of integrationRegistry.values()) {
     labels[plugin.type] = plugin.label;
   }
-  return labels as Record<IntegrationType, string>;
+  return labels;
 }
 
 /**
@@ -490,7 +490,7 @@ export function getIntegrationDescriptions(): Record<IntegrationType, string> {
   for (const plugin of integrationRegistry.values()) {
     descriptions[plugin.type] = plugin.description;
   }
-  return descriptions as Record<IntegrationType, string>;
+  return descriptions;
 }
 
 /**

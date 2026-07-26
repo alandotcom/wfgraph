@@ -23,6 +23,15 @@ function formatDate(dateString: string): string {
 }
 
 /**
+ * Puts a value on the system clipboard and tells the user it worked.
+ * Lives at module scope because it reads nothing from any component.
+ */
+function copyToClipboard(text: string) {
+  navigator.clipboard.writeText(text);
+  toast.success("Copied to clipboard");
+}
+
+/**
  * Overlay for creating a new API key.
  * Pushed onto the stack from ApiKeysOverlay.
  */
@@ -135,11 +144,6 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
       destructive: true,
       onConfirm: () => handleDelete(keyId),
     });
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success("Copied to clipboard");
   };
 
   return (

@@ -22,8 +22,8 @@ export function toClerkApiUser(user: User): ClerkApiUser {
       email_address: email.emailAddress,
     })),
     primary_email_address_id: user.primaryEmailAddressId,
-    public_metadata: user.publicMetadata as Record<string, unknown>,
-    private_metadata: user.privateMetadata as Record<string, unknown>,
+    public_metadata: user.publicMetadata,
+    private_metadata: user.privateMetadata,
     created_at: user.createdAt,
     updated_at: user.updatedAt,
   };

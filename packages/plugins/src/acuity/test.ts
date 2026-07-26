@@ -1,5 +1,4 @@
 import { AcuityError } from "@fountain-bio/acuity";
-import type { AcuityCredentials } from "./credentials";
 import { createAcuityClient, getAcuityErrorMessage } from "./steps/client";
 
 export async function testAcuity(credentials: Record<string, string>) {
@@ -17,7 +16,7 @@ export async function testAcuity(credentials: Record<string, string>) {
     const clientResult = createAcuityClient({
       ACUITY_USER_ID: userId,
       ACUITY_API_KEY: apiKey,
-    } as AcuityCredentials);
+    });
 
     if ("error" in clientResult) {
       return {

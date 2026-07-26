@@ -222,8 +222,8 @@ function hasWorkflowCompleteContext(
  *   });
  * }
  */
-export async function withStepLogging<TInput extends StepInput, TOutput>(
-  input: TInput,
+export async function withStepLogging<TOutput>(
+  input: StepInput,
   stepLogic: () => Promise<TOutput>
 ): Promise<TOutput> {
   // Extract context and log input without internal fields

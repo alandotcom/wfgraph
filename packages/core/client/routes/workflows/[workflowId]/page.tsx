@@ -27,7 +27,6 @@ import {
   triggerExecuteAtom,
   updateNodeDataAtom,
   type WorkflowNode,
-  type WorkflowVisibility,
   workflowNotFoundAtom,
 } from "@/lib/workflow-store";
 import { findActionById } from "@/plugins/registry";
@@ -171,9 +170,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
       setEdges(workflow.edges);
       setCurrentWorkflowId(workflow.id);
       setCurrentWorkflowName(workflow.name);
-      setCurrentWorkflowVisibility(
-        (workflow.visibility as WorkflowVisibility) ?? "private"
-      );
+      setCurrentWorkflowVisibility(workflow.visibility ?? "private");
       setCurrentWorkflowMode(workflow.mode ?? "live");
       setIsWorkflowOwner(workflow.isOwner !== false); // Default to true if not set
       setHasUnsavedChanges(false);

@@ -30,11 +30,11 @@ function parseNodeAttributes(attributes: unknown): WorkflowNode {
   return {
     ...parsed,
     position: parsed.position ?? { x: 0, y: 0 },
-  } as WorkflowNode;
+  };
 }
 
 function parseEdgeAttributes(attributes: unknown): WorkflowEdge {
-  return workflowEdgeAttributesSchema.parse(attributes) as WorkflowEdge;
+  return workflowEdgeAttributesSchema.parse(attributes);
 }
 
 function toNodeFromSerialized(

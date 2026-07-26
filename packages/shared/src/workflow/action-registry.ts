@@ -174,7 +174,7 @@ function isPromiseLike<T>(value: unknown): value is Promise<T> {
     (typeof value === "object" || typeof value === "function") &&
     value !== null &&
     "then" in value &&
-    typeof (value as { then: unknown }).then === "function"
+    typeof value.then === "function"
   );
 }
 
@@ -336,9 +336,7 @@ export function createAction<TPayload extends Record<string, unknown>>(
     | CreateActionInput<TPayload>
     | CreateActionInputWithOutput<TPayload, Record<string, unknown>>
 ): RuntimeExtensionActionDefinition {
-  const derivedConfigFields = configFieldsFromInputSchema(
-    input.schema as InputSchema<Record<string, unknown>>
-  );
+  const derivedConfigFields = configFieldsFromInputSchema(input.schema);
 
   let resolvedOutputFields = input.outputFields;
   if ("outputSchema" in input && input.outputSchema) {
