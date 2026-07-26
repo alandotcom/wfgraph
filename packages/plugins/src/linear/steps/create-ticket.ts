@@ -158,6 +158,5 @@ export async function createTicketStep(
 
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
-createTicketStep.maxRetries = 0;
 
 export const _integrationType = "linear";

@@ -1,8 +1,20 @@
-import { describe, expect, it } from "bun:test";
-import type { WorkflowExecutionEngine } from "@/backend/lib/workflow-engine/types";
-import { executeWorkflow } from "@/backend/lib/workflow-executor.workflow";
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
 import type { WorkflowNode } from "@/shared/workflow/types";
+import { executeWorkflow } from "./core";
+import {
+  createRecordingWorkflowStore,
+  type RecordingWorkflowStore,
+} from "./recording-store";
+
+// Condition steps log through step-handler, which is not behind the store
+// port; this stub keeps that path off a database.
+mock.module("@/backend/lib/workflow-logging", () => ({
+  logStepStartDb: () =>
+    Promise.resolve({ logId: "mock-log-id", startTime: Date.now() }),
+  logStepCompleteDb: () => Promise.resolve(),
+  logWorkflowCompleteDb: () => Promise.resolve(),
+}));
 
 function createTriggerNode(id: string): WorkflowNode {
   return {
@@ -64,26 +76,11 @@ function createConditionBranchEdge(input: {
   };
 }
 
-describe("executeWorkflow", () => {
-  it("uses an injected execution engine when provided", async () => {
-    const graph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
-    const injectedResult = {
-      success: true,
-      results: {},
-      outputs: {},
-    };
-    let executeCalls = 0;
-    const injectedEngine: WorkflowExecutionEngine = {
-      execute: () => {
-        executeCalls += 1;
-        return Promise.resolve(injectedResult);
-      },
-    };
+describe("executeWorkflow branch traversal", () => {
+  let store: RecordingWorkflowStore;
 
-    const result = await executeWorkflow({ graph }, undefined, injectedEngine);
-
-    expect(executeCalls).toBe(1);
-    expect(result).toEqual(injectedResult);
+  beforeEach(() => {
+    store = createRecordingWorkflowStore();
   });
 
   it("does not execute a join node until all inbound dependencies are downstream-ready", async () => {
@@ -102,9 +99,11 @@ describe("executeWorkflow", () => {
       ],
     });
 
-    const result = await executeWorkflow({
-      graph,
-    });
+    const result = await executeWorkflow(
+      { graph, executionId: "exec_join", workflowId: "workflow_join" },
+      undefined,
+      store
+    );
 
     expect(result.success).toBe(false);
     expect(result.results.action_success?.success).toBe(true);
@@ -137,7 +136,15 @@ describe("executeWorkflow", () => {
       ],
     });
 
-    const result = await executeWorkflow({ graph });
+    const result = await executeWorkflow(
+      {
+        graph,
+        executionId: "exec_condition",
+        workflowId: "workflow_condition",
+      },
+      undefined,
+      store
+    );
 
     expect(result.success).toBe(true);
     expect(result.results.condition_node?.success).toBe(true);
@@ -170,7 +177,15 @@ describe("executeWorkflow", () => {
       ],
     });
 
-    const result = await executeWorkflow({ graph });
+    const result = await executeWorkflow(
+      {
+        graph,
+        executionId: "exec_condition",
+        workflowId: "workflow_condition",
+      },
+      undefined,
+      store
+    );
 
     expect(result.success).toBe(true);
     expect(result.results.condition_node?.success).toBe(true);
@@ -210,7 +225,15 @@ describe("executeWorkflow", () => {
       ],
     });
 
-    const result = await executeWorkflow({ graph });
+    const result = await executeWorkflow(
+      {
+        graph,
+        executionId: "exec_condition",
+        workflowId: "workflow_condition",
+      },
+      undefined,
+      store
+    );
 
     expect(result.success).toBe(true);
     expect(result.results.true_node_a?.success).toBe(true);

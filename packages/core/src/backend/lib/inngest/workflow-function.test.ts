@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
 import { InngestTestEngine } from "@inngest/test";
-import type { WorkflowExecutionRuntime } from "@/backend/lib/workflow-executor.workflow";
+import { dbWorkflowStore } from "@/backend/lib/workflow-engine/db-store";
+import type { WorkflowExecutionRuntime } from "@/backend/lib/workflow-engine/runtime";
+import type { WorkflowStore } from "@/backend/lib/workflow-engine/store";
 import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
 
-mock.module("../workflow-executor.workflow", () => ({
+mock.module("../workflow-engine/core", () => ({
   executeWorkflow: vi.fn(),
 }));
 
-const { executeWorkflow } = await import(
-  "@/backend/lib/workflow-executor.workflow"
-);
+const { executeWorkflow } = await import("@/backend/lib/workflow-engine/core");
 const { createWorkflowRunRequestedFunction, createWorkflowTriggerExpression } =
   await import("./workflow-function");
 
@@ -41,6 +41,8 @@ async function executeWorkflowFunctionForTest() {
         name: "workflow/run.requested",
         data: {
           graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+          executionId: "exec_123",
+          workflowId: "workflow_123",
         },
       },
     ],
@@ -73,7 +75,7 @@ describe("workflowRunRequestedFunction", () => {
     expect(workflowRunRequestedFunction.name).toBe("Workflow Test Function");
   });
 
-  it("forwards event data and runtime to executeWorkflow", async () => {
+  it("forwards event data, runtime, and the database store to executeWorkflow", async () => {
     const workflowRunRequestedFunction = createTestFunction();
     const workflowInput = {
       graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
@@ -92,16 +94,36 @@ describe("workflowRunRequestedFunction", () => {
     });
 
     expect(executeWorkflowMock).toHaveBeenCalledTimes(1);
-    const [input, runtime] = executeWorkflowMock.mock.calls[0] as [
+    const [input, runtime, store] = executeWorkflowMock.mock.calls[0] as [
       typeof workflowInput,
       WorkflowExecutionRuntime,
+      WorkflowStore,
     ];
     expect(input).toEqual(workflowInput);
     expect(runtime).toMatchObject({
       sleep: expect.any(Function),
       waitForEvent: expect.any(Function),
+      step: expect.any(Function),
     });
+    // A live run must be recorded: this handler is the only place that wires
+    // the engine's persistence port to the database.
+    expect(store).toBe(dbWorkflowStore);
     expect(result).toEqual(expectedResult);
+  });
+
+  it("runtime.step maps onto step.run so node work is memoized across replays", async () => {
+    const { runtime, ctx } = await executeWorkflowFunctionForTest();
+    const runSpy = vi
+      .spyOn(ctx.step, "run")
+      .mockResolvedValue("memoized-result");
+
+    const work = () => Promise.resolve("fresh-result");
+    const result = await runtime.step("node:action_1", work);
+
+    expect(runSpy).toHaveBeenCalledTimes(1);
+    expect(runSpy).toHaveBeenCalledWith("node:action_1", work);
+    // The stored value wins over re-running the work: that is the whole point.
+    expect(result).toBe("memoized-result");
   });
 
   it("runtime.sleep skips non-positive durations", async () => {

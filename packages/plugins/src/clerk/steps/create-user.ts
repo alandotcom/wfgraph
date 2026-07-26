@@ -136,6 +136,5 @@ export async function clerkCreateUserStep(
 
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
-clerkCreateUserStep.maxRetries = 0;
 
 export const _integrationType = "clerk";

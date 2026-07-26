@@ -162,4 +162,3 @@ export function httpRequestStep(
 ): Promise<HttpRequestResult> {
   return withStepLogging(input, () => httpRequest(input));
 }
-httpRequestStep.maxRetries = 0;

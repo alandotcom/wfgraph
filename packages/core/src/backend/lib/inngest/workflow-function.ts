@@ -1,8 +1,9 @@
 import {
   executeWorkflow,
   type WorkflowExecutionInput,
-  type WorkflowExecutionRuntime,
-} from "@/backend/lib/workflow-executor.workflow";
+} from "@/backend/lib/workflow-engine/core";
+import { dbWorkflowStore } from "@/backend/lib/workflow-engine/db-store";
+import type { WorkflowExecutionRuntime } from "@/backend/lib/workflow-engine/runtime";
 import { isSerializedWorkflowGraph } from "@/shared/workflow/graph";
 import { getInngestClient } from "./client";
 
@@ -55,8 +56,10 @@ function isWorkflowExecutionInput(
   return (
     isOptionalRecord(value.triggerInput) &&
     isOptionalRecord(value.requestPayload) &&
-    isOptionalString(value.executionId) &&
-    isOptionalString(value.workflowId) &&
+    // Both ids are required: every log row, timeline event, and wait state the
+    // run writes hangs off them, and the enqueue side always supplies them.
+    typeof value.executionId === "string" &&
+    typeof value.workflowId === "string" &&
     isOptionalString(value.workflowName) &&
     isOptionalString(value.workflowRunId) &&
     (value.runMode === undefined ||
@@ -81,6 +84,7 @@ async function workflowRunRequestedHandler({
       id: string,
       options: { event: string; if?: string; timeout: string }
     ) => Promise<unknown>;
+    run: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
   };
 }) {
   if (!isWorkflowExecutionInput(event.data)) {
@@ -100,13 +104,18 @@ async function workflowRunRequestedHandler({
         event: options.event,
         if: options.ifExpression,
         timeout:
-          options.timeoutMs !== undefined
-            ? toDurationString(options.timeoutMs)
-            : "365d",
+          options.timeoutMs === undefined
+            ? "365d"
+            : toDurationString(options.timeoutMs),
       }),
+    // Memoization boundary: Inngest stores the result under `stepId`, so work
+    // already done in an earlier attempt is replayed instead of repeated.
+    step: (stepId, fn) => step.run(stepId, fn),
   };
 
-  const result = await executeWorkflow(data, runtime);
+  // This handler is the composition root for a live run: the engine persists
+  // nothing on its own, so the Postgres-backed store is wired in here.
+  const result = await executeWorkflow(data, runtime, dbWorkflowStore);
   if ("success" in result && !result.success) {
     let message = "Workflow execution failed";
     if (typeof result.error === "string") {
@@ -135,6 +144,9 @@ export function createWorkflowRunRequestedFunction(input: {
     {
       id: input.id,
       name: input.name,
+      // No automatic retries: node work is already memoized per step, and the
+      // steps that need retrying (HTTP Request) run their own attempt loop.
+      retries: 0,
       cancelOn: [
         {
           event: "workflow/run.cancel.requested",

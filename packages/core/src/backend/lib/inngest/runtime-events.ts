@@ -6,7 +6,11 @@ export type WorkflowRunRequestedEventData = {
   triggerInput?: Record<string, unknown>;
   workflowName?: string;
   requestPayload?: Record<string, unknown>;
-  executionId?: string;
+  /**
+   * Every producer inserts the execution row before enqueueing, and the engine
+   * requires the id, so it is never optional on the wire.
+   */
+  executionId: string;
   workflowId: string;
   workflowRunId?: string;
   runMode?: "live" | "test";
@@ -72,7 +76,7 @@ export async function sendWorkflowRunRequested(
   data: WorkflowRunRequestedEventData
 ) {
   const response = await getInngestClient().send({
-    id: data.executionId ? `workflow-run-${data.executionId}` : undefined,
+    id: `workflow-run-${data.executionId}`,
     name: "workflow/run.requested",
     data,
   });

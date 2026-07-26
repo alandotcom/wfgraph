@@ -117,6 +117,5 @@ export async function getAvailabilityTimesStep(
 
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
-getAvailabilityTimesStep.maxRetries = 0;
 
 export const _integrationType = "acuity";

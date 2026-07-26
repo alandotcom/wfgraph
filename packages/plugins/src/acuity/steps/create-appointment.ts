@@ -156,6 +156,5 @@ export async function createAppointmentStep(
 
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
-createAppointmentStep.maxRetries = 0;
 
 export const _integrationType = "acuity";

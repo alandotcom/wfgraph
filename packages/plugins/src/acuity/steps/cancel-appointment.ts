@@ -104,6 +104,5 @@ export async function cancelAppointmentStep(
 
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
-cancelAppointmentStep.maxRetries = 0;
 
 export const _integrationType = "acuity";

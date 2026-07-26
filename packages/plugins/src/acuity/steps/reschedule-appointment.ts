@@ -118,6 +118,5 @@ export async function rescheduleAppointmentStep(
 
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
-rescheduleAppointmentStep.maxRetries = 0;
 
 export const _integrationType = "acuity";

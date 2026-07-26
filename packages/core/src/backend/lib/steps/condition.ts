@@ -25,4 +25,3 @@ export function conditionStep(input: ConditionInput): Promise<ConditionResult> {
     Promise.resolve(evaluateCondition(input))
   );
 }
-conditionStep.maxRetries = 0;

@@ -155,4 +155,3 @@ export function databaseQueryStep(
 ): Promise<DatabaseQueryResult> {
   return withStepLogging(input, () => databaseQuery(input));
 }
-databaseQueryStep.maxRetries = 0;

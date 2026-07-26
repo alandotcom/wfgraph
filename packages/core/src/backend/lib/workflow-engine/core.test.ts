@@ -10,10 +10,18 @@ import {
 } from "@/shared/workflow/action-registry";
 import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
 import type { WorkflowNode } from "@/shared/workflow/types";
-import { executeWorkflowCore } from "./core";
+import { executeWorkflow } from "./core";
+import {
+  createRecordingWorkflowStore,
+  type RecordingWorkflowStore,
+} from "./recording-store";
+import { createInMemoryWorkflowRuntime } from "./runtime";
 
-// Mock the workflow-logging DB layer so withStepLogging calls are captured
-// without requiring a real database connection.
+// Per-action step logs are still written by step-handler's withStepLogging,
+// which plugin steps call themselves and which has not moved behind the
+// WorkflowStore port. These stubs exist only to keep that path off a real
+// database - everything the engine itself persists is asserted through the
+// recording store below.
 const logStepStartDb = mock<
   (params: LogStepStartParams) => Promise<{ logId: string; startTime: number }>
 >(() => Promise.resolve({ logId: "mock-log-id", startTime: Date.now() }));
@@ -61,11 +69,22 @@ function createRuntimeActionNode(
   };
 }
 
-describe("runtime action step logging", () => {
+function createTriggerToActionGraph(actionLabel?: string) {
+  return createSerializedWorkflowGraph({
+    nodes: [
+      createTriggerNode("trigger_1"),
+      createRuntimeActionNode("action_1", actionLabel),
+    ],
+    edges: [{ id: "edge_1", source: "trigger_1", target: "action_1" }],
+  });
+}
+
+describe("runtime action execution", () => {
   const executeFn = mock<() => RuntimeActionResult>(() => ({
     success: true,
     data: { donorId: "d_123", name: "Test Donor" },
   }));
+  let store: RecordingWorkflowStore;
 
   beforeEach(() => {
     registerRuntimeAction({
@@ -75,10 +94,15 @@ describe("runtime action step logging", () => {
       execute: executeFn,
     });
 
+    store = createRecordingWorkflowStore();
     logStepStartDb.mockClear();
     logStepCompleteDb.mockClear();
     logWorkflowCompleteDb.mockClear();
     executeFn.mockClear();
+    executeFn.mockImplementation(() => ({
+      success: true,
+      data: { donorId: "d_123", name: "Test Donor" },
+    }));
   });
 
   afterEach(() => {
@@ -86,95 +110,155 @@ describe("runtime action step logging", () => {
   });
 
   it("executes a runtime action and returns its result", async () => {
-    const graph = createSerializedWorkflowGraph({
-      nodes: [
-        createTriggerNode("trigger_1"),
-        createRuntimeActionNode("action_1"),
-      ],
-      edges: [{ id: "edge_1", source: "trigger_1", target: "action_1" }],
-    });
-
-    const result = await executeWorkflowCore({ graph });
+    const result = await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph(),
+        executionId: "exec_123",
+        workflowId: "workflow_1",
+      },
+      createInMemoryWorkflowRuntime(),
+      store
+    );
 
     expect(result.success).toBe(true);
     expect(result.results.action_1?.success).toBe(true);
     expect(executeFn).toHaveBeenCalledTimes(1);
   });
 
-  it("creates step log entries for a runtime action when executionId is present", async () => {
-    const graph = createSerializedWorkflowGraph({
-      nodes: [
-        createTriggerNode("trigger_1"),
-        createRuntimeActionNode("action_1", "Look Up Donor"),
-      ],
-      edges: [{ id: "edge_1", source: "trigger_1", target: "action_1" }],
-    });
+  it("passes the resolved node name into the action's step context", async () => {
+    await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph("Look Up Donor"),
+        executionId: "exec_123",
+        workflowId: "workflow_1",
+      },
+      createInMemoryWorkflowRuntime(),
+      store
+    );
 
-    await executeWorkflowCore({
-      graph,
-      executionId: "exec_123",
-    });
-
-    // withStepLogging should have called logStepStartDb for the runtime action node.
-    // The trigger node also logs, so we expect at least 2 calls.
-    const startCalls = logStepStartDb.mock.calls;
-    const runtimeActionStartCall = startCalls.find(
+    const startCall = logStepStartDb.mock.calls.find(
       (call) => call[0].nodeId === "action_1"
     );
-    expect(runtimeActionStartCall).toBeDefined();
-    expect(runtimeActionStartCall?.[0].nodeName).toBe("Look Up Donor");
-    expect(runtimeActionStartCall?.[0].executionId).toBe("exec_123");
-
-    // And logStepCompleteDb should have been called for it too
-    const completeCalls = logStepCompleteDb.mock.calls;
-    const runtimeActionCompleteCall = completeCalls.find(
-      (call) => call[0].logId === "mock-log-id" && call[0].status === "success"
-    );
-    expect(runtimeActionCompleteCall).toBeDefined();
+    expect(startCall?.[0].nodeName).toBe("Look Up Donor");
+    expect(startCall?.[0].executionId).toBe("exec_123");
   });
 
-  it("logs step error when runtime action returns failure", async () => {
+  it("reports a failing runtime action as a failed node result", async () => {
     executeFn.mockImplementation(() => ({
       success: false as const,
       error: { message: "Donor not found" },
     }));
 
-    const graph = createSerializedWorkflowGraph({
-      nodes: [
-        createTriggerNode("trigger_1"),
-        createRuntimeActionNode("action_1"),
-      ],
-      edges: [{ id: "edge_1", source: "trigger_1", target: "action_1" }],
-    });
-
-    const result = await executeWorkflowCore({
-      graph,
-      executionId: "exec_456",
-    });
+    const result = await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph(),
+        executionId: "exec_456",
+        workflowId: "workflow_1",
+      },
+      createInMemoryWorkflowRuntime(),
+      store
+    );
 
     expect(result.results.action_1?.success).toBe(false);
+    expect(result.results.action_1?.error).toBe("Donor not found");
+  });
+});
 
-    const completeCalls = logStepCompleteDb.mock.calls;
-    const errorLogCall = completeCalls.find(
-      (call) =>
-        call[0].status === "error" && call[0].error === "Donor not found"
-    );
-    expect(errorLogCall).toBeDefined();
+describe("run persistence through the store port", () => {
+  const executeFn = mock<() => RuntimeActionResult>(() => ({
+    success: true,
+    data: { ok: true },
+  }));
+  let store: RecordingWorkflowStore;
+
+  beforeEach(() => {
+    registerRuntimeAction({
+      id: RUNTIME_ACTION_ID,
+      label: "Test Runtime Action",
+      description: "A test runtime action",
+      execute: executeFn,
+    });
+    store = createRecordingWorkflowStore();
+    executeFn.mockClear();
+    executeFn.mockImplementation(() => ({ success: true, data: { ok: true } }));
   });
 
-  it("does not create step logs when executionId is absent", async () => {
-    const graph = createSerializedWorkflowGraph({
-      nodes: [
-        createTriggerNode("trigger_1"),
-        createRuntimeActionNode("action_1"),
-      ],
-      edges: [{ id: "edge_1", source: "trigger_1", target: "action_1" }],
+  afterEach(() => {
+    unregisterRuntimeAction(RUNTIME_ACTION_ID);
+  });
+
+  it("writes the terminal run record and its timeline event on success", async () => {
+    await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph(),
+        executionId: "exec_success",
+        workflowId: "workflow_success",
+      },
+      createInMemoryWorkflowRuntime(),
+      store
+    );
+
+    const completions = store.callsOf("completeRun");
+    expect(completions).toHaveLength(1);
+    expect(completions[0]?.executionId).toBe("exec_success");
+    expect(completions[0]?.status).toBe("success");
+
+    const audits = store.callsOf("recordAuditEvent");
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.eventType).toBe("run_completed");
+    expect(audits[0]?.workflowId).toBe("workflow_success");
+    expect(audits[0]?.message).toBe("Run completed successfully");
+  });
+
+  it("marks the run failed when a node fails", async () => {
+    executeFn.mockImplementation(() => ({
+      success: false as const,
+      error: { message: "boom" },
+    }));
+
+    await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph(),
+        executionId: "exec_failure",
+        workflowId: "workflow_failure",
+      },
+      createInMemoryWorkflowRuntime(),
+      store
+    );
+
+    const completions = store.callsOf("completeRun");
+    expect(completions[0]?.status).toBe("error");
+    expect(completions[0]?.error).toBe("boom");
+    expect(store.callsOf("recordAuditEvent")[0]?.eventType).toBe("run_failed");
+  });
+
+  it("labels a test-mode run in its timeline message", async () => {
+    await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph(),
+        executionId: "exec_test_mode",
+        workflowId: "workflow_test_mode",
+        runMode: "test",
+      },
+      createInMemoryWorkflowRuntime(),
+      store
+    );
+
+    expect(store.callsOf("recordAuditEvent")[0]?.message).toBe(
+      "Test mode completed successfully"
+    );
+  });
+
+  it("persists nothing when no store is injected", async () => {
+    const result = await executeWorkflow({
+      graph: createTriggerToActionGraph(),
+      executionId: "exec_no_store",
+      workflowId: "workflow_no_store",
     });
 
-    await executeWorkflowCore({ graph });
-
-    // Without executionId, withStepLogging skips DB calls (logStepStart returns empty logId)
-    // logStepStartDb should not be called for any node
-    expect(logStepStartDb).not.toHaveBeenCalled();
+    // The engine's default store is the noop adapter: the run still executes,
+    // it just leaves no trace.
+    expect(result.success).toBe(true);
+    expect(store.calls).toHaveLength(0);
   });
 });

@@ -122,6 +122,5 @@ export async function listAppointmentsStep(
 
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
-listAppointmentsStep.maxRetries = 0;
 
 export const _integrationType = "acuity";
