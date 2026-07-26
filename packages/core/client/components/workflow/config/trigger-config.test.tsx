@@ -19,12 +19,9 @@ function ControlledTriggerConfig({
     <TriggerConfig
       config={config}
       disabled={false}
-      onUpdateConfig={(key, value) =>
+      onUpdateConfig={(patch) =>
         setConfig((prev) => {
-          const next = {
-            ...prev,
-            [key]: value,
-          };
+          const next = { ...prev, ...patch };
           onConfigChange?.(next);
           return next;
         })
@@ -105,6 +102,44 @@ describe("TriggerConfig webhook sections", () => {
     await waitFor(() => {
       expect(view.getByText("Sample payload is not valid JSON.")).toBeTruthy();
     });
+  });
+
+  it("republishes the request schema as the trigger output contract", async () => {
+    // Downstream autocomplete reads webhookOutputSchema, so anything that
+    // rewrites the request schema has to move that key with it.
+    let latestConfig: Record<string, unknown> = { triggerType: "Webhook" };
+
+    const view = render(
+      <ControlledTriggerConfig
+        initialConfig={latestConfig}
+        onConfigChange={(nextConfig) => {
+          latestConfig = nextConfig;
+        }}
+      />
+    );
+
+    fireEvent.click(
+      view.getByRole("button", { name: SAMPLE_PAYLOAD_BUTTON_REGEX })
+    );
+    fireEvent.click(view.getByRole("button", { name: "Appointment Canceled" }));
+
+    await waitFor(() => {
+      expect(typeof latestConfig.webhookSchema).toBe("string");
+    });
+
+    expect(JSON.parse(latestConfig.webhookSchema as string)).toEqual([
+      { name: "type", type: "string" },
+      { name: "timestamp", type: "timestamp" },
+      {
+        name: "data",
+        type: "object",
+        fields: [
+          { name: "id", type: "string" },
+          { name: "status", type: "string" },
+        ],
+      },
+    ]);
+    expect(latestConfig.webhookOutputSchema).toBe(latestConfig.webhookSchema);
   });
 
   it("loads sample payload templates with concrete default values", async () => {

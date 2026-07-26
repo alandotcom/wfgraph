@@ -37,6 +37,7 @@ import {
 import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 import { ActionConfig } from "./config/action-config";
 import { ActionGrid } from "./config/action-grid";
+import type { NodeConfigPatch } from "./config/node-config-patch";
 import { TriggerConfig } from "./config/trigger-config";
 import { WorkflowRuns } from "./workflow-runs";
 
@@ -280,7 +281,7 @@ export const PanelInner = () => {
     [updateNodeData, setPendingIntegrationNodes]
   );
 
-  const handleUpdateConfig = (key: string, value: unknown) => {
+  const handleUpdateConfig = (patch: NodeConfigPatch) => {
     if (!selectedNode) {
       return;
     }
@@ -291,14 +292,16 @@ export const PanelInner = () => {
       return;
     }
 
-    const isActionTypeUpdate =
-      key === "actionType" && typeof value === "string";
+    // Picking a different action invalidates whatever connection the previous
+    // action was bound to, so the two keys move together.
+    const nextActionType = patch.actionType;
+    const isActionTypeUpdate = typeof nextActionType === "string";
     const shouldClearIntegration =
       isActionTypeUpdate && Boolean(latestNode.data.config?.integrationId);
 
     const newConfig: Record<string, unknown> = {
       ...latestNode.data.config,
-      [key]: value,
+      ...patch,
       ...(shouldClearIntegration ? { integrationId: undefined } : {}),
     };
 
@@ -322,7 +325,7 @@ export const PanelInner = () => {
     );
     autoSelectIntegration(
       selectedNode.id,
-      value,
+      nextActionType,
       newConfig,
       newController.signal
     );
@@ -508,7 +511,7 @@ export const PanelInner = () => {
             disabled={isGenerating}
             isNewlyCreated={selectedNode?.id === newlyCreatedNodeId}
             onSelectAction={(actionType) => {
-              handleUpdateConfig("actionType", actionType);
+              handleUpdateConfig({ actionType });
               if (selectedNode?.id === newlyCreatedNodeId) {
                 setNewlyCreatedNodeId(null);
               }

@@ -20,6 +20,7 @@ import {
   parseWorkflowSchemaFieldsOrJsonSchema,
   type WorkflowSchemaField,
 } from "@/shared/workflow/schema-codec";
+import type { NodeConfigPatch } from "./node-config-patch";
 
 /** Which editor the user has open for a schema: the field builder or raw JSON. */
 export type SchemaEditorMode = "builder" | "json";
@@ -172,6 +173,97 @@ export function inferSchemaFromPayload(
   return Object.entries(payload).map(([key, value]) =>
     inferSchemaField(key, value)
   );
+}
+
+/** A schema serialized for storage; `null` means the user cleared the editor. */
+function storeSchema(schema: WorkflowSchemaField[] | null): string {
+  return schema === null ? "" : JSON.stringify(schema);
+}
+
+/**
+ * The rule that keeps a webhook trigger's two schemas in step.
+ *
+ * A webhook's request contract is also what the trigger hands downstream, so
+ * every edit to the request schema republishes it as the output contract. Both
+ * keys move together, including when the schema is cleared: template
+ * autocomplete reads `webhookOutputSchema`, and leaving a stale copy there is
+ * how it ends up offering fields from a schema the user just deleted.
+ *
+ * The rule runs one way only. A user can narrow the published contract on its
+ * own through the output schema editor, and `webhookOutputSchemaPatch` is the
+ * write that does it.
+ */
+export function webhookRequestSchemaPatch(
+  schema: WorkflowSchemaField[] | null
+): NodeConfigPatch {
+  const stored = storeSchema(schema);
+  return { webhookSchema: stored, webhookOutputSchema: stored };
+}
+
+/** Publish a different contract downstream than the request schema describes. */
+export function webhookOutputSchemaPatch(
+  schema: WorkflowSchemaField[] | null
+): NodeConfigPatch {
+  return { webhookOutputSchema: storeSchema(schema) };
+}
+
+/**
+ * What the text in a schema JSON editor currently says: a schema, an emptied
+ * editor (`schema: null`, which the pairing rule reads as a clear), or a
+ * message explaining why nothing can be stored yet.
+ */
+export type SchemaJsonEdit =
+  | { ok: true; schema: WorkflowSchemaField[] | null }
+  | { ok: false; error: string };
+
+export function parseSchemaJsonEdit(nextValue: string): SchemaJsonEdit {
+  if (!nextValue.trim()) {
+    return { ok: true, schema: null };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(nextValue);
+  } catch {
+    return { ok: false, error: "Schema is not valid JSON." };
+  }
+
+  const schema = parseWorkflowSchemaFieldsOrJsonSchema(parsed);
+  if (!schema) {
+    return {
+      ok: false,
+      error:
+        "Schema must be either a field array or a JSON Schema object with top-level properties.",
+    };
+  }
+
+  return { ok: true, schema };
+}
+
+/**
+ * Read a sample payload as a statement of the request contract.
+ *
+ * Whatever a user pastes into the sample payload editor defines the schema, so
+ * the two stay consistent without a second round of typing. Text that is not a
+ * JSON object says nothing about the contract and leaves both schemas alone.
+ */
+export function webhookSchemaPatchFromSamplePayload(
+  rawPayload: string
+): NodeConfigPatch {
+  if (!rawPayload.trim()) {
+    return {};
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(rawPayload);
+    if (!isRecord(parsed)) {
+      return {};
+    }
+
+    return webhookRequestSchemaPatch(inferSchemaFromPayload(parsed));
+  } catch {
+    return {};
+  }
 }
 
 /**

@@ -47,11 +47,12 @@ import {
 import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
+import type { UpdateNodeConfig } from "./node-config-patch";
 import { SchemaBuilder } from "./schema-builder";
 
 type ActionConfigProps = {
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: unknown) => void;
+  onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
   isOwner?: boolean;
 };
@@ -121,7 +122,7 @@ function OutputSchemaEditor({
 }: {
   config: Record<string, unknown>;
   outputSchemaKey: "dbOutputSchema" | "httpOutputSchema";
-  onUpdateConfig: (key: string, value: unknown) => void;
+  onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
 }) {
   const [schemaEditorMode, setSchemaEditorMode] =
@@ -143,7 +144,7 @@ function OutputSchemaEditor({
     setSchemaJsonDraft(nextValue);
 
     if (!nextValue.trim()) {
-      onUpdateConfig(outputSchemaKey, "");
+      onUpdateConfig({ [outputSchemaKey]: "" });
       setSchemaJsonError("");
       return;
     }
@@ -159,7 +160,7 @@ function OutputSchemaEditor({
         return;
       }
 
-      onUpdateConfig(outputSchemaKey, JSON.stringify(parsedSchema));
+      onUpdateConfig({ [outputSchemaKey]: JSON.stringify(parsedSchema) });
       setSchemaJsonError("");
     } catch {
       setSchemaJsonError("Schema is not valid JSON.");
@@ -191,7 +192,7 @@ function OutputSchemaEditor({
           <SchemaBuilder
             disabled={disabled}
             onChange={(nextSchema) =>
-              onUpdateConfig(outputSchemaKey, JSON.stringify(nextSchema))
+              onUpdateConfig({ [outputSchemaKey]: JSON.stringify(nextSchema) })
             }
             schema={schema}
           />
@@ -236,7 +237,7 @@ function DatabaseQueryFields({
   disabled,
 }: {
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: unknown) => void;
+  onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
 }) {
   return (
@@ -247,7 +248,7 @@ function DatabaseQueryFields({
           <CodeEditor
             defaultLanguage="sql"
             height="150px"
-            onChange={(value) => onUpdateConfig("dbQuery", value || "")}
+            onChange={(value) => onUpdateConfig({ dbQuery: value || "" })}
             options={{
               minimap: { enabled: false },
               lineNumbers: "on",
@@ -281,7 +282,7 @@ function HttpRequestFields({
   disabled,
 }: {
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: unknown) => void;
+  onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
 }) {
   return (
@@ -290,7 +291,7 @@ function HttpRequestFields({
         <Label htmlFor="httpMethod">HTTP Method</Label>
         <Select
           disabled={disabled}
-          onValueChange={(value) => onUpdateConfig("httpMethod", value)}
+          onValueChange={(value) => onUpdateConfig({ httpMethod: value })}
           value={readConfigString(config, "httpMethod", "POST")}
         >
           <SelectTrigger className="w-full" id="httpMethod">
@@ -310,7 +311,7 @@ function HttpRequestFields({
         <TemplateBadgeInput
           disabled={disabled}
           id="endpoint"
-          onChange={(value) => onUpdateConfig("endpoint", value)}
+          onChange={(value) => onUpdateConfig({ endpoint: value })}
           placeholder="https://api.example.com/endpoint or {{NodeName.url}}"
           value={readConfigString(config, "endpoint")}
         />
@@ -321,7 +322,7 @@ function HttpRequestFields({
           <CodeEditor
             defaultLanguage="json"
             height="100px"
-            onChange={(value) => onUpdateConfig("httpHeaders", value || "{}")}
+            onChange={(value) => onUpdateConfig({ httpHeaders: value || "{}" })}
             options={{
               minimap: { enabled: false },
               lineNumbers: "off",
@@ -342,7 +343,7 @@ function HttpRequestFields({
           <CodeEditor
             defaultLanguage="json"
             height="120px"
-            onChange={(value) => onUpdateConfig("httpBody", value || "{}")}
+            onChange={(value) => onUpdateConfig({ httpBody: value || "{}" })}
             options={{
               minimap: { enabled: false },
               lineNumbers: "off",
@@ -378,7 +379,7 @@ function ConditionFields({
   disabled,
 }: {
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: unknown) => void;
+  onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
 }) {
   return (
@@ -394,7 +395,7 @@ function ConditionFields({
 
 type WaitFieldProps = {
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: unknown) => void;
+  onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
 };
 
@@ -422,18 +423,24 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   const isWindowEnabled =
     readConfigString(config, "waitAllowedHoursMode") === "daily_window";
 
+  // Switching timing mode also drops the fields the other mode owns, so a run
+  // never reads a stale duration next to a freshly chosen target date.
   const handleDelayTimingModeChange = (value: string) => {
-    onUpdateConfig("waitDelayTimingMode", value);
-
     if (value === "duration") {
-      onUpdateConfig("waitUntil", "");
-      onUpdateConfig("waitOffset", "");
+      onUpdateConfig({
+        waitDelayTimingMode: value,
+        waitUntil: "",
+        waitOffset: "",
+      });
       return;
     }
 
     if (value === "until") {
-      onUpdateConfig("waitDuration", "");
+      onUpdateConfig({ waitDelayTimingMode: value, waitDuration: "" });
+      return;
     }
+
+    onUpdateConfig({ waitDelayTimingMode: value });
   };
 
   return (
@@ -469,7 +476,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             disabled={disabled}
             fieldType="duration"
             id="waitDuration"
-            onChange={(value) => onUpdateConfig("waitDuration", value)}
+            onChange={(value) => onUpdateConfig({ waitDuration: value })}
             placeholder="24h, 90m, 3600000, or P1D"
             value={configuredWaitDuration}
           />
@@ -485,7 +492,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
               disabled={disabled}
               fieldType="timestamp"
               id="waitUntil"
-              onChange={(value) => onUpdateConfig("waitUntil", value)}
+              onChange={(value) => onUpdateConfig({ waitUntil: value })}
               placeholder="2026-03-10T09:00:00-05:00 or {{Trigger.data.startsAt}}"
               value={configuredWaitUntil}
             />
@@ -503,7 +510,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
               disabled={disabled}
               fieldType="duration"
               id="waitOffset"
-              onChange={(value) => onUpdateConfig("waitOffset", value)}
+              onChange={(value) => onUpdateConfig({ waitOffset: value })}
               placeholder="-1d, 6h, 30m"
               value={readConfigString(config, "waitOffset")}
             />
@@ -520,7 +527,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         </Label>
         <Select
           disabled={disabled}
-          onValueChange={(value) => onUpdateConfig("waitGateMode", value)}
+          onValueChange={(value) => onUpdateConfig({ waitGateMode: value })}
           value={waitGateMode}
         >
           <SelectTrigger className="w-full" id="waitGateMode">
@@ -544,7 +551,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <Select
           disabled={disabled}
           onValueChange={(value) =>
-            onUpdateConfig("waitAllowedHoursMode", value)
+            onUpdateConfig({ waitAllowedHoursMode: value })
           }
           value={readConfigString(config, "waitAllowedHoursMode", "off")}
         >
@@ -570,7 +577,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
               disabled={disabled}
               id="waitAllowedStartTime"
               onChange={(e) =>
-                onUpdateConfig("waitAllowedStartTime", e.target.value)
+                onUpdateConfig({ waitAllowedStartTime: e.target.value })
               }
               placeholder="09:00"
               value={readConfigString(config, "waitAllowedStartTime")}
@@ -582,7 +589,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
               disabled={disabled}
               id="waitAllowedEndTime"
               onChange={(e) =>
-                onUpdateConfig("waitAllowedEndTime", e.target.value)
+                onUpdateConfig({ waitAllowedEndTime: e.target.value })
               }
               placeholder="17:00"
               value={readConfigString(config, "waitAllowedEndTime")}
@@ -603,7 +610,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <TimezoneSelect
           disabled={disabled}
           id="waitTimezone"
-          onValueChange={(value) => onUpdateConfig("waitTimezone", value)}
+          onValueChange={(value) => onUpdateConfig({ waitTimezone: value })}
           value={readConfigString(config, "waitTimezone", "UTC")}
         />
         <p className="text-muted-foreground text-xs">
@@ -630,7 +637,7 @@ function SharedHookWaitFields({
         <TemplateBadgeInput
           disabled={disabled}
           id="waitForEvents"
-          onChange={(value) => onUpdateConfig("waitForEvents", value)}
+          onChange={(value) => onUpdateConfig({ waitForEvents: value })}
           placeholder="appointment.confirmed,appointment.cancelled"
           value={readConfigString(config, "waitForEvents")}
         />
@@ -646,7 +653,7 @@ function SharedHookWaitFields({
           disabled={disabled}
           fieldType="duration"
           id="waitTimeout"
-          onChange={(value) => onUpdateConfig("waitTimeout", value)}
+          onChange={(value) => onUpdateConfig({ waitTimeout: value })}
           placeholder="48h"
           value={readConfigString(config, "waitTimeout")}
         />
@@ -674,7 +681,7 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <Select
           disabled={disabled}
           onValueChange={(value) =>
-            onUpdateConfig("waitTimeoutBehavior", value)
+            onUpdateConfig({ waitTimeoutBehavior: value })
           }
           value={readConfigString(config, "waitTimeoutBehavior", "continue")}
         >
@@ -711,7 +718,7 @@ function HookWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <TemplateBadgeInput
           disabled={disabled}
           id="waitHookToken"
-          onChange={(value) => onUpdateConfig("waitHookToken", value)}
+          onChange={(value) => onUpdateConfig({ waitHookToken: value })}
           placeholder="custom-token-if-you-need-deterministic-resume"
           value={readConfigString(config, "waitHookToken")}
         />
@@ -733,7 +740,7 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <Label htmlFor="waitMode">How should this step wait?</Label>
         <Select
           disabled={disabled}
-          onValueChange={(value) => onUpdateConfig("waitMode", value)}
+          onValueChange={(value) => onUpdateConfig({ waitMode: value })}
           value={waitMode}
         >
           <SelectTrigger className="w-full" id="waitMode">
@@ -786,7 +793,7 @@ function SystemActionFields({
 }: {
   actionType: string;
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: unknown) => void;
+  onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
 }) {
   switch (actionType) {
@@ -926,17 +933,12 @@ export function ActionConfig({
     // Auto-select the first action in the new category
     const firstAction = categories[newCategory]?.[0];
     if (firstAction) {
-      onUpdateConfig("actionType", firstAction.id);
+      onUpdateConfig({ actionType: firstAction.id });
     }
   };
 
   const handleActionTypeChange = (value: string) => {
-    onUpdateConfig("actionType", value);
-  };
-
-  // Adapter for plugin config components that expect (key, value: unknown)
-  const handlePluginUpdateConfig = (key: string, value: unknown) => {
-    onUpdateConfig(key, value);
+    onUpdateConfig({ actionType: value });
   };
 
   // Get dynamic config fields for plugin actions
@@ -974,7 +976,7 @@ export function ActionConfig({
         type: integrationType,
         onSuccess: (integrationId: string) => {
           setIntegrationsVersion((v) => v + 1);
-          onUpdateConfig("integrationId", integrationId);
+          onUpdateConfig({ integrationId });
         },
       });
     }
@@ -1131,7 +1133,7 @@ export function ActionConfig({
           <IntegrationSelector
             disabled={disabled}
             integrationType={integrationType}
-            onChange={(id) => onUpdateConfig("integrationId", id)}
+            onChange={(id) => onUpdateConfig({ integrationId: id })}
             value={readConfigString(config, "integrationId")}
           />
         </div>
@@ -1151,7 +1153,7 @@ export function ActionConfig({
           config={config}
           disabled={disabled}
           fields={pluginAction.configFields}
-          onUpdateConfig={handlePluginUpdateConfig}
+          onUpdateConfig={onUpdateConfig}
         />
       )}
     </>

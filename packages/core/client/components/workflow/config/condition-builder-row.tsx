@@ -41,12 +41,13 @@ import {
   type TimestampRelativeOperator,
   type TimeUnit,
 } from "@/shared/workflow/conditions";
+import type { UpdateNodeConfig } from "./node-config-patch";
 
 type ConditionBuilderRowProps = {
   label: string;
   description: string;
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: string) => void;
+  onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
 };
 
@@ -505,17 +506,15 @@ export function ConditionBuilderRow({
 
   const persistModel = useCallback(
     (model: ConditionModel) => {
+      // The model and the CEL string it compiles to are one fact about the
+      // node, so they are written together. A model that fails to compile
+      // still gets stored, with an empty expression alongside it.
       const compiled = compileConditionModel(model);
-      onUpdateConfig("conditionModel", serializeConditionModel(model));
-
-      if (!compiled.valid) {
-        setCompileError(compiled.error);
-        onUpdateConfig("condition", "");
-        return;
-      }
-
-      setCompileError(null);
-      onUpdateConfig("condition", compiled.expression);
+      onUpdateConfig({
+        conditionModel: serializeConditionModel(model),
+        condition: compiled.valid ? compiled.expression : "",
+      });
+      setCompileError(compiled.valid ? null : compiled.error);
     },
     [onUpdateConfig]
   );

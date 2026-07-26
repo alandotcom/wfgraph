@@ -21,6 +21,7 @@ import {
   parseWorkflowSchemaFieldsOrJsonSchema,
   parseWorkflowSchemaFieldsString,
 } from "@/shared/workflow/schema-codec";
+import type { UpdateNodeConfig } from "./node-config-patch";
 import { SchemaBuilder } from "./schema-builder";
 
 type FieldProps = {
@@ -269,7 +270,7 @@ const FIELD_RENDERERS: Record<
 function renderField(
   field: ActionConfigFieldBase,
   config: Record<string, unknown>,
-  onUpdateConfig: (key: string, value: unknown) => void,
+  onUpdateConfig: UpdateNodeConfig,
   disabled?: boolean
 ) {
   // Check conditional rendering
@@ -295,7 +296,7 @@ function renderField(
       <FieldRenderer
         disabled={disabled}
         field={field}
-        onChange={(val) => onUpdateConfig(field.key, val)}
+        onChange={(val) => onUpdateConfig({ [field.key]: val })}
         value={value}
       />
     </div>
@@ -316,7 +317,7 @@ function FieldGroup({
   label: string;
   fields: ActionConfigFieldBase[];
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: unknown) => void;
+  onUpdateConfig: UpdateNodeConfig;
   disabled?: boolean;
   defaultExpanded?: boolean;
 }) {
@@ -350,7 +351,7 @@ function FieldGroup({
 type ActionConfigRendererProps = {
   fields: ActionConfigField[];
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: unknown) => void;
+  onUpdateConfig: UpdateNodeConfig;
   disabled?: boolean;
 };
 

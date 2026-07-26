@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ActionConfig } from "@/components/workflow/config/action-config";
 import { ActionGrid } from "@/components/workflow/config/action-grid";
+import type { NodeConfigPatch } from "@/components/workflow/config/node-config-patch";
 import { TriggerConfig } from "@/components/workflow/config/trigger-config";
 import { WorkflowRuns } from "@/components/workflow/workflow-runs";
 import { integrationsAtom } from "@/lib/integrations-store";
@@ -135,8 +136,11 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
     }
   }, [selectedNode, globalIntegrations, isOwner, updateNodeData]);
 
+  // Config always merges onto the node as the store has it right now, so a
+  // write that lands while an earlier render is still in scope does not carry
+  // stale keys back with it.
   const handleUpdateConfig = useCallback(
-    (key: string, value: unknown) => {
+    (patch: NodeConfigPatch) => {
       if (!selectedNode) {
         return;
       }
@@ -152,7 +156,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
       updateNodeData({
         id: selectedNode.id,
         data: {
-          config: { ...latestNode.data.config, [key]: value },
+          config: { ...latestNode.data.config, ...patch },
         },
       });
     },
@@ -509,7 +513,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
                   disabled={isGenerating}
                   isNewlyCreated={selectedNode?.id === newlyCreatedNodeId}
                   onSelectAction={(actionType) => {
-                    handleUpdateConfig("actionType", actionType);
+                    handleUpdateConfig({ actionType });
                     if (selectedNode?.id === newlyCreatedNodeId) {
                       setNewlyCreatedNodeId(null);
                     }

@@ -27,25 +27,27 @@ import { cn } from "@/shared/utils";
 import { parseCsvSet } from "@/shared/utils/csv";
 import { getValueByPath } from "@/shared/utils/object-path";
 import { parseScheduleExpression } from "@/shared/utils/schedule-expression";
-import {
-  parseWorkflowSchemaFieldsOrJsonSchema,
-  workflowSchemaFieldsToJsonSchemaDocument,
-} from "@/shared/workflow/schema-codec";
+import { workflowSchemaFieldsToJsonSchemaDocument } from "@/shared/workflow/schema-codec";
 import { ActionConfigRenderer } from "./action-config-renderer";
+import type { UpdateNodeConfig } from "./node-config-patch";
 import { SchemaBuilder } from "./schema-builder";
 import {
   flattenSchemaPathOptions,
   inferSchemaFromPayload,
   isSchemaEditorMode,
+  parseSchemaJsonEdit,
   readConfigString,
   readWebhookOutputSchema,
   readWebhookRequestSchema,
   type SchemaEditorMode,
+  webhookOutputSchemaPatch,
+  webhookRequestSchemaPatch,
+  webhookSchemaPatchFromSamplePayload,
 } from "./webhook-schema";
 
 type TriggerConfigProps = {
   config: Record<string, unknown>;
-  onUpdateConfig: (key: string, value: unknown) => void;
+  onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
   workflowId?: string;
 };
@@ -347,11 +349,10 @@ export function TriggerConfig({
   })();
 
   const handleScheduleExpressionChange = (value: string) => {
-    onUpdateConfig("scheduleExpression", value);
-    onUpdateConfig(
-      "scheduleCron",
-      parseScheduleExpression(value)?.cron ?? value
-    );
+    onUpdateConfig({
+      scheduleExpression: value,
+      scheduleCron: parseScheduleExpression(value)?.cron ?? value,
+    });
   };
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Warning assembly validates multiple independent webhook configuration rules.
@@ -495,75 +496,38 @@ export function TriggerConfig({
   };
 
   const handleLoadPreset = (preset: WebhookPreset) => {
-    onUpdateConfig(
-      "webhookMockRequest",
-      JSON.stringify(preset.payload, null, 2)
-    );
-
-    const inferredSchema = inferSchemaFromPayload(preset.payload);
-    onUpdateConfig("webhookSchema", JSON.stringify(inferredSchema));
-    onUpdateConfig("webhookOutputSchema", JSON.stringify(inferredSchema));
+    onUpdateConfig({
+      webhookMockRequest: JSON.stringify(preset.payload, null, 2),
+      ...webhookRequestSchemaPatch(inferSchemaFromPayload(preset.payload)),
+    });
 
     toast.success(`${preset.label} example loaded (schema synced)`);
-  };
-
-  const handleCustomTriggerConfigUpdate = (key: string, value: unknown) => {
-    onUpdateConfig(key, value);
   };
 
   const handleRequestSchemaJsonChange = (nextValue: string) => {
     setRequestSchemaJsonDraft(nextValue);
 
-    if (!nextValue.trim()) {
-      onUpdateConfig("webhookSchema", "");
-      setRequestSchemaJsonError("");
+    const edit = parseSchemaJsonEdit(nextValue);
+    if (!edit.ok) {
+      setRequestSchemaJsonError(edit.error);
       return;
     }
 
-    try {
-      const parsed = JSON.parse(nextValue);
-      const parsedSchema = parseWorkflowSchemaFieldsOrJsonSchema(parsed);
-
-      if (!parsedSchema) {
-        setRequestSchemaJsonError(
-          "Schema must be either a field array or a JSON Schema object with top-level properties."
-        );
-        return;
-      }
-
-      onUpdateConfig("webhookSchema", JSON.stringify(parsedSchema));
-      onUpdateConfig("webhookOutputSchema", JSON.stringify(parsedSchema));
-      setRequestSchemaJsonError("");
-    } catch {
-      setRequestSchemaJsonError("Schema is not valid JSON.");
-    }
+    onUpdateConfig(webhookRequestSchemaPatch(edit.schema));
+    setRequestSchemaJsonError("");
   };
 
   const handleOutputSchemaJsonChange = (nextValue: string) => {
     setOutputSchemaJsonDraft(nextValue);
 
-    if (!nextValue.trim()) {
-      onUpdateConfig("webhookOutputSchema", "");
-      setOutputSchemaJsonError("");
+    const edit = parseSchemaJsonEdit(nextValue);
+    if (!edit.ok) {
+      setOutputSchemaJsonError(edit.error);
       return;
     }
 
-    try {
-      const parsed = JSON.parse(nextValue);
-      const parsedSchema = parseWorkflowSchemaFieldsOrJsonSchema(parsed);
-
-      if (!parsedSchema) {
-        setOutputSchemaJsonError(
-          "Schema must be either a field array or a JSON Schema object with top-level properties."
-        );
-        return;
-      }
-
-      onUpdateConfig("webhookOutputSchema", JSON.stringify(parsedSchema));
-      setOutputSchemaJsonError("");
-    } catch {
-      setOutputSchemaJsonError("Schema is not valid JSON.");
-    }
+    onUpdateConfig(webhookOutputSchemaPatch(edit.schema));
+    setOutputSchemaJsonError("");
   };
 
   return (
@@ -574,7 +538,7 @@ export function TriggerConfig({
         </Label>
         <Select
           disabled={disabled}
-          onValueChange={(value) => onUpdateConfig("triggerType", value)}
+          onValueChange={(value) => onUpdateConfig({ triggerType: value })}
           value={triggerType}
         >
           <SelectTrigger className="w-full" id="triggerType">
@@ -642,7 +606,7 @@ export function TriggerConfig({
                 config={config}
                 disabled={disabled}
                 fields={selectedRuntimeTrigger?.configFields ?? []}
-                onUpdateConfig={handleCustomTriggerConfigUpdate}
+                onUpdateConfig={onUpdateConfig}
               />
             </div>
           )}
@@ -717,11 +681,9 @@ export function TriggerConfig({
                 <TabsContent className="space-y-3" value="builder">
                   <SchemaBuilder
                     disabled={disabled}
-                    onChange={(nextSchema) => {
-                      const schemaJson = JSON.stringify(nextSchema);
-                      onUpdateConfig("webhookSchema", schemaJson);
-                      onUpdateConfig("webhookOutputSchema", schemaJson);
-                    }}
+                    onChange={(nextSchema) =>
+                      onUpdateConfig(webhookRequestSchemaPatch(nextSchema))
+                    }
                     schema={requestSchema}
                   />
                 </TabsContent>
@@ -793,10 +755,7 @@ export function TriggerConfig({
                   <SchemaBuilder
                     disabled={disabled}
                     onChange={(nextSchema) =>
-                      onUpdateConfig(
-                        "webhookOutputSchema",
-                        JSON.stringify(nextSchema)
-                      )
+                      onUpdateConfig(webhookOutputSchemaPatch(nextSchema))
                     }
                     schema={outputSchema}
                   />
@@ -855,7 +814,7 @@ export function TriggerConfig({
                   disabled={disabled || schemaPathOptions.length === 0}
                   onValueChange={(value) => {
                     setWebhookSectionOpen("routing", true);
-                    onUpdateConfig("webhookEventPath", value);
+                    onUpdateConfig({ webhookEventPath: value });
                   }}
                   value={eventPath}
                 >
@@ -887,7 +846,7 @@ export function TriggerConfig({
                   disabled={disabled || schemaPathOptions.length === 0}
                   onValueChange={(value) => {
                     setWebhookSectionOpen("routing", true);
-                    onUpdateConfig("webhookCorrelationPath", value);
+                    onUpdateConfig({ webhookCorrelationPath: value });
                   }}
                   value={correlationPath}
                 >
@@ -920,7 +879,7 @@ export function TriggerConfig({
                   id="guidedCreateEvents"
                   onChange={(e) => {
                     setWebhookSectionOpen("routing", true);
-                    onUpdateConfig("webhookCreateEvents", e.target.value);
+                    onUpdateConfig({ webhookCreateEvents: e.target.value });
                   }}
                   placeholder="appointment.create"
                   value={createEvents}
@@ -936,7 +895,7 @@ export function TriggerConfig({
                   id="guidedUpdateEvents"
                   onChange={(e) => {
                     setWebhookSectionOpen("routing", true);
-                    onUpdateConfig("webhookUpdateEvents", e.target.value);
+                    onUpdateConfig({ webhookUpdateEvents: e.target.value });
                   }}
                   placeholder="appointment.rescheduled"
                   value={updateEvents}
@@ -956,7 +915,7 @@ export function TriggerConfig({
                   id="guidedDeleteEvents"
                   onChange={(e) => {
                     setWebhookSectionOpen("routing", true);
-                    onUpdateConfig("webhookDeleteEvents", e.target.value);
+                    onUpdateConfig({ webhookDeleteEvents: e.target.value });
                   }}
                   placeholder="appointment.canceled"
                   value={deleteEvents}
@@ -1029,25 +988,10 @@ export function TriggerConfig({
                   height="190px"
                   onChange={(value) => {
                     setWebhookSectionOpen("payload", true);
-                    onUpdateConfig("webhookMockRequest", value || "");
-
-                    if (value?.trim()) {
-                      try {
-                        const parsed = JSON.parse(value);
-                        if (
-                          parsed &&
-                          typeof parsed === "object" &&
-                          !Array.isArray(parsed)
-                        ) {
-                          const inferredSchema = inferSchemaFromPayload(parsed);
-                          const schemaJson = JSON.stringify(inferredSchema);
-                          onUpdateConfig("webhookSchema", schemaJson);
-                          onUpdateConfig("webhookOutputSchema", schemaJson);
-                        }
-                      } catch {
-                        // Invalid JSON — don't sync schemas
-                      }
-                    }
+                    onUpdateConfig({
+                      webhookMockRequest: value || "",
+                      ...webhookSchemaPatchFromSamplePayload(value || ""),
+                    });
                   }}
                   options={{
                     minimap: { enabled: false },
@@ -1154,7 +1098,7 @@ export function TriggerConfig({
               disabled={disabled}
               id="scheduleTimezone"
               onValueChange={(value) =>
-                onUpdateConfig("scheduleTimezone", value)
+                onUpdateConfig({ scheduleTimezone: value })
               }
               value={scheduleTimezone}
             />
