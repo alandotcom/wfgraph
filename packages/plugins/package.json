@@ -14,7 +14,7 @@
     "@fountain-bio/acuity": "^0.0.25",
     "@linear/sdk": "^75.0.0",
     "@slack/web-api": "^7.14.0",
-    "es-toolkit": "^1.44.0",
+    "es-toolkit": "catalog:",
     "resend": "^6.9.2",
     "twilio": "^5.12.1"
   }

@@ -4,18 +4,18 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@marcbachmann/cel-js": "^7.5.1",
-    "@orpc/contract": "^1.13.5",
+    "@marcbachmann/cel-js": "catalog:",
+    "@orpc/contract": "catalog:",
     "clsx": "^2.1.1",
-    "es-toolkit": "^1.44.0",
-    "graphology": "^0.26.0",
-    "nanoid": "^5.1.6",
+    "es-toolkit": "catalog:",
+    "graphology": "catalog:",
+    "nanoid": "catalog:",
     "tailwind-merge": "^3.4.0",
-    "zod": "^4.3.6"
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@standard-schema/spec": "^1.1.0",
-    "@xyflow/react": "^12.10.0",
+    "@standard-schema/spec": "catalog:",
+    "@xyflow/react": "catalog:",
     "arktype": "^2.1.29"
   }
 }
