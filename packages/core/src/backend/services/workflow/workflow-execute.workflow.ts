@@ -1,175 +1,28 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
-import { workflowExecutions, workflows } from "@/backend/lib/db/schema";
-import { sendWorkflowRunRequested } from "@/backend/lib/inngest/runtime-events";
+import { workflows } from "@/backend/lib/db/schema";
 import { getAppLogger } from "@/backend/lib/logger";
 import {
   failure,
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
-import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
 import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-wait-state";
 import { orchestrateTriggerExecution } from "@/backend/services/workflows/trigger-orchestrator.workflows";
 import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight.workflows";
+import {
+  buildIgnoredRunAuditMessage,
+  recordTerminalWorkflowRun,
+  startWorkflowRun,
+} from "@/backend/services/workflows/workflow-run-lifecycle.workflows";
 import { getErrorMessage } from "@/shared/utils";
 import type { ApiErrorPayload } from "@/shared/workflow/api-contracts";
 import type { WorkflowExecuteResponse } from "@/shared/workflow/execution-contracts";
 import { evaluateWorkflowTrigger } from "@/shared/workflow/trigger-registry";
 import { resolveWebhookTriggerRuntimeConfig } from "@/shared/workflow/triggers/webhook-trigger";
-import type { SerializedWorkflowGraph } from "@/shared/workflow/types";
 
 const executeLogger = getAppLogger("workflow", "execute");
-
-async function createTerminalExecution(input: {
-  workflowId: string;
-  triggerType: "manual" | "webhook" | "event";
-  runMode: "live" | "test";
-  triggerEventType?: string;
-  correlationKey?: string;
-  payload: Record<string, unknown>;
-  status: "success" | "error" | "cancelled";
-  error?: string;
-  output?: Record<string, unknown>;
-  auditEventType: "run_cancelled" | "run_ignored" | "run_completed";
-  auditMessage: string;
-  auditMetadata?: Record<string, unknown>;
-}) {
-  const now = new Date();
-  const [execution] = await db
-    .insert(workflowExecutions)
-    .values({
-      workflowId: input.workflowId,
-      status: input.status,
-      triggerType: input.triggerType,
-      runMode: input.runMode,
-      triggerEventType: input.triggerEventType,
-      correlationKey: input.correlationKey,
-      input: input.payload,
-      output: input.output,
-      error: input.error,
-      startedAt: now,
-      completedAt: now,
-      cancelledAt: input.status === "cancelled" ? now : null,
-    })
-    .returning();
-
-  await logWorkflowAuditEvent({
-    workflowId: input.workflowId,
-    executionId: execution.id,
-    eventType: input.auditEventType,
-    message: input.auditMessage,
-    metadata: input.auditMetadata,
-  });
-
-  return execution;
-}
-
-async function startExecution(input: {
-  workflowId: string;
-  workflowName: string;
-  workflowGraph: SerializedWorkflowGraph;
-  triggerType: "manual" | "webhook" | "event";
-  payload: Record<string, unknown>;
-  requestPayload: Record<string, unknown>;
-  eventType?: string;
-  correlationKey?: string;
-  runMode: "live" | "test";
-}) {
-  const [startedExecution] = await db
-    .insert(workflowExecutions)
-    .values({
-      workflowId: input.workflowId,
-      status: "running",
-      triggerType: input.triggerType,
-      runMode: input.runMode,
-      triggerEventType: input.eventType,
-      correlationKey: input.correlationKey,
-      input: input.payload,
-    })
-    .returning();
-
-  const run = await sendWorkflowRunRequested({
-    graph: input.workflowGraph,
-    triggerInput: input.payload,
-    requestPayload: input.requestPayload,
-    executionId: startedExecution.id,
-    workflowId: input.workflowId,
-    workflowName: input.workflowName,
-    runMode: input.runMode,
-    eventContext: {
-      eventType: input.eventType,
-      correlationKey: input.correlationKey,
-    },
-  }).catch(async (error) => {
-    await db
-      .update(workflowExecutions)
-      .set({
-        status: "error",
-        error: error instanceof Error ? error.message : "Failed to enqueue run",
-        completedAt: new Date(),
-      })
-      .where(eq(workflowExecutions.id, startedExecution.id));
-    throw error;
-  });
-
-  await db
-    .update(workflowExecutions)
-    .set({ workflowRunId: run.eventId ?? null })
-    .where(eq(workflowExecutions.id, startedExecution.id));
-
-  await logWorkflowAuditEvent({
-    workflowId: input.workflowId,
-    executionId: startedExecution.id,
-    eventType: "run_started",
-    message:
-      input.runMode === "test"
-        ? "Manual test mode run started"
-        : "Manual run started",
-    metadata: {
-      triggerType: input.triggerType,
-      runMode: input.runMode,
-      eventType: input.eventType,
-      correlationKey: input.correlationKey,
-      runId: run.eventId,
-    },
-  });
-
-  return {
-    executionId: startedExecution.id,
-    runId: run.eventId,
-    runMode: input.runMode,
-  };
-}
-
-function buildIgnoredAuditMessage(input: {
-  reason:
-    | "missing_event_type"
-    | "event_not_configured"
-    | "no_waiting_runs"
-    | "workflow_paused";
-  eventType?: string;
-  eventTypePath?: string;
-}): string {
-  if (input.reason === "workflow_paused") {
-    return "Ignored execute request because workflow is paused";
-  }
-
-  if (input.reason === "missing_event_type") {
-    return `Ignored webhook event because event type is missing at path "${input.eventTypePath ?? "event"}"`;
-  }
-
-  if (input.reason === "event_not_configured") {
-    return input.eventType
-      ? `Ignored execute event ${input.eventType}`
-      : "Ignored execute event not configured by trigger routing";
-  }
-
-  return input.eventType
-    ? `Ignored ${input.eventType} because no waiting runs were found`
-    : "Ignored event because no waiting runs were found";
-}
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Execute route coordinates trigger parsing, cancellation, and run creation in one request handler.
 export async function postWorkflowExecuteResult(
@@ -223,9 +76,9 @@ export async function postWorkflowExecuteResult(
     }
 
     if (workflow.isPaused) {
-      const ignoredExecution = await createTerminalExecution({
+      const ignoredExecution = await recordTerminalWorkflowRun({
         workflowId,
-        triggerType: "manual",
+        trigger: { type: "manual" },
         runMode,
         payload: effectiveInput,
         status: "success",
@@ -234,13 +87,16 @@ export async function postWorkflowExecuteResult(
           reason: "workflow_paused",
           runMode,
         },
-        auditEventType: "run_ignored",
-        auditMessage: buildIgnoredAuditMessage({
-          reason: "workflow_paused",
-        }),
-        auditMetadata: {
-          reason: "workflow_paused",
-          runMode,
+        audit: {
+          eventType: "run_ignored",
+          message: buildIgnoredRunAuditMessage({
+            triggerType: "manual",
+            reason: "workflow_paused",
+          }),
+          metadata: {
+            reason: "workflow_paused",
+            runMode,
+          },
         },
       });
 
@@ -270,15 +126,15 @@ export async function postWorkflowExecuteResult(
     });
 
     if (!isOrchestratedTrigger) {
-      const startedExecution = await startExecution({
-        workflowId,
-        workflowName: workflow.name,
-        workflowGraph,
-        triggerType: "manual",
+      const startedExecution = await startWorkflowRun({
+        workflow: {
+          id: workflowId,
+          name: workflow.name,
+          graph: workflowGraph,
+        },
+        trigger: { type: "manual", eventType, correlationKey },
         payload: effectiveInput,
         requestPayload: body.input ?? {},
-        eventType,
-        correlationKey,
         runMode,
       });
 
@@ -308,15 +164,15 @@ export async function postWorkflowExecuteResult(
       waitStates,
       enableResumes: false,
       startExecution: async () =>
-        await startExecution({
-          workflowId,
-          workflowName: workflow.name,
-          workflowGraph,
-          triggerType: triggerExecutionType,
+        await startWorkflowRun({
+          workflow: {
+            id: workflowId,
+            name: workflow.name,
+            graph: workflowGraph,
+          },
+          trigger: { type: triggerExecutionType, eventType, correlationKey },
           payload: effectiveInput,
           requestPayload: body.input ?? {},
-          eventType,
-          correlationKey,
           runMode,
         }),
       cancelWaitStates: async (currentEventType) =>
@@ -351,12 +207,10 @@ export async function postWorkflowExecuteResult(
         cancellationAuditMessage = `Cancelled by execute event ${eventType}`;
       }
 
-      const terminalExecution = await createTerminalExecution({
+      const terminalExecution = await recordTerminalWorkflowRun({
         workflowId,
-        triggerType: triggerExecutionType,
+        trigger: { type: triggerExecutionType, eventType, correlationKey },
         runMode: orchestrated.runMode,
-        triggerEventType: eventType,
-        correlationKey,
         payload: effectiveInput,
         status: "cancelled",
         output: {
@@ -366,14 +220,16 @@ export async function postWorkflowExecuteResult(
           cancelledWaits: orchestrated.cancelledWaits,
           failedExecutions: orchestrated.failedExecutions,
         },
-        auditEventType: "run_cancelled",
-        auditMessage: cancellationAuditMessage,
-        auditMetadata: {
-          eventType,
-          correlationKey,
-          cancelledExecutions: orchestrated.cancelledExecutions,
-          cancelledWaits: orchestrated.cancelledWaits,
-          failedExecutions: orchestrated.failedExecutions,
+        audit: {
+          eventType: "run_cancelled",
+          message: cancellationAuditMessage,
+          metadata: {
+            eventType,
+            correlationKey,
+            cancelledExecutions: orchestrated.cancelledExecutions,
+            cancelledWaits: orchestrated.cancelledWaits,
+            failedExecutions: orchestrated.failedExecutions,
+          },
         },
       });
 
@@ -398,12 +254,10 @@ export async function postWorkflowExecuteResult(
     }
 
     const ignoredReason = orchestrated.reason;
-    const terminalExecution = await createTerminalExecution({
+    const terminalExecution = await recordTerminalWorkflowRun({
       workflowId,
-      triggerType: triggerExecutionType,
+      trigger: { type: triggerExecutionType, eventType, correlationKey },
       runMode,
-      triggerEventType: eventType,
-      correlationKey,
       payload: effectiveInput,
       status: "success",
       output: {
@@ -411,18 +265,21 @@ export async function postWorkflowExecuteResult(
         reason: ignoredReason,
         runMode,
       },
-      auditEventType: "run_ignored",
-      auditMessage: buildIgnoredAuditMessage({
-        reason: ignoredReason,
-        eventType,
-        eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
-      }),
-      auditMetadata: {
-        eventType,
-        correlationKey,
-        reason: ignoredReason,
-        eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
-        runMode,
+      audit: {
+        eventType: "run_ignored",
+        message: buildIgnoredRunAuditMessage({
+          triggerType: "manual",
+          reason: ignoredReason,
+          eventType,
+          eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
+        }),
+        metadata: {
+          eventType,
+          correlationKey,
+          reason: ignoredReason,
+          eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
+          runMode,
+        },
       },
     });
 
