@@ -35,6 +35,7 @@ import {
   type WorkflowNodeData,
 } from "@/lib/workflow-store";
 import { findActionById, getIntegration } from "@/plugins/registry";
+import { getIntegrationUi } from "@/shared/plugins/ui-registry";
 import { cn } from "@/shared/utils";
 import {
   parseTimestampWithTimezone,
@@ -401,9 +402,9 @@ const getProviderLogo = (actionType: string) => {
   const action = findActionById(actionType);
   const integrationType = action?.integration;
   if (typeof integrationType === "string") {
-    const plugin = getIntegration(integrationType);
-    if (plugin?.icon) {
-      const PluginIcon = plugin.icon;
+    const ui = getIntegrationUi(integrationType);
+    if (ui) {
+      const PluginIcon = ui.icon;
       return <PluginIcon className="size-12" />;
     }
   }

@@ -1,13 +1,10 @@
 import type { IntegrationPlugin } from "@/shared/plugins/registry";
 import { registerIntegration } from "@/shared/plugins/registry";
-import { ResendIcon } from "./icon";
 
 const resendPlugin: IntegrationPlugin = {
   type: "resend",
   label: "Resend",
   description: "Send transactional emails",
-
-  icon: ResendIcon,
 
   formFields: [
     {

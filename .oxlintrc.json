@@ -107,6 +107,7 @@
         "server.ts",
         "packages/core/src/hono.ts",
         "packages/core/src/server.ts",
+        "packages/plugins/src/ui.ts",
         "packages/core/client/main.tsx",
         "packages/core/client/components/flow-elements/canvas.tsx",
         "packages/core/client/components/workflow/workflow-canvas.tsx"

@@ -1,13 +1,10 @@
 import type { IntegrationPlugin } from "@/shared/plugins/registry";
 import { registerIntegration } from "@/shared/plugins/registry";
-import { TwilioIcon } from "./icon";
 
 const twilioPlugin: IntegrationPlugin = {
   type: "twilio",
   label: "Twilio",
   description: "Send SMS messages with Twilio Programmable Messaging",
-
-  icon: TwilioIcon,
 
   formFields: [
     {

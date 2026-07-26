@@ -13,6 +13,7 @@ import {
 } from "@/lib/output-display-configs";
 import type { ExecutionLogEntry as WorkflowExecutionLogEntry } from "@/lib/workflow-store";
 import { findActionById } from "@/plugins/registry";
+import { getActionOutputComponent } from "@/shared/plugins/ui-registry";
 
 // Shared types
 
@@ -348,19 +349,23 @@ export function OutputDisplay({
 }) {
   const action = actionType ? findActionById(actionType) : undefined;
   const pluginConfig = action?.outputConfig;
+  // A plugin can render its own output with a React component, which it
+  // registers from its ui.ts. When one exists it takes precedence, and the
+  // simple field-based display falls back to this app's own config table.
+  const CustomComponent = actionType
+    ? getActionOutputComponent(actionType)
+    : undefined;
   const builtInConfig = actionType ? getOutputConfig(actionType) : undefined;
-  const effectiveBuiltInConfig =
-    pluginConfig?.type !== "component" ? pluginConfig : builtInConfig;
+  const effectiveBuiltInConfig = CustomComponent ? builtInConfig : pluginConfig;
   const displayValue = effectiveBuiltInConfig
     ? getOutputDisplayValue(output, effectiveBuiltInConfig)
     : undefined;
   const legacyBase64Output = isBase64ImageOutput(output) ? output.base64 : null;
   const isLegacyBase64 =
-    !(pluginConfig || builtInConfig) && !!legacyBase64Output;
+    !(CustomComponent || pluginConfig || builtInConfig) && !!legacyBase64Output;
 
   const renderRichResult = () => {
-    if (pluginConfig?.type === "component") {
-      const CustomComponent = pluginConfig.component;
+    if (CustomComponent) {
       return (
         <div className="overflow-hidden rounded-lg border bg-muted/50 p-3">
           <CustomComponent input={input} output={output} />

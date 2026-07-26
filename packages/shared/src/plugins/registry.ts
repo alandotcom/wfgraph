@@ -84,31 +84,19 @@ export type ActionConfigFieldGroup = {
 export type ActionConfigField = ActionConfigFieldBase | ActionConfigFieldGroup;
 
 /**
- * Result Component Props
- * Props passed to custom result components
- */
-export type ResultComponentProps = {
-  output: unknown;
-  input?: unknown;
-};
-
-/**
  * Output Display Config
- * Specifies how to render step output in the workflow runs panel
+ * Specifies how to render step output in the workflow runs panel.
+ *
+ * This is plain data, so the backend can import plugin metadata freely. A
+ * plugin that renders its output with a React component declares that component
+ * in `ui-registry.ts`.
  */
-export type OutputDisplayConfig =
-  | {
-      // Built-in display types
-      type: "image" | "video" | "url";
-      // Field name in the step output that contains the displayable value
-      field: string;
-    }
-  | {
-      // Custom component display
-      type: "component";
-      // React component to render the output
-      component: React.ComponentType<ResultComponentProps>;
-    };
+export type OutputDisplayConfig = {
+  // Built-in display types
+  type: "image" | "video" | "url";
+  // Field name in the step output that contains the displayable value
+  field: string;
+};
 
 /**
  * Action Definition
@@ -144,16 +132,15 @@ export type PluginAction = {
 
 /**
  * Integration Plugin Definition
- * All information needed to register a new integration in one place
+ * Everything the backend and the editor need to know about an integration,
+ * as plain data. The integration's icon is registered separately in
+ * `ui-registry.ts`, which only the browser bundle imports.
  */
 export type IntegrationPlugin = {
   // Basic info
   type: IntegrationType;
   label: string;
   description: string;
-
-  // Icon component (should be exported from plugins/[name]/icon.tsx)
-  icon: React.ComponentType<{ className?: string }>;
 
   // Form fields for the integration dialog
   formFields: Array<{

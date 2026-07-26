@@ -1,7 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { createRoot } from "react-dom/client";
+// Plugin metadata, then the plugins' React components. The two halves are
+// separate imports so that server bundles can take the metadata alone.
 import "@rova/plugins";
+import "@rova/plugins/ui";
 import "@/routes/globals.css";
 import { hydrateRuntimeExtensionsFromApi } from "@/lib/runtime-extensions";
 import { router } from "./router";

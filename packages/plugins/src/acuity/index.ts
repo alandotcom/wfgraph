@@ -1,13 +1,10 @@
 import type { IntegrationPlugin } from "@/shared/plugins/registry";
 import { registerIntegration } from "@/shared/plugins/registry";
-import { AcuityIcon } from "./icon";
 
 const acuityPlugin: IntegrationPlugin = {
   type: "acuity",
   label: "Acuity",
   description: "Manage appointments and availability in Acuity Scheduling",
-
-  icon: AcuityIcon,
 
   formFields: [
     {

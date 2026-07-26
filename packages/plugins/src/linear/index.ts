@@ -1,13 +1,10 @@
 import type { IntegrationPlugin } from "@/shared/plugins/registry";
 import { registerIntegration } from "@/shared/plugins/registry";
-import { LinearIcon } from "./icon";
 
 const linearPlugin: IntegrationPlugin = {
   type: "linear",
   label: "Linear",
   description: "Create and manage issues in Linear",
-
-  icon: LinearIcon,
 
   formFields: [
     {

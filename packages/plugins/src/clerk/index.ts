@@ -1,14 +1,10 @@
 import type { IntegrationPlugin } from "@/shared/plugins/registry";
 import { registerIntegration } from "@/shared/plugins/registry";
-import { UserCard } from "./components/user-card";
-import { ClerkIcon } from "./icon";
 
 const clerkPlugin: IntegrationPlugin = {
   type: "clerk",
   label: "Clerk",
   description: "User authentication and management",
-
-  icon: ClerkIcon,
 
   formFields: [
     {
@@ -40,10 +36,6 @@ const clerkPlugin: IntegrationPlugin = {
         { path: "lastName", description: "Last name" },
         { path: "primaryEmailAddress", description: "Primary email address" },
       ],
-      outputConfig: {
-        type: "component",
-        component: UserCard,
-      },
       configFields: [
         {
           key: "userId",
@@ -68,10 +60,6 @@ const clerkPlugin: IntegrationPlugin = {
         { path: "lastName", description: "Last name" },
         { path: "primaryEmailAddress", description: "Primary email address" },
       ],
-      outputConfig: {
-        type: "component",
-        component: UserCard,
-      },
       configFields: [
         {
           key: "emailAddress",
@@ -138,10 +126,6 @@ const clerkPlugin: IntegrationPlugin = {
         { path: "lastName", description: "Last name" },
         { path: "primaryEmailAddress", description: "Primary email address" },
       ],
-      outputConfig: {
-        type: "component",
-        component: UserCard,
-      },
       configFields: [
         {
           key: "userId",

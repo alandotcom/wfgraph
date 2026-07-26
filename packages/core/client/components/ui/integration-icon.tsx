@@ -1,6 +1,5 @@
 import { Database, HelpCircle } from "lucide-react";
-import { getIntegration } from "@/plugins/registry";
-import { isIntegrationType } from "@/shared/types/integration";
+import { getIntegrationUi } from "@/shared/plugins/ui-registry";
 import { cn } from "@/shared/utils";
 
 interface IntegrationIconProps {
@@ -26,13 +25,11 @@ export function IntegrationIcon({
     return <SpecialIcon className={cn("text-foreground", className)} />;
   }
 
-  // Look up plugin from registry
-  const plugin = isIntegrationType(integration)
-    ? getIntegration(integration)
-    : undefined;
+  // Look up the icon the plugin registered from its ui.ts
+  const ui = getIntegrationUi(integration);
 
-  if (plugin?.icon) {
-    const PluginIcon = plugin.icon;
+  if (ui) {
+    const PluginIcon = ui.icon;
     return <PluginIcon className={cn("text-foreground", className)} />;
   }
 

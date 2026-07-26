@@ -1,5 +1,5 @@
 import { compact } from "es-toolkit/array";
-import type { ResultComponentProps } from "@/shared/plugins/registry";
+import type { ResultComponentProps } from "@/shared/plugins/ui-registry";
 
 // The logging layer unwraps standardized outputs, so we receive just the data
 type ClerkUserData = {

@@ -1,13 +1,10 @@
 import type { IntegrationPlugin } from "@/shared/plugins/registry";
 import { registerIntegration } from "@/shared/plugins/registry";
-import { SlackIcon } from "./icon";
 
 const slackPlugin: IntegrationPlugin = {
   type: "slack",
   label: "Slack",
   description: "Send messages to Slack channels",
-
-  icon: SlackIcon,
 
   formFields: [
     {
