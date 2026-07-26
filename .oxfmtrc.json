@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  // 80 columns and ES5 trailing commas are the settings the tree was already
+  // formatted under by the previous formatter (Biome via ultracite). Keeping
+  // them means the switch to oxfmt reflows a handful of files rather than
+  // rewriting every one of them.
+  "printWidth": 80,
+  "trailingComma": "es5",
+  "ignorePatterns": [
+    // Vendored agent skill documentation. A skill installer owns these files
+    // and records them in skills-lock.json, so formatting them would create a
+    // permanent diff against upstream that the next sync undoes.
+    ".agents/skills",
+    ".claude/skills",
+    // Vendored shadcn/ui and React Flow component code, carried over from the
+    // exclusion list the Biome config used.
+    "packages/core/client/components/ui",
+    "packages/core/client/components/flow-elements",
+    "packages/core/client/hooks/use-mobile.ts"
+  ]
+}
