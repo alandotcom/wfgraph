@@ -26,8 +26,19 @@ export default defineConfig({
   // "bun" is a runtime-provided module, so it must stay an import rather than
   // being pulled into the bundle.
   deps: { neverBundle: ["bun"] },
-  // Wipe dist between builds so a renamed entry cannot leave a stale hashed
-  // chunk behind. The client SPA also writes into dist/client, which is why the
-  // root "build" script runs build:lib before build:client.
-  clean: true,
+  // Wipe the library's own output between builds so a renamed entry cannot
+  // leave a stale hashed chunk behind.
+  //
+  // Two other build steps deposit their output inside this same dist/, because
+  // the shipped server resolves both relative to the compiled module: the SPA
+  // bundle at dist/client (scripts/build-client.ts, which the runtime looks up
+  // in src/hono.ts and src/server.ts) and the Drizzle migrations at
+  // dist/drizzle (scripts/copy-migrations.ts). A bare `clean: true` deletes the
+  // whole outDir, so running `tsdown` on its own wiped both of those out and
+  // only the root "build" script's step ordering hid the damage.
+  //
+  // tsdown accepts glob patterns here and hands them to tinyglobby, where a
+  // leading "!" turns a pattern into an exclusion. Patterns resolve against the
+  // package directory, since that is tsdown's cwd.
+  clean: ["dist/*", "!dist/client", "!dist/drizzle"],
 });
