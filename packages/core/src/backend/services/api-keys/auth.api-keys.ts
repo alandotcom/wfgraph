@@ -9,20 +9,18 @@ const API_KEY_PREFIX = "wfb_";
 const API_KEY_PREFIX_LENGTH = 11;
 const apiKeyAuthLogger = getAppLogger("api-keys", "auth");
 
+// Callers turn a rejection into an "unauthorized" service failure and only ever
+// read the message, so this carries no HTTP status of its own.
 type ApiKeyValidationResult =
   | { valid: true; keyId: string }
-  | { valid: false; error: string; statusCode: number };
+  | { valid: false; error: string };
 
 function parseApiKeyFromAuthHeader(authHeader: string | null): {
   key?: string;
   error?: string;
-  statusCode?: number;
 } {
   if (!authHeader) {
-    return {
-      error: "Missing Authorization header",
-      statusCode: 401,
-    };
+    return { error: "Missing Authorization header" };
   }
 
   const key = authHeader.startsWith("Bearer ")
@@ -30,10 +28,7 @@ function parseApiKeyFromAuthHeader(authHeader: string | null): {
     : authHeader;
 
   if (!key?.startsWith(API_KEY_PREFIX)) {
-    return {
-      error: "Invalid API key format",
-      statusCode: 401,
-    };
+    return { error: "Invalid API key format" };
   }
 
   return { key };
@@ -60,7 +55,6 @@ export async function validateApiKey(
     return {
       valid: false,
       error: parsed.error ?? "Invalid API key",
-      statusCode: parsed.statusCode ?? 401,
     };
   }
 
@@ -110,9 +104,5 @@ export async function validateApiKey(
     return { valid: true, keyId: matchedKeyId };
   }
 
-  return {
-    valid: false,
-    error: "Invalid API key",
-    statusCode: 401,
-  };
+  return { valid: false, error: "Invalid API key" };
 }

@@ -84,7 +84,6 @@ describe("api key auth", () => {
     expect(result).toEqual({
       valid: false,
       error: "Missing Authorization header",
-      statusCode: 401,
     });
     expect(mocks.findMany).not.toHaveBeenCalled();
   });
@@ -94,11 +93,7 @@ describe("api key auth", () => {
 
     const result = await validateApiKey("Bearer wfb_not_found");
 
-    expect(result).toEqual({
-      valid: false,
-      error: "Invalid API key",
-      statusCode: 401,
-    });
+    expect(result).toEqual({ valid: false, error: "Invalid API key" });
     expect(mocks.update).not.toHaveBeenCalled();
   });
 });
