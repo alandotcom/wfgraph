@@ -7,7 +7,6 @@ import {
   workflows,
   workflowWaitStates,
 } from "@/backend/lib/db/schema";
-import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { getAppLogger } from "@/backend/lib/logger";
 import {
   failure,
@@ -106,12 +105,6 @@ export async function getWorkflowExecutionsResult(
   }
 }
 
-export async function getWorkflowExecutions(workflowId: string) {
-  return responseFromServiceResult(
-    await getWorkflowExecutionsResult(workflowId)
-  );
-}
-
 export async function deleteWorkflowExecutionsResult(
   workflowId: string
 ): Promise<
@@ -172,10 +165,4 @@ export async function deleteWorkflowExecutionsResult(
         error instanceof Error ? error.message : "Failed to delete executions",
     });
   }
-}
-
-export async function deleteWorkflowExecutions(workflowId: string) {
-  return responseFromServiceResult(
-    await deleteWorkflowExecutionsResult(workflowId)
-  );
 }

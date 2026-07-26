@@ -1,6 +1,5 @@
 import { db } from "@/backend/lib/db";
 import { apiKeys } from "@/backend/lib/db/schema";
-import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { getAppLogger } from "@/backend/lib/logger";
 import {
   failure,
@@ -63,10 +62,6 @@ export async function getApiKeysResult(): Promise<
   }
 }
 
-export async function getApiKeys() {
-  return responseFromServiceResult(await getApiKeysResult());
-}
-
 export async function postApiKeysResult(body: {
   name?: string;
 }): Promise<ServiceResult<ApiKeyCreated, 500, ApiKeyError>> {
@@ -103,8 +98,4 @@ export async function postApiKeysResult(body: {
     });
     return failure(500, { error: "Failed to create API key" });
   }
-}
-
-export async function postApiKeys(body: { name?: string }) {
-  return responseFromServiceResult(await postApiKeysResult(body));
 }

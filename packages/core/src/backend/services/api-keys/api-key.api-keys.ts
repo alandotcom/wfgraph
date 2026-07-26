@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
 import { apiKeys } from "@/backend/lib/db/schema";
-import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { getAppLogger } from "@/backend/lib/logger";
 import {
   failure,
@@ -36,8 +35,4 @@ export async function deleteApiKeyResult(
     });
     return failure(500, { error: "Failed to delete API key" });
   }
-}
-
-export async function deleteApiKey(keyId: string) {
-  return responseFromServiceResult(await deleteApiKeyResult(keyId));
 }

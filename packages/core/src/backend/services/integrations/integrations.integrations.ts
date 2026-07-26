@@ -391,13 +391,6 @@ export async function postIntegrationsTestResult(body: {
   }
 }
 
-export async function postIntegrationsTest(body: {
-  type: IntegrationType;
-  config: IntegrationConfig;
-}) {
-  return responseFromServiceResult(await postIntegrationsTestResult(body));
-}
-
 export async function postIntegrationTestResult(
   integrationId: string
 ): Promise<
@@ -481,12 +474,6 @@ export async function postIntegrationTestResult(
   }
 }
 
-export async function postIntegrationTest(integrationId: string) {
-  return responseFromServiceResult(
-    await postIntegrationTestResult(integrationId)
-  );
-}
-
 async function testDatabaseConnection(
   databaseUrl?: string
 ): Promise<IntegrationTestResult> {
@@ -544,12 +531,4 @@ export async function postIntegrationsResult(body: {
       details: error instanceof Error ? error.message : "Unknown error",
     });
   }
-}
-
-export async function postIntegrations(body: {
-  name?: string;
-  type: IntegrationType;
-  config: IntegrationConfig;
-}) {
-  return responseFromServiceResult(await postIntegrationsResult(body));
 }

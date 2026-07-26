@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 import { uniq } from "es-toolkit/array";
 import { db } from "@/backend/lib/db";
 import { workflows } from "@/backend/lib/db/schema";
-import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { getAppLogger } from "@/backend/lib/logger";
 import {
   failure,
@@ -159,12 +158,4 @@ export async function postWorkflowsBulkLifecycleResult(
           : "Failed bulk workflow lifecycle action",
     });
   }
-}
-
-export async function postWorkflowsBulkLifecycle(
-  input: WorkflowBulkLifecycleInput
-) {
-  return responseFromServiceResult(
-    await postWorkflowsBulkLifecycleResult(input)
-  );
 }

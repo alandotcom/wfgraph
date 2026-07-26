@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
 import { workflowExecutions } from "@/backend/lib/db/schema";
-import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { sendWorkflowCancelRequested } from "@/backend/lib/inngest/runtime-events";
 import { getAppLogger } from "@/backend/lib/logger";
 import {
@@ -107,10 +106,4 @@ export async function postExecutionCancelResult(
         error instanceof Error ? error.message : "Failed to cancel execution",
     });
   }
-}
-
-export async function postExecutionCancel(executionId: string) {
-  return responseFromServiceResult(
-    await postExecutionCancelResult(executionId)
-  );
 }

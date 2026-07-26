@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
 import { workflowExecutions, workflows } from "@/backend/lib/db/schema";
-import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { sendWorkflowRunRequested } from "@/backend/lib/inngest/runtime-events";
 import { getAppLogger } from "@/backend/lib/logger";
 import {
@@ -170,17 +169,6 @@ function buildIgnoredAuditMessage(input: {
   return input.eventType
     ? `Ignored ${input.eventType} because no waiting runs were found`
     : "Ignored event because no waiting runs were found";
-}
-
-export async function postWorkflowExecute(
-  workflowId: string,
-  body: {
-    input?: Record<string, unknown>;
-  }
-) {
-  return responseFromServiceResult(
-    await postWorkflowExecuteResult(workflowId, body)
-  );
 }
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Execute route coordinates trigger parsing, cancellation, and run creation in one request handler.

@@ -2,7 +2,6 @@ import { and, desc, eq, inArray, lt, or, type SQL } from "drizzle-orm";
 import { uniq } from "es-toolkit/array";
 import { db } from "@/backend/lib/db";
 import { workflowExecutions, workflows } from "@/backend/lib/db/schema";
-import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { getAppLogger } from "@/backend/lib/logger";
 import {
   failure,
@@ -252,12 +251,4 @@ export async function getWorkflowExecutionsGlobalResult(
           : "Failed to get global workflow executions",
     });
   }
-}
-
-export async function getWorkflowExecutionsGlobal(
-  input: WorkflowExecutionsGlobalInput
-) {
-  return responseFromServiceResult(
-    await getWorkflowExecutionsGlobalResult(input)
-  );
 }

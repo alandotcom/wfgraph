@@ -48,7 +48,7 @@ The project is a Bun workspace monorepo with three packages under `packages/`:
 
 Important paths:
 - `packages/core/src/backend/server` - Hono API server
-- `packages/core/src/backend/server/routes` - thin route layer (HTTP parsing/response mapping)
+- `packages/core/src/backend/rpc` - oRPC router that binds contract procedures to service modules
 - `packages/core/src/backend/services` - domain service logic
 - `packages/core/src/backend/lib` - backend-only runtime helpers (DB, logger, workflow engine, steps, Inngest)
 - `packages/core/client` - SPA entrypoint and router
@@ -102,11 +102,11 @@ Server-side barrel files are allowed.
   - Declares request schemas with Zod.
   - Applies `zValidator` to params/query/body at route boundaries.
   - Adds centralized request/response logging middleware and `onError` handling.
-- Route modules under `packages/core/src/backend/server/routes` are intentionally thin re-export facades over service modules.
+- `packages/core/src/backend/rpc/router.ts` implements the shared oRPC contract, wiring each procedure to the `*Result` function of the service module that owns it.
 - Service modules live in two namespaces:
   - `packages/core/src/backend/services/workflow/*` for execute-specific flow.
   - `packages/core/src/backend/services/workflows/*` for workflow CRUD, webhook entrypoint, and execution/event querying.
-- `packages/core/src/backend/lib/http/respond.ts` adapts `ServiceResult` values to HTTP responses where services use typed success/failure return values.
+- `packages/core/src/backend/rpc/errors.ts` unwraps a service's typed `ServiceResult` into plain data for the router, translating a failure status into the matching `ORPCError` code.
 
 ### Data Model and Persistence
 
