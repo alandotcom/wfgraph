@@ -28,7 +28,6 @@
     "@orpc/openapi": "^1.13.5",
     "@orpc/server": "^1.13.5",
     "@orpc/zod": "^1.13.5",
-    "@rova/shared": "workspace:*",
     "@standard-schema/spec": "catalog:",
     "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.1",
