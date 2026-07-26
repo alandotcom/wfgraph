@@ -1,5 +1,9 @@
 {
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  // oxfmt owns every language listed below, and `bun run check` (oxfmt --check)
+  // gates them in CI. Each one is pinned to the oxc extension so that an editor
+  // save produces byte-identical output to the CI check. Markdown matters most
+  // here: oxfmt pads table cells to a uniform column width, so a save handled by
+  // any other formatter reformats tables and fails the check.
   "[javascript]": {
     "editor.defaultFormatter": "oxc.oxc-vscode"
   },
@@ -21,11 +25,34 @@
   "[css]": {
     "editor.defaultFormatter": "oxc.oxc-vscode"
   },
+  "[scss]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+  "[less]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
   "[graphql]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+  "[html]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+  "[yaml]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+  "[toml]": {
     "editor.defaultFormatter": "oxc.oxc-vscode"
   },
   "typescript.tsdk": "node_modules/typescript/lib",
   "editor.formatOnSave": true,
+  // oxfmt formats whole files only, so a save that asked for just the changed
+  // ranges would be dropped. "file" is VS Code's default; it is written out here
+  // so a developer's global "modifications" preference cannot silently turn
+  // format-on-save into a no-op for this workspace.
+  "editor.formatOnSaveMode": "file",
   "editor.formatOnPaste": true,
   "emmet.showExpandedAbbreviation": "never",
   "editor.codeActionsOnSave": {
