@@ -1,4 +1,3 @@
-// biome-ignore lint/performance/noBarrelFile: Public library entrypoint intentionally re-exports API.
 export {
   type CreateActionInput,
   type CreateActionInputWithOutput,

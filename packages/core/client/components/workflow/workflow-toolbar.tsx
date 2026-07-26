@@ -316,7 +316,6 @@ type ExecuteWorkflowRunParams = {
   setSelectedExecutionId: (value: string | null) => void;
 };
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Execution lifecycle combines API kickoff, polling, node status sync, and cancellation handling.
 async function executeWorkflowRun({
   workflowId,
   nodes,

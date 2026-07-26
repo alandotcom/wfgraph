@@ -17,7 +17,6 @@ import type {
 const OverlayContext = createContext<OverlayContextValue | null>(null);
 type OverlayPropsRecord = Record<string, unknown>;
 type AnyOverlayStackItem = Omit<OverlayStackItem, "component" | "props"> & {
-  // biome-ignore lint/suspicious/noExplicitAny: The overlay stack stores heterogeneous overlay prop shapes.
   component: ComponentType<OverlayComponentProps<any>>;
   props: OverlayPropsRecord;
 };

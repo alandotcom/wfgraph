@@ -56,7 +56,6 @@ function readConfigString(
   return typeof value === "string" ? value : undefined;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Complex UI logic with multiple conditions
 export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   const store = useStore();
   const { push, closeAll } = useOverlay();

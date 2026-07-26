@@ -193,7 +193,6 @@ function WebhookConfigSection({
   );
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Trigger config intentionally combines form, summary, and warnings in one panel.
 export function TriggerConfig({
   config,
   onUpdateConfig,
@@ -355,7 +354,6 @@ export function TriggerConfig({
     });
   };
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Warning assembly validates multiple independent webhook configuration rules.
   const { configWarnings, payloadWarnings } = useMemo(() => {
     const configItems: string[] = [];
     const payloadItems: string[] = [];

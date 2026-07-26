@@ -72,7 +72,6 @@ export function WorkflowSidebarPanel({
       hasInitialized.current = true;
       return;
     }
-    // biome-ignore lint/suspicious/noDocumentCookie: simple cookie storage for sidebar width
     document.cookie = `sidebar-width=${panelWidth}; path=/; max-age=31536000`; // 1 year
   }, [panelWidth]);
 
@@ -81,7 +80,6 @@ export function WorkflowSidebarPanel({
     if (!hasReadCookies.current) {
       return;
     }
-    // biome-ignore lint/suspicious/noDocumentCookie: simple cookie storage for sidebar state
     document.cookie = `sidebar-collapsed=${panelCollapsed}; path=/; max-age=31536000`; // 1 year
   }, [panelCollapsed]);
 
@@ -237,7 +235,6 @@ export function WorkflowSidebarPanel({
           }}
         >
           {/* Resize handle with collapse button */}
-          {/* biome-ignore lint/a11y/useSemanticElements: custom resize handle */}
           <div
             aria-orientation="vertical"
             aria-valuenow={panelWidth}

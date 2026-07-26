@@ -78,7 +78,6 @@ export async function getWorkflow(
   }
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Patch handles name, graph, mode, and integration validation in one transactional service boundary.
 export async function patchWorkflow(
   workflowId: string,
   body: {

@@ -381,7 +381,6 @@ export default function WorkflowsPage() {
           </tr>
         </thead>
         <tbody>
-          {/* biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Row rendering includes per-item state/mode/action controls and is clearer in a single map callback. */}
           {workflowRows.map((workflow) => {
             const isSelected = selectedWorkflowIds.has(workflow.id);
             const canMutate = workflow.isOwner !== false;

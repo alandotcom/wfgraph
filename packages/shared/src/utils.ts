@@ -15,7 +15,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * and nested error structures common in API/provider SDKs.
  * Note: This is synchronous - use getErrorMessageAsync for Promise errors.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Consolidated error normalization intentionally handles many transport formats
 export function getErrorMessage(error: unknown): string {
   // Handle null/undefined
   if (error === null || error === undefined) {

@@ -387,7 +387,6 @@ export const PanelInner = () => {
     !selectedNode.data.config?.actionType &&
     isOwner;
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Multi-branch panel content with conditional rendering
   const renderPropertiesContent = () => {
     // Multi-selection content
     if (hasMultipleSelections) {

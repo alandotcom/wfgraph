@@ -48,7 +48,6 @@ export const integrations = workflowsSchema.table("integrations", {
     .$defaultFn(() => generateId()),
   name: text("name").notNull(),
   type: text("type").notNull().$type<IntegrationType>(),
-  // biome-ignore lint/suspicious/noExplicitAny: JSONB type - encrypted credentials stored as JSON
   config: jsonb("config").notNull().$type<any>(),
   isManaged: boolean("is_managed").default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -74,9 +73,7 @@ export const workflowExecutions = workflowsSchema.table(
     runMode: text("run_mode").notNull().default("live").$type<WorkflowMode>(),
     triggerEventType: text("trigger_event_type"),
     correlationKey: text("correlation_key"),
-    // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level
     input: jsonb("input").$type<Record<string, any>>(),
-    // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level
     output: jsonb("output").$type<any>(),
     error: text("error"),
     startedAt: timestamp("started_at").notNull().defaultNow(),
@@ -115,9 +112,7 @@ export const workflowExecutionLogs = workflowsSchema.table(
     status: text("status")
       .notNull()
       .$type<"pending" | "running" | "success" | "error">(),
-    // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level
     input: jsonb("input").$type<any>(),
-    // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level
     output: jsonb("output").$type<any>(),
     error: text("error"),
     startedAt: timestamp("started_at").notNull().defaultNow(),
@@ -156,7 +151,6 @@ export const workflowWaitStates = workflowsSchema.table(
     hookToken: text("hook_token"),
     waitUntil: timestamp("wait_until"),
     correlationKey: text("correlation_key"),
-    // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level
     metadata: jsonb("metadata").$type<Record<string, any>>(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     resumedAt: timestamp("resumed_at"),
@@ -191,7 +185,6 @@ export const workflowExecutionEvents = workflowsSchema.table(
     }),
     eventType: text("event_type").notNull(),
     message: text("message").notNull(),
-    // biome-ignore lint/suspicious/noExplicitAny: JSONB type - structure validated at application level
     metadata: jsonb("metadata").$type<Record<string, any>>(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },

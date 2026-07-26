@@ -24,7 +24,6 @@ import { resolveWebhookTriggerRuntimeConfig } from "@/shared/workflow/triggers/w
 
 const executeLogger = getAppLogger("workflow", "execute");
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Execute route coordinates trigger parsing, cancellation, and run creation in one request handler.
 export async function postWorkflowExecuteResult(
   workflowId: string,
   body: {

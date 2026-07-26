@@ -1476,7 +1476,6 @@ async function executeWorkflowInner(
    * another. Whatever the traversal needs afterwards travels back in the
    * returned outcome, which crosses a step boundary and stays JSON-safe.
    */
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Node execution branches over trigger, action, and unknown node shapes.
   async function runNodeWork(
     node: WorkflowNode,
     nodeName: string,
@@ -1745,7 +1744,6 @@ async function executeWorkflowInner(
    * outside the node's step so descendants become sibling steps rather than
    * nested ones.
    */
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Downstream routing covers trigger gating, halted branches, and condition branches.
   async function executeNodeInner(
     nodeId: string,
     node: WorkflowNode,
