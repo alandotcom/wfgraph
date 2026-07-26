@@ -94,7 +94,7 @@ describe("postWorkflowsBulkLifecycleResult", () => {
       .mockResolvedValueOnce({ ok: true, data: { success: true } })
       .mockResolvedValueOnce({
         ok: false,
-        status: 404,
+        kind: "not_found",
         error: { error: "Workflow not found" },
       });
 

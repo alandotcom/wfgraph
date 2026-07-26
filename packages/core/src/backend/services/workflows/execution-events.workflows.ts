@@ -34,7 +34,11 @@ type ExecutionEventsError = { error: string };
 export async function getExecutionEventsResult(
   executionId: string
 ): Promise<
-  ServiceResult<ExecutionEventsResult, 404 | 500, ExecutionEventsError>
+  ServiceResult<
+    ExecutionEventsResult,
+    "not_found" | "internal",
+    ExecutionEventsError
+  >
 > {
   const requestLogger = executionEventsLogger.with({ executionId });
   try {
@@ -45,7 +49,7 @@ export async function getExecutionEventsResult(
 
     if (!execution) {
       requestLogger.warn("Execution not found for events");
-      return failure(404, { error: "Execution not found" });
+      return failure("not_found", { error: "Execution not found" });
     }
 
     const events = await db.query.workflowExecutionEvents.findMany({
@@ -70,7 +74,7 @@ export async function getExecutionEventsResult(
       `Failed to get execution events: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error
           ? error.message

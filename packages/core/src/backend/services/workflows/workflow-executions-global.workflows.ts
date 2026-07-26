@@ -174,7 +174,7 @@ export async function getWorkflowExecutionsGlobalResult(
 ): Promise<
   ServiceResult<
     WorkflowExecutionsGlobalResult,
-    400 | 500,
+    "invalid" | "internal",
     WorkflowExecutionsGlobalError
   >
 > {
@@ -190,7 +190,7 @@ export async function getWorkflowExecutionsGlobalResult(
     const requestedLimit = resolveLimit(input.limit);
 
     if (!requestedLimit) {
-      return failure(400, {
+      return failure("invalid", {
         error: `Limit must be between 1 and ${MAX_LIMIT}`,
       });
     }
@@ -202,7 +202,7 @@ export async function getWorkflowExecutionsGlobalResult(
     });
 
     if (cursorError) {
-      return failure(400, { error: cursorError });
+      return failure("invalid", { error: cursorError });
     }
 
     const rows = await db
@@ -244,7 +244,7 @@ export async function getWorkflowExecutionsGlobalResult(
       `Failed to get global workflow executions: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error
           ? error.message

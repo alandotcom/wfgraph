@@ -18,7 +18,7 @@ const workflowsLogger = getAppLogger("workflow", "list");
 
 type GetWorkflowsResult = ServiceResult<
   WorkflowApiPayload[],
-  500,
+  "internal",
   ApiErrorPayload
 >;
 
@@ -38,7 +38,7 @@ export async function getWorkflows(): Promise<GetWorkflowsResult> {
       `Failed to get workflows: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error: error instanceof Error ? error.message : "Failed to get workflows",
     });
   }

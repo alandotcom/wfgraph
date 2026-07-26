@@ -178,7 +178,11 @@ export async function postWorkflowExecuteResult(
     input?: Record<string, unknown>;
   }
 ): Promise<
-  ServiceResult<WorkflowExecuteResponse, 400 | 403 | 404 | 500, ApiErrorPayload>
+  ServiceResult<
+    WorkflowExecuteResponse,
+    "invalid" | "not_found" | "internal",
+    ApiErrorPayload
+  >
 > {
   const requestLogger = executeLogger.with({ workflowId });
   try {
@@ -187,7 +191,7 @@ export async function postWorkflowExecuteResult(
     });
 
     if (!workflow) {
-      return failure(404, { error: "Workflow not found" });
+      return failure("not_found", { error: "Workflow not found" });
     }
 
     const preflight = await runWorkflowExecutionPreflight({
@@ -388,7 +392,7 @@ export async function postWorkflowExecuteResult(
       requestLogger.error(
         "Unexpected resumed outcome for manual execute orchestration"
       );
-      return failure(500, {
+      return failure("internal", {
         error: "Unexpected routing outcome while executing workflow",
       });
     }
@@ -435,7 +439,7 @@ export async function postWorkflowExecuteResult(
       `Failed to start workflow execution: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error ? error.message : "Failed to execute workflow",
     });

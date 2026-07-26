@@ -40,7 +40,7 @@ export async function runWorkflowExecutionPreflight(input: {
   logger: PreflightLogger;
   requireExecutionType?: TriggerExecutionType;
 }): Promise<
-  ServiceResult<WorkflowExecutionPreflight, 400 | 403, ApiErrorPayload>
+  ServiceResult<WorkflowExecutionPreflight, "invalid", ApiErrorPayload>
 > {
   const { workflow, logger, requireExecutionType } = input;
 
@@ -50,7 +50,7 @@ export async function runWorkflowExecutionPreflight(input: {
       workflowName: workflow.name,
       error: graphValidation.error,
     });
-    return failure(400, { error: "Workflow graph is invalid" });
+    return failure("invalid", { error: "Workflow graph is invalid" });
   }
 
   const actionValidation = validateWorkflowActionConfigs(graphValidation.nodes);
@@ -59,7 +59,7 @@ export async function runWorkflowExecutionPreflight(input: {
       workflowName: workflow.name,
       error: actionValidation.error,
     });
-    return failure(400, { error: actionValidation.error });
+    return failure("invalid", { error: actionValidation.error });
   }
 
   const conditionValidation = validateWorkflowConditionConfigs(
@@ -70,7 +70,7 @@ export async function runWorkflowExecutionPreflight(input: {
       workflowName: workflow.name,
       error: conditionValidation.error,
     });
-    return failure(400, { error: conditionValidation.error });
+    return failure("invalid", { error: conditionValidation.error });
   }
 
   const integrationValidation = await validateWorkflowIntegrations(
@@ -81,7 +81,7 @@ export async function runWorkflowExecutionPreflight(input: {
       workflowName: workflow.name,
       invalidIntegrationIds: integrationValidation.invalidIds,
     });
-    return failure(403, {
+    return failure("invalid", {
       error: "Workflow contains invalid integration references",
       code: "integration_validation_failed",
       invalidIntegrationIds: integrationValidation.invalidIds ?? [],
@@ -99,7 +99,7 @@ export async function runWorkflowExecutionPreflight(input: {
     (!triggerNode ||
       triggerDefinition.runtime.executionType !== requireExecutionType)
   ) {
-    return failure(400, {
+    return failure("invalid", {
       error: `This workflow is not configured for ${requireExecutionType} triggers`,
     });
   }

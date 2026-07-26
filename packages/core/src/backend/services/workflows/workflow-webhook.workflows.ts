@@ -192,7 +192,13 @@ export async function postWorkflowWebhookResult(input: {
   workflowId: string;
   authHeader: string | null;
   body: Record<string, unknown>;
-}): Promise<ServiceResult<WorkflowWebhookResponse, number, ApiErrorPayload>> {
+}): Promise<
+  ServiceResult<
+    WorkflowWebhookResponse,
+    "invalid" | "not_found" | "internal",
+    ApiErrorPayload
+  >
+> {
   const requestLogger = webhookLogger.with({ workflowId: input.workflowId });
   try {
     const { workflowId, authHeader, body } = input;
@@ -202,13 +208,13 @@ export async function postWorkflowWebhookResult(input: {
     });
 
     if (!workflow) {
-      return failure(404, { error: "Workflow not found" });
+      return failure("not_found", { error: "Workflow not found" });
     }
 
     const apiKeyValidation = await validateApiKey(authHeader);
 
     if (!apiKeyValidation.valid) {
-      return failure(apiKeyValidation.statusCode || 401, {
+      return failure("invalid", {
         error: apiKeyValidation.error,
       });
     }
@@ -357,7 +363,7 @@ export async function postWorkflowWebhookResult(input: {
       `Failed to start workflow execution: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error ? error.message : "Failed to execute workflow",
     });

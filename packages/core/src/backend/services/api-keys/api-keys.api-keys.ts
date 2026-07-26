@@ -31,7 +31,7 @@ type ApiKeyCreated = {
 type ApiKeyError = { error: string };
 
 export async function getApiKeysResult(): Promise<
-  ServiceResult<ApiKeyListItem[], 500, ApiKeyError>
+  ServiceResult<ApiKeyListItem[], "internal", ApiKeyError>
 > {
   try {
     const keys = await db.query.apiKeys.findMany({
@@ -58,13 +58,13 @@ export async function getApiKeysResult(): Promise<
     apiKeysLogger.error(`Failed to list API keys: ${getErrorMessage(error)}`, {
       error,
     });
-    return failure(500, { error: "Failed to list API keys" });
+    return failure("internal", { error: "Failed to list API keys" });
   }
 }
 
 export async function postApiKeysResult(body: {
   name?: string;
-}): Promise<ServiceResult<ApiKeyCreated, 500, ApiKeyError>> {
+}): Promise<ServiceResult<ApiKeyCreated, "internal", ApiKeyError>> {
   try {
     const name = body.name || null;
 
@@ -96,6 +96,6 @@ export async function postApiKeysResult(body: {
     apiKeysLogger.error(`Failed to create API key: ${getErrorMessage(error)}`, {
       error,
     });
-    return failure(500, { error: "Failed to create API key" });
+    return failure("internal", { error: "Failed to create API key" });
   }
 }

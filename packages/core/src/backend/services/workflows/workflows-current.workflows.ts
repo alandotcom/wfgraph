@@ -27,13 +27,13 @@ const workflowsCurrentLogger = getAppLogger("workflow", "current");
 
 type GetCurrentWorkflowResult = ServiceResult<
   WorkflowApiPayload,
-  500,
+  "internal",
   ApiErrorPayload
 >;
 
 type SaveCurrentWorkflowResult = ServiceResult<
   WorkflowApiPayload,
-  400 | 500,
+  "invalid" | "internal",
   ApiErrorPayload
 >;
 
@@ -75,7 +75,7 @@ export async function getWorkflowsCurrent(): Promise<GetCurrentWorkflowResult> {
           error: graphValidation.error,
         }
       );
-      return failure(500, {
+      return failure("internal", {
         error: "Stored current workflow graph is invalid",
       });
     }
@@ -90,7 +90,7 @@ export async function getWorkflowsCurrent(): Promise<GetCurrentWorkflowResult> {
           error: conditionValidation.error,
         }
       );
-      return failure(500, { error: conditionValidation.error });
+      return failure("internal", { error: conditionValidation.error });
     }
 
     return success({
@@ -102,7 +102,7 @@ export async function getWorkflowsCurrent(): Promise<GetCurrentWorkflowResult> {
       `Failed to get current workflow: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error
           ? error.message
@@ -125,14 +125,14 @@ export async function postWorkflowsCurrent(body: {
 
     const graphValidation = validateWorkflowGraph(graphToValidate);
     if (!graphValidation.valid) {
-      return failure(400, { error: graphValidation.error });
+      return failure("invalid", { error: graphValidation.error });
     }
 
     const conditionValidation = validateWorkflowConditionConfigs(
       graphValidation.nodes
     );
     if (!conditionValidation.valid) {
-      return failure(400, { error: conditionValidation.error });
+      return failure("invalid", { error: conditionValidation.error });
     }
 
     const [existingWorkflow] = await db
@@ -181,7 +181,7 @@ export async function postWorkflowsCurrent(body: {
       `Failed to save current workflow: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error
           ? error.message

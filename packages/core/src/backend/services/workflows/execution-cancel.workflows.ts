@@ -29,7 +29,11 @@ type CancelExecutionError = { error: string };
 export async function postExecutionCancelResult(
   executionId: string
 ): Promise<
-  ServiceResult<CancelExecutionSuccess, 404 | 409 | 500, CancelExecutionError>
+  ServiceResult<
+    CancelExecutionSuccess,
+    "not_found" | "conflict" | "internal",
+    CancelExecutionError
+  >
 > {
   const requestLogger = executionCancelLogger.with({ executionId });
   try {
@@ -42,14 +46,16 @@ export async function postExecutionCancelResult(
 
     if (!execution) {
       requestLogger.warn("Execution not found for cancel");
-      return failure(404, { error: "Execution not found" });
+      return failure("not_found", { error: "Execution not found" });
     }
 
     const waitingStates = await listExecutionWaitingStates(executionId);
 
     if (waitingStates.length === 0) {
       requestLogger.warn("Execution is not waiting and cannot be cancelled");
-      return failure(409, { error: "Execution is not currently waiting" });
+      return failure("conflict", {
+        error: "Execution is not currently waiting",
+      });
     }
 
     await logWorkflowAuditEvent({
@@ -73,7 +79,7 @@ export async function postExecutionCancelResult(
       requestLogger.warn(
         "Execution wait state changed before cancel persisted"
       );
-      return failure(409, { error: "Execution is no longer waiting" });
+      return failure("conflict", { error: "Execution is no longer waiting" });
     }
 
     await markExecutionCancelled({
@@ -101,7 +107,7 @@ export async function postExecutionCancelResult(
       `Failed to cancel execution: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error ? error.message : "Failed to cancel execution",
     });

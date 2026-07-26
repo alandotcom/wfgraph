@@ -72,7 +72,11 @@ function toWorkflowExecutionItem(input: {
 export async function getWorkflowExecutionsResult(
   workflowId: string
 ): Promise<
-  ServiceResult<WorkflowExecutionItem[], 404 | 500, WorkflowExecutionsError>
+  ServiceResult<
+    WorkflowExecutionItem[],
+    "not_found" | "internal",
+    WorkflowExecutionsError
+  >
 > {
   const requestLogger = workflowExecutionsLogger.with({ workflowId });
   try {
@@ -83,7 +87,7 @@ export async function getWorkflowExecutionsResult(
 
     if (!workflow) {
       requestLogger.warn("Workflow not found for executions list");
-      return failure(404, { error: "Workflow not found" });
+      return failure("not_found", { error: "Workflow not found" });
     }
 
     const executions = await db.query.workflowExecutions.findMany({
@@ -98,7 +102,7 @@ export async function getWorkflowExecutionsResult(
       `Failed to get workflow executions: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error ? error.message : "Failed to get executions",
     });
@@ -110,7 +114,7 @@ export async function deleteWorkflowExecutionsResult(
 ): Promise<
   ServiceResult<
     { success: true; deletedCount: number },
-    404 | 500,
+    "not_found" | "internal",
     WorkflowExecutionsError
   >
 > {
@@ -123,7 +127,7 @@ export async function deleteWorkflowExecutionsResult(
 
     if (!workflow) {
       requestLogger.warn("Workflow not found for executions delete");
-      return failure(404, { error: "Workflow not found" });
+      return failure("not_found", { error: "Workflow not found" });
     }
 
     const executions = await db.query.workflowExecutions.findMany({
@@ -160,7 +164,7 @@ export async function deleteWorkflowExecutionsResult(
       `Failed to delete workflow executions: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error ? error.message : "Failed to delete executions",
     });

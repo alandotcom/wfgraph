@@ -56,7 +56,13 @@ function toIso(value: Date | null): string | null {
 
 export async function getExecutionLogsResult(
   executionId: string
-): Promise<ServiceResult<ExecutionLogsResult, 404 | 500, ExecutionLogsError>> {
+): Promise<
+  ServiceResult<
+    ExecutionLogsResult,
+    "not_found" | "internal",
+    ExecutionLogsError
+  >
+> {
   const requestLogger = executionLogsLogger.with({ executionId });
   try {
     const execution = await db.query.workflowExecutions.findFirst({
@@ -76,7 +82,7 @@ export async function getExecutionLogsResult(
 
     if (!execution) {
       requestLogger.warn("Execution not found for logs");
-      return failure(404, { error: "Execution not found" });
+      return failure("not_found", { error: "Execution not found" });
     }
 
     const logs = await db.query.workflowExecutionLogs.findMany({
@@ -118,7 +124,7 @@ export async function getExecutionLogsResult(
       `Failed to get execution logs: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error ? error.message : "Failed to get execution logs",
     });

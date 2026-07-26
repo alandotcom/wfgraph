@@ -78,7 +78,11 @@ async function setWorkflowPausedState(input: {
 export async function postWorkflowsBulkLifecycleResult(
   input: WorkflowBulkLifecycleInput
 ): Promise<
-  ServiceResult<WorkflowBulkLifecycleResult, 500, WorkflowBulkLifecycleError>
+  ServiceResult<
+    WorkflowBulkLifecycleResult,
+    "internal",
+    WorkflowBulkLifecycleError
+  >
 > {
   const workflowIds = uniq(input.workflowIds);
   const requestLogger = workflowsBulkLifecycleLogger.with({
@@ -151,7 +155,7 @@ export async function postWorkflowsBulkLifecycleResult(
       `Failed bulk workflow lifecycle action: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error
           ? error.message

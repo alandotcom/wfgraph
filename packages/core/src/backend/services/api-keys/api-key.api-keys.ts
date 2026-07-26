@@ -15,7 +15,9 @@ type DeleteApiKeyError = { error: string };
 
 export async function deleteApiKeyResult(
   keyId: string
-): Promise<ServiceResult<{ success: true }, 404 | 500, DeleteApiKeyError>> {
+): Promise<
+  ServiceResult<{ success: true }, "not_found" | "internal", DeleteApiKeyError>
+> {
   const requestLogger = apiKeyLogger.with({ keyId });
   try {
     const result = await db
@@ -25,7 +27,7 @@ export async function deleteApiKeyResult(
 
     if (result.length === 0) {
       requestLogger.warn("API key not found for delete");
-      return failure(404, { error: "API key not found" });
+      return failure("not_found", { error: "API key not found" });
     }
 
     return success({ success: true });
@@ -33,6 +35,6 @@ export async function deleteApiKeyResult(
     requestLogger.error(`Failed to delete API key: ${getErrorMessage(error)}`, {
       error,
     });
-    return failure(500, { error: "Failed to delete API key" });
+    return failure("internal", { error: "Failed to delete API key" });
   }
 }

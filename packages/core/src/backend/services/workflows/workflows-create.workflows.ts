@@ -43,7 +43,7 @@ const workflowCreateLogger = getAppLogger("workflow", "create");
 
 type CreateWorkflowResult = ServiceResult<
   WorkflowApiPayload,
-  400 | 403 | 409 | 500,
+  "invalid" | "conflict" | "internal",
   ApiErrorPayload
 >;
 
@@ -58,7 +58,7 @@ export async function postWorkflowsCreate(body: {
       workflowCreateLogger.warn(
         "Rejected workflow create request with empty name"
       );
-      return failure(400, { error: "Workflow name is required" });
+      return failure("invalid", { error: "Workflow name is required" });
     }
 
     const existingWorkflow = await db.query.workflows.findFirst({
@@ -69,7 +69,7 @@ export async function postWorkflowsCreate(body: {
       workflowCreateLogger.warn("Duplicate workflow name on create", {
         workflowName,
       });
-      return failure(409, {
+      return failure("conflict", {
         error: `Workflow name "${workflowName}" already exists`,
       });
     }
@@ -88,7 +88,7 @@ export async function postWorkflowsCreate(body: {
         workflowName,
         error: graphValidation.error,
       });
-      return failure(400, { error: graphValidation.error });
+      return failure("invalid", { error: graphValidation.error });
     }
 
     const conditionValidation = validateWorkflowConditionConfigs(
@@ -102,7 +102,7 @@ export async function postWorkflowsCreate(body: {
           error: conditionValidation.error,
         }
       );
-      return failure(400, { error: conditionValidation.error });
+      return failure("invalid", { error: conditionValidation.error });
     }
 
     const integrationValidation = await validateWorkflowIntegrations(
@@ -116,7 +116,7 @@ export async function postWorkflowsCreate(body: {
           invalidIntegrationIds: integrationValidation.invalidIds,
         }
       );
-      return failure(403, {
+      return failure("invalid", {
         error: "Invalid integration references in workflow",
         code: "integration_validation_failed",
         invalidIntegrationIds: integrationValidation.invalidIds ?? [],
@@ -150,7 +150,7 @@ export async function postWorkflowsCreate(body: {
       `Failed to create workflow: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error ? error.message : "Failed to create workflow",
     });

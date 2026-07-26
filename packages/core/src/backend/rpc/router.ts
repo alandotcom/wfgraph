@@ -83,9 +83,9 @@ function rpcHandler<TArgs extends unknown[], TOutput>(
     const result = await handler(...args);
     if (!result.ok) {
       rpcLogger.warn(
-        `RPC handler returned failure [${result.status}]: ${JSON.stringify(result.error)}`,
+        `RPC handler returned failure [${result.kind}]: ${JSON.stringify(result.error)}`,
         {
-          status: result.status,
+          kind: result.kind,
           error: result.error,
           input: summarizeRpcInput(args),
         }

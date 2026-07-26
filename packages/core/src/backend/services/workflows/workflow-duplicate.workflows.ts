@@ -63,7 +63,7 @@ const workflowDuplicateLogger = getAppLogger("workflow", "duplicate");
 
 type DuplicateWorkflowResult = ServiceResult<
   WorkflowApiPayload,
-  404 | 409 | 500,
+  "not_found" | "conflict" | "internal",
   ApiErrorPayload
 >;
 
@@ -77,7 +77,7 @@ export async function postWorkflowDuplicate(
     });
 
     if (!sourceWorkflow) {
-      return failure(404, { error: "Workflow not found" });
+      return failure("not_found", { error: "Workflow not found" });
     }
 
     const sourceGraph = sourceWorkflow.graph;
@@ -101,7 +101,7 @@ export async function postWorkflowDuplicate(
       requestLogger.warn("Duplicate workflow name on duplicate", {
         workflowName,
       });
-      return failure(409, {
+      return failure("conflict", {
         error: `Workflow name "${workflowName}" already exists`,
       });
     }
@@ -133,7 +133,7 @@ export async function postWorkflowDuplicate(
       `Failed to duplicate workflow: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error ? error.message : "Failed to duplicate workflow",
     });

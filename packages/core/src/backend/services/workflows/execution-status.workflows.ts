@@ -30,7 +30,11 @@ type ExecutionStatusError = { error: string };
 export async function getExecutionStatusResult(
   executionId: string
 ): Promise<
-  ServiceResult<ExecutionStatusResult, 404 | 500, ExecutionStatusError>
+  ServiceResult<
+    ExecutionStatusResult,
+    "not_found" | "internal",
+    ExecutionStatusError
+  >
 > {
   const requestLogger = executionStatusLogger.with({ executionId });
   try {
@@ -44,7 +48,7 @@ export async function getExecutionStatusResult(
 
     if (!execution) {
       requestLogger.warn("Execution not found for status");
-      return failure(404, { error: "Execution not found" });
+      return failure("not_found", { error: "Execution not found" });
     }
 
     const logs = await db.query.workflowExecutionLogs.findMany({
@@ -69,7 +73,7 @@ export async function getExecutionStatusResult(
       `Failed to get execution status: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error
           ? error.message

@@ -147,7 +147,7 @@ describe("getWorkflowExecutionsGlobalResult", () => {
       return;
     }
 
-    expect(result.status).toBe(400);
+    expect(result.kind).toBe("invalid");
     expect(result.error.error).toContain("Invalid cursor.startedAt");
   });
 });

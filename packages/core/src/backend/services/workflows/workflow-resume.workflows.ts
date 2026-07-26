@@ -31,7 +31,13 @@ export async function postWorkflowResumeResult(
   token: string,
   body: Record<string, unknown>,
   authHeader: string | null
-): Promise<ServiceResult<WorkflowResumeSuccess, number, WorkflowResumeError>> {
+): Promise<
+  ServiceResult<
+    WorkflowResumeSuccess,
+    "invalid" | "not_found" | "conflict" | "internal",
+    WorkflowResumeError
+  >
+> {
   const requestLogger = workflowResumeLogger.with({
     token,
   });
@@ -45,7 +51,9 @@ export async function postWorkflowResumeResult(
 
     if (!waitState) {
       requestLogger.warn("Wait hook not found or no longer active");
-      return failure(404, { error: "Wait hook not found or no longer active" });
+      return failure("not_found", {
+        error: "Wait hook not found or no longer active",
+      });
     }
 
     const apiKeyValidation = await validateApiKey(authHeader);
@@ -54,7 +62,7 @@ export async function postWorkflowResumeResult(
       requestLogger.warn("Workflow resume rejected due to invalid API key", {
         statusCode: apiKeyValidation.statusCode ?? 401,
       });
-      return failure(apiKeyValidation.statusCode || 401, {
+      return failure("invalid", {
         error: apiKeyValidation.error,
       });
     }
@@ -72,7 +80,9 @@ export async function postWorkflowResumeResult(
     });
     if (!waitStateUpdated) {
       requestLogger.warn("Wait hook changed state before resume update");
-      return failure(409, { error: "Wait hook not found or no longer active" });
+      return failure("conflict", {
+        error: "Wait hook not found or no longer active",
+      });
     }
 
     await markExecutionRunning(waitState.executionId);
@@ -97,7 +107,7 @@ export async function postWorkflowResumeResult(
       `Failed to resume wait hook: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error ? error.message : "Failed to resume wait hook",
     });

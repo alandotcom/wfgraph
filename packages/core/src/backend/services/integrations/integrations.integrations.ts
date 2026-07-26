@@ -161,7 +161,7 @@ function toIntegrationWithConfig(input: {
 
 export async function getIntegrationsResult(
   type?: IntegrationType
-): Promise<ServiceResult<IntegrationSummary[], 500, IntegrationError>> {
+): Promise<ServiceResult<IntegrationSummary[], "internal", IntegrationError>> {
   const requestLogger = integrationsLogger.with({ type: type ?? null });
   try {
     const integrations = await getIntegrationsAll(type);
@@ -171,7 +171,7 @@ export async function getIntegrationsResult(
       `Failed to get integrations: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error: "Failed to get integrations",
       details: error instanceof Error ? error.message : "Unknown error",
     });
@@ -187,7 +187,7 @@ export async function getIntegrationResult(
 ): Promise<
   ServiceResult<
     IntegrationWithConfig,
-    404 | 500,
+    "not_found" | "internal",
     { error: string; details?: string }
   >
 > {
@@ -197,7 +197,7 @@ export async function getIntegrationResult(
 
     if (!integration) {
       requestLogger.warn("Integration not found");
-      return failure(404, { error: "Integration not found" });
+      return failure("not_found", { error: "Integration not found" });
     }
 
     return success(toIntegrationWithConfig(integration));
@@ -206,7 +206,7 @@ export async function getIntegrationResult(
       `Failed to get integration: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error: "Failed to get integration",
       details: error instanceof Error ? error.message : "Unknown error",
     });
@@ -226,7 +226,7 @@ export async function putIntegrationResult(
 ): Promise<
   ServiceResult<
     IntegrationWithConfig,
-    404 | 500,
+    "not_found" | "internal",
     { error: string; details?: string }
   >
 > {
@@ -236,7 +236,7 @@ export async function putIntegrationResult(
 
     if (!existingIntegration) {
       requestLogger.warn("Integration not found for update");
-      return failure(404, { error: "Integration not found" });
+      return failure("not_found", { error: "Integration not found" });
     }
 
     const mergedConfig = body.config
@@ -259,7 +259,7 @@ export async function putIntegrationResult(
 
     if (!integration) {
       requestLogger.warn("Integration not found for update");
-      return failure(404, { error: "Integration not found" });
+      return failure("not_found", { error: "Integration not found" });
     }
 
     return success(toIntegrationWithConfig(integration));
@@ -268,7 +268,7 @@ export async function putIntegrationResult(
       `Failed to update integration: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error: "Failed to update integration",
       details: error instanceof Error ? error.message : "Unknown error",
     });
@@ -289,14 +289,16 @@ export async function putIntegration(
 
 export async function deleteIntegrationResult(
   integrationId: string
-): Promise<ServiceResult<{ success: true }, 404 | 500, IntegrationError>> {
+): Promise<
+  ServiceResult<{ success: true }, "not_found" | "internal", IntegrationError>
+> {
   const requestLogger = integrationsLogger.with({ integrationId });
   try {
     const deleted = await deleteIntegrationById(integrationId);
 
     if (!deleted) {
       requestLogger.warn("Integration not found for delete");
-      return failure(404, { error: "Integration not found" });
+      return failure("not_found", { error: "Integration not found" });
     }
 
     return success({ success: true });
@@ -305,7 +307,7 @@ export async function deleteIntegrationResult(
       `Failed to delete integration: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error: "Failed to delete integration",
       details: error instanceof Error ? error.message : "Unknown error",
     });
@@ -322,7 +324,11 @@ export async function postIntegrationsTestResult(body: {
   type: IntegrationType;
   config: IntegrationConfig;
 }): Promise<
-  ServiceResult<IntegrationTestResult, 400 | 500, IntegrationTestError>
+  ServiceResult<
+    IntegrationTestResult,
+    "invalid" | "internal",
+    IntegrationTestError
+  >
 > {
   const requestLogger = integrationsLogger.with({
     type: body.type,
@@ -340,13 +346,15 @@ export async function postIntegrationsTestResult(body: {
       requestLogger.warn("Invalid integration type for test", {
         availableTypes: getIntegrationTypes(),
       });
-      return failure(400, { error: "Invalid integration type" });
+      return failure("invalid", { error: "Invalid integration type" });
     }
 
     const testFn = await getIntegrationTestFunction(body.type);
     if (!testFn) {
       requestLogger.warn("Integration does not support test endpoint");
-      return failure(400, { error: "Integration does not support testing" });
+      return failure("invalid", {
+        error: "Integration does not support testing",
+      });
     }
 
     const credentials = getCredentialMapping(plugin, body.config);
@@ -383,7 +391,7 @@ export async function postIntegrationsTestResult(body: {
       `Failed to test integration connection: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       status: "error",
       message:
         error instanceof Error ? error.message : "Failed to test connection",
@@ -394,7 +402,11 @@ export async function postIntegrationsTestResult(body: {
 export async function postIntegrationTestResult(
   integrationId: string
 ): Promise<
-  ServiceResult<IntegrationTestResult, 400 | 404 | 500, IntegrationError>
+  ServiceResult<
+    IntegrationTestResult,
+    "invalid" | "not_found" | "internal",
+    IntegrationError
+  >
 > {
   const requestLogger = integrationsLogger.with({ integrationId });
   try {
@@ -402,7 +414,7 @@ export async function postIntegrationTestResult(
 
     if (!integration) {
       requestLogger.warn("Integration not found for test");
-      return failure(404, { error: "Integration not found" });
+      return failure("not_found", { error: "Integration not found" });
     }
 
     if (integration.type === "database") {
@@ -419,7 +431,7 @@ export async function postIntegrationTestResult(
           type: integration.type,
         }
       );
-      return failure(400, { error: "Invalid integration type" });
+      return failure("invalid", { error: "Invalid integration type" });
     }
 
     const testFn = await getIntegrationTestFunction(integration.type);
@@ -430,7 +442,9 @@ export async function postIntegrationTestResult(
           type: integration.type,
         }
       );
-      return failure(400, { error: "Integration does not support testing" });
+      return failure("invalid", {
+        error: "Integration does not support testing",
+      });
     }
 
     const credentials = getCredentialMapping(plugin, integration.config);
@@ -467,7 +481,7 @@ export async function postIntegrationTestResult(
     requestLogger.error("Failed to test saved integration connection", {
       error,
     });
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error ? error.message : "Failed to test connection",
     });
@@ -511,7 +525,7 @@ export async function postIntegrationsResult(body: {
   name?: string;
   type: IntegrationType;
   config: IntegrationConfig;
-}): Promise<ServiceResult<IntegrationSummary, 500, IntegrationError>> {
+}): Promise<ServiceResult<IntegrationSummary, "internal", IntegrationError>> {
   const requestLogger = integrationsLogger.with({ type: body.type });
   try {
     const integration = await createIntegration(
@@ -526,7 +540,7 @@ export async function postIntegrationsResult(body: {
       `Failed to create integration: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error: "Failed to create integration",
       details: error instanceof Error ? error.message : "Unknown error",
     });

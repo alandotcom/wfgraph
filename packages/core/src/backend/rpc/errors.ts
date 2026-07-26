@@ -1,74 +1,49 @@
 import { ORPCError } from "@orpc/server";
-import type { ServiceResult } from "@/backend/lib/service-result";
+import type {
+  ServiceFailureKind,
+  ServiceResult,
+} from "@/backend/lib/service-result";
 import { getRpcErrorMessage } from "@/shared/rpc/error-message";
 
-function statusToOrpcCode(status: number): string {
-  switch (status) {
-    case 400:
-      return "BAD_REQUEST";
-    case 401:
-      return "UNAUTHORIZED";
-    case 403:
-      return "FORBIDDEN";
-    case 404:
-      return "NOT_FOUND";
-    case 405:
-      return "METHOD_NOT_SUPPORTED";
-    case 406:
-      return "NOT_ACCEPTABLE";
-    case 408:
-      return "TIMEOUT";
-    case 409:
-      return "CONFLICT";
-    case 412:
-      return "PRECONDITION_FAILED";
-    case 413:
-      return "PAYLOAD_TOO_LARGE";
-    case 415:
-      return "UNSUPPORTED_MEDIA_TYPE";
-    case 422:
-      return "UNPROCESSABLE_CONTENT";
-    case 429:
-      return "TOO_MANY_REQUESTS";
-    case 499:
-      return "CLIENT_CLOSED_REQUEST";
-    case 500:
-      return "INTERNAL_SERVER_ERROR";
-    case 501:
-      return "NOT_IMPLEMENTED";
-    case 502:
-      return "BAD_GATEWAY";
-    case 503:
-      return "SERVICE_UNAVAILABLE";
-    case 504:
-      return "GATEWAY_TIMEOUT";
-    default:
-      return "INTERNAL_SERVER_ERROR";
-  }
-}
+const FAILURE_KIND_TO_ORPC_CODE = {
+  invalid: "BAD_REQUEST",
+  not_found: "NOT_FOUND",
+  conflict: "CONFLICT",
+  internal: "INTERNAL_SERVER_ERROR",
+} as const satisfies Record<ServiceFailureKind, string>;
 
-function throwOrpcError(status: number, payload: unknown): never {
-  throw new ORPCError(statusToOrpcCode(status), {
-    status,
+function throwOrpcError(kind: ServiceFailureKind, payload: unknown): never {
+  // oRPC derives the wire status from the code, so nothing here names one.
+  throw new ORPCError(FAILURE_KIND_TO_ORPC_CODE[kind], {
     message: getRpcErrorMessage(payload),
     data: payload,
   });
 }
 
 function serviceResultToData<TData>(
-  result: ServiceResult<TData, number, unknown>
+  result: ServiceResult<TData, ServiceFailureKind, unknown>
 ): TData {
   if (!result.ok) {
-    throwOrpcError(result.status, result.error);
+    throwOrpcError(result.kind, result.error);
   }
 
   return result.data;
 }
 
-export type RpcCompatibleResult<TData> = ServiceResult<TData, number, unknown>;
+export type RpcCompatibleResult<TData> = ServiceResult<
+  TData,
+  ServiceFailureKind,
+  unknown
+>;
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isServiceFailureKind(value: unknown): value is ServiceFailureKind {
+  return (
+    typeof value === "string" && Object.hasOwn(FAILURE_KIND_TO_ORPC_CODE, value)
+  );
 }
 
 export function isRpcCompatibleResult(
@@ -82,7 +57,7 @@ export function isRpcCompatibleResult(
     return "data" in value;
   }
 
-  return typeof value.status === "number" && "error" in value;
+  return isServiceFailureKind(value.kind) && "error" in value;
 }
 
 export async function toRpcData<TData>(

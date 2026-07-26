@@ -26,19 +26,19 @@ const workflowServiceLogger = getAppLogger("workflow", "service");
 
 type GetWorkflowResult = ServiceResult<
   WorkflowApiPayload,
-  404 | 500,
+  "not_found" | "internal",
   ApiErrorPayload
 >;
 
 type PatchWorkflowResult = ServiceResult<
   WorkflowApiPayload,
-  400 | 403 | 404 | 409 | 500,
+  "invalid" | "not_found" | "conflict" | "internal",
   ApiErrorPayload
 >;
 
 type DeleteWorkflowResult = ServiceResult<
   { success: true },
-  404 | 500,
+  "not_found" | "internal",
   ApiErrorPayload
 >;
 
@@ -51,19 +51,19 @@ export async function getWorkflow(
     });
 
     if (!workflow) {
-      return failure(404, { error: "Workflow not found" });
+      return failure("not_found", { error: "Workflow not found" });
     }
 
     const graphValidation = validateWorkflowGraph(workflow.graph);
     if (!graphValidation.valid) {
-      return failure(500, { error: "Workflow graph is invalid" });
+      return failure("internal", { error: "Workflow graph is invalid" });
     }
 
     const conditionValidation = validateWorkflowConditionConfigs(
       graphValidation.nodes
     );
     if (!conditionValidation.valid) {
-      return failure(500, { error: conditionValidation.error });
+      return failure("internal", { error: conditionValidation.error });
     }
 
     return success(toWorkflowApiPayload(workflow));
@@ -72,7 +72,7 @@ export async function getWorkflow(
       workflowId,
       error,
     });
-    return failure(500, {
+    return failure("internal", {
       error: error instanceof Error ? error.message : "Failed to get workflow",
     });
   }
@@ -101,7 +101,9 @@ export async function patchWorkflow(
   }
   if (body.mode !== undefined) {
     if (body.mode !== "live" && body.mode !== "test") {
-      return failure(400, { error: "Workflow mode must be live or test" });
+      return failure("invalid", {
+        error: "Workflow mode must be live or test",
+      });
     }
     updateInput.mode = body.mode;
   }
@@ -112,14 +114,14 @@ export async function patchWorkflow(
     });
 
     if (!existingWorkflow) {
-      return failure(404, { error: "Workflow not found" });
+      return failure("not_found", { error: "Workflow not found" });
     }
 
     if (body.name !== undefined) {
       const normalizedName = body.name.trim();
       if (!normalizedName) {
         requestLogger.warn("Rejected workflow update with empty name");
-        return failure(400, { error: "Workflow name is required" });
+        return failure("invalid", { error: "Workflow name is required" });
       }
 
       const nameConflict = await db.query.workflows.findFirst({
@@ -133,7 +135,7 @@ export async function patchWorkflow(
         requestLogger.warn("Duplicate workflow name on update", {
           workflowName: normalizedName,
         });
-        return failure(409, {
+        return failure("conflict", {
           error: `Workflow name "${normalizedName}" already exists`,
         });
       }
@@ -147,7 +149,7 @@ export async function patchWorkflow(
         requestLogger.warn("Rejected invalid workflow graph on update", {
           error: graphValidation.error,
         });
-        return failure(400, { error: graphValidation.error });
+        return failure("invalid", { error: graphValidation.error });
       }
 
       const conditionValidation = validateWorkflowConditionConfigs(
@@ -160,7 +162,7 @@ export async function patchWorkflow(
             error: conditionValidation.error,
           }
         );
-        return failure(400, { error: conditionValidation.error });
+        return failure("invalid", { error: conditionValidation.error });
       }
 
       const integrationValidation = await validateWorkflowIntegrations(
@@ -173,7 +175,7 @@ export async function patchWorkflow(
             invalidIntegrationIds: integrationValidation.invalidIds,
           }
         );
-        return failure(403, {
+        return failure("invalid", {
           error: "Invalid integration references in workflow",
           code: "integration_validation_failed",
           invalidIntegrationIds: integrationValidation.invalidIds ?? [],
@@ -192,7 +194,7 @@ export async function patchWorkflow(
       .returning();
 
     if (!updatedWorkflow) {
-      return failure(404, { error: "Workflow not found" });
+      return failure("not_found", { error: "Workflow not found" });
     }
 
     invalidateInngestFunctionsCache();
@@ -220,7 +222,7 @@ export async function patchWorkflow(
       `Failed to update workflow: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error ? error.message : "Failed to update workflow",
     });
@@ -237,7 +239,7 @@ export async function deleteWorkflow(
     });
 
     if (!existingWorkflow) {
-      return failure(404, { error: "Workflow not found" });
+      return failure("not_found", { error: "Workflow not found" });
     }
 
     await db.delete(workflows).where(eq(workflows.id, workflowId));
@@ -251,7 +253,7 @@ export async function deleteWorkflow(
       `Failed to delete workflow: ${getErrorMessage(error)}`,
       { error }
     );
-    return failure(500, {
+    return failure("internal", {
       error:
         error instanceof Error ? error.message : "Failed to delete workflow",
     });
