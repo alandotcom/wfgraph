@@ -32,11 +32,11 @@
     "db:studio": "bun --bun drizzle-kit studio --config packages/core/drizzle.config.ts"
   },
   "dependencies": {
-    "@rova/core": "workspace:*",
-    "@rova/plugins": "workspace:*",
     "@base-ui/react": "1.2.0",
     "@dagrejs/dagre": "^2.0.4",
     "@opentelemetry/api": "^1.9.0",
+    "@rova/core": "workspace:*",
+    "@rova/plugins": "workspace:*",
     "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-router": "^1.159.5",
     "@xyflow/react": "^12.10.0",
@@ -52,7 +52,6 @@
     "motion": "^12.34.0",
     "nanoid": "^5.1.6",
     "next-themes": "^0.4.6",
-    "radix-ui": "^1.4.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-resizable-panels": "^4.6.2",
@@ -72,7 +71,6 @@
     "@tailwindcss/postcss": "^4.1.18",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
-    "@testing-library/user-event": "^14.6.1",
     "@types/babel__core": "^7.20.5",
     "@types/bcryptjs": "^3.0.0",
     "@types/bun": "^1.3.9",
@@ -93,7 +91,6 @@
     "oxlint-tsgolint": "^0.11.5",
     "react-grab": "^0.1.14",
     "tailwindcss": "^4.1.18",
-    "tsx": "^4.21.0",
     "tw-animate-css": "^1.4.0",
     "typescript": "^5.9.3",
     "ultracite": "7.1.5"
