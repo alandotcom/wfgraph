@@ -73,7 +73,7 @@
     "oxlint": "^1.43.0",
     "oxlint-tsgolint": "^0.11.5",
     "tailwindcss": "^4.1.18",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "ultracite": "7.1.5"
   },
   "overrides": {
