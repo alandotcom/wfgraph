@@ -144,9 +144,18 @@ export function createWorkflowRunRequestedFunction(input: {
     {
       id: input.id,
       name: input.name,
-      // No automatic retries: node work is already memoized per step, and the
-      // steps that need retrying (HTTP Request) run their own attempt loop.
-      retries: 0,
+      // Each node runs inside its own memoized step, so a retry resumes at the
+      // step that failed instead of replaying the graph from the trigger. That
+      // is what makes retrying safe here, and it is why this is not 0: without
+      // it a single transient fault - a provider 502, a blip writing a step log
+      // - ends the whole run with no second attempt. Only HTTP Request carries
+      // its own attempt loop; every plugin action depends on this.
+      //
+      // The residual risk is a non-idempotent step that fails *after* its side
+      // effect landed (a send that times out waiting for the response): the
+      // retry sends again. Steps that must not double-fire should pass an
+      // idempotency key to their provider rather than rely on this count.
+      retries: 4,
       cancelOn: [
         {
           event: "workflow/run.cancel.requested",
