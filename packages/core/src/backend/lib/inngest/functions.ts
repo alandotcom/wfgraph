@@ -1,5 +1,9 @@
 import { db } from "@/backend/lib/db";
 import { CURRENT_WORKFLOW_NAME } from "@/backend/lib/workflow-constants";
+import {
+  serializedWorkflowGraphSchema,
+  type WorkflowTriggerConfigInput,
+} from "@/shared/workflow/schemas";
 import type { InngestEventTriggerConfig } from "@/shared/workflow/trigger-registry";
 import { resolveWorkflowTriggerDefinition } from "@/shared/workflow/trigger-registry";
 import { createWorkflowRunRequestedFunction } from "./workflow-function";
@@ -31,46 +35,27 @@ function toEventListenerFunctionId(workflowId: string): string {
   return `workflow-event-${workflowId}`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /**
- * Lightweight extraction of the trigger node config from raw graph JSONB.
+ * Pull the trigger node's config out of the graph JSONB stored on a workflow row.
  *
- * This runs on every cache refresh (every 5s) for every workflow, so it
- * intentionally avoids full Zod validation and Graphology deserialization.
- * The raw JSONB shape is: { nodes: [{ attributes: { data: { type, config } } }] }.
+ * The column is untyped JSON, so the graph goes through its schema before it is
+ * read. Failure is scoped to one workflow on purpose: a graph that does not parse
+ * loses only its own event listener, and every other workflow still registers.
+ * A throwing parse here would take the entire function registry down with one
+ * malformed row.
  */
 function findTriggerNodeConfig(
   graph: unknown
-): Record<string, unknown> | undefined {
-  if (!isRecord(graph)) {
+): WorkflowTriggerConfigInput | undefined {
+  const parsedGraph = serializedWorkflowGraphSchema.safeParse(graph);
+  if (!parsedGraph.success) {
     return;
   }
 
-  const nodes = graph.nodes;
-  if (!Array.isArray(nodes)) {
-    return;
-  }
-
-  for (const node of nodes) {
-    if (!isRecord(node)) {
-      continue;
-    }
-
-    const attributes = node.attributes;
-    if (!isRecord(attributes)) {
-      continue;
-    }
-
-    const data = attributes.data;
-    if (!isRecord(data)) {
-      continue;
-    }
-
-    if (data.type === "trigger" && isRecord(data.config)) {
-      return data.config;
+  for (const node of parsedGraph.data.nodes) {
+    const nodeData = node.attributes.data;
+    if (nodeData.type === "trigger" && nodeData.config) {
+      return nodeData.config;
     }
   }
 }

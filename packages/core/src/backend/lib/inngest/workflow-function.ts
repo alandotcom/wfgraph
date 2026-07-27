@@ -1,10 +1,11 @@
+import { z } from "zod";
 import {
   executeWorkflow,
   type WorkflowExecutionInput,
 } from "@/backend/lib/workflow-engine/core";
 import { dbWorkflowStore } from "@/backend/lib/workflow-engine/db-store";
 import type { WorkflowExecutionRuntime } from "@/backend/lib/workflow-engine/runtime";
-import { isSerializedWorkflowGraph } from "@/shared/workflow/graph";
+import { serializedWorkflowGraphSchema } from "@/shared/workflow/schemas";
 import { getInngestClient } from "./client";
 
 function toDurationString(milliseconds: number): string {
@@ -16,58 +17,33 @@ function escapeInngestExpressionString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isOptionalString(value: unknown): value is string | undefined {
-  return value === undefined || typeof value === "string";
-}
-
-function isOptionalRecord(
-  value: unknown
-): value is Record<string, unknown> | undefined {
-  return value === undefined || isRecord(value);
-}
-
-function isValidEventContext(
-  value: unknown
-): value is WorkflowExecutionInput["eventContext"] {
-  if (value === undefined) {
-    return true;
-  }
-
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    isOptionalString(value.eventType) && isOptionalString(value.correlationKey)
-  );
-}
-
-function isWorkflowExecutionInput(
-  value: unknown
-): value is WorkflowExecutionInput {
-  if (!(isRecord(value) && isSerializedWorkflowGraph(value.graph))) {
-    return false;
-  }
-
-  return (
-    isOptionalRecord(value.triggerInput) &&
-    isOptionalRecord(value.requestPayload) &&
-    // Both ids are required: every log row, timeline event, and wait state the
-    // run writes hangs off them, and the enqueue side always supplies them.
-    typeof value.executionId === "string" &&
-    typeof value.workflowId === "string" &&
-    isOptionalString(value.workflowName) &&
-    isOptionalString(value.workflowRunId) &&
-    (value.runMode === undefined ||
-      value.runMode === "live" ||
-      value.runMode === "test") &&
-    isValidEventContext(value.eventContext)
-  );
-}
+/**
+ * The `workflow/run.requested` event payload, as the engine needs it.
+ *
+ * Inngest serialized this to JSON when the run was enqueued and hands it back on
+ * every attempt and every replay, so the handler learns nothing about its shape
+ * from the type system. Parsing it here is the single boundary check: past this
+ * point the handler and the engine work with a `WorkflowExecutionInput`.
+ */
+const workflowExecutionInputSchema = z.object({
+  graph: serializedWorkflowGraphSchema,
+  triggerInput: z.record(z.string(), z.unknown()).optional(),
+  requestPayload: z.record(z.string(), z.unknown()).optional(),
+  // Both ids are required and must carry a value: every log row, timeline event,
+  // and wait state the run writes hangs off them, and the enqueue side always
+  // supplies them. An empty id would attach a run's whole trace to nothing.
+  executionId: z.string().trim().min(1),
+  workflowId: z.string().trim().min(1),
+  workflowName: z.string().optional(),
+  workflowRunId: z.string().optional(),
+  runMode: z.enum(["live", "test"]).optional(),
+  eventContext: z
+    .object({
+      eventType: z.string().optional(),
+      correlationKey: z.string().optional(),
+    })
+    .optional(),
+});
 
 export function createWorkflowTriggerExpression(workflowId: string): string {
   return `event.data.workflowId == "${escapeInngestExpressionString(workflowId)}"`;
@@ -87,11 +63,14 @@ async function workflowRunRequestedHandler({
     run: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
   };
 }) {
-  if (!isWorkflowExecutionInput(event.data)) {
-    throw new Error("Invalid workflow execution payload.");
+  const parsedEvent = workflowExecutionInputSchema.safeParse(event.data);
+  if (!parsedEvent.success) {
+    throw new Error(
+      `Invalid workflow execution payload. ${z.prettifyError(parsedEvent.error)}`
+    );
   }
 
-  const data = event.data;
+  const data: WorkflowExecutionInput = parsedEvent.data;
   const runtime: WorkflowExecutionRuntime = {
     sleep: async (stepId, durationMs) => {
       if (durationMs <= 0) {
