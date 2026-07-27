@@ -1,6 +1,10 @@
 import "@rova/plugins";
 import "@rova/plugins/register-steps";
 import { startRovaServer } from "@rova/core";
+// Bun turns this into a bundle whose script and link tags it transpiles per request, so
+// running the dev server needs no client build first. The import lives here, in the
+// unpublished dev entrypoint, to keep the client out of @rova/core's own bundle.
+import homepage from "./packages/core/client/index.html";
 
 const DEFAULT_DATABASE_URL =
   "postgresql://workflow:workflow@localhost:55437/workflow_builder";
@@ -23,6 +27,7 @@ const appPort = Number(Bun.env.PORT ?? 4017);
 
 await startRovaServer({
   port: appPort,
+  clientHtml: homepage,
   database: {
     url: Bun.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
   },

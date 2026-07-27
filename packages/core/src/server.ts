@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { HTMLBundle } from "bun";
 import { serve as bunServe } from "bun";
 import { createApiApp } from "@/backend/app";
 import {
@@ -68,6 +69,16 @@ export type RovaServerStartOptions = {
   /** Per-plugin configuration (all enabled by default) */
   plugins?: Partial<Record<IntegrationType, PluginConfig>>;
   installSignalHandlers?: boolean;
+  /**
+   * An imported HTML entrypoint for the SPA, as in `import homepage from "./index.html"`.
+   *
+   * Bun scans the HTML for script and link tags, treats them as bundler entrypoints, and
+   * transpiles them per request while `development` is on, so passing this means the client
+   * needs no separate build to run. The caller supplies it rather than this module importing
+   * it, because an HTML import here would pull the whole client into the published server
+   * bundle. Omit it and the server serves a prebuilt client from disk.
+   */
+  clientHtml?: HTMLBundle;
 };
 
 export type RovaServerHandle = {
@@ -122,28 +133,41 @@ function normalizePath(pathname: string): string {
 
 const CLIENT_ENTRY_FILE = "index.html";
 
+/**
+ * True when a directory holds a client that can be served as static files.
+ *
+ * The client source directory also has an index.html, but its script tag points at
+ * main.tsx, so serving it as a static file hands the browser TypeScript and the page
+ * dies on the first `declare` it meets. A built directory carries no main.tsx beside
+ * its entry, which is what separates the two.
+ */
+async function isServableClientDir(dir: string): Promise<boolean> {
+  const entry = Bun.file(path.join(dir, CLIENT_ENTRY_FILE));
+  if (!(await entry.exists())) {
+    return false;
+  }
+
+  const sourceEntry = Bun.file(path.join(dir, "main.tsx"));
+  return !(await sourceEntry.exists());
+}
+
 async function resolveClientDistDir(): Promise<string> {
-  const cwdRelative = path.resolve(process.cwd(), "dist/client");
-  const cwdEntry = Bun.file(path.join(cwdRelative, CLIENT_ENTRY_FILE));
-  if (await cwdEntry.exists()) {
-    return cwdRelative;
-  }
+  const candidates = [
+    path.resolve(process.cwd(), "dist/client"),
+    // Built layout: dist/server.mjs sits beside dist/client/. From the source layout
+    // this same path lands on the client source directory, which isServableClientDir
+    // rejects.
+    path.resolve(import.meta.dir, "../client"),
+    // Source layout: src/server.ts, with the client built into ../dist/client.
+    path.resolve(import.meta.dir, "../dist/client"),
+  ];
 
-  // Built dist layout: dist/server.mjs → dist/client/
-  const moduleRelative = path.resolve(import.meta.dir, "../client");
-  const moduleEntry = Bun.file(path.join(moduleRelative, CLIENT_ENTRY_FILE));
-  if (await moduleEntry.exists()) {
-    return moduleRelative;
-  }
+  // Checking all three at once keeps the precedence of the list while costing one round
+  // of file lookups.
+  const servable = await Promise.all(candidates.map(isServableClientDir));
+  const firstServable = servable.findIndex(Boolean);
 
-  // Source dev layout: src/server.ts → ../dist/client/
-  const devRelative = path.resolve(import.meta.dir, "../dist/client");
-  const devEntry = Bun.file(path.join(devRelative, CLIENT_ENTRY_FILE));
-  if (await devEntry.exists()) {
-    return devRelative;
-  }
-
-  return moduleRelative;
+  return firstServable === -1 ? candidates[1] : candidates[firstServable];
 }
 
 function isSpaPath(pathname: string): boolean {
@@ -417,6 +441,16 @@ export async function startRovaServer(
     const bunServer = bunServe({
       port,
       development: process.env.NODE_ENV !== "production",
+      // Bun matches routes before it calls fetch, so when a caller hands over an HTML
+      // entrypoint these paths get the transpiled-on-demand client and the fetch handler
+      // below never sees them.
+      routes: options.clientHtml
+        ? {
+            "/": options.clientHtml,
+            "/workflows": options.clientHtml,
+            "/workflows/*": options.clientHtml,
+          }
+        : undefined,
       fetch: async (req) => {
         const url = new URL(req.url);
         const pathname = normalizePath(url.pathname);
