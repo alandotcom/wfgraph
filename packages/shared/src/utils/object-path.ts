@@ -5,10 +5,6 @@ export function parseCsvSet(value: unknown): Set<string> {
   return parseCsvSetFromCsv(value);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 export function getValueByPath(
   input: unknown,
   path: string | undefined
@@ -39,8 +35,11 @@ export function getValueByPath(
       continue;
     }
 
-    if (isRecord(current)) {
-      current = current[segment];
+    // Null, undefined and arrays are handled above, so an object here is a
+    // keyed value. Reflect.get is the same read as `current[segment]`, including
+    // inherited keys, and hands back `unknown` without a cast.
+    if (typeof current === "object") {
+      current = Reflect.get(current, segment);
       continue;
     }
 

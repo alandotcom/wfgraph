@@ -19,16 +19,20 @@ export type CelEvaluationResult =
 let sharedEnvironment: Environment | null = null;
 const parsedExpressionCache = new Map<string, ParsedExpression>();
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isParsedExpression(value: unknown): value is ParsedExpression {
   return typeof value === "function";
 }
 
+/**
+ * Recover the CEL library's own Duration class from a Duration it produced, so
+ * this module can build more of them without reaching for a private export.
+ *
+ * Arrays are turned away alongside primitives: an array here would mean the
+ * library stopped handing back Duration instances, and `Array` as the
+ * constructor would build nonsense durations in place of failing at startup.
+ */
 function getDurationFactory(value: unknown): DurationFactory | null {
-  if (!isRecord(value)) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
   }
 

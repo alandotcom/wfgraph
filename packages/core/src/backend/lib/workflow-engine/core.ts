@@ -131,14 +131,6 @@ type ConditionEvalResult = {
   result: boolean;
 };
 
-/**
- * A node output as read by a CEL condition: JSON that came back from a plugin's
- * own API call, so its shape belongs to that API and nothing here knows it.
- */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function readConfigString(
   config: Record<string, unknown> | undefined,
   key: string
@@ -238,20 +230,28 @@ function mergeConditionContextValue(
   value: unknown
 ) {
   const record = unwrapStepOutput(value);
-  if (!isRecord(record)) {
+  // A node output is JSON that came back from a plugin's own API call, so its
+  // shape belongs to that API and nothing here knows it. Only a keyed object
+  // contributes names: copying a string or an array would spread index keys
+  // into the namespace and let a condition read `0`.
+  if (typeof record !== "object" || record === null || Array.isArray(record)) {
     return;
   }
 
   Object.assign(context, record);
 
-  const nestedInput = record.input;
-  if (!isRecord(nestedInput)) {
+  const nestedInput = Reflect.get(record, "input");
+  if (
+    typeof nestedInput !== "object" ||
+    nestedInput === null ||
+    Array.isArray(nestedInput)
+  ) {
     return;
   }
 
-  for (const [key, nestedValue] of Object.entries(nestedInput)) {
+  for (const key of Object.keys(nestedInput)) {
     if (!(key in context)) {
-      context[key] = nestedValue;
+      context[key] = Reflect.get(nestedInput, key);
     }
   }
 }

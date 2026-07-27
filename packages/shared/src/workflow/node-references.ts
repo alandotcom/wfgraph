@@ -232,19 +232,22 @@ type PathSegment = { key: string; indices: number[] };
 
 const BRACKET_INDEX_PATTERN = /\[(\d+)\]/g;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /**
  * Plugin steps return `{ success, data }`. A user writing `{{@n1:Step.id}}`
  * means the `id` inside `data`, so the wrapper is transparent by default.
+ *
+ * The `data` key must be present, so `{ success: true }` on its own is a plain
+ * output and stays whole.
  */
 function isStepWrapper(
   value: unknown
 ): value is { success: boolean; data: unknown } {
   return (
-    isRecord(value) && typeof value.success === "boolean" && "data" in value
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    typeof Reflect.get(value, "success") === "boolean" &&
+    "data" in value
   );
 }
 
@@ -277,8 +280,15 @@ function parsePathSegments(path: string): PathSegment[] {
   });
 }
 
+/**
+ * Read one key off an output value. Arrays are excluded so that a path segment
+ * naming a key does not start answering with array members such as `length`;
+ * `name[0]` reaches array members through readIndex.
+ */
 function readKey(value: unknown, key: string): unknown {
-  return isRecord(value) ? value[key] : undefined;
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? Reflect.get(value, key)
+    : undefined;
 }
 
 function readIndex(value: unknown, index: number): unknown {
