@@ -1,55 +1,33 @@
 import { compact } from "es-toolkit/array";
+import { z } from "zod";
 import type { ResultComponentProps } from "@/shared/plugins/ui-registry";
 
-// The logging layer unwraps standardized outputs, so we receive just the data
-type ClerkUserData = {
-  id: string;
-  firstName: string | null;
-  lastName: string | null;
-  primaryEmailAddress: string | null;
-  createdAt: number;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function toNullableString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
-function toNumberOrZero(value: unknown): number {
-  return typeof value === "number" ? value : 0;
-}
-
-function parseClerkUserData(output: unknown): ClerkUserData | null {
-  if (!isRecord(output) || typeof output.id !== "string") {
-    return null;
-  }
-
-  return {
-    id: output.id,
-    firstName: toNullableString(output.firstName),
-    lastName: toNullableString(output.lastName),
-    primaryEmailAddress: toNullableString(output.primaryEmailAddress),
-    createdAt: toNumberOrZero(output.createdAt),
-  };
-}
+// This component renders a Clerk step's result read back out of the execution log,
+// so the output arrives as untyped JSON. The logging layer unwraps the standardized
+// { success, data } wrapper, leaving the user data a Clerk step returned. Anything
+// that is not that user shape renders nothing.
+const clerkUserDataSchema = z.object({
+  id: z.string(),
+  firstName: z.string().nullable(),
+  lastName: z.string().nullable(),
+  primaryEmailAddress: z.string().nullable(),
+  createdAt: z.number(),
+});
 
 export function UserCard({ output }: ResultComponentProps) {
-  const data = parseClerkUserData(output);
-  if (!data) {
+  const parsed = clerkUserDataSchema.safeParse(output);
+  if (!parsed.success) {
     return null;
   }
+
+  const data = parsed.data;
 
   const initials = compact([data.firstName?.[0], data.lastName?.[0]])
     .join("")
     .toUpperCase();
 
   const fullName = compact([data.firstName, data.lastName]).join(" ");
-  const createdDate = data.createdAt
-    ? new Date(data.createdAt).toLocaleDateString()
-    : "Unknown";
+  const createdDate = new Date(data.createdAt).toLocaleDateString();
 
   return (
     <div className="flex items-center gap-4">

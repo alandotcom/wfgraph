@@ -1,5 +1,6 @@
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
+import { z } from "zod";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import {
   type StepInput,
@@ -26,13 +27,21 @@ export type ClerkUpdateUserInput = StepInput &
     integrationId?: string;
   };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+// Clerk stores any JSON object as user metadata, so a workflow author's pasted
+// text only has to be a JSON object to be usable here.
+const clerkMetadataSchema = z.record(z.string(), z.unknown());
 
 function parseMetadataJson(value: string): Record<string, unknown> | undefined {
-  const parsed: unknown = JSON.parse(value);
-  return isRecord(parsed) ? parsed : undefined;
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return;
+  }
+
+  const result = clerkMetadataSchema.safeParse(parsed);
+  return result.success ? result.data : undefined;
 }
 
 /**
@@ -64,15 +73,8 @@ async function stepHandler(
   try {
     let publicMetadata: Record<string, unknown> | undefined;
     if (input.publicMetadata) {
-      try {
-        publicMetadata = parseMetadataJson(input.publicMetadata);
-        if (!publicMetadata) {
-          return {
-            success: false,
-            error: { message: "Invalid JSON format for publicMetadata" },
-          };
-        }
-      } catch {
+      publicMetadata = parseMetadataJson(input.publicMetadata);
+      if (!publicMetadata) {
         return {
           success: false,
           error: { message: "Invalid JSON format for publicMetadata" },
@@ -82,15 +84,8 @@ async function stepHandler(
 
     let privateMetadata: Record<string, unknown> | undefined;
     if (input.privateMetadata) {
-      try {
-        privateMetadata = parseMetadataJson(input.privateMetadata);
-        if (!privateMetadata) {
-          return {
-            success: false,
-            error: { message: "Invalid JSON format for privateMetadata" },
-          };
-        }
-      } catch {
+      privateMetadata = parseMetadataJson(input.privateMetadata);
+      if (!privateMetadata) {
         return {
           success: false,
           error: { message: "Invalid JSON format for privateMetadata" },

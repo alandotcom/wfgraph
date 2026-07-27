@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export type ParseResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: string };
@@ -130,43 +132,23 @@ export function parseCommaSeparatedIntegerList(
   return { ok: true, value: parsed };
 }
 
-type AcuityCustomField = {
-  fieldID: number;
-  value: string | string[];
-};
+/**
+ * Acuity takes the answers to a booking form's custom questions as fieldID/value
+ * pairs. Workflow authors type those pairs as a JSON string into the node config,
+ * so this schema is the boundary between that text and the Acuity client.
+ */
+const acuityCustomFieldsSchema = z.array(
+  z.object({
+    fieldID: z.number().int().positive(),
+    value: z.union([z.string(), z.array(z.string())]),
+  })
+);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return (
-    Array.isArray(value) && value.every((entry) => typeof entry === "string")
-  );
-}
-
-function isValidCustomField(value: unknown): value is AcuityCustomField {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  const fieldId = value.fieldID;
-
-  if (
-    typeof fieldId !== "number" ||
-    !Number.isInteger(fieldId) ||
-    fieldId <= 0
-  ) {
-    return false;
-  }
-
-  const rawValue = value.value;
-  return typeof rawValue === "string" || isStringArray(rawValue);
-}
+type AcuityCustomFields = z.infer<typeof acuityCustomFieldsSchema>;
 
 export function parseCustomFieldsJson(
   value: unknown
-): ParseResult<AcuityCustomField[] | undefined> {
+): ParseResult<AcuityCustomFields | undefined> {
   const normalized = normalizeRawValue(value);
 
   if (!normalized) {
@@ -185,18 +167,14 @@ export function parseCustomFieldsJson(
     };
   }
 
-  if (
-    !(
-      Array.isArray(parsed) &&
-      parsed.every((entry) => isValidCustomField(entry))
-    )
-  ) {
+  const result = acuityCustomFieldsSchema.safeParse(parsed);
+
+  if (!result.success) {
     return {
       ok: false,
-      error:
-        "Custom Fields JSON must be an array of objects with numeric fieldID and value (string or string[]).",
+      error: `Custom Fields JSON must be an array of objects with numeric fieldID and value (string or string[]). ${z.prettifyError(result.error)}`,
     };
   }
 
-  return { ok: true, value: parsed };
+  return { ok: true, value: result.data };
 }

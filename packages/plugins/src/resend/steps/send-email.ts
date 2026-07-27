@@ -1,6 +1,7 @@
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { type CreateEmailOptions, Resend } from "resend";
+import { z } from "zod";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import {
   type StepInput,
@@ -48,62 +49,71 @@ function isValidTestEmailAddress(value: string): boolean {
   return TEST_EMAIL_PATTERN.test(value);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+// Tags and template variables reach this step as JSON strings a workflow author
+// typed into the node config, so both are parsed at that boundary. Text that does
+// not describe what Resend accepts is logged and dropped, leaving the email to
+// send without it.
+const emailTagsSchema = z.array(
+  z.object({ name: z.string(), value: z.string() })
+);
 
-function isTemplateVariablesRecord(
-  value: unknown
-): value is Record<string, string | number> {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return Object.values(value).every(
-    (entry) => typeof entry === "string" || typeof entry === "number"
-  );
-}
-
-function isTag(value: unknown): value is { name: string; value: string } {
-  return (
-    isRecord(value) &&
-    typeof value.name === "string" &&
-    typeof value.value === "string"
-  );
-}
+const templateVariablesSchema = z.record(
+  z.string(),
+  z.union([z.string(), z.number()])
+);
 
 function parseTags(
   tagsJson: string
-): Array<{ name: string; value: string }> | undefined {
+): z.infer<typeof emailTagsSchema> | undefined {
+  let parsed: unknown;
+
   try {
-    const parsed: unknown = JSON.parse(tagsJson);
-    if (Array.isArray(parsed) && parsed.every(isTag)) {
-      return parsed;
-    }
+    parsed = JSON.parse(tagsJson);
   } catch (error) {
     console.error("[Resend] Failed to parse tags JSON:", error);
+    return;
   }
 
-  return;
+  const result = emailTagsSchema.safeParse(parsed);
+
+  if (!result.success) {
+    console.error(
+      "[Resend] Tags JSON must be a list of { name, value } entries:",
+      z.prettifyError(result.error)
+    );
+    return;
+  }
+
+  return result.data;
 }
 
 function parseTemplateVariables(
   templateVariables: string | undefined
-): Record<string, string | number> | undefined {
+): z.infer<typeof templateVariablesSchema> | undefined {
   if (!templateVariables) {
     return;
   }
 
+  let parsed: unknown;
+
   try {
-    const parsed: unknown = JSON.parse(templateVariables);
-    if (isTemplateVariablesRecord(parsed)) {
-      return parsed;
-    }
+    parsed = JSON.parse(templateVariables);
   } catch (error) {
     console.error("[Resend] Failed to parse template variables JSON:", error);
+    return;
   }
 
-  return;
+  const result = templateVariablesSchema.safeParse(parsed);
+
+  if (!result.success) {
+    console.error(
+      "[Resend] Template variables JSON must map names to strings or numbers:",
+      z.prettifyError(result.error)
+    );
+    return;
+  }
+
+  return result.data;
 }
 
 /**

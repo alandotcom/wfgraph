@@ -17,6 +17,7 @@
     "@slack/web-api": "^7.14.0",
     "es-toolkit": "catalog:",
     "resend": "^6.9.2",
-    "twilio": "^5.12.1"
+    "twilio": "^5.12.1",
+    "zod": "catalog:"
   }
 }

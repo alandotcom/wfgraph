@@ -1,16 +1,11 @@
-import {
-  LinearClient,
-  type LinearDocument,
-  LinearError,
-  type LinearErrorRaw,
-  parseLinearError,
-} from "@linear/sdk";
+import { LinearClient, type LinearDocument } from "@linear/sdk";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import {
   type StepInput,
   withStepLogging,
 } from "@/backend/lib/steps/step-handler";
 import type { LinearCredentials } from "@/linear/credentials";
+import { toLinearError } from "@/linear/errors";
 import { getErrorMessage } from "@/shared/utils";
 
 type LinearIssue = {
@@ -37,54 +32,6 @@ export type FindIssuesInput = StepInput &
   FindIssuesCoreInput & {
     integrationId?: string;
   };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isLinearErrorRaw(value: unknown): value is LinearErrorRaw {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  if (value.name !== undefined && typeof value.name !== "string") {
-    return false;
-  }
-
-  if (value.message !== undefined && typeof value.message !== "string") {
-    return false;
-  }
-
-  if (value.request !== undefined && !isRecord(value.request)) {
-    return false;
-  }
-
-  if (value.response !== undefined && !isRecord(value.response)) {
-    return false;
-  }
-
-  return true;
-}
-
-function toLinearError(error: unknown): LinearError {
-  if (error instanceof LinearError) {
-    return error;
-  }
-
-  if (isLinearErrorRaw(error)) {
-    return parseLinearError(error);
-  }
-
-  if (error instanceof Error) {
-    return parseLinearError({ name: error.name, message: error.message });
-  }
-
-  if (typeof error === "string") {
-    return parseLinearError({ message: error });
-  }
-
-  return parseLinearError();
-}
 
 /**
  * Core logic - portable between app and export

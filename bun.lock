@@ -110,6 +110,7 @@
         "es-toolkit": "catalog:",
         "resend": "^6.9.2",
         "twilio": "^5.12.1",
+        "zod": "catalog:",
       },
     },
     "packages/shared": {
