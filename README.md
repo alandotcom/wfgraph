@@ -9,19 +9,20 @@ The backend is a Hono API that runs on any JavaScript runtime (Node.js, Bun, Den
 - API: Hono (`packages/core/src/backend/api-app.ts`)
 - Database: PostgreSQL via postgres.js + Drizzle ORM
 - Async execution/events: Inngest
-- Frontend: React SPA + TanStack Router (`packages/core/client/main.tsx`, `packages/core/client/router.tsx`)
+- Frontend: React SPA + TanStack Router (`packages/client/src/main.tsx`, `packages/client/src/router.tsx`)
 - State: Jotai
 - Data fetching/cache: TanStack Query
 - Dev server: Bun (`server.ts`)
 
 ## Project Structure
 
-This is a Bun workspace monorepo with three packages:
+This is a Bun workspace monorepo with four packages:
 
 ```
 packages/
   shared/    @rova/shared   Runtime-agnostic types, schemas, registries
-  core/      @rova/core     Library entrypoints, backend, and frontend SPA
+  core/      @rova/core     Library entrypoints and backend
+  client/    @rova/client   The workflow editor SPA
   plugins/   @rova/plugins  Integration plugins (Acuity, Clerk, Linear, Resend, Slack, Twilio)
 ```
 
@@ -209,6 +210,18 @@ Two things about a Node mount are worth knowing, and the adapter handles both:
 - Express rewrites `req.url` to strip the path it matched on, so a listener mounted at `/workflows` sees `/api/extensions` where the browser asked for `/workflows/api/extensions`. The adapter reads `req.originalUrl`, which is where the full path survives.
 - A body parser mounted ahead of Rova drains the request, so every POST would arrive empty. Rova cannot re-create the original bytes, and the Inngest callback verifies a signature over them, so a drained request gets a 500 that names the fix rather than a silent empty body.
 
+### The editor
+
+`@rova/core` serves an API and nothing else. The editor lives in `@rova/client`, and a host that wants it hands it over:
+
+```ts
+import { clientBundle } from "@rova/client";
+
+const rova = await createRovaApp({ client: clientBundle, ... });
+```
+
+Passing it is the switch. Leave it out and Rova answers 404 outside `/api`, which is what an adopter embedding the editor elsewhere, or driving workflows by webhook alone, wants. Nothing depends on `@rova/client` in either direction: `createRovaApp` takes a directory to serve, so a custom build of the editor is the same call with a different `dir`.
+
 ### Built-in integrations
 
 `@rova/core` carries no vendor SDKs. The built-in integrations (Acuity, Clerk, Linear, Resend, Slack, Twilio) live in `@rova/plugins`, which registers them through two side-effect imports:
@@ -261,7 +274,7 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
 | `configureLogging`         | No       | Enable built-in structured logging (default `true`)        |
 | `triggers`                 | No       | Array of custom trigger definitions                        |
 | `actions`                  | No       | Array of custom action definitions                         |
-| `serveClient`              | No       | Serve the workflow builder SPA (default `true`)            |
+| `client`                   | No       | The editor bundle to serve, from `@rova/client`            |
 
 ### Notes
 
@@ -398,7 +411,7 @@ Base path: `/api`
 
 ## Typed Client
 
-Use the typed client from `packages/core/client/lib/rpc-client.ts`:
+Use the typed client from `packages/client/src/lib/rpc-client.ts`:
 
 ```ts
 import { api } from "@/lib/rpc-client";

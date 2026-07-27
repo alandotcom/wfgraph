@@ -1,4 +1,5 @@
 import { createAction, createTrigger } from "@rova/core";
+import { clientBundle } from "@rova/client";
 import { createRovaApp } from "@rova/core/app";
 import { config as loadDotEnv } from "dotenv";
 import { z } from "zod";
@@ -127,6 +128,9 @@ async function main(): Promise<void> {
   }
 
   const rova = await createRovaApp({
+    // Handing the editor over is what turns it on; without this the example
+    // serves an API and answers 404 at the root.
+    client: clientBundle,
     // An example on localhost. A real host passes a predicate that reads
     // whatever session its own users already carry.
     auth: "external",

@@ -1,9 +1,10 @@
 # Agent Instructions
 
-Rova Workflow Builder: a Bun workspace monorepo with three packages under `packages/`.
+Rova Workflow Builder: a Bun workspace monorepo with four packages under `packages/`.
 
 - `@rova/shared` (`packages/shared`) runtime-agnostic types, workflow contracts, utilities
-- `@rova/core` (`packages/core`) library entrypoints, backend, and the React SPA under `client/`
+- `@rova/core` (`packages/core`) library entrypoints and the backend
+- `@rova/client` (`packages/client`) the React SPA, handed to `createRovaApp` as `client`
 - `@rova/plugins` (`packages/plugins`) integration plugins and their steps
 
 Read the code for structure. What follows is what the code cannot tell you.
@@ -84,8 +85,8 @@ to be JSON-safe: no `Date`, `Map`, or `Set`.
 
 **Development needs no client build.** The repo's own `server.ts` hands Bun's HTML
 entrypoint to `Bun.serve`'s `routes`, which Bun transpiles per request, so the SPA paths
-never reach `rova.fetch`. Serving the client source directory as static files hands the
-browser TypeScript instead.
+never reach `rova.fetch` and `client` goes unset there. Serving the client source directory
+as static files hands the browser TypeScript instead.
 
 **The published package is not the dev tree.** `packages/core` has no `private` field, so
 it publishes. Its `files` is scoped, `@rova/shared` is inlined into the build so it never appears as a dependency,
@@ -120,7 +121,7 @@ Import the typed RPC client as `import { api } from "@/lib/rpc-client"`. There i
 `@/lib/api-client`.
 
 Reads go through TanStack Query, not through `api` directly.
-`packages/core/client/lib/rpc-query.ts` wraps the contract with
+`packages/client/src/lib/rpc-query.ts` wraps the contract with
 `@orpc/tanstack-query`, so a query key is derived from the contract path and cannot
 drift from `packages/shared/src/rpc/contracts.ts`. Invalidate an area with
 `orpcQuery.integration.key()`, one entry with
@@ -139,7 +140,7 @@ wider.
 
 ## Effects
 
-`packages/core/client/hooks/effects.ts` is the only file in the client that may import
+`packages/client/src/hooks/effects.ts` is the only file in the client that may import
 `useEffect` or `useLayoutEffect`; `no-restricted-imports` enforces it. Reach for one of
 its named hooks, and if none of them fits, the work is very likely not an effect:
 fetching belongs in a query, a derived value belongs in render, and telling a parent

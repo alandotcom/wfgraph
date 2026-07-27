@@ -4,7 +4,7 @@ import path from "node:path";
 import tailwindPlugin from "bun-plugin-tailwind";
 import { createReactCompilerPlugin } from "./plugins/react-compiler-plugin";
 
-const CLIENT_ENTRYPOINT = "./packages/core/client/index.html";
+const CLIENT_ENTRYPOINT = "./packages/client/src/index.html";
 const CLIENT_OUTPUT_DIR = Bun.env.CLIENT_DIST_DIR ?? "./dist/client";
 const WATCH_FLAG = "--watch";
 const DEBOUNCE_MS = 120;

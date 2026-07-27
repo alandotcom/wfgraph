@@ -126,8 +126,8 @@
     },
     {
       "files": [
-        "packages/core/client/**/*.ts",
-        "packages/core/client/**/*.tsx",
+        "packages/client/src/**/*.ts",
+        "packages/client/src/**/*.tsx",
         "packages/plugins/src/**/*.ts",
         "packages/plugins/src/**/*.tsx"
       ],
@@ -141,7 +141,7 @@
         // those rules do their work.
         "typescript/no-floating-promises": "error",
         "react-hooks-js/incompatible-library": "off",
-        // packages/core/client/hooks/effects.ts is the only file that calls
+        // packages/client/src/hooks/effects.ts is the only file that calls
         // useEffect. Everything else reaches an effect through the hooks it
         // exports, which name what is being synchronised instead of leaving a
         // reader to work it out from a dependency array. An effect that does
@@ -171,8 +171,8 @@
       // effect through the named hooks it exports. The rules turned off below
       // are the ones whose whole subject matter is this file's job, so they
       // would fire on it by design. This override has to stay after the
-      // packages/core/client one, because oxlint takes the last match.
-      "files": ["packages/core/client/hooks/effects.ts"],
+      // packages/client/src one, because oxlint takes the last match.
+      "files": ["packages/client/src/hooks/effects.ts"],
       "rules": {
         "no-restricted-imports": "off",
         "react-hooks-js/set-state-in-effect": "off"
@@ -238,9 +238,9 @@
         "server.ts",
         "packages/core/src/app.ts",
         "packages/plugins/src/ui.ts",
-        "packages/core/client/main.tsx",
-        "packages/core/client/components/flow-elements/canvas.tsx",
-        "packages/core/client/components/workflow/workflow-canvas.tsx"
+        "packages/client/src/main.tsx",
+        "packages/client/src/components/flow-elements/canvas.tsx",
+        "packages/client/src/components/workflow/workflow-canvas.tsx"
       ],
       "rules": {
         "import/no-unassigned-import": "off"

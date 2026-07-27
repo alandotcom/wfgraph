@@ -36,7 +36,7 @@
       "@/*": [
         "./packages/shared/src/*",
         "./packages/core/src/*",
-        "./packages/core/client/*",
+        "./packages/client/src/*",
         "./packages/plugins/src/*"
       ]
     }
@@ -49,10 +49,11 @@
     "packages/shared/src/**/*.tsx",
     "packages/core/src/**/*.ts",
     "packages/core/src/**/*.tsx",
-    "packages/core/client/**/*.ts",
-    "packages/core/client/**/*.tsx",
+    "packages/client/src/**/*.ts",
+    "packages/client/src/**/*.tsx",
     "packages/core/drizzle.config.ts",
     "packages/core/tsdown.config.ts",
+    "packages/client/tsdown.config.ts",
     "packages/plugins/src/**/*.ts",
     "packages/plugins/src/**/*.tsx"
   ],

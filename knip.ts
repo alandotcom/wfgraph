@@ -95,19 +95,10 @@ const config: KnipConfig = {
     },
 
     "packages/core": {
-      // src/index.ts and src/app.ts come from the tsdown plugin, which reads
-      // them out of tsdown.config.ts. The SPA is the second entry tree, rooted
-      // at the script tag in client/index.html.
-      entry: ["client/main.tsx"],
-      project: ["src/**/*.{ts,tsx}", "client/**/*.{ts,tsx}", "**/*.css"],
-
-      // components.json points shadcn's generator at client/components/ui, and
-      // what it writes there is the primitive's whole surface. A name pruned
-      // out of one of those export blocks comes back the next time the
-      // component is added or updated, so the export reports are muted for that
-      // one directory. File reports still apply, which is how the six unused
-      // components in it were found.
-      ignoreIssues: { "client/components/ui/**": ["exports", "types"] },
+      // src/index.ts, src/app.ts, and src/node.ts come from the tsdown plugin,
+      // which reads them out of tsdown.config.ts.
+      entry: [],
+      project: ["src/**/*.{ts,tsx}"],
 
       ignoreDependencies: [
         // packages/core/dist/index.js imports graphology, and the emitted .d.ts
@@ -117,6 +108,28 @@ const config: KnipConfig = {
         "graphology",
         "@standard-schema/spec",
       ],
+    },
+
+    "packages/client": {
+      // The SPA is rooted at the script tag in src/index.html; src/index.ts is
+      // the tiny module a host imports to hand the built bundle to
+      // createRovaApp, and knip picks that up from the "exports" map.
+      entry: ["src/main.tsx"],
+      project: ["src/**/*.{ts,tsx}", "**/*.css"],
+
+      // components.json points shadcn's generator at src/components/ui, and what
+      // it writes there is the primitive's whole surface. A name pruned out of
+      // one of those export blocks comes back the next time the component is
+      // added or updated, so export reports are muted for that one directory.
+      // File reports still apply, which is how the six unused components in it
+      // were found.
+      ignoreIssues: { "src/components/ui/**": ["exports", "types"] },
+
+      // The SPA reaches @rova/shared through the "@/shared/*" path alias rather
+      // than the package specifier, so knip sees no import of it. Declaring it
+      // is still right: it is what the client depends on, and the alias is the
+      // one thing isolated linking cannot check.
+      ignoreDependencies: ["@rova/shared"],
     },
 
     "packages/plugins": {

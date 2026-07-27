@@ -1,3 +1,5 @@
+import { stat } from "node:fs/promises";
+import { join } from "node:path";
 import { Hono } from "hono";
 import { createApiApp } from "@/backend/api-app";
 import {
@@ -19,10 +21,7 @@ import {
   type RovaAuth,
   UNAUTHORIZED_BODY,
 } from "@/backend/lib/http/authorize";
-import {
-  resolveClientDir,
-  serveClientAsset,
-} from "@/backend/lib/http/client-assets";
+import { serveClientAsset } from "@/backend/lib/http/client-assets";
 import {
   normalizeBasePath,
   toMountRelativePath,
@@ -106,7 +105,21 @@ export type RovaAppOptions = {
   actions?: RuntimeExtensionActionDefinition[];
   /** Per-plugin configuration (all enabled by default) */
   plugins?: Partial<Record<IntegrationType, PluginConfig>>;
-  serveClient?: boolean;
+  /**
+   * The workflow editor, from `import { clientBundle } from "@rova/client"`.
+   *
+   * Rova serves the editor when a host hands it one and serves nothing when they
+   * do not, so turning the UI on is a line in the host's code rather than a
+   * consequence of what happens to be installed. `@rova/core` does not depend on
+   * `@rova/client` in either direction.
+   */
+  client?: RovaClientBundle;
+};
+
+/** Structural, so `@rova/core` and `@rova/client` need no dependency between them. */
+export type RovaClientBundle = {
+  /** Directory holding index.html and the hashed asset chunks beside it. */
+  dir: string;
 };
 
 /**
@@ -227,6 +240,24 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
   }
 }
 
+/**
+ * A bad `client.dir` is a startup mistake, so it fails at startup. Left to the
+ * request path it becomes a 503 on every page load, and the message there cannot
+ * name what went wrong: a host bundling their server with a tool that rewrites
+ * `import.meta.url` gets a directory that points nowhere, which is not something
+ * a per-request handler can explain.
+ */
+async function assertClientBundle(clientDir: string): Promise<void> {
+  const entry = join(clientDir, "index.html");
+  try {
+    await stat(entry);
+  } catch {
+    throw new Error(
+      `createRovaApp's client.dir does not hold an index.html: looked for ${entry}. Pass clientBundle from @rova/client, or the directory of your own build of the editor.`
+    );
+  }
+}
+
 async function buildRovaApp(
   options: RovaAppOptions,
   runtime: {
@@ -283,8 +314,9 @@ async function buildRovaApp(
 
   fullApp.route("/", apiApp);
 
-  if (options.serveClient !== false) {
-    const clientDir = await resolveClientDir();
+  const clientDir = options.client?.dir;
+  if (clientDir) {
+    await assertClientBundle(clientDir);
 
     fullApp.get("/*", async (c) => {
       const pathname = toMountRelativePath(c.req.path, basePath);

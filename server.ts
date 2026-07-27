@@ -18,7 +18,7 @@ import "@rova/plugins/server";
 // Bun turns this into a bundle whose script and link tags it transpiles per request, so
 // running the dev server needs no client build first. The import lives here, in the
 // unpublished dev entrypoint, to keep the client out of @rova/core's own bundle.
-import homepage from "./packages/core/client/index.html";
+import homepage from "./packages/client/src/index.html";
 
 const DEFAULT_DATABASE_URL =
   "postgresql://workflow:workflow@localhost:55437/workflow_builder";

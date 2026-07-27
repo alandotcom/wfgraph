@@ -1,4 +1,7 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { z } from "zod";
 import { createTrigger } from "@/index";
 import { createRovaApp, type RovaApp } from "@/app";
@@ -13,12 +16,28 @@ const BASE_OPTIONS = {
   encryption: { key: "a".repeat(64) },
   inngest: { client: { id: "rova-app-test" } },
   configureLogging: false,
-  serveClient: false,
 } as const;
 
 async function createTestApp(basePath?: string): Promise<RovaApp> {
   return await createRovaApp({ ...BASE_OPTIONS, basePath });
 }
+
+// A stand-in for @rova/client: what the server needs is a directory with an
+// index.html, and building the real SPA to assert routing would be beside the
+// point.
+let clientDir: string;
+
+beforeAll(async () => {
+  clientDir = await mkdtemp(join(tmpdir(), "rova-client-"));
+  await writeFile(
+    join(clientDir, "index.html"),
+    '<!doctype html><html><head><base href="/" /></head><body></body></html>'
+  );
+});
+
+afterAll(async () => {
+  await rm(clientDir, { recursive: true, force: true });
+});
 
 function get(app: RovaApp, path: string): Promise<Response> {
   return app.fetch(new Request(`http://localhost${path}`));
@@ -97,21 +116,27 @@ describe("createRovaApp mounted under a sub-path", () => {
     }
   });
 
-  it("routes SPA paths through the client handler rather than 404ing them", async () => {
+  it("serves the editor a host handed it, under the mount", async () => {
     const app = await createRovaApp({
       ...BASE_OPTIONS,
       basePath: "/rova",
-      serveClient: true,
+      client: { dir: clientDir },
     });
     try {
-      // 503 when no client has been built, 200 when one has. Either answer
-      // proves the request reached the client handler; a path outside the mount
-      // never does.
-      expect([200, 503]).toContain((await get(app, "/rova/")).status);
-      expect([200, 503]).toContain(
-        (await get(app, "/rova/workflows/abc")).status
-      );
+      const index = await get(app, "/rova/workflows/abc");
+      expect(index.status).toBe(200);
+      expect(await index.text()).toContain('<base href="/rova/" />');
       expect((await get(app, "/elsewhere/workflows/abc")).status).toBe(404);
+    } finally {
+      app.dispose();
+    }
+  });
+
+  // No bundle passed, no editor: the option is the switch.
+  it("serves no editor when the host hands it none", async () => {
+    const app = await createTestApp("/rova");
+    try {
+      expect((await get(app, "/rova/")).status).toBe(404);
     } finally {
       app.dispose();
     }
@@ -127,12 +152,12 @@ describe("createRovaApp mounted under a sub-path", () => {
 describe("createRovaApp with an auth predicate", () => {
   async function createGuardedApp(
     allow: boolean,
-    serveClient = false
+    client?: { dir: string }
   ): Promise<RovaApp> {
     return await createRovaApp({
       ...BASE_OPTIONS,
       basePath: "/rova",
-      serveClient,
+      client,
       auth: () => allow,
     });
   }
@@ -224,7 +249,7 @@ describe("createRovaApp with an auth predicate", () => {
   });
 
   it("refuses the editor itself, not only its data", async () => {
-    const app = await createGuardedApp(false, true);
+    const app = await createGuardedApp(false, { dir: clientDir });
     try {
       for (const path of ["/rova/", "/rova/workflows/abc"]) {
         expect((await get(app, path)).status).toBe(401);
@@ -235,11 +260,11 @@ describe("createRovaApp with an auth predicate", () => {
   });
 
   it("lets everything through when the host says yes", async () => {
-    const app = await createGuardedApp(true, true);
+    const app = await createGuardedApp(true, { dir: clientDir });
     try {
       expect((await get(app, "/rova/api/extensions")).status).toBe(200);
       expect((await get(app, "/rova/api/openapi.json")).status).toBe(200);
-      expect([200, 503]).toContain((await get(app, "/rova/")).status);
+      expect((await get(app, "/rova/")).status).toBe(200);
     } finally {
       app.dispose();
     }

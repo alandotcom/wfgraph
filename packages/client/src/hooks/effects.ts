@@ -7,7 +7,7 @@ import {
 } from "react";
 
 /**
- * The one file in packages/core/client allowed to import useEffect and
+ * The one file in packages/client/src allowed to import useEffect and
  * useLayoutEffect. Everything below turns a raw effect into a named intention,
  * so a reader of a component sees what is being synchronised with the world
  * outside React rather than a dependency array they have to decode.

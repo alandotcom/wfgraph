@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import middie from "@fastify/middie";
 import express from "express";
 import Fastify, { type FastifyInstance } from "fastify";
 import { createRovaApp, type RovaApp } from "@/app";
-import { resolveClientDir } from "@/backend/lib/http/client-assets";
 import { createRequestListener } from "@/node";
 
 // These are the tests the review that produced this plan asked for: a real
@@ -31,32 +31,10 @@ let bareServer: Server;
 let bareOrigin: string;
 let mismatchedServer: Server;
 let mismatchedOrigin: string;
-let stubbedClientEntry: string | null = null;
+let clientDir: string;
 
-/**
- * Make sure something is at the client entry so the SPA cases can run.
- *
- * `bun test` runs before `bun run build` in the project's check list, so a clean
- * clone has no built client. A real build is used when one is there; otherwise a
- * stand-in goes in and comes back out, since what these cases assert is the
- * routing and the injected base href, not the contents of the bundle.
- */
-async function ensureClientEntry(): Promise<void> {
-  const clientDir = await resolveClientDir();
-  const entry = join(clientDir, "index.html");
-  if (await Bun.file(entry).exists()) {
-    return;
-  }
-
-  await mkdir(clientDir, { recursive: true });
-  await writeFile(entry, STUB_CLIENT_HTML);
-  await writeFile(
-    join(clientDir, STUB_CLIENT_ASSET),
-    "export const stub = 1;\n"
-  );
-  stubbedClientEntry = clientDir;
-}
-
+// A stand-in for @rova/client. What these cases assert is the routing and the
+// injected base href, not the contents of the real bundle.
 const STUB_CLIENT_ASSET = "stub-client.js";
 const STUB_CLIENT_HTML = `<!doctype html><html><head><base href="/" /></head><body><script type="module" src="./${STUB_CLIENT_ASSET}"></script></body></html>`;
 
@@ -80,11 +58,9 @@ function close(server: Server): Promise<void> {
 type TestResponse = { status: number; body: string };
 
 /**
- * Drive a request with node:http rather than global fetch.
- *
- * The test preload installs happy-dom, whose fetch applies the same-origin
- * policy of a synthetic document and so refuses these cross-origin calls. Going
- * through node:http also matches what the adapter under test is translating.
+ * The test preload installs happy-dom, whose fetch applies a synthetic
+ * document's same-origin policy and refuses these calls. node:http also matches
+ * what the adapter under test is translating.
  */
 function send(
   url: string,
@@ -127,9 +103,15 @@ function postJson(url: string, body: string): Promise<TestResponse> {
 }
 
 beforeAll(async () => {
-  await ensureClientEntry();
+  clientDir = await mkdtemp(join(tmpdir(), "rova-node-client-"));
+  await writeFile(join(clientDir, "index.html"), STUB_CLIENT_HTML);
+  await writeFile(
+    join(clientDir, STUB_CLIENT_ASSET),
+    "export const stub = 1;\n"
+  );
 
   rova = await createRovaApp({
+    client: { dir: clientDir },
     auth: "external",
     basePath: MOUNT,
     // Deliberately a different identity from app.test.ts. `bun test` runs both
@@ -188,11 +170,7 @@ afterAll(async () => {
   await close(bareServer);
   await close(mismatchedServer);
   rova.dispose();
-
-  if (stubbedClientEntry) {
-    await rm(join(stubbedClientEntry, "index.html"), { force: true });
-    await rm(join(stubbedClientEntry, STUB_CLIENT_ASSET), { force: true });
-  }
+  await rm(clientDir, { recursive: true, force: true });
 });
 
 describe.each([

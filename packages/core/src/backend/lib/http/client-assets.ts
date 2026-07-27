@@ -7,8 +7,7 @@
  */
 
 import { readFile, stat } from "node:fs/promises";
-import { dirname, extname, join, normalize, posix } from "node:path";
-import { fileURLToPath } from "node:url";
+import { extname, join, normalize, posix } from "node:path";
 import { rewriteClientBaseHref } from "@/backend/lib/http/mount-path";
 import { getAppLogger } from "@/backend/lib/logger";
 
@@ -59,25 +58,6 @@ async function fileExists(filePath: string): Promise<boolean> {
 
 function isSpaPath(pathname: string): boolean {
   return SPA_PATHS.has(pathname) || pathname.startsWith("/workflows/");
-}
-
-/** Locate the built client, whether we are running from dist or from source. */
-export async function resolveClientDir(): Promise<string> {
-  const currentDir = dirname(fileURLToPath(import.meta.url));
-
-  // Built dist layout: the bundle sits beside dist/client/.
-  const distClient = join(currentDir, "client");
-  if (await fileExists(join(distClient, CLIENT_ENTRY_FILE))) {
-    return distClient;
-  }
-
-  // Source layout, where the client has been built into packages/core/dist/client.
-  const devClient = join(currentDir, "../../../../dist/client");
-  if (await fileExists(join(devClient, CLIENT_ENTRY_FILE))) {
-    return devClient;
-  }
-
-  return distClient;
 }
 
 /**
@@ -153,7 +133,7 @@ export async function serveClientAsset(
     // actionable once an operator knows where the server expected to find it.
     clientLogger.error("Client bundle entrypoint is missing", { indexPath });
     return Response.json(
-      { error: "Client bundle not found. Build the library first." },
+      { error: `Client bundle is missing its entrypoint at ${indexPath}.` },
       { status: 503 }
     );
   }

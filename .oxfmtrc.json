@@ -14,8 +14,8 @@
     ".claude/skills",
     // Vendored shadcn/ui and React Flow component code, carried over from the
     // exclusion list the Biome config used.
-    "packages/core/client/components/ui",
-    "packages/core/client/components/flow-elements",
-    "packages/core/client/hooks/use-mobile.ts"
+    "packages/client/src/components/ui",
+    "packages/client/src/components/flow-elements",
+    "packages/client/src/hooks/use-mobile.ts"
   ]
 }
