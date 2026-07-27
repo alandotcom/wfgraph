@@ -29,9 +29,11 @@ import {
   nodesAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
+  redoAtom,
   selectedEdgeAtom,
   selectedNodeAtom,
   selectOnlyNodeAtom,
+  undoAtom,
 } from "@/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "@/lib/workflow-save-store";
 import {
@@ -98,6 +100,8 @@ export function WorkflowCanvas() {
   const applyNodeLayout = useSetAtom(applyNodeLayoutAtom);
   const connectNodes = useSetAtom(connectNodesAtom);
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
+  const undo = useSetAtom(undoAtom);
+  const redo = useSetAtom(redoAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const { screenToFlowPosition, fitView, getViewport, setViewport } =
     useReactFlow();
@@ -214,6 +218,49 @@ export function WorkflowCanvas() {
       hadRealNodesRef.current = false;
     }
   }, [currentWorkflowId, hasRealNodes, fitView]);
+
+  // Undo/redo (Cmd+Z, Cmd+Shift+Z). Lives on the canvas rather than the editor
+  // route so it works on the homepage too, which is where the toolbar's undo
+  // button already works.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey) ||
+        event.key.toLowerCase() !== "z"
+      ) {
+        return;
+      }
+
+      // Leave text editing alone. Node config fields are contentEditable divs,
+      // so checking the tag name would miss them and steal their text undo.
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      // Matches the toolbar buttons, which are disabled while generating.
+      if (isGenerating) {
+        return;
+      }
+
+      event.preventDefault();
+      if (event.shiftKey) {
+        redo();
+      } else {
+        undo();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [undo, redo, isGenerating]);
 
   // Keyboard shortcut for fit view (Cmd+/ or Ctrl+/)
   useEffect(() => {
