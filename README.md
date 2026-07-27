@@ -173,6 +173,8 @@ Bun.serve({ port: 3000, fetch: rova.app.fetch });
 - `@rova/core` -- `createAction`, `createTrigger`, and related types.
 - `@rova/core/hono` -- `createRovaApp` factory, `RovaAppOptions`, `RovaApp`, and re-exported config types.
 
+Both entrypoints run anywhere Hono runs. `startRovaServer`, which wraps `createRovaApp` in a `Bun.serve` call, is this repo's own dev entrypoint and is not published: it lives at `packages/core/src/server.ts` and only `server.ts` and `examples/library-trigger.ts` reach it.
+
 ### Linking for development
 
 To use `@rova/core` from another project during development:
@@ -185,7 +187,7 @@ cd packages/core && bun link
 cd /path/to/consumer && bun link @rova/core
 ```
 
-The `@rova/core` package.json includes a `"bun"` export condition that resolves to source files, so Bun consumers get live source resolution without building first.
+A linked consumer resolves through the `"exports"` map to `packages/core/dist`, so build the package before linking it and rebuild after changing it.
 
 ### createRovaApp options
 

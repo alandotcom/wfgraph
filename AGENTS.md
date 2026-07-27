@@ -90,13 +90,14 @@ Server-side barrel files are allowed.
 
 - The backend is a runtime-agnostic Hono app. It uses `postgres` (postgres.js) for DB access and `bcryptjs` for password hashing -- no Bun-specific APIs in shared backend code.
 - Local development runs as a single Bun server process from `server.ts`.
-- `server.ts` imports `@rova/plugins` and `@rova/plugins/register-steps` for side-effect plugin registration, then starts the server via `@rova/core`.
+- `server.ts` imports `@rova/plugins` and `@rova/plugins/register-steps` for side-effect plugin registration, then starts the server via `startRovaServer` from `@rova/core/server`.
 - SPA shell routes (`/`, `/workflows`, `/workflows/:workflowId`) are served directly from Bun using `packages/core/client/index.html`.
 - All `/api/*` traffic is delegated to the Hono app in `packages/core/src/backend/app.ts`.
 - Inngest is mounted inside the API at `/api/inngest` using `serveInngest(...)`.
 - Local repo development starts `inngest-cli` as a separate process via `bun run dev:inngest`.
 - Embedded mode (`createRovaApp(...)` from `packages/core/src/hono.ts`) returns a mountable Hono sub-application. The consumer is responsible for HTTP serving and running Inngest.
-- The main package export (`@rova/core`) provides `createAction` and `createTrigger` only -- no server code.
+- The main package export (`@rova/core`) provides `createAction` and `createTrigger`. It carries no server code, so it names no runtime-specific module and works wherever Hono works.
+- `packages/core/src/server.ts` holds `startRovaServer` and the `server` object, which wrap `createRovaApp` in `Bun.serve`. That file is Bun-only and stays unpublished: tsdown builds `src/index.ts` and `src/hono.ts` alone, and the `"exports"` map has no entry for it. In-repo callers reach it as `@rova/core/server`, a tsconfig path alias to the source.
 - The `/hono` export (`@rova/core/hono`) provides `createRovaApp` and related types.
 
 ### API Composition and Boundaries

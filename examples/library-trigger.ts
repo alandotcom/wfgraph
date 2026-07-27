@@ -1,4 +1,5 @@
-import { createAction, createTrigger, server } from "@rova/core";
+import { createAction, createTrigger } from "@rova/core";
+import { server } from "@rova/core/server";
 import { config as loadDotEnv } from "dotenv";
 import { z } from "zod";
 
