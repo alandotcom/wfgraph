@@ -1,6 +1,17 @@
 import { z } from "zod";
 import { decodeIsoTimestamp } from "@/types/timestamp";
 
+/**
+ * The single CEL root every condition field hangs off.
+ *
+ * CEL registers its type names (`type`, `string`, `int`, `map`, `list`, ...) as
+ * constants in the root namespace, and the engine registers `now` beside them. A
+ * field compiled as a bare root would collide with those: a payload field named
+ * `type` type-checks as the CEL type-of-type and `type == "sms"` fails to compile.
+ * Nothing a user can name is a root, so nothing a user can name can collide.
+ */
+export const CONDITION_CONTEXT_ROOT = "payload";
+
 export type ConditionFieldType = "timestamp" | "string" | "number" | "boolean";
 
 export type TimeUnit = "minutes" | "hours" | "days" | "weeks";
@@ -669,6 +680,12 @@ function compileStringConditionRule(
   rule: StringConditionRule,
   field: string
 ): ConditionCompileResult {
+  // An unfilled text box is a rule the user has not finished, not a comparison
+  // against the empty string. `is_set` and `is_not_set` cover presence.
+  if (!rule.value.trim()) {
+    return { valid: false, error: "Text conditions require a value" };
+  }
+
   const value = JSON.stringify(rule.value);
 
   if (rule.operator === "equals") {
@@ -722,10 +739,14 @@ function compileNullCheckConditionRule(
 }
 
 function compileConditionRule(rule: ConditionRule): ConditionCompileResult {
-  const field = rule.field.trim();
-  if (!field) {
+  const path = rule.field.trim();
+  if (!path) {
     return { valid: false, error: "Condition field is required" };
   }
+
+  // A rule stores the path as the field picker offered it, relative to the node
+  // output. The root belongs to the expression, not the model.
+  const field = `${CONDITION_CONTEXT_ROOT}.${path}`;
 
   if (isNullCheckConditionRule(rule)) {
     return compileNullCheckConditionRule(rule, field);

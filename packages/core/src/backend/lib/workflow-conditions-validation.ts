@@ -89,12 +89,14 @@ export function validateWorkflowConditionConfigs(
       typeof config.actionType === "string" ? config.actionType : "";
 
     if (actionType === "Condition") {
+      // The builder writes an empty expression while a rule is still incomplete,
+      // so an empty one marks a node the user is mid-way through rather than a
+      // broken one. Running is what requires it: preflight's action-config pass
+      // reports the node as missing a required field, and the editor shows the
+      // same issue and blocks Run.
       const conditionExpression = asNonEmptyString(config.condition);
       if (!conditionExpression) {
-        return {
-          valid: false,
-          error: `Node "${getNodeLabel(node)}" requires a CEL condition expression`,
-        };
+        continue;
       }
 
       const conditionModel = asNonEmptyString(config.conditionModel);

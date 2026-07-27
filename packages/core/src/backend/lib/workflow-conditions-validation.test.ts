@@ -40,8 +40,20 @@ describe("validateWorkflowConditionConfigs", () => {
       createConditionNode({
         conditionModel: serializeConditionModel(model),
         condition:
-          "((appointment.startsAt > now && appointment.startsAt < now + days(1)))",
+          "((payload.appointment.startsAt > now && payload.appointment.startsAt < now + days(1)))",
       }),
+    ]);
+
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts a node whose condition is still being built", () => {
+    // The builder writes an empty expression until the rules compile. Saving the
+    // graph has to keep working, or an unfinished condition would discard every
+    // other edit in the same autosave; running is where the node is required to
+    // be complete.
+    const result = validateWorkflowConditionConfigs([
+      createConditionNode({ condition: "", conditionModel: "" }),
     ]);
 
     expect(result.valid).toBe(true);

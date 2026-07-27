@@ -36,7 +36,7 @@ describe("conditions", () => {
     expect(compiled.valid).toBe(true);
     if (compiled.valid) {
       expect(compiled.expression).toBe(
-        "((appointment.startsAt > now && appointment.startsAt < now + days(3)))"
+        "((payload.appointment.startsAt > now && payload.appointment.startsAt < now + days(3)))"
       );
     }
   });
@@ -66,7 +66,7 @@ describe("conditions", () => {
     expect(compiled.valid).toBe(true);
     if (compiled.valid) {
       expect(compiled.expression).toBe(
-        '((appointment.startsAt < date("2026-03-01T10:00:00.000Z")))'
+        '((payload.appointment.startsAt < date("2026-03-01T10:00:00.000Z")))'
       );
     }
   });
@@ -115,7 +115,7 @@ describe("conditions", () => {
     expect(compiled.valid).toBe(true);
     if (compiled.valid) {
       expect(compiled.expression).toBe(
-        '((data.status == "scheduled") && (data.active == true)) || ((data.count > 5))'
+        '((payload.data.status == "scheduled") && (payload.data.active == true)) || ((payload.data.count > 5))'
       );
     }
   });
@@ -172,7 +172,7 @@ describe("conditions", () => {
     const compiled = compileConditionModel(model);
     expect(compiled.valid).toBe(true);
     if (compiled.valid) {
-      expect(compiled.expression).toBe("((middleInitial != null))");
+      expect(compiled.expression).toBe("((payload.middleInitial != null))");
     }
   });
 
@@ -199,7 +199,7 @@ describe("conditions", () => {
     const compiled = compileConditionModel(model);
     expect(compiled.valid).toBe(true);
     if (compiled.valid) {
-      expect(compiled.expression).toBe("((dateOfBirth == null))");
+      expect(compiled.expression).toBe("((payload.dateOfBirth == null))");
     }
   });
 
@@ -227,6 +227,66 @@ describe("conditions", () => {
     expect(parsed.valid).toBe(true);
     if (parsed.valid) {
       expect(parsed.model.groups[0].conditions[0].operator).toBe("is_set");
+    }
+  });
+
+  it("compiles a field whose name is a CEL type constant", () => {
+    // Bare `type` resolves to CEL's type-of-type, so an unrooted expression
+    // fails to compile with "no such overload: type == string".
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: "type",
+              fieldType: "string",
+              operator: "equals",
+              value: "appointment.created",
+            },
+          ],
+        },
+      ],
+    };
+
+    const compiled = compileConditionModel(model);
+    expect(compiled.valid).toBe(true);
+    if (compiled.valid) {
+      expect(compiled.expression).toBe(
+        '((payload.type == "appointment.created"))'
+      );
+    }
+  });
+
+  it("rejects a text condition with no value", () => {
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: "data.status",
+              fieldType: "string",
+              operator: "equals",
+              value: "   ",
+            },
+          ],
+        },
+      ],
+    };
+
+    const compiled = compileConditionModel(model);
+    expect(compiled.valid).toBe(false);
+    if (!compiled.valid) {
+      expect(compiled.error).toBe("Text conditions require a value");
     }
   });
 });

@@ -30,6 +30,7 @@ import { resolveWaitUntil } from "@rova/shared/utils/wait-time";
 import { normalizeConditionBranch } from "@rova/shared/workflow/condition-branch";
 import {
   collectTimestampFieldPaths,
+  CONDITION_CONTEXT_ROOT,
   parseConditionModel,
 } from "@rova/shared/workflow/conditions";
 import { toWorkflowGraphData } from "@rova/shared/workflow/graph";
@@ -249,13 +250,13 @@ function getConditionNextNodeIds(input: {
  * Fold one node's output into the flat namespace a CEL condition reads from.
  *
  * Steps return their fields inside a `{ success, data }` wrapper, and a condition
- * names those fields bare (`donorId == "abc"`), so the output goes through the same
- * unwrapping a template token gets before its keys are lifted into the context.
+ * names those fields by path alone (`payload.donorId == "abc"`), so the output goes
+ * through the same unwrapping a template token gets before its keys are lifted into
+ * the namespace.
  *
  * Known hazard, deliberately left alone: the namespace is flat across every node,
  * so two nodes that both produce a field called `id` collide, and the node that
- * runs later wins. Node-qualifying the context would need a migration over stored
- * graphs, which persist both the compiled CEL string and the structured rules.
+ * runs later wins. Node-qualifying it would mean naming a node in every rule.
  */
 function mergeConditionContextValue(
   context: Record<string, unknown>,
@@ -399,18 +400,18 @@ function evaluateConditionExpression(
     return { result: false };
   }
 
-  const evalContext: Record<string, unknown> = { now: new Date() };
+  const payload: Record<string, unknown> = {};
   for (const output of Object.values(outputs)) {
-    mergeConditionContextValue(evalContext, output.data);
+    mergeConditionContextValue(payload, output.data);
   }
   decodeConditionTimestamps(
-    evalContext,
+    payload,
     readConditionTimestampPaths(conditionModel)
   );
 
   const evaluation = evaluateCelBooleanExpression({
     expression,
-    context: evalContext,
+    context: { now: new Date(), [CONDITION_CONTEXT_ROOT]: payload },
   });
 
   if (!evaluation.ok) {

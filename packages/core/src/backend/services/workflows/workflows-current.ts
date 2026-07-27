@@ -80,19 +80,9 @@ export async function getWorkflowsCurrent(): Promise<GetCurrentWorkflowResult> {
       });
     }
 
-    const conditionValidation = validateWorkflowConditionConfigs(
-      graphValidation.nodes
-    );
-    if (!conditionValidation.valid) {
-      workflowsCurrentLogger.error(
-        "Stored current workflow has invalid condition config",
-        {
-          error: conditionValidation.error,
-        }
-      );
-      return failure("internal", { error: conditionValidation.error });
-    }
-
+    // Conditions are checked on save and again before a run, never on the way
+    // out: refusing the read would leave the editor unable to open the graph
+    // whose condition needs correcting.
     return success({
       id: currentWorkflow.id,
       graph: currentWorkflow.graph,

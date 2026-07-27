@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { checkCelBooleanExpression } from "@/backend/lib/cel/environment";
 import {
   registerRuntimeAction,
   unregisterRuntimeAction,
@@ -382,7 +383,7 @@ describe("condition context from upstream outputs", () => {
   it("reads a field out of a step's success/data wrapper", async () => {
     const result = await executeWorkflow(
       {
-        graph: createConditionRoutingGraph('donorId == "abc"'),
+        graph: createConditionRoutingGraph('payload.donorId == "abc"'),
         executionId: "exec_wrapped_condition",
         workflowId: "workflow_wrapped_condition",
       },
@@ -398,7 +399,7 @@ describe("condition context from upstream outputs", () => {
   it("routes to the false branch when the wrapped field does not match", async () => {
     const result = await executeWorkflow(
       {
-        graph: createConditionRoutingGraph('donorId == "someone-else"'),
+        graph: createConditionRoutingGraph('payload.donorId == "someone-else"'),
         executionId: "exec_wrapped_condition_false",
         workflowId: "workflow_wrapped_condition",
       },
@@ -414,7 +415,7 @@ describe("condition context from upstream outputs", () => {
     // Trigger output is a plain record, so its fields sit directly in the context.
     const result = await executeWorkflow(
       {
-        graph: createConditionRoutingGraph('plan == "premium"'),
+        graph: createConditionRoutingGraph('payload.plan == "premium"'),
         executionId: "exec_plain_condition",
         workflowId: "workflow_plain_condition",
         triggerInput: { plan: "premium" },
@@ -543,6 +544,116 @@ describe("timestamp conditions against payload values", () => {
         executionId: "exec_timestamp_condition_missing",
         workflowId: "workflow_timestamp_condition",
         triggerInput: { plan: "premium" },
+      },
+      undefined,
+      store
+    );
+
+    expect(result.results.true_node).toBeUndefined();
+    expect(result.results.false_node?.success).toBe(true);
+  });
+});
+
+describe("conditions on fields named after CEL type constants", () => {
+  let store: RecordingWorkflowStore;
+
+  beforeEach(() => {
+    store = createRecordingWorkflowStore();
+  });
+
+  // Webhook payloads routinely carry a top-level `type`, which is also a CEL
+  // type name. Both the check that guards saving and the evaluation at run time
+  // have to accept it, so this builds the expression the way the editor does.
+  function createGraph(value: string) {
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group_1",
+          logic: "and",
+          conditions: [
+            {
+              id: "rule_1",
+              field: "type",
+              fieldType: "string",
+              operator: "equals",
+              value,
+            },
+          ],
+        },
+      ],
+    };
+
+    const compiled = compileConditionModel(model);
+    if (!compiled.valid) {
+      throw new Error(compiled.error);
+    }
+
+    expect(checkCelBooleanExpression(compiled.expression).ok).toBe(true);
+
+    return createSerializedWorkflowGraph({
+      nodes: [
+        createTriggerNode("trigger_1"),
+        {
+          id: "condition_node",
+          type: "action",
+          position: { x: 100, y: 100 },
+          data: {
+            label: "condition_node",
+            type: "action",
+            config: {
+              actionType: "Condition",
+              condition: compiled.expression,
+              conditionModel: serializeConditionModel(model),
+            },
+          },
+        },
+        createConditionNode("true_node", true),
+        createConditionNode("false_node", true),
+      ],
+      edges: [
+        { id: "edge_t_c", source: "trigger_1", target: "condition_node" },
+        createConditionBranchEdge({
+          id: "edge_c_true",
+          source: "condition_node",
+          target: "true_node",
+          branch: "true",
+        }),
+        createConditionBranchEdge({
+          id: "edge_c_false",
+          source: "condition_node",
+          target: "false_node",
+          branch: "false",
+        }),
+      ],
+    });
+  }
+
+  it("routes on a payload field named type", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createGraph("appointment.created"),
+        executionId: "exec_type_condition",
+        workflowId: "workflow_type_condition",
+        triggerInput: { type: "appointment.created" },
+      },
+      undefined,
+      store
+    );
+
+    expect(result.results.condition_node?.success).toBe(true);
+    expect(result.results.true_node?.success).toBe(true);
+    expect(result.results.false_node).toBeUndefined();
+  });
+
+  it("takes the false branch when that field does not match", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createGraph("appointment.created"),
+        executionId: "exec_type_condition_false",
+        workflowId: "workflow_type_condition",
+        triggerInput: { type: "appointment.cancelled" },
       },
       undefined,
       store

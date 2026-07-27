@@ -59,13 +59,9 @@ export async function getWorkflow(
       return failure("internal", { error: "Workflow graph is invalid" });
     }
 
-    const conditionValidation = validateWorkflowConditionConfigs(
-      graphValidation.nodes
-    );
-    if (!conditionValidation.valid) {
-      return failure("internal", { error: conditionValidation.error });
-    }
-
+    // Conditions are checked when the graph is written and again before a run,
+    // never here: a stored expression that no longer matches its model would
+    // otherwise lock the user out of the editor, the one screen that can fix it.
     return success(toWorkflowApiPayload(workflow));
   } catch (error) {
     workflowServiceLogger.error("Failed to get workflow", {
