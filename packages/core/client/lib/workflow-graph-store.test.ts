@@ -15,6 +15,7 @@ import {
   nodesAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
+  snapshotHistoryAtom,
   undoAtom,
 } from "@/lib/workflow-graph-store";
 import {
@@ -86,6 +87,20 @@ beforeEach(() => {
 });
 
 /**
+ * What React Flow does when the Delete key removes node "a".
+ *
+ * Mirrors `deleteElements` in @xyflow/react 12.10: `onBeforeDelete` runs while
+ * the graph is still whole, then edges are removed, then nodes — three separate
+ * calls into the store for one user action. The canvas wires the first of those
+ * to `snapshotHistoryAtom`.
+ */
+function deleteNodeViaReactFlow(store: Store) {
+  store.set(snapshotHistoryAtom);
+  store.set(onEdgesChangeAtom, [{ type: "remove", id: "e1" }]);
+  store.set(onNodesChangeAtom, [{ type: "remove", id: "a" }]);
+}
+
+/**
  * Every way the graph can change has to be both undoable and persisted. These
  * two properties used to be decided per call site, which is how creating an
  * edge ended up saved but not undoable.
@@ -104,14 +119,13 @@ describe("graph mutations are undoable and persisted", () => {
     ["deleteNode", (store) => store.set(deleteNodeAtom, "a")],
     ["deleteEdge", (store) => store.set(deleteEdgeAtom, "e1")],
     ["clearWorkflow", (store) => store.set(clearWorkflowAtom)],
+    ["node deleted with the Delete key", deleteNodeViaReactFlow],
     [
-      // React Flow's Delete key arrives as a change, not as deleteNodeAtom.
-      "node removed by React Flow",
-      (store) => store.set(onNodesChangeAtom, [{ type: "remove", id: "a" }]),
-    ],
-    [
-      "edge removed by React Flow",
-      (store) => store.set(onEdgesChangeAtom, [{ type: "remove", id: "e1" }]),
+      "edge deleted with the Delete key",
+      (store) => {
+        store.set(snapshotHistoryAtom);
+        store.set(onEdgesChangeAtom, [{ type: "remove", id: "e1" }]);
+      },
     ],
     [
       "node dragged",
@@ -168,6 +182,24 @@ describe("graph history", () => {
     expect(store.get(edgesAtom)).toHaveLength(2);
 
     store.set(undoAtom);
+    expect(store.get(edgesAtom).map((e) => e.id)).toEqual(["e1"]);
+  });
+
+  it("undoes a deleted node and its edges in one step", () => {
+    const store = createGraphStore(...standardGraph());
+
+    deleteNodeViaReactFlow(store);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["t", "b"]);
+    expect(store.get(edgesAtom)).toEqual([]);
+
+    // One undo, not two. Snapshotting inside both change handlers recorded a
+    // step per pass, so undoing once brought the node back without its edge.
+    store.set(undoAtom);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual([
+      "t",
+      "a",
+      "b",
+    ]);
     expect(store.get(edgesAtom).map((e) => e.id)).toEqual(["e1"]);
   });
 

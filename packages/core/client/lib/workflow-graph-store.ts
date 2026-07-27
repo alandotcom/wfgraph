@@ -104,6 +104,17 @@ export const loadWorkflowGraphAtom = atom(
   }
 );
 
+/**
+ * Record one undo step for a change the canvas is about to make itself.
+ *
+ * React Flow deletes in two passes, edges then nodes, so by the time either
+ * change handler runs the graph is already half gone. The canvas calls this
+ * from `onBeforeDelete`, which is the last moment the graph is still whole.
+ */
+export const snapshotHistoryAtom = atom(null, (get, set) => {
+  pushHistory(get, set);
+});
+
 /** Drop selection flags without touching the graph's shape. Not an undo step. */
 export const clearGraphSelectionAtom = atom(null, (get, set) => {
   set(
@@ -146,9 +157,6 @@ export const onNodesChangeAtom = atom(
       return true;
     });
 
-    // React Flow drives the Delete key and node dragging through here, so this
-    // is where most destructive edits actually arrive. Snapshot before applying
-    // them, or the commonest way to lose work is the one undo cannot reach.
     const hasRemoval = filteredChanges.some(
       (change) => change.type === "remove"
     );
@@ -159,9 +167,11 @@ export const onNodesChangeAtom = atom(
       (change) => change.type === "position" && change.dragging === false
     );
 
-    if (hasRemoval) {
-      pushHistory(get, set);
-    } else if (isDragFrame && !get(isDraggingAtom)) {
+    // Removals are snapshotted by `snapshotHistoryAtom` before React Flow
+    // starts emitting changes, because it splits one deletion into an edge
+    // batch and a node batch. Snapshotting here would record two undo steps
+    // for one delete, and a single undo would restore only half of it.
+    if (isDragFrame && !get(isDraggingAtom)) {
       // A drag arrives as a stream of frames. Only the first still has the
       // pre-drag positions worth snapshotting.
       pushHistory(get, set);
@@ -208,11 +218,8 @@ export const onNodesChangeAtom = atom(
 export const onEdgesChangeAtom = atom(
   null,
   (get, set, changes: EdgeChange[]) => {
+    // No history push here; see the note in onNodesChangeAtom.
     const hasRemoval = changes.some((change) => change.type === "remove");
-    if (hasRemoval) {
-      pushHistory(get, set);
-    }
-
     const newEdges = applyEdgeChanges(changes, get(edgesStateAtom));
     set(edgesStateAtom, newEdges);
 

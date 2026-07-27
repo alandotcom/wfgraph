@@ -33,6 +33,7 @@ import {
   selectedEdgeAtom,
   selectedNodeAtom,
   selectOnlyNodeAtom,
+  snapshotHistoryAtom,
   undoAtom,
 } from "@/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "@/lib/workflow-save-store";
@@ -100,6 +101,7 @@ export function WorkflowCanvas() {
   const applyNodeLayout = useSetAtom(applyNodeLayoutAtom);
   const connectNodes = useSetAtom(connectNodesAtom);
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
+  const snapshotHistory = useSetAtom(snapshotHistoryAtom);
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
@@ -444,6 +446,38 @@ export function WorkflowCanvas() {
     [normalizeSourceHandleForConnection, isValidConnection, connectNodes]
   );
 
+  /**
+   * Record the undo step for a deletion before React Flow starts removing.
+   *
+   * React Flow deletes in two passes, edges first and then nodes, so neither
+   * change handler ever sees the whole graph. Snapshotting there recorded two
+   * undo steps for one delete, and undoing once brought the node back without
+   * its edges.
+   */
+  const onBeforeDelete = useCallback(
+    ({
+      nodes: nodesToDelete,
+      edges: edgesToDelete,
+    }: {
+      nodes: WorkflowNode[];
+      edges: XYFlowEdge[];
+    }) => {
+      // Triggers cannot be deleted, so a selection holding only a trigger
+      // deletes nothing. Cancelling keeps its edges and skips the undo step.
+      const deletesAnything =
+        nodesToDelete.some((node) => node.data.type !== "trigger") ||
+        edgesToDelete.length > 0;
+
+      if (!deletesAnything) {
+        return Promise.resolve(false);
+      }
+
+      snapshotHistory();
+      return Promise.resolve(true);
+    },
+    [snapshotHistory]
+  );
+
   const onNodeClick: NodeMouseHandler = useCallback(
     (_event, node) => {
       setSelectedNode(node.id);
@@ -738,6 +772,7 @@ export function WorkflowCanvas() {
         nodesConnectable={!isGenerating}
         nodesDraggable={!isGenerating}
         nodeTypes={nodeTypes}
+        onBeforeDelete={onBeforeDelete}
         onConnect={isGenerating ? undefined : onConnect}
         onConnectEnd={isGenerating ? undefined : onConnectEnd}
         onConnectStart={isGenerating ? undefined : onConnectStart}
