@@ -25,7 +25,7 @@ import {
   unwrapStepOutput,
 } from "@/shared/workflow/node-references";
 import { validateWorkflowOutputAgainstSchema } from "@/shared/workflow/schema-validation";
-import type { StepResult, StepReturn } from "@/shared/workflow/step-result";
+import type { StepResult } from "@/shared/workflow/step-result";
 import {
   evaluateWorkflowTrigger,
   resolveWorkflowTriggerDefinition,
@@ -305,6 +305,19 @@ function evaluateConditionExpression(
 }
 
 /**
+ * What the action dispatch hands back to the traversal.
+ *
+ * Every action answers with a `StepResult`. A Condition node also reports the
+ * branch it picked: the engine evaluates the expression here, so the boolean is
+ * already in hand and the traversal never has to read it back out of the
+ * payload the step logged.
+ */
+type ActionStepOutcome = {
+  result: StepResult;
+  conditionValue?: boolean;
+};
+
+/**
  * Execute a single action step with logging via stepHandler
  * IMPORTANT: Steps receive only the integration ID as a reference to fetch credentials.
  * This prevents credentials from being logged in Vercel's workflow observability.
@@ -315,7 +328,7 @@ function executeActionStep(input: {
   outputs: NodeOutputs;
   context: StepContext;
   store: WorkflowStore;
-}): Promise<StepReturn> {
+}): Promise<ActionStepOutcome> {
   return withSpan(
     "rova.workflow.action.execute",
     {
@@ -333,7 +346,7 @@ async function executeActionStepInner(input: {
   outputs: NodeOutputs;
   context: StepContext;
   store: WorkflowStore;
-}): Promise<StepReturn> {
+}): Promise<ActionStepOutcome> {
   const { actionType, config, outputs, context, store } = input;
   const integrationId = readConfigString(config, "integrationId");
 
@@ -344,9 +357,9 @@ async function executeActionStepInner(input: {
   };
 
   // The Condition action evaluates its expression here, against the outputs of
-  // the nodes upstream, and the step it calls records the decision. That step is
-  // imported directly so its answer keeps its type all the way back to the
-  // traversal, which routes on it.
+  // the nodes upstream. The step it calls records the decision in the run log,
+  // and the boolean travels back beside that record for the traversal to route
+  // on.
   if (actionType === "Condition") {
     const { conditionStep } = await import("@/backend/lib/steps/condition");
     const originalExpression = stepInput.condition;
@@ -358,13 +371,18 @@ async function executeActionStepInner(input: {
       evaluatedCondition,
     });
 
-    return await conditionStep({
-      condition: evaluatedCondition,
-      // Include original expression for step logs.
-      expression:
-        typeof originalExpression === "string" ? originalExpression : undefined,
-      _context: context,
-    });
+    return {
+      result: await conditionStep({
+        condition: evaluatedCondition,
+        // Include original expression for step logs.
+        expression:
+          typeof originalExpression === "string"
+            ? originalExpression
+            : undefined,
+        _context: context,
+      }),
+      conditionValue: evaluatedCondition,
+    };
   }
 
   // Check system actions first (Database Query, HTTP Request)
@@ -373,13 +391,15 @@ async function executeActionStepInner(input: {
     const stepFunction = await loadStepFunction(systemAction);
     if (!stepFunction) {
       return {
-        success: false,
-        error: {
-          message: `Step function "${systemAction.stepFunction}" not found for action "${actionType}".`,
+        result: {
+          success: false,
+          error: {
+            message: `Step function "${systemAction.stepFunction}" not found for action "${actionType}".`,
+          },
         },
       };
     }
-    return await stepFunction(stepInput);
+    return { result: await stepFunction(stepInput) };
   }
 
   // Look up plugin action from the generated step registry
@@ -393,35 +413,41 @@ async function executeActionStepInner(input: {
       } = config;
 
       const executeFn = stepImporter.execute;
-      return await withStoreStepLogging(store, context, () =>
-        executeFn({
-          payload: runtimeActionPayload,
-          context: {
-            ...context,
-            integrationId,
-          },
-        })
-      );
+      return {
+        result: await withStoreStepLogging(store, context, () =>
+          executeFn({
+            payload: runtimeActionPayload,
+            context: {
+              ...context,
+              integrationId,
+            },
+          })
+        ),
+      };
     }
 
     const stepFunction = await loadStepFunction(stepImporter);
     if (stepFunction) {
-      return await stepFunction(stepInput);
+      return { result: await stepFunction(stepInput) };
     }
 
     return {
-      success: false,
-      error: {
-        message: `Step function "${stepImporter.stepFunction}" not found in module for action "${actionType}". Check that the plugin exports the correct function name.`,
+      result: {
+        success: false,
+        error: {
+          message: `Step function "${stepImporter.stepFunction}" not found in module for action "${actionType}". Check that the plugin exports the correct function name.`,
+        },
       },
     };
   }
 
   // Fallback for unknown action types
   return {
-    success: false,
-    error: {
-      message: `Unknown action type: "${actionType}". This action is not registered in the plugin system. Available system actions: ${Object.keys(SYSTEM_ACTIONS).join(", ")}.`,
+    result: {
+      success: false,
+      error: {
+        message: `Unknown action type: "${actionType}". This action is not registered in the plugin system. Available system actions: ${Object.keys(SYSTEM_ACTIONS).join(", ")}.`,
+      },
     },
   };
 }
@@ -1659,7 +1685,7 @@ async function executeWorkflowInner(
           result = { success: false, error: waitResult.error };
         }
       } else {
-        const stepResult = await executeActionStep({
+        const actionOutcome = await executeActionStep({
           actionType,
           config: processedConfig,
           outputs,
@@ -1667,15 +1693,12 @@ async function executeWorkflowInner(
           store,
         });
 
-        // The Condition step's whole answer is the branch it picked, so it
-        // carries a `condition` where every other step carries a success flag.
-        // Reading the branch here, while it still has a type, saves the
-        // traversal from digging the boolean back out of the stored output.
-        if ("condition" in stepResult) {
-          conditionValue = stepResult.condition;
-        }
+        // Set by a Condition node and by nothing else, which is what the
+        // traversal below routes on.
+        conditionValue = actionOutcome.conditionValue;
 
-        if ("success" in stepResult && !stepResult.success) {
+        const stepResult = actionOutcome.result;
+        if (!stepResult.success) {
           const errorMessage = stepResult.error.message;
           actionLogger.error("Action step failed", {
             actionType,

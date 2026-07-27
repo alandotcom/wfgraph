@@ -2,6 +2,7 @@
  * Executable step function for Condition action
  */
 
+import type { StepResult } from "@/shared/workflow/step-result";
 import { type StepInput, withStepLogging } from "./step-handler";
 
 export type ConditionInput = StepInput & {
@@ -12,15 +13,20 @@ export type ConditionInput = StepInput & {
   values?: Record<string, unknown>;
 };
 
-type ConditionResult = {
-  condition: boolean;
-};
+/**
+ * The engine evaluates the condition expression and calls this step with the
+ * boolean it already holds, so the payload is that decision echoed back for the
+ * run log to record.
+ */
+export type ConditionData = { condition: boolean };
 
-function evaluateCondition(input: ConditionInput): ConditionResult {
-  return { condition: input.condition };
+function evaluateCondition(input: ConditionInput): StepResult<ConditionData> {
+  return { success: true, data: { condition: input.condition } };
 }
 
-export function conditionStep(input: ConditionInput): Promise<ConditionResult> {
+export function conditionStep(
+  input: ConditionInput
+): Promise<StepResult<ConditionData>> {
   return withStepLogging(input, () =>
     Promise.resolve(evaluateCondition(input))
   );

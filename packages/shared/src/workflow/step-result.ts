@@ -21,19 +21,6 @@ export type StepResult<TData = unknown> =
   | { success: false; error: StepError };
 
 /**
- * The Condition step's answer, which is the one exception to the wrapper.
- *
- * The engine evaluates the condition expression itself and calls the step with
- * the boolean it already has; the step exists so the decision lands in the run
- * log, and it echoes the boolean back. Naming that shape here lets the engine
- * and the logging wrapper tell the two apart by the property each carries.
- */
-export type ConditionStepResult = { condition: boolean };
-
-/** Either shape a step function can return. */
-export type StepReturn = StepResult | ConditionStepResult;
-
-/**
  * A step as the engine calls it.
  *
  * The input is an open record because the engine builds it from a node's stored

@@ -5,7 +5,7 @@
 
 import { getAppLogger } from "@/backend/lib/logger";
 import { redactSensitiveData } from "@/backend/lib/utils/redact";
-import type { StepReturn } from "@/shared/workflow/step-result";
+import type { StepResult } from "@/shared/workflow/step-result";
 import {
   logStepCompleteDb,
   logStepStartDb,
@@ -187,7 +187,7 @@ function hasWorkflowCompleteContext(
  *   });
  * }
  */
-export async function withStepLogging<TOutput extends StepReturn>(
+export async function withStepLogging<TOutput extends StepResult>(
   input: StepInput,
   stepLogic: () => Promise<TOutput>
 ): Promise<TOutput> {
@@ -198,23 +198,17 @@ export async function withStepLogging<TOutput extends StepReturn>(
 
   try {
     const result = await stepLogic();
-    // Widened so the two shapes can be told apart by the property each carries.
-    // The caller still gets its own narrower type back.
-    const reported: StepReturn = result;
 
-    if (!("success" in reported)) {
-      // The Condition step, whose whole answer is the branch it picked.
-      await logStepComplete(logInfo, "success", reported);
-    } else if (reported.success) {
+    if (result.success) {
       // A success logs its payload. A step that reports success without one has
       // nothing but the wrapper to show.
-      await logStepComplete(logInfo, "success", reported.data ?? reported);
+      await logStepComplete(logInfo, "success", result.data ?? result);
     } else {
       await logStepComplete(
         logInfo,
         "error",
-        reported.error,
-        reported.error.message
+        result.error,
+        result.error.message
       );
     }
 

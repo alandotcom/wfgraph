@@ -157,6 +157,12 @@ describe("executeWorkflow branch traversal", () => {
 
     expect(result.success).toBe(true);
     expect(result.results.condition_node?.success).toBe(true);
+    // The Condition step answers in the same wrapper every other step uses, and
+    // the decision it recorded is the branch that ran.
+    expect(result.results.condition_node?.data).toEqual({
+      success: true,
+      data: { condition: true },
+    });
     expect(result.results.true_node?.success).toBe(true);
     expect(result.results.false_node).toBeUndefined();
   });
@@ -198,6 +204,10 @@ describe("executeWorkflow branch traversal", () => {
 
     expect(result.success).toBe(true);
     expect(result.results.condition_node?.success).toBe(true);
+    expect(result.results.condition_node?.data).toEqual({
+      success: true,
+      data: { condition: false },
+    });
     expect(result.results.true_node).toBeUndefined();
     expect(result.results.false_node?.success).toBe(true);
   });
