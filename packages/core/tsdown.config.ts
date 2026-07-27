@@ -2,10 +2,11 @@ import { defineConfig } from "tsdown";
 
 // Builds the publishable @rova/core library: `src/index.ts` is the small
 // createAction/createTrigger surface, `src/app.ts` is the mountable fetch
-// handler. Both are named in the "exports" map in package.json, so the emitted
-// file names here have to keep matching that map.
+// handler, and `src/node.ts` translates that handler for hosts on node:http.
+// All three are named in the "exports" map in package.json, so the emitted file
+// names here have to keep matching that map.
 export default defineConfig({
-  entry: ["src/index.ts", "src/app.ts"],
+  entry: ["src/index.ts", "src/app.ts", "src/node.ts"],
   format: "esm",
   // tsdown calls this "platform" where bunup called it "target". It selects
   // Node-flavoured resolution and externalization, which is what a server

@@ -105,6 +105,12 @@ export type RovaApp = {
    * hosts that speak Node's `IncomingMessage`/`ServerResponse` instead.
    */
   fetch: (request: Request) => Promise<Response>;
+  /**
+   * The normalized `basePath`: "" for a root mount, otherwise a leading slash
+   * with no trailing one. Every route this app answers sits under it, which is
+   * what lets an adapter tell a mount-point mismatch from an ordinary 404.
+   */
+  basePath: "" | `/${string}`;
   dispose: () => void;
 };
 
@@ -191,6 +197,7 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
 
   return {
     fetch: async (request) => await fullApp.fetch(request),
+    basePath,
     dispose,
   };
 }

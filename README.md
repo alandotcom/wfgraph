@@ -168,12 +168,52 @@ const rova = await createRovaApp({
 Bun.serve({ port: 3000, fetch: rova.fetch });
 ```
 
+### Mounting
+
+`rova.fetch` has the shape `(request: Request) => Promise<Response>`, so a fetch-native runtime takes it directly:
+
+```ts
+Bun.serve({ port: 3000, fetch: rova.fetch }); // Bun
+Deno.serve({ port: 3000 }, rova.fetch); // Deno
+export default { fetch: rova.fetch }; // Cloudflare Workers
+```
+
+Express and Fastify sit on Node's `http` module, which speaks `IncomingMessage`/`ServerResponse`. `@rova/core/node` translates between the two. It needs Node 20 or newer.
+
+```ts
+import express from "express";
+import { createRequestListener } from "@rova/core/node";
+
+const app = express();
+// Mount Rova ahead of any body parser, and pass the same path as basePath.
+app.use("/workflows", createRequestListener(rova));
+app.use(express.json());
+```
+
+Fastify reaches connect-style middleware through `@fastify/middie`, which runs it in the `onRequest` hook, before Fastify parses the body:
+
+```ts
+import Fastify from "fastify";
+import middie from "@fastify/middie";
+import { createRequestListener } from "@rova/core/node";
+
+const app = Fastify();
+await app.register(middie);
+app.use("/workflows", createRequestListener(rova));
+```
+
+Two things about a Node mount are worth knowing, and the adapter handles both:
+
+- Express rewrites `req.url` to strip the path it matched on, so a listener mounted at `/workflows` sees `/api/extensions` where the browser asked for `/workflows/api/extensions`. The adapter reads `req.originalUrl`, which is where the full path survives.
+- A body parser mounted ahead of Rova drains the request, so every POST would arrive empty. Rova cannot re-create the original bytes, and the Inngest callback verifies a signature over them, so a drained request gets a 500 that names the fix rather than a silent empty body.
+
 ### Package exports
 
 - `@rova/core` -- `createAction`, `createTrigger`, and related types.
 - `@rova/core/app` -- `createRovaApp` factory, `RovaAppOptions`, `RovaApp`, and re-exported config types.
+- `@rova/core/node` -- `createRequestListener`, for hosts on Express, Fastify, or `node:http`.
 
-Both entrypoints run on any runtime with `Request` and `Response`. `startRovaServer`, which wraps `createRovaApp` in a `Bun.serve` call, is this repo's own dev entrypoint and is not published: it lives at `packages/core/src/server.ts` and only `server.ts` and `examples/library-trigger.ts` reach it.
+The first two run on any runtime with `Request` and `Response`. `startRovaServer`, which wraps `createRovaApp` in a `Bun.serve` call, is this repo's own dev entrypoint and is not published: it lives at `packages/core/src/server.ts` and only `server.ts` and `examples/library-trigger.ts` reach it.
 
 ### Linking for development
 

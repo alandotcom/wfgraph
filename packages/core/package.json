@@ -17,12 +17,17 @@
     "./app": {
       "types": "./dist/app.d.ts",
       "default": "./dist/app.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "default": "./dist/node.js"
     }
   },
   "scripts": {
     "build": "tsdown"
   },
   "dependencies": {
+    "@hono/node-server": "^2.0.12",
     "@logtape/logtape": "^2.0.2",
     "@logtape/pretty": "^2.0.2",
     "@marcbachmann/cel-js": "catalog:",
@@ -46,6 +51,7 @@
   "devDependencies": {
     "@base-ui/react": "1.2.0",
     "@dagrejs/dagre": "^2.0.4",
+    "@fastify/middie": "^9.3.3",
     "@inngest/test": "^0.1.9",
     "@opentelemetry/sdk-trace-base": "^1.25.0",
     "@orpc/client": "^1.13.5",
@@ -54,10 +60,13 @@
     "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-router": "^1.159.5",
     "@testing-library/react": "^16.3.2",
+    "@types/express": "^5.0.6",
     "@xyflow/react": "catalog:",
     "class-variance-authority": "^0.7.1",
     "cronstrue": "^3.12.0",
     "d3-hierarchy": "^3.1.2",
+    "express": "^5.2.1",
+    "fastify": "^5.10.0",
     "jotai": "^2.17.1",
     "lucide-react": "^0.563.0",
     "motion": "^12.34.0",
