@@ -267,10 +267,6 @@ function getNodeLabel(input: {
   return node.id;
 }
 
-function isActionConfig(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 export function getNodeMissingRequiredFields(input: {
   node: WorkflowNode;
   resolveActionByType: ResolveActionByType;
@@ -285,7 +281,7 @@ export function getNodeMissingRequiredFields(input: {
     return null;
   }
 
-  const config = isActionConfig(node.data.config) ? node.data.config : {};
+  const config = node.data.config ?? {};
   const actionType = asNonEmptyString(config.actionType);
 
   if (!actionType) {
