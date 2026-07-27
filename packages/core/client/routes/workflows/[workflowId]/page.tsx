@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { WorkflowSidebarPanel } from "@/components/workflow/workflow-sidebar-panel";
+import { useDomEvent } from "@/hooks/effects";
 import { repairNodeIntegrations } from "@/lib/node-integration";
 import { api } from "@/lib/rpc-client";
 import { integrationsQueryOptions } from "@/lib/rpc-query";
@@ -28,7 +29,6 @@ import {
   isExecutingAtom,
   isGeneratingAtom,
   selectedExecutionIdAtom,
-  triggerExecuteAtom,
 } from "@/lib/workflow-ui-store";
 import { type WorkflowNode } from "@/shared/workflow/types";
 
@@ -51,7 +51,6 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
   const setCurrentWorkflowName = useSetAtom(currentWorkflowNameAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
   const [workflowNotFound, setWorkflowNotFound] = useAtom(workflowNotFoundAtom);
-  const setTriggerExecute = useSetAtom(triggerExecuteAtom);
   const setCurrentWorkflowVisibility = useSetAtom(
     currentWorkflowVisibilityAtom
   );
@@ -135,7 +134,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
   ]);
 
   useEffect(() => {
-    loadExistingWorkflow();
+    void loadExistingWorkflow();
   }, [loadExistingWorkflow]);
 
   // A debounced autosave has no caller waiting on it, so a failure would
@@ -161,68 +160,20 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
     }
   }, [currentWorkflowId, nodes, edges, isGenerating, saveWorkflow]);
 
-  // Helper to check if target is an input element
-  const isInputElement = useCallback(
-    (target: HTMLElement) =>
-      target.tagName === "INPUT" || target.tagName === "TEXTAREA",
-    []
-  );
-
-  // Helper to handle save shortcut
+  // Cmd+S saves. Capture phase, so a focused field in the canvas does not eat
+  // it first. Cmd+Enter belongs to the toolbar, which owns the run itself.
   const handleSaveShortcut = useCallback(
-    (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-        e.preventDefault();
-        e.stopPropagation();
-        handleSave();
-        return true;
+    (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "s") {
+        event.preventDefault();
+        event.stopPropagation();
+        void handleSave();
       }
-      return false;
     },
     [handleSave]
   );
 
-  // Helper to handle run shortcut
-  // Uses triggerExecuteAtom to share the same execute flow as the Run button
-  // This ensures keyboard shortcut goes through the same checks (e.g., missing integrations)
-  const handleRunShortcut = useCallback(
-    (e: KeyboardEvent, target: HTMLElement) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-        if (!isInputElement(target)) {
-          e.preventDefault();
-          e.stopPropagation();
-          // Trigger execute via atom - the toolbar will handle it
-          setTriggerExecute(true);
-        }
-        return true;
-      }
-      return false;
-    },
-    [setTriggerExecute, isInputElement]
-  );
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target;
-      if (!(target instanceof HTMLElement)) {
-        return;
-      }
-
-      // Handle save shortcut
-      if (handleSaveShortcut(e)) {
-        return;
-      }
-
-      // Handle run shortcut
-      if (handleRunShortcut(e, target)) {
-        return;
-      }
-    };
-
-    // Use capture phase only to ensure we can intercept before other handlers
-    document.addEventListener("keydown", handleKeyDown, true);
-    return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [handleSaveShortcut, handleRunShortcut]);
+  useDomEvent(document, "keydown", handleSaveShortcut, { capture: true });
 
   // Cleanup polling interval on unmount
   useEffect(
@@ -287,7 +238,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
     };
 
     // Poll immediately and then every 500ms
-    pollSelectedExecution();
+    void pollSelectedExecution();
     const pollInterval = setInterval(pollSelectedExecution, 500);
     selectedExecutionPollingIntervalRef.current = pollInterval;
 
@@ -314,7 +265,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
         </div>
       )}
 
-      <WorkflowSidebarPanel enableEntryAnimation />
+      <WorkflowSidebarPanel />
     </div>
   );
 };

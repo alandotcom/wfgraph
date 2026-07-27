@@ -16,9 +16,10 @@ import {
   Undo2,
 } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { Panel } from "@/components/flow-elements/panel";
+import { useDomEvent } from "@/hooks/effects";
 import { ConfigurationOverlay } from "@/components/overlays/configuration-overlay";
 import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
 import { useOverlay } from "@/components/overlays/overlay-provider";
@@ -79,7 +80,6 @@ import {
   isTransitioningFromHomepageAtom,
   propertiesPanelActiveTabAtom,
   selectedExecutionIdAtom,
-  triggerExecuteAtom,
 } from "@/lib/workflow-ui-store";
 import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
 import {
@@ -494,7 +494,6 @@ function useWorkflowHandlers({
     }
 
     try {
-      sessionStorage.setItem("animate-sidebar", "true");
     } catch {
       // Ignore if session storage is unavailable.
     }
@@ -617,7 +616,6 @@ function useWorkflowState() {
   const setSelectedNodeId = useSetAtom(selectedNodeAtom);
   const setSelectedExecutionId = useSetAtom(selectedExecutionIdAtom);
   const { data: userIntegrations = [] } = useQuery(integrationsQueryOptions());
-  const [triggerExecute, setTriggerExecute] = useAtom(triggerExecuteAtom);
 
   const [isDuplicating, setIsDuplicating] = useState(false);
   const { data: allWorkflows = [] } = useQuery(workflowListQueryOptions());
@@ -652,8 +650,6 @@ function useWorkflowState() {
     setSelectedNodeId,
     setSelectedExecutionId,
     userIntegrations,
-    triggerExecute,
-    setTriggerExecute,
   };
 }
 
@@ -682,8 +678,6 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     setSelectedNodeId,
     setSelectedExecutionId,
     userIntegrations,
-    triggerExecute,
-    setTriggerExecute,
   } = state;
 
   const { handleSave, handleExecute } = useWorkflowHandlers({
@@ -703,13 +697,31 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     userIntegrations,
   });
 
-  // Listen for execute trigger from keyboard shortcut
-  useEffect(() => {
-    if (triggerExecute) {
-      setTriggerExecute(false);
+  // Cmd+Enter runs the workflow. The listener lives here, beside handleExecute,
+  // so the shortcut and the Run button are the same call. It used to be a
+  // boolean atom the editor route set to true and this effect immediately set
+  // back to false: an event dressed as state, and a round trip through the
+  // store for something one function call away.
+  //
+  // Capture phase, because a focused node in the canvas would otherwise get the
+  // keystroke first.
+  const handleRunShortcut = useCallback(
+    (event: KeyboardEvent) => {
+      if (!((event.metaKey || event.ctrlKey) && event.key === "Enter")) {
+        return;
+      }
+      const target = event.target;
+      if (target instanceof HTMLElement && isTextEntry(target)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
       void handleExecute();
-    }
-  }, [triggerExecute, setTriggerExecute, handleExecute]);
+    },
+    [handleExecute]
+  );
+
+  useDomEvent(document, "keydown", handleRunShortcut, { capture: true });
 
   const handleClearWorkflow = () => {
     openOverlay(ConfirmOverlay, {
@@ -805,6 +817,15 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     handleDuplicate,
     handleSetWorkflowMode,
   };
+}
+
+/** Typing somewhere should not be interrupted by a workflow-level shortcut. */
+function isTextEntry(target: HTMLElement): boolean {
+  return (
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.isContentEditable
+  );
 }
 
 // Toolbar Actions Component - handles add step, undo/redo, save, and run buttons

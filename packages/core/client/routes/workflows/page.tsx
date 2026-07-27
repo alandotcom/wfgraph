@@ -323,7 +323,7 @@ export default function WorkflowsPage() {
         await refreshWorkflows();
 
         if (action === "delete") {
-          await void refreshRuns();
+          await refreshRuns();
         }
       } catch (error) {
         console.error(`Failed to ${action} workflows:`, error);

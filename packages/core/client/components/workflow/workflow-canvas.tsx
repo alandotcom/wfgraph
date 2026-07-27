@@ -22,6 +22,7 @@ import { nanoid } from "nanoid";
 import { Edge } from "@/components/flow-elements/edge";
 import { Panel } from "@/components/flow-elements/panel";
 import { useAfterCommit, useAfterPaint, useDomEvent } from "@/hooks/effects";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   addNodeAtom,
   applyNodeLayoutAtom,
@@ -90,7 +91,11 @@ export function WorkflowCanvas() {
   const [isGenerating] = useAtom(isGeneratingAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
-  const rightPanelWidth = useAtomValue(rightPanelWidthAtom);
+  // The sidebar renders nothing on a narrow viewport, so the canvas keeps the
+  // whole width. Whether the viewport is narrow is the canvas's own question.
+  const isMobile = useIsMobile();
+  const sidebarWidth = useAtomValue(rightPanelWidthAtom);
+  const rightPanelWidth = isMobile ? null : sidebarWidth;
   const [isTransitioningFromHomepage, setIsTransitioningFromHomepage] = useAtom(
     isTransitioningFromHomepageAtom
   );

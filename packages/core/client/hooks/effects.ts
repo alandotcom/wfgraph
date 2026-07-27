@@ -150,29 +150,14 @@ export function useAfterPaint(key: unknown, run: () => void): void {
 }
 
 /**
- * Run `run` once, `delayMs` from now. A `null` delay disarms the timer, and
- * changing the delay re-arms it from the start. Unmounting cancels it.
- */
-export function useTimer(delayMs: number | null, run: () => void): void {
-  const onElapsed = useEffectEvent(() => run());
-
-  useEffect(() => {
-    if (delayMs === null) {
-      return undefined;
-    }
-    const timer = setTimeout(() => onElapsed(), delayMs);
-    return () => clearTimeout(timer);
-  }, [delayMs]);
-}
-
-/**
  * Run `run` every `delayMs`. A `null` delay stops the interval.
  *
- * This is for a repeating side effect that is not a fetch. A repeating fetch
- * belongs in a query's `refetchInterval`, which knows how to stop when the
- * thing being polled reaches a terminal state and how to not stack requests.
+ * Not exported: a repeating fetch belongs in a query's `refetchInterval`, which
+ * knows how to stop when the thing being polled reaches a terminal state and
+ * how to avoid stacking requests. The one repeating thing here that is not a
+ * fetch is the clock below.
  */
-export function useInterval(run: () => void, delayMs: number | null): void {
+function useInterval(run: () => void, delayMs: number | null): void {
   const onTick = useEffectEvent(() => run());
 
   useEffect(() => {
