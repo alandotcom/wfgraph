@@ -25,10 +25,14 @@ import type {
   IntegrationType,
 } from "@/shared/types/integration";
 import { getErrorMessage } from "@/shared/utils";
+import {
+  createSecretConfigKeyTest,
+  maskIntegrationConfig,
+  SECRET_MASK,
+} from "./integration-config-masking";
 import { getIntegrationTestFunction } from "./integration-test-loaders";
 
 const integrationsLogger = getAppLogger("integrations");
-const SECRET_MASK = "********";
 
 type IntegrationSummary = {
   id: string;
@@ -60,45 +64,19 @@ type IntegrationTestError =
       message: string;
     };
 
+// Reaching here means the integration's metadata is registered but its
+// connection test is not, which is what importing "@rova/plugins" without
+// "@rova/plugins/server" leaves behind. Naming the missing import beats telling
+// someone their integration does not support a test it does support.
+const MISSING_TEST_MESSAGE =
+  'Connection testing is unavailable for this integration. A host that imports "@rova/plugins" also has to import "@rova/plugins/server", which registers the connection tests.';
+
 const createDatabaseConnection = (url: string): Sql =>
   postgres(url, {
     max: 1,
     idle_timeout: 5,
     connect_timeout: 5,
   });
-
-function getSecretConfigKeys(type: IntegrationType): Set<string> {
-  if (type === "database") {
-    return new Set(["url"]);
-  }
-
-  const plugin = getPluginFromRegistry(type);
-  if (!plugin) {
-    return new Set();
-  }
-
-  return new Set(
-    plugin.formFields
-      .filter((field) => field.type === "password")
-      .map((field) => field.configKey)
-  );
-}
-
-function maskIntegrationConfig(
-  type: IntegrationType,
-  config: IntegrationConfig
-): IntegrationConfig {
-  const secretKeys = getSecretConfigKeys(type);
-  const maskedConfig: IntegrationConfig = { ...config };
-
-  for (const key of secretKeys) {
-    if (typeof maskedConfig[key] === "string" && maskedConfig[key]) {
-      maskedConfig[key] = SECRET_MASK;
-    }
-  }
-
-  return maskedConfig;
-}
 
 function mergeIntegrationConfig(
   type: IntegrationType,
@@ -109,13 +87,13 @@ function mergeIntegrationConfig(
     return currentConfig;
   }
 
-  const secretKeys = getSecretConfigKeys(type);
+  const isSecretKey = createSecretConfigKeyTest(type);
   const sanitizedUpdates = omitBy(
     updates,
     (value, key) =>
       value === undefined ||
       (typeof key === "string" &&
-        secretKeys.has(key) &&
+        isSecretKey(key) &&
         (value === SECRET_MASK ||
           (typeof value === "string" && value.trim().length === 0)))
   );
@@ -341,10 +319,8 @@ export async function postIntegrationsTestResult(body: {
 
     const testFn = await getIntegrationTestFunction(body.type);
     if (!testFn) {
-      requestLogger.warn("Integration does not support test endpoint");
-      return failure("invalid", {
-        error: "Integration does not support testing",
-      });
+      requestLogger.warn(MISSING_TEST_MESSAGE);
+      return failure("invalid", { error: MISSING_TEST_MESSAGE });
     }
 
     const credentials = getCredentialMapping(plugin, body.config);
@@ -426,15 +402,8 @@ export async function postIntegrationTestResult(
 
     const testFn = await getIntegrationTestFunction(integration.type);
     if (!testFn) {
-      requestLogger.warn(
-        "Saved integration type does not support test endpoint",
-        {
-          type: integration.type,
-        }
-      );
-      return failure("invalid", {
-        error: "Integration does not support testing",
-      });
+      requestLogger.warn(MISSING_TEST_MESSAGE, { type: integration.type });
+      return failure("invalid", { error: MISSING_TEST_MESSAGE });
     }
 
     const credentials = getCredentialMapping(plugin, integration.config);
@@ -515,8 +484,21 @@ export async function postIntegrationsResult(body: {
   name?: string;
   type: IntegrationType;
   config: IntegrationConfig;
-}): Promise<ServiceResult<IntegrationSummary, "internal", IntegrationError>> {
+}): Promise<
+  ServiceResult<IntegrationSummary, "invalid" | "internal", IntegrationError>
+> {
   const requestLogger = integrationsLogger.with({ type: body.type });
+
+  // The editor bundled with @rova/core lists every built-in integration, while
+  // the server only knows the ones something registered. Refusing here is what
+  // keeps that gap from turning into credentials stored for an integration this
+  // process cannot run, which would then be neither testable nor maskable.
+  if (body.type !== "database" && !getPluginFromRegistry(body.type)) {
+    return failure("invalid", {
+      error: `Integration "${body.type}" is not available on this server. Import "@rova/plugins" to enable the built-in integrations.`,
+    });
+  }
+
   try {
     const integration = await createIntegration(
       body.name || "",

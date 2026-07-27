@@ -14,7 +14,7 @@ import { createRovaApp } from "@rova/core/app";
 // option and uses that one here instead.
 import { getAppLogger } from "@rova/core/backend/lib/logger";
 import "@rova/plugins";
-import "@rova/plugins/register-steps";
+import "@rova/plugins/server";
 // Bun turns this into a bundle whose script and link tags it transpiles per request, so
 // running the dev server needs no client build first. The import lives here, in the
 // unpublished dev entrypoint, to keep the client out of @rova/core's own bundle.

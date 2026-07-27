@@ -1,3 +1,17 @@
+/**
+ * Server-side registrations for the built-in integrations.
+ *
+ * Everything registered here is loaded on demand, which is the point: a step
+ * implementation and a connection test both pull vendor SDK code, and neither
+ * should enter the process until something calls it. Importing "@rova/plugins"
+ * on its own gets the metadata the editor renders and nothing heavier, which is
+ * what keeps the browser bundle free of server code.
+ *
+ * A host mounting Rova on a server imports this module once, beside
+ * "@rova/plugins", and skips it if it wants only its own actions.
+ */
+
+import { registerIntegrationTest } from "@/backend/services/integrations/integration-test-loaders";
 import { registerStepImporter } from "@/backend/lib/step-registry";
 
 registerStepImporter("acuity/list-appointment-types", {
@@ -101,3 +115,30 @@ registerStepImporter("twilio/send-sms", {
   stepFunction: "sendSmsStep",
   label: "Send SMS",
 });
+
+// Connection tests for the credentials UI. Each one reaches a vendor API, so it
+// stays behind a dynamic import until someone presses "Test connection".
+registerIntegrationTest(
+  "acuity",
+  async () => (await import("@/acuity/test")).testAcuity
+);
+registerIntegrationTest(
+  "clerk",
+  async () => (await import("@/clerk/test")).testClerk
+);
+registerIntegrationTest(
+  "linear",
+  async () => (await import("@/linear/test")).testLinear
+);
+registerIntegrationTest(
+  "resend",
+  async () => (await import("@/resend/test")).testResend
+);
+registerIntegrationTest(
+  "slack",
+  async () => (await import("@/slack/test")).testSlack
+);
+registerIntegrationTest(
+  "twilio",
+  async () => (await import("@/twilio/test")).testTwilio
+);

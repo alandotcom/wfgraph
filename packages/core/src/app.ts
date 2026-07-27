@@ -31,14 +31,6 @@ import {
   configureAppLoggingWithBridge,
 } from "@/backend/lib/logger";
 import { initializeWorkflowTriggers } from "@/backend/lib/workflow-trigger-bootstrap";
-// Built-in integration plugins — auto-register on import
-import "@/plugins/acuity";
-import "@/plugins/clerk";
-import "@/plugins/linear";
-import "@/plugins/resend";
-import "@/plugins/slack";
-import "@/plugins/twilio";
-
 import { unregisterIntegration } from "@/shared/plugins/registry";
 import {
   type IntegrationType,

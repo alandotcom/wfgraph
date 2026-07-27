@@ -31,10 +31,15 @@
       "@rova/plugins/*": ["./packages/plugins/src/*"],
       "@/shared/*": ["./packages/shared/src/*"],
       "@/backend/*": ["./packages/core/src/backend/*"],
-      "@/plugins/*": [
-        "./packages/shared/src/plugins/*",
-        "./packages/plugins/src/*"
-      ],
+      // Shared only. This used to fall through to packages/plugins/src as well,
+      // which is how packages/core came to write `import "@/plugins/twilio"` and
+      // inline five vendor SDKs into the published bundle; that spelling no
+      // longer resolves. The bare "@/*" below still reaches packages/plugins,
+      // because that is how the plugins package refers to itself, so
+      // `import "@/twilio/test"` from core would still compile. What catches
+      // that is packages/core/src/published-imports.test.ts, which reads the
+      // built bundle and fails on any import core does not declare.
+      "@/plugins/*": ["./packages/shared/src/plugins/*"],
       "@/*": [
         "./packages/shared/src/*",
         "./packages/core/src/*",

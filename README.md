@@ -208,6 +208,19 @@ Two things about a Node mount are worth knowing, and the adapter handles both:
 - Express rewrites `req.url` to strip the path it matched on, so a listener mounted at `/workflows` sees `/api/extensions` where the browser asked for `/workflows/api/extensions`. The adapter reads `req.originalUrl`, which is where the full path survives.
 - A body parser mounted ahead of Rova drains the request, so every POST would arrive empty. Rova cannot re-create the original bytes, and the Inngest callback verifies a signature over them, so a drained request gets a 500 that names the fix rather than a silent empty body.
 
+### Built-in integrations
+
+`@rova/core` carries no vendor SDKs. The built-in integrations (Acuity, Clerk, Linear, Resend, Slack, Twilio) live in `@rova/plugins`, which registers them through two side-effect imports:
+
+```ts
+import "@rova/plugins"; // integration metadata the editor renders
+import "@rova/plugins/server"; // step implementations and connection tests, loaded on demand
+```
+
+`server.ts` in this repo does exactly that. **`@rova/plugins` is not published yet**: its sources reach into `@rova/core` internals through path aliases that only exist in this workspace, so making it installable means first giving `@rova/core` a public plugin-authoring surface. Until then an outside adopter runs on their own `createAction` definitions.
+
+The editor bundled into `@rova/core` is built from this repo, so it still lists all six built-ins in its palette. On a server that has not registered them, creating one of those connections is refused with a message saying so rather than storing credentials the process cannot use.
+
 ### Package exports
 
 - `@rova/core` -- `createAction`, `createTrigger`, and related types.

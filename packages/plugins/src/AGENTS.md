@@ -179,8 +179,11 @@ export async function doSomethingStep(
 ```
 
 The step file exports the function and nothing else. What ties the action ID to
-that export lives in `packages/plugins/src/register-steps.ts`, which the server
-imports for its side effects:
+that export lives in `packages/plugins/src/server.ts`, which the server imports
+for its side effects. That file also registers the connection test, and both
+registrations are lazy on purpose: a step implementation and a connection test
+each pull vendor SDK code, and neither should enter the process until something
+calls it.
 
 ```typescript
 registerStepImporter("my-service/do-something", {
@@ -347,7 +350,7 @@ type ActionResult =
 
 After creating a plugin:
 
-1. Update static registration files (`packages/plugins/src/index.ts`, the `IntegrationType` union in `packages/shared/src/types/integration.ts`, and `packages/plugins/src/register-steps.ts`)
+1. Update static registration files (`packages/plugins/src/index.ts`, the `IntegrationType` union in `packages/shared/src/types/integration.ts`, and `packages/plugins/src/server.ts`, which needs both a `registerStepImporter` line per step and a `registerIntegrationTest` line for the connection test)
 2. Run `bun run type-check && bun run fix` to verify types and fix formatting/linting
 3. Run `bun run dev` to test in the UI
 4. Test the connection using the integration dialog

@@ -120,10 +120,11 @@ const config: KnipConfig = {
     },
 
     "packages/plugins": {
-      // src/index.ts, src/register-steps.ts and src/ui.ts are the three names in
-      // this package's "exports" map, and knip picks them up from there. All
-      // three exist for their import side effects: they register plugin
-      // metadata, step importers and React components.
+      // src/index.ts, src/server.ts and src/ui.ts are the three names in this
+      // package's "exports" map, and knip picks them up from there. All three
+      // exist for their import side effects: they register plugin metadata, the
+      // server-side lazy loaders (step importers and connection tests), and
+      // React components.
       entry: [],
       project: ["src/**/*.{ts,tsx}"],
       ignoreDependencies: [
