@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { getDefaultStore } from "jotai";
 import { useState } from "react";
-import { loadWorkflowGraphAtom } from "@/lib/workflow-graph-store";
+import {
+  loadWorkflowGraphAtom,
+  updateNodeDataAtom,
+} from "@/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
 import { TemplateBadgeInput } from "./template-badge-input";
 import { TemplateBadgeTextarea } from "./template-badge-textarea";
@@ -107,6 +110,10 @@ function ControlledTemplateBadgeInputWithNodeContext({
       value={value}
     />
   );
+}
+
+function UncontrolledTemplateBadgeInput({ value }: { value: string }) {
+  return <TemplateBadgeInput fieldType="timestamp" onChange={() => {}} value={value} />;
 }
 
 function ControlledTemplateBadgeTextarea({
@@ -270,6 +277,81 @@ describe("Template badge autocomplete", () => {
       const badge = textbox.querySelector("[data-template]");
       expect(badge).toBeTruthy();
       expect(badge?.textContent).toBe("HTTP Request.status");
+    });
+  });
+});
+
+describe("Template badge rendering", () => {
+  beforeEach(() => {
+    seedTemplateContext();
+  });
+
+  it("relabels a badge when its node is renamed", async () => {
+    // A badge shows the node's current label, but the value it stands for is a
+    // token holding the label the token was written against. Renaming a node
+    // produces no DOM event, so this is the one thing the editor genuinely has
+    // to re-render in response to a React state change.
+    const view = render(
+      <UncontrolledTemplateBadgeInput value={TRIGGER_TEMPLATE} />
+    );
+
+    const textbox = view.getByRole("textbox");
+    await waitFor(() => {
+      expect(textbox.querySelector("[data-template]")?.textContent).toBe(
+        "Webhook.timestamp"
+      );
+    });
+
+    getDefaultStore().set(updateNodeDataAtom, {
+      id: "trigger_1",
+      data: { label: "Incoming Hook" },
+    });
+
+    await waitFor(() => {
+      expect(textbox.querySelector("[data-template]")?.textContent).toBe(
+        "Incoming Hook.timestamp"
+      );
+    });
+  });
+
+  it("renders a value the parent supplies while the field is not focused", async () => {
+    const view = render(<UncontrolledTemplateBadgeInput value="" />);
+    const textbox = view.getByRole("textbox");
+
+    view.rerender(<UncontrolledTemplateBadgeInput value={TRIGGER_TEMPLATE} />);
+
+    await waitFor(() => {
+      expect(textbox.querySelector("[data-template]")?.textContent).toBe(
+        "Webhook.timestamp"
+      );
+    });
+  });
+
+  it("reads a badge back as the raw token it stands for", async () => {
+    let latestValue = "";
+    const view = render(
+      <ControlledTemplateBadgeInput
+        onValueChange={(value) => {
+          latestValue = value;
+        }}
+      />
+    );
+
+    const textbox = view.getByRole("textbox");
+    typeAtSymbol(textbox);
+
+    const option = await waitFor(() => findTimestampOption());
+    fireEvent.mouseDown(option);
+
+    await waitFor(() => expect(latestValue).toBe(TRIGGER_TEMPLATE));
+
+    // Typing after the badge appends to the token, rather than replacing the
+    // badge with the label the user can see.
+    textbox.append(document.createTextNode(" done"));
+    fireEvent.input(textbox);
+
+    await waitFor(() => {
+      expect(latestValue).toBe(`${TRIGGER_TEMPLATE} done`);
     });
   });
 });
