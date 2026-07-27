@@ -1,66 +1,40 @@
-import { ErrorCode, WebClient } from "@slack/web-api";
+import { z } from "zod";
+import { callSlack, describeSlackFailure } from "@/slack/client";
 
-type SlackWebApiError = {
-  code?: ErrorCode;
-  data?: { error?: string };
-  statusCode?: number;
-  message?: string;
-};
+// auth.test is Slack's own "is this token any good" call: it takes no arguments
+// and answers with the workspace and bot the token belongs to.
+const authTestSchema = z.object({ team: z.string().optional() });
 
 export async function testSlack(credentials: Record<string, string>) {
-  try {
-    const apiKey = credentials.SLACK_API_KEY;
+  const apiKey = credentials.SLACK_API_KEY;
 
-    if (!apiKey) {
-      return {
-        success: false,
-        error: "SLACK_API_KEY is required",
-      };
-    }
-
-    const slackClient = new WebClient(apiKey);
-    await slackClient.auth.test();
-
-    return { success: true };
-  } catch (error) {
-    if (error && typeof error === "object") {
-      const slackError = error as SlackWebApiError;
-      const details: Record<string, unknown> = {
-        code: slackError.code,
-        statusCode: slackError.statusCode,
-        dataError: slackError.data?.error,
-        message: slackError.message,
-      };
-
-      if (
-        slackError.code === ErrorCode.PlatformError &&
-        slackError.data?.error
-      ) {
-        return {
-          success: false,
-          error: slackError.data.error,
-          details,
-        };
-      }
-
-      if (
-        slackError.code === ErrorCode.HTTPError &&
-        typeof slackError.statusCode === "number"
-      ) {
-        return {
-          success: false,
-          error: `API validation failed: HTTP ${slackError.statusCode}`,
-          details,
-        };
-      }
-    }
-
+  if (!apiKey) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
-      details: {
-        message: error instanceof Error ? error.message : String(error),
-      },
+      error: "SLACK_API_KEY is required",
     };
   }
+
+  const result = await callSlack(apiKey, "auth.test", authTestSchema);
+
+  if (result.ok) {
+    return { success: true };
+  }
+
+  const { failure } = result;
+  const details = {
+    kind: failure.kind,
+    status: failure.kind === "unreachable" ? undefined : failure.status,
+    slackError: failure.kind === "rejected" ? failure.slackError : undefined,
+    message: describeSlackFailure(failure),
+  };
+
+  return {
+    success: false,
+    error:
+      failure.kind === "http"
+        ? `API validation failed: HTTP ${failure.status}`
+        : describeSlackFailure(failure),
+    details,
+  };
 }

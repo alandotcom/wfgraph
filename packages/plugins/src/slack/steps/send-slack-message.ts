@@ -1,19 +1,12 @@
-import { ErrorCode, WebClient } from "@slack/web-api";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import {
   type StepInput,
   withStepLogging,
 } from "@/backend/lib/steps/step-handler";
-import { getErrorMessage } from "@/shared/utils";
 import type { StepError } from "@/shared/workflow/step-result";
+import { z } from "zod";
+import { callSlack, describeSlackFailure } from "@/slack/client";
 import type { SlackCredentials } from "@/slack/credentials";
-
-type SlackWebApiError = {
-  code?: ErrorCode;
-  data?: { error?: string };
-  message?: string;
-  statusCode?: number;
-};
 
 type SendSlackMessageResult =
   | { success: true; ts: string; channel: string; reasonCode?: string }
@@ -26,6 +19,12 @@ export type SendSlackMessageCoreInput = {
 
 type SlackTestBehavior = "log_only" | "send_message";
 
+// What chat.postMessage answers with, as much of it as this step reports on.
+const postMessageSchema = z.object({
+  ts: z.string(),
+  channel: z.string(),
+});
+
 export type SendSlackMessageInput = StepInput &
   SendSlackMessageCoreInput & {
     integrationId?: string;
@@ -34,27 +33,6 @@ export type SendSlackMessageInput = StepInput &
 
 function resolveSlackTestBehavior(value: unknown): SlackTestBehavior {
   return value === "send_message" ? "send_message" : "log_only";
-}
-
-function getSlackErrorMessage(error: unknown): string {
-  if (!error || typeof error !== "object") {
-    return getErrorMessage(error);
-  }
-
-  const slackError = error as SlackWebApiError;
-
-  if (slackError.code === ErrorCode.PlatformError && slackError.data?.error) {
-    return slackError.data.error;
-  }
-
-  if (
-    slackError.code === ErrorCode.HTTPError &&
-    typeof slackError.statusCode === "number"
-  ) {
-    return `HTTP ${slackError.statusCode}`;
-  }
-
-  return slackError.message || getErrorMessage(error);
 }
 
 /**
@@ -76,29 +54,30 @@ async function stepHandler(
     };
   }
 
-  try {
-    const slackClient = new WebClient(apiKey);
-    const postSlackChatMessage = slackClient.chat.postMessage.bind(
-      slackClient.chat
-    );
-    const result = await postSlackChatMessage({
+  const result = await callSlack(
+    apiKey,
+    "chat.postMessage",
+    postMessageSchema,
+    {
       channel: input.slackChannel,
       text: input.slackMessage,
-    });
+    }
+  );
 
-    return {
-      success: true,
-      ts: result.ts || "",
-      channel: typeof result.channel === "string" ? result.channel : "",
-    };
-  } catch (error) {
+  if (!result.ok) {
     return {
       success: false,
       error: {
-        message: `Failed to send Slack message: ${getSlackErrorMessage(error)}`,
+        message: `Failed to send Slack message: ${describeSlackFailure(result.failure)}`,
       },
     };
   }
+
+  return {
+    success: true,
+    ts: result.data.ts,
+    channel: result.data.channel,
+  };
 }
 
 /**

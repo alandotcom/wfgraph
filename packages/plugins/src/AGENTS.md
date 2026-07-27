@@ -21,11 +21,23 @@ Each plugin lives in `plugins/[plugin-name]/` with this structure:
 plugins/[plugin-name]/
   index.ts          # Plugin definition (actions, form fields, metadata)
   credentials.ts    # Credential type definition
+  client.ts         # The vendor's HTTP API, over fetch
+  client.test.ts    # What the client puts on the wire
   icon.tsx          # SVG icon component
   test.ts           # Connection test function
   steps/
     [action].ts     # Server-side step functions (one per action)
 ```
+
+**Call vendors with `fetch`, not their SDK.** `vendor-http.ts` holds the one
+request function every plugin's `client.ts` is built on: it survives a `fetch`
+that throws, reads a JSON body, and tells "never arrived" apart from "the vendor
+said no". A client adds the vendor's auth, its body encoding, and Zod schemas for
+what it answers, so a step gets typed fields and an unexpected body fails where
+it happened. An SDK earns its place only when it carries protocol logic worth
+borrowing, which is why `@clerk/backend` (JWT verification) and `@linear/sdk` (a
+typed GraphQL client) stayed and `twilio`, `resend`, and `@slack/web-api` did
+not. The `dependencies` field on a plugin definition exists for that exception.
 
 ## Creating a Plugin
 
@@ -151,17 +163,18 @@ async function stepHandler(
     };
   }
 
-  try {
-    // Prefer an official SDK client when available
-    const client = new MyServiceClient({ apiKey });
-    const data = await client.items.create({
-      field: input.inputField,
-    });
-    return { success: true, id: data.id };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `Failed: ${message}` };
+  // The HTTP call lives in the plugin's own client.ts, built on requestVendor.
+  // Steps stay about what to send and what the answer means.
+  const result = await createMyServiceItem(apiKey, { field: input.inputField });
+
+  if (!result.ok) {
+    return {
+      success: false,
+      error: `Failed: ${describeMyServiceFailure(result.failure)}`,
+    };
   }
+
+  return { success: true, id: result.data.id };
 }
 
 /**
@@ -182,8 +195,8 @@ The step file exports the function and nothing else. What ties the action ID to
 that export lives in `packages/plugins/src/server.ts`, which the server imports
 for its side effects. That file also registers the connection test, and both
 registrations are lazy on purpose: a step implementation and a connection test
-each pull vendor SDK code, and neither should enter the process until something
-calls it.
+each reach a vendor over the network, and neither should enter the process until
+something calls it.
 
 ```typescript
 registerStepImporter("my-service/do-something", {
@@ -214,11 +227,13 @@ export async function testMyService(credentials: Record<string, string>) {
       };
     }
 
-    // Option 2: Make a lightweight read-only SDK call
-    const client = new MyServiceClient({ apiKey });
-    const result = await client.auth.whoAmI();
-    if (!result?.id) {
-      return { success: false, error: "Invalid API key" };
+    // Option 2: Make a lightweight read-only call through the plugin's client
+    const result = await fetchMyServiceIdentity(apiKey);
+    if (!result.ok) {
+      return {
+        success: false,
+        error: describeMyServiceFailure(result.failure),
+      };
     }
 
     return { success: true };

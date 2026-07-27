@@ -1,13 +1,14 @@
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
-import { type CreateEmailOptions, Resend } from "resend";
 import { z } from "zod";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import {
   type StepInput,
   withStepLogging,
 } from "@/backend/lib/steps/step-handler";
+import { describeResendFailure, sendResendEmail } from "@/resend/client";
 import type { ResendCredentials } from "@/resend/credentials";
+import type { JsonObject } from "@/shared/types/json";
 
 type SendEmailResult =
   | { success: true; data: { id: string; reasonCode?: string } }
@@ -148,113 +149,86 @@ async function stepHandler(
     };
   }
 
-  try {
-    const resend = new Resend(apiKey);
-    const contentMode = input.emailContentMode || "text";
+  const contentMode = input.emailContentMode || "text";
 
-    const basePayload = {
-      from: senderEmail,
-      to: input.emailTo,
-      subject: input.emailSubject,
-      ...omitBy(
-        {
-          cc: input.emailCc,
-          bcc: input.emailBcc,
-          replyTo: input.emailReplyTo,
-          scheduledAt: input.emailScheduledAt,
-          topicId: input.emailTopicId,
-          tags: input.emailTags ? parseTags(input.emailTags) : undefined,
-        },
-        isNil
-      ),
+  // Resend's own field names, which are snake_case on the wire.
+  const basePayload: JsonObject = {
+    from: senderEmail,
+    to: input.emailTo,
+    subject: input.emailSubject,
+    ...omitBy(
+      {
+        cc: input.emailCc,
+        bcc: input.emailBcc,
+        reply_to: input.emailReplyTo,
+        scheduled_at: input.emailScheduledAt,
+        topic_id: input.emailTopicId,
+        tags: input.emailTags ? parseTags(input.emailTags) : undefined,
+      },
+      isNil
+    ),
+  };
+
+  let payload: JsonObject;
+
+  if (contentMode === "template") {
+    if (!input.emailTemplateId) {
+      return {
+        success: false,
+        error: { message: "Template mode requires emailTemplateId." },
+      };
+    }
+
+    payload = {
+      ...basePayload,
+      template: {
+        id: input.emailTemplateId,
+        ...omitBy(
+          { variables: parseTemplateVariables(input.emailTemplateVariables) },
+          isNil
+        ),
+      },
     };
-
-    let payload: CreateEmailOptions;
-
-    if (contentMode === "template") {
-      if (!input.emailTemplateId) {
-        return {
-          success: false,
-          error: {
-            message: "Template mode requires emailTemplateId.",
-          },
-        };
-      }
-
-      payload = {
-        ...basePayload,
-        template: {
-          id: input.emailTemplateId,
-          ...omitBy(
-            { variables: parseTemplateVariables(input.emailTemplateVariables) },
-            isNil
-          ),
-        },
-      };
-    } else if (contentMode === "html") {
-      if (!input.emailHtml) {
-        return {
-          success: false,
-          error: {
-            message: "HTML mode requires emailHtml.",
-          },
-        };
-      }
-
-      payload = {
-        ...basePayload,
-        html: input.emailHtml,
-        ...omitBy({ text: input.emailBody }, isNil),
-      };
-    } else {
-      if (!input.emailBody) {
-        return {
-          success: false,
-          error: {
-            message: "Text mode requires emailBody.",
-          },
-        };
-      }
-
-      payload = {
-        ...basePayload,
-        text: input.emailBody,
-        ...omitBy({ html: input.emailHtml }, isNil),
-      };
-    }
-
-    const { data, error: resendError } = await resend.emails.send(payload, {
-      idempotencyKey: input.idempotencyKey,
-    });
-
-    if (resendError) {
+  } else if (contentMode === "html") {
+    if (!input.emailHtml) {
       return {
         success: false,
-        error: {
-          message:
-            resendError.message ||
-            `HTTP ${resendError.statusCode}: Failed to send email`,
-        },
+        error: { message: "HTML mode requires emailHtml." },
       };
     }
 
-    if (!data?.id) {
+    payload = {
+      ...basePayload,
+      html: input.emailHtml,
+      ...omitBy({ text: input.emailBody }, isNil),
+    };
+  } else {
+    if (!input.emailBody) {
       return {
         success: false,
-        error: {
-          message: "Failed to send email: Missing email id in response",
-        },
+        error: { message: "Text mode requires emailBody." },
       };
     }
 
-    return { success: true, data: { id: data.id } };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return {
-      success: false,
-      error: { message: `Failed to send email: ${errorMessage}` },
+    payload = {
+      ...basePayload,
+      text: input.emailBody,
+      ...omitBy({ html: input.emailHtml }, isNil),
     };
   }
+
+  const result = await sendResendEmail(apiKey, payload, input.idempotencyKey);
+
+  if (!result.ok) {
+    return {
+      success: false,
+      error: {
+        message: `Failed to send email: ${describeResendFailure(result.failure)}`,
+      },
+    };
+  }
+
+  return { success: true, data: { id: result.data.id } };
 }
 
 /**

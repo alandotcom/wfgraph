@@ -1,11 +1,9 @@
-import { omitBy } from "es-toolkit/object";
-import { isNil } from "es-toolkit/predicate";
-import twilio from "twilio";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import {
   type StepInput,
   withStepLogging,
 } from "@/backend/lib/steps/step-handler";
+import { createTwilioMessage, describeTwilioFailure } from "@/twilio/client";
 import type { TwilioCredentials } from "@/twilio/credentials";
 
 type SendSmsResult =
@@ -58,36 +56,6 @@ function parseMediaUrls(value: string | undefined): string[] {
     .split(",")
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
-}
-
-type TwilioError = {
-  status?: number;
-  message?: string;
-};
-
-function getTwilioErrorMessage(error: unknown): string {
-  if (error instanceof twilio.RestException) {
-    return (
-      error.message || `HTTP ${error.status}: Failed to send SMS via Twilio`
-    );
-  }
-
-  if (error && typeof error === "object") {
-    const twilioError = error as TwilioError;
-    if (
-      typeof twilioError.message === "string" &&
-      twilioError.message.length > 0
-    ) {
-      return twilioError.message;
-    }
-    if (typeof twilioError.status === "number") {
-      return `HTTP ${twilioError.status}: Failed to send SMS via Twilio`;
-    }
-  }
-
-  return error instanceof Error
-    ? error.message
-    : "Failed to send SMS via Twilio";
 }
 
 function validateSendSmsInput(input: SendSmsCoreInput): string | null {
@@ -144,40 +112,38 @@ async function stepHandler(
 
   const mediaUrls = parseMediaUrls(input.smsMediaUrls);
 
-  try {
-    const twilioClient = twilio(accountSid, authToken);
-    const message = await twilioClient.messages.create({
-      to: input.smsTo,
-      body: input.smsBody,
-      ...omitBy(
-        {
-          from: senderFrom || undefined,
-          messagingServiceSid: senderMessagingServiceSid || undefined,
-          statusCallback: input.smsStatusCallback || undefined,
-          mediaUrl: mediaUrls.length > 0 ? mediaUrls : undefined,
-        },
-        isNil
-      ),
-    });
+  // Twilio's own parameter names, so this reads like its documentation. The
+  // client drops the ones left undefined and expands MediaUrl into the repeated
+  // key the form encoding uses for a list.
+  const result = await createTwilioMessage(
+    { accountSid, authToken },
+    {
+      To: input.smsTo,
+      Body: input.smsBody,
+      From: senderFrom || undefined,
+      MessagingServiceSid: senderMessagingServiceSid || undefined,
+      StatusCallback: input.smsStatusCallback || undefined,
+      MediaUrl: mediaUrls.length > 0 ? mediaUrls : undefined,
+    }
+  );
 
-    return {
-      success: true,
-      data: {
-        sid: message.sid,
-        status: message.status ?? "",
-        to: message.to,
-        from: message.from || undefined,
-        messagingServiceSid: message.messagingServiceSid || undefined,
-      },
-    };
-  } catch (error) {
+  if (!result.ok) {
     return {
       success: false,
-      error: {
-        message: getTwilioErrorMessage(error),
-      },
+      error: { message: describeTwilioFailure(result.failure) },
     };
   }
+
+  return {
+    success: true,
+    data: {
+      sid: result.data.sid,
+      status: result.data.status,
+      to: result.data.to,
+      from: result.data.from ?? undefined,
+      messagingServiceSid: result.data.messaging_service_sid ?? undefined,
+    },
+  };
 }
 
 /**

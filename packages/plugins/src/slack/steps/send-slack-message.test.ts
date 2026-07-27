@@ -1,40 +1,24 @@
 import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
 
+// The step's job is deciding whether and what to send, so the seam under it is
+// the Slack client. What that client puts on the wire is covered separately in
+// slack/client.test.ts, against a stubbed fetch.
 const mocks = (() => {
   const fetchCredentials = vi.fn();
-  const webClientCtor = vi.fn();
-  const postMessage = vi.fn();
+  const callSlack = vi.fn();
 
-  return {
-    fetchCredentials,
-    webClientCtor,
-    postMessage,
-  };
+  return { fetchCredentials, callSlack };
 })();
 
 mock.module("@/backend/lib/credential-fetcher", () => ({
   fetchCredentials: mocks.fetchCredentials,
 }));
 
-mock.module("@slack/web-api", () => {
-  class WebClient {
-    chat = {
-      postMessage: mocks.postMessage,
-    };
-
-    constructor(token: string) {
-      mocks.webClientCtor(token);
-    }
-  }
-
-  return {
-    ErrorCode: {
-      PlatformError: "platform_error",
-      HTTPError: "http_error",
-    },
-    WebClient,
-  };
-});
+mock.module("@/slack/client", () => ({
+  callSlack: mocks.callSlack,
+  describeSlackFailure: (failure: { message?: string }) =>
+    failure.message ?? "slack failure",
+}));
 
 const { sendSlackMessageStep } = await import("./send-slack-message");
 
@@ -44,9 +28,9 @@ describe("sendSlackMessageStep", () => {
     mocks.fetchCredentials.mockResolvedValue({
       SLACK_API_KEY: "xoxb-test-token",
     });
-    mocks.postMessage.mockResolvedValue({
-      ts: "1739.123",
-      channel: "C12345",
+    mocks.callSlack.mockResolvedValue({
+      ok: true,
+      data: { ts: "1739.123", channel: "C12345" },
     });
   });
 
@@ -70,7 +54,7 @@ describe("sendSlackMessageStep", () => {
       reasonCode: "test_mode_log_only",
     });
     expect(mocks.fetchCredentials).toHaveBeenCalledTimes(0);
-    expect(mocks.postMessage).toHaveBeenCalledTimes(0);
+    expect(mocks.callSlack).toHaveBeenCalledTimes(0);
   });
 
   it("sends message in test mode when test behavior is send_message", async () => {
@@ -88,11 +72,12 @@ describe("sendSlackMessageStep", () => {
     });
 
     expect(mocks.fetchCredentials).toHaveBeenCalledWith("int_slack");
-    expect(mocks.webClientCtor).toHaveBeenCalledWith("xoxb-test-token");
-    expect(mocks.postMessage).toHaveBeenCalledWith({
-      channel: "#alerts",
-      text: "Hello world",
-    });
+    expect(mocks.callSlack).toHaveBeenCalledWith(
+      "xoxb-test-token",
+      "chat.postMessage",
+      expect.anything(),
+      { channel: "#alerts", text: "Hello world" }
+    );
     expect(result).toEqual({
       success: true,
       ts: "1739.123",
@@ -115,6 +100,6 @@ describe("sendSlackMessageStep", () => {
     });
 
     expect(mocks.fetchCredentials).toHaveBeenCalledWith("int_slack");
-    expect(mocks.postMessage).toHaveBeenCalledTimes(1);
+    expect(mocks.callSlack).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,38 +1,24 @@
 import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
 
+// The step's job is deciding whether and what to send, so the seam under it is
+// the Twilio client. What that client puts on the wire is covered separately in
+// twilio/client.test.ts, against a stubbed fetch.
 const mocks = (() => {
   const fetchCredentials = vi.fn();
-  const twilioFactory = vi.fn();
   const createMessage = vi.fn();
 
-  return {
-    fetchCredentials,
-    twilioFactory,
-    createMessage,
-  };
+  return { fetchCredentials, createMessage };
 })();
 
 mock.module("@/backend/lib/credential-fetcher", () => ({
   fetchCredentials: mocks.fetchCredentials,
 }));
 
-mock.module("twilio", () => {
-  class RestException extends Error {
-    status: number;
-
-    constructor(message: string, status = 500) {
-      super(message);
-      this.status = status;
-    }
-  }
-
-  const factory = ((...args: unknown[]) => mocks.twilioFactory(...args)) as ((
-    ...args: unknown[]
-  ) => unknown) & { RestException?: typeof RestException };
-  factory.RestException = RestException;
-
-  return { default: factory };
-});
+mock.module("@/twilio/client", () => ({
+  createTwilioMessage: mocks.createMessage,
+  describeTwilioFailure: (failure: { message?: string }) =>
+    failure.message ?? "twilio failure",
+}));
 
 const { sendSmsStep } = await import("./send-sms");
 
@@ -44,16 +30,21 @@ describe("sendSmsStep", () => {
       TWILIO_AUTH_TOKEN: "auth-token",
       TWILIO_FROM_NUMBER: "+15551234567",
     });
-    mocks.twilioFactory.mockReturnValue({
-      messages: { create: mocks.createMessage },
-    });
+    // Answer the way Twilio does, in its own snake_case, so the step's reading
+    // of the response is exercised rather than assumed.
     mocks.createMessage.mockImplementation(
-      async (payload: { to: string; from?: string }) => ({
-        sid: "SM123",
-        status: "queued",
-        to: payload.to,
-        from: payload.from ?? null,
-        messagingServiceSid: null,
+      async (
+        _credentials: unknown,
+        parameters: Record<string, string | undefined>
+      ) => ({
+        ok: true,
+        data: {
+          sid: "SM123",
+          status: "queued",
+          to: parameters.To,
+          from: parameters.From ?? null,
+          messaging_service_sid: parameters.MessagingServiceSid ?? null,
+        },
       })
     );
   });
@@ -81,7 +72,6 @@ describe("sendSmsStep", () => {
       },
     });
     expect(mocks.fetchCredentials).toHaveBeenCalledTimes(0);
-    expect(mocks.twilioFactory).toHaveBeenCalledTimes(0);
     expect(mocks.createMessage).toHaveBeenCalledTimes(0);
   });
 
@@ -101,12 +91,17 @@ describe("sendSmsStep", () => {
     });
 
     expect(mocks.fetchCredentials).toHaveBeenCalledWith("int_twilio");
-    expect(mocks.twilioFactory).toHaveBeenCalledWith("AC123", "auth-token");
-    expect(mocks.createMessage).toHaveBeenCalledWith({
-      body: "Hello",
-      from: "+15551234567",
-      to: "+15557654321",
-    });
+    expect(mocks.createMessage).toHaveBeenCalledWith(
+      { accountSid: "AC123", authToken: "auth-token" },
+      {
+        To: "+15557654321",
+        Body: "Hello",
+        From: "+15551234567",
+        MessagingServiceSid: undefined,
+        StatusCallback: undefined,
+        MediaUrl: undefined,
+      }
+    );
     expect(result).toEqual({
       success: true,
       data: {
@@ -115,6 +110,53 @@ describe("sendSmsStep", () => {
         to: "+15557654321",
         from: "+15551234567",
         messagingServiceSid: undefined,
+      },
+    });
+  });
+
+  // The REST names differ from the SDK's camelCase options, and the response
+  // key is snake_case. A typo in either is silent: the parameter is dropped or
+  // the field reads as absent.
+  it("sends Twilio's own parameter names and reads its own response keys", async () => {
+    mocks.fetchCredentials.mockResolvedValue({
+      TWILIO_ACCOUNT_SID: "AC123",
+      TWILIO_AUTH_TOKEN: "auth-token",
+    });
+
+    const result = await sendSmsStep({
+      integrationId: "int_twilio",
+      smsTo: "+15550001111",
+      smsBody: "Hello",
+      smsMessagingServiceSid: "MG999",
+      smsStatusCallback: "https://example.com/status",
+      smsMediaUrls: "https://example.com/a.png, https://example.com/b.png",
+      _context: {
+        nodeId: "n1",
+        nodeName: "SMS",
+        nodeType: "action",
+        runMode: "live",
+      },
+    });
+
+    expect(mocks.createMessage).toHaveBeenCalledWith(
+      { accountSid: "AC123", authToken: "auth-token" },
+      {
+        To: "+15550001111",
+        Body: "Hello",
+        From: undefined,
+        MessagingServiceSid: "MG999",
+        StatusCallback: "https://example.com/status",
+        MediaUrl: ["https://example.com/a.png", "https://example.com/b.png"],
+      }
+    );
+    expect(result).toEqual({
+      success: true,
+      data: {
+        sid: "SM123",
+        status: "queued",
+        to: "+15550001111",
+        from: undefined,
+        messagingServiceSid: "MG999",
       },
     });
   });
@@ -144,7 +186,6 @@ describe("sendSmsStep", () => {
       },
     });
     expect(mocks.fetchCredentials).toHaveBeenCalledTimes(0);
-    expect(mocks.twilioFactory).toHaveBeenCalledTimes(0);
     expect(mocks.createMessage).toHaveBeenCalledTimes(0);
   });
 });
