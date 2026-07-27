@@ -1,17 +1,5 @@
 import type { ConditionBranch, WorkflowNode } from "@/workflow/types";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  return value;
-}
-
 function asTrimmedString(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
@@ -78,6 +66,5 @@ export function isConditionActionNode(node: WorkflowNode | undefined): boolean {
     return false;
   }
 
-  const config = asRecord(node.data.config);
-  return isConditionActionType(config?.actionType);
+  return isConditionActionType(node.data.config?.actionType);
 }

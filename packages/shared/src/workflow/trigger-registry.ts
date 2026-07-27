@@ -1,4 +1,5 @@
 import { parse as parseCel } from "@marcbachmann/cel-js";
+import type { StandardJSONSchemaV1 } from "@standard-schema/spec";
 import type { ActionConfigField } from "@/plugins/registry";
 import { getValueByPath } from "@/utils/object-path";
 import type { InputSchema } from "@/workflow/action-registry";
@@ -64,6 +65,13 @@ type TriggerSchemaStandard<TPayload> = {
     ) =>
       | TriggerSchemaStandardResult<TPayload>
       | Promise<TriggerSchemaStandardResult<TPayload>>;
+    /**
+     * Schema libraries that also implement the Standard JSON Schema spec expose
+     * this converter (Zod v4 and arktype both do). The registry calls it to
+     * derive the trigger's output fields for template autocomplete. Optional
+     * because the validation half of Standard Schema can be implemented alone.
+     */
+    jsonSchema?: StandardJSONSchemaV1.Converter;
   };
 };
 
@@ -453,10 +461,6 @@ function triggerIgnoreEvaluation(input: {
   };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isPromiseLike<T>(value: unknown): value is Promise<T> {
   return (
     (typeof value === "object" || typeof value === "function") &&
@@ -482,9 +486,7 @@ function isStandardSchema<TPayload>(
     return false;
   }
   return (
-    "~standard" in schema &&
-    isRecord(schema["~standard"]) &&
-    typeof schema["~standard"].validate === "function"
+    "~standard" in schema && typeof schema["~standard"].validate === "function"
   );
 }
 
@@ -494,7 +496,7 @@ function validateTriggerPayload<TPayload extends Record<string, unknown>>(
 ): TPayload | undefined {
   if (isSafeParseSchema(schema)) {
     const parsed = schema.safeParse(payload);
-    if (!(parsed.success && isRecord(parsed.data))) {
+    if (!parsed.success) {
       return;
     }
     return parsed.data;
@@ -521,7 +523,7 @@ function validateTriggerPayload<TPayload extends Record<string, unknown>>(
     return;
   }
 
-  if (!("value" in parsed && isRecord(parsed.value))) {
+  if (!("value" in parsed)) {
     return;
   }
 
@@ -713,31 +715,18 @@ function extractStandardSchemaOutputFields(
     return undefined;
   }
 
-  const standard = schema["~standard"];
-  if (
-    !(
-      isRecord(standard) &&
-      "jsonSchema" in standard &&
-      isRecord(standard.jsonSchema)
-    ) ||
-    typeof standard.jsonSchema.input !== "function"
-  ) {
+  // Only schemas that also implement the JSON Schema half of Standard Schema
+  // can describe their own shape; the rest fall back to key extraction.
+  const converter = schema["~standard"].jsonSchema;
+  if (!converter) {
     return undefined;
   }
 
   try {
-    const inputFn: unknown = standard.jsonSchema.input;
-    if (typeof inputFn !== "function") {
-      return undefined;
-    }
-
-    const jsonSchema: unknown = inputFn({
+    const jsonSchema = converter.input({
       target: "draft-2020-12",
       libraryOptions: jsonSchemaLibraryOptions,
     });
-    if (!isRecord(jsonSchema)) {
-      return undefined;
-    }
 
     const fields = parseWorkflowSchemaFieldsOrJsonSchema(jsonSchema);
     return fields && fields.length > 0

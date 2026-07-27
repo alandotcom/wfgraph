@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export type ConditionFieldType = "timestamp" | "string" | "number" | "boolean";
 
 export type TimeUnit = "minutes" | "hours" | "days" | "weeks";
@@ -175,10 +177,6 @@ export const NULLCHECK_OPERATOR_OPTIONS: Array<{
   { value: "is_not_set", label: "is not set" },
 ];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function isGroupLogic(value: unknown): value is GroupLogic {
   return value === "and" || value === "or";
 }
@@ -190,19 +188,6 @@ function isPositiveInteger(value: unknown): value is number {
     Number.isInteger(value) &&
     value > 0
   );
-}
-
-function isConditionFieldType(value: unknown): value is ConditionFieldType {
-  return (
-    value === "timestamp" ||
-    value === "string" ||
-    value === "number" ||
-    value === "boolean"
-  );
-}
-
-function isTimestampOperator(value: unknown): value is TimestampOperator {
-  return TIMESTAMP_OPERATOR_OPTIONS.some((option) => option.value === value);
 }
 
 function isTimestampRelativeOperator(
@@ -241,18 +226,6 @@ function isTimeUnit(value: unknown): value is TimeUnit {
     value === "days" ||
     value === "weeks"
   );
-}
-
-function isStringOperator(value: unknown): value is StringOperator {
-  return value === "equals" || value === "not_equals" || value === "contains";
-}
-
-function isNumberOperator(value: unknown): value is NumberOperator {
-  return NUMBER_OPERATOR_OPTIONS.some((option) => option.value === value);
-}
-
-function isBooleanOperator(value: unknown): value is BooleanOperator {
-  return value === "is_true" || value === "is_false";
 }
 
 export function isNullCheckOperator(
@@ -300,234 +273,180 @@ function toOperatorExpression(operator: NumberOperator): string {
   }
 }
 
-function parseTimestampConditionRule(input: {
-  id: string;
-  field: string;
-  operator: unknown;
-  amount: unknown;
-  unit: unknown;
-  dateTime: unknown;
-}): { valid: true; rule: ConditionRule } | { valid: false; error: string } {
-  if (!isTimestampOperator(input.operator)) {
-    return { valid: false, error: "Timestamp operator is invalid" };
-  }
+/**
+ * The stored form of a condition model.
+ *
+ * A Condition node keeps its structured model as a JSON string in node config,
+ * so the model arrives here as outside input and is parsed before anything
+ * reads it. Rules are described in two layers: `fieldType` says what kind of
+ * value the field holds, and `operator` then says which operands the rule
+ * carries. Every layer carries its own message, so a model that will not load
+ * names the thing that is actually wrong with it.
+ *
+ * Unknown keys are dropped, so a rule that kept an operand from an operator the
+ * user has since changed away from still loads, without that operand.
+ */
+function requiredTextSchema(message: string) {
+  return z.string({ error: message }).trim().min(1, { error: message });
+}
 
-  if (isTimestampRelativeOperator(input.operator)) {
-    if (!isPositiveInteger(input.amount)) {
-      return {
-        valid: false,
-        error: "Timestamp amount must be a positive integer",
-      };
-    }
-
-    if (!isTimeUnit(input.unit)) {
-      return { valid: false, error: "Timestamp unit is invalid" };
-    }
-
-    return {
-      valid: true,
-      rule: {
-        id: input.id,
-        field: input.field,
-        fieldType: "timestamp",
-        operator: input.operator,
-        amount: input.amount,
-        unit: input.unit,
-      },
-    };
-  }
-
-  if (!isDateTimeString(input.dateTime)) {
-    return {
-      valid: false,
-      error: "Timestamp absolute operators require a valid date-time",
-    };
-  }
-
+/** The parts every rule carries, whatever kind of field it points at. */
+function conditionRuleShape<TFieldType extends ConditionFieldType>(
+  fieldType: TFieldType
+) {
   return {
-    valid: true,
-    rule: {
-      id: input.id,
-      field: input.field,
-      fieldType: "timestamp",
-      operator: input.operator,
-      dateTime: input.dateTime.trim(),
-    },
+    id: requiredTextSchema("Condition id is required"),
+    field: requiredTextSchema("Condition field is required"),
+    fieldType: z.literal(fieldType),
   };
 }
 
-function parseStringConditionRule(input: {
-  id: string;
-  field: string;
-  operator: unknown;
-  value: unknown;
-}): { valid: true; rule: ConditionRule } | { valid: false; error: string } {
-  if (!isStringOperator(input.operator)) {
-    return { valid: false, error: "String operator is invalid" };
-  }
+/** Null checks read a field's presence, so they take no operand of their own. */
+const nullCheckOperatorSchema = z.enum(["is_set", "is_not_set"]);
 
-  if (typeof input.value !== "string") {
-    return { valid: false, error: "String conditions require a text value" };
-  }
+const TIMESTAMP_AMOUNT_ERROR = "Timestamp amount must be a positive integer";
+const DATE_TIME_ERROR =
+  "Timestamp absolute operators require a valid date-time";
 
-  return {
-    valid: true,
-    rule: {
-      id: input.id,
-      field: input.field,
-      fieldType: "string",
-      operator: input.operator,
-      value: input.value,
-    },
-  };
-}
+const timestampConditionRuleSchema = z.discriminatedUnion(
+  "operator",
+  [
+    z.object({
+      ...conditionRuleShape("timestamp"),
+      operator: nullCheckOperatorSchema,
+    }),
+    z.object({
+      ...conditionRuleShape("timestamp"),
+      operator: z.enum([
+        "within_next",
+        "more_than_from_now",
+        "less_than_ago",
+        "more_than_ago",
+      ]),
+      amount: z
+        .number({ error: TIMESTAMP_AMOUNT_ERROR })
+        .int({ error: TIMESTAMP_AMOUNT_ERROR })
+        .positive({ error: TIMESTAMP_AMOUNT_ERROR }),
+      unit: z.enum(["minutes", "hours", "days", "weeks"], {
+        error: "Timestamp unit is invalid",
+      }),
+    }),
+    z.object({
+      ...conditionRuleShape("timestamp"),
+      operator: z.enum(["before", "after"]),
+      dateTime: z
+        .string({ error: DATE_TIME_ERROR })
+        .trim()
+        .refine(isDateTimeString, { error: DATE_TIME_ERROR }),
+    }),
+  ],
+  { error: "Timestamp operator is invalid" }
+);
 
-function parseNumberConditionRule(input: {
-  id: string;
-  field: string;
-  operator: unknown;
-  value: unknown;
-}): { valid: true; rule: ConditionRule } | { valid: false; error: string } {
-  if (!isNumberOperator(input.operator)) {
-    return { valid: false, error: "Number operator is invalid" };
-  }
+const stringConditionRuleSchema = z.discriminatedUnion(
+  "operator",
+  [
+    z.object({
+      ...conditionRuleShape("string"),
+      operator: nullCheckOperatorSchema,
+    }),
+    z.object({
+      ...conditionRuleShape("string"),
+      operator: z.enum(["equals", "not_equals", "contains"]),
+      value: z.string({ error: "String conditions require a text value" }),
+    }),
+  ],
+  { error: "String operator is invalid" }
+);
 
-  if (typeof input.value !== "number" || !Number.isFinite(input.value)) {
-    return {
-      valid: false,
-      error: "Number conditions require a finite numeric value",
-    };
-  }
+const numberConditionRuleSchema = z.discriminatedUnion(
+  "operator",
+  [
+    z.object({
+      ...conditionRuleShape("number"),
+      operator: nullCheckOperatorSchema,
+    }),
+    z.object({
+      ...conditionRuleShape("number"),
+      operator: z.enum([
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_or_equal",
+        "less_than",
+        "less_or_equal",
+      ]),
+      // z.number() admits finite numbers only, which is the operand a
+      // comparison can be compiled against.
+      value: z.number({
+        error: "Number conditions require a finite numeric value",
+      }),
+    }),
+  ],
+  { error: "Number operator is invalid" }
+);
 
-  return {
-    valid: true,
-    rule: {
-      id: input.id,
-      field: input.field,
-      fieldType: "number",
-      operator: input.operator,
-      value: input.value,
-    },
-  };
-}
+const booleanConditionRuleSchema = z.discriminatedUnion(
+  "operator",
+  [
+    z.object({
+      ...conditionRuleShape("boolean"),
+      operator: nullCheckOperatorSchema,
+    }),
+    z.object({
+      ...conditionRuleShape("boolean"),
+      operator: z.enum(["is_true", "is_false"]),
+    }),
+  ],
+  { error: "Boolean operator is invalid" }
+);
 
-function parseBooleanConditionRule(input: {
-  id: string;
-  field: string;
-  operator: unknown;
-}): { valid: true; rule: ConditionRule } | { valid: false; error: string } {
-  if (!isBooleanOperator(input.operator)) {
-    return { valid: false, error: "Boolean operator is invalid" };
-  }
+/**
+ * A rule has to be an object before its field type can be read, and the gate in
+ * front of the union is what lets a rule that is a string or an array say so.
+ */
+const conditionRuleSchema = z
+  .looseObject({}, { error: "Condition must be an object" })
+  .pipe(
+    z.discriminatedUnion(
+      "fieldType",
+      [
+        timestampConditionRuleSchema,
+        stringConditionRuleSchema,
+        numberConditionRuleSchema,
+        booleanConditionRuleSchema,
+      ],
+      { error: "Condition field type is invalid" }
+    )
+  );
 
-  return {
-    valid: true,
-    rule: {
-      id: input.id,
-      field: input.field,
-      fieldType: "boolean",
-      operator: input.operator,
-    },
-  };
-}
+const GROUP_CONDITIONS_ERROR = "Each group must contain at least one condition";
 
-function parseConditionRule(
-  input: unknown
-): { valid: true; rule: ConditionRule } | { valid: false; error: string } {
-  if (!isRecord(input)) {
-    return { valid: false, error: "Condition must be an object" };
-  }
+const conditionGroupSchema = z.object(
+  {
+    id: requiredTextSchema("Group id is required"),
+    logic: z.enum(["and", "or"], { error: "Group logic is invalid" }),
+    conditions: z
+      .array(conditionRuleSchema, { error: GROUP_CONDITIONS_ERROR })
+      .min(1, { error: GROUP_CONDITIONS_ERROR }),
+  },
+  { error: "Group must be an object" }
+);
 
-  if (typeof input.id !== "string" || input.id.trim().length === 0) {
-    return { valid: false, error: "Condition id is required" };
-  }
+const MODEL_GROUPS_ERROR = "Condition model must contain at least one group";
 
-  if (typeof input.field !== "string" || input.field.trim().length === 0) {
-    return { valid: false, error: "Condition field is required" };
-  }
-
-  if (!isConditionFieldType(input.fieldType)) {
-    return { valid: false, error: "Condition field type is invalid" };
-  }
-
-  // Null-check operators are type-agnostic and take no value
-  if (isNullCheckOperator(input.operator)) {
-    return {
-      valid: true,
-      rule: {
-        id: input.id,
-        field: input.field.trim(),
-        fieldType: input.fieldType,
-        operator: input.operator,
-      },
-    };
-  }
-
-  const normalized = {
-    id: input.id,
-    field: input.field.trim(),
-    operator: input.operator,
-    value: input.value,
-    amount: input.amount,
-    unit: input.unit,
-    dateTime: input.dateTime,
-  };
-
-  if (input.fieldType === "timestamp") {
-    return parseTimestampConditionRule(normalized);
-  }
-
-  if (input.fieldType === "string") {
-    return parseStringConditionRule(normalized);
-  }
-
-  if (input.fieldType === "number") {
-    return parseNumberConditionRule(normalized);
-  }
-
-  return parseBooleanConditionRule(normalized);
-}
-
-function parseConditionGroup(
-  input: unknown
-): { valid: true; group: ConditionGroup } | { valid: false; error: string } {
-  if (!isRecord(input)) {
-    return { valid: false, error: "Group must be an object" };
-  }
-
-  if (typeof input.id !== "string" || input.id.trim().length === 0) {
-    return { valid: false, error: "Group id is required" };
-  }
-
-  if (!isGroupLogic(input.logic)) {
-    return { valid: false, error: "Group logic is invalid" };
-  }
-
-  if (!Array.isArray(input.conditions) || input.conditions.length === 0) {
-    return {
-      valid: false,
-      error: "Each group must contain at least one condition",
-    };
-  }
-
-  const parsedConditions: ConditionRule[] = [];
-  for (const condition of input.conditions) {
-    const parsedCondition = parseConditionRule(condition);
-    if (!parsedCondition.valid) {
-      return parsedCondition;
-    }
-    parsedConditions.push(parsedCondition.rule);
-  }
-
-  return {
-    valid: true,
-    group: {
-      id: input.id,
-      logic: input.logic,
-      conditions: parsedConditions,
-    },
-  };
-}
+const conditionModelSchema = z.object(
+  {
+    version: z.literal(2, { error: "Condition model version must be 2" }),
+    groupLogic: z.enum(["and", "or"], {
+      error: "Condition model group logic is invalid",
+    }),
+    groups: z
+      .array(conditionGroupSchema, { error: MODEL_GROUPS_ERROR })
+      .min(1, { error: MODEL_GROUPS_ERROR }),
+  },
+  { error: "Condition model must be an object" }
+);
 
 export function parseConditionModel(input: unknown): ConditionModelParseResult {
   let parsed: unknown = input;
@@ -545,42 +464,18 @@ export function parseConditionModel(input: unknown): ConditionModelParseResult {
     }
   }
 
-  if (!isRecord(parsed)) {
-    return { valid: false, error: "Condition model must be an object" };
-  }
-
-  if (parsed.version !== 2) {
-    return { valid: false, error: "Condition model version must be 2" };
-  }
-
-  if (!isGroupLogic(parsed.groupLogic)) {
-    return { valid: false, error: "Condition model group logic is invalid" };
-  }
-
-  if (!Array.isArray(parsed.groups) || parsed.groups.length === 0) {
+  const model = conditionModelSchema.safeParse(parsed);
+  if (!model.success) {
+    // Issues arrive in the order the model declares its parts, so the first one
+    // is the earliest thing wrong and the one worth reporting.
+    const [firstIssue] = model.error.issues;
     return {
       valid: false,
-      error: "Condition model must contain at least one group",
+      error: firstIssue ? firstIssue.message : "Condition model is invalid",
     };
   }
 
-  const parsedGroups: ConditionGroup[] = [];
-  for (const group of parsed.groups) {
-    const parsedGroup = parseConditionGroup(group);
-    if (!parsedGroup.valid) {
-      return parsedGroup;
-    }
-    parsedGroups.push(parsedGroup.group);
-  }
-
-  return {
-    valid: true,
-    model: {
-      version: 2,
-      groupLogic: parsed.groupLogic,
-      groups: parsedGroups,
-    },
-  };
+  return { valid: true, model: model.data };
 }
 
 export function serializeConditionModel(model: ConditionModel): string {
