@@ -6,6 +6,7 @@ import {
   logWorkflowAuditEvent,
   type WorkflowAuditEventType,
 } from "@/backend/lib/workflow-audit";
+import type { JsonObject } from "@/shared/types/json";
 import type { WorkflowExecutionIgnoredReason } from "@/shared/workflow/execution-contracts";
 import type {
   SerializedWorkflowGraph,
@@ -36,14 +37,18 @@ export type StartWorkflowRunInput = {
   workflow: WorkflowRunTarget;
   trigger: WorkflowRunTriggerContext;
   runMode: WorkflowMode;
-  /** The payload the trigger node and downstream templates read from. */
-  payload: Record<string, unknown>;
+  /**
+   * The payload the trigger node and downstream templates read from. It is JSON
+   * because it arrived as JSON and is stored as JSON in the JSONB
+   * `workflow_executions.input` column.
+   */
+  payload: JsonObject;
   /**
    * The untouched request body, kept alongside the payload so steps can reach
    * the raw shape. Entrypoints that never substitute a mock payload leave this
    * out and get the payload itself.
    */
-  requestPayload?: Record<string, unknown>;
+  requestPayload?: JsonObject;
 };
 
 export type StartedWorkflowRun = {
@@ -56,7 +61,7 @@ export type RecordTerminalWorkflowRunInput = {
   workflowId: string;
   trigger: WorkflowRunTriggerContext;
   runMode: WorkflowMode;
-  payload: Record<string, unknown>;
+  payload: JsonObject;
   status: "success" | "error" | "cancelled";
   error?: string;
   output?: Record<string, unknown>;

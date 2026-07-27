@@ -1,3 +1,4 @@
+import type { JsonObject } from "@/types/json";
 import { getValueByPath } from "@/utils/object-path";
 import type {
   TriggerEvaluation,
@@ -5,9 +6,7 @@ import type {
 } from "@/workflow/trigger-registry";
 import { asNonEmptyString } from "@/workflow/webhook-routing";
 
-function evaluateDefaultRouting(
-  payload: Record<string, unknown>
-): TriggerEvaluation {
+function evaluateDefaultRouting(payload: JsonObject): TriggerEvaluation {
   const eventType = asNonEmptyString(getValueByPath(payload, "event"));
   const correlationKey = asNonEmptyString(getValueByPath(payload, "data.id"));
 

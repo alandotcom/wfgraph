@@ -1,5 +1,6 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { jsonObjectSchema } from "@/types/json";
 import { serializedWorkflowGraphSchema } from "@/workflow/schemas";
 
 const idSchema = z.string().trim().min(1);
@@ -381,7 +382,11 @@ export const rpcContract = {
       .input(
         z.object({
           workflowId: idSchema,
-          input: z.record(z.string(), z.unknown()).optional(),
+          // The trigger payload arrives as a JSON request body and leaves again
+          // as JSON: Inngest stringifies it onto the event, and the engine
+          // stores it in the JSONB `workflow_executions.input` column. The
+          // schema names that, so everything downstream reads `JsonObject`.
+          input: jsonObjectSchema.optional(),
         })
       )
       .output(workflowExecuteResponseSchema),
@@ -390,7 +395,7 @@ export const rpcContract = {
       .input(
         z.object({
           workflowId: idSchema,
-          input: z.record(z.string(), z.unknown()).optional(),
+          input: jsonObjectSchema.optional(),
         })
       )
       .output(workflowWebhookResponseSchema),

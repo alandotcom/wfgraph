@@ -29,7 +29,7 @@ export type JsonObject = { [key: string]: JsonValue };
  * request body, a stored config string). Values our own code produced are
  * already typed and need no parse.
  */
-export const jsonObjectSchema: z.ZodType<JsonObject> = z.record(
+export const jsonObjectSchema: z.ZodType<JsonObject, JsonObject> = z.record(
   z.string(),
   z.json()
 );

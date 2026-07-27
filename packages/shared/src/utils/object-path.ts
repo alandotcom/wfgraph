@@ -1,14 +1,24 @@
 import { compact } from "es-toolkit/array";
+import type { JsonValue } from "@/types/json";
 import { parseCsvSet as parseCsvSetFromCsv } from "./csv";
 
 export function parseCsvSet(value: unknown): Set<string> {
   return parseCsvSetFromCsv(value);
 }
 
+/**
+ * Reads a dot-separated path out of a value that arrived as JSON: a webhook
+ * body, an Inngest event payload, a mock request pasted into the editor.
+ *
+ * The input is `JsonValue` because every caller is walking something that
+ * crossed a wire. That is what lets the walk narrow with plain language checks
+ * and hand back a `JsonValue`, so callers get a usable union rather than
+ * `unknown`.
+ */
 export function getValueByPath(
-  input: unknown,
+  input: JsonValue | undefined,
   path: string | undefined
-): unknown {
+): JsonValue | undefined {
   if (!path) {
     return undefined;
   }
@@ -19,7 +29,7 @@ export function getValueByPath(
   }
 
   const segments = compact(trimmed.split("."));
-  let current: unknown = input;
+  let current: JsonValue | undefined = input;
 
   for (const segment of segments) {
     if (current === null || current === undefined) {
@@ -35,11 +45,10 @@ export function getValueByPath(
       continue;
     }
 
-    // Null, undefined and arrays are handled above, so an object here is a
-    // keyed value. Reflect.get is the same read as `current[segment]`, including
-    // inherited keys, and hands back `unknown` without a cast.
+    // Null and arrays are handled above, so an object here is a keyed JSON
+    // object and the index read narrows on its own.
     if (typeof current === "object") {
-      current = Reflect.get(current, segment);
+      current = current[segment];
       continue;
     }
 

@@ -1,3 +1,4 @@
+import type { JsonObject } from "@/types/json";
 import { getValueByPath, parseCsvSet } from "@/utils/object-path";
 import {
   type WebhookTriggerConfigInput,
@@ -89,7 +90,7 @@ export function buildWebhookRoutingConfig(
 }
 
 export function deriveWebhookEventContext(
-  payload: Record<string, unknown>,
+  payload: JsonObject,
   routing: WebhookRoutingConfig
 ): { eventType: string | undefined; correlationKey: string | undefined } {
   return {

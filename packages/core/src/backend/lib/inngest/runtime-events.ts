@@ -1,11 +1,17 @@
+import type { JsonObject } from "@/shared/types/json";
 import type { SerializedWorkflowGraph } from "@/shared/workflow/types";
 import { getInngestClient } from "./client";
 
 export type WorkflowRunRequestedEventData = {
   graph: SerializedWorkflowGraph;
-  triggerInput?: Record<string, unknown>;
+  /**
+   * The payload that set the run going. Inngest stringifies event data before
+   * sending it, so anything here that is not JSON is lost in transit; the type
+   * says so.
+   */
+  triggerInput?: JsonObject;
   workflowName?: string;
-  requestPayload?: Record<string, unknown>;
+  requestPayload?: JsonObject;
   /**
    * Every producer inserts the execution row before enqueueing, and the engine
    * requires the id, so it is never optional on the wire.

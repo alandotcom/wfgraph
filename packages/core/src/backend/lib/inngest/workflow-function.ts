@@ -5,6 +5,7 @@ import {
 } from "@/backend/lib/workflow-engine/core";
 import { dbWorkflowStore } from "@/backend/lib/workflow-engine/db-store";
 import type { WorkflowExecutionRuntime } from "@/backend/lib/workflow-engine/runtime";
+import { jsonObjectSchema } from "@/shared/types/json";
 import { serializedWorkflowGraphSchema } from "@/shared/workflow/schemas";
 import { getInngestClient } from "./client";
 
@@ -27,8 +28,9 @@ function escapeInngestExpressionString(value: string): string {
  */
 const workflowExecutionInputSchema = z.object({
   graph: serializedWorkflowGraphSchema,
-  triggerInput: z.record(z.string(), z.unknown()).optional(),
-  requestPayload: z.record(z.string(), z.unknown()).optional(),
+  // JSON is all that survived the trip, so JSON is what the schema accepts.
+  triggerInput: jsonObjectSchema.optional(),
+  requestPayload: jsonObjectSchema.optional(),
   // Both ids are required and must carry a value: every log row, timeline event,
   // and wait state the run writes hangs off them, and the enqueue side always
   // supplies them. An empty id would attach a run's whole trace to nothing.

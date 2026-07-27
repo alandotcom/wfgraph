@@ -16,6 +16,7 @@ import {
   recordTerminalWorkflowRun,
   startWorkflowRun,
 } from "@/backend/services/workflows/workflow-run-lifecycle.workflows";
+import type { JsonObject } from "@/shared/types/json";
 import { getErrorMessage } from "@/shared/utils";
 import type { ApiErrorPayload } from "@/shared/workflow/api-contracts";
 import type { WorkflowExecuteResponse } from "@/shared/workflow/execution-contracts";
@@ -27,7 +28,13 @@ const executeLogger = getAppLogger("workflow", "execute");
 export async function postWorkflowExecuteResult(
   workflowId: string,
   body: {
-    input?: Record<string, unknown>;
+    /**
+     * The manual-run payload. It stands in for a webhook body, follows the same
+     * path onto the Inngest event and into the JSONB
+     * `workflow_executions.input` column, and so carries the same JSON-only
+     * contract.
+     */
+    input?: JsonObject;
   }
 ): Promise<
   ServiceResult<

@@ -1,6 +1,7 @@
 import { parse as parseCel } from "@marcbachmann/cel-js";
 import type { StandardJSONSchemaV1 } from "@standard-schema/spec";
 import type { ActionConfigField } from "@/plugins/registry";
+import type { JsonObject } from "@/types/json";
 import { getValueByPath } from "@/utils/object-path";
 import type { InputSchema } from "@/workflow/action-registry";
 import {
@@ -93,14 +94,14 @@ type TriggerPathNonTraversable =
   | readonly unknown[];
 
 type TriggerPayloadPath<TPayload> =
-  TPayload extends Record<string, unknown>
+  TPayload extends JsonObject
     ? {
         [Key in Extract<
           keyof TPayload,
           string
         >]: TPayload[Key] extends TriggerPathNonTraversable
           ? Key
-          : TPayload[Key] extends Record<string, unknown>
+          : TPayload[Key] extends JsonObject
             ? Key | `${Key}.${TriggerPayloadPath<TPayload[Key]>}`
             : Key;
       }[Extract<keyof TPayload, string>]
@@ -126,11 +127,11 @@ type TriggerStringPath<TPayload> = {
     : Path;
 }[TriggerPayloadPath<TPayload>];
 
-type TriggerLifecycleHandlerInput<TPayload extends Record<string, unknown>> = {
+type TriggerLifecycleHandlerInput<TPayload extends JsonObject> = {
   payload: TPayload;
 };
 
-export type TriggerLifecycleInput<TPayload extends Record<string, unknown>> = {
+export type TriggerLifecycleInput<TPayload extends JsonObject> = {
   onStart: (input: TriggerLifecycleHandlerInput<TPayload>) => boolean;
   onRestart: (input: TriggerLifecycleHandlerInput<TPayload>) => boolean;
   onStop: (input: TriggerLifecycleHandlerInput<TPayload>) => boolean;
@@ -152,7 +153,7 @@ export type WorkflowTriggerRuntimeDefinition = {
   inngestEventTrigger?: InngestEventTriggerConfig;
   evaluate: (input: {
     config: Record<string, unknown> | undefined;
-    payload: Record<string, unknown>;
+    payload: JsonObject;
   }) => TriggerEvaluation;
 };
 
@@ -173,7 +174,7 @@ export type RuntimeExtensionTriggerDefinition = WorkflowTriggerDefinition & {
   readonly __runtimeExtensionTriggerBrand: true;
 };
 
-type CreateTriggerInputBase<TPayload extends Record<string, unknown>> = {
+type CreateTriggerInputBase<TPayload extends JsonObject> = {
   /**
    * Unique identifier for this trigger type (e.g. `"AppointmentLifecycle"`).
    * Used to match trigger nodes in workflows to this definition.
@@ -227,7 +228,7 @@ type CreateTriggerInputBase<TPayload extends Record<string, unknown>> = {
  * payloads via the workflow's webhook URL instead of Inngest events.
  * `concurrency` and `inngest` are not available in webhook mode.
  */
-type CreateTriggerInputWebhook<TPayload extends Record<string, unknown>> =
+type CreateTriggerInputWebhook<TPayload extends JsonObject> =
   CreateTriggerInputBase<TPayload> & {
     event?: undefined;
     concurrency?: never;
@@ -239,7 +240,7 @@ type CreateTriggerInputWebhook<TPayload extends Record<string, unknown>> =
  * (e.g. `"appointment.id"`) and are automatically prefixed with `event.data.`
  * before being passed to Inngest.
  */
-type TypedConcurrencyOption<TPayload extends Record<string, unknown>> =
+type TypedConcurrencyOption<TPayload extends JsonObject> =
   | number
   | {
       /** Maximum number of concurrent executions. */
@@ -270,7 +271,7 @@ type TypedConcurrencyOption<TPayload extends Record<string, unknown>> =
  * validated against top-level schema keys and rewritten to `event.data.*`
  * at registration time.
  */
-type TypedInngestFunctionOptions<TPayload extends Record<string, unknown>> = {
+type TypedInngestFunctionOptions<TPayload extends JsonObject> = {
   /**
    * Limit how many times a function runs within a time period.
    * When `key` is set, the limit is tracked per unique key value.
@@ -341,7 +342,7 @@ type TypedInngestFunctionOptions<TPayload extends Record<string, unknown>> = {
  * Event-mode trigger. Setting `event` makes workflows listen for named
  * Inngest events instead of requiring webhook HTTP calls.
  */
-type CreateTriggerInputEvent<TPayload extends Record<string, unknown>> =
+type CreateTriggerInputEvent<TPayload extends JsonObject> =
   CreateTriggerInputBase<TPayload> & {
     /**
      * Inngest event name(s) this trigger listens for.
@@ -379,7 +380,7 @@ type CreateTriggerInputEvent<TPayload extends Record<string, unknown>> =
     inngest?: TypedInngestFunctionOptions<TPayload>;
   };
 
-export type CreateTriggerInput<TPayload extends Record<string, unknown>> =
+export type CreateTriggerInput<TPayload extends JsonObject> =
   | CreateTriggerInputWebhook<TPayload>
   | CreateTriggerInputEvent<TPayload>;
 
@@ -490,9 +491,9 @@ function isStandardSchema<TPayload>(
   );
 }
 
-function validateTriggerPayload<TPayload extends Record<string, unknown>>(
+function validateTriggerPayload<TPayload extends JsonObject>(
   schema: TriggerPayloadSchema<TPayload>,
-  payload: Record<string, unknown>
+  payload: JsonObject
 ): TPayload | undefined {
   if (isSafeParseSchema(schema)) {
     const parsed = schema.safeParse(payload);
@@ -530,7 +531,7 @@ function validateTriggerPayload<TPayload extends Record<string, unknown>>(
   return parsed.value;
 }
 
-function runLifecycleHandler<TPayload extends Record<string, unknown>>(input: {
+function runLifecycleHandler<TPayload extends JsonObject>(input: {
   stage: "start" | "restart" | "stop";
   triggerType: string;
   handler: (input: TriggerLifecycleHandlerInput<TPayload>) => boolean;
@@ -560,7 +561,7 @@ function prefixKeyField<T extends { key?: string }>(obj: T): T {
 }
 
 function prefixConcurrency(
-  concurrency: TypedConcurrencyOption<Record<string, unknown>>
+  concurrency: TypedConcurrencyOption<JsonObject>
 ): InngestConcurrencyOption {
   if (typeof concurrency === "number") {
     return concurrency;
@@ -672,7 +673,7 @@ function rewriteCelExpression(
   return result;
 }
 
-function prefixInngestOptions<TPayload extends Record<string, unknown>>(
+function prefixInngestOptions<TPayload extends JsonObject>(
   inngest: TypedInngestFunctionOptions<TPayload>,
   schema: TriggerPayloadSchema<TPayload>
 ): Record<string, unknown> {
@@ -709,7 +710,7 @@ function prefixInngestOptions<TPayload extends Record<string, unknown>>(
 }
 
 function extractStandardSchemaOutputFields(
-  schema: TriggerPayloadSchema<Record<string, unknown>>
+  schema: TriggerPayloadSchema<JsonObject>
 ): ReferenceField[] | undefined {
   if (!isStandardSchema(schema)) {
     return undefined;
@@ -738,7 +739,7 @@ function extractStandardSchemaOutputFields(
 }
 
 function outputFieldsFromTriggerSchema<
-  TPayload extends Record<string, unknown>,
+  TPayload extends JsonObject,
 >(schema: TriggerPayloadSchema<TPayload>): ReferenceField[] {
   const standardFields = extractStandardSchemaOutputFields(schema);
   if (standardFields) {
@@ -758,7 +759,7 @@ function outputFieldsFromTriggerSchema<
 }
 
 function buildInngestEventTriggerConfig<
-  TPayload extends Record<string, unknown>,
+  TPayload extends JsonObject,
 >(input: CreateTriggerInputEvent<TPayload>): InngestEventTriggerConfig {
   const rawEvents = Array.isArray(input.event) ? input.event : [input.event];
   const eventNames = rawEvents.map((e) => e.trim());
@@ -835,7 +836,7 @@ function buildInngestEventTriggerConfig<
  * });
  * ```
  */
-export function createTrigger<TPayload extends Record<string, unknown>>(
+export function createTrigger<TPayload extends JsonObject>(
   input: CreateTriggerInput<TPayload>
 ): RuntimeExtensionTriggerDefinition {
   const triggerType = input.type.trim();
@@ -1053,7 +1054,7 @@ export function resolveWorkflowTriggerDefinition(
 
 export function evaluateWorkflowTrigger(input: {
   config: Record<string, unknown> | undefined;
-  payload: Record<string, unknown>;
+  payload: JsonObject;
 }): TriggerEvaluation {
   const trigger = resolveWorkflowTriggerDefinition(input.config);
   return trigger.runtime.evaluate(input);

@@ -20,6 +20,7 @@ import {
   optionsWorkflowWebhook,
   postWorkflowWebhook,
 } from "@/backend/services/workflows/workflow-webhook.workflows";
+import { jsonObjectSchema } from "@/shared/types/json";
 import { getErrorMessage } from "@/shared/utils";
 import { listRuntimeActions } from "@/shared/workflow/action-registry";
 import { listCustomWorkflowTriggers } from "@/shared/workflow/trigger-registry";
@@ -28,7 +29,10 @@ const idSchema = z.string().trim().min(1);
 const workflowIdParamsSchema = z.object({ workflowId: idSchema });
 const tokenParamsSchema = z.object({ token: idSchema });
 
-const webhookBodySchema = z.record(z.string(), z.unknown());
+// A webhook body is JSON by the time Hono has parsed it, and it stays JSON all
+// the way to the run: Inngest stringifies it onto the event and the engine
+// stores it in the JSONB `workflow_executions.input` column.
+const webhookBodySchema = jsonObjectSchema;
 const resumeBodySchema = z.record(z.string(), z.unknown());
 
 const httpLogger = getAppLogger("http", "hono");

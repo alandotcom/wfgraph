@@ -14,6 +14,7 @@ import { resumeMatchingWaitHooks } from "@/backend/lib/workflow-wait-resume";
 import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-wait-state";
 import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
 import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight.workflows";
+import type { JsonObject } from "@/shared/types/json";
 import { getErrorMessage } from "@/shared/utils";
 import type { ApiErrorPayload } from "@/shared/workflow/api-contracts";
 import type { WorkflowWebhookResponse } from "@/shared/workflow/execution-contracts";
@@ -41,7 +42,7 @@ export function optionsWorkflowWebhook() {
 export async function postWorkflowWebhook(input: {
   workflowId: string;
   authHeader: string | null;
-  body: Record<string, unknown>;
+  body: JsonObject;
 }) {
   return responseFromServiceResult(await postWorkflowWebhookResult(input), {
     headers: corsHeaders,
@@ -51,7 +52,12 @@ export async function postWorkflowWebhook(input: {
 export async function postWorkflowWebhookResult(input: {
   workflowId: string;
   authHeader: string | null;
-  body: Record<string, unknown>;
+  /**
+   * The webhook body, already parsed from the request's JSON. It travels
+   * unchanged to the trigger, onto the Inngest event, and into the JSONB
+   * `workflow_executions.input` column, so JSON is the whole of its contract.
+   */
+  body: JsonObject;
 }): Promise<
   ServiceResult<
     WorkflowWebhookResponse,

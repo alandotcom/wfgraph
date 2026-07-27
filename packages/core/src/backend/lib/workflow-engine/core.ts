@@ -3,6 +3,8 @@
  * Keeps node execution, templating, and logging behavior aligned with the builder.
  */
 
+import { isNil } from "es-toolkit/predicate";
+import { omitBy } from "es-toolkit/object";
 import { evaluateCelBooleanExpression } from "@/backend/lib/cel/environment";
 import { getAppLogger } from "@/backend/lib/logger";
 import {
@@ -18,6 +20,7 @@ import {
   decodeIsoTimestamp,
   encodeIsoTimestamp,
 } from "@/shared/types/timestamp";
+import type { JsonObject } from "@/shared/types/json";
 import { getErrorMessageAsync } from "@/shared/utils";
 import { resolveWaitUntil } from "@/shared/utils/wait-time";
 import { normalizeConditionBranch } from "@/shared/workflow/condition-branch";
@@ -113,8 +116,14 @@ type NodeWorkOutcome = {
 
 export type WorkflowExecutionInput = {
   graph: SerializedWorkflowGraph;
-  triggerInput?: Record<string, unknown>;
-  requestPayload?: Record<string, unknown>;
+  /**
+   * The payload that set this run going: a webhook body, a manual-run input, or
+   * the data on an Inngest event. It reached the engine as JSON and is written
+   * back out as JSON into `workflow_executions.input`.
+   */
+  triggerInput?: JsonObject;
+  /** The untouched payload as it arrived, before any mock request filled in. */
+  requestPayload?: JsonObject;
   /**
    * Identifies the run row every log, timeline event, and wait state hangs off.
    * Required: whether a run leaves a trace is decided by which `WorkflowStore`
@@ -1608,7 +1617,7 @@ async function executeWorkflowInner(
         triggerDefinition.runtime.executionType === "webhook"
           ? resolveWebhookTriggerRuntimeConfig(configRecord)
           : undefined;
-      let triggerData: Record<string, unknown> = {
+      let triggerData: JsonObject = {
         triggered: true,
         timestamp: Date.now(),
       };
@@ -1641,13 +1650,19 @@ async function executeWorkflowInner(
 
       if (ignoreReason) {
         triggerIgnored = true;
-        triggerData = {
-          ...triggerData,
-          triggered: false,
-          eventType: triggerEvaluation.eventType,
-          eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
-          ignoredReason: ignoreReason,
-        };
+        // The trigger node's output is stored as JSON, where a key holding
+        // `undefined` disappears anyway. Dropping those keys here makes the
+        // in-memory object match what a template or the run row will see.
+        triggerData = omitBy(
+          {
+            ...triggerData,
+            triggered: false,
+            eventType: triggerEvaluation.eventType,
+            eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
+            ignoredReason: ignoreReason,
+          },
+          isNil
+        );
 
         namedNodeLogger.info("Trigger ignored by routing rules", {
           triggerType: triggerDefinition.runtime.type,

@@ -9,17 +9,25 @@ import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-w
 import { orchestrateTriggerExecution } from "@/backend/services/workflows/trigger-orchestrator.workflows";
 import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight.workflows";
 import { startWorkflowRun } from "@/backend/services/workflows/workflow-run-lifecycle.workflows";
+import { type JsonObject, jsonObjectSchema } from "@/shared/types/json";
 import type { InngestEventTriggerConfig } from "@/shared/workflow/trigger-registry";
 import { evaluateWorkflowTrigger } from "@/shared/workflow/trigger-registry";
 import { getInngestClient } from "./client";
 
 const eventListenerLogger = getAppLogger("workflow", "event-listener");
 
-function toRecord(value: unknown): Record<string, unknown> {
-  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-    return { ...value };
-  }
-  return {};
+/**
+ * Reads the trigger payload off an Inngest event.
+ *
+ * Inngest serializes event data with `JSON.stringify` before sending it, so
+ * whatever the application passed to `inngest.send(...)` reaches us as JSON.
+ * This parse is where that fact becomes a type. An event whose data is not a
+ * JSON object (an array, a bare string, nothing at all) carries no fields for a
+ * trigger to route on, so it is treated as an empty payload.
+ */
+function toTriggerPayload(value: unknown): JsonObject {
+  const parsed = jsonObjectSchema.safeParse(value);
+  return parsed.success ? parsed.data : {};
 }
 
 export function createInngestEventListenerFunction(input: {
@@ -37,7 +45,7 @@ export function createInngestEventListenerFunction(input: {
     { ...functionOptions, id: input.id, name: `Event listener: ${eventLabel}` },
     triggerArg,
     async ({ event }) => {
-      const payload = toRecord(event.data);
+      const payload = toTriggerPayload(event.data);
 
       const requestLogger = eventListenerLogger.with({
         workflowId: input.workflowId,

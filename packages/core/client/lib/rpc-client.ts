@@ -4,6 +4,7 @@ import type { ContractRouterClient } from "@orpc/contract";
 import { getBasePath } from "@/lib/base-path";
 import type { RpcContract } from "@/shared/rpc/contracts";
 import { getRpcErrorMessage } from "@/shared/rpc/error-message";
+import type { JsonObject } from "@/shared/types/json";
 import type { WorkflowApiPayload } from "@/shared/workflow/api-contracts";
 import {
   createSerializedWorkflowGraph,
@@ -297,7 +298,7 @@ export const workflowApi = {
 
   execute: (
     id: string,
-    input: Record<string, unknown> = {}
+    input: JsonObject = {}
   ): Promise<WorkflowExecuteResult> =>
     rpc.workflow.execute({
       workflowId: id,
@@ -306,7 +307,7 @@ export const workflowApi = {
 
   triggerWebhook: (
     id: string,
-    input: Record<string, unknown> = {}
+    input: JsonObject = {}
   ): Promise<WorkflowWebhookResult> =>
     rpc.workflow.triggerWebhook({
       workflowId: id,
