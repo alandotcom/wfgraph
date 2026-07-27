@@ -1,5 +1,6 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import {
   DeleteConnectionOverlay,
@@ -9,7 +10,8 @@ import { useOverlay } from "@/components/overlays/overlay-provider";
 import { Button } from "@/components/ui/button";
 import { IntegrationIcon } from "@/components/ui/integration-icon";
 import { Spinner } from "@/components/ui/spinner";
-import { api, type Integration } from "@/lib/rpc-client";
+import type { Integration } from "@/lib/rpc-client";
+import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
 import { getIntegrationLabels } from "@/plugins/registry";
 
 // System integrations that don't have plugins
@@ -18,35 +20,37 @@ const SYSTEM_INTEGRATION_LABELS: Record<string, string> = {
 };
 
 type IntegrationsManagerProps = {
-  onIntegrationChange?: () => void;
   filter?: string;
 };
 
-export function IntegrationsManager({
-  onIntegrationChange,
-  filter = "",
-}: IntegrationsManagerProps) {
+export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
   const { push } = useOverlay();
-  const [integrations, setIntegrations] = useState<Integration[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [testingId, setTestingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { data: integrations = [], isPending } = useQuery({
+    ...integrationsQueryOptions(),
+    meta: { errorMessage: "Failed to load integrations" },
+  });
 
-  const loadIntegrations = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await api.integration.getAll({});
-      setIntegrations(data);
-    } catch (error) {
-      console.error("Failed to load integrations:", error);
-      toast.error("Failed to load integrations");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Every selector and every node on the canvas reads the same cache entry, so
+  // one invalidation after an edit refreshes all of them.
+  const invalidateIntegrations = useCallback(
+    () =>
+      queryClient.invalidateQueries({ queryKey: orpcQuery.integration.key() }),
+    [queryClient]
+  );
 
-  useEffect(() => {
-    loadIntegrations();
-  }, [loadIntegrations]);
+  const testConnection = useMutation(
+    orpcQuery.integration.testConnection.mutationOptions({
+      onSuccess: (result) => {
+        if (result.status === "success") {
+          toast.success(result.message || "Connection successful");
+        } else {
+          toast.error(result.message || "Connection test failed");
+        }
+      },
+      meta: { errorMessage: "Connection test failed" },
+    })
+  );
 
   // Get integrations with their labels, sorted by label then name
   const integrationsWithLabels = useMemo(() => {
@@ -83,50 +87,25 @@ export function IntegrationsManager({
   const handleEdit = (integration: Integration) => {
     push(EditConnectionOverlay, {
       integration,
-      onSuccess: () => {
-        loadIntegrations();
-        onIntegrationChange?.();
-      },
-      onDelete: () => {
-        loadIntegrations();
-        onIntegrationChange?.();
-      },
+      onSuccess: invalidateIntegrations,
+      onDelete: invalidateIntegrations,
     });
   };
 
   const handleDelete = (integration: Integration) => {
     push(DeleteConnectionOverlay, {
       integration,
-      onSuccess: () => {
-        loadIntegrations();
-        onIntegrationChange?.();
-      },
+      onSuccess: invalidateIntegrations,
     });
   };
 
-  const handleTest = async (id: string) => {
-    try {
-      setTestingId(id);
-      const result = await api.integration.testConnection({
-        integrationId: id,
-      });
+  // `variables` holds the input of the call in flight, which is what the old
+  // testingId state was tracking by hand.
+  const testingId = testConnection.isPending
+    ? testConnection.variables?.integrationId
+    : undefined;
 
-      if (result.status === "success") {
-        toast.success(result.message || "Connection successful");
-      } else {
-        toast.error(result.message || "Connection test failed");
-      }
-    } catch (error) {
-      console.error("Connection test failed:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Connection test failed"
-      );
-    } finally {
-      setTestingId(null);
-    }
-  };
-
-  if (loading) {
+  if (isPending) {
     return (
       <div className="flex items-center justify-center py-8">
         <Spinner />
@@ -176,7 +155,9 @@ export function IntegrationsManager({
               <Button
                 className="h-7 px-2"
                 disabled={testingId === integration.id}
-                onClick={() => handleTest(integration.id)}
+                onClick={() =>
+                  testConnection.mutate({ integrationId: integration.id })
+                }
                 size="sm"
                 variant="outline"
               >

@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtomValue, useSetAtom } from "jotai";
 import { HelpCircle, Plus, Settings, Zap } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
@@ -27,10 +28,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  integrationsAtom,
-  integrationsVersionAtom,
-} from "@/lib/integrations-store";
-import {
   findActionById,
   getActionsByCategory,
   getAllIntegrations,
@@ -49,6 +46,7 @@ import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { SchemaBuilder } from "./schema-builder";
+import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
 
 type ActionConfigProps = {
   config: Record<string, unknown>;
@@ -925,8 +923,10 @@ export function ActionConfig({
   );
 
   const category = actionType ? getCategoryForAction(actionType) || "" : "";
-  const setIntegrationsVersion = useSetAtom(integrationsVersionAtom);
-  const globalIntegrations = useAtomValue(integrationsAtom);
+  const queryClient = useQueryClient();
+  const { data: globalIntegrations = [] } = useQuery(
+    integrationsQueryOptions()
+  );
   const { push } = useOverlay();
 
   const handleCategoryChange = (newCategory: string) => {
@@ -975,7 +975,9 @@ export function ActionConfig({
       push(ConfigureConnectionOverlay, {
         type: integrationType,
         onSuccess: (integrationId: string) => {
-          setIntegrationsVersion((v) => v + 1);
+          queryClient.invalidateQueries({
+            queryKey: orpcQuery.integration.key(),
+          });
           onUpdateConfig({ integrationId });
         },
       });

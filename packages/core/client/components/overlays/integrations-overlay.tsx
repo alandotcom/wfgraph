@@ -1,9 +1,9 @@
-import { useSetAtom } from "jotai";
+import { useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { IntegrationsManager } from "@/components/settings/integrations-manager";
 import { Input } from "@/components/ui/input";
-import { integrationsVersionAtom } from "@/lib/integrations-store";
+import { orpcQuery } from "@/lib/rpc-query";
 import { AddConnectionOverlay } from "./add-connection-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -14,26 +14,21 @@ type IntegrationsOverlayProps = {
 
 export function IntegrationsOverlay({ overlayId }: IntegrationsOverlayProps) {
   const { push, closeAll } = useOverlay();
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState("");
-  const setIntegrationsVersion = useSetAtom(integrationsVersionAtom);
-  const hasChangesRef = useRef(false);
-
-  const handleClose = useCallback(() => {
-    if (hasChangesRef.current) {
-      setIntegrationsVersion((v) => v + 1);
-    }
-    closeAll();
-  }, [closeAll, setIntegrationsVersion]);
-
-  const handleIntegrationChange = useCallback(() => {
-    hasChangesRef.current = true;
-  }, []);
 
   const handleAddConnection = () => {
     push(AddConnectionOverlay, {
-      onSuccess: handleIntegrationChange,
+      // Adding a connection from here does not go through IntegrationsManager,
+      // so this is the one write that has to say so itself.
+      onSuccess: () =>
+        queryClient.invalidateQueries({
+          queryKey: orpcQuery.integration.key(),
+        }),
     });
   };
+
+  const handleClose = useCallback(() => closeAll(), [closeAll]);
 
   return (
     <Overlay
@@ -63,10 +58,7 @@ export function IntegrationsOverlay({ overlayId }: IntegrationsOverlayProps) {
           />
         </div>
         <div className="max-h-[300px] overflow-y-auto">
-          <IntegrationsManager
-            filter={filter}
-            onIntegrationChange={handleIntegrationChange}
-          />
+          <IntegrationsManager filter={filter} />
         </div>
       </div>
     </Overlay>

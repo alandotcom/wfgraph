@@ -3,6 +3,7 @@ import {
   Position,
   useUpdateNodeInternals,
 } from "@xyflow/react";
+import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import {
   AlertTriangle,
@@ -16,7 +17,7 @@ import {
   XCircle,
   Zap,
 } from "lucide-react";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { z } from "zod";
 import {
   Node,
@@ -26,12 +27,7 @@ import {
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { readBase64ImageOutput } from "@/components/workflow/workflow-run-shared";
 import {
-  integrationIdsAtom,
-  integrationsLoadedAtom,
-} from "@/lib/integrations-store";
-import {
   executionLogsAtom,
-  pendingIntegrationNodesAtom,
   selectedExecutionIdAtom,
 } from "@/lib/workflow-ui-store";
 import {
@@ -46,6 +42,11 @@ import {
   resolveWaitUntil,
 } from "@/shared/utils/wait-time";
 import { isConditionActionType } from "@/shared/workflow/condition-branch";
+import { useAfterCommit, useNowMs } from "@/hooks/effects";
+import {
+  integrationIdsQueryOptions,
+  NO_INTEGRATION_IDS,
+} from "@/lib/rpc-query";
 
 type WaitPreviewData = {
   countdown: string;
@@ -213,21 +214,12 @@ function useRuntimeWaitPreview(
     nodeLog !== undefined &&
     (nodeLog.status === "running" || nodeLog.status === "pending");
 
-  const [nowMs, setNowMs] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!shouldShowRuntimeWaitPreview) {
-      return undefined;
-    }
-
-    const intervalId = window.setInterval(() => {
-      setNowMs(Date.now());
-    }, 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [shouldShowRuntimeWaitPreview]);
+  // A countdown has to tick on screen even though nothing in the app's state
+  // is changing.
+  const nowMs = useNowMs({
+    intervalMs: 1000,
+    enabled: shouldShowRuntimeWaitPreview,
+  });
 
   const runtimeInput = useMemo(() => {
     if (!shouldShowRuntimeWaitPreview) {
@@ -502,9 +494,11 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   const updateNodeInternals = useUpdateNodeInternals();
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
   const executionLogs = useAtomValue(executionLogsAtom);
-  const pendingIntegrationNodes = useAtomValue(pendingIntegrationNodesAtom);
-  const availableIntegrationIds = useAtomValue(integrationIdsAtom);
-  const integrationsLoaded = useAtomValue(integrationsLoadedAtom);
+  const {
+    data: availableIntegrationIds = NO_INTEGRATION_IDS,
+    isPending: isLoadingIntegrations,
+  } = useQuery(integrationIdsQueryOptions());
+  const integrationsLoaded = !isLoadingIntegrations;
   const nodeLog = executionLogs[id];
   const actionType = readConfigString(data?.config, "actionType");
   const isConditionAction = isConditionActionType(actionType);
@@ -516,13 +510,14 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   const configWaitPreview = useWaitPreview(actionType, data?.config);
   const waitPreview = runtimeWaitPreview ?? configWaitPreview;
 
-  useEffect(() => {
-    if (!isConditionAction) {
-      return;
+  // A condition node renders two source handles where every other node renders
+  // one. React Flow caches handle positions and has no way to notice that, so
+  // it has to be told once the new handles are in the DOM.
+  useAfterCommit(isConditionAction ? id : null, () => {
+    if (isConditionAction) {
+      updateNodeInternals(id);
     }
-
-    updateNodeInternals(id);
-  }, [id, isConditionAction, updateNodeInternals]);
+  });
 
   if (!data) {
     return null;
@@ -578,8 +573,6 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
     data.description || getIntegrationFromActionType(actionType);
 
   const needsIntegration = requiresIntegration(actionType);
-  // Don't show missing indicator if we're still checking for auto-select
-  const isPendingIntegrationCheck = pendingIntegrationNodes.has(id);
   // Check both that integrationId is set AND that it exists in available integrations
   const configuredIntegrationId = readOptionalConfigString(
     data.config,
@@ -590,10 +583,7 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
     availableIntegrationIds.has(configuredIntegrationId);
   // Only show missing indicator after integrations have been loaded
   const integrationMissing =
-    integrationsLoaded &&
-    needsIntegration &&
-    !hasValidIntegration &&
-    !isPendingIntegrationCheck;
+    integrationsLoaded && needsIntegration && !hasValidIntegration;
 
   // Get model for AI nodes
   const getAiModel = (): string | null => {

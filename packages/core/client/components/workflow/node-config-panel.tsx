@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import { Eraser, Eye, EyeOff, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -6,8 +7,9 @@ import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { integrationsAtom } from "@/lib/integrations-store";
 import { api } from "@/lib/rpc-client";
+import { repairNodeIntegration } from "@/lib/node-integration";
+import { integrationsQueryOptions } from "@/lib/rpc-query";
 import {
   clearNodeStatusesAtom,
   deleteEdgeAtom,
@@ -29,41 +31,15 @@ import {
 } from "@/lib/workflow-save-store";
 import {
   isGeneratingAtom,
-  pendingIntegrationNodesAtom,
   propertiesPanelActiveTabAtom,
   showClearDialogAtom,
   showDeleteDialogAtom,
 } from "@/lib/workflow-ui-store";
-import { findActionById } from "@/plugins/registry";
-import {
-  type IntegrationType,
-  isIntegrationType,
-} from "@/shared/types/integration";
-import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 import { ActionConfig } from "./config/action-config";
 import { ActionGrid } from "./config/action-grid";
 import type { NodeConfigPatch } from "./config/node-config-patch";
 import { TriggerConfig } from "./config/trigger-config";
 import { WorkflowRuns } from "./workflow-runs";
-
-function getConfigString(
-  config: Record<string, unknown> | undefined,
-  key: string
-): string | undefined {
-  const value = config?.[key];
-  return typeof value === "string" ? value : undefined;
-}
-
-function getActionIntegrationType(
-  actionType: string
-): IntegrationType | undefined {
-  const action = findActionById(actionType);
-  if (isIntegrationType(action?.integration)) {
-    return action.integration;
-  }
-
-  return SYSTEM_ACTION_INTEGRATIONS[actionType];
-}
 
 export const PanelInner = () => {
   const store = useStore();
@@ -86,7 +62,6 @@ export const PanelInner = () => {
   const setShowClearDialog = useSetAtom(showClearDialogAtom);
   const setShowDeleteDialog = useSetAtom(showDeleteDialogAtom);
   const clearNodeStatuses = useSetAtom(clearNodeStatusesAtom);
-  const setPendingIntegrationNodes = useSetAtom(pendingIntegrationNodesAtom);
   const [newlyCreatedNodeId, setNewlyCreatedNodeId] = useAtom(
     newlyCreatedNodeIdAtom
   );
@@ -99,9 +74,6 @@ export const PanelInner = () => {
   const validActiveTab =
     activeTab === "runs" && isOwner ? "runs" : "properties";
   const refreshRunsRef = useRef<(() => Promise<void>) | null>(null);
-  const autoSelectAbortControllersRef = useRef<Record<string, AbortController>>(
-    {}
-  );
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
 
@@ -126,55 +98,9 @@ export const PanelInner = () => {
     return parts.join(" and ");
   })();
 
-  // Auto-fix invalid integration references when a node is selected
-  const globalIntegrations = useAtomValue(integrationsAtom);
-  useEffect(() => {
-    if (!(selectedNode && isOwner)) {
-      return;
-    }
-
-    const actionType = getConfigString(selectedNode.data.config, "actionType");
-    const currentIntegrationId = getConfigString(
-      selectedNode.data.config,
-      "integrationId"
-    );
-
-    if (!(actionType && currentIntegrationId)) {
-      return;
-    }
-
-    const integrationType = getActionIntegrationType(actionType);
-
-    if (!integrationType) {
-      return;
-    }
-
-    const integrationExists = globalIntegrations.some(
-      (i) => i.id === currentIntegrationId
-    );
-
-    if (integrationExists) {
-      return;
-    }
-
-    const availableIntegrations = globalIntegrations.filter(
-      (i) => i.type === integrationType
-    );
-
-    if (availableIntegrations.length === 1) {
-      const newConfig = {
-        ...selectedNode.data.config,
-        integrationId: availableIntegrations[0].id,
-      };
-      updateNodeData({ id: selectedNode.id, data: { config: newConfig } });
-    } else if (availableIntegrations.length === 0) {
-      const newConfig = {
-        ...selectedNode.data.config,
-        integrationId: undefined,
-      };
-      updateNodeData({ id: selectedNode.id, data: { config: newConfig } });
-    }
-  }, [selectedNode, globalIntegrations, isOwner, updateNodeData]);
+  const { data: globalIntegrations = [] } = useQuery(
+    integrationsQueryOptions()
+  );
 
   const handleDelete = () => {
     if (selectedNodeId) {
@@ -234,56 +160,6 @@ export const PanelInner = () => {
     }
   };
 
-  const autoSelectIntegration = useCallback(
-    async (
-      nodeId: string,
-      actionType: string,
-      currentConfig: Record<string, unknown>,
-      abortSignal: AbortSignal
-    ) => {
-      const integrationType = getActionIntegrationType(actionType);
-
-      if (!integrationType) {
-        setPendingIntegrationNodes((prev: Set<string>) => {
-          const next = new Set(prev);
-          next.delete(nodeId);
-          return next;
-        });
-        return;
-      }
-
-      try {
-        const all = await api.integration.getAll({});
-
-        if (abortSignal.aborted) {
-          return;
-        }
-
-        const filtered = all.filter((i) => i.type === integrationType);
-
-        if (filtered.length === 1 && !abortSignal.aborted) {
-          const newConfig = {
-            ...currentConfig,
-            actionType,
-            integrationId: filtered[0].id,
-          };
-          updateNodeData({ id: nodeId, data: { config: newConfig } });
-        }
-      } catch (error) {
-        console.error("Failed to auto-select integration:", error);
-      } finally {
-        if (!abortSignal.aborted) {
-          setPendingIntegrationNodes((prev: Set<string>) => {
-            const next = new Set(prev);
-            next.delete(nodeId);
-            return next;
-          });
-        }
-      }
-    },
-    [updateNodeData, setPendingIntegrationNodes]
-  );
-
   const handleUpdateConfig = (patch: NodeConfigPatch) => {
     if (!selectedNode) {
       return;
@@ -297,8 +173,7 @@ export const PanelInner = () => {
 
     // Picking a different action invalidates whatever connection the previous
     // action was bound to, so the two keys move together.
-    const nextActionType = patch.actionType;
-    const isActionTypeUpdate = typeof nextActionType === "string";
+    const isActionTypeUpdate = typeof patch.actionType === "string";
     const shouldClearIntegration =
       isActionTypeUpdate && Boolean(latestNode.data.config?.integrationId);
 
@@ -308,30 +183,19 @@ export const PanelInner = () => {
       ...(shouldClearIntegration ? { integrationId: undefined } : {}),
     };
 
-    updateNodeData({ id: selectedNode.id, data: { config: newConfig } });
-
-    if (!isActionTypeUpdate) {
-      return;
-    }
-
-    const existingController =
-      autoSelectAbortControllersRef.current[selectedNode.id];
-    if (existingController) {
-      existingController.abort();
-    }
-
-    const newController = new AbortController();
-    autoSelectAbortControllersRef.current[selectedNode.id] = newController;
-
-    setPendingIntegrationNodes((prev: Set<string>) =>
-      new Set(prev).add(selectedNode.id)
+    // Choosing an action is exactly when its connection can be settled, and the
+    // connection list is already in hand. This used to be a fetch with an abort
+    // controller and a "pending" flag to hide the warning that flashed while it
+    // was in flight; with the list cached there is no flight and no flash.
+    const repaired = repairNodeIntegration(
+      { ...latestNode, data: { ...latestNode.data, config: newConfig } },
+      globalIntegrations
     );
-    autoSelectIntegration(
-      selectedNode.id,
-      nextActionType,
-      newConfig,
-      newController.signal
-    );
+
+    updateNodeData({
+      id: selectedNode.id,
+      data: { config: repaired.data.config },
+    });
   };
 
   const handleUpdateWorkspaceName = async (newName: string) => {

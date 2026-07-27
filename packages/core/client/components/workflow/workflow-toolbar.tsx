@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useReactFlow } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
@@ -38,8 +39,8 @@ import {
   WORKFLOW_NODE_WIDTH,
 } from "@/components/workflow/workflow-node-dimensions";
 import { UserMenu } from "@/components/workflows/user-menu";
-import { integrationsAtom } from "@/lib/integrations-store";
 import { api } from "@/lib/rpc-client";
+import { integrationsQueryOptions } from "@/lib/rpc-query";
 import {
   addNodeAtom,
   canRedoAtom,
@@ -611,7 +612,7 @@ function useWorkflowState() {
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const setSelectedNodeId = useSetAtom(selectedNodeAtom);
   const setSelectedExecutionId = useSetAtom(selectedExecutionIdAtom);
-  const userIntegrations = useAtomValue(integrationsAtom);
+  const { data: userIntegrations = [] } = useQuery(integrationsQueryOptions());
   const [triggerExecute, setTriggerExecute] = useAtom(triggerExecuteAtom);
 
   const [isDuplicating, setIsDuplicating] = useState(false);

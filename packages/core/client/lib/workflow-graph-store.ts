@@ -2,6 +2,7 @@ import type { EdgeChange, NodeChange } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
+import { repairNodeIntegrations } from "@/lib/node-integration";
 import {
   hasUnsavedChangesAtom,
   saveWorkflowAtom,
@@ -101,6 +102,29 @@ export const loadWorkflowGraphAtom = atom(
     set(selectedEdgeAtom, null);
     set(newlyCreatedNodeIdAtom, null);
     set(hasUnsavedChangesAtom, false);
+  }
+);
+
+/**
+ * Point every node at a connection that exists, given the list as it stands now.
+ *
+ * Called from the handlers that already know the connection list changed, which
+ * is the only moment a stored id can newly have gone stale while the editor is
+ * open. `repairNodeIntegrations` returns the same array when nothing needed
+ * fixing, so the common case writes nothing and queues no save.
+ */
+export const repairIntegrationsAtom = atom(
+  null,
+  (get, set, integrations: readonly { id: string; type: string }[]) => {
+    const currentNodes = get(nodesStateAtom);
+    const repaired = repairNodeIntegrations(currentNodes, integrations);
+
+    if (repaired === currentNodes) {
+      return;
+    }
+
+    set(nodesStateAtom, repaired as WorkflowNode[]);
+    requestGraphSave(get, set);
   }
 );
 

@@ -49,6 +49,7 @@
     "@inngest/test": "^0.1.9",
     "@opentelemetry/sdk-trace-base": "^1.25.0",
     "@orpc/client": "^1.13.5",
+    "@orpc/tanstack-query": "1.13.5",
     "@rova/plugins": "workspace:*",
     "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-router": "^1.159.5",

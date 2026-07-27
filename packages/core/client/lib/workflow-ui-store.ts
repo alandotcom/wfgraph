@@ -30,7 +30,3 @@ export const selectedExecutionIdAtom = atom<string | null>(null);
 
 // nodeId -> log entry for the run currently being viewed.
 export const executionLogsAtom = atom<Record<string, ExecutionLogEntry>>({});
-
-// Nodes still waiting on the integration auto-select check. They suppress the
-// "missing integration" warning, which would otherwise flash on every load.
-export const pendingIntegrationNodesAtom = atom<Set<string>>(new Set<string>());

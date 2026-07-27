@@ -1,4 +1,5 @@
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSetAtom } from "jotai";
 import {
   AlertTriangle,
   Check,
@@ -7,16 +8,14 @@ import {
   Plus,
   Settings,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { ConfigureConnectionOverlay } from "@/components/overlays/add-connection-overlay";
 import { EditConnectionOverlay } from "@/components/overlays/edit-connection-overlay";
 import { useOverlay } from "@/components/overlays/overlay-provider";
 import { Button } from "@/components/ui/button";
-import {
-  integrationsAtom,
-  integrationsVersionAtom,
-} from "@/lib/integrations-store";
-import { api, type Integration } from "@/lib/rpc-client";
+import type { Integration } from "@/lib/rpc-client";
+import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
+import { repairIntegrationsAtom } from "@/lib/workflow-graph-store";
 import { getIntegration } from "@/plugins/registry";
 import type { IntegrationType } from "@/shared/types/integration";
 import { cn } from "@/shared/utils";
@@ -39,80 +38,40 @@ export function IntegrationSelector({
   onAddConnection,
 }: IntegrationSelectorProps) {
   const { push } = useOverlay();
-  const [globalIntegrations, setGlobalIntegrations] = useAtom(integrationsAtom);
-  const integrationsVersion = useAtomValue(integrationsVersionAtom);
-  const setIntegrationsVersion = useSetAtom(integrationsVersionAtom);
-  const lastVersionRef = useRef(integrationsVersion);
-  const [hasFetched, setHasFetched] = useState(false);
-
-  // Filter integrations from global cache
-  const integrations = useMemo(
-    () => globalIntegrations.filter((i) => i.type === integrationType),
-    [globalIntegrations, integrationType]
+  const queryClient = useQueryClient();
+  const repairIntegrations = useSetAtom(repairIntegrationsAtom);
+  const { data: allIntegrations = [], isPending } = useQuery(
+    integrationsQueryOptions()
   );
 
-  // Check if we have cached data
-  const hasCachedData = globalIntegrations.length > 0;
+  const integrations = useMemo(
+    () => allIntegrations.filter((i) => i.type === integrationType),
+    [allIntegrations, integrationType]
+  );
 
-  const loadIntegrations = useCallback(async () => {
-    try {
-      const all = await api.integration.getAll({});
-      // Update global store so other components can access it
-      setGlobalIntegrations(all);
-      setHasFetched(true);
-    } catch (error) {
-      console.error("Failed to load integrations:", error);
-    }
-  }, [setGlobalIntegrations]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      void loadIntegrations();
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [loadIntegrations, integrationType]);
-
-  // Listen for version changes (from other components creating/editing integrations)
-  useEffect(() => {
-    // Skip initial render - only react to actual version changes
-    if (integrationsVersion !== lastVersionRef.current) {
-      lastVersionRef.current = integrationsVersion;
-      const timer = setTimeout(() => {
-        void loadIntegrations();
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-
-    return undefined;
-  }, [integrationsVersion, loadIntegrations]);
-
-  // Auto-select first integration when none is selected or current selection is invalid
-  useEffect(() => {
-    if (integrations.length > 0 && !disabled) {
-      // Check if current value exists in available integrations
-      const currentExists = value && integrations.some((i) => i.id === value);
-      if (!currentExists) {
-        // Prefer managed integrations, fall back to first available
-        const managed = integrations.find((i) => i.isManaged);
-        onChange(managed?.id || integrations[0].id);
-      }
-    }
-  }, [integrations, value, disabled, onChange]);
+  // One cache entry backs every selector on screen, so refetching after a
+  // connection is created or edited is a single invalidation rather than a
+  // version counter each selector has to notice and diff.
+  //
+  // Editing the connection list is also the only moment a node elsewhere in the
+  // graph can newly be pointing at something that no longer exists, so the
+  // repair runs from here rather than from an effect watching for the mismatch.
+  const refreshIntegrations = useCallback(async () => {
+    await queryClient.invalidateQueries({
+      queryKey: orpcQuery.integration.key(),
+    });
+    repairIntegrations(
+      await queryClient.ensureQueryData(integrationsQueryOptions())
+    );
+  }, [queryClient, repairIntegrations]);
 
   const handleNewIntegrationCreated = useCallback(
     async (integrationId: string) => {
-      await loadIntegrations();
+      await refreshIntegrations();
       onChange(integrationId);
-      // Increment version to trigger re-fetch in other selectors
-      setIntegrationsVersion((v) => v + 1);
     },
-    [loadIntegrations, onChange, setIntegrationsVersion]
+    [refreshIntegrations, onChange]
   );
-
-  const handleIntegrationChange = useCallback(async () => {
-    await loadIntegrations();
-    setIntegrationsVersion((v) => v + 1);
-  }, [loadIntegrations, setIntegrationsVersion]);
 
   const openNewConnectionOverlay = useCallback(() => {
     push(ConfigureConnectionOverlay, {
@@ -125,11 +84,11 @@ export function IntegrationSelector({
     (integration: Integration) => {
       push(EditConnectionOverlay, {
         integration,
-        onSuccess: handleIntegrationChange,
-        onDelete: handleIntegrationChange,
+        onSuccess: refreshIntegrations,
+        onDelete: refreshIntegrations,
       });
     },
-    [push, handleIntegrationChange]
+    [push, refreshIntegrations]
   );
 
   const handleAddConnection = useCallback(() => {
@@ -140,8 +99,9 @@ export function IntegrationSelector({
     }
   }, [onAddConnection, openNewConnectionOverlay]);
 
-  // Only show loading skeleton if we have no cached data and haven't fetched yet
-  if (!(hasCachedData || hasFetched)) {
+  // isPending is false the moment the cache holds anything, so a second
+  // selector mounting alongside the first shows the list rather than a skeleton.
+  if (isPending) {
     return (
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2 rounded-md px-2 py-1.5">

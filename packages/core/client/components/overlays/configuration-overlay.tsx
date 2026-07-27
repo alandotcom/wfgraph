@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   Eraser,
@@ -21,8 +22,8 @@ import { ActionGrid } from "@/components/workflow/config/action-grid";
 import type { NodeConfigPatch } from "@/components/workflow/config/node-config-patch";
 import { TriggerConfig } from "@/components/workflow/config/trigger-config";
 import { WorkflowRuns } from "@/components/workflow/workflow-runs";
-import { integrationsAtom } from "@/lib/integrations-store";
 import { api } from "@/lib/rpc-client";
+import { integrationsQueryOptions } from "@/lib/rpc-query";
 import {
   clearNodeStatusesAtom,
   clearWorkflowAtom,
@@ -46,20 +47,9 @@ import {
   isGeneratingAtom,
   propertiesPanelActiveTabAtom,
 } from "@/lib/workflow-ui-store";
-import { findActionById } from "@/plugins/registry";
-import { isIntegrationType } from "@/shared/types/integration";
-import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 import type { OverlayComponentProps } from "./types";
 
 type ConfigurationOverlayProps = OverlayComponentProps;
-
-function readConfigString(
-  config: Record<string, unknown> | undefined,
-  key: string
-): string | undefined {
-  const value = config?.[key];
-  return typeof value === "string" ? value : undefined;
-}
 
 export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   const store = useStore();
@@ -91,53 +81,9 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
 
-  // Auto-fix invalid integration references
-  const globalIntegrations = useAtomValue(integrationsAtom);
-  useEffect(() => {
-    if (!(selectedNode && isOwner)) {
-      return;
-    }
-
-    const actionType = readConfigString(selectedNode.data.config, "actionType");
-    const currentIntegrationId = readConfigString(
-      selectedNode.data.config,
-      "integrationId"
-    );
-
-    if (!(actionType && currentIntegrationId)) {
-      return;
-    }
-
-    const action = findActionById(actionType);
-    const actionIntegrationType = isIntegrationType(action?.integration)
-      ? action.integration
-      : undefined;
-    const integrationType =
-      actionIntegrationType || SYSTEM_ACTION_INTEGRATIONS[actionType];
-
-    if (!integrationType) {
-      return;
-    }
-
-    const validIntegrations = globalIntegrations.filter(
-      (i) => i.type === integrationType
-    );
-    const isValid = validIntegrations.some(
-      (i) => i.id === currentIntegrationId
-    );
-
-    if (!isValid && validIntegrations.length > 0) {
-      updateNodeData({
-        id: selectedNode.id,
-        data: {
-          config: {
-            ...selectedNode.data.config,
-            integrationId: validIntegrations[0].id,
-          },
-        },
-      });
-    }
-  }, [selectedNode, globalIntegrations, isOwner, updateNodeData]);
+  const { data: globalIntegrations = [] } = useQuery(
+    integrationsQueryOptions()
+  );
 
   // Config always merges onto the node as the store has it right now, so a
   // write that lands while an earlier render is still in scope does not carry

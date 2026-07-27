@@ -174,7 +174,7 @@ type WorkflowExecutionsGlobalResult = RpcOutput<
 >;
 type WorkflowBulkLifecycleResult = RpcOutput<typeof rpc.workflow.bulkLifecycle>;
 
-function toWorkflowData(payload: WorkflowApiPayload): WorkflowData {
+export function toWorkflowData(payload: WorkflowApiPayload): WorkflowData {
   const graphData = toWorkflowGraphData(payload.graph);
 
   return {
@@ -185,7 +185,7 @@ function toWorkflowData(payload: WorkflowApiPayload): WorkflowData {
   };
 }
 
-function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
+export function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
   const graphData = toWorkflowGraphData(payload.graph);
 
   return {
@@ -204,7 +204,9 @@ function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
   };
 }
 
-function toSavedWorkflows(payload: WorkflowApiPayload[]): SavedWorkflow[] {
+export function toSavedWorkflows(
+  payload: WorkflowApiPayload[]
+): SavedWorkflow[] {
   return payload.map(toSavedWorkflow);
 }
 

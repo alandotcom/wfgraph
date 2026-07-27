@@ -1,15 +1,16 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useSetAtom } from "jotai";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IntegrationIcon } from "@/components/ui/integration-icon";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { integrationsVersionAtom } from "@/lib/integrations-store";
 import type { IntegrationType } from "@/shared/types/integration";
 import { ConfigureConnectionOverlay } from "./add-connection-overlay";
 import { ConfigurationOverlay } from "./configuration-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
 import type { OverlayComponentProps } from "./types";
+import { orpcQuery } from "@/lib/rpc-query";
 
 type BrokenReference = {
   nodeId: string;
@@ -57,7 +58,7 @@ export function WorkflowIssuesOverlay({
   allowRunAnyway = false,
 }: WorkflowIssuesOverlayProps) {
   const { push, closeAll } = useOverlay();
-  const setIntegrationsVersion = useSetAtom(integrationsVersionAtom);
+  const queryClient = useQueryClient();
   const isMobile = useIsMobile();
 
   const { brokenReferences, missingRequiredFields, missingIntegrations } =
@@ -84,10 +85,12 @@ export function WorkflowIssuesOverlay({
   const openConnectionOverlay = (integrationType: IntegrationType) => {
     push(ConfigureConnectionOverlay, {
       type: integrationType,
-      onSuccess: () => {
-        // Increment version to trigger auto-fix for nodes
-        setIntegrationsVersion((v) => v + 1);
-      },
+      // Refreshing the connection list is what lets the nodes that were
+      // flagged here stop being flagged.
+      onSuccess: () =>
+        queryClient.invalidateQueries({
+          queryKey: orpcQuery.integration.key(),
+        }),
     });
   };
 

@@ -1,15 +1,13 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { WorkflowSidebarPanel } from "@/components/workflow/workflow-sidebar-panel";
-import {
-  integrationsAtom,
-  integrationsLoadedAtom,
-  integrationsVersionAtom,
-} from "@/lib/integrations-store";
+import { repairNodeIntegrations } from "@/lib/node-integration";
 import { api } from "@/lib/rpc-client";
+import { integrationsQueryOptions } from "@/lib/rpc-query";
 import {
   edgesAtom,
   loadWorkflowGraphAtom,
@@ -34,81 +32,13 @@ import {
   triggerExecuteAtom,
 } from "@/lib/workflow-ui-store";
 import { type WorkflowNode } from "@/shared/workflow/types";
-import { findActionById } from "@/plugins/registry";
-import {
-  type IntegrationType,
-  isIntegrationType,
-} from "@/shared/types/integration";
-import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
 
 type WorkflowPageProps = {
   workflowId: string;
 };
 
-function readConfigString(
-  config: Record<string, unknown> | undefined,
-  key: string
-): string | undefined {
-  const value = config?.[key];
-  return typeof value === "string" ? value : undefined;
-}
-
-// Helper to get required integration type for an action
-function getRequiredIntegrationType(
-  actionType: string
-): IntegrationType | undefined {
-  const action = findActionById(actionType);
-  const actionIntegrationType = isIntegrationType(action?.integration)
-    ? action.integration
-    : undefined;
-  return actionIntegrationType || SYSTEM_ACTION_INTEGRATIONS[actionType];
-}
-
-// Helper to check and fix a single node's integration
-type IntegrationFixResult = {
-  nodeId: string;
-  newIntegrationId: string | undefined;
-};
-
-function checkNodeIntegration(
-  node: WorkflowNode,
-  allIntegrations: { id: string; type: string }[],
-  validIntegrationIds: Set<string>
-): IntegrationFixResult | null {
-  const actionType = readConfigString(node.data.config, "actionType");
-  if (!actionType) {
-    return null;
-  }
-
-  const integrationType = getRequiredIntegrationType(actionType);
-  if (!integrationType) {
-    return null;
-  }
-
-  const currentIntegrationId = readConfigString(
-    node.data.config,
-    "integrationId"
-  );
-  const hasValidIntegration =
-    currentIntegrationId && validIntegrationIds.has(currentIntegrationId);
-
-  if (hasValidIntegration) {
-    return null;
-  }
-
-  // Find available integrations of this type
-  const available = allIntegrations.filter((i) => i.type === integrationType);
-
-  if (available.length === 1) {
-    return { nodeId: node.id, newIntegrationId: available[0].id };
-  }
-  if (available.length === 0 && currentIntegrationId) {
-    return { nodeId: node.id, newIntegrationId: undefined };
-  }
-  return null;
-}
-
 const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
+  const queryClient = useQueryClient();
   const isGenerating = useAtomValue(isGeneratingAtom);
   const lastSaveError = useAtomValue(lastSaveErrorAtom);
   const nodes = useAtomValue(nodesAtom);
@@ -129,9 +59,6 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
   );
   const setCurrentWorkflowMode = useSetAtom(currentWorkflowModeAtom);
   const [isOwner, setIsWorkflowOwner] = useAtom(isWorkflowOwnerAtom);
-  const setGlobalIntegrations = useSetAtom(integrationsAtom);
-  const setIntegrationsLoaded = useSetAtom(integrationsLoadedAtom);
-  const integrationsVersion = useAtomValue(integrationsVersionAtom);
 
   // Ref to track polling interval for selected execution
   const selectedExecutionPollingIntervalRef = useRef<NodeJS.Timeout | null>(
@@ -154,7 +81,13 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
   // Helper function to load existing workflow
   const loadExistingWorkflow = useCallback(async () => {
     try {
-      const workflow = await api.workflow.getById(workflowId);
+      // The connection list is fetched alongside the graph because a stored
+      // integrationId can have gone stale since the last save, and repairing it
+      // before the graph is ever rendered is what keeps that out of an effect.
+      const [workflow, integrations] = await Promise.all([
+        api.workflow.getById(workflowId),
+        queryClient.ensureQueryData(integrationsQueryOptions()),
+      ]);
 
       if (latestWorkflowIdRef.current !== workflowId) {
         return;
@@ -173,7 +106,10 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
       // Also clears undo history, so undo cannot reach back past the switch and
       // write the previous workflow's graph into this one.
       loadWorkflowGraph({
-        nodes: nodesWithIdleStatus,
+        nodes: repairNodeIntegrations(
+          nodesWithIdleStatus,
+          integrations
+        ) as WorkflowNode[],
         edges: workflow.edges,
       });
       setCurrentWorkflowId(workflow.id);
@@ -193,6 +129,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
     }
   }, [
     workflowId,
+    queryClient,
     loadWorkflowGraph,
     setCurrentWorkflowId,
     setCurrentWorkflowName,
@@ -202,82 +139,9 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
     setWorkflowNotFound,
   ]);
 
-  // Track if we've already auto-fixed integrations for this workflow+version
-  const lastAutoFixRef = useRef<{ workflowId: string; version: number } | null>(
-    null
-  );
-
   useEffect(() => {
     loadExistingWorkflow();
   }, [loadExistingWorkflow]);
-
-  // Auto-fix invalid/missing integrations on workflow load or when integrations change
-  useEffect(() => {
-    // Skip if no nodes or no workflow
-    if (nodes.length === 0 || !currentWorkflowId) {
-      return;
-    }
-
-    // Skip for non-owners (they can't modify the workflow and may not be authenticated)
-    if (!isOwner) {
-      return;
-    }
-
-    // Skip if already checked for this workflow+version combination
-    const lastFix = lastAutoFixRef.current;
-    if (
-      lastFix &&
-      lastFix.workflowId === currentWorkflowId &&
-      lastFix.version === integrationsVersion
-    ) {
-      return;
-    }
-
-    const autoFixIntegrations = async () => {
-      try {
-        const allIntegrations = await api.integration.getAll({});
-        setGlobalIntegrations(allIntegrations);
-        setIntegrationsLoaded(true);
-
-        const validIds = new Set(allIntegrations.map((i) => i.id));
-        const fixes = nodes
-          .map((node) => checkNodeIntegration(node, allIntegrations, validIds))
-          .filter((fix): fix is IntegrationFixResult => fix !== null);
-
-        for (const fix of fixes) {
-          const node = nodes.find((n) => n.id === fix.nodeId);
-          if (node) {
-            updateNodeData({
-              id: fix.nodeId,
-              data: {
-                config: {
-                  ...node.data.config,
-                  integrationId: fix.newIntegrationId,
-                },
-              },
-            });
-          }
-        }
-
-        lastAutoFixRef.current = {
-          workflowId: currentWorkflowId,
-          version: integrationsVersion,
-        };
-      } catch (error) {
-        console.error("Failed to auto-fix integrations:", error);
-      }
-    };
-
-    autoFixIntegrations();
-  }, [
-    nodes,
-    currentWorkflowId,
-    integrationsVersion,
-    isOwner,
-    updateNodeData,
-    setGlobalIntegrations,
-    setIntegrationsLoaded,
-  ]);
 
   // A debounced autosave has no caller waiting on it, so a failure would
   // otherwise reach only the console while the editor looked saved.

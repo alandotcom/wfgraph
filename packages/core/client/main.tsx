@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { createRoot } from "react-dom/client";
 // Plugin metadata, then the plugins' React components. The two halves are
@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import "@rova/plugins";
 import "@rova/plugins/ui";
 import "@/routes/globals.css";
+import { queryClient } from "@/lib/query-client";
 import { hydrateRuntimeExtensionsFromApi } from "@/lib/runtime-extensions";
 import { router } from "./router";
 
@@ -18,8 +19,6 @@ declare global {
 if (process.env.NODE_ENV === "development") {
   import("react-grab");
 }
-
-const queryClient = new QueryClient();
 
 const isResizeObserverLoopMessage = (message: string | undefined): boolean =>
   typeof message === "string" && message.includes("ResizeObserver loop");
