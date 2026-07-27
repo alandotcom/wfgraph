@@ -24,6 +24,12 @@ const config: KnipConfig = {
   // and lifting the `@` off each `@import` leaves a plain import statement.
   // knip 6.29 documents a built-in `.css` compiler but ships none, so setting
   // `css: true` crashes; this hands it the function the docs print.
+  //
+  // A compiler is global in knip 6.29 while stylesheets live in packages/core
+  // alone, so each of the other three workspaces prints one standing
+  // "Compiled extension excluded by project" hint. Hints are informational and
+  // leave the exit code at 0, and giving those workspaces a `**/*.css` glob
+  // only trades the hint for a "no matches" one.
   compilers: {
     css: (text: string) =>
       [...text.matchAll(/(?<=@)import[^;]+/g)].map(([m]) => m).join("\n"),

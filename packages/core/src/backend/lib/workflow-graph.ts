@@ -231,10 +231,3 @@ export function validateWorkflowGraph(
     edges: graphData.edges,
   };
 }
-
-export function getWorkflowGraphData(graph: SerializedWorkflowGraph): {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-} {
-  return toWorkflowGraphData(graph);
-}

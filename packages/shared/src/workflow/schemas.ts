@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-export const workflowNodeTypeSchema = z.enum(["trigger", "action", "add"]);
-
 export const webhookTriggerConfigSchema = z
   .object({
     triggerType: z.literal("Webhook"),
@@ -79,12 +77,6 @@ export const workflowNodeDataSchema = z.discriminatedUnion("type", [
 
 export type WebhookTriggerConfigInput = z.infer<
   typeof webhookTriggerConfigSchema
->;
-export type ScheduleTriggerConfigInput = z.infer<
-  typeof scheduleTriggerConfigSchema
->;
-export type CustomTriggerConfigInput = z.infer<
-  typeof customTriggerConfigSchema
 >;
 export type WorkflowTriggerConfigInput = z.infer<
   typeof workflowTriggerConfigSchema

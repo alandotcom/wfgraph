@@ -1,5 +1,4 @@
 import { DirectedGraph } from "graphology";
-import { z } from "zod";
 import {
   serializedWorkflowGraphSchema,
   workflowEdgeAttributesSchema,
@@ -171,8 +170,4 @@ export function getSerializedWorkflowGraphError(graph: unknown): string {
   }
 
   return `${path}: ${firstIssue.message}`;
-}
-
-export function isGraphValidationError(error: unknown): boolean {
-  return error instanceof z.ZodError || error instanceof Error;
 }

@@ -223,7 +223,6 @@ function toGraphPayload(input: {
 }
 
 export type Integration = RpcOutput<typeof rpc.integration.create>;
-export type IntegrationWithConfig = RpcOutput<typeof rpc.integration.get>;
 export type ApiKey = RpcOutput<typeof rpc.apiKey.getAll>[number] & {
   key?: string;
 };

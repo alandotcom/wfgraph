@@ -35,7 +35,6 @@ export const edgesAtom = atom<WorkflowEdge[]>([]);
 export const selectedNodeAtom = atom<string | null>(null);
 export const selectedEdgeAtom = atom<string | null>(null);
 export const isExecutingAtom = atom(false);
-export const isLoadingAtom = atom(false);
 export const isGeneratingAtom = atom(false);
 export const currentWorkflowIdAtom = atom<string | null>(null);
 export const currentWorkflowNameAtom = atom<string>("");
@@ -506,35 +505,6 @@ export const clearWorkflowAtom = atom(null, (get, set) => {
   // Mark as having unsaved changes
   set(hasUnsavedChangesAtom, true);
 });
-
-// Save workflow with a name
-export const saveWorkflowAsAtom = atom(
-  null,
-  async (
-    get,
-    _set,
-    { name, description }: { name: string; description?: string }
-  ) => {
-    const nodes = get(nodesAtom);
-    const edges = get(edgesAtom);
-
-    try {
-      const workflow = await api.workflow.create({
-        name,
-        description,
-        nodes,
-        edges,
-      });
-      return workflow;
-    } catch (error) {
-      console.error("[workflow-store] Failed to save workflow", {
-        workflowName: name,
-        error,
-      });
-      throw error;
-    }
-  }
-);
 
 // Workflow toolbar UI state atoms
 export const showClearDialogAtom = atom(false);

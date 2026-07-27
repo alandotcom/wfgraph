@@ -988,8 +988,9 @@ const webhookTrigger = normalizeTriggerDefinition(
   createWebhookTriggerDefinition()
 );
 
-// Built-in triggers ship here. Project-specific triggers should register at
-// runtime via `registerWorkflowTrigger(...)` inside `src/backend/workflow-triggers/index.ts`.
+// Built-in triggers ship here. A project adds its own by passing them to
+// `createRovaApp({ triggers })` or `startRovaServer({ triggers })`, both of
+// which call `registerWorkflowTrigger(...)` for each one during startup.
 const triggerRegistry = new Map<string, WorkflowTriggerDefinition>([
   [webhookTrigger.runtime.type, webhookTrigger],
   [scheduleTrigger.runtime.type, scheduleTrigger],

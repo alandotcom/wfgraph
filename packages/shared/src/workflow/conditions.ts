@@ -32,13 +32,6 @@ export type BooleanOperator = "is_true" | "is_false";
 
 export type NullCheckOperator = "is_set" | "is_not_set";
 
-export type ConditionOperator =
-  | TimestampOperator
-  | StringOperator
-  | NumberOperator
-  | BooleanOperator
-  | NullCheckOperator;
-
 export type ConditionFieldDefinition = {
   path: string;
   label: string;

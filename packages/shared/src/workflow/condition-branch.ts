@@ -33,12 +33,6 @@ export function normalizeConditionBranch(
   return null;
 }
 
-export function isExplicitConditionBranch(
-  value: unknown
-): value is ConditionBranch {
-  return value === "true" || value === "false";
-}
-
 export function getConditionBranchDisplayLabel(value: unknown): string | null {
   const branch = normalizeConditionBranch(value);
   if (branch === "true") {

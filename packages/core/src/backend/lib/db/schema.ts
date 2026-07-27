@@ -226,18 +226,4 @@ export const workflowExecutionsRelations = relations(
 );
 
 export type Workflow = typeof workflows.$inferSelect;
-export type NewWorkflow = typeof workflows.$inferInsert;
-export type Integration = typeof integrations.$inferSelect;
 export type NewIntegration = typeof integrations.$inferInsert;
-export type WorkflowExecution = typeof workflowExecutions.$inferSelect;
-export type NewWorkflowExecution = typeof workflowExecutions.$inferInsert;
-export type WorkflowExecutionLog = typeof workflowExecutionLogs.$inferSelect;
-export type NewWorkflowExecutionLog = typeof workflowExecutionLogs.$inferInsert;
-export type WorkflowWaitState = typeof workflowWaitStates.$inferSelect;
-export type NewWorkflowWaitState = typeof workflowWaitStates.$inferInsert;
-export type WorkflowExecutionEvent =
-  typeof workflowExecutionEvents.$inferSelect;
-export type NewWorkflowExecutionEvent =
-  typeof workflowExecutionEvents.$inferInsert;
-export type ApiKey = typeof apiKeys.$inferSelect;
-export type NewApiKey = typeof apiKeys.$inferInsert;

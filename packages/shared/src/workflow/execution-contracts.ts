@@ -1,9 +1,3 @@
-export type WorkflowExecutionStatus =
-  | "running"
-  | "cancelled"
-  | "ignored"
-  | "resumed";
-
 export type WorkflowExecutionIgnoredReason =
   | "missing_event_type"
   | "event_not_configured"

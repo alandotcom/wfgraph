@@ -17,8 +17,6 @@ export type WorkflowNodeData = {
 export type WorkflowNode = Node<WorkflowNodeData>;
 export type WorkflowEdge = Edge;
 
-export type WorkflowGraphAttributes = Record<string, unknown>;
-
 export type SerializedWorkflowGraph = SerializedWorkflowGraphInput;
 export type SerializedWorkflowNode = SerializedWorkflowGraph["nodes"][number];
 export type SerializedWorkflowEdge = SerializedWorkflowGraph["edges"][number];

@@ -37,30 +37,6 @@ export type RpcCompatibleResult<TData> = ServiceResult<
   unknown
 >;
 
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isServiceFailureKind(value: unknown): value is ServiceFailureKind {
-  return (
-    typeof value === "string" && Object.hasOwn(FAILURE_KIND_TO_ORPC_CODE, value)
-  );
-}
-
-export function isRpcCompatibleResult(
-  value: unknown
-): value is RpcCompatibleResult<unknown> {
-  if (!isObjectRecord(value) || typeof value.ok !== "boolean") {
-    return false;
-  }
-
-  if (value.ok) {
-    return "data" in value;
-  }
-
-  return isServiceFailureKind(value.kind) && "error" in value;
-}
-
 export async function toRpcData<TData>(
   result: RpcCompatibleResult<TData> | Promise<RpcCompatibleResult<TData>>
 ): Promise<TData> {

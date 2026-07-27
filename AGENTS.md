@@ -149,7 +149,7 @@ Server-side barrel files are allowed.
   - Fallback/default trigger behavior (`packages/shared/src/workflow/triggers/fallback-trigger.ts`).
 - Trigger evaluation yields normalized routing metadata:
   - `eventType`, `correlationKey`, `executionType`, and `routingDecision` (`start`/`restart`/`stop`/`ignore`).
-- Project-specific trigger extensions are registered at startup from `packages/core/src/backend/workflow-triggers/index.ts` via `initializeWorkflowTriggers()` (`packages/core/src/backend/lib/workflow-trigger-bootstrap.ts`).
+- Project-specific trigger extensions arrive through the `triggers` option on `createRovaApp(...)` (`packages/core/src/hono.ts`) or `startRovaServer(...)` (`packages/core/src/server.ts`), each of which calls `registerWorkflowTrigger(...)` per trigger during startup.
 
 ### Node, Trigger, and Action Semantics
 

@@ -4,7 +4,6 @@ import {
   workflowExecutionLogs,
   workflowExecutions,
 } from "@/backend/lib/db/schema";
-import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
 import { getAppLogger } from "@/backend/lib/logger";
 import {
   failure,
@@ -80,8 +79,4 @@ export async function getExecutionStatusResult(
           : "Failed to get execution status",
     });
   }
-}
-
-export async function getExecutionStatus(executionId: string) {
-  return responseFromServiceResult(await getExecutionStatusResult(executionId));
 }

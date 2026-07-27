@@ -171,24 +171,6 @@ export function redactSensitiveData(data: unknown): unknown {
 }
 
 /**
- * Check if credentials object contains any sensitive data
- * Used to determine if credentials should be completely excluded
- */
-export function containsSensitiveData(obj: Record<string, unknown>): boolean {
-  if (!obj || typeof obj !== "object") {
-    return false;
-  }
-
-  for (const key of Object.keys(obj)) {
-    if (isSensitiveKey(key)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
  * Remove all credentials from an object
  * Use this when you want to completely strip out sensitive data
  */

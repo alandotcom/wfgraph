@@ -58,7 +58,6 @@
     "concurrently": "^9.2.1",
     "drizzle-kit": "^0.31.9",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "grab": "^0.1.14",
     "knip": "^6.29.0",
     "oxfmt": "^0.60.0",
     "oxlint": "^1.75.0",

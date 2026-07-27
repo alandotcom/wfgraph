@@ -178,10 +178,6 @@ export async function getIntegrationsResult(
   }
 }
 
-export async function getIntegrations(type?: IntegrationType) {
-  return responseFromServiceResult(await getIntegrationsResult(type));
-}
-
 export async function getIntegrationResult(
   integrationId: string
 ): Promise<
@@ -312,12 +308,6 @@ export async function deleteIntegrationResult(
       details: error instanceof Error ? error.message : "Unknown error",
     });
   }
-}
-
-export async function deleteIntegration(integrationId: string) {
-  return responseFromServiceResult(
-    await deleteIntegrationResult(integrationId)
-  );
 }
 
 export async function postIntegrationsTestResult(body: {

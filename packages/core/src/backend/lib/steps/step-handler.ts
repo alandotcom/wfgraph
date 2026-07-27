@@ -165,13 +165,6 @@ export type StepContextWithWorkflow = StepContext & {
   };
 };
 
-/**
- * Extended input type for steps that may handle workflow completion
- */
-export type StepInputWithWorkflow = {
-  _context?: StepContextWithWorkflow;
-};
-
 function hasWorkflowCompleteContext(
   context: StepContext | undefined
 ): context is StepContextWithWorkflow {

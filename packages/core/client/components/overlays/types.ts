@@ -63,15 +63,6 @@ export type OverlayStackItem<P = Record<string, unknown>> = {
 };
 
 /**
- * Parameters for opening an overlay
- */
-export type OpenOverlayParams<P = Record<string, unknown>> = {
-  component: ComponentType<OverlayComponentProps<P>>;
-  props?: P;
-  options?: OverlayOptions;
-};
-
-/**
  * The overlay context value exposed by useOverlay()
  */
 export type OverlayContextValue = {
