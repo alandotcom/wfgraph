@@ -123,7 +123,7 @@ export const repairIntegrationsAtom = atom(
       return;
     }
 
-    set(nodesStateAtom, repaired as WorkflowNode[]);
+    set(nodesStateAtom, repaired);
     requestGraphSave(get, set);
   }
 );

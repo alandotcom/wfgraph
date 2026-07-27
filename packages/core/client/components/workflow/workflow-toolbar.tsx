@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useReactFlow } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
@@ -40,7 +40,11 @@ import {
 } from "@/components/workflow/workflow-node-dimensions";
 import { UserMenu } from "@/components/workflows/user-menu";
 import { api } from "@/lib/rpc-client";
-import { integrationsQueryOptions } from "@/lib/rpc-query";
+import {
+  integrationsQueryOptions,
+  orpcQuery,
+  workflowListQueryOptions,
+} from "@/lib/rpc-query";
 import {
   addNodeAtom,
   canRedoAtom,
@@ -616,26 +620,7 @@ function useWorkflowState() {
   const [triggerExecute, setTriggerExecute] = useAtom(triggerExecuteAtom);
 
   const [isDuplicating, setIsDuplicating] = useState(false);
-  const [allWorkflows, setAllWorkflows] = useState<
-    Array<{
-      id: string;
-      name: string;
-      updatedAt: string;
-    }>
-  >([]);
-
-  // Load all workflows on mount
-  useEffect(() => {
-    const loadAllWorkflows = async () => {
-      try {
-        const workflows = await api.workflow.getAll();
-        setAllWorkflows(workflows);
-      } catch (error) {
-        console.error("Failed to load workflows:", error);
-      }
-    };
-    loadAllWorkflows();
-  }, []);
+  const { data: allWorkflows = [] } = useQuery(workflowListQueryOptions());
 
   return {
     nodes,
@@ -663,7 +648,6 @@ function useWorkflowState() {
     isDuplicating,
     setIsDuplicating,
     allWorkflows,
-    setAllWorkflows,
     setActiveTab,
     setSelectedNodeId,
     setSelectedExecutionId,
@@ -677,6 +661,7 @@ function useWorkflowState() {
 function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const setWorkflowMode = useSetAtom(setWorkflowModeAtom);
   const {
     currentWorkflowId,
@@ -692,7 +677,6 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     isExecuting,
     setIsExecuting,
     clearWorkflow,
-    setAllWorkflows,
     setIsDuplicating,
     setActiveTab,
     setSelectedNodeId,
@@ -723,7 +707,7 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
   useEffect(() => {
     if (triggerExecute) {
       setTriggerExecute(false);
-      handleExecute();
+      void handleExecute();
     }
   }, [triggerExecute, setTriggerExecute, handleExecute]);
 
@@ -764,14 +748,12 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     });
   };
 
-  const loadWorkflows = async () => {
-    try {
-      const workflows = await api.workflow.getAll();
-      setAllWorkflows(workflows);
-    } catch (error) {
-      console.error("Failed to load workflows:", error);
-    }
-  };
+  // The switcher dropdown opening is a good moment to re-read the list, and a
+  // create or a delete elsewhere invalidates the same key.
+  const loadWorkflows = () =>
+    queryClient.invalidateQueries({
+      queryKey: orpcQuery.workflow.getAll.key(),
+    });
 
   const handleDuplicate = async () => {
     if (!currentWorkflowId) {
@@ -805,13 +787,8 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
       return;
     }
 
-    const updatedWorkflow = outcome.workflow;
-    setCurrentWorkflowMode(updatedWorkflow.mode);
-    setAllWorkflows((current) =>
-      current.map((workflow) =>
-        workflow.id === updatedWorkflow.id ? updatedWorkflow : workflow
-      )
-    );
+    setCurrentWorkflowMode(outcome.workflow.mode);
+    await loadWorkflows();
     toast.success(
       mode === "test"
         ? "Workflow set to Test mode"

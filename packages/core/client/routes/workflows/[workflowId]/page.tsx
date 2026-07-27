@@ -13,7 +13,6 @@ import {
   loadWorkflowGraphAtom,
   nodesAtom,
   setNodeStatusesAtom,
-  updateNodeDataAtom,
 } from "@/lib/workflow-graph-store";
 import {
   currentWorkflowIdAtom,
@@ -50,7 +49,6 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const setCurrentWorkflowId = useSetAtom(currentWorkflowIdAtom);
   const setCurrentWorkflowName = useSetAtom(currentWorkflowNameAtom);
-  const updateNodeData = useSetAtom(updateNodeDataAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
   const [workflowNotFound, setWorkflowNotFound] = useAtom(workflowNotFoundAtom);
   const setTriggerExecute = useSetAtom(triggerExecuteAtom);
@@ -58,7 +56,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
     currentWorkflowVisibilityAtom
   );
   const setCurrentWorkflowMode = useSetAtom(currentWorkflowModeAtom);
-  const [isOwner, setIsWorkflowOwner] = useAtom(isWorkflowOwnerAtom);
+  const setIsWorkflowOwner = useSetAtom(isWorkflowOwnerAtom);
 
   // Ref to track polling interval for selected execution
   const selectedExecutionPollingIntervalRef = useRef<NodeJS.Timeout | null>(
@@ -106,10 +104,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
       // Also clears undo history, so undo cannot reach back past the switch and
       // write the previous workflow's graph into this one.
       loadWorkflowGraph({
-        nodes: repairNodeIntegrations(
-          nodesWithIdleStatus,
-          integrations
-        ) as WorkflowNode[],
+        nodes: repairNodeIntegrations(nodesWithIdleStatus, integrations),
         edges: workflow.edges,
       });
       setCurrentWorkflowId(workflow.id);

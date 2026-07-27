@@ -22,15 +22,15 @@ export const Controls = ({ onReflow, canReflow = true }: ControlsProps) => {
   const [showMinimap, setShowMinimap] = useAtom(showMinimapAtom);
 
   const handleZoomIn = () => {
-    zoomIn();
+    void zoomIn();
   };
 
   const handleZoomOut = () => {
-    zoomOut();
+    void zoomOut();
   };
 
   const handleFitView = () => {
-    fitView({ padding: 0.2, duration: 300 });
+    void fitView({ padding: 0.2, duration: 300 });
   };
 
   const handleToggleMinimap = () => {

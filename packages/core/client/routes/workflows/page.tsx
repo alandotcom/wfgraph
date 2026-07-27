@@ -1,6 +1,12 @@
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { isNil, omitBy } from "es-toolkit";
 import { MoreHorizontalIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -22,7 +28,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CreateWorkflowDialog } from "@/components/workflow/create-workflow-dialog";
-import { api, type SavedWorkflow } from "@/lib/rpc-client";
+import { api, type SavedWorkflow, toSavedWorkflows } from "@/lib/rpc-client";
+import { orpcQuery } from "@/lib/rpc-query";
 import { getRelativeTime } from "@/shared/utils/time";
 
 type WorkflowExecutionStatus =
@@ -93,6 +100,19 @@ function formatDuration(duration: string | null): string {
   return `${(durationMs / 1000).toFixed(2)}s`;
 }
 
+/** One page of runs. The list is long enough that it is paged, not sliced. */
+const RUNS_PAGE_SIZE = 100;
+
+/**
+ * Newest first. A module-level function so TanStack can memoise the select by
+ * identity instead of deserialising and re-sorting on every render.
+ */
+function toSortedWorkflows(
+  payload: Parameters<typeof toSavedWorkflows>[0]
+): SavedWorkflow[] {
+  return toSavedWorkflows(payload).toSorted(byUpdatedDesc);
+}
+
 function byUpdatedDesc(a: SavedWorkflow, b: SavedWorkflow): number {
   return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
 }
@@ -115,9 +135,7 @@ function pluralize(count: number, singular: string, plural: string): string {
 
 export default function WorkflowsPage() {
   const navigate = useNavigate();
-  const [workflows, setWorkflows] = useState<SavedWorkflow[]>([]);
-  const [runs, setRuns] = useState<GlobalExecutionItem[]>([]);
-  const [runsCursor, setRunsCursor] = useState<RunsCursor | null>(null);
+  const queryClient = useQueryClient();
   const [selectedWorkflowIds, setSelectedWorkflowIds] = useState<Set<string>>(
     new Set()
   );
@@ -125,15 +143,20 @@ export default function WorkflowsPage() {
     Set<WorkflowExecutionStatus>
   >(new Set());
   const [showSelectedRunsOnly, setShowSelectedRunsOnly] = useState(false);
-  const [isLoadingWorkflows, setIsLoadingWorkflows] = useState(true);
-  const [isLoadingRuns, setIsLoadingRuns] = useState(true);
-  const [isLoadingMoreRuns, setIsLoadingMoreRuns] = useState(false);
   const [lifecycleAction, setLifecycleAction] = useState<
     "pause" | "resume" | "delete" | null
   >(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<ConfirmDeleteState | null>(
     null
+  );
+
+  const { data: workflows = [], isPending: isLoadingWorkflows } = useQuery(
+    orpcQuery.workflow.getAll.queryOptions({
+      input: {},
+      select: toSortedWorkflows,
+      meta: { errorMessage: "Failed to load workflows" },
+    })
   );
 
   const workflowRows = useMemo(
@@ -156,81 +179,70 @@ export default function WorkflowsPage() {
     [selectedIds, workflowRows]
   );
 
+  // Selection is pruned against the rows on screen rather than against the
+  // fetched list, so a workflow that disappears server-side stops counting
+  // without anyone writing to state during a fetch.
   const allSelected =
-    workflowRows.length > 0 && selectedWorkflowIds.size === workflowRows.length;
+    workflowRows.length > 0 &&
+    workflowRows.every((workflow) => selectedWorkflowIds.has(workflow.id));
 
   const hasSelectedRunsFilter =
     showSelectedRunsOnly && selectedActionableIds.length > 0;
 
-  const loadWorkflows = useCallback(async () => {
-    setIsLoadingWorkflows(true);
-    try {
-      const all = await api.workflow.getAll();
-      setWorkflows(all.toSorted(byUpdatedDesc));
-
-      setSelectedWorkflowIds((prev) => {
-        const existingIds = new Set(all.map((workflow) => workflow.id));
-        const next = new Set<string>();
-        for (const id of prev) {
-          if (existingIds.has(id)) {
-            next.add(id);
-          }
-        }
-        return next;
-      });
-    } catch (error) {
-      console.error("Failed to load workflows:", error);
-      toast.error("Failed to load workflows");
-    } finally {
-      setIsLoadingWorkflows(false);
-    }
-  }, []);
-
-  const loadRuns = useCallback(
-    async (cursor?: RunsCursor) => {
-      const selectedStatuses = Array.from(statusFilters);
-
-      if (cursor) {
-        setIsLoadingMoreRuns(true);
-      } else {
-        setIsLoadingRuns(true);
-      }
-
-      try {
-        const response = await api.workflow.getExecutionsGlobal({
+  // Both arrays are sorted before they reach the query key. Unsorted, the order
+  // in which the user ticked the checkboxes would be part of the cache key, and
+  // reordering the same selection would refetch.
+  const runsFilter = useMemo(
+    () =>
+      omitBy(
+        {
           workflowIds: hasSelectedRunsFilter
-            ? selectedActionableIds
+            ? selectedActionableIds.toSorted()
             : undefined,
-          statuses: selectedStatuses.length > 0 ? selectedStatuses : undefined,
-          limit: 100,
-          cursor,
-        });
-
-        setRuns((prev) =>
-          cursor ? [...prev, ...response.items] : response.items
-        );
-        setRunsCursor(response.nextCursor);
-      } catch (error) {
-        console.error("Failed to load workflow runs:", error);
-        toast.error("Failed to load workflow runs");
-      } finally {
-        if (cursor) {
-          setIsLoadingMoreRuns(false);
-        } else {
-          setIsLoadingRuns(false);
-        }
-      }
-    },
+          statuses:
+            statusFilters.size > 0
+              ? Array.from(statusFilters).toSorted()
+              : undefined,
+          limit: RUNS_PAGE_SIZE,
+        },
+        isNil
+      ),
     [hasSelectedRunsFilter, selectedActionableIds, statusFilters]
   );
 
-  useEffect(() => {
-    loadWorkflows();
-  }, [loadWorkflows]);
+  // The filters are part of the key, so changing one refetches by itself. That
+  // is the whole job of the effect this replaced.
+  const runsQuery = useInfiniteQuery(
+    orpcQuery.workflow.getExecutionsGlobal.infiniteOptions({
+      input: (cursor: RunsCursor | undefined) => ({ ...runsFilter, cursor }),
+      initialPageParam: undefined as RunsCursor | undefined,
+      getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+      meta: { errorMessage: "Failed to load workflow runs" },
+    })
+  );
 
-  useEffect(() => {
-    loadRuns();
-  }, [loadRuns]);
+  const runs: GlobalExecutionItem[] = useMemo(
+    () => runsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [runsQuery.data]
+  );
+  const isLoadingRuns = runsQuery.isPending;
+  const isLoadingMoreRuns = runsQuery.isFetchingNextPage;
+
+  const refreshWorkflows = useCallback(
+    () =>
+      queryClient.invalidateQueries({
+        queryKey: orpcQuery.workflow.getAll.key(),
+      }),
+    [queryClient]
+  );
+
+  const refreshRuns = useCallback(
+    () =>
+      queryClient.invalidateQueries({
+        queryKey: orpcQuery.workflow.getExecutionsGlobal.key(),
+      }),
+    [queryClient]
+  );
 
   const toggleSelectAll = (checked: boolean) => {
     if (!checked) {
@@ -306,14 +318,12 @@ export default function WorkflowsPage() {
             }
             return next;
           });
-
-          setWorkflows((prev) => prev.filter((w) => !deletedIds.has(w.id)));
         }
 
-        await loadWorkflows();
+        await refreshWorkflows();
 
         if (action === "delete") {
-          await loadRuns();
+          await void refreshRuns();
         }
       } catch (error) {
         console.error(`Failed to ${action} workflows:`, error);
@@ -322,7 +332,7 @@ export default function WorkflowsPage() {
         setLifecycleAction(null);
       }
     },
-    [loadRuns, loadWorkflows]
+    [refreshRuns, refreshWorkflows]
   );
 
   const openDeleteConfirmation = useCallback((workflowIds: string[]) => {
@@ -410,7 +420,7 @@ export default function WorkflowsPage() {
                   <button
                     className="text-left font-medium text-foreground hover:underline"
                     onClick={() => {
-                      navigate({
+                      void navigate({
                         to: "/workflows/$workflowId",
                         params: { workflowId: workflow.id },
                       });
@@ -454,19 +464,10 @@ export default function WorkflowsPage() {
                           try {
                             const nextMode =
                               workflow.mode === "test" ? "live" : "test";
-                            const updatedWorkflow = await api.workflow.update(
-                              workflow.id,
-                              {
-                                mode: nextMode,
-                              }
-                            );
-                            setWorkflows((current) =>
-                              current.map((item) =>
-                                item.id === updatedWorkflow.id
-                                  ? { ...item, ...updatedWorkflow }
-                                  : item
-                              )
-                            );
+                            await api.workflow.update(workflow.id, {
+                              mode: nextMode,
+                            });
+                            await refreshWorkflows();
                             toast.success(
                               nextMode === "test"
                                 ? "Switched workflow to Test mode"
@@ -487,7 +488,7 @@ export default function WorkflowsPage() {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => {
-                          runLifecycleAction(toggleAction, [workflow.id]);
+                          void runLifecycleAction(toggleAction, [workflow.id]);
                         }}
                       >
                         {toggleActionLabel}
@@ -563,7 +564,7 @@ export default function WorkflowsPage() {
               <td className="px-4 py-3 text-right">
                 <Button
                   onClick={() => {
-                    navigate({
+                    void navigate({
                       to: "/workflows/$workflowId",
                       params: { workflowId: run.workflowId },
                     });
@@ -619,7 +620,7 @@ export default function WorkflowsPage() {
               </div>
               <Button
                 disabled={isLoadingWorkflows || lifecycleAction !== null}
-                onClick={loadWorkflows}
+                onClick={refreshWorkflows}
                 size="sm"
                 type="button"
                 variant="outline"
@@ -636,7 +637,7 @@ export default function WorkflowsPage() {
                     lifecycleAction !== null
                   }
                   onClick={() => {
-                    runLifecycleAction("pause", selectedActionableIds);
+                    void runLifecycleAction("pause", selectedActionableIds);
                   }}
                   size="sm"
                   type="button"
@@ -650,7 +651,7 @@ export default function WorkflowsPage() {
                     lifecycleAction !== null
                   }
                   onClick={() => {
-                    runLifecycleAction("resume", selectedActionableIds);
+                    void runLifecycleAction("resume", selectedActionableIds);
                   }}
                   size="sm"
                   type="button"
@@ -693,7 +694,7 @@ export default function WorkflowsPage() {
               <Button
                 disabled={isLoadingRuns || isLoadingMoreRuns}
                 onClick={() => {
-                  loadRuns();
+                  void refreshRuns();
                 }}
                 size="sm"
                 type="button"
@@ -746,14 +747,12 @@ export default function WorkflowsPage() {
               {renderRunsContent()}
             </div>
 
-            {runsCursor ? (
+            {runsQuery.hasNextPage ? (
               <div className="border-t px-4 py-3">
                 <Button
                   disabled={isLoadingMoreRuns}
                   onClick={() => {
-                    if (runsCursor) {
-                      loadRuns(runsCursor);
-                    }
+                    void runsQuery.fetchNextPage();
                   }}
                   size="sm"
                   type="button"
@@ -790,11 +789,12 @@ export default function WorkflowsPage() {
                   return;
                 }
 
-                runLifecycleAction("delete", confirmDelete.workflowIds).finally(
-                  () => {
-                    setConfirmDelete(null);
-                  }
-                );
+                void runLifecycleAction(
+                  "delete",
+                  confirmDelete.workflowIds
+                ).finally(() => {
+                  setConfirmDelete(null);
+                });
               }}
             >
               Delete
@@ -805,7 +805,7 @@ export default function WorkflowsPage() {
       <CreateWorkflowDialog
         existingWorkflowNames={workflows.map((workflow) => workflow.name)}
         onCreated={async (createdWorkflow) => {
-          await Promise.all([loadWorkflows(), loadRuns()]);
+          await Promise.all([refreshWorkflows(), refreshRuns()]);
           await navigate({
             to: "/workflows/$workflowId",
             params: { workflowId: createdWorkflow.id },

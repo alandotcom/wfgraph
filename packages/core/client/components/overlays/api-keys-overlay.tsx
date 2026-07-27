@@ -1,11 +1,12 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Key, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { type ApiKey, api } from "@/lib/rpc-client";
+import { orpcQuery } from "@/lib/rpc-query";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -27,7 +28,7 @@ function formatDate(dateString: string): string {
  * Lives at module scope because it reads nothing from any component.
  */
 function copyToClipboard(text: string) {
-  navigator.clipboard.writeText(text);
+  void navigator.clipboard.writeText(text);
   toast.success("Copied to clipboard");
 }
 
@@ -40,34 +41,36 @@ function CreateApiKeyOverlay({
   onCreated,
 }: {
   overlayId: string;
-  onCreated: (key: ApiKey) => void;
+  // The plaintext key, which the server returns exactly once.
+  onCreated: (key: string) => void;
 }) {
   const { pop } = useOverlay();
+  const queryClient = useQueryClient();
   const [keyName, setKeyName] = useState("");
-  const [creating, setCreating] = useState(false);
 
-  const handleCreate = async () => {
-    setCreating(true);
-    try {
-      const newKey = await api.apiKey.create({
-        name: keyName || null,
-      });
-      onCreated(newKey);
-      toast.success("API key created successfully");
-      pop();
-    } catch (error) {
-      console.error("Failed to create API key:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to create API key"
-      );
-    } finally {
-      setCreating(false);
-    }
-  };
+  const createKey = useMutation(
+    orpcQuery.apiKey.create.mutationOptions({
+      onSuccess: async (newKey) => {
+        onCreated(newKey.key);
+        toast.success("API key created successfully");
+        await queryClient.invalidateQueries({
+          queryKey: orpcQuery.apiKey.key(),
+        });
+        pop();
+      },
+      meta: { errorMessage: "Failed to create API key" },
+    })
+  );
 
   return (
     <Overlay
-      actions={[{ label: "Create", onClick: handleCreate, loading: creating }]}
+      actions={[
+        {
+          label: "Create",
+          onClick: () => createKey.mutate({ name: keyName || null }),
+          loading: createKey.isPending,
+        },
+      ]}
       overlayId={overlayId}
       title="Create API Key"
     >
@@ -92,47 +95,31 @@ function CreateApiKeyOverlay({
  */
 export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
   const { push, closeAll } = useOverlay();
-  const [loading, setLoading] = useState(true);
-  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const queryClient = useQueryClient();
+  const { data: apiKeys = [], isPending } = useQuery({
+    ...orpcQuery.apiKey.getAll.queryOptions({ input: {} }),
+    meta: { errorMessage: "Failed to load API keys" },
+  });
+
+  // The one moment the plaintext key exists on the client. It is UI state, not
+  // server state: the list query will never return it again.
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
 
-  const loadApiKeys = useCallback(async () => {
-    setLoading(true);
-    try {
-      const keys = await api.apiKey.getAll({});
-      setApiKeys(keys);
-    } catch (error) {
-      console.error("Failed to load API keys:", error);
-      toast.error("Failed to load API keys");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const deleteKey = useMutation(
+    orpcQuery.apiKey.delete.mutationOptions({
+      onSuccess: async () => {
+        toast.success("API key deleted");
+        await queryClient.invalidateQueries({
+          queryKey: orpcQuery.apiKey.key(),
+        });
+      },
+      meta: { errorMessage: "Failed to delete API key" },
+    })
+  );
 
-  useEffect(() => {
-    loadApiKeys();
-  }, [loadApiKeys]);
-
-  const handleKeyCreated = (newKey: ApiKey) => {
-    setNewlyCreatedKey(newKey.key ?? null);
-    setApiKeys((prev) => [newKey, ...prev]);
-  };
-
-  const handleDelete = async (keyId: string) => {
-    setDeleting(keyId);
-    try {
-      await api.apiKey.delete({ keyId });
-
-      setApiKeys((prev) => prev.filter((k) => k.id !== keyId));
-      toast.success("API key deleted");
-    } catch (error) {
-      console.error("Failed to delete API key:", error);
-      toast.error("Failed to delete API key");
-    } finally {
-      setDeleting(null);
-    }
-  };
+  const deletingId = deleteKey.isPending
+    ? deleteKey.variables?.keyId
+    : undefined;
 
   const openDeleteConfirm = (keyId: string) => {
     push(ConfirmOverlay, {
@@ -142,7 +129,7 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
       confirmLabel: "Delete",
       confirmVariant: "destructive" as const,
       destructive: true,
-      onConfirm: () => handleDelete(keyId),
+      onConfirm: () => deleteKey.mutate({ keyId }),
     });
   };
 
@@ -153,7 +140,7 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
           label: "New API Key",
           variant: "outline",
           onClick: () =>
-            push(CreateApiKeyOverlay, { onCreated: handleKeyCreated }),
+            push(CreateApiKeyOverlay, { onCreated: setNewlyCreatedKey }),
         },
         { label: "Done", onClick: closeAll },
       ]}
@@ -164,7 +151,7 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
         Manage API keys for webhook authentication
       </p>
 
-      {loading ? (
+      {isPending ? (
         <div className="flex items-center justify-center py-8">
           <Spinner />
         </div>
@@ -231,12 +218,12 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
                     </p>
                   </div>
                   <Button
-                    disabled={deleting === apiKey.id}
+                    disabled={deletingId === apiKey.id}
                     onClick={() => openDeleteConfirm(apiKey.id)}
                     size="sm"
                     variant="ghost"
                   >
-                    {deleting === apiKey.id ? (
+                    {deletingId === apiKey.id ? (
                       <Spinner className="size-4" />
                     ) : (
                       <Trash2 className="size-4 text-destructive" />

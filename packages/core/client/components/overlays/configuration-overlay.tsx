@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   Eraser,
@@ -9,7 +8,7 @@ import {
   Settings2,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
 import { SmartOverlayHeader } from "@/components/overlays/overlay-header";
@@ -23,7 +22,6 @@ import type { NodeConfigPatch } from "@/components/workflow/config/node-config-p
 import { TriggerConfig } from "@/components/workflow/config/trigger-config";
 import { WorkflowRuns } from "@/components/workflow/workflow-runs";
 import { api } from "@/lib/rpc-client";
-import { integrationsQueryOptions } from "@/lib/rpc-query";
 import {
   clearNodeStatusesAtom,
   clearWorkflowAtom,
@@ -80,10 +78,6 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
-
-  const { data: globalIntegrations = [] } = useQuery(
-    integrationsQueryOptions()
-  );
 
   // Config always merges onto the node as the store has it right now, so a
   // write that lands while an earlier render is still in scope does not carry

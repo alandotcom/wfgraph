@@ -102,9 +102,9 @@ export function repairNodeIntegration<T extends WorkflowNode>(
  * every node was already correct.
  */
 export function repairNodeIntegrations<T extends WorkflowNode>(
-  nodes: readonly T[],
+  nodes: T[],
   integrations: readonly IntegrationLike[]
-): readonly T[] {
+): T[] {
   let changed = false;
   const repaired = nodes.map((node) => {
     const next = repairNodeIntegration(node, integrations);

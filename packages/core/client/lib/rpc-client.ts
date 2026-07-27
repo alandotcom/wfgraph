@@ -226,9 +226,9 @@ function toGraphPayload(input: {
 }
 
 export type Integration = RpcOutput<typeof rpc.integration.create>;
-export type ApiKey = RpcOutput<typeof rpc.apiKey.getAll>[number] & {
-  key?: string;
-};
+// A listed key never carries its plaintext; only the one just created does.
+// The contract already says so, so nothing here widens the two into one shape.
+export type ApiKey = RpcOutput<typeof rpc.apiKey.getAll>[number];
 
 export const workflowApi = {
   getAll: (): Promise<SavedWorkflow[]> =>

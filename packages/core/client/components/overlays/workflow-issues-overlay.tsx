@@ -1,5 +1,4 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useSetAtom } from "jotai";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IntegrationIcon } from "@/components/ui/integration-icon";

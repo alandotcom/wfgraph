@@ -489,7 +489,7 @@ export function TriggerConfig({
 
   const handleCopyWebhookUrl = () => {
     if (webhookUrl) {
-      navigator.clipboard.writeText(webhookUrl);
+      void navigator.clipboard.writeText(webhookUrl);
       toast.success("Webhook URL copied to clipboard");
     }
   };

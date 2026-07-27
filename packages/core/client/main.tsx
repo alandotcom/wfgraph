@@ -17,7 +17,7 @@ declare global {
 }
 
 if (process.env.NODE_ENV === "development") {
-  import("react-grab");
+  void import("react-grab");
 }
 
 const isResizeObserverLoopMessage = (message: string | undefined): boolean =>

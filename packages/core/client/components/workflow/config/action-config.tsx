@@ -1,5 +1,4 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useAtomValue, useSetAtom } from "jotai";
 import { HelpCircle, Plus, Settings, Zap } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { ConfigureConnectionOverlay } from "@/components/overlays/add-connection-overlay";
@@ -975,7 +974,7 @@ export function ActionConfig({
       push(ConfigureConnectionOverlay, {
         type: integrationType,
         onSuccess: (integrationId: string) => {
-          queryClient.invalidateQueries({
+          void queryClient.invalidateQueries({
             queryKey: orpcQuery.integration.key(),
           });
           onUpdateConfig({ integrationId });
