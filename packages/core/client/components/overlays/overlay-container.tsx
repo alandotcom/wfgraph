@@ -56,30 +56,6 @@ const containerVariants: Variants = {
 };
 
 /**
- * Variants for drawer container
- */
-const _drawerContainerVariants: Variants = {
-  hidden: {
-    y: "100%",
-    opacity: 0.5,
-  },
-  visible: {
-    y: 0,
-    opacity: 1,
-    transition: drawerSpring,
-  },
-  exit: {
-    y: "100%",
-    opacity: 0.5,
-    transition: {
-      type: "spring",
-      stiffness: 500,
-      damping: 40,
-    },
-  },
-};
-
-/**
  * Get x position for overlay item based on its position relative to current
  */
 function getOverlayXPosition(

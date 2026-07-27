@@ -15,14 +15,37 @@
     "no-console": "off",
     "no-var": "error",
     "prefer-const": "error",
-    // A leading underscore marks an identifier this codebase deliberately does not
-    // consume: unused callback parameters (_context), the dev hot-reload singletons
-    // declared on globalThis (__rovaDatabaseState and friends, see AGENTS.md), and the
-    // `_integrationType` marker every plugin step exports for the step registry to read
-    // across the plugins/core boundary. Obeying this rule would make no-unused-vars fire
-    // on the same names and would break a documented cross-package contract. Oxlint files
-    // it under the `suspicious` category, which this config enables wholesale.
-    "no-underscore-dangle": "off",
+    // A leading underscore marks a name this codebase keeps out of ordinary use.
+    // Every such name is spelled out here, so introducing another one is a visible
+    // decision and an accidental `_foo` is an error.
+    //
+    // `_context` and `_workflowComplete` are engine-internal fields on a step's
+    // input record; `withStepLogging` reads them and strips them before the input
+    // reaches the run log. `_g` and the key constants beside it are the
+    // module-private handles the shared registries use to reach one instance across
+    // bundles. The `__rova*` names and `__resizeObserverPatched` are the dev
+    // hot-reload singletons on globalThis described in AGENTS.md. `_id` is the row
+    // identity the key/value config editor holds outside the JSON it emits.
+    "no-underscore-dangle": [
+      "error",
+      {
+        "allow": [
+          "_context",
+          "_workflowComplete",
+          "_g",
+          "_intKey",
+          "_rtKey",
+          "_cacheKey",
+          "_uiKey",
+          "_id",
+          "__rovaDatabaseState",
+          "__rovaEncryptionState",
+          "__rovaInngestState",
+          "__rovaServerRuntimeState",
+          "__resizeObserverPatched"
+        ]
+      }
+    ],
     // typescript-eslint's own documentation for this rule says to prefer tsconfig's
     // noImplicitReturns, because that is driven by the compiler's control-flow analysis
     // and covers more ground. Here the rule reports 69 sites where the compiler reports
