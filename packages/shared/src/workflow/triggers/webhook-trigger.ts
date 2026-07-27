@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type {
   TriggerEvaluation,
   TriggerRoutingDecision,
@@ -35,9 +36,12 @@ function mapWebhookDecisionToTriggerDecision(
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+/**
+ * The stored mock payload has to be a JSON object to stand in for a request
+ * body, so anything else the user typed (an array, a bare string, `null`) is
+ * treated as absent.
+ */
+const mockRequestSchema = z.record(z.string(), z.unknown());
 
 export function parseWebhookMockInput(
   config: Record<string, unknown> | undefined
@@ -48,9 +52,9 @@ export function parseWebhookMockInput(
   }
 
   try {
-    const parsed = JSON.parse(mockInputRaw);
-    if (isRecord(parsed)) {
-      return parsed;
+    const parsed = mockRequestSchema.safeParse(JSON.parse(mockInputRaw));
+    if (parsed.success) {
+      return parsed.data;
     }
   } catch {
     return;
