@@ -1,8 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
-import { dirname, extname, join, normalize, posix } from "node:path";
-import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
-import { computeMountPrefix, createApiApp } from "@/backend/app";
+import { createApiApp } from "@/backend/api-app";
 import {
   configureDatabaseRuntime,
   type DatabaseRuntimeConfig,
@@ -15,6 +12,14 @@ import {
   type MigrationsRuntimeOptions,
   runMigrations,
 } from "@/backend/lib/db/migrations";
+import {
+  resolveClientDir,
+  serveClientAsset,
+} from "@/backend/lib/http/client-assets";
+import {
+  normalizeBasePath,
+  toMountRelativePath,
+} from "@/backend/lib/http/mount-path";
 import {
   configureInngestClient,
   configureInngestServe,
@@ -68,6 +73,13 @@ export type PluginConfig = {
 };
 
 export type RovaAppOptions = {
+  /**
+   * Absolute path the host mounted Rova at, for example "/workflows". Defaults
+   * to "/". Rova builds its API prefix, its asset URLs, and the SPA's
+   * `<base href>` from this, so a host that mounts under a sub-path says so
+   * once here instead of Rova guessing per request.
+   */
+  basePath?: string;
   logger?: RovaLogger;
   configureLogging?: boolean;
   database: DatabaseRuntimeConfig;
@@ -87,121 +99,18 @@ export type RovaAppOptions = {
 };
 
 export type RovaApp = {
-  app: Hono;
+  /**
+   * The whole mounted app as one fetch handler. Bun, Deno, Cloudflare Workers,
+   * and Node 18+ all consume this directly; `@rova/core/node` translates it for
+   * hosts that speak Node's `IncomingMessage`/`ServerResponse` instead.
+   */
+  fetch: (request: Request) => Promise<Response>;
   dispose: () => void;
 };
 
-const CONTENT_TYPE_MAP: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".ico": "image/x-icon",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".otf": "font/otf",
-  ".webp": "image/webp",
-  ".avif": "image/avif",
-  ".txt": "text/plain; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
-};
-
-const SAFE_PATH_RE = /^[a-zA-Z0-9/_.-]*$/;
-
-function getContentType(filePath: string): string {
-  return (
-    CONTENT_TYPE_MAP[extname(filePath).toLowerCase()] ??
-    "application/octet-stream"
-  );
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    const s = await stat(filePath);
-    return s.isFile();
-  } catch {
-    return false;
-  }
-}
-
-async function resolveClientDir(): Promise<string> {
-  const currentDir = dirname(fileURLToPath(import.meta.url));
-
-  // Built dist layout: dist/hono.mjs → dist/client/
-  const distClient = join(currentDir, "client");
-  if (await fileExists(join(distClient, "index.html"))) {
-    return distClient;
-  }
-
-  // Source dev layout: src/hono.ts → ../dist/client/ (after build:client)
-  const devClient = join(currentDir, "../dist/client");
-  if (await fileExists(join(devClient, "index.html"))) {
-    return devClient;
-  }
-
-  return distClient;
-}
-
-function resolveClientAssetPath(
-  clientDir: string,
-  pathname: string
-): string | null {
-  if (pathname === "/") {
-    return null;
-  }
-
-  let decoded = pathname;
-  try {
-    decoded = decodeURIComponent(pathname);
-  } catch {
-    return null;
-  }
-
-  const relativePath = decoded.startsWith("/") ? decoded.slice(1) : decoded;
-  if (!relativePath) {
-    return null;
-  }
-
-  const normalized = posix.normalize(relativePath);
-  if (
-    normalized === "." ||
-    normalized.startsWith("../") ||
-    normalized.includes("/../")
-  ) {
-    return null;
-  }
-
-  const resolved = join(clientDir, normalized);
-  const resolvedNormalized = normalize(resolved);
-  const clientDirNormalized = normalize(clientDir);
-  if (!resolvedNormalized.startsWith(clientDirNormalized)) {
-    return null;
-  }
-
-  return resolved;
-}
-
-function sanitizeMountPrefix(prefix: string): string {
-  if (!(prefix && SAFE_PATH_RE.test(prefix))) {
-    return "";
-  }
-  return prefix;
-}
-
-const SPA_PATHS = new Set(["/", "/workflows"]);
-
-function isSpaPath(pathname: string): boolean {
-  return SPA_PATHS.has(pathname) || pathname.startsWith("/workflows/");
-}
-
 export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
+  const basePath = normalizeBasePath(options.basePath ?? "/");
+
   if (!options.database.url?.trim()) {
     throw new Error("createRovaApp requires database.url");
   }
@@ -250,7 +159,7 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
     migrationsDir: options.migrations?.migrationsDir,
   });
 
-  const apiApp = createApiApp({ basePath: "/api" });
+  const apiApp = createApiApp({ basePath: `${basePath}/api` });
   const fullApp = new Hono();
 
   fullApp.route("/", apiApp);
@@ -259,38 +168,12 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
     const clientDir = await resolveClientDir();
 
     fullApp.get("/*", async (c) => {
-      const pathname = c.req.path;
-
-      // Try to serve a static asset (non-SPA paths only)
-      if (!isSpaPath(pathname)) {
-        const assetPath = resolveClientAssetPath(clientDir, pathname);
-        if (assetPath && (await fileExists(assetPath))) {
-          const content = await readFile(assetPath);
-          return new Response(content, {
-            headers: { "content-type": getContentType(assetPath) },
-          });
-        }
-
-        // Non-SPA path with no matching asset -> 404
+      const pathname = toMountRelativePath(c.req.path, basePath);
+      if (pathname === null) {
         return c.json({ error: "Not found" }, 404);
       }
 
-      // SPA fallback — serve index.html with injected base path
-      const indexPath = join(clientDir, "index.html");
-      if (!(await fileExists(indexPath))) {
-        return c.json(
-          { error: "Client bundle not found. Build the library first." },
-          503
-        );
-      }
-
-      const html = await readFile(indexPath, "utf-8");
-      const basePath = sanitizeMountPrefix(computeMountPrefix(c));
-      const rewritten = html.replace(
-        '<base href="/">',
-        `<base href="${basePath}/">`
-      );
-      return c.html(rewritten);
+      return await serveClientAsset({ clientDir, basePath, pathname });
     });
   }
 
@@ -306,5 +189,8 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
     registeredActionIds.clear();
   };
 
-  return { app: fullApp, dispose };
+  return {
+    fetch: async (request) => await fullApp.fetch(request),
+    dispose,
+  };
 }

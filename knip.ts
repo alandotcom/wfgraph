@@ -95,7 +95,7 @@ const config: KnipConfig = {
     },
 
     "packages/core": {
-      // src/index.ts and src/hono.ts come from the tsdown plugin, which reads
+      // src/index.ts and src/app.ts come from the tsdown plugin, which reads
       // them out of tsdown.config.ts. The SPA is the second entry tree, rooted
       // at the script tag in client/index.html.
       entry: ["client/main.tsx"],

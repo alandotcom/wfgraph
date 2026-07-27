@@ -22,6 +22,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
+import { getBasePath } from "@/lib/base-path";
 import { getRuntimeTriggers } from "@/lib/runtime-extensions";
 import type { JsonObject } from "@/shared/types/json";
 import { cn } from "@/shared/utils";
@@ -223,8 +224,11 @@ export function TriggerConfig({
     [scheduleExpression, scheduleCron]
   );
 
+  // The user copies this into whatever calls the trigger, so it has to name the
+  // mount point too. getBasePath() reads it back off the <base href> the server
+  // injected.
   const webhookUrl = workflowId
-    ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/workflows/${workflowId}/webhook`
+    ? `${typeof window === "undefined" ? "" : window.location.origin}${getBasePath()}/api/workflows/${workflowId}/webhook`
     : "";
 
   const eventPath = readConfigString(config, "webhookEventPath");

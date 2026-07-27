@@ -1,11 +1,11 @@
 import { defineConfig } from "tsdown";
 
 // Builds the publishable @rova/core library: `src/index.ts` is the small
-// createAction/createTrigger surface, `src/hono.ts` is the mountable server app.
-// Both are named in the "exports" map in package.json, so the emitted file names
-// here have to keep matching that map.
+// createAction/createTrigger surface, `src/app.ts` is the mountable fetch
+// handler. Both are named in the "exports" map in package.json, so the emitted
+// file names here have to keep matching that map.
 export default defineConfig({
-  entry: ["src/index.ts", "src/hono.ts"],
+  entry: ["src/index.ts", "src/app.ts"],
   format: "esm",
   // tsdown calls this "platform" where bunup called it "target". It selects
   // Node-flavoured resolution and externalization, which is what a server
@@ -31,7 +31,7 @@ export default defineConfig({
   //
   // One other build step deposits its output inside this same dist/, because the
   // shipped server resolves it relative to the compiled module: the SPA bundle at
-  // dist/client, written by scripts/build-client.ts and read back in src/hono.ts
+  // dist/client, written by scripts/build-client.ts and read back in src/app.ts
   // and src/server.ts. A bare `clean: true` deletes the whole outDir, so running
   // `tsdown` on its own wiped that out and only the root "build" script's step
   // ordering hid the damage.

@@ -1,6 +1,5 @@
-import { zValidator } from "@hono/zod-validator";
 import { RPCHandler } from "@orpc/server/fetch";
-import { type Context, Hono } from "hono";
+import { Hono } from "hono";
 import { serve as serveInngest } from "inngest/hono";
 import { z } from "zod";
 import {
@@ -11,7 +10,7 @@ import { getInngestFunctions } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
 import type { RpcContext } from "@/backend/rpc/context";
 import {
-  openApiReferenceHandler,
+  createOpenApiReferenceHandler,
   openApiRestHandler,
 } from "@/backend/rpc/openapi";
 import { rpcRouter } from "@/backend/rpc/router";
@@ -84,6 +83,35 @@ function truncateTextForLogs(text: string): {
   };
 }
 
+/**
+ * Read a request body as JSON and validate it against a schema.
+ *
+ * Rova parses untrusted input at the route boundary, which is what the project
+ * asks for anyway, so no validator middleware sits between the request and the
+ * service. A body that is not JSON and a body that is the wrong shape both come
+ * back as a message the caller can act on.
+ */
+async function parseJsonBody<TSchema extends z.ZodType>(
+  request: Request,
+  schema: TSchema
+): Promise<
+  { ok: true; data: z.infer<TSchema> } | { ok: false; error: string }
+> {
+  let raw: unknown;
+  try {
+    raw = await request.json();
+  } catch {
+    return { ok: false, error: "Request body must be valid JSON" };
+  }
+
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: z.prettifyError(parsed.error) };
+  }
+
+  return { ok: true, data: parsed.data };
+}
+
 function safeParseJson(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -146,19 +174,18 @@ async function getResponseLogBody(res: Response): Promise<unknown> {
   };
 }
 
-export function computeMountPrefix(c: Context): string {
-  const fullPath = new URL(c.req.url).pathname;
-  const localPath = c.req.path;
-  return fullPath.substring(0, fullPath.length - localPath.length);
-}
-
 export type CreateApiAppOptions = {
-  basePath?: string;
+  /**
+   * Absolute path the API is reachable at, leading slash and no trailing slash,
+   * for example "/api" or "/rova/api". The host tells us where it mounted Rova,
+   * so nothing here has to deduce it from the request.
+   */
+  basePath: `/${string}`;
 };
 
-export function createApiApp(options?: CreateApiAppOptions) {
-  const staticBasePath = options?.basePath;
-  const app = staticBasePath ? new Hono().basePath(staticBasePath) : new Hono();
+export function createApiApp(options: CreateApiAppOptions) {
+  const { basePath } = options;
+  const app = new Hono().basePath(basePath);
   const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
 
   app.use("*", async (c, next) => {
@@ -234,20 +261,20 @@ export function createApiApp(options?: CreateApiAppOptions) {
     return c.json({ error: "Internal Server Error" }, 500);
   });
 
-  function resolvePrefix(c: Context, suffix: string): `/${string}` {
-    const prefix = staticBasePath
-      ? `${staticBasePath}${suffix}`
-      : `${computeMountPrefix(c)}${suffix}`;
-
-    // Prefixes always start with "/" (basePath or mount-point derived).
-    // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- runtime-guaranteed "/"
-    return prefix as `/${string}`;
+  // oRPC needs to know the absolute path its handlers are mounted at so it can
+  // strip that prefix before matching a procedure.
+  function resolvePrefix(suffix: string): `/${string}` {
+    return `${basePath}${suffix}`;
   }
+
+  const openApiReferenceHandler = createOpenApiReferenceHandler(
+    resolvePrefix("/rest")
+  );
 
   const routes = app
     .use("/rpc/*", async (c, next) => {
       const { matched, response } = await rpcHandler.handle(c.req.raw, {
-        prefix: resolvePrefix(c, "/rpc"),
+        prefix: resolvePrefix("/rpc"),
         context: { headers: c.req.raw.headers },
       });
 
@@ -272,7 +299,7 @@ export function createApiApp(options?: CreateApiAppOptions) {
     })
     .use("/rest/*", async (c, next) => {
       const { matched, response } = await openApiRestHandler.handle(c.req.raw, {
-        prefix: resolvePrefix(c, "/rest"),
+        prefix: resolvePrefix("/rest"),
         context: { headers: c.req.raw.headers },
       });
 
@@ -284,7 +311,7 @@ export function createApiApp(options?: CreateApiAppOptions) {
       return undefined;
     })
     .get("/openapi.json", async (c) => {
-      const prefix = resolvePrefix(c, "");
+      const prefix = resolvePrefix("");
       const { matched, response } = await openApiReferenceHandler.handle(
         c.req.raw,
         { prefix, context: { headers: c.req.raw.headers } }
@@ -297,7 +324,7 @@ export function createApiApp(options?: CreateApiAppOptions) {
       return c.newResponse(response.body, response);
     })
     .get("/docs", async (c) => {
-      const prefix = resolvePrefix(c, "");
+      const prefix = resolvePrefix("");
       const { matched, response } = await openApiReferenceHandler.handle(
         c.req.raw,
         { prefix, context: { headers: c.req.raw.headers } }
@@ -330,28 +357,40 @@ export function createApiApp(options?: CreateApiAppOptions) {
       return await inngestHandler(c);
     })
     .options("/workflows/:workflowId/webhook", () => optionsWorkflowWebhook())
-    .post(
-      "/workflows/:workflowId/webhook",
-      zValidator("param", workflowIdParamsSchema),
-      zValidator("json", webhookBodySchema),
-      (c) =>
-        postWorkflowWebhook({
-          workflowId: c.req.valid("param").workflowId,
-          authHeader: c.req.header("Authorization") ?? null,
-          body: c.req.valid("json"),
-        })
-    )
-    .post(
-      "/workflows/hooks/:token/resume",
-      zValidator("param", tokenParamsSchema),
-      zValidator("json", resumeBodySchema),
-      (c) =>
-        postWorkflowResume(
-          c.req.valid("param").token,
-          c.req.valid("json"),
-          c.req.header("Authorization") ?? null
-        )
-    );
+    .post("/workflows/:workflowId/webhook", async (c) => {
+      const params = workflowIdParamsSchema.safeParse(c.req.param());
+      if (!params.success) {
+        return c.json({ error: z.prettifyError(params.error) }, 400);
+      }
+
+      const body = await parseJsonBody(c.req.raw, webhookBodySchema);
+      if (!body.ok) {
+        return c.json({ error: body.error }, 400);
+      }
+
+      return await postWorkflowWebhook({
+        workflowId: params.data.workflowId,
+        authHeader: c.req.header("Authorization") ?? null,
+        body: body.data,
+      });
+    })
+    .post("/workflows/hooks/:token/resume", async (c) => {
+      const params = tokenParamsSchema.safeParse(c.req.param());
+      if (!params.success) {
+        return c.json({ error: z.prettifyError(params.error) }, 400);
+      }
+
+      const body = await parseJsonBody(c.req.raw, resumeBodySchema);
+      if (!body.ok) {
+        return c.json({ error: body.error }, 400);
+      }
+
+      return await postWorkflowResume(
+        params.data.token,
+        body.data,
+        c.req.header("Authorization") ?? null
+      );
+    });
 
   routes.notFound((c) => c.json({ error: "Not found" }, 404));
 

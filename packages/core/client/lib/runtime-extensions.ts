@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getBasePath } from "@/lib/base-path";
 import {
   type ActionConfigField,
   clearRuntimeActions,
@@ -146,7 +147,11 @@ export function hydrateRuntimeExtensionsFromApi(): Promise<void> {
 
   hydrationPromise = (async () => {
     try {
-      const response = await fetch("/api/extensions", {
+      // Root-relative, so it has to carry the mount prefix itself: a URL
+      // starting with "/" ignores <base href>, which only governs relative
+      // references. Without this the editor silently comes up with no
+      // host-defined actions when Rova is mounted under a sub-path.
+      const response = await fetch(`${getBasePath()}/api/extensions`, {
         method: "GET",
         headers: {
           accept: "application/json",

@@ -6,7 +6,7 @@ A visual workflow automation platform with a node-based editor, typed API routes
 
 The backend is a Hono API that runs on any JavaScript runtime (Node.js, Bun, Deno). Local development uses Bun as the dev server. The frontend is a standalone React SPA.
 
-- API: Hono (`packages/core/src/backend/app.ts`)
+- API: Hono (`packages/core/src/backend/api-app.ts`)
 - Database: PostgreSQL via postgres.js + Drizzle ORM
 - Async execution/events: Inngest
 - Frontend: React SPA + TanStack Router (`packages/core/client/main.tsx`, `packages/core/client/router.tsx`)
@@ -106,12 +106,12 @@ App URL: `http://localhost:4017`
 
 ## Embedding
 
-Rova Workflow Builder is an embeddable Hono app. Import `@rova/core/hono` to get a mountable sub-application, and `@rova/core` for the `createAction`/`createTrigger` helpers. Works on Node.js, Bun, or any runtime that supports Hono.
+Rova Workflow Builder mounts into a host app as a single fetch handler. Import `@rova/core/app` for the `createRovaApp` factory, and `@rova/core` for the `createAction`/`createTrigger` helpers. The handler has the shape `(request: Request) => Promise<Response>`, so Bun, Deno, Cloudflare Workers, and Node 18+ consume it directly.
 
 ```ts
 import { z } from "zod";
 import { createAction, createTrigger } from "@rova/core";
-import { createRovaApp } from "@rova/core/hono";
+import { createRovaApp } from "@rova/core/app";
 
 const action = createAction({
   id: "custom/send-message",
@@ -164,16 +164,16 @@ const rova = await createRovaApp({
   triggers: [trigger],
 });
 
-// rova.app is a full Hono app with API at /api/* and optional SPA at /*
-Bun.serve({ port: 3000, fetch: rova.app.fetch });
+// rova.fetch answers the API under /api/* and the SPA under /*
+Bun.serve({ port: 3000, fetch: rova.fetch });
 ```
 
 ### Package exports
 
 - `@rova/core` -- `createAction`, `createTrigger`, and related types.
-- `@rova/core/hono` -- `createRovaApp` factory, `RovaAppOptions`, `RovaApp`, and re-exported config types.
+- `@rova/core/app` -- `createRovaApp` factory, `RovaAppOptions`, `RovaApp`, and re-exported config types.
 
-Both entrypoints run anywhere Hono runs. `startRovaServer`, which wraps `createRovaApp` in a `Bun.serve` call, is this repo's own dev entrypoint and is not published: it lives at `packages/core/src/server.ts` and only `server.ts` and `examples/library-trigger.ts` reach it.
+Both entrypoints run on any runtime with `Request` and `Response`. `startRovaServer`, which wraps `createRovaApp` in a `Bun.serve` call, is this repo's own dev entrypoint and is not published: it lives at `packages/core/src/server.ts` and only `server.ts` and `examples/library-trigger.ts` reach it.
 
 ### Linking for development
 
@@ -193,6 +193,7 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
 
 | Option                     | Required | Description                                           |
 | -------------------------- | -------- | ----------------------------------------------------- |
+| `basePath`                 | No       | Path the host mounted Rova at (default `/`)           |
 | `database.url`             | Yes      | PostgreSQL connection string                          |
 | `inngest.client.id`        | Yes      | Inngest application ID                                |
 | `inngest.client.*`         | No       | Inngest client config (baseUrl, eventKey, env, isDev) |
@@ -209,8 +210,9 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
 
 - The consumer is responsible for running Inngest (either self-hosted or cloud). Rova does not spawn `inngest-cli`.
 - For local development in this repo, `bun run dev` starts Inngest CLI as a separate process.
-- `createRovaApp` returns `{ app, dispose }`. Call `dispose()` to unregister runtime triggers/actions.
-- `rova.app` is a complete Hono app with API routes at `/api/*` and SPA serving at `/*`. Pass `rova.app.fetch` directly to your server.
+- `createRovaApp` returns `{ fetch, dispose }`. Call `dispose()` to unregister runtime triggers/actions.
+- Mounting under a sub-path means passing `basePath`. Rova builds its API prefix, the SPA's `<base href>`, and every asset URL from it, so the host states the mount point once rather than Rova deducing it per request. A host that mounts at `/workflows` and omits `basePath` gets a client that requests its assets from the root.
+- `rova.fetch` answers API routes under `/api/*` and serves the SPA under `/*`. Hand it straight to `Bun.serve`, `Deno.serve`, or a Workers `export default`.
 - Action extensions are strict-schema actions via `createAction(...)`:
   - `schema` validates resolved action input at runtime (Zod or Standard Schema-compatible validators).
   - `execute({ payload, context })` receives typed payload validated by `schema`.

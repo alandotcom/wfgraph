@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { HTMLBundle } from "bun";
 import { serve as bunServe } from "bun";
-import { createApiApp } from "@/backend/app";
+import { createApiApp } from "@/backend/api-app";
 import {
   configureDatabaseRuntime,
   type DatabaseRuntimeConfig,
