@@ -32,6 +32,14 @@ jobs:
       - name: Run type check
         run: bun run typecheck
 
+      # knip reads the same source tsc does and reports what nothing reaches:
+      # unused files, exports and dependencies, plus imports of packages that no
+      # manifest declares. It runs through knip-bun so packages/core's Drizzle
+      # config, which reads Bun.env, can be loaded. See knip.ts for why each
+      # entrypoint and each ignore is there.
+      - name: Run knip
+        run: bun run knip
+
       # The suite is self-contained: it was run with the local .env moved aside to
       # confirm all 398 tests pass with no environment file, database or other
       # service, which is what this runner gives it. bunfig.toml's [test] preload

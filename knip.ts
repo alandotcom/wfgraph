@@ -1,0 +1,122 @@
+import type { KnipConfig } from "knip";
+
+/**
+ * knip finds files, exports and dependencies that nothing reaches. Run it with
+ * `bun run knip`, which uses the knip-bun binary so config files that touch
+ * `Bun.env` (packages/core/drizzle.config.ts) can be loaded.
+ *
+ * Two things shape this config, and both come from how the repo is built:
+ *
+ * 1. Every cross-package import goes through a tsconfig path alias (`@/shared/*`,
+ *    `@/backend/*`, `@/*`), so the package specifiers `@rova/core` and
+ *    `@rova/shared` almost never appear in source. knip reads those aliases from
+ *    the root tsconfig.json and resolves them to real files, which is why the
+ *    workspace entry lists below can stay small.
+ * 2. `@rova/core` is the only workspace that builds. tsdown inlines the
+ *    `@rova/shared` source it reaches into packages/core/dist, so some of core's
+ *    declared dependencies are imported by the built bundle rather than by
+ *    core's own source. Those are named in ignoreDependencies with the reason.
+ */
+const config: KnipConfig = {
+  // The SPA's stylesheet pulls Tailwind and its animation plugin in with CSS
+  // `@import`, which is the only way those two dependencies are ever named. A
+  // knip compiler turns a file of any extension into something knip can parse,
+  // and lifting the `@` off each `@import` leaves a plain import statement.
+  // knip 6.29 documents a built-in `.css` compiler but ships none, so setting
+  // `css: true` crashes; this hands it the function the docs print.
+  compilers: {
+    css: (text: string) =>
+      [...text.matchAll(/(?<=@)import[^;]+/g)].map(([m]) => m).join("\n"),
+  },
+
+  // An export referenced inside its own file is reachable code; the only thing
+  // wrong with it is a wider-than-needed declaration. Exports that nothing
+  // references at all are still reported, which is the signal worth acting on.
+  ignoreExportsUsedInFile: true,
+
+  workspaces: {
+    ".": {
+      entry: [
+        // The dev/compile server, the embedded-mode example, and the build and
+        // migration scripts. scripts/plugins/* holds Bun build plugins that the
+        // scripts in scripts/ import.
+        "server.ts",
+        "examples/*.ts",
+        "scripts/*.ts",
+        "scripts/plugins/*.ts",
+      ],
+      project: ["*.ts", "*.mjs", "examples/**/*.ts", "scripts/**/*.ts"],
+
+      // drizzle-kit is a root dev dependency, so knip looks for the Drizzle
+      // config beside the root manifest. This repo keeps it with the schema it
+      // points at.
+      drizzle: { config: ["packages/core/drizzle.config.ts"] },
+
+      ignoreDependencies: [
+        // scripts/plugins/react-compiler-plugin.ts names these three as strings
+        // in the options object it hands to @babel/core, so no import statement
+        // mentions them.
+        "@babel/preset-react",
+        "@babel/preset-typescript",
+        "babel-plugin-react-compiler",
+      ],
+    },
+
+    "packages/shared": {
+      // Nothing imports the `@rova/shared` package specifier. Core and plugins
+      // reach into this tree through the `@/shared/*` alias, so leaving entry
+      // empty lets those imports decide what is reachable and lets knip report
+      // the rest.
+      entry: [],
+      project: ["src/**/*.{ts,tsx}"],
+    },
+
+    "packages/core": {
+      // src/index.ts and src/hono.ts come from the tsdown plugin, which reads
+      // them out of tsdown.config.ts. The SPA is the second entry tree, rooted
+      // at the script tag in client/index.html.
+      entry: ["client/main.tsx"],
+      project: ["src/**/*.{ts,tsx}", "client/**/*.{ts,tsx}", "**/*.css"],
+
+      // components.json points shadcn's generator at client/components/ui, and
+      // what it writes there is the primitive's whole surface. A name pruned
+      // out of one of those export blocks comes back the next time the
+      // component is added or updated, so the export reports are muted for that
+      // one directory. File reports still apply, which is how the six unused
+      // components in it were found.
+      ignoreIssues: { "client/components/ui/**": ["exports", "types"] },
+
+      ignoreDependencies: [
+        // packages/core/dist/index.js imports graphology, and the emitted .d.ts
+        // files import @standard-schema/spec. Both arrive through the
+        // @rova/shared source that tsdown inlines into the bundle, so the
+        // published package needs them declared here.
+        "graphology",
+        "@standard-schema/spec",
+      ],
+    },
+
+    "packages/plugins": {
+      // src/index.ts, src/register-steps.ts and src/ui.ts are the three names in
+      // this package's "exports" map, and knip picks them up from there. All
+      // three exist for their import side effects: they register plugin
+      // metadata, step importers and React components.
+      entry: [],
+      project: ["src/**/*.{ts,tsx}"],
+      ignoreDependencies: [
+        // The plugin icons and output renderers are .tsx compiled with the
+        // automatic JSX runtime, so react arrives as a `react/jsx-runtime`
+        // import that the transform adds and @types/react is what tsc reads.
+        "react",
+        "@types/react",
+        // Plugin code compiles against core and shared source through the
+        // `@/backend/*` and `@/shared/*` aliases. Declaring the two workspaces
+        // records that edge for Bun's isolated linker.
+        "@rova/core",
+        "@rova/shared",
+      ],
+    },
+  },
+};
+
+export default config;
