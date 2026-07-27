@@ -21,13 +21,11 @@ import { WorkflowRunsList } from "./workflow-runs-list";
 type WorkflowRunsProps = {
   isActive?: boolean;
   onRefreshRef?: { current: (() => Promise<void>) | null };
-  onStartRun?: (executionId: string) => void;
 };
 
 export function WorkflowRuns({
   isActive = false,
   onRefreshRef,
-  onStartRun,
 }: WorkflowRunsProps) {
   const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
   const [selectedExecutionId, setSelectedExecutionId] = useAtom(
@@ -223,17 +221,12 @@ export function WorkflowRuns({
       setActiveRunId(latestExecution.id);
       loadExecutionLogs(latestExecution.id);
       loadExecutionEvents(latestExecution.id);
-
-      if (onStartRun) {
-        onStartRun(latestExecution.id);
-      }
     }
   }, [
     executions,
     setSelectedExecutionId,
     loadExecutionLogs,
     loadExecutionEvents,
-    onStartRun,
   ]);
 
   // Poll for executions and refresh active run logs

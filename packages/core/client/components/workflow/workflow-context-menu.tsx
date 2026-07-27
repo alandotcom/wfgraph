@@ -2,9 +2,10 @@ import type { Edge, Node, XYPosition } from "@xyflow/react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { Link2Off, Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
 import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
 import { useOverlay } from "@/components/overlays/overlay-provider";
+import { useDomEvent } from "@/hooks/effects";
 import {
   addNodeAtom,
   deleteEdgeAtom,
@@ -104,13 +105,8 @@ export function WorkflowContextMenu({
     onClose();
   }, [menuState, addNode, setSelectedNode, setActiveTab, onClose]);
 
-  // Close menu when clicking outside
-  useEffect(() => {
-    if (!menuState) {
-      return undefined;
-    }
-
-    const handleClickOutside = (event: MouseEvent) => {
+  const handleClickOutside = useCallback(
+    (event: MouseEvent) => {
       const target = event.target;
       if (
         menuRef.current &&
@@ -118,26 +114,28 @@ export function WorkflowContextMenu({
       ) {
         onClose();
       }
-    };
+    },
+    [onClose]
+  );
 
-    const handleEscape = (event: KeyboardEvent) => {
+  const handleEscape = useCallback(
+    (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onClose();
       }
-    };
+    },
+    [onClose]
+  );
 
-    // Use a small timeout to prevent the menu from closing immediately
-    const timeoutId = setTimeout(() => {
-      document.addEventListener("mousedown", handleClickOutside);
-      document.addEventListener("keydown", handleEscape);
-    }, 0);
-
-    return () => {
-      clearTimeout(timeoutId);
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [menuState, onClose]);
+  // deferAttach because the right-click that opened this menu is still being
+  // dispatched while React commits, so a listener attached now would count it
+  // as a click outside and close the menu before it is ever seen.
+  const isMenuOpen = menuState !== null;
+  useDomEvent(document, "mousedown", handleClickOutside, {
+    deferAttach: true,
+    enabled: isMenuOpen,
+  });
+  useDomEvent(document, "keydown", handleEscape, { enabled: isMenuOpen });
 
   if (!menuState) {
     return null;

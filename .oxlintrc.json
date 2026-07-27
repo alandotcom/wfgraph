@@ -2,7 +2,13 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "react", "import", "unicorn"],
   "jsPlugins": [
-    { "name": "react-hooks-js", "specifier": "eslint-plugin-react-hooks" }
+    { "name": "react-hooks-js", "specifier": "eslint-plugin-react-hooks" },
+    // Aliased because the package name is 43 characters and would otherwise
+    // open every one of the nine rule lines below.
+    {
+      "name": "no-effect",
+      "specifier": "eslint-plugin-react-you-might-not-need-an-effect"
+    }
   ],
   "categories": {
     "correctness": "error",
@@ -78,6 +84,21 @@
     "react-hooks-js/purity": "error",
     "react-hooks-js/set-state-in-render": "error",
     "react-hooks-js/unsupported-syntax": "error",
+    // https://react.dev/learn/you-might-not-need-an-effect. An effect is for
+    // synchronising with something outside React; each of these rules names a
+    // case where the effect is instead computing a value React could have
+    // computed during render, or reaching into a parent, or standing in for an
+    // event handler. The client is mid-migration off effects entirely, so these
+    // fail the build until every reported site is gone.
+    "no-effect/no-derived-state": "error",
+    "no-effect/no-chain-state-updates": "error",
+    "no-effect/no-event-handler": "error",
+    "no-effect/no-adjust-state-on-prop-change": "error",
+    "no-effect/no-reset-all-state-on-prop-change": "error",
+    "no-effect/no-pass-live-state-to-parent": "error",
+    "no-effect/no-pass-data-to-parent": "error",
+    "no-effect/no-external-store-subscription": "error",
+    "no-effect/no-initialize-state": "error",
     "typescript/no-deprecated": "error",
     "typescript/no-floating-promises": [
       "error",
@@ -113,8 +134,26 @@
       },
       "rules": {
         "react/react-in-jsx-scope": "off",
-        "typescript/no-floating-promises": "off",
+        // The no-effect rules infer whether an effect body is asynchronous by
+        // looking at how promises are handled, so this has to be on wherever
+        // those rules do their work. It was off here for long enough that the
+        // client accumulated unawaited calls; they are being cleared alongside
+        // the effects themselves.
+        "typescript/no-floating-promises": "error",
         "react-hooks-js/incompatible-library": "off"
+      }
+    },
+    {
+      // The blessed effects module: the one place in the client that may call
+      // useEffect and useLayoutEffect directly. Everything else reaches an
+      // effect through the named hooks it exports. The rules turned off below
+      // are the ones whose whole subject matter is this file's job, so they
+      // would fire on it by design. This override has to stay after the
+      // packages/core/client one, because oxlint takes the last match.
+      "files": ["packages/core/client/hooks/effects.ts"],
+      "rules": {
+        "no-restricted-imports": "off",
+        "react-hooks-js/set-state-in-effect": "off"
       }
     },
     {

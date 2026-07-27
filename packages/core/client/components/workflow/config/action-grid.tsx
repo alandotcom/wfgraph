@@ -9,7 +9,7 @@ import {
   Settings,
   Zap,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,7 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useIsTouch } from "@/hooks/use-touch";
+import { hasTouchSupport } from "@/hooks/use-touch";
 import { getAllActions } from "@/plugins/registry";
 import { cn } from "@/shared/utils";
 
@@ -174,8 +174,6 @@ export function ActionGrid({
   const [showHidden, setShowHidden] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(getInitialViewMode);
   const actions = useAllActions();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const isTouch = useIsTouch();
 
   const toggleViewMode = () => {
     const newMode = viewMode === "list" ? "grid" : "list";
@@ -208,14 +206,6 @@ export function ActionGrid({
       return next;
     });
   };
-
-  useEffect(() => {
-    // Only focus after touch detection is complete (isTouch !== undefined)
-    // and only on non-touch devices to avoid opening the keyboard
-    if (isNewlyCreated && isTouch === false && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [isNewlyCreated, isTouch]);
 
   const filteredActions = actions.filter((action) => {
     const searchTerm = filter.toLowerCase();
@@ -271,13 +261,17 @@ export function ActionGrid({
         <div className="relative flex-1">
           <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            // A node the user has just dropped on the canvas is waiting for an
+            // action to be chosen, so the search box takes focus. Not on a
+            // touch device, where focus summons a keyboard over the grid the
+            // user is trying to read.
+            autoFocus={isNewlyCreated === true && !hasTouchSupport()}
             className="pl-9"
             data-testid="action-search-input"
             disabled={disabled}
             id="action-filter"
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Search actions..."
-            ref={inputRef}
             value={filter}
           />
         </div>

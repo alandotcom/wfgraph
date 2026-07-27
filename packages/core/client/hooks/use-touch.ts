@@ -1,26 +1,16 @@
-import { useEffect, useState } from "react";
-
 /**
- * Detects if the device has touch capability.
- * Useful for determining if auto-focus should be disabled (to avoid opening the keyboard).
- * Returns undefined during SSR/hydration, then true/false after mount.
+ * Whether the device can be touched.
+ *
+ * A plain function rather than a hook, because this never changes for the life
+ * of a page: the answer is a property of the hardware, not of the render. Used
+ * to decide whether autofocusing a text input is welcome or whether it would
+ * throw an on-screen keyboard over the content the user is looking at.
  */
-export function useIsTouch() {
-  const [isTouch, setIsTouch] = useState<boolean | undefined>(undefined);
-
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      const hasTouch =
-        "ontouchstart" in window ||
-        navigator.maxTouchPoints > 0 ||
-        // @ts-expect-error - msMaxTouchPoints is IE-specific
-        navigator.msMaxTouchPoints > 0;
-
-      setIsTouch(hasTouch);
-    });
-
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  return isTouch;
+export function hasTouchSupport() {
+  return (
+    "ontouchstart" in window ||
+    navigator.maxTouchPoints > 0 ||
+    // @ts-expect-error - msMaxTouchPoints is IE-specific
+    navigator.msMaxTouchPoints > 0
+  );
 }

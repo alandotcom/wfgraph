@@ -505,6 +505,10 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
                 <ActionGrid
                   disabled={isGenerating}
                   isNewlyCreated={selectedNode?.id === newlyCreatedNodeId}
+                  // A grid keyed to the node it configures starts fresh for
+                  // each one: the search box empties, and a node dropped
+                  // moments ago gets the autofocus that only fires on mount.
+                  key={selectedNode?.id}
                   onSelectAction={(actionType) => {
                     handleUpdateConfig({ actionType });
                     if (selectedNode?.id === newlyCreatedNodeId) {

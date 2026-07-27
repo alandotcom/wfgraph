@@ -10,7 +10,7 @@ import {
   type Edge as XYFlowEdge,
 } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Canvas } from "@/components/flow-elements/canvas";
 import { Connection } from "@/components/flow-elements/connection";
 import { Controls } from "@/components/flow-elements/controls";
@@ -21,6 +21,7 @@ import { PlayCircle, Zap } from "lucide-react";
 import { nanoid } from "nanoid";
 import { Edge } from "@/components/flow-elements/edge";
 import { Panel } from "@/components/flow-elements/panel";
+import { useAfterCommit, useAfterPaint, useDomEvent } from "@/hooks/effects";
 import {
   addNodeAtom,
   applyNodeLayoutAtom,
@@ -129,103 +130,80 @@ export function WorkflowCanvas() {
     setContextMenuState(null);
   }, []);
 
-  // Track which workflow we've fitted view for to prevent re-running
-  const fittedViewForWorkflowRef = useRef<string | null | undefined>(undefined);
   // Track if we have real nodes (not just placeholder "add" node)
   const hasRealNodes = nodes.some((n) => n.type !== "add");
   const realNodeCount = useMemo(
     () => nodes.filter((node) => node.type !== "add").length,
     [nodes]
   );
-  const hadRealNodesRef = useRef(false);
   // Pre-shift viewport when transitioning from homepage (before sidebar animates)
   const hasPreShiftedRef = useRef(false);
-  useEffect(() => {
-    if (isTransitioningFromHomepage && !hasPreShiftedRef.current) {
-      hasPreShiftedRef.current = true;
-
-      // Check if sidebar is collapsed from cookie (atom may not be initialized yet)
-      const collapsedCookie = document.cookie
-        .split("; ")
-        .find((row) => row.startsWith("sidebar-collapsed="));
-      const isCollapsed = collapsedCookie?.split("=")[1] === "true";
-
-      // Skip if sidebar is collapsed - content should stay centered
-      if (isCollapsed) {
-        return;
-      }
-
-      // Shift viewport left to center content in the future visible area
-      // Default sidebar is 30%, so shift by 15% of window width
-      const viewport = getViewport();
-      const defaultSidebarPercent = 0.3;
-      const shiftPixels = (window.innerWidth * defaultSidebarPercent) / 2;
-      setViewport(
-        { ...viewport, x: viewport.x - shiftPixels },
-        { duration: 0 }
-      );
+  useAfterCommit(isTransitioningFromHomepage, () => {
+    if (!isTransitioningFromHomepage || hasPreShiftedRef.current) {
+      return;
     }
-  }, [isTransitioningFromHomepage, getViewport, setViewport]);
+    hasPreShiftedRef.current = true;
 
-  // Fit view when workflow changes (only on initial load, not home -> workflow)
-  useEffect(() => {
-    // Skip if we've already fitted view for this workflow
-    if (fittedViewForWorkflowRef.current === currentWorkflowId) {
-      return undefined;
+    // Check if sidebar is collapsed from cookie (atom may not be initialized yet)
+    const collapsedCookie = document.cookie
+      .split("; ")
+      .find((row) => row.startsWith("sidebar-collapsed="));
+    const isCollapsed = collapsedCookie?.split("=")[1] === "true";
+
+    // Skip if sidebar is collapsed - content should stay centered
+    if (isCollapsed) {
+      return;
     }
 
-    // Skip fitView for homepage -> workflow transition (viewport already set from homepage)
+    // Shift viewport left to center content in the future visible area
+    // Default sidebar is 30%, so shift by 15% of window width
+    const viewport = getViewport();
+    const defaultSidebarPercent = 0.3;
+    const shiftPixels = (window.innerWidth * defaultSidebarPercent) / 2;
+    // React Flow's viewport commands resolve when their animation finishes.
+    // Nothing here waits for the camera, so the promise is dropped on purpose.
+    void setViewport(
+      { ...viewport, x: viewport.x - shiftPixels },
+      { duration: 0 }
+    );
+  });
+
+  // Fit the view once per workflow. Keying on the id is the whole rule: a
+  // workflow that has already been fitted does not get fitted again, and
+  // switching to another one does. After paint rather than during the commit,
+  // because React Flow measures node sizes then and fitView would otherwise
+  // frame geometry that is a frame out of date.
+  useAfterPaint(currentWorkflowId, () => {
+    // Homepage -> workflow keeps the viewport the homepage already set.
     if (isTransitioningFromHomepage && viewportInitialized.current) {
-      fittedViewForWorkflowRef.current = currentWorkflowId;
-      const readyTimer = setTimeout(() => setIsCanvasReady(true), 0);
-      // Clear the flag after using it
-      setIsTransitioningFromHomepage(false);
-      return () => clearTimeout(readyTimer);
-    }
-
-    // Use fitView after a brief delay to ensure React Flow and nodes are ready
-    const fitTimer = setTimeout(() => {
-      fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 0 });
-      fittedViewForWorkflowRef.current = currentWorkflowId;
-      viewportInitialized.current = true;
-      // Show canvas immediately so width animation can be seen
       setIsCanvasReady(true);
-      // Clear the flag
       setIsTransitioningFromHomepage(false);
-    }, 0);
-    return () => clearTimeout(fitTimer);
-  }, [
-    currentWorkflowId,
-    fitView,
-    isTransitioningFromHomepage,
-    setIsTransitioningFromHomepage,
-  ]);
+      return;
+    }
 
-  // Fit view when first real node is added on homepage
-  useEffect(() => {
-    if (currentWorkflowId) {
-      return; // Only for homepage
+    void fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 0 });
+    viewportInitialized.current = true;
+    // Show canvas immediately so width animation can be seen
+    setIsCanvasReady(true);
+    setIsTransitioningFromHomepage(false);
+  });
+
+  // On the homepage the canvas starts as a lone placeholder, so the moment a
+  // real node appears there is something worth framing.
+  useAfterPaint(!currentWorkflowId && hasRealNodes, () => {
+    if (currentWorkflowId || !hasRealNodes) {
+      return;
     }
-    // Check if we just got our first real node
-    if (hasRealNodes && !hadRealNodesRef.current) {
-      hadRealNodesRef.current = true;
-      // Fit view to center the new node
-      setTimeout(() => {
-        fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 0 });
-        viewportInitialized.current = true;
-        setIsCanvasReady(true);
-      }, 0);
-    } else if (!hasRealNodes) {
-      // Reset when back to placeholder only
-      hadRealNodesRef.current = false;
-    }
-  }, [currentWorkflowId, hasRealNodes, fitView]);
+    void fitView({ maxZoom: 1, minZoom: 0.5, padding: 0.2, duration: 0 });
+    viewportInitialized.current = true;
+    setIsCanvasReady(true);
+  });
 
   // Undo/redo (Cmd+Z, Cmd+Shift+Z). Lives on the canvas rather than the editor
   // route so it works on the homepage too, which is where the toolbar's undo
   // button already works.
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
+  const handleUndoRedoShortcut = useCallback(
+    (event: KeyboardEvent) => {
       if (
         !(event.metaKey || event.ctrlKey) ||
         event.key.toLowerCase() !== "z"
@@ -256,29 +234,24 @@ export function WorkflowCanvas() {
       } else {
         undo();
       }
-    };
+    },
+    [undo, redo, isGenerating]
+  );
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [undo, redo, isGenerating]);
+  useDomEvent(window, "keydown", handleUndoRedoShortcut);
 
   // Keyboard shortcut for fit view (Cmd+/ or Ctrl+/)
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Check for Cmd+/ (Mac) or Ctrl+/ (Windows/Linux)
+  const handleFitViewShortcut = useCallback(
+    (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "/") {
         event.preventDefault();
-        fitView({ padding: 0.2, duration: 300 });
+        void fitView({ padding: 0.2, duration: 300 });
       }
-    };
+    },
+    [fitView]
+  );
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [fitView]);
+  useDomEvent(window, "keydown", handleFitViewShortcut);
 
   const handleReflow = useCallback(() => {
     if (isGenerating || realNodeCount < 2 || isReflowingRef.current) {

@@ -5,9 +5,10 @@ import {
   motion,
   useReducedMotion,
 } from "motion/react";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 import { Dialog, DialogPortal } from "@/components/ui/dialog";
+import { useDomEvent, useMeasuredHeight } from "@/hooks/effects";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/shared/utils";
 import { useOverlay } from "./overlay-provider";
@@ -79,7 +80,6 @@ function getOverlayXPosition(
 function DesktopOverlayContainer() {
   const { stack, closeAll, pop } = useOverlay();
   const shouldReduceMotion = useReducedMotion();
-  const [minHeight, setMinHeight] = useState<number>(0);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const isOpen = stack.length > 0;
@@ -87,21 +87,10 @@ function DesktopOverlayContainer() {
   const renderStack = stack;
   const currentIndex = renderStack.length - 1;
 
-  // Measure content height when it changes, reset on fresh open
-  useLayoutEffect(() => {
-    if (!isOpen) {
-      const resetTimer = setTimeout(() => setMinHeight(0), 0);
-      return () => clearTimeout(resetTimer);
-    }
-    if (contentRef.current) {
-      const height = contentRef.current.offsetHeight;
-      if (height > 0) {
-        setMinHeight(height);
-      }
-    }
-
-    return undefined;
-  }, [isOpen]);
+  // The dialog holds the height of whatever opened in it, so that a panel
+  // swapping for a taller or shorter one animates between the two rather than
+  // snapping.
+  const minHeight = useMeasuredHeight(contentRef, isOpen);
 
   // Use live stack for options checks (only when open)
   const currentItem = stack.at(-1);
@@ -122,14 +111,7 @@ function DesktopOverlayContainer() {
     [currentItem?.options.closeOnEscape, pop]
   );
 
-  useLayoutEffect(() => {
-    if (isOpen) {
-      document.addEventListener("keydown", handleEscapeKey);
-      return () => document.removeEventListener("keydown", handleEscapeKey);
-    }
-
-    return undefined;
-  }, [isOpen, handleEscapeKey]);
+  useDomEvent(document, "keydown", handleEscapeKey, { enabled: isOpen });
 
   if (!isOpen) {
     return null;
@@ -220,7 +202,6 @@ function DesktopOverlayContainer() {
 function MobileOverlayContainer() {
   const { stack, closeAll, pop } = useOverlay();
   const shouldReduceMotion = useReducedMotion();
-  const [minHeight, setMinHeight] = useState<number>(0);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const isOpen = stack.length > 0;
@@ -228,21 +209,10 @@ function MobileOverlayContainer() {
   const renderStack = stack;
   const currentIndex = renderStack.length - 1;
 
-  // Measure content height when it changes, reset on fresh open
-  useLayoutEffect(() => {
-    if (!isOpen) {
-      const resetTimer = setTimeout(() => setMinHeight(0), 0);
-      return () => clearTimeout(resetTimer);
-    }
-    if (contentRef.current) {
-      const height = contentRef.current.offsetHeight;
-      if (height > 0) {
-        setMinHeight(height);
-      }
-    }
-
-    return undefined;
-  }, [isOpen]);
+  // The drawer holds the height of whatever opened in it, so that a panel
+  // swapping for a taller or shorter one animates between the two rather than
+  // snapping.
+  const minHeight = useMeasuredHeight(contentRef, isOpen);
 
   // Use live stack for options checks (only when open)
   const currentItem = stack.at(-1);
@@ -257,14 +227,7 @@ function MobileOverlayContainer() {
     [currentItem?.options.closeOnEscape, pop]
   );
 
-  useLayoutEffect(() => {
-    if (isOpen) {
-      document.addEventListener("keydown", handleEscapeKey);
-      return () => document.removeEventListener("keydown", handleEscapeKey);
-    }
-
-    return undefined;
-  }, [isOpen, handleEscapeKey]);
+  useDomEvent(document, "keydown", handleEscapeKey, { enabled: isOpen });
 
   return (
     <DrawerPrimitive.Root

@@ -1,7 +1,8 @@
 import { useAtom } from "jotai";
 import { Check } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useAfterCommit, useDomEvent } from "@/hooks/effects";
 import {
   getNodeDisplayName,
   getNodeOutputFields,
@@ -143,12 +144,8 @@ export function TemplateAutocomplete({
       : Math.min(selectedIndex, filteredOptions.length - 1);
 
   // Handle keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) {
-        return;
-      }
-
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
@@ -171,22 +168,20 @@ export function TemplateAutocomplete({
           onClose();
           break;
       }
-    };
+    },
+    [filteredOptions, selectedOptionIndex, onSelect, onClose]
+  );
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, filteredOptions, selectedOptionIndex, onSelect, onClose]);
+  useDomEvent(window, "keydown", handleKeyDown, { enabled: isOpen });
 
-  // Scroll selected item into view
-  useEffect(() => {
-    if (menuRef.current) {
-      const selectedElement =
-        menuRef.current.children.item(selectedOptionIndex);
-      if (selectedElement instanceof HTMLElement) {
-        selectedElement.scrollIntoView({ block: "nearest" });
-      }
+  // Keyboard navigation can walk the highlight past the edge of the scroll box,
+  // and only the DOM knows where that edge is.
+  useAfterCommit(selectedOptionIndex, () => {
+    const selectedElement = menuRef.current?.children.item(selectedOptionIndex);
+    if (selectedElement instanceof HTMLElement) {
+      selectedElement.scrollIntoView({ block: "nearest" });
     }
-  }, [selectedOptionIndex]);
+  });
 
   if (
     !isOpen ||
