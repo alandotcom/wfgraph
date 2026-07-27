@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { decodeIsoTimestamp } from "@/types/timestamp";
 
 export type ConditionFieldType = "timestamp" | "string" | "number" | "boolean";
 
@@ -233,18 +234,15 @@ export function isNullCheckConditionRule(
   return isNullCheckOperator(rule.operator);
 }
 
-function isDateTimeString(value: unknown): value is string {
-  if (typeof value !== "string") {
-    return false;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed.includes("T")) {
-    return false;
-  }
-
-  const parsed = new Date(trimmed);
-  return !Number.isNaN(parsed.getTime());
+/**
+ * A `before`/`after` rule stores the moment the user picked as text, so what
+ * counts as a valid one is the shared timestamp contract: ISO 8601 carrying an
+ * explicit zone. The builder writes these through `Date.toISOString()`, and a
+ * rule that named a wall-clock time with no zone would compare against payloads
+ * from any zone and mean something different each time.
+ */
+function isIsoTimestamp(value: string): boolean {
+  return decodeIsoTimestamp(value) !== null;
 }
 
 function toOperatorExpression(operator: NumberOperator): string {
@@ -330,7 +328,7 @@ const timestampConditionRuleSchema = z.discriminatedUnion(
       dateTime: z
         .string({ error: DATE_TIME_ERROR })
         .trim()
-        .refine(isDateTimeString, { error: DATE_TIME_ERROR }),
+        .refine(isIsoTimestamp, { error: DATE_TIME_ERROR }),
     }),
   ],
   { error: "Timestamp operator is invalid" }
@@ -475,6 +473,36 @@ export function serializeConditionModel(model: ConditionModel): string {
   return JSON.stringify(model);
 }
 
+/**
+ * The field paths this model reads as timestamps.
+ *
+ * The compiled CEL string keeps no record of which fields are timestamps, but
+ * the model it was compiled from does: the builder only offers timestamp
+ * operators for a field the schema marked `timestamp`. Whoever assembles the
+ * evaluation context needs that list, because a payload delivers a timestamp as
+ * an ISO string and CEL has no overload comparing a string to a Timestamp.
+ *
+ * Paths repeat when several rules read the same field, so the list is deduped.
+ */
+export function collectTimestampFieldPaths(model: ConditionModel): string[] {
+  const paths = new Set<string>();
+
+  for (const group of model.groups) {
+    for (const rule of group.conditions) {
+      if (rule.fieldType !== "timestamp") {
+        continue;
+      }
+
+      const field = rule.field.trim();
+      if (field) {
+        paths.add(field);
+      }
+    }
+  }
+
+  return [...paths];
+}
+
 export function createDefaultConditionRule(
   field: ConditionFieldDefinition,
   id = "rule"
@@ -582,7 +610,7 @@ function compileTimestampConditionRule(
     };
   }
 
-  if (!isDateTimeString(rule.dateTime)) {
+  if (!isIsoTimestamp(rule.dateTime)) {
     return {
       valid: false,
       error: "Timestamp absolute operators require a valid date-time",

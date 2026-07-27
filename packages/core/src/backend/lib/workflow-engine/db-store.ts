@@ -7,6 +7,7 @@
  * run state.
  */
 
+import { z } from "zod";
 import { logWorkflowComplete } from "@/backend/lib/steps/step-handler";
 import { redactSensitiveData } from "@/backend/lib/utils/redact";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
@@ -19,6 +20,7 @@ import {
   markExecutionRunning,
   markWaitStateStatus,
 } from "@/backend/lib/workflow-wait-state";
+import { isoTimestampToDate } from "@/shared/types/timestamp";
 import type { WorkflowStore } from "./store";
 
 export const dbWorkflowStore: WorkflowStore = {
@@ -35,10 +37,15 @@ export const dbWorkflowStore: WorkflowStore = {
 
   createWaitState: async (input) => {
     // The port speaks ISO strings so wait-state writes stay JSON-safe across a
-    // memoized step; the table wants a Date.
+    // memoized step; the table wants a Date. The engine produced this string
+    // through the same codec, so a string that will not decode means the value
+    // was corrupted in between, and the write fails rather than storing a wait
+    // target nothing can resume from.
     const waitState = await createWaitState({
       ...input,
-      waitUntil: input.waitUntilIso ? new Date(input.waitUntilIso) : undefined,
+      waitUntil: input.waitUntilIso
+        ? z.decode(isoTimestampToDate, input.waitUntilIso)
+        : undefined,
     });
 
     return { waitStateId: waitState.id };

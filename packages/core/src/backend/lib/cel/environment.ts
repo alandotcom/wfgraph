@@ -1,4 +1,5 @@
 import { Environment } from "@marcbachmann/cel-js";
+import { decodeIsoTimestamp } from "@/shared/types/timestamp";
 
 const TIMESTAMP_TYPE = "google.protobuf.Timestamp";
 const DURATION_TYPE = "google.protobuf.Duration";
@@ -64,18 +65,21 @@ function createDuration(
   return factory(totalSeconds, 0);
 }
 
+/**
+ * Read the argument of a `date(...)` call in a condition expression.
+ *
+ * A bare calendar day is the shorthand the condition builder emits when the
+ * user picks a date without a time, so it is widened to midnight UTC before it
+ * reaches the shared timestamp contract. Everything else has to name an instant
+ * on its own, zone included.
+ */
 function parseDateStringToTimestamp(value: string): Date {
   const trimmed = value.trim();
+  const parsed = decodeIsoTimestamp(
+    DATE_ONLY_PATTERN.test(trimmed) ? `${trimmed}T00:00:00.000Z` : trimmed
+  );
 
-  if (DATE_ONLY_PATTERN.test(trimmed)) {
-    const timestamp = new Date(`${trimmed}T00:00:00.000Z`);
-    if (!Number.isNaN(timestamp.getTime())) {
-      return timestamp;
-    }
-  }
-
-  const parsed = new Date(trimmed);
-  if (Number.isNaN(parsed.getTime())) {
+  if (!parsed) {
     throw new Error("date() requires a valid ISO date string");
   }
 

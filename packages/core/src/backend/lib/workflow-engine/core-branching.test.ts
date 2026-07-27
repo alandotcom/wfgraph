@@ -3,6 +3,11 @@ import {
   registerRuntimeAction,
   unregisterRuntimeAction,
 } from "@/shared/workflow/action-registry";
+import {
+  compileConditionModel,
+  type ConditionModel,
+  serializeConditionModel,
+} from "@/shared/workflow/conditions";
 import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
 import type { WorkflowNode } from "@/shared/workflow/types";
 import { executeWorkflow } from "./core";
@@ -51,6 +56,58 @@ function createConditionNode(
       config: {
         actionType: "Condition",
         condition,
+      },
+    },
+  };
+}
+
+// A condition that reads a timestamp field off the payload. Building the CEL
+// from the model is what saving a workflow enforces, so these two stay in step
+// the way a real node's do.
+function createTimestampConditionNode(input: {
+  id: string;
+  field: string;
+  includeModel: boolean;
+}): WorkflowNode {
+  const model: ConditionModel = {
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: "group_1",
+        logic: "and",
+        conditions: [
+          {
+            id: "rule_1",
+            field: input.field,
+            fieldType: "timestamp",
+            operator: "within_next",
+            amount: 3,
+            unit: "days",
+          },
+        ],
+      },
+    ],
+  };
+
+  const compiled = compileConditionModel(model);
+  if (!compiled.valid) {
+    throw new Error(compiled.error);
+  }
+
+  return {
+    id: input.id,
+    type: "action",
+    position: { x: 100, y: 100 },
+    data: {
+      label: input.id,
+      type: "action",
+      config: {
+        actionType: "Condition",
+        condition: compiled.expression,
+        ...(input.includeModel
+          ? { conditionModel: serializeConditionModel(model) }
+          : {}),
       },
     },
   };
@@ -368,5 +425,130 @@ describe("condition context from upstream outputs", () => {
 
     expect(result.results.true_node?.success).toBe(true);
     expect(result.results.false_node).toBeUndefined();
+  });
+});
+
+describe("timestamp conditions against payload values", () => {
+  let store: RecordingWorkflowStore;
+
+  beforeEach(() => {
+    store = createRecordingWorkflowStore();
+  });
+
+  function createGraph(input: { field: string; includeModel: boolean }) {
+    return createSerializedWorkflowGraph({
+      nodes: [
+        createTriggerNode("trigger_1"),
+        createTimestampConditionNode({
+          id: "condition_node",
+          field: input.field,
+          includeModel: input.includeModel,
+        }),
+        createConditionNode("true_node", true),
+        createConditionNode("false_node", true),
+      ],
+      edges: [
+        { id: "edge_t_c", source: "trigger_1", target: "condition_node" },
+        createConditionBranchEdge({
+          id: "edge_c_true",
+          source: "condition_node",
+          target: "true_node",
+          branch: "true",
+        }),
+        createConditionBranchEdge({
+          id: "edge_c_false",
+          source: "condition_node",
+          target: "false_node",
+          branch: "false",
+        }),
+      ],
+    });
+  }
+
+  function isoDaysFromNow(days: number): string {
+    return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  it("routes on a timestamp the payload delivered as an ISO string", async () => {
+    // JSON has no date type, so the payload carries text. CEL has no overload
+    // comparing text to a Timestamp, so the value has to become a Date before
+    // the expression runs or the comparison never gets the chance to be true.
+    const result = await executeWorkflow(
+      {
+        graph: createGraph({
+          field: "appointment.startsAt",
+          includeModel: true,
+        }),
+        executionId: "exec_timestamp_condition",
+        workflowId: "workflow_timestamp_condition",
+        triggerInput: { appointment: { startsAt: isoDaysFromNow(1) } },
+      },
+      undefined,
+      store
+    );
+
+    expect(result.results.condition_node?.success).toBe(true);
+    expect(result.results.true_node?.success).toBe(true);
+    expect(result.results.false_node).toBeUndefined();
+  });
+
+  it("takes the false branch when the timestamp falls outside the window", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createGraph({
+          field: "appointment.startsAt",
+          includeModel: true,
+        }),
+        executionId: "exec_timestamp_condition_outside",
+        workflowId: "workflow_timestamp_condition",
+        triggerInput: { appointment: { startsAt: isoDaysFromNow(30) } },
+      },
+      undefined,
+      store
+    );
+
+    expect(result.results.true_node).toBeUndefined();
+    expect(result.results.false_node?.success).toBe(true);
+  });
+
+  it("leaves the value alone when the model does not call the field a timestamp", async () => {
+    // Pins where the conversion comes from: the node's stored model, not a
+    // guess at any string that happens to look like a date. Without the model
+    // the string stays a string and the expression cannot evaluate.
+    const result = await executeWorkflow(
+      {
+        graph: createGraph({
+          field: "appointment.startsAt",
+          includeModel: false,
+        }),
+        executionId: "exec_timestamp_condition_unmodelled",
+        workflowId: "workflow_timestamp_condition",
+        triggerInput: { appointment: { startsAt: isoDaysFromNow(1) } },
+      },
+      undefined,
+      store
+    );
+
+    expect(result.results.true_node).toBeUndefined();
+    expect(result.results.false_node?.success).toBe(true);
+  });
+
+  it("leaves a timestamp path the payload never carried absent", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createGraph({
+          field: "appointment.startsAt",
+          includeModel: true,
+        }),
+        executionId: "exec_timestamp_condition_missing",
+        workflowId: "workflow_timestamp_condition",
+        triggerInput: { plan: "premium" },
+      },
+      undefined,
+      store
+    );
+
+    expect(result.results.true_node).toBeUndefined();
+    expect(result.results.false_node?.success).toBe(true);
   });
 });

@@ -14,9 +14,17 @@ import {
 import type { StepContext } from "@/backend/lib/steps/step-handler";
 import { triggerStep } from "@/backend/lib/steps/trigger";
 import { withSpan } from "@/backend/lib/telemetry";
+import {
+  decodeIsoTimestamp,
+  encodeIsoTimestamp,
+} from "@/shared/types/timestamp";
 import { getErrorMessageAsync } from "@/shared/utils";
 import { resolveWaitUntil } from "@/shared/utils/wait-time";
 import { normalizeConditionBranch } from "@/shared/workflow/condition-branch";
+import {
+  collectTimestampFieldPaths,
+  parseConditionModel,
+} from "@/shared/workflow/conditions";
 import { toWorkflowGraphData } from "@/shared/workflow/graph";
 import {
   parseTemplate,
@@ -257,11 +265,95 @@ function mergeConditionContextValue(
 }
 
 /**
+ * Read a dotted field path out of the condition context.
+ *
+ * Paths come from the condition model, where the user picked them off a schema,
+ * so a path that finds nothing here means the payload did not carry that field
+ * on this run.
+ */
+function readContextPath(
+  context: Record<string, unknown>,
+  path: string
+): { parent: object; key: string; value: unknown } | null {
+  const segments = path.split(".");
+  const key = segments.pop();
+  if (!key) {
+    return null;
+  }
+
+  let parent: object = context;
+  for (const segment of segments) {
+    const next: unknown = Reflect.get(parent, segment);
+    // Only a keyed object can hold the rest of the path. An array stops the
+    // walk: a condition field names a property, never an index.
+    if (typeof next !== "object" || next === null || Array.isArray(next)) {
+      return null;
+    }
+    parent = next;
+  }
+
+  return { parent, key, value: Reflect.get(parent, key) };
+}
+
+/**
+ * Turn the fields a condition treats as timestamps into `Date`s.
+ *
+ * Node outputs are JSON, so a timestamp reaches this context as an ISO string,
+ * and CEL refuses to compare a string against a Timestamp: without this step
+ * `appointment.startsAt > now` fails to evaluate and the branch silently reads
+ * false. The Condition node's own model names the paths it treats as
+ * timestamps, so those paths, and nothing else, are converted. Values the
+ * templating path reads are untouched, because that path renders text and wants
+ * the string exactly as the payload sent it.
+ *
+ * A path that is missing, already a `Date`, or holding text that is not a
+ * timestamp is left as found, and the expression then fails the way it would
+ * have anyway, naming the field in its error.
+ */
+function decodeConditionTimestamps(
+  context: Record<string, unknown>,
+  paths: string[]
+) {
+  for (const path of paths) {
+    const located = readContextPath(context, path);
+    if (!located || typeof located.value !== "string") {
+      continue;
+    }
+
+    const decoded = decodeIsoTimestamp(located.value);
+    if (decoded) {
+      Reflect.set(located.parent, located.key, decoded);
+    }
+  }
+}
+
+/**
+ * The timestamp field paths a Condition node's stored model declares.
+ *
+ * Saving a workflow rejects a Condition node whose model is missing or does not
+ * compile to the expression beside it, so a model that fails to parse here
+ * belongs to a node that never should have run; the condition still evaluates,
+ * against a context where timestamps stay strings.
+ */
+function readConditionTimestampPaths(conditionModel: unknown): string[] {
+  const parsed = parseConditionModel(conditionModel);
+  if (!parsed.valid) {
+    conditionLogger.warn("Condition model did not parse", {
+      error: parsed.error,
+    });
+    return [];
+  }
+
+  return collectTimestampFieldPaths(parsed.model);
+}
+
+/**
  * Evaluate CEL condition expression against workflow output context.
  */
 function evaluateConditionExpression(
   conditionExpression: unknown,
-  outputs: NodeOutputs
+  outputs: NodeOutputs,
+  conditionModel: unknown
 ): ConditionEvalResult {
   conditionLogger.debug("Evaluating condition expression", {
     conditionExpression,
@@ -287,6 +379,10 @@ function evaluateConditionExpression(
   for (const output of Object.values(outputs)) {
     mergeConditionContextValue(evalContext, output.data);
   }
+  decodeConditionTimestamps(
+    evalContext,
+    readConditionTimestampPaths(conditionModel)
+  );
 
   const evaluation = evaluateCelBooleanExpression({
     expression,
@@ -365,7 +461,8 @@ async function executeActionStepInner(input: {
     const originalExpression = stepInput.condition;
     const { result: evaluatedCondition } = evaluateConditionExpression(
       originalExpression,
-      outputs
+      outputs,
+      config.conditionModel
     );
     conditionLogger.debug("Condition evaluation result", {
       evaluatedCondition,
@@ -779,7 +876,7 @@ async function prepareDelayWait(
     return { status: "error", error: errorMessage };
   }
 
-  const waitUntilIso = resolved.waitUntil.toISOString();
+  const waitUntilIso = encodeIsoTimestamp(resolved.waitUntil);
   const plannedWaitMs = resolved.waitUntil.getTime() - Date.now();
   const didActuallyWait = plannedWaitMs > 0;
 
@@ -794,7 +891,7 @@ async function prepareDelayWait(
       skippedReason: "past_due_no_wait",
       plannedWaitMs,
       didActuallyWait,
-      resumedAt: new Date().toISOString(),
+      resumedAt: encodeIsoTimestamp(new Date()),
     };
 
     await store.recordAuditEvent({
@@ -919,7 +1016,7 @@ async function executeDelayWait(
       const resumeOutput = {
         waitType: "delay",
         waitUntil: prepared.waitUntilIso,
-        resumedAt: new Date().toISOString(),
+        resumedAt: encodeIsoTimestamp(new Date()),
       };
 
       await store.completeStepLog({
@@ -996,7 +1093,9 @@ async function prepareHookWait(
     nodeName: context.nodeName,
     waitType: "hook",
     hookToken,
-    waitUntilIso: waitTimeoutResolution.waitUntil?.toISOString(),
+    waitUntilIso: waitTimeoutResolution.waitUntil
+      ? encodeIsoTimestamp(waitTimeoutResolution.waitUntil)
+      : undefined,
     correlationKey,
     metadata: {
       waitForEvents,
@@ -1016,7 +1115,9 @@ async function prepareHookWait(
       nodeId: context.nodeId,
       hookToken,
       waitForEvents,
-      timeoutAt: waitTimeoutResolution.waitUntil?.toISOString(),
+      timeoutAt: waitTimeoutResolution.waitUntil
+        ? encodeIsoTimestamp(waitTimeoutResolution.waitUntil)
+        : undefined,
     },
   });
 
@@ -1120,7 +1221,7 @@ async function executeHookWait(
         waitMode,
         hookToken: prepared.hookToken,
         timedOut,
-        resumedAt: new Date().toISOString(),
+        resumedAt: encodeIsoTimestamp(new Date()),
       };
       const output = skipOnTimeout
         ? { ...base, skipped: true, skippedReason: "timeout_skip" }
