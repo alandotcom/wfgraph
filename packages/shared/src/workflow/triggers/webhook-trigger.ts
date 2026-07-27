@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { type JsonObject, jsonObjectSchema } from "@/types/json";
 import type {
   TriggerEvaluation,
   TriggerRoutingDecision,
@@ -37,22 +37,26 @@ function mapWebhookDecisionToTriggerDecision(
 }
 
 /**
- * The stored mock payload has to be a JSON object to stand in for a request
- * body, so anything else the user typed (an array, a bare string, `null`) is
- * treated as absent.
+ * Reads the mock request body a user typed into the trigger's editor, stored as
+ * a JSON string in `webhookMockRequest`.
+ *
+ * A mock request stands in for the body a real webhook would deliver, so its
+ * contents belong to whichever service the workflow listens to and no field is
+ * known here. What is known is the shape: a JSON object, with JSON at every
+ * depth below it, which is what `jsonObjectSchema` describes and what a caller
+ * gets back. Anything else the editor accepted (an array, a bare string,
+ * `null`, unparseable text) is treated as no mock at all.
  */
-const mockRequestSchema = z.record(z.string(), z.unknown());
-
 export function parseWebhookMockInput(
   config: Record<string, unknown> | undefined
-): Record<string, unknown> | undefined {
+): JsonObject | undefined {
   const mockInputRaw = asNonEmptyString(config?.webhookMockRequest);
   if (!mockInputRaw) {
     return undefined;
   }
 
   try {
-    const parsed = mockRequestSchema.safeParse(JSON.parse(mockInputRaw));
+    const parsed = jsonObjectSchema.safeParse(JSON.parse(mockInputRaw));
     if (parsed.success) {
       return parsed.data;
     }
@@ -67,7 +71,7 @@ export function resolveWebhookTriggerRuntimeConfig(
   config: Record<string, unknown> | undefined
 ): {
   routing: WebhookRoutingConfig;
-  mockInput: Record<string, unknown> | undefined;
+  mockInput: JsonObject | undefined;
 } {
   return {
     routing: buildWebhookRoutingConfig(config),
