@@ -38,7 +38,7 @@ mock.module("@/backend/lib/logger", () => ({
 }));
 
 const { getWorkflowExecutionsGlobalResult } =
-  await import("@/backend/services/workflows/workflow-executions-global.workflows");
+  await import("@/backend/services/workflows/workflow-executions-global");
 
 describe("getWorkflowExecutionsGlobalResult", () => {
   beforeEach(() => {

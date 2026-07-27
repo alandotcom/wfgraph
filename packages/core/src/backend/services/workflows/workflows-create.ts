@@ -12,7 +12,7 @@ import {
 import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import { validateWorkflowIntegrations } from "@/backend/lib/workflow-integration-validation";
-import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers.workflows";
+import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers";
 import { getErrorMessage } from "@/shared/utils";
 import { generateId } from "@/shared/utils/id";
 import type {

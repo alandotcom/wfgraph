@@ -14,7 +14,7 @@ import { validateWorkflowIntegrations } from "@/backend/lib/workflow-integration
 import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
-} from "@/backend/services/workflows/workflow-mappers.workflows";
+} from "@/backend/services/workflows/workflow-mappers";
 import { getErrorMessage } from "@/shared/utils";
 import type {
   ApiErrorPayload,

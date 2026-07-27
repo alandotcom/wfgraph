@@ -12,20 +12,20 @@ import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
 import { resumeMatchingWaitHooks } from "@/backend/lib/workflow-wait-resume";
 import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-wait-state";
-import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
-import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight.workflows";
+import { validateApiKey } from "@/backend/services/api-keys/auth";
+import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight";
 import type { JsonObject } from "@/shared/types/json";
 import { getErrorMessage } from "@/shared/utils";
 import type { ApiErrorPayload } from "@/shared/workflow/api-contracts";
 import type { WorkflowWebhookResponse } from "@/shared/workflow/execution-contracts";
 import { evaluateWorkflowTrigger } from "@/shared/workflow/trigger-registry";
 import { resolveWebhookTriggerRuntimeConfig } from "@/shared/workflow/triggers/webhook-trigger";
-import { orchestrateTriggerExecution } from "./trigger-orchestrator.workflows";
+import { orchestrateTriggerExecution } from "./trigger-orchestrator";
 import {
   buildIgnoredRunAuditMessage,
   recordTerminalWorkflowRun,
   startWorkflowRun,
-} from "./workflow-run-lifecycle.workflows";
+} from "./workflow-run-lifecycle";
 
 const webhookLogger = getAppLogger("workflow", "webhook");
 

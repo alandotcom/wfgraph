@@ -1,11 +1,11 @@
 import { implement } from "@orpc/server";
 import { z } from "zod";
 import { getAppLogger } from "@/backend/lib/logger";
-import { deleteApiKeyResult } from "@/backend/services/api-keys/api-key.api-keys";
+import { deleteApiKeyResult } from "@/backend/services/api-keys/api-key";
 import {
   getApiKeysResult,
   postApiKeysResult,
-} from "@/backend/services/api-keys/api-keys.api-keys";
+} from "@/backend/services/api-keys/api-keys";
 import {
   deleteIntegrationResult,
   getIntegrationResult,
@@ -14,31 +14,31 @@ import {
   postIntegrationsTestResult,
   postIntegrationTestResult,
   putIntegrationResult,
-} from "@/backend/services/integrations/integrations.integrations";
-import { postWorkflowExecuteResult } from "@/backend/services/workflow/workflow-execute.workflow";
-import { postExecutionCancelResult } from "@/backend/services/workflows/execution-cancel.workflows";
-import { getExecutionEventsResult } from "@/backend/services/workflows/execution-events.workflows";
-import { getExecutionLogsResult } from "@/backend/services/workflows/execution-logs.workflows";
-import { getExecutionStatusResult } from "@/backend/services/workflows/execution-status.workflows";
+} from "@/backend/services/integrations/integrations";
+import { postWorkflowExecuteResult } from "@/backend/services/workflow/workflow-execute";
+import { postExecutionCancelResult } from "@/backend/services/workflows/execution-cancel";
+import { getExecutionEventsResult } from "@/backend/services/workflows/execution-events";
+import { getExecutionLogsResult } from "@/backend/services/workflows/execution-logs";
+import { getExecutionStatusResult } from "@/backend/services/workflows/execution-status";
 import {
   deleteWorkflow,
   getWorkflow,
   patchWorkflow,
-} from "@/backend/services/workflows/workflow.workflows";
-import { postWorkflowDuplicate } from "@/backend/services/workflows/workflow-duplicate.workflows";
+} from "@/backend/services/workflows/workflow";
+import { postWorkflowDuplicate } from "@/backend/services/workflows/workflow-duplicate";
 import {
   deleteWorkflowExecutionsResult,
   getWorkflowExecutionsResult,
-} from "@/backend/services/workflows/workflow-executions.workflows";
-import { getWorkflowExecutionsGlobalResult } from "@/backend/services/workflows/workflow-executions-global.workflows";
-import { postWorkflowWebhookResult } from "@/backend/services/workflows/workflow-webhook.workflows";
-import { getWorkflows } from "@/backend/services/workflows/workflows.workflows";
-import { postWorkflowsBulkLifecycleResult } from "@/backend/services/workflows/workflows-bulk-lifecycle.workflows";
-import { postWorkflowsCreate } from "@/backend/services/workflows/workflows-create.workflows";
+} from "@/backend/services/workflows/workflow-executions";
+import { getWorkflowExecutionsGlobalResult } from "@/backend/services/workflows/workflow-executions-global";
+import { postWorkflowWebhookResult } from "@/backend/services/workflows/workflow-webhook";
+import { getWorkflows } from "@/backend/services/workflows/workflows";
+import { postWorkflowsBulkLifecycleResult } from "@/backend/services/workflows/workflows-bulk-lifecycle";
+import { postWorkflowsCreate } from "@/backend/services/workflows/workflows-create";
 import {
   getWorkflowsCurrent,
   postWorkflowsCurrent,
-} from "@/backend/services/workflows/workflows-current.workflows";
+} from "@/backend/services/workflows/workflows-current";
 import { rpcContract } from "@/shared/rpc/contracts";
 import type { RpcContext } from "./context";
 import { type RpcCompatibleResult, toRpcData } from "./errors";

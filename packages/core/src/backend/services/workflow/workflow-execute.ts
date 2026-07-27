@@ -9,13 +9,13 @@ import {
 } from "@/backend/lib/service-result";
 import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
 import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-wait-state";
-import { orchestrateTriggerExecution } from "@/backend/services/workflows/trigger-orchestrator.workflows";
-import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight.workflows";
+import { orchestrateTriggerExecution } from "@/backend/services/workflows/trigger-orchestrator";
+import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight";
 import {
   buildIgnoredRunAuditMessage,
   recordTerminalWorkflowRun,
   startWorkflowRun,
-} from "@/backend/services/workflows/workflow-run-lifecycle.workflows";
+} from "@/backend/services/workflows/workflow-run-lifecycle";
 import type { JsonObject } from "@/shared/types/json";
 import { getErrorMessage } from "@/shared/utils";
 import type { ApiErrorPayload } from "@/shared/workflow/api-contracts";

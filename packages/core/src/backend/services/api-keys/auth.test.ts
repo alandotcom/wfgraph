@@ -44,7 +44,7 @@ mock.module("bcryptjs", () => ({
 }));
 
 const { createApiKeyRecord, validateApiKey } =
-  await import("@/backend/services/api-keys/auth.api-keys");
+  await import("@/backend/services/api-keys/auth");
 
 describe("api key auth", () => {
   beforeEach(() => {

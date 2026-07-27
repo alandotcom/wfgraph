@@ -40,12 +40,12 @@ mock.module("@/backend/lib/logger", () => ({
   getAppLogger: () => mocks.logger,
 }));
 
-mock.module("@/backend/services/workflows/workflow.workflows", () => ({
+mock.module("@/backend/services/workflows/workflow", () => ({
   deleteWorkflow: mocks.deleteWorkflow,
 }));
 
 const { postWorkflowsBulkLifecycleResult } =
-  await import("@/backend/services/workflows/workflows-bulk-lifecycle.workflows");
+  await import("@/backend/services/workflows/workflows-bulk-lifecycle");
 
 describe("postWorkflowsBulkLifecycleResult", () => {
   beforeEach(() => {

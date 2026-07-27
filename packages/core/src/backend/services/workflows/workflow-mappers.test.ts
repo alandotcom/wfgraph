@@ -3,7 +3,7 @@ import type { Workflow } from "@/backend/lib/db/schema";
 import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
-} from "./workflow-mappers.workflows";
+} from "./workflow-mappers";
 
 function createWorkflow(overrides: Partial<Workflow> = {}): Workflow {
   return {

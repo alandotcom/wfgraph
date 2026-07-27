@@ -14,11 +14,11 @@ import {
   openApiRestHandler,
 } from "@/backend/rpc/openapi";
 import { rpcRouter } from "@/backend/rpc/router";
-import { postWorkflowResume } from "@/backend/services/workflows/workflow-resume.workflows";
+import { postWorkflowResume } from "@/backend/services/workflows/workflow-resume";
 import {
   optionsWorkflowWebhook,
   postWorkflowWebhook,
-} from "@/backend/services/workflows/workflow-webhook.workflows";
+} from "@/backend/services/workflows/workflow-webhook";
 import { jsonObjectSchema } from "@/shared/types/json";
 import { getErrorMessage } from "@/shared/utils";
 import { listRuntimeActions } from "@/shared/workflow/action-registry";

@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   buildIgnoredRunAuditMessage,
   buildRunStartedAuditMessage,
-} from "./workflow-run-lifecycle.workflows";
+} from "./workflow-run-lifecycle";
 
 describe("buildRunStartedAuditMessage", () => {
   it("names the entrypoint that started the run", () => {

@@ -9,7 +9,7 @@ import {
   success,
 } from "@/backend/lib/service-result";
 import { getErrorMessage } from "@/shared/utils";
-import { deleteWorkflow } from "./workflow.workflows";
+import { deleteWorkflow } from "./workflow";
 
 const workflowsBulkLifecycleLogger = getAppLogger("workflow", "bulk-lifecycle");
 

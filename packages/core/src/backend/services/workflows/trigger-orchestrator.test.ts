@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "bun:test";
-import { orchestrateTriggerExecution } from "./trigger-orchestrator.workflows";
+import { orchestrateTriggerExecution } from "./trigger-orchestrator";
 
 function createWaitState(
   id: string,

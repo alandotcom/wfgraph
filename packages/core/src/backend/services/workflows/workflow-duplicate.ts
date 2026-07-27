@@ -9,7 +9,7 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
-import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers.workflows";
+import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers";
 import { getErrorMessage } from "@/shared/utils";
 import { generateId } from "@/shared/utils/id";
 import type {

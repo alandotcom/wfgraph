@@ -14,7 +14,7 @@ import {
   markExecutionRunning,
   markWaitStateStatus,
 } from "@/backend/lib/workflow-wait-state";
-import { validateApiKey } from "@/backend/services/api-keys/auth.api-keys";
+import { validateApiKey } from "@/backend/services/api-keys/auth";
 import { getErrorMessage } from "@/shared/utils";
 
 const workflowResumeLogger = getAppLogger("workflow", "resume");
