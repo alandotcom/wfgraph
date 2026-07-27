@@ -13,7 +13,7 @@
     "dev:app": "NODE_ENV=development INNGEST_DEV=http://localhost:8388 bun --hot server.ts",
     "dev:client": "NODE_ENV=development bun run scripts/build-client.ts --watch",
     "dev:inngest": "sh -c 'if [ -x ./node_modules/.bin/inngest ]; then until curl -sSf http://localhost:4017/api/inngest >/dev/null 2>/dev/null; do sleep 1; done; DO_NOT_TRACK=1 ./node_modules/.bin/inngest dev --no-discovery -u http://localhost:4017/api/inngest -p 8388 --connect-gateway-port 8390 --connect-gateway-grpc-port 50062 --connect-executor-grpc-port 50063 --persist; else echo \"[inngest] inngest-cli is not installed; skipping local Inngest dev server\"; fi'",
-    "build": "bun run build:lib && bun run build:client && bun run scripts/copy-migrations.ts",
+    "build": "bun run build:lib && bun run build:client",
     "build:client": "CLIENT_DIST_DIR=packages/core/dist/client NODE_ENV=production bun run scripts/build-client.ts",
     "build:lib": "cd packages/core && tsdown",
     "compile": "NODE_ENV=production bun run scripts/build-client.ts && bun run scripts/compile.ts",

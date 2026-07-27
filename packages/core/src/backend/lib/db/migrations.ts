@@ -10,11 +10,19 @@ const logger = getAppLogger("migrations");
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
+// packages/core/drizzle is the one copy of the migrations. drizzle-kit generates
+// into it, "files" in packages/core/package.json publishes it, and each entry
+// below is that same directory seen from a layout the code can run in.
 const MIGRATIONS_DIR_CANDIDATES = [
+  // Compiled binary: `bun build --compile` gives import.meta.url a synthetic
+  // path inside the executable, so nothing relative works and the migrations sit
+  // beside the binary. This is what the Dockerfile lays out.
   resolve(process.cwd(), "drizzle"),
-  resolve(currentDir, "../../../../drizzle"), // src/backend/lib/db/ → packages/core/drizzle/
-  resolve(currentDir, "../../drizzle"), // dist/shared/ → packages/core/drizzle/ (bundled layout)
-  resolve(currentDir, "../drizzle"), // dist/ → dist/drizzle/ (copied migrations)
+  // Running from source, this file being packages/core/src/backend/lib/db/.
+  resolve(currentDir, "../../../../drizzle"),
+  // Installed as a package, this file being bundled into a chunk in the
+  // package's dist/.
+  resolve(currentDir, "../drizzle"),
 ];
 
 export type MigrationsRuntimeOptions = {

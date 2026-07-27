@@ -29,16 +29,15 @@ export default defineConfig({
   // Wipe the library's own output between builds so a renamed entry cannot
   // leave a stale hashed chunk behind.
   //
-  // Two other build steps deposit their output inside this same dist/, because
-  // the shipped server resolves both relative to the compiled module: the SPA
-  // bundle at dist/client (scripts/build-client.ts, which the runtime looks up
-  // in src/hono.ts and src/server.ts) and the Drizzle migrations at
-  // dist/drizzle (scripts/copy-migrations.ts). A bare `clean: true` deletes the
-  // whole outDir, so running `tsdown` on its own wiped both of those out and
-  // only the root "build" script's step ordering hid the damage.
+  // One other build step deposits its output inside this same dist/, because the
+  // shipped server resolves it relative to the compiled module: the SPA bundle at
+  // dist/client, written by scripts/build-client.ts and read back in src/hono.ts
+  // and src/server.ts. A bare `clean: true` deletes the whole outDir, so running
+  // `tsdown` on its own wiped that out and only the root "build" script's step
+  // ordering hid the damage.
   //
   // tsdown accepts glob patterns here and hands them to tinyglobby, where a
   // leading "!" turns a pattern into an exclusion. Patterns resolve against the
   // package directory, since that is tsdown's cwd.
-  clean: ["dist/*", "!dist/client", "!dist/drizzle"],
+  clean: ["dist/*", "!dist/client"],
 });
