@@ -1,4 +1,4 @@
-import type { EdgeChange, Node, NodeChange } from "@xyflow/react";
+import type { EdgeChange, NodeChange } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import { partition } from "es-toolkit/array";
 import { atom } from "jotai";
@@ -18,28 +18,6 @@ import { api } from "./rpc-client";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isWorkflowNodeData(value: unknown): value is WorkflowNodeData {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return typeof value.label === "string" && typeof value.type === "string";
-}
-
-function isWorkflowNode(value: Node): value is WorkflowNode {
-  return isWorkflowNodeData(value.data);
-}
-
-function isWorkflowNodeChange(
-  change: NodeChange
-): change is NodeChange<WorkflowNode> {
-  if (change.type === "add" || change.type === "replace") {
-    return isWorkflowNode(change.item);
-  }
-
-  return true;
 }
 
 export type {
@@ -183,20 +161,18 @@ export const autosaveAtom = atom(
 // Derived atoms for node/edge operations
 export const onNodesChangeAtom = atom(
   null,
-  (get, set, changes: NodeChange[]) => {
+  (get, set, changes: NodeChange<WorkflowNode>[]) => {
     const currentNodes = get(nodesAtom);
 
     // Filter out deletion attempts on trigger nodes
-    const filteredChanges = changes
-      .filter((change) => {
-        if (change.type === "remove") {
-          const nodeToRemove = currentNodes.find((n) => n.id === change.id);
-          // Prevent deletion of trigger nodes
-          return nodeToRemove?.data.type !== "trigger";
-        }
-        return true;
-      })
-      .filter(isWorkflowNodeChange);
+    const filteredChanges = changes.filter((change) => {
+      if (change.type === "remove") {
+        const nodeToRemove = currentNodes.find((n) => n.id === change.id);
+        // Prevent deletion of trigger nodes
+        return nodeToRemove?.data.type !== "trigger";
+      }
+      return true;
+    });
 
     const newNodes = applyNodeChanges<WorkflowNode>(
       filteredChanges,

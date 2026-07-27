@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   type ActionConfigField,
   clearRuntimeActions,
@@ -16,138 +17,117 @@ export type RuntimeTriggerDefinition = {
   outputFields?: ReferenceField[];
 };
 
-type RuntimeExtensionsPayload = {
-  actions?: RuntimeActionDefinition[];
-  triggers?: RuntimeTriggerDefinition[];
-};
-
 const runtimeTriggerRegistry = new Map<string, RuntimeTriggerDefinition>();
 
 let hydrationPromise: Promise<void> | null = null;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+const selectOptionSchema = z.object({
+  value: z.string(),
+  label: z.string(),
+});
+
+/**
+ * One declarative config field, matching `ActionConfigFieldBase` in the plugin
+ * registry. The field types are a closed set because the config renderer
+ * switches on them: a field the renderer cannot draw is not a usable field.
+ */
+const actionConfigFieldBaseSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  type: z.enum([
+    "template-input",
+    "template-textarea",
+    "text",
+    "number",
+    "select",
+    "schema-builder",
+    "key-value",
+  ]),
+  placeholder: z.string().optional(),
+  defaultValue: z.string().optional(),
+  example: z.string().optional(),
+  options: z.array(selectOptionSchema).optional(),
+  rows: z.number().optional(),
+  min: z.number().optional(),
+  required: z.boolean().optional(),
+  showWhen: z
+    .object({
+      field: z.string(),
+      equals: z.string(),
+    })
+    .optional(),
+});
+
+const actionConfigFieldGroupSchema = z.object({
+  label: z.string(),
+  type: z.literal("group"),
+  fields: z.array(actionConfigFieldBaseSchema),
+  defaultExpanded: z.boolean().optional(),
+});
+
+// The annotation is the check: if the registry's field contract gains a case,
+// this stops compiling until the schema above learns about it.
+const actionConfigFieldSchema: z.ZodType<ActionConfigField> = z.union([
+  actionConfigFieldGroupSchema,
+  actionConfigFieldBaseSchema,
+]);
+
+const referenceFieldSchema: z.ZodType<ReferenceField> = z.object({
+  path: z.string(),
+  description: z.string(),
+  type: z
+    .enum(["string", "number", "boolean", "timestamp", "array", "object"])
+    .optional(),
+  format: z.literal("timestamp").optional(),
+  nullable: z.boolean().optional(),
+  enumValues: z.array(z.string()).optional(),
+});
+
+/**
+ * An action registered at runtime by the host app, as `/api/extensions` sends it.
+ *
+ * The server side of this is `listRuntimeActions()`, which strips the action's
+ * `execute` function before serializing: what arrives here is metadata the editor
+ * uses to draw the action selector and its config form, and the run itself
+ * happens on the server.
+ */
+const runtimeActionSchema: z.ZodType<RuntimeActionDefinition> = z.object({
+  // The selector keys on id and shows label, so both must carry a value.
+  id: z.string().trim().min(1),
+  label: z.string().trim().min(1),
+  description: z.string(),
+  category: z.string(),
+  integration: z.string().optional(),
+  logoUrl: z.string().optional(),
+  configFields: z.array(actionConfigFieldSchema).optional(),
+  outputFields: z.array(referenceFieldSchema).optional(),
+});
+
+const runtimeTriggerSchema: z.ZodType<RuntimeTriggerDefinition> = z.object({
+  type: z.string().trim().min(1),
+  label: z.string().trim().min(1),
+  executionType: z.enum(["manual", "webhook", "event"]),
+  description: z.string().optional(),
+  logoUrl: z.string().optional(),
+  configFields: z.array(actionConfigFieldSchema).optional(),
+  outputFields: z.array(referenceFieldSchema).optional(),
+});
+
+/**
+ * An array whose entries are validated one at a time, keeping the ones that pass.
+ * A definition the editor cannot use costs only itself: the rest of the host
+ * app's actions and triggers still reach the selector.
+ */
+function droppingInvalidEntries<T>(entrySchema: z.ZodType<T>) {
+  return z
+    .array(entrySchema.nullable().catch(null))
+    .transform((entries) => entries.filter((entry) => entry !== null));
 }
 
-function isRuntimeActionDefinition(
-  value: unknown
-): value is RuntimeActionDefinition {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  if (
-    typeof value.id !== "string" ||
-    typeof value.label !== "string" ||
-    typeof value.description !== "string" ||
-    typeof value.category !== "string"
-  ) {
-    return false;
-  }
-
-  if (
-    "logoUrl" in value &&
-    value.logoUrl !== undefined &&
-    typeof value.logoUrl !== "string"
-  ) {
-    return false;
-  }
-
-  if (
-    "integration" in value &&
-    value.integration !== undefined &&
-    typeof value.integration !== "string"
-  ) {
-    return false;
-  }
-
-  if (
-    "configFields" in value &&
-    value.configFields !== undefined &&
-    !Array.isArray(value.configFields)
-  ) {
-    return false;
-  }
-
-  if (
-    "outputFields" in value &&
-    value.outputFields !== undefined &&
-    !Array.isArray(value.outputFields)
-  ) {
-    return false;
-  }
-
-  return true;
-}
-
-function isRuntimeTriggerDefinition(
-  value: unknown
-): value is RuntimeTriggerDefinition {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  if (
-    typeof value.type !== "string" ||
-    typeof value.label !== "string" ||
-    (value.executionType !== "manual" &&
-      value.executionType !== "webhook" &&
-      value.executionType !== "event")
-  ) {
-    return false;
-  }
-
-  if (
-    "description" in value &&
-    value.description !== undefined &&
-    typeof value.description !== "string"
-  ) {
-    return false;
-  }
-
-  if (
-    "logoUrl" in value &&
-    value.logoUrl !== undefined &&
-    typeof value.logoUrl !== "string"
-  ) {
-    return false;
-  }
-
-  if (
-    "configFields" in value &&
-    value.configFields !== undefined &&
-    !Array.isArray(value.configFields)
-  ) {
-    return false;
-  }
-
-  if (
-    "outputFields" in value &&
-    value.outputFields !== undefined &&
-    !Array.isArray(value.outputFields)
-  ) {
-    return false;
-  }
-
-  return true;
-}
-
-function parseRuntimeExtensionsPayload(
-  value: unknown
-): RuntimeExtensionsPayload {
-  if (!isRecord(value)) {
-    return {};
-  }
-
-  return {
-    actions: Array.isArray(value.actions)
-      ? value.actions.filter(isRuntimeActionDefinition)
-      : undefined,
-    triggers: Array.isArray(value.triggers)
-      ? value.triggers.filter(isRuntimeTriggerDefinition)
-      : undefined,
-  };
-}
+const runtimeExtensionsPayloadSchema = z.object({
+  actions: droppingInvalidEntries(runtimeActionSchema).optional(),
+  triggers: droppingInvalidEntries(runtimeTriggerSchema).optional(),
+});
 
 export function getRuntimeTriggers(): RuntimeTriggerDefinition[] {
   return Array.from(runtimeTriggerRegistry.values());
@@ -177,23 +157,22 @@ export function hydrateRuntimeExtensionsFromApi(): Promise<void> {
         return;
       }
 
-      const payload = parseRuntimeExtensionsPayload(await response.json());
+      const payload = runtimeExtensionsPayloadSchema.safeParse(
+        await response.json()
+      );
 
       clearRuntimeActions();
       runtimeTriggerRegistry.clear();
 
-      for (const action of payload.actions ?? []) {
-        if (!(action?.id && action.label)) {
-          continue;
-        }
+      if (!payload.success) {
+        return;
+      }
+
+      for (const action of payload.data.actions ?? []) {
         registerRuntimeAction(action);
       }
 
-      for (const trigger of payload.triggers ?? []) {
-        if (!(trigger?.type && trigger.label)) {
-          continue;
-        }
-
+      for (const trigger of payload.data.triggers ?? []) {
         runtimeTriggerRegistry.set(trigger.type, trigger);
       }
     } catch {

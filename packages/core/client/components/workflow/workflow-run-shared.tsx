@@ -6,6 +6,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { useState } from "react";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
   OUTPUT_DISPLAY_CONFIGS,
@@ -116,33 +117,40 @@ export function formatDuration(duration: string): string {
 
 // Data helpers
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function getOutputConfig(nodeType: string): OutputDisplayConfig | undefined {
   return OUTPUT_DISPLAY_CONFIGS[nodeType];
 }
 
+/**
+ * Read the one field a display config names out of a step's stored output.
+ *
+ * The output is JSONB coming back from the database, so the field is parsed
+ * rather than assumed. The key comes from the plugin's own display config, which
+ * is why the schema is built per call.
+ */
 function getOutputDisplayValue(
   output: unknown,
   config: { type: "image" | "video" | "url"; field: string }
 ): string | undefined {
-  if (!isRecord(output)) {
-    return;
-  }
-  const value = output[config.field];
-  if (typeof value === "string" && value.length > 0) {
-    return value;
-  }
-  return;
+  const parsed = z
+    .object({ [config.field]: z.string().min(1) })
+    .safeParse(output);
+
+  return parsed.success ? parsed.data[config.field] : undefined;
 }
 
-function isBase64ImageOutput(output: unknown): output is { base64: string } {
-  if (!isRecord(output)) {
-    return false;
-  }
-  return typeof output.base64 === "string" && output.base64.length > 100;
+/**
+ * Step output carrying an image inline as base64. Also read from a stored step
+ * log, so it is parsed too. The length floor keeps a short string that happens to
+ * be named `base64` out of an image tag's src.
+ */
+const base64ImageOutputSchema = z.object({
+  base64: z.string().min(101),
+});
+
+export function readBase64ImageOutput(output: unknown): string | null {
+  const parsed = base64ImageOutputSchema.safeParse(output);
+  return parsed.success ? parsed.data.base64 : null;
 }
 
 function getLogStartedAtMs(log: Pick<ExecutionLog, "startedAt">): number {
@@ -360,7 +368,7 @@ export function OutputDisplay({
   const displayValue = effectiveBuiltInConfig
     ? getOutputDisplayValue(output, effectiveBuiltInConfig)
     : undefined;
-  const legacyBase64Output = isBase64ImageOutput(output) ? output.base64 : null;
+  const legacyBase64Output = readBase64ImageOutput(output);
   const isLegacyBase64 =
     !(CustomComponent || pluginConfig || builtInConfig) && !!legacyBase64Output;
 

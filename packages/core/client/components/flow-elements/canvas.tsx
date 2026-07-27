@@ -1,8 +1,12 @@
 import { Background, ReactFlow, type ReactFlowProps } from "@xyflow/react";
 import type { ReactNode } from "react";
+import type { WorkflowNode } from "@/shared/workflow/types";
 import "@xyflow/react/dist/style.css";
 
-type CanvasProps = ReactFlowProps & {
+// Every node on this canvas is a workflow node, so React Flow's node generic
+// is pinned here. Callbacks such as onNodesChange then hand their consumers a
+// WorkflowNode directly.
+type CanvasProps = ReactFlowProps<WorkflowNode> & {
   children?: ReactNode;
 };
 

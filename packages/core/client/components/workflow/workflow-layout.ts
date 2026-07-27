@@ -17,6 +17,38 @@ type DagreNode = {
   y: number;
 };
 
+/**
+ * The label we hang on each dagre node.
+ *
+ * We hand dagre a width and a height; `dagre.layout` then writes the computed
+ * centre back onto the very same label object, which is why x and y are
+ * optional here. graphlib answers `undefined` for an id that was never added,
+ * so that possibility belongs in the label type too.
+ */
+type DagreNodeLabel =
+  | {
+      width: number;
+      height: number;
+      x?: number;
+      y?: number;
+    }
+  | undefined;
+
+type DagreEdgeLabel = {
+  weight?: number;
+};
+
+/**
+ * graphlib's Graph takes its three label types as parameters and defaults all
+ * of them to `any`. Naming ours here gives `graph.node(id)` a real shape, so
+ * reading a computed position back out is a plain property access.
+ */
+type DagreLayoutGraph = dagre.graphlib.Graph<
+  dagre.GraphLabel,
+  DagreNodeLabel,
+  DagreEdgeLabel
+>;
+
 type TreeNodeData = {
   id: string;
   children?: TreeNodeData[];
@@ -26,10 +58,6 @@ type LayoutSpacing = {
   nodeSpacing: number;
   rankSpacing: number;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
 
 function hasPositionChanged(
   current: WorkflowNode["position"],
@@ -69,20 +97,17 @@ function getLayoutSpacing(availableWidth?: number): LayoutSpacing {
 }
 
 function getLayoutNode(
-  graph: dagre.graphlib.Graph,
+  graph: DagreLayoutGraph,
   nodeId: string
 ): DagreNode | null {
-  const candidate = graph.node(nodeId);
-  if (!isRecord(candidate)) {
+  const label = graph.node(nodeId);
+  // A label with no centre on it means dagre never placed this node, so the
+  // caller should keep whatever position the node already had.
+  if (label?.x === undefined || label.y === undefined) {
     return null;
   }
 
-  const { x, y } = candidate;
-  if (typeof x !== "number" || typeof y !== "number") {
-    return null;
-  }
-
-  return { x, y };
+  return { x: label.x, y: label.y };
 }
 
 function layoutWorkflowNodesWithDagre(input: {
@@ -93,7 +118,11 @@ function layoutWorkflowNodesWithDagre(input: {
   nodes: WorkflowNode[];
   changed: boolean;
 } {
-  const graph = new dagre.graphlib.Graph({
+  const graph: DagreLayoutGraph = new dagre.graphlib.Graph<
+    dagre.GraphLabel,
+    DagreNodeLabel,
+    DagreEdgeLabel
+  >({
     directed: true,
     multigraph: false,
     compound: false,

@@ -17,12 +17,14 @@ import {
   Zap,
 } from "lucide-react";
 import { memo, useEffect, useMemo, useState } from "react";
+import { z } from "zod";
 import {
   Node,
   NodeDescription,
   NodeTitle,
 } from "@/components/flow-elements/node";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { readBase64ImageOutput } from "@/components/workflow/workflow-run-shared";
 import {
   integrationIdsAtom,
   integrationsLoadedAtom,
@@ -48,18 +50,23 @@ type WaitPreviewData = {
   triggerTime: string;
 };
 
-type RuntimeWaitInput = {
-  waitMode?: unknown;
-  waitDuration?: unknown;
-  waitUntil?: unknown;
-  waitOffset?: unknown;
-  waitTimezone?: unknown;
-  waitTimeout?: unknown;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+/**
+ * The Wait step's resolved config as it was written to the step log.
+ *
+ * That log row is JSONB read back from the database, so the shape is parsed here
+ * before the countdown is computed from it. The individual wait values stay
+ * `unknown` because `resolveWaitUntil` accepts an ISO timestamp, a duration
+ * string, or a unix epoch number and decides for itself what each one is.
+ */
+const runtimeWaitInputSchema = z.object({
+  // A mode of whitespace means the same thing as an absent one: a plain delay.
+  waitMode: z.string().trim().optional(),
+  waitTimezone: z.string().trim().optional(),
+  waitDuration: z.unknown().optional(),
+  waitUntil: z.unknown().optional(),
+  waitOffset: z.unknown().optional(),
+  waitTimeout: z.unknown().optional(),
+});
 
 function readConfigString(
   config: Record<string, unknown> | undefined,
@@ -76,10 +83,6 @@ function readOptionalConfigString(
 ): string | undefined {
   const value = config?.[key];
   return typeof value === "string" ? value : undefined;
-}
-
-function isRuntimeWaitInput(value: unknown): value is RuntimeWaitInput {
-  return isRecord(value);
 }
 
 function hasTemplateExpression(value: unknown): boolean {
@@ -225,11 +228,12 @@ function useRuntimeWaitPreview(
   }, [shouldShowRuntimeWaitPreview]);
 
   const runtimeInput = useMemo(() => {
-    if (!(shouldShowRuntimeWaitPreview && isRuntimeWaitInput(nodeLog?.input))) {
+    if (!shouldShowRuntimeWaitPreview) {
       return null;
     }
 
-    return nodeLog.input;
+    const parsed = runtimeWaitInputSchema.safeParse(nodeLog?.input);
+    return parsed.success ? parsed.data : null;
   }, [shouldShowRuntimeWaitPreview, nodeLog?.input]);
 
   const startedAt =
@@ -241,15 +245,8 @@ function useRuntimeWaitPreview(
     return null;
   }
 
-  const waitMode =
-    typeof runtimeInput.waitMode === "string" && runtimeInput.waitMode.trim()
-      ? runtimeInput.waitMode.trim()
-      : "delay";
-  const waitTimezone =
-    typeof runtimeInput.waitTimezone === "string" &&
-    runtimeInput.waitTimezone.trim()
-      ? runtimeInput.waitTimezone.trim()
-      : undefined;
+  const waitMode = runtimeInput.waitMode || "delay";
+  const waitTimezone = runtimeInput.waitTimezone || undefined;
 
   if (waitMode === "hook" || waitMode === "event") {
     const timeoutResolution = resolveWaitUntil({
@@ -354,15 +351,6 @@ const getIntegrationFromActionType = (actionType: string): string => {
 
   return "System";
 };
-
-// Helper to detect if output is a base64 image from generateImage step
-function isBase64ImageOutput(output: unknown): output is { base64: string } {
-  if (!isRecord(output)) {
-    return false;
-  }
-  const { base64 } = output;
-  return typeof base64 === "string" && base64.length > 100;
-}
 
 // Helper to check if an action requires an integration
 const requiresIntegration = (actionType: string): boolean => {
@@ -540,15 +528,11 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
   const status = data.status;
 
-  // Check if this node has a generated image from the selected execution
-  const hasGeneratedImage =
-    selectedExecutionId &&
-    actionType === "Generate Image" &&
-    nodeLog?.output &&
-    isBase64ImageOutput(nodeLog.output);
+  // A Generate Image step can return its image inline. When the run being viewed
+  // produced one, the node shows it in place of the provider logo.
   const generatedImageBase64 =
-    hasGeneratedImage && nodeLog?.output && isBase64ImageOutput(nodeLog.output)
-      ? nodeLog.output.base64
+    selectedExecutionId && actionType === "Generate Image"
+      ? readBase64ImageOutput(nodeLog?.output)
       : null;
 
   // Handle empty action type (new node without selected action)
@@ -690,11 +674,11 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
       )}
 
       <div className="flex flex-col items-center justify-center gap-3 p-6">
-        {hasGeneratedImage
-          ? generatedImageBase64 && (
-              <GeneratedImageThumbnail base64={generatedImageBase64} />
-            )
-          : getProviderLogo(actionType)}
+        {generatedImageBase64 ? (
+          <GeneratedImageThumbnail base64={generatedImageBase64} />
+        ) : (
+          getProviderLogo(actionType)
+        )}
         <div className="flex flex-col items-center gap-1 text-center">
           <NodeTitle className="text-base">{displayTitle}</NodeTitle>
           {waitPreview ? (
