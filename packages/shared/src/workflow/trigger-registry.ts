@@ -93,19 +93,18 @@ type TriggerPathNonTraversable =
   | ((...args: never[]) => unknown)
   | readonly unknown[];
 
-type TriggerPayloadPath<TPayload> =
-  TPayload extends JsonObject
-    ? {
-        [Key in Extract<
-          keyof TPayload,
-          string
-        >]: TPayload[Key] extends TriggerPathNonTraversable
-          ? Key
-          : TPayload[Key] extends JsonObject
-            ? Key | `${Key}.${TriggerPayloadPath<TPayload[Key]>}`
-            : Key;
-      }[Extract<keyof TPayload, string>]
-    : never;
+type TriggerPayloadPath<TPayload> = TPayload extends JsonObject
+  ? {
+      [Key in Extract<
+        keyof TPayload,
+        string
+      >]: TPayload[Key] extends TriggerPathNonTraversable
+        ? Key
+        : TPayload[Key] extends JsonObject
+          ? Key | `${Key}.${TriggerPayloadPath<TPayload[Key]>}`
+          : Key;
+    }[Extract<keyof TPayload, string>]
+  : never;
 
 type TriggerPayloadValueAtPath<
   TPayload,
@@ -738,9 +737,9 @@ function extractStandardSchemaOutputFields(
   }
 }
 
-function outputFieldsFromTriggerSchema<
-  TPayload extends JsonObject,
->(schema: TriggerPayloadSchema<TPayload>): ReferenceField[] {
+function outputFieldsFromTriggerSchema<TPayload extends JsonObject>(
+  schema: TriggerPayloadSchema<TPayload>
+): ReferenceField[] {
   const standardFields = extractStandardSchemaOutputFields(schema);
   if (standardFields) {
     return standardFields;
@@ -758,9 +757,9 @@ function outputFieldsFromTriggerSchema<
   return [];
 }
 
-function buildInngestEventTriggerConfig<
-  TPayload extends JsonObject,
->(input: CreateTriggerInputEvent<TPayload>): InngestEventTriggerConfig {
+function buildInngestEventTriggerConfig<TPayload extends JsonObject>(
+  input: CreateTriggerInputEvent<TPayload>
+): InngestEventTriggerConfig {
   const rawEvents = Array.isArray(input.event) ? input.event : [input.event];
   const eventNames = rawEvents.map((e) => e.trim());
 

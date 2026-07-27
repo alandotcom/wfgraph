@@ -13,6 +13,7 @@
  * `WorkflowSchemaField`. This module reads that tree and flattens it.
  */
 
+import type { JsonObject, JsonValue } from "@/shared/types/json";
 import type {
   WorkflowSchemaField,
   WorkflowSchemaFieldType,
@@ -240,13 +241,13 @@ const BRACKET_INDEX_PATTERN = /\[(\d+)\]/g;
  * output and stays whole.
  */
 function isStepWrapper(
-  value: unknown
-): value is { success: boolean; data: unknown } {
+  value: JsonValue
+): value is JsonObject & { success: boolean; data: JsonValue } {
   return (
     typeof value === "object" &&
     value !== null &&
     !Array.isArray(value) &&
-    typeof Reflect.get(value, "success") === "boolean" &&
+    typeof value.success === "boolean" &&
     "data" in value
   );
 }
@@ -258,7 +259,7 @@ function isStepWrapper(
  * in the same way everywhere: to a template token that names a field, and to a
  * CEL condition that reads bare field names out of a merged context.
  */
-export function unwrapStepOutput(output: unknown): unknown {
+export function unwrapStepOutput(output: JsonValue): JsonValue {
   return isStepWrapper(output) ? output.data : output;
 }
 
@@ -285,13 +286,19 @@ function parsePathSegments(path: string): PathSegment[] {
  * naming a key does not start answering with array members such as `length`;
  * `name[0]` reaches array members through readIndex.
  */
-function readKey(value: unknown, key: string): unknown {
+function readKey(
+  value: JsonValue | undefined,
+  key: string
+): JsonValue | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? Reflect.get(value, key)
+    ? value[key]
     : undefined;
 }
 
-function readIndex(value: unknown, index: number): unknown {
+function readIndex(
+  value: JsonValue | undefined,
+  index: number
+): JsonValue | undefined {
   return Array.isArray(value) ? value[index] : undefined;
 }
 
@@ -306,7 +313,10 @@ function readIndex(value: unknown, index: number): unknown {
  * Returns `undefined` when the path does not resolve, so a caller can tell a
  * missing key apart from a stored `null`.
  */
-export function resolveOutputPath(output: unknown, path: string): unknown {
+export function resolveOutputPath(
+  output: JsonValue,
+  path: string
+): JsonValue | undefined {
   const segments = parsePathSegments(path);
   if (segments.length === 0) {
     return output;
@@ -316,7 +326,9 @@ export function resolveOutputPath(output: unknown, path: string): unknown {
   const namesWrapperKey =
     firstKey === "success" || firstKey === "data" || firstKey === "error";
 
-  let current: unknown = namesWrapperKey ? output : unwrapStepOutput(output);
+  let current: JsonValue | undefined = namesWrapperKey
+    ? output
+    : unwrapStepOutput(output);
 
   for (const segment of segments) {
     if (current === null || current === undefined) {

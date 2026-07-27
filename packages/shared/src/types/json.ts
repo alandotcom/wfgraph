@@ -33,3 +33,18 @@ export const jsonObjectSchema: z.ZodType<JsonObject, JsonObject> = z.record(
   z.string(),
   z.json()
 );
+
+/**
+ * Reads a value the type system lost track of back as JSON.
+ *
+ * The engine dispatches a step through a dynamic import, so a step's payload
+ * arrives as `unknown` however precisely the step declared it. By the time the
+ * engine files that payload as a node output it has already been through
+ * Inngest's step memoization, which serializes it, so it is JSON in fact. This
+ * turns that fact back into a type, and answers `null` for a value that is not
+ * JSON so a plugin returning a Date is caught where it happened.
+ */
+export function readJsonValue(value: unknown): JsonValue | null {
+  const result = z.json().safeParse(value);
+  return result.success ? result.data : null;
+}

@@ -20,7 +20,11 @@ import {
   decodeIsoTimestamp,
   encodeIsoTimestamp,
 } from "@/shared/types/timestamp";
-import type { JsonObject } from "@/shared/types/json";
+import {
+  type JsonObject,
+  type JsonValue,
+  readJsonValue,
+} from "@/shared/types/json";
 import { getErrorMessageAsync } from "@/shared/utils";
 import { resolveWaitUntil } from "@/shared/utils/wait-time";
 import { normalizeConditionBranch } from "@/shared/workflow/condition-branch";
@@ -90,7 +94,16 @@ type ExecutionResult = {
   haltBranch?: boolean;
 };
 
-type NodeOutputs = Record<string, { label: string; data: unknown }>;
+/**
+ * What each finished node left behind, keyed by node id.
+ *
+ * `data` is JSON because it has already crossed a serialization boundary by the
+ * time anything reads it: Inngest memoizes a step's return value between steps,
+ * and a resumed run reads back what it decoded. Saying so here is what lets the
+ * template resolver and the CEL context walk a value with plain language checks
+ * rather than a hand-rolled shape predicate.
+ */
+type NodeOutputs = Record<string, { label: string; data: JsonValue }>;
 
 /**
  * What a node's memoized work reports back to the traversal. It travels through
@@ -244,7 +257,7 @@ function getConditionNextNodeIds(input: {
  */
 function mergeConditionContextValue(
   context: Record<string, unknown>,
-  value: unknown
+  value: JsonValue
 ) {
   const record = unwrapStepOutput(value);
   // A node output is JSON that came back from a plugin's own API call, so its
@@ -1902,11 +1915,21 @@ async function executeWorkflowInner(
       // Store results
       results[nodeId] = result;
 
-      // Store outputs with sanitized nodeId for template variable lookup
+      // Store outputs with sanitized nodeId for template variable lookup.
+      // A step's payload arrives as unknown because the dispatch is a dynamic
+      // import, so this is where it becomes JSON again for the template
+      // resolver and the CEL context to walk.
       const sanitizedNodeId = nodeId.replace(/[^a-zA-Z0-9]/g, "_");
+      const outputData = readJsonValue(result.data);
+      if (outputData === null && result.data !== null) {
+        namedNodeLogger.warn(
+          "Node output is not JSON and will read as empty downstream",
+          { actionType: node.data.config?.actionType }
+        );
+      }
       outputs[sanitizedNodeId] = {
         label: node.data.label || nodeId,
-        data: result.data,
+        data: outputData,
       };
       completedNodes.add(nodeId);
 
