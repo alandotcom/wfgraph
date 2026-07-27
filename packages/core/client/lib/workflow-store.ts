@@ -16,10 +16,6 @@ import type {
 } from "@/shared/workflow/types";
 import { api } from "./rpc-client";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 export type {
   ExecutionLogEntry,
   WorkflowEdge,
@@ -368,14 +364,22 @@ function updateTemplatesInConfig(
           });
         })
         .join("");
-    } else if (isRecord(value)) {
+    } else if (
+      typeof value === "object" &&
+      value !== null &&
+      !Array.isArray(value)
+    ) {
+      // The recursion needs a keyed value to walk. The copy is what gets passed
+      // down, so it is also what the identity check below compares against: the
+      // recursion returns its own argument when nothing inside it was renamed.
+      const nested: Record<string, unknown> = { ...value };
       const nestedUpdated = updateTemplatesInConfig(
-        value,
+        nested,
         nodeId,
         oldLabel,
         newLabel
       );
-      if (nestedUpdated !== value) {
+      if (nestedUpdated !== nested) {
         hasChanges = true;
       }
       updated[key] = nestedUpdated;

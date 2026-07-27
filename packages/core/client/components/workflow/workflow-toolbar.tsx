@@ -125,10 +125,6 @@ type BrokenTemplateReferenceInfo = {
   }>;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function readConfigString(
   config: Record<string, unknown> | undefined,
   key: string
@@ -170,8 +166,15 @@ function extractAllTemplateReferences(
       for (const ref of refs) {
         results.push({ field: fieldPath, ...ref });
       }
-    } else if (isRecord(value)) {
-      results.push(...extractAllTemplateReferences(value, fieldPath));
+    } else if (
+      typeof value === "object" &&
+      value !== null &&
+      !Array.isArray(value)
+    ) {
+      // A copy carries the keyed value into the recursion, which walks config
+      // one level at a time.
+      const nested: Record<string, unknown> = { ...value };
+      results.push(...extractAllTemplateReferences(nested, fieldPath));
     }
   }
 
