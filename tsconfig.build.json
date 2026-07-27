@@ -45,6 +45,8 @@
   "include": [
     "packages/core/src/**/*.ts",
     "packages/core/src/**/*.tsx",
+    "packages/plugins/src/**/*.ts",
+    "packages/plugins/src/**/*.tsx",
     "packages/client/src/index.ts"
   ]
 }

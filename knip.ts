@@ -140,10 +140,6 @@ const config: KnipConfig = {
         // import that the transform adds and @types/react is what tsc reads.
         "react",
         "@types/react",
-        // Plugin code still reaches core through the `@/backend/*` alias, which
-        // knip cannot follow. That edge is the one the alias ban has not closed
-        // yet; @rova/shared is now imported by name and needs no entry.
-        "@rova/core",
       ],
     },
   },

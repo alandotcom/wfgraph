@@ -1,8 +1,8 @@
-import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import {
+  fetchCredentials,
   type StepInput,
   withStepLogging,
-} from "@/backend/lib/steps/step-handler";
+} from "@rova/core/plugin";
 import { createTwilioMessage, describeTwilioFailure } from "@/twilio/client";
 import type { TwilioCredentials } from "@/twilio/credentials";
 

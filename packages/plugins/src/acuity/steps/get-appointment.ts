@@ -1,10 +1,10 @@
 import type { Appointment } from "@fountain-bio/acuity";
 import type { AcuityCredentials } from "@/acuity/credentials";
-import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import {
+  fetchCredentials,
   type StepInput,
   withStepLogging,
-} from "@/backend/lib/steps/step-handler";
+} from "@rova/core/plugin";
 import { createAcuityClient, getAcuityErrorMessage } from "./client";
 import { parseOptionalBoolean, parseRequiredInteger } from "./shared";
 

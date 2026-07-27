@@ -1,9 +1,9 @@
 import { LinearClient, type LinearDocument } from "@linear/sdk";
-import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import {
+  fetchCredentials,
   type StepInput,
   withStepLogging,
-} from "@/backend/lib/steps/step-handler";
+} from "@rova/core/plugin";
 import type { LinearCredentials } from "@/linear/credentials";
 import { toLinearError } from "@/linear/errors";
 import { getErrorMessage } from "@rova/shared/utils";

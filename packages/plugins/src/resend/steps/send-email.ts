@@ -1,11 +1,11 @@
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { z } from "zod";
-import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import {
+  fetchCredentials,
   type StepInput,
   withStepLogging,
-} from "@/backend/lib/steps/step-handler";
+} from "@rova/core/plugin";
 import { describeResendFailure, sendResendEmail } from "@/resend/client";
 import type { ResendCredentials } from "@/resend/credentials";
 import type { JsonObject } from "@rova/shared/types/json";

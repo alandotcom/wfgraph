@@ -19,11 +19,18 @@ import { fileURLToPath } from "node:url";
  * import shows up.
  */
 
-const packageDir = join(dirname(fileURLToPath(import.meta.url)), "..");
-const distDir = join(packageDir, "dist");
+const workspaceRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+/** Every workspace that publishes, and the build that produces its output. */
+const PUBLISHED = [
+  { name: "@rova/core", dir: "packages/core", build: "build:lib" },
+  { name: "@rova/plugins", dir: "packages/plugins", build: "build:plugins" },
+];
 
 // `from "x"`, `import "x"`, and `import("x")`, skipping relative specifiers.
-const IMPORT_RE = /(?:from|import)\s*\(?\s*"([^".][^"]*)"/g;
+// No whitespace in the specifier: a plugin's help text ends "...Bot Token from ",
+// which is otherwise indistinguishable from an import.
+const IMPORT_RE = /(?:from|import)\s*\(?\s*"([^".\s][^"\s]*)"/g;
 
 /** "@scope/pkg/sub" and "pkg/sub" both belong to the package before the sub-path. */
 function toPackageName(specifier: string): string {
@@ -33,12 +40,21 @@ function toPackageName(specifier: string): string {
     : (segments[0] ?? specifier);
 }
 
-async function readDeclaredDependencies(): Promise<Set<string>> {
+async function readDeclaredDependencies(
+  packageDir: string
+): Promise<Set<string>> {
   const manifest = JSON.parse(
-    await readFile(join(packageDir, "package.json"), "utf-8")
-  ) as { dependencies?: Record<string, string> };
+    await readFile(join(workspaceRoot, packageDir, "package.json"), "utf-8")
+  ) as {
+    dependencies?: Record<string, string>;
+    peerDependencies?: Record<string, string>;
+  };
 
-  return new Set(Object.keys(manifest.dependencies ?? {}));
+  // A peer counts: the adopter installs it.
+  return new Set([
+    ...Object.keys(manifest.dependencies ?? {}),
+    ...Object.keys(manifest.peerDependencies ?? {}),
+  ]);
 }
 
 /**
@@ -49,24 +65,35 @@ async function readDeclaredDependencies(): Promise<Set<string>> {
  * under test. Reading whichever bundle happens to be lying around would report
  * on yesterday's code and pass. The library build takes well under a second.
  */
-let bundlesPromise: Promise<string[]> | undefined;
+const built = new Map<string, Promise<string[]>>();
 
-function listBundles(): Promise<string[]> {
-  bundlesPromise ??= (async () => {
-    await $`bun run build:lib`.cwd(join(packageDir, "../..")).quiet();
-    const entries = await readdir(distDir);
+function listBundles(dir: string, build: string): Promise<string[]> {
+  const existing = built.get(dir);
+  if (existing) {
+    return existing;
+  }
+
+  const pending = (async () => {
+    await $`bun run ${build}`.cwd(workspaceRoot).quiet();
+    const entries = await readdir(join(workspaceRoot, dir, "dist"));
     return entries.filter((entry) => entry.endsWith(".js"));
   })();
-
-  return bundlesPromise;
+  built.set(dir, pending);
+  return pending;
 }
 
-async function readBundledImports(): Promise<Set<string>> {
-  const bundles = await listBundles();
+async function readBundledImports(
+  dir: string,
+  build: string
+): Promise<Set<string>> {
+  const bundles = await listBundles(dir, build);
   const imported = new Set<string>();
 
   for (const bundle of bundles) {
-    const source = await readFile(join(distDir, bundle), "utf-8");
+    const source = await readFile(
+      join(workspaceRoot, dir, "dist", bundle),
+      "utf-8"
+    );
     for (const match of source.matchAll(IMPORT_RE)) {
       const specifier = match[1];
       // Node built-ins are always there; "bun:" only appears in code that only
@@ -85,14 +112,14 @@ async function readBundledImports(): Promise<Set<string>> {
   return imported;
 }
 
-describe("the published @rova/core bundle", () => {
+describe.each(PUBLISHED)("the published $name bundle", ({ dir, build }) => {
   it("imports nothing it does not declare as a dependency", async () => {
     const [declared, imported] = await Promise.all([
-      readDeclaredDependencies(),
-      readBundledImports(),
+      readDeclaredDependencies(dir),
+      readBundledImports(dir, build),
     ]);
 
-    // An empty dist means the build has not run; asserting over nothing would
+    // An empty dist means the build did not run; asserting over nothing would
     // pass and prove nothing.
     expect(imported.size).toBeGreaterThan(0);
 
@@ -102,15 +129,17 @@ describe("the published @rova/core bundle", () => {
 
     expect(undeclared).toEqual([]);
   });
+});
 
+describe("the published @rova/core bundle", () => {
   it("carries no vendor integration SDK", async () => {
-    const imported = await readBundledImports();
+    const imported = await readBundledImports("packages/core", "build:lib");
+
+    expect(imported.size).toBeGreaterThan(0);
 
     // These belong to @rova/plugins, which an adopter installs separately. Their
     // presence here means something in packages/core reached across the package
     // boundary again.
-    expect(imported.size).toBeGreaterThan(0);
-
     for (const sdk of [
       "twilio",
       "resend",

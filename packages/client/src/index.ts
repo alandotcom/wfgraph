@@ -1,26 +1,19 @@
 /**
- * The workflow editor, as something a host hands to `createRovaApp`.
- *
- * Rova's server does not depend on this package and cannot find it on its own.
- * A host that wants the editor imports this and passes it, so turning the UI on
- * is a line in their code rather than a consequence of what happens to be
- * installed:
+ * The workflow editor, as something a host hands to `createRovaApp`:
  *
  * ```ts
  * import { clientBundle } from "@rova/client";
  * const rova = await createRovaApp({ client: clientBundle, ... });
  * ```
+ *
+ * Rova's server does not depend on this package and cannot find it on its own,
+ * so passing it is what turns the UI on.
  */
 
 import { fileURLToPath } from "node:url";
 
-/**
- * `dir` holds index.html and the hashed asset chunks beside it. Typed
- * structurally rather than through a shared name, since `@rova/core` declares
- * the same shape and neither package depends on the other.
- */
+/** `dir` holds index.html and the hashed asset chunks beside it. */
 export const clientBundle: { dir: string } = {
-  // Resolved from this module's own location, so it survives whatever an
-  // adopter's package manager does with the install layout.
+  // Relative to this module, so the install layout cannot move it out from under us.
   dir: fileURLToPath(new URL("./client/", import.meta.url)),
 };

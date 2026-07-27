@@ -232,16 +232,22 @@ import "@rova/plugins"; // integration metadata the editor renders
 import "@rova/plugins/server"; // step implementations and connection tests, loaded on demand
 ```
 
-`server.ts` in this repo does exactly that. **`@rova/plugins` is not published yet**: its sources reach into `@rova/core` internals through path aliases that only exist in this workspace, so making it installable means first giving `@rova/core` a public plugin-authoring surface. Until then an outside adopter runs on their own `createAction` definitions.
+`server.ts` in this repo does exactly that. `@rova/plugins` peer-depends on `@rova/core`: a second copy would mean a second database handle, which is what one-Rova-per-process exists to prevent.
 
-The editor bundled into `@rova/core` is built from this repo, so it still lists all six built-ins in its palette. On a server that has not registered them, creating one of those connections is refused with a message saying so rather than storing credentials the process cannot use.
+`@rova/client` lists all six built-ins in its palette regardless. On a server that has not registered them, creating one of those connections is refused rather than storing credentials the process cannot use.
+
+### Writing your own integration package
+
+`@rova/plugins` is built against `@rova/core/plugin` and nothing else, so an outside package can be written the same way. It exports five names: `fetchCredentials`, `registerStepImporter`, `registerIntegrationTest`, `withStepLogging`, and the `StepInput` type.
 
 ### Package exports
 
 - `@rova/core` -- `createAction`, `createTrigger`, and related types.
 - `@rova/core/app` -- `createRovaApp` factory, `RovaAppOptions`, `RovaApp`, and re-exported config types.
 - `@rova/core/node` -- `createRequestListener`, for hosts on Express, Fastify, or `node:http`.
+- `@rova/core/plugin` -- what an integration package builds against.
 - `@rova/client` -- `clientBundle`, the built editor, passed to `createRovaApp` as `client`.
+- `@rova/plugins` -- the built-in integrations, and `@rova/plugins/server` for their step and connection-test registrations.
 
 The first two run on any runtime with `Request` and `Response`. There is no published server wrapper: once `createRovaApp` returns a fetch handler, a wrapper saves a consumer two lines and charges an options type that reaccumulates every `Bun.serve` parameter. This repo's own dev server lives at `server.ts` in the repo root, and `examples/library-trigger.ts` shows the same shape.
 

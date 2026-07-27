@@ -11,8 +11,10 @@
  * "@rova/plugins", and skips it if it wants only its own actions.
  */
 
-import { registerIntegrationTest } from "@/backend/services/integrations/integration-test-loaders";
-import { registerStepImporter } from "@/backend/lib/step-registry";
+import {
+  registerIntegrationTest,
+  registerStepImporter,
+} from "@rova/core/plugin";
 
 registerStepImporter("acuity/list-appointment-types", {
   importer: () => import("@/acuity/steps/list-appointment-types"),

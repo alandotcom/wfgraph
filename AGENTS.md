@@ -5,7 +5,8 @@ Rova Workflow Builder: a Bun workspace monorepo with four packages under `packag
 - `@rova/shared` (`packages/shared`) runtime-agnostic types, workflow contracts, utilities
 - `@rova/core` (`packages/core`) library entrypoints and the backend
 - `@rova/client` (`packages/client`) the React SPA, handed to `createRovaApp` as `client`
-- `@rova/plugins` (`packages/plugins`) integration plugins and their steps
+- `@rova/plugins` (`packages/plugins`) integration plugins and their steps, built
+  against `@rova/core/plugin` and nothing else
 
 Read the code for structure. What follows is what the code cannot tell you.
 
@@ -15,9 +16,12 @@ Bun only. `bun add <pkg>`, `bun run <script>`. Never npm or yarn.
 
 **Isolated linking is on** (`bunfig.toml` sets `linker = "isolated"`). A package may
 only import what its own `package.json` declares, so the dependency belongs on the
-package that imports it. The guarantee covers npm specifiers; a
-cross-package import through a `@/` path alias sidesteps it, so do not reach into
-another package's source.
+package that imports it.
+
+**`@/` means this package's own `src`, never another's.** An alias resolves to a
+file, so the linker cannot see it and an undeclared cross-package dependency
+stays invisible. Import a sibling by name: `@rova/shared/types/json`,
+`@rova/core/plugin`. Lint rejects the alias forms.
 
 **Shared versions live in a Bun catalog** in the root `package.json`. When a dependency
 is used by two or more packages, put the version there and reference it as `"catalog:"`.
@@ -87,6 +91,12 @@ to be JSON-safe: no `Date`, `Map`, or `Set`.
 entrypoint to `Bun.serve`'s `routes`, which Bun transpiles per request, so the SPA paths
 never reach `rova.fetch` and `client` goes unset there. Serving the client source directory
 as static files hands the browser TypeScript instead.
+
+**Four published surfaces.** `@rova/core` is the backend, `@rova/core/plugin` the five
+names an integration package may use, `@rova/client` the editor, `@rova/plugins` the
+built-in integrations. `@rova/plugins` peer-depends on `@rova/core`, because a second
+copy would mean a second database handle. `@rova/shared` stays private and is inlined
+into whichever bundle needs it.
 
 **The published package is not the dev tree.** `packages/core` has no `private` field, so
 it publishes. Its `files` is scoped, `@rova/shared` is inlined into the build so it never appears as a dependency,

@@ -10,8 +10,10 @@ const mocks = (() => {
   return { fetchCredentials, createMessage };
 })();
 
-mock.module("@/backend/lib/credential-fetcher", () => ({
+// Both come from one module, so stubbing one means supplying the other.
+mock.module("@rova/core/plugin", () => ({
   fetchCredentials: mocks.fetchCredentials,
+  withStepLogging: (_input: unknown, run: () => unknown) => run(),
 }));
 
 mock.module("@/twilio/client", () => ({

@@ -1,24 +1,42 @@
 {
   "name": "@rova/plugins",
   "version": "0.0.0",
-  "private": true,
+  "license": "Apache-2.0",
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./server": "./src/server.ts",
-    "./ui": "./src/ui.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./ui": {
+      "types": "./dist/ui.d.ts",
+      "default": "./dist/ui.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown"
   },
   "dependencies": {
     "@clerk/backend": "^2.30.1",
     "@fountain-bio/acuity": "^0.0.25",
     "@linear/sdk": "^75.0.0",
-    "@rova/core": "workspace:*",
-    "@rova/shared": "workspace:*",
     "es-toolkit": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@rova/core": "workspace:*",
+    "@rova/shared": "workspace:*",
     "@types/react": "catalog:",
     "react": "catalog:"
+  },
+  "peerDependencies": {
+    "@rova/core": "*"
   }
 }

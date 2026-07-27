@@ -5,21 +5,19 @@ import { fileURLToPath } from "node:url";
 import { $ } from "bun";
 
 /**
- * What `@rova/client` promises `@rova/core` is a directory it can serve. The
- * tests on the serving side use a stand-in directory, which cannot notice the
- * real build moving, renaming, or losing the one tag the SPA needs, so this
- * checks the real output.
+ * The serving-side tests use a stand-in directory, so nothing else would notice
+ * the real build moving or losing the tag the server rewrites.
  *
- * It imports the built module rather than the source: `clientBundle.dir` is
- * resolved from `import.meta.url`, so it only means anything from `dist/`.
+ * Imports the built module, not the source: `clientBundle.dir` resolves from
+ * `import.meta.url` and only means anything from `dist/`.
  */
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 let bundleDir: string;
 
 beforeAll(async () => {
-  // The check list runs `bun test` before `bun run build`, so build first rather
-  // than reporting on whatever happens to be on disk.
+  // `bun test` runs before `bun run build`, so build rather than report on
+  // whatever is on disk.
   await $`bun run build:client`.cwd(repoRoot).quiet();
   await $`bun x tsdown`.cwd(join(repoRoot, "packages/client")).quiet();
 
@@ -37,9 +35,8 @@ describe("clientBundle", () => {
     expect(entries.some((entry) => entry.endsWith(".js"))).toBe(true);
   });
 
-  // The server rewrites this tag to tell the browser where Rova is mounted. A
-  // bundle without one answers 503 on every page, so the shape of the tag is
-  // part of the contract between the two packages.
+  // The server rewrites this tag to tell the browser where Rova is mounted; a
+  // bundle without one answers 503 on every page.
   it("ships an entrypoint carrying a base tag the server can rewrite", async () => {
     const html = await readFile(join(bundleDir, "index.html"), "utf-8");
 

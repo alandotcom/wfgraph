@@ -150,6 +150,33 @@
         "no-restricted-imports": [
           "error",
           {
+            // A `@/` alias resolves to a file, never to a manifest, so Bun's
+            // isolated linker cannot see it. That is how packages/core came to
+            // inline five vendor SDKs. A specifier that leaves the package has
+            // to be a package name. `@/` still means this package's own src.
+            "patterns": [
+              {
+                "group": [
+                  "@/shared/**",
+                  "@/plugins/registry",
+                  "@/plugins/ui-registry"
+                ],
+                "message": "Import @rova/shared by name: `@rova/shared/types/json`, not `@/shared/types/json`. An alias is invisible to the package linker."
+              },
+              {
+                "group": ["@/backend/**"],
+                "message": "Only @rova/core's own src may use @/backend. A plugin builds against @rova/core/plugin, which is the surface an outside integration package gets."
+              },
+              {
+                "group": [
+                  "../../shared/**",
+                  "../../../shared/**",
+                  "../../core/**",
+                  "../../../core/**"
+                ],
+                "message": "Reaching into another package by relative path skips its manifest. Import it by package name."
+              }
+            ],
             "paths": [
               {
                 "name": "react",
@@ -189,19 +216,9 @@
       }
     },
     {
-      // A `@/` alias resolves to a file, never to a manifest, so Bun's isolated
-      // linker cannot see it. That is how packages/core came to inline five
-      // vendor SDKs and how the SPA reached the whole of core. A specifier that
-      // leaves the package has to be a package name, which the linker checks
-      // and knip can read.
-      //
-      // `@/` still means "this package's own src", which is what these rules
-      // leave alone.
-      "files": [
-        "packages/core/src/**/*.ts",
-        "packages/client/src/**/*.{ts,tsx}",
-        "packages/plugins/src/**/*.{ts,tsx}"
-      ],
+      // core owns @/backend, so only the shared-alias half of the rule above
+      // applies to it.
+      "files": ["packages/core/src/**/*.ts"],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -214,16 +231,6 @@
                   "@/plugins/ui-registry"
                 ],
                 "message": "Import @rova/shared by name: `@rova/shared/types/json`, not `@/shared/types/json`. An alias is invisible to the package linker."
-              },
-              {
-                "group": [
-                  "../../shared/**",
-                  "../../../shared/**",
-                  "../../core/**",
-                  "../../../core/**",
-                  "../../client/**"
-                ],
-                "message": "Reaching into another package by relative path skips its manifest. Import it by package name."
               }
             ]
           }

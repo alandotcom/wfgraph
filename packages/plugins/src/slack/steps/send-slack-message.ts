@@ -1,8 +1,8 @@
-import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import {
+  fetchCredentials,
   type StepInput,
   withStepLogging,
-} from "@/backend/lib/steps/step-handler";
+} from "@rova/core/plugin";
 import type { StepError } from "@rova/shared/workflow/step-result";
 import { z } from "zod";
 import { callSlack, describeSlackFailure } from "@/slack/client";
