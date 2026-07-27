@@ -1,3 +1,4 @@
+import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   Eraser,
@@ -8,7 +9,7 @@ import {
   Settings2,
   Trash2,
 } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback } from "react";
 import { toast } from "sonner";
 import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
 import { SmartOverlayHeader } from "@/components/overlays/overlay-header";
@@ -22,6 +23,7 @@ import type { NodeConfigPatch } from "@/components/workflow/config/node-config-p
 import { TriggerConfig } from "@/components/workflow/config/trigger-config";
 import { WorkflowRuns } from "@/components/workflow/workflow-runs";
 import { api } from "@/lib/rpc-client";
+import { orpcQuery } from "@/lib/rpc-query";
 import {
   clearNodeStatusesAtom,
   clearWorkflowAtom,
@@ -51,6 +53,7 @@ type ConfigurationOverlayProps = OverlayComponentProps;
 
 export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   const store = useStore();
+  const queryClient = useQueryClient();
   const { push, closeAll } = useOverlay();
   const [selectedNodeId] = useAtom(selectedNodeAtom);
   const [selectedEdgeId] = useAtom(selectedEdgeAtom);
@@ -73,8 +76,6 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
     newlyCreatedNodeIdAtom
   );
   const [activeTab, setActiveTab] = useAtom(propertiesPanelActiveTabAtom);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const refreshRunsRef = useRef<(() => Promise<void>) | null>(null);
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
@@ -152,13 +153,16 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
     });
   }, [selectedNode, deleteNode, closeAll, push]);
 
-  const handleRefreshRuns = async () => {
-    if (refreshRunsRef.current) {
-      setIsRefreshing(true);
-      await refreshRunsRef.current();
-      setIsRefreshing(false);
-    }
-  };
+  // Refreshing the runs list is a cache invalidation, so it does not need a
+  // callback handed up from the panel that owns the list, and the spinner reads
+  // the query's own fetching state instead of a boolean kept beside it.
+  const isRefreshingRuns =
+    useIsFetching({ queryKey: orpcQuery.workflow.getExecutions.key() }) > 0;
+
+  const handleRefreshRuns = () =>
+    queryClient.invalidateQueries({
+      queryKey: orpcQuery.workflow.getExecutions.key(),
+    });
 
   const handleDeleteAllRuns = () => {
     push(ConfirmOverlay, {
@@ -174,9 +178,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
         try {
           await api.workflow.deleteExecutions(currentWorkflowId);
           clearNodeStatuses();
-          if (refreshRunsRef.current) {
-            await refreshRunsRef.current();
-          }
+          await handleRefreshRuns();
           toast.success("All runs deleted");
         } catch (error) {
           console.error("Failed to delete runs:", error);
@@ -371,13 +373,13 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
               <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
                 <Button
                   className="text-muted-foreground"
-                  disabled={isRefreshing}
+                  disabled={isRefreshingRuns}
                   onClick={handleRefreshRuns}
                   size="icon"
                   variant="ghost"
                 >
                   <RefreshCw
-                    className={`size-4 ${isRefreshing ? "animate-spin" : ""}`}
+                    className={`size-4 ${isRefreshingRuns ? "animate-spin" : ""}`}
                   />
                 </Button>
                 <Button
@@ -390,10 +392,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
                 </Button>
               </div>
               <div className="flex-1 overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable_both-edges]">
-                <WorkflowRuns
-                  isActive={validWorkflowTab === "runs"}
-                  onRefreshRef={refreshRunsRef}
-                />
+                <WorkflowRuns isActive={validWorkflowTab === "runs"} />
               </div>
             </div>
           )}
@@ -543,13 +542,13 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
             <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
               <Button
                 className="text-muted-foreground"
-                disabled={isRefreshing}
+                disabled={isRefreshingRuns}
                 onClick={handleRefreshRuns}
                 size="sm"
                 variant="ghost"
               >
                 <RefreshCw
-                  className={`mr-2 size-4 ${isRefreshing ? "animate-spin" : ""}`}
+                  className={`mr-2 size-4 ${isRefreshingRuns ? "animate-spin" : ""}`}
                 />
                 Refresh
               </Button>
@@ -564,10 +563,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
               </Button>
             </div>
             <div className="flex-1 overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable_both-edges]">
-              <WorkflowRuns
-                isActive={activeTab === "runs"}
-                onRefreshRef={refreshRunsRef}
-              />
+              <WorkflowRuns isActive={activeTab === "runs"} />
             </div>
           </div>
         )}

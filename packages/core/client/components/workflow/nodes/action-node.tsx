@@ -26,10 +26,7 @@ import {
 } from "@/components/flow-elements/node";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { readBase64ImageOutput } from "@/components/workflow/workflow-run-shared";
-import {
-  executionLogsAtom,
-  selectedExecutionIdAtom,
-} from "@/lib/workflow-ui-store";
+import { selectedExecutionIdAtom } from "@/lib/workflow-ui-store";
 import {
   type ExecutionLogEntry,
   type WorkflowNodeData,
@@ -43,6 +40,7 @@ import {
 } from "@/shared/utils/wait-time";
 import { isConditionActionType } from "@/shared/workflow/condition-branch";
 import { useAfterCommit, useNowMs } from "@/hooks/effects";
+import { useExecutionLogsByNode } from "@/hooks/use-execution-logs";
 import {
   integrationIdsQueryOptions,
   NO_INTEGRATION_IDS,
@@ -493,7 +491,7 @@ const CONDITION_FALSE_HANDLE_LEFT = "62%";
 export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   const updateNodeInternals = useUpdateNodeInternals();
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
-  const executionLogs = useAtomValue(executionLogsAtom);
+  const executionLogs = useExecutionLogsByNode();
   const {
     data: availableIntegrationIds = NO_INTEGRATION_IDS,
     isPending: isLoadingIntegrations,

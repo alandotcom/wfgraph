@@ -3,12 +3,12 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/shared/utils";
 import { getRelativeTime } from "@/shared/utils/time";
+import { type WorkflowExecution } from "@/lib/execution-logs";
 import {
   formatDuration,
   getStatusBadgeClass,
   getStatusDotClass,
   getStatusLabel,
-  type WorkflowExecution,
 } from "./workflow-run-shared";
 
 type LeadingSlot =

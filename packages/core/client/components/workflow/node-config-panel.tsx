@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import { Eraser, Eye, EyeOff, RefreshCw, Trash2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/rpc-client";
 import { repairNodeIntegration } from "@/lib/node-integration";
-import { integrationsQueryOptions } from "@/lib/rpc-query";
+import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
 import {
   clearNodeStatusesAtom,
   deleteEdgeAtom,
@@ -43,6 +43,7 @@ import { WorkflowRuns } from "./workflow-runs";
 
 export const PanelInner = () => {
   const store = useStore();
+  const queryClient = useQueryClient();
   const [selectedNodeId] = useAtom(selectedNodeAtom);
   const [selectedEdgeId] = useAtom(selectedEdgeAtom);
   const nodes = useAtomValue(nodesAtom);
@@ -69,11 +70,9 @@ export const PanelInner = () => {
   const [showDeleteEdgeAlert, setShowDeleteEdgeAlert] = useState(false);
   const [showDeleteRunsAlert, setShowDeleteRunsAlert] = useState(false);
   const [showDeleteMultiAlert, setShowDeleteMultiAlert] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useAtom(propertiesPanelActiveTabAtom);
   const validActiveTab =
     activeTab === "runs" && isOwner ? "runs" : "properties";
-  const refreshRunsRef = useRef<(() => Promise<void>) | null>(null);
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
 
@@ -207,19 +206,16 @@ export const PanelInner = () => {
     }
   };
 
-  const handleRefreshRuns = async () => {
-    setIsRefreshing(true);
-    try {
-      if (refreshRunsRef.current) {
-        await refreshRunsRef.current();
-      }
-    } catch (error) {
-      console.error("Failed to refresh runs:", error);
-      toast.error("Failed to refresh runs");
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
+  // Refreshing the runs list is a cache invalidation, so it does not need a
+  // callback handed up from the panel that owns the list, and the spinner reads
+  // the query's own fetching state instead of a boolean kept beside it.
+  const isRefreshingRuns =
+    useIsFetching({ queryKey: orpcQuery.workflow.getExecutions.key() }) > 0;
+
+  const handleRefreshRuns = () =>
+    queryClient.invalidateQueries({
+      queryKey: orpcQuery.workflow.getExecutions.key(),
+    });
 
   // Show action grid for unconfigured owner action nodes
   const showActionGrid =
@@ -520,13 +516,13 @@ export const PanelInner = () => {
               <span className="font-medium text-sm">Runs</span>
               <div className="flex items-center gap-2">
                 <Button
-                  disabled={isRefreshing}
+                  disabled={isRefreshingRuns}
                   onClick={handleRefreshRuns}
                   size="sm"
                   variant="outline"
                 >
                   <RefreshCw
-                    className={`mr-2 size-4 ${isRefreshing ? "animate-spin" : ""}`}
+                    className={`mr-2 size-4 ${isRefreshingRuns ? "animate-spin" : ""}`}
                   />
                   Refresh
                 </Button>
@@ -534,10 +530,7 @@ export const PanelInner = () => {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
               <div className="space-y-4 p-4">
-                <WorkflowRuns
-                  isActive={validActiveTab === "runs"}
-                  onRefreshRef={refreshRunsRef}
-                />
+                <WorkflowRuns isActive={validActiveTab === "runs"} />
               </div>
               <div className="border-t px-4 py-3">
                 <Button

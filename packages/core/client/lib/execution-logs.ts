@@ -1,0 +1,192 @@
+import type { ExecutionLogEntry } from "@/shared/workflow/types";
+
+/**
+ * The shapes a workflow run takes on the client, and the pure functions that
+ * reshape what the server sends into them.
+ *
+ * These live apart from workflow-run-shared.tsx, which is a component module.
+ * The query layer and the graph store both need this logic, and neither should
+ * have to pull JSX in to get it.
+ */
+
+export type ExecutionLog = {
+  id: string;
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  status: "pending" | "running" | "success" | "error" | "cancelled";
+  startedAt: Date;
+  completedAt: Date | null;
+  duration: string | null;
+  input?: unknown;
+  output?: unknown;
+  error: string | null;
+};
+
+export type WorkflowExecution = {
+  id: string;
+  workflowId: string;
+  status: "pending" | "running" | "waiting" | "success" | "error" | "cancelled";
+  triggerType: "manual" | "webhook" | "event" | null;
+  runMode: "live" | "test";
+  triggerEventType: string | null;
+  correlationKey: string | null;
+  workflowRunId: string | null;
+  startedAt: Date;
+  waitingAt: Date | null;
+  cancelledAt: Date | null;
+  completedAt: Date | null;
+  duration: string | null;
+  error: string | null;
+};
+
+export type ExecutionEvent = {
+  id: string;
+  eventType: string;
+  message: string;
+  metadata: unknown;
+  createdAt: Date;
+};
+
+/** A run status that can still change, and so is still worth polling. */
+export function isRunInProgress(status: string | undefined): boolean {
+  return status === "pending" || status === "running" || status === "waiting";
+}
+
+/**
+ * Timestamps arrive as ISO strings and are compared and formatted as Dates.
+ *
+ * These conversions are module-level so they can be passed to a query as
+ * `select` by reference. TanStack memoises a select by its identity, and these
+ * feed every node on the canvas: an inline closure would rebuild the whole map
+ * on every render and re-render the canvas with it.
+ */
+export function toWorkflowExecutions(
+  executions: readonly RawExecution[]
+): WorkflowExecution[] {
+  return executions.map((execution) => ({
+    ...execution,
+    startedAt: new Date(execution.startedAt),
+    waitingAt: execution.waitingAt ? new Date(execution.waitingAt) : null,
+    cancelledAt: execution.cancelledAt ? new Date(execution.cancelledAt) : null,
+    completedAt: execution.completedAt ? new Date(execution.completedAt) : null,
+  }));
+}
+
+export function toExecutionLogs(payload: RawExecutionLogs): ExecutionLog[] {
+  return applyExecutionStatusToLogs(
+    payload.logs.map((log) => ({
+      id: log.id,
+      nodeId: log.nodeId,
+      nodeName: log.nodeName,
+      nodeType: log.nodeType,
+      status: log.status,
+      startedAt: new Date(log.startedAt),
+      completedAt: log.completedAt ? new Date(log.completedAt) : null,
+      duration: log.duration,
+      input: log.input,
+      output: log.output,
+      error: log.error,
+    })),
+    payload.execution.status
+  );
+}
+
+export function toExecutionLogsByNodeId(
+  payload: RawExecutionLogs
+): Record<string, ExecutionLogEntry> {
+  return createExecutionLogsMap(toExecutionLogs(payload));
+}
+
+export function toExecutionEvents(
+  payload: RawExecutionEvents
+): ExecutionEvent[] {
+  return payload.events.map((event) => ({
+    ...event,
+    createdAt: new Date(event.createdAt),
+  }));
+}
+
+type RawExecution = Omit<
+  WorkflowExecution,
+  "startedAt" | "waitingAt" | "cancelledAt" | "completedAt"
+> & {
+  startedAt: string;
+  waitingAt: string | null;
+  cancelledAt: string | null;
+  completedAt: string | null;
+};
+
+type RawExecutionLogs = {
+  execution: { status: string };
+  logs: Array<
+    Omit<ExecutionLog, "startedAt" | "completedAt"> & {
+      startedAt: string;
+      completedAt: string | null;
+    }
+  >;
+};
+
+type RawExecutionEvents = {
+  events: Array<Omit<ExecutionEvent, "createdAt"> & { createdAt: string }>;
+};
+
+function getLogStartedAtMs(log: Pick<ExecutionLog, "startedAt">): number {
+  return new Date(log.startedAt).getTime();
+}
+
+/**
+ * The latest log entry per node, which is what a node on the canvas wants to
+ * show. A node can appear more than once in a run when a branch loops back, and
+ * the newest attempt is the one whose status the node badge reflects.
+ */
+export function createExecutionLogsMap(
+  logs: ExecutionLog[]
+): Record<string, ExecutionLogEntry> {
+  const logsMap: Record<string, ExecutionLogEntry> = {};
+  for (const log of logs) {
+    const previous = logsMap[log.nodeId];
+    if (
+      previous?.startedAt !== undefined &&
+      getLogStartedAtMs(log) < new Date(previous.startedAt).getTime()
+    ) {
+      continue;
+    }
+
+    logsMap[log.nodeId] = {
+      nodeId: log.nodeId,
+      nodeName: log.nodeName,
+      nodeType: log.nodeType,
+      status: log.status,
+      input: log.input,
+      output: log.output,
+      startedAt: log.startedAt,
+      completedAt: log.completedAt,
+    };
+  }
+  return logsMap;
+}
+
+/**
+ * A cancelled run leaves its unfinished steps recorded as pending or running,
+ * because nothing ever came back to close them out. They read as cancelled.
+ */
+export function applyExecutionStatusToLogs(
+  logEntries: ExecutionLog[],
+  executionStatus: string
+): ExecutionLog[] {
+  if (executionStatus !== "cancelled") {
+    return logEntries;
+  }
+
+  return logEntries.map((log) => {
+    if (log.status === "pending" || log.status === "running") {
+      return {
+        ...log,
+        status: "cancelled" as const,
+        error: log.error || "Run cancelled before step completion",
+      };
+    }
+    return log;
+  });
+}

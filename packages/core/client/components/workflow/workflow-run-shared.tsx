@@ -12,50 +12,8 @@ import {
   OUTPUT_DISPLAY_CONFIGS,
   type OutputDisplayConfig,
 } from "@/lib/output-display-configs";
-import type { ExecutionLogEntry as WorkflowExecutionLogEntry } from "@/shared/workflow/types";
 import { findActionById } from "@/plugins/registry";
 import { getActionOutputComponent } from "@/shared/plugins/ui-registry";
-
-// Shared types
-
-export type ExecutionLog = {
-  id: string;
-  nodeId: string;
-  nodeName: string;
-  nodeType: string;
-  status: "pending" | "running" | "success" | "error" | "cancelled";
-  startedAt: Date;
-  completedAt: Date | null;
-  duration: string | null;
-  input?: unknown;
-  output?: unknown;
-  error: string | null;
-};
-
-export type WorkflowExecution = {
-  id: string;
-  workflowId: string;
-  status: "pending" | "running" | "waiting" | "success" | "error" | "cancelled";
-  triggerType: "manual" | "webhook" | "event" | null;
-  runMode: "live" | "test";
-  triggerEventType: string | null;
-  correlationKey: string | null;
-  workflowRunId: string | null;
-  startedAt: Date;
-  waitingAt: Date | null;
-  cancelledAt: Date | null;
-  completedAt: Date | null;
-  duration: string | null;
-  error: string | null;
-};
-
-export type ExecutionEvent = {
-  id: string;
-  eventType: string;
-  message: string;
-  metadata: unknown;
-  createdAt: Date;
-};
 
 // Status helpers
 
@@ -151,57 +109,6 @@ const base64ImageOutputSchema = z.object({
 export function readBase64ImageOutput(output: unknown): string | null {
   const parsed = base64ImageOutputSchema.safeParse(output);
   return parsed.success ? parsed.data.base64 : null;
-}
-
-function getLogStartedAtMs(log: Pick<ExecutionLog, "startedAt">): number {
-  return new Date(log.startedAt).getTime();
-}
-
-export function createExecutionLogsMap(
-  logs: ExecutionLog[]
-): Record<string, WorkflowExecutionLogEntry> {
-  const logsMap: Record<string, WorkflowExecutionLogEntry> = {};
-  for (const log of logs) {
-    const previous = logsMap[log.nodeId];
-    if (
-      previous?.startedAt !== undefined &&
-      getLogStartedAtMs(log) < new Date(previous.startedAt).getTime()
-    ) {
-      continue;
-    }
-
-    logsMap[log.nodeId] = {
-      nodeId: log.nodeId,
-      nodeName: log.nodeName,
-      nodeType: log.nodeType,
-      status: log.status,
-      input: log.input,
-      output: log.output,
-      startedAt: log.startedAt,
-      completedAt: log.completedAt,
-    };
-  }
-  return logsMap;
-}
-
-export function applyExecutionStatusToLogs(
-  logEntries: ExecutionLog[],
-  executionStatus: string
-): ExecutionLog[] {
-  if (executionStatus !== "cancelled") {
-    return logEntries;
-  }
-
-  return logEntries.map((log) => {
-    if (log.status === "pending" || log.status === "running") {
-      return {
-        ...log,
-        status: "cancelled" as const,
-        error: log.error || "Run cancelled before step completion",
-      };
-    }
-    return log;
-  });
 }
 
 // URL detection helper

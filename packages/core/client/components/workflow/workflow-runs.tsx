@@ -1,324 +1,99 @@
-import { useAtom } from "jotai";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAtom, useAtomValue } from "jotai";
 import { Play } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Spinner } from "@/components/ui/spinner";
-import { api } from "@/lib/rpc-client";
+import {
+  isRunInProgress,
+  toExecutionEvents,
+  toExecutionLogs,
+  toWorkflowExecutions,
+} from "@/lib/execution-logs";
+import { orpcQuery } from "@/lib/rpc-query";
 import { currentWorkflowIdAtom } from "@/lib/workflow-save-store";
-import {
-  executionLogsAtom,
-  selectedExecutionIdAtom,
-} from "@/lib/workflow-ui-store";
+import { selectedExecutionIdAtom } from "@/lib/workflow-ui-store";
 import { WorkflowRunDetail } from "./workflow-run-detail";
-import {
-  applyExecutionStatusToLogs,
-  createExecutionLogsMap,
-  type ExecutionEvent,
-  type ExecutionLog,
-  type WorkflowExecution,
-} from "./workflow-run-shared";
 import { WorkflowRunsList } from "./workflow-runs-list";
+
+/** How often a run that is still going gets re-read. */
+const RUN_POLL_MS = 2000;
 
 type WorkflowRunsProps = {
   isActive?: boolean;
-  onRefreshRef?: { current: (() => Promise<void>) | null };
 };
 
-export function WorkflowRuns({
-  isActive = false,
-  onRefreshRef,
-}: WorkflowRunsProps) {
-  const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
+export function WorkflowRuns({ isActive = false }: WorkflowRunsProps) {
+  const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [selectedExecutionId, setSelectedExecutionId] = useAtom(
     selectedExecutionIdAtom
   );
-  const [, setExecutionLogs] = useAtom(executionLogsAtom);
-  const [executions, setExecutions] = useState<WorkflowExecution[]>([]);
-  const [logs, setLogs] = useState<Record<string, ExecutionLog[]>>({});
-  const [events, setEvents] = useState<Record<string, ExecutionEvent[]>>({});
+  const queryClient = useQueryClient();
+
+  // Which run the detail view is showing. Null means the list.
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const [cancelingExecutions, setCancelingExecutions] = useState<Set<string>>(
-    new Set()
+
+  const executionsQuery = useQuery({
+    ...orpcQuery.workflow.getExecutions.queryOptions({
+      input: { workflowId: currentWorkflowId ?? "" },
+      select: toWorkflowExecutions,
+    }),
+    enabled: currentWorkflowId !== null,
+    staleTime: 0,
+    refetchInterval: isActive ? RUN_POLL_MS : false,
+  });
+
+  // Opening a run enables its logs and events; the cache decides whether that
+  // means a request. Both stop polling on their own once the run is finished,
+  // which the old single interval could not do: it refreshed the open run
+  // forever, long after there was anything left to learn about it.
+  const logsQuery = useQuery({
+    ...orpcQuery.workflow.getExecutionLogs.queryOptions({
+      input: { executionId: activeRunId ?? "" },
+      select: toExecutionLogs,
+    }),
+    enabled: activeRunId !== null,
+    staleTime: 0,
+    refetchInterval: (query) =>
+      isRunInProgress(query.state.data?.execution.status) ? RUN_POLL_MS : false,
+  });
+
+  const eventsQuery = useQuery({
+    ...orpcQuery.workflow.getExecutionEvents.queryOptions({
+      input: { executionId: activeRunId ?? "" },
+      select: toExecutionEvents,
+    }),
+    enabled: activeRunId !== null,
+    staleTime: 0,
+    refetchInterval: () =>
+      isRunInProgress(
+        executionsQuery.data?.find((execution) => execution.id === activeRunId)
+          ?.status
+      )
+        ? RUN_POLL_MS
+        : false,
+  });
+
+  const executions = executionsQuery.data ?? [];
+
+  const cancelExecution = useMutation(
+    orpcQuery.workflow.cancelExecution.mutationOptions({
+      onSuccess: () =>
+        queryClient.invalidateQueries({ queryKey: orpcQuery.workflow.key() }),
+      meta: { errorMessage: "Failed to cancel run" },
+    })
   );
-  const [loading, setLoading] = useState(true);
-
-  const autoExpandedExecutionRef = useRef<string | null>(null);
-
-  // Map node labels from API response
-  const mapNodeLabels = useCallback(
-    (
-      logEntries: Array<{
-        id: string;
-        executionId: string;
-        nodeId: string;
-        nodeName: string;
-        nodeType: string;
-        status: "pending" | "running" | "success" | "error";
-        input: unknown;
-        output: unknown;
-        error: string | null;
-        startedAt: string;
-        completedAt: string | null;
-        duration: string | null;
-      }>
-    ): ExecutionLog[] =>
-      logEntries.map((log) => ({
-        id: log.id,
-        nodeId: log.nodeId,
-        nodeName: log.nodeName,
-        nodeType: log.nodeType,
-        status: log.status,
-        startedAt: new Date(log.startedAt),
-        completedAt: log.completedAt ? new Date(log.completedAt) : null,
-        duration: log.duration,
-        input: log.input,
-        output: log.output,
-        error: log.error,
-      })),
-    []
-  );
-
-  const loadExecutions = useCallback(
-    async (showLoading = true) => {
-      if (!currentWorkflowId) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        if (showLoading) {
-          setLoading(true);
-        }
-        const data = await api.workflow.getExecutions(currentWorkflowId);
-        const mappedExecutions: WorkflowExecution[] = data.map((execution) => ({
-          ...execution,
-          startedAt: new Date(execution.startedAt),
-          waitingAt: execution.waitingAt ? new Date(execution.waitingAt) : null,
-          cancelledAt: execution.cancelledAt
-            ? new Date(execution.cancelledAt)
-            : null,
-          completedAt: execution.completedAt
-            ? new Date(execution.completedAt)
-            : null,
-        }));
-        setExecutions(mappedExecutions);
-      } catch (error) {
-        console.error("Failed to load executions:", error);
-        setExecutions([]);
-      } finally {
-        if (showLoading) {
-          setLoading(false);
-        }
-      }
-    },
-    [currentWorkflowId]
-  );
-
-  const loadExecutionLogs = useCallback(
-    async (executionId: string) => {
-      try {
-        const data = await api.workflow.getExecutionLogs(executionId);
-        const mappedLogs = applyExecutionStatusToLogs(
-          mapNodeLabels(data.logs),
-          data.execution.status
-        );
-        setLogs((prev) => ({ ...prev, [executionId]: mappedLogs }));
-      } catch (error) {
-        console.error("Failed to load execution logs:", error);
-        setLogs((prev) => ({ ...prev, [executionId]: [] }));
-      }
-    },
-    [mapNodeLabels]
-  );
-
-  const loadExecutionEvents = useCallback(async (executionId: string) => {
-    try {
-      const data = await api.workflow.getExecutionEvents(executionId);
-      setEvents((prev) => ({
-        ...prev,
-        [executionId]: data.events.map((event) => ({
-          ...event,
-          createdAt: new Date(event.createdAt),
-        })),
-      }));
-    } catch (error) {
-      console.error("Failed to load execution events:", error);
-      setEvents((prev) => ({ ...prev, [executionId]: [] }));
-    }
-  }, []);
-
-  const refreshExecutionLogs = useCallback(
-    async (executionId: string) => {
-      try {
-        const logsData = await api.workflow.getExecutionLogs(executionId);
-        const mappedLogs = applyExecutionStatusToLogs(
-          mapNodeLabels(logsData.logs),
-          logsData.execution.status
-        );
-        setLogs((prev) => ({ ...prev, [executionId]: mappedLogs }));
-      } catch (error) {
-        console.error(`Failed to refresh logs for ${executionId}:`, error);
-      }
-    },
-    [mapNodeLabels]
-  );
-
-  const refreshExecutionEvents = useCallback(async (executionId: string) => {
-    try {
-      const eventsData = await api.workflow.getExecutionEvents(executionId);
-      setEvents((prev) => ({
-        ...prev,
-        [executionId]: eventsData.events.map((event) => ({
-          ...event,
-          createdAt: new Date(event.createdAt),
-        })),
-      }));
-    } catch (error) {
-      console.error(`Failed to refresh events for ${executionId}:`, error);
-    }
-  }, []);
-
-  // Expose refresh function via ref
-  useEffect(() => {
-    if (onRefreshRef) {
-      onRefreshRef.current = () => loadExecutions(false);
-    }
-  }, [loadExecutions, onRefreshRef]);
-
-  // Initial load
-  useEffect(() => {
-    loadExecutions();
-  }, [loadExecutions]);
-
-  // Sync global execution logs atom when selected execution changes
-  useEffect(() => {
-    if (!selectedExecutionId) {
-      setExecutionLogs({});
-      return;
-    }
-
-    const selectedLogs = logs[selectedExecutionId];
-    if (!selectedLogs) {
-      return;
-    }
-
-    setExecutionLogs(createExecutionLogsMap(selectedLogs));
-  }, [selectedExecutionId, logs, setExecutionLogs]);
-
-  // Auto-navigate to detail for new running executions
-  useEffect(() => {
-    if (executions.length === 0) {
-      return;
-    }
-
-    const latestExecution = executions[0];
-
-    if (
-      latestExecution.status === "running" &&
-      latestExecution.id !== autoExpandedExecutionRef.current
-    ) {
-      autoExpandedExecutionRef.current = latestExecution.id;
-      setSelectedExecutionId(latestExecution.id);
-      setActiveRunId(latestExecution.id);
-      loadExecutionLogs(latestExecution.id);
-      loadExecutionEvents(latestExecution.id);
-    }
-  }, [
-    executions,
-    setSelectedExecutionId,
-    loadExecutionLogs,
-    loadExecutionEvents,
-  ]);
-
-  // Poll for executions and refresh active run logs
-  useEffect(() => {
-    if (!(isActive && currentWorkflowId)) {
-      return undefined;
-    }
-
-    const pollExecutions = async () => {
-      try {
-        const data = await api.workflow.getExecutions(currentWorkflowId);
-        const mappedExecutions: WorkflowExecution[] = data.map((execution) => ({
-          ...execution,
-          startedAt: new Date(execution.startedAt),
-          waitingAt: execution.waitingAt ? new Date(execution.waitingAt) : null,
-          cancelledAt: execution.cancelledAt
-            ? new Date(execution.cancelledAt)
-            : null,
-          completedAt: execution.completedAt
-            ? new Date(execution.completedAt)
-            : null,
-        }));
-        setExecutions(mappedExecutions);
-
-        // Refresh logs/events for the active detail run
-        if (activeRunId) {
-          await Promise.all([
-            refreshExecutionLogs(activeRunId),
-            refreshExecutionEvents(activeRunId),
-          ]);
-        }
-      } catch (error) {
-        console.error("Failed to poll executions:", error);
-      }
-    };
-
-    const interval = setInterval(pollExecutions, 2000);
-    return () => clearInterval(interval);
-  }, [
-    isActive,
-    currentWorkflowId,
-    activeRunId,
-    refreshExecutionLogs,
-    refreshExecutionEvents,
-  ]);
 
   const handleSelectRun = (executionId: string) => {
     setActiveRunId(executionId);
     setSelectedExecutionId(executionId);
-
-    if (!logs[executionId]) {
-      loadExecutionLogs(executionId).catch((error) => {
-        console.error("Failed to load execution logs:", error);
-      });
-      loadExecutionEvents(executionId).catch((error) => {
-        console.error("Failed to load execution events:", error);
-      });
-      setExecutionLogs({});
-      return;
-    }
-
-    const executionLogEntries = logs[executionId] || [];
-    setExecutionLogs(createExecutionLogsMap(executionLogEntries));
   };
 
   const handleBack = () => {
     setActiveRunId(null);
     setSelectedExecutionId(null);
-    setExecutionLogs({});
   };
 
-  const cancelExecution = async (executionId: string) => {
-    setCancelingExecutions((prev) => new Set(prev).add(executionId));
-    try {
-      await api.workflow.cancelExecution(executionId);
-      await Promise.all([
-        loadExecutions(false),
-        refreshExecutionLogs(executionId),
-        refreshExecutionEvents(executionId),
-      ]);
-    } catch (error) {
-      console.error("Failed to cancel execution:", error);
-    } finally {
-      setCancelingExecutions((prev) => {
-        const next = new Set(prev);
-        next.delete(executionId);
-        return next;
-      });
-    }
-  };
-
-  if (loading) {
+  if (executionsQuery.isPending) {
     return (
       <div className="flex items-center justify-center py-12">
         <Spinner />
@@ -351,12 +126,15 @@ export function WorkflowRuns({
 
     return (
       <WorkflowRunDetail
-        events={events[activeExecution.id] || []}
+        events={eventsQuery.data ?? []}
         execution={activeExecution}
-        isCanceling={cancelingExecutions.has(activeExecution.id)}
-        logs={logs[activeExecution.id] || []}
+        isCanceling={
+          cancelExecution.isPending &&
+          cancelExecution.variables?.executionId === activeExecution.id
+        }
+        logs={logsQuery.data ?? []}
         onBack={handleBack}
-        onCancel={cancelExecution}
+        onCancel={(executionId) => cancelExecution.mutate({ executionId })}
         runNumber={runNumber}
       />
     );

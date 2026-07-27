@@ -1,10 +1,10 @@
 import { getRelativeTime } from "@/shared/utils/time";
 import {
-  CollapsibleSection,
   type ExecutionEvent,
   type ExecutionLog,
   type WorkflowExecution,
-} from "./workflow-run-shared";
+} from "@/lib/execution-logs";
+import { CollapsibleSection } from "./workflow-run-shared";
 import { WorkflowRunSummaryRow } from "./workflow-run-summary-row";
 import { WorkflowRunTimeline } from "./workflow-run-timeline";
 

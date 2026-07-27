@@ -1,5 +1,4 @@
 import { atom } from "jotai";
-import type { ExecutionLogEntry } from "@/shared/workflow/types";
 
 /**
  * Editor chrome: which panel is open, how wide it is, which run is on screen.
@@ -27,6 +26,3 @@ export const isGeneratingAtom = atom(false);
 export const triggerExecuteAtom = atom(false);
 
 export const selectedExecutionIdAtom = atom<string | null>(null);
-
-// nodeId -> log entry for the run currently being viewed.
-export const executionLogsAtom = atom<Record<string, ExecutionLogEntry>>({});

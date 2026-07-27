@@ -1,4 +1,4 @@
-import type { WorkflowExecution } from "./workflow-run-shared";
+import type { WorkflowExecution } from "@/lib/execution-logs";
 import { WorkflowRunSummaryRow } from "./workflow-run-summary-row";
 
 type WorkflowRunsListProps = {
