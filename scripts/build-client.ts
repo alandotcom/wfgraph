@@ -1,5 +1,5 @@
 import { type FSWatcher, watch } from "node:fs";
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import tailwindPlugin from "bun-plugin-tailwind";
 import { createReactCompilerPlugin } from "./plugins/react-compiler-plugin";
@@ -22,6 +22,41 @@ function logInfo(message: string): void {
 
 function logError(message: string): void {
   console.error(`[client-build] ${message}`);
+}
+
+/**
+ * Delete every file in the output directory that the build just finished did not
+ * emit. Bun names chunks by content hash, so each build writes new filenames and
+ * the previous chunks (~1.8 MB of JS apiece) would otherwise pile up in
+ * dist/client, which ships inside the published tarball.
+ *
+ * Pruning after the write, rather than emptying the directory beforehand, keeps
+ * `--watch` usable: the dev server can keep serving the old bundle right up until
+ * the new one is on disk. A browser that is mid-download of a pruned chunk still
+ * completes, because unlink on POSIX leaves already-open file handles readable.
+ */
+async function pruneStaleOutputs(
+  emittedPaths: readonly string[]
+): Promise<void> {
+  const keep = new Set(emittedPaths.map((filePath) => path.resolve(filePath)));
+
+  const entries = await readdir(CLIENT_OUTPUT_DIR, {
+    recursive: true,
+    withFileTypes: true,
+  });
+
+  const staleFiles = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.resolve(entry.parentPath, entry.name))
+    .filter((filePath) => !keep.has(filePath));
+
+  await Promise.all(
+    staleFiles.map((filePath) => rm(filePath, { force: true }))
+  );
+
+  if (staleFiles.length > 0) {
+    logInfo(`removed ${staleFiles.length} stale output(s)`);
+  }
 }
 
 async function buildClientBundle(): Promise<boolean> {
@@ -51,6 +86,8 @@ async function buildClientBundle(): Promise<boolean> {
     }
     return false;
   }
+
+  await pruneStaleOutputs(result.outputs.map((artifact) => artifact.path));
 
   logInfo(`build completed (${result.outputs.length} outputs)`);
   return true;
