@@ -1,3 +1,11 @@
+[install]
+# Isolated linking gives each workspace package a node_modules containing only the
+# dependencies that package declares. An import of something undeclared then fails to
+# resolve, so a phantom dependency shows up as a build error at the moment it is
+# introduced. Bun already picks isolated for workspace projects whose lockfile carries
+# configVersion 1, so this line pins the choice where a reader can see it.
+linker = "isolated"
+
 [serve.static]
 plugins = ["bun-plugin-tailwind"]
 
