@@ -152,7 +152,6 @@ type RpcOutput<T> = T extends (...args: never[]) => Promise<infer TResult>
   ? TResult
   : never;
 type WorkflowExecuteResult = RpcOutput<typeof rpc.workflow.execute>;
-type WorkflowWebhookResult = RpcOutput<typeof rpc.workflow.triggerWebhook>;
 type WorkflowExecutionsResult = RpcOutput<typeof rpc.workflow.getExecutions>;
 type WorkflowDeleteExecutionsResult = RpcOutput<
   typeof rpc.workflow.deleteExecutions
@@ -173,17 +172,6 @@ type WorkflowExecutionsGlobalResult = RpcOutput<
   typeof rpc.workflow.getExecutionsGlobal
 >;
 type WorkflowBulkLifecycleResult = RpcOutput<typeof rpc.workflow.bulkLifecycle>;
-
-export function toWorkflowData(payload: WorkflowApiPayload): WorkflowData {
-  const graphData = toWorkflowGraphData(payload.graph);
-
-  return {
-    ...payload,
-    graph: payload.graph,
-    nodes: graphData.nodes,
-    edges: graphData.edges,
-  };
-}
 
 export function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
   const graphData = toWorkflowGraphData(payload.graph);
@@ -227,12 +215,6 @@ function toGraphPayload(input: {
 
 export type Integration = RpcOutput<typeof rpc.integration.create>;
 export const workflowApi = {
-  getAll: (): Promise<SavedWorkflow[]> =>
-    rpc.workflow.getAll({}).then(toSavedWorkflows),
-
-  getById: (id: string): Promise<SavedWorkflow> =>
-    rpc.workflow.getById({ workflowId: id }).then(toSavedWorkflow),
-
   create: (workflow: {
     name: string;
     description?: string;
@@ -280,34 +262,11 @@ export const workflowApi = {
   duplicate: (id: string): Promise<SavedWorkflow> =>
     rpc.workflow.duplicate({ workflowId: id }).then(toSavedWorkflow),
 
-  getCurrent: (): Promise<WorkflowData> =>
-    rpc.workflow.getCurrent({}).then(toWorkflowData),
-
-  saveCurrent: (input: {
-    graph?: SerializedWorkflowGraph;
-    nodes?: WorkflowNode[];
-    edges?: WorkflowEdge[];
-  }): Promise<WorkflowData> =>
-    rpc.workflow
-      .saveCurrent({
-        graph: toGraphPayload(input),
-      })
-      .then(toWorkflowData),
-
   execute: (
     id: string,
     input: JsonObject = {}
   ): Promise<WorkflowExecuteResult> =>
     rpc.workflow.execute({
-      workflowId: id,
-      input,
-    }),
-
-  triggerWebhook: (
-    id: string,
-    input: JsonObject = {}
-  ): Promise<WorkflowWebhookResult> =>
-    rpc.workflow.triggerWebhook({
       workflowId: id,
       input,
     }),

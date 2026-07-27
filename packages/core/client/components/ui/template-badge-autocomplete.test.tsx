@@ -112,6 +112,25 @@ function ControlledTemplateBadgeInputWithNodeContext({
   );
 }
 
+function PlaceholderTemplateBadgeInput({
+  onValueChange,
+}: {
+  onValueChange: (value: string) => void;
+}) {
+  const [value, setValue] = useState("");
+
+  return (
+    <TemplateBadgeInput
+      onChange={(nextValue) => {
+        setValue(nextValue);
+        onValueChange(nextValue);
+      }}
+      placeholder="Enter a subject line"
+      value={value}
+    />
+  );
+}
+
 function UncontrolledTemplateBadgeInput({ value }: { value: string }) {
   return <TemplateBadgeInput fieldType="timestamp" onChange={() => {}} value={value} />;
 }
@@ -353,5 +372,59 @@ describe("Template badge rendering", () => {
     await waitFor(() => {
       expect(latestValue).toBe(`${TRIGGER_TEMPLATE} done`);
     });
+  });
+});
+
+describe("Template badge editing", () => {
+  beforeEach(() => {
+    seedTemplateContext();
+  });
+
+  it("does not read its own placeholder back as the value", async () => {
+    // An empty unfocused field shows prompt text, which lives in the same
+    // contentEditable as anything the user types.
+    let latestValue = "";
+    const view = render(
+      <PlaceholderTemplateBadgeInput
+        onValueChange={(value) => {
+          latestValue = value;
+        }}
+      />
+    );
+
+    const textbox = view.getByRole("textbox");
+    fireEvent.focus(textbox);
+    textbox.append(document.createTextNode("H"));
+    fireEvent.input(textbox);
+
+    await waitFor(() => expect(latestValue).toBe("H"));
+  });
+
+  it("keeps what is being typed when a node is renamed", async () => {
+    // Typing flows out to the node being configured, so every keystroke
+    // produces a new node array. Redrawing the badges on each one would rebuild
+    // the DOM under the caret.
+    let latestValue = "";
+    const view = render(
+      <PlaceholderTemplateBadgeInput
+        onValueChange={(value) => {
+          latestValue = value;
+        }}
+      />
+    );
+
+    const textbox = view.getByRole("textbox");
+    fireEvent.focus(textbox);
+    textbox.textContent = "abc";
+    fireEvent.input(textbox);
+    await waitFor(() => expect(latestValue).toBe("abc"));
+
+    getDefaultStore().set(updateNodeDataAtom, {
+      id: "trigger_1",
+      data: { label: "Renamed" },
+    });
+
+    await waitFor(() => expect(textbox.textContent).toBe("abc"));
+    expect(latestValue).toBe("abc");
   });
 });

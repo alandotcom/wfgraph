@@ -79,7 +79,16 @@ export function useTemplateBadgeField(input: {
 
   // Badge labels follow node labels. A rename produces no DOM event, so this is
   // the one genuine render-to-DOM sync left in these components.
-  useAfterCommit(nodes, () => editorRef.current?.rerender(nodes));
+  //
+  // Not while the field has focus: the field's own edits flow back out through
+  // onChange and land on a node, so every keystroke produces a new node array,
+  // and rebuilding the DOM under a caret on every keystroke is exactly what the
+  // machinery this replaced existed to avoid.
+  useAfterCommit(isFocused ? FOCUSED : nodes, () => {
+    if (!isFocused) {
+      editorRef.current?.rerender(nodes);
+    }
+  });
 
   /** Show or hide the autocomplete based on a trailing `@word`. */
   const syncAutocomplete = useCallback((text: string) => {

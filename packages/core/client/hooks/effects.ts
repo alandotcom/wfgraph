@@ -3,7 +3,6 @@ import {
   useEffect,
   useEffectEvent,
   useLayoutEffect,
-  useRef,
   useState,
 } from "react";
 
@@ -98,29 +97,18 @@ export function useDomEvent(
 }
 
 /**
- * The sentinel the key-watching hooks start from, so that the first render
- * counts as a change for every key including `undefined`.
- */
-const NO_KEY_YET = Symbol("no-key-yet");
-
-/**
  * Run `run` right after the commit in which `key` changed, compared by
  * `Object.is`. For telling an imperative library or the raw DOM about something
  * React has just rendered: scrolling a newly selected item into view, or
  * handing React Flow a node whose handle set changed.
  *
- * There is no "keys already seen" latch, so a key going 0 to 1 and back to 0
- * runs three times. Selecting the first item again should scroll to it again.
+ * The key is compared with `Object.is`, and a key going 0 to 1 and back to 0
+ * runs three times: selecting the first item again should scroll to it again.
  */
 export function useAfterCommit(key: unknown, run: () => void): void {
   const onKeyChanged = useEffectEvent(() => run());
-  const lastKeyRef = useRef<unknown>(NO_KEY_YET);
 
   useEffect(() => {
-    if (Object.is(lastKeyRef.current, key)) {
-      return;
-    }
-    lastKeyRef.current = key;
     onKeyChanged();
   }, [key]);
 }
@@ -136,14 +124,8 @@ export function useAfterCommit(key: unknown, run: () => void): void {
  */
 export function useAfterPaint(key: unknown, run: () => void): void {
   const onKeyChanged = useEffectEvent(() => run());
-  const lastKeyRef = useRef<unknown>(NO_KEY_YET);
 
   useEffect(() => {
-    if (Object.is(lastKeyRef.current, key)) {
-      return undefined;
-    }
-    lastKeyRef.current = key;
-
     const timer = setTimeout(() => onKeyChanged(), 0);
     return () => clearTimeout(timer);
   }, [key]);

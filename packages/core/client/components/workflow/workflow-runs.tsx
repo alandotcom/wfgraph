@@ -18,11 +18,7 @@ import { WorkflowRunsList } from "./workflow-runs-list";
 /** How often a run that is still going gets re-read. */
 const RUN_POLL_MS = 2000;
 
-type WorkflowRunsProps = {
-  isActive?: boolean;
-};
-
-export function WorkflowRuns({ isActive = false }: WorkflowRunsProps) {
+export function WorkflowRuns() {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [selectedExecutionId, setSelectedExecutionId] = useAtom(
     selectedExecutionIdAtom
@@ -39,13 +35,26 @@ export function WorkflowRuns({ isActive = false }: WorkflowRunsProps) {
     }),
     enabled: currentWorkflowId !== null,
     staleTime: 0,
-    refetchInterval: isActive ? RUN_POLL_MS : false,
+    refetchInterval: RUN_POLL_MS,
   });
 
+  const executions = executionsQuery.data ?? [];
+
+  // Both detail queries follow the same run, so they read its status from the
+  // same place: the list, which is polling anyway. Deriving it from each
+  // query's own payload would give the events poll no way to know it had
+  // finished, since the events endpoint does not report a status.
+  const activeRunStatus = executions.find(
+    (execution) => execution.id === activeRunId
+  )?.status;
+  const detailPollInterval = isRunInProgress(activeRunStatus)
+    ? RUN_POLL_MS
+    : false;
+
   // Opening a run enables its logs and events; the cache decides whether that
-  // means a request. Both stop polling on their own once the run is finished,
-  // which the old single interval could not do: it refreshed the open run
-  // forever, long after there was anything left to learn about it.
+  // means a request. Both stop once the run is finished, which the single
+  // interval this replaced could not do: it refreshed the open run forever,
+  // long after there was anything left to learn about it.
   const logsQuery = useQuery({
     ...orpcQuery.workflow.getExecutionLogs.queryOptions({
       input: { executionId: activeRunId ?? "" },
@@ -53,8 +62,7 @@ export function WorkflowRuns({ isActive = false }: WorkflowRunsProps) {
     }),
     enabled: activeRunId !== null,
     staleTime: 0,
-    refetchInterval: (query) =>
-      isRunInProgress(query.state.data?.execution.status) ? RUN_POLL_MS : false,
+    refetchInterval: detailPollInterval,
   });
 
   const eventsQuery = useQuery({
@@ -64,21 +72,19 @@ export function WorkflowRuns({ isActive = false }: WorkflowRunsProps) {
     }),
     enabled: activeRunId !== null,
     staleTime: 0,
-    refetchInterval: () =>
-      isRunInProgress(
-        executionsQuery.data?.find((execution) => execution.id === activeRunId)
-          ?.status
-      )
-        ? RUN_POLL_MS
-        : false,
+    refetchInterval: detailPollInterval,
   });
-
-  const executions = executionsQuery.data ?? [];
 
   const cancelExecution = useMutation(
     orpcQuery.workflow.cancelExecution.mutationOptions({
+      // Only the run list, never the whole workflow area: a broad invalidation
+      // from inside the editor would mark the workflow itself stale, and an
+      // observer on it would refetch, rehydrate the graph, re-run the
+      // integration repair and save again over whatever the user was typing.
       onSuccess: () =>
-        queryClient.invalidateQueries({ queryKey: orpcQuery.workflow.key() }),
+        queryClient.invalidateQueries({
+          queryKey: orpcQuery.workflow.getExecutions.key(),
+        }),
       meta: { errorMessage: "Failed to cancel run" },
     })
   );

@@ -1,5 +1,4 @@
-import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Eraser, Eye, EyeOff, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -8,9 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/rpc-client";
-import { repairNodeIntegration } from "@/lib/node-integration";
-import { seedConditionModel } from "@/lib/seed-condition-model";
-import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
 import {
   clearNodeStatusesAtom,
   deleteEdgeAtom,
@@ -37,14 +33,14 @@ import {
   showDeleteDialogAtom,
 } from "@/lib/workflow-ui-store";
 import { ActionConfig } from "./config/action-config";
+import { useNodeConfigWriter } from "./config/use-node-config-writer";
 import { ActionGrid } from "./config/action-grid";
-import type { NodeConfigPatch } from "./config/node-config-patch";
 import { TriggerConfig } from "./config/trigger-config";
 import { WorkflowRuns } from "./workflow-runs";
 
 export const PanelInner = () => {
-  const store = useStore();
-  const queryClient = useQueryClient();
+  const { updateConfig: handleUpdateConfig, refreshRuns: handleRefreshRuns } =
+    useNodeConfigWriter();
   const [selectedNodeId] = useAtom(selectedNodeAtom);
   const [selectedEdgeId] = useAtom(selectedEdgeAtom);
   const nodes = useAtomValue(nodesAtom);
@@ -97,10 +93,6 @@ export const PanelInner = () => {
     }
     return parts.join(" and ");
   })();
-
-  const { data: globalIntegrations = [] } = useQuery(
-    integrationsQueryOptions()
-  );
 
   const handleDelete = () => {
     if (selectedNodeId) {
@@ -160,56 +152,6 @@ export const PanelInner = () => {
     }
   };
 
-  const handleUpdateConfig = (patch: NodeConfigPatch) => {
-    if (!selectedNode) {
-      return;
-    }
-
-    const latestNodes = store.get(nodesAtom);
-    const latestNode = latestNodes.find((node) => node.id === selectedNode.id);
-    if (!latestNode) {
-      return;
-    }
-
-    // Picking a different action invalidates whatever connection the previous
-    // action was bound to, so the two keys move together.
-    const isActionTypeUpdate = typeof patch.actionType === "string";
-    const shouldClearIntegration =
-      isActionTypeUpdate && Boolean(latestNode.data.config?.integrationId);
-
-    const newConfig: Record<string, unknown> = {
-      ...latestNode.data.config,
-      ...patch,
-      ...(shouldClearIntegration ? { integrationId: undefined } : {}),
-    };
-
-    // A Condition node has to arrive with a model, because the engine rejects
-    // one without it. The action being chosen is the moment that gap opens.
-    const conditionSeed =
-      patch.actionType === "Condition" && !newConfig.conditionModel
-        ? seedConditionModel({
-            nodeId: latestNode.id,
-            nodes: latestNodes,
-            edges: store.get(edgesAtom),
-          })
-        : undefined;
-    Object.assign(newConfig, conditionSeed);
-
-    // Choosing an action is exactly when its connection can be settled, and the
-    // connection list is already in hand. This used to be a fetch with an abort
-    // controller and a "pending" flag to hide the warning that flashed while it
-    // was in flight; with the list cached there is no flight and no flash.
-    const repaired = repairNodeIntegration(
-      { ...latestNode, data: { ...latestNode.data, config: newConfig } },
-      globalIntegrations
-    );
-
-    updateNodeData({
-      id: selectedNode.id,
-      data: { config: repaired.data.config },
-    });
-  };
-
   const handleUpdateWorkspaceName = async (newName: string) => {
     // Debounced inside the save queue, which also merges the rename with any
     // graph edit pending in the same window into a single request.
@@ -218,17 +160,6 @@ export const PanelInner = () => {
       setWorkflowNameError(error.message || "Failed to update workflow name");
     }
   };
-
-  // Refreshing the runs list is a cache invalidation, so it does not need a
-  // callback handed up from the panel that owns the list, and the spinner reads
-  // the query's own fetching state instead of a boolean kept beside it.
-  const isRefreshingRuns =
-    useIsFetching({ queryKey: orpcQuery.workflow.getExecutions.key() }) > 0;
-
-  const handleRefreshRuns = () =>
-    queryClient.invalidateQueries({
-      queryKey: orpcQuery.workflow.getExecutions.key(),
-    });
 
   // Show action grid for unconfigured owner action nodes
   const showActionGrid =
@@ -528,22 +459,15 @@ export const PanelInner = () => {
             <div className="flex shrink-0 items-center justify-between border-b px-4 py-2">
               <span className="font-medium text-sm">Runs</span>
               <div className="flex items-center gap-2">
-                <Button
-                  disabled={isRefreshingRuns}
-                  onClick={handleRefreshRuns}
-                  size="sm"
-                  variant="outline"
-                >
-                  <RefreshCw
-                    className={`mr-2 size-4 ${isRefreshingRuns ? "animate-spin" : ""}`}
-                  />
+                <Button onClick={handleRefreshRuns} size="sm" variant="outline">
+                  <RefreshCw className="mr-2 size-4" />
                   Refresh
                 </Button>
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
               <div className="space-y-4 p-4">
-                <WorkflowRuns isActive={validActiveTab === "runs"} />
+                <WorkflowRuns />
               </div>
               <div className="border-t px-4 py-3">
                 <Button

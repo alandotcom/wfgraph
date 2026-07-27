@@ -53,6 +53,9 @@ export type BadgeEditor = {
   insertLineBreak(): boolean;
 };
 
+/** Marks the prompt text shown in an empty, unfocused field. */
+const PLACEHOLDER_ATTRIBUTE = "data-placeholder";
+
 const LIVE_BADGE_CLASS =
   "inline-flex items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-blue-600 dark:text-blue-400 font-mono text-xs border border-blue-500/20 mx-0.5";
 const BROKEN_BADGE_CLASS =
@@ -106,12 +109,58 @@ function templateOf(node: Node): string | null {
     : null;
 }
 
+/**
+ * The raw template string a field holds: literals as typed, badges as the token
+ * they stand for, line breaks as newlines. Placeholder text is not the user's
+ * text and never appears.
+ */
+function readTextFrom(container: HTMLElement, multiline: boolean): string {
+  const walker = document.createTreeWalker(
+    container,
+    NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+    null
+  );
+  let result = "";
+  let node = walker.nextNode();
+
+  while (node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      // A badge's text is the node's label, which the token already carries,
+      // and a placeholder is not the user's text at all.
+      let parent = node.parentElement;
+      let isDecoration = false;
+      while (parent && parent !== container) {
+        if (
+          parent.getAttribute("data-template") ||
+          parent.hasAttribute(PLACEHOLDER_ATTRIBUTE)
+        ) {
+          isDecoration = true;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+      if (!isDecoration) {
+        result += node.textContent;
+      }
+    } else {
+      const template = templateOf(node);
+      if (template) {
+        result += template;
+      } else if (multiline && node instanceof HTMLElement && node.tagName === "BR") {
+        result += "\n";
+      }
+    }
+    node = walker.nextNode();
+  }
+
+  return result;
+}
+
 export function createBadgeEditor(
   container: HTMLElement,
   options: BadgeEditorOptions = {}
 ): BadgeEditor {
   const multiline = options.multiline ?? false;
-  let lastText = "";
   let lastRenderOptions: RenderOptions = { focused: false, nodes: [] };
 
   function walk(): TreeWalker {
@@ -251,7 +300,6 @@ export function createBadgeEditor(
   }
 
   function draw(text: string, renderOptions: RenderOptions) {
-    lastText = text;
     lastRenderOptions = renderOptions;
 
     const caretOffset = renderOptions.caretOffset ?? readCaretOffset();
@@ -260,6 +308,10 @@ export function createBadgeEditor(
 
     if (!(text || renderOptions.focused)) {
       const placeholder = document.createElement("span");
+      // Marked so `readText` can tell prompt text from anything the user typed.
+      // Without it, focusing an empty field reads its own placeholder back as
+      // the field's value.
+      placeholder.setAttribute(PLACEHOLDER_ATTRIBUTE, "");
       placeholder.className = "text-muted-foreground pointer-events-none";
       placeholder.textContent = renderOptions.placeholder ?? "";
       container.appendChild(placeholder);
@@ -300,41 +352,16 @@ export function createBadgeEditor(
   return {
     render: draw,
     rerender(nodes: WorkflowNode[]) {
-      draw(lastText, { ...lastRenderOptions, nodes, caretOffset: undefined });
+      // The text comes back out of the DOM rather than from a copy kept here.
+      // A copy goes stale the moment an ordinary keystroke is drawn by the
+      // browser instead of by this editor, which is most of them.
+      draw(readTextFrom(container, multiline), {
+        ...lastRenderOptions,
+        nodes,
+        caretOffset: undefined,
+      });
     },
-    readText() {
-      const walker = walk();
-      let result = "";
-      let node = walker.nextNode();
-
-      while (node) {
-        if (node.nodeType === Node.TEXT_NODE) {
-          // Text inside a badge is the label, which the token already carries.
-          let parent = node.parentElement;
-          let insideBadge = false;
-          while (parent && parent !== container) {
-            if (parent.getAttribute("data-template")) {
-              insideBadge = true;
-              break;
-            }
-            parent = parent.parentElement;
-          }
-          if (!insideBadge) {
-            result += node.textContent;
-          }
-        } else {
-          const template = templateOf(node);
-          if (template) {
-            result += template;
-          } else if (isLineBreak(node)) {
-            result += "\n";
-          }
-        }
-        node = walker.nextNode();
-      }
-
-      return result;
-    },
+    readText: () => readTextFrom(container, multiline),
     insertText(text: string) {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) {
