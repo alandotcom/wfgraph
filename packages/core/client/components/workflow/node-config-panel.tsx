@@ -7,28 +7,33 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { integrationsAtom } from "@/lib/integrations-store";
-import { ApiError, api } from "@/lib/rpc-client";
+import { api } from "@/lib/rpc-client";
 import {
   clearNodeStatusesAtom,
-  currentWorkflowIdAtom,
-  currentWorkflowNameAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
   deleteSelectedItemsAtom,
   edgesAtom,
-  isGeneratingAtom,
-  isWorkflowOwnerAtom,
   newlyCreatedNodeIdAtom,
   nodesAtom,
-  pendingIntegrationNodesAtom,
-  propertiesPanelActiveTabAtom,
   selectedEdgeAtom,
   selectedNodeAtom,
+  updateNodeDataAtom,
+} from "@/lib/workflow-graph-store";
+import {
+  currentWorkflowIdAtom,
+  currentWorkflowNameAtom,
+  isWorkflowOwnerAtom,
+  renameWorkflowAtom,
+  workflowNameErrorAtom,
+} from "@/lib/workflow-save-store";
+import {
+  isGeneratingAtom,
+  pendingIntegrationNodesAtom,
+  propertiesPanelActiveTabAtom,
   showClearDialogAtom,
   showDeleteDialogAtom,
-  updateNodeDataAtom,
-  workflowNameErrorAtom,
-} from "@/lib/workflow-store";
+} from "@/lib/workflow-ui-store";
 import { findActionById } from "@/plugins/registry";
 import {
   type IntegrationType,
@@ -64,13 +69,12 @@ export const PanelInner = () => {
   const store = useStore();
   const [selectedNodeId] = useAtom(selectedNodeAtom);
   const [selectedEdgeId] = useAtom(selectedEdgeAtom);
-  const [nodes] = useAtom(nodesAtom);
+  const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const [isGenerating] = useAtom(isGeneratingAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
-  const [currentWorkflowName, setCurrentWorkflowName] = useAtom(
-    currentWorkflowNameAtom
-  );
+  const currentWorkflowName = useAtomValue(currentWorkflowNameAtom);
+  const renameWorkflow = useSetAtom(renameWorkflowAtom);
   const [workflowNameError, setWorkflowNameError] = useAtom(
     workflowNameErrorAtom
   );
@@ -98,7 +102,6 @@ export const PanelInner = () => {
   const autoSelectAbortControllersRef = useRef<Record<string, AbortController>>(
     {}
   );
-  const workflowNameSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
 
@@ -331,41 +334,14 @@ export const PanelInner = () => {
     );
   };
 
-  const handleUpdateWorkspaceName = (newName: string) => {
-    setCurrentWorkflowName(newName);
-    setWorkflowNameError(null);
-
-    if (workflowNameSaveTimeoutRef.current) {
-      clearTimeout(workflowNameSaveTimeoutRef.current);
-      workflowNameSaveTimeoutRef.current = null;
-    }
-
-    if (currentWorkflowId) {
-      workflowNameSaveTimeoutRef.current = setTimeout(async () => {
-        try {
-          await api.workflow.update(currentWorkflowId, {
-            name: newName,
-          });
-        } catch (error) {
-          console.error("Failed to update workflow name:", error);
-          const message =
-            error instanceof ApiError
-              ? error.message
-              : "Failed to update workflow name";
-          setWorkflowNameError(message);
-        }
-      }, 700);
+  const handleUpdateWorkspaceName = async (newName: string) => {
+    // Debounced inside the save queue, which also merges the rename with any
+    // graph edit pending in the same window into a single request.
+    const error = await renameWorkflow(newName);
+    if (error) {
+      setWorkflowNameError(error.message || "Failed to update workflow name");
     }
   };
-
-  useEffect(
-    () => () => {
-      if (workflowNameSaveTimeoutRef.current) {
-        clearTimeout(workflowNameSaveTimeoutRef.current);
-      }
-    },
-    []
-  );
 
   const handleRefreshRuns = async () => {
     setIsRefreshing(true);

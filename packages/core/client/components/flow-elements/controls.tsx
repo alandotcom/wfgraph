@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { showMinimapAtom } from "@/lib/workflow-store";
+import { showMinimapAtom } from "@/lib/workflow-ui-store";
 
 type ControlsProps = {
   onReflow?: () => void;

@@ -22,25 +22,30 @@ import type { NodeConfigPatch } from "@/components/workflow/config/node-config-p
 import { TriggerConfig } from "@/components/workflow/config/trigger-config";
 import { WorkflowRuns } from "@/components/workflow/workflow-runs";
 import { integrationsAtom } from "@/lib/integrations-store";
-import { ApiError, api } from "@/lib/rpc-client";
+import { api } from "@/lib/rpc-client";
 import {
   clearNodeStatusesAtom,
   clearWorkflowAtom,
-  currentWorkflowIdAtom,
-  currentWorkflowNameAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
   edgesAtom,
-  isGeneratingAtom,
-  isWorkflowOwnerAtom,
   newlyCreatedNodeIdAtom,
   nodesAtom,
-  propertiesPanelActiveTabAtom,
   selectedEdgeAtom,
   selectedNodeAtom,
   updateNodeDataAtom,
+} from "@/lib/workflow-graph-store";
+import {
+  currentWorkflowIdAtom,
+  currentWorkflowNameAtom,
+  isWorkflowOwnerAtom,
+  renameWorkflowAtom,
   workflowNameErrorAtom,
-} from "@/lib/workflow-store";
+} from "@/lib/workflow-save-store";
+import {
+  isGeneratingAtom,
+  propertiesPanelActiveTabAtom,
+} from "@/lib/workflow-ui-store";
 import { findActionById } from "@/plugins/registry";
 import { isIntegrationType } from "@/shared/types/integration";
 import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
@@ -65,9 +70,8 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   const [edges] = useAtom(edgesAtom);
   const [isGenerating] = useAtom(isGeneratingAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
-  const [currentWorkflowName, setCurrentWorkflowName] = useAtom(
-    currentWorkflowNameAtom
-  );
+  const currentWorkflowName = useAtomValue(currentWorkflowNameAtom);
+  const renameWorkflow = useSetAtom(renameWorkflowAtom);
   const [workflowNameError, setWorkflowNameError] = useAtom(
     workflowNameErrorAtom
   );
@@ -265,22 +269,12 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
     }
   };
 
-  // Handle updating workflow name
+  // Handle updating workflow name. Debounced by the save queue, which this
+  // shares with the config panel's rename field and with graph autosave.
   const handleUpdateWorkflowName = async (newName: string) => {
-    setCurrentWorkflowName(newName);
-    setWorkflowNameError(null);
-
-    if (currentWorkflowId) {
-      try {
-        await api.workflow.update(currentWorkflowId, { name: newName });
-      } catch (error) {
-        console.error("Failed to update workflow name:", error);
-        const message =
-          error instanceof ApiError
-            ? error.message
-            : "Failed to update workflow name";
-        setWorkflowNameError(message);
-      }
+    const error = await renameWorkflow(newName);
+    if (error) {
+      setWorkflowNameError(error.message || "Failed to update workflow name");
     }
   };
 
@@ -289,7 +283,7 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
     push(ConfirmOverlay, {
       title: "Clear Workflow",
       message:
-        "Are you sure you want to clear all nodes and connections? This action cannot be undone.",
+        "Remove every step and connection? The trigger is kept, and this saves right away.",
       confirmLabel: "Clear Workflow",
       confirmVariant: "destructive" as const,
       destructive: true,

@@ -7,7 +7,7 @@ import {
   NodeDescription,
   NodeTitle,
 } from "@/components/flow-elements/node";
-import type { WorkflowNodeData } from "@/lib/workflow-store";
+import type { WorkflowNodeData } from "@/shared/workflow/types";
 import { cn } from "@/shared/utils";
 import { parseScheduleExpression } from "@/shared/utils/schedule-expression";
 

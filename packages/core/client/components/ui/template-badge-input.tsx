@@ -1,6 +1,7 @@
-import { useAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { useEffect, useRef, useState } from "react";
-import { nodesAtom } from "@/lib/workflow-store";
+import { nodesAtom } from "@/lib/workflow-graph-store";
+import type { WorkflowNode } from "@/shared/workflow/types";
 import { findActionById } from "@/plugins/registry";
 import { cn } from "@/shared/utils";
 import {
@@ -32,7 +33,7 @@ function readConfigString(
 // A badge is only "live" while the node its token names is still on the canvas.
 function doesNodeExist(
   token: TemplateToken,
-  nodes: ReturnType<typeof useAtom<typeof nodesAtom>>[0]
+  nodes: WorkflowNode[]
 ): boolean {
   return nodes.some((n) => n.id === token.nodeId);
 }
@@ -43,7 +44,7 @@ function doesNodeExist(
  */
 function getDisplayTextForToken(
   token: TemplateToken,
-  nodes: ReturnType<typeof useAtom<typeof nodesAtom>>[0]
+  nodes: WorkflowNode[]
 ): string {
   const storedText = token.fieldPath
     ? `${token.nodeLabel}.${token.fieldPath}`
@@ -107,7 +108,7 @@ export function TemplateBadgeInput({
   const contentRef = useRef<HTMLDivElement>(null);
   const [internalValue, setInternalValue] = useState(value);
   const shouldUpdateDisplay = useRef(true);
-  const [nodes] = useAtom(nodesAtom);
+  const nodes = useAtomValue(nodesAtom);
   const selectedNodeId = nodes.find((n) => n.selected)?.id;
   const autocompleteNodeId = currentNodeId ?? selectedNodeId;
 

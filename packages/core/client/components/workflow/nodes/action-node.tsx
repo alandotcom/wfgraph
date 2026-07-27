@@ -30,12 +30,14 @@ import {
   integrationsLoadedAtom,
 } from "@/lib/integrations-store";
 import {
-  type ExecutionLogEntry,
   executionLogsAtom,
   pendingIntegrationNodesAtom,
   selectedExecutionIdAtom,
+} from "@/lib/workflow-ui-store";
+import {
+  type ExecutionLogEntry,
   type WorkflowNodeData,
-} from "@/lib/workflow-store";
+} from "@/shared/workflow/types";
 import { findActionById, getIntegration } from "@/plugins/registry";
 import { getIntegrationUi } from "@/shared/plugins/ui-registry";
 import { cn } from "@/shared/utils";

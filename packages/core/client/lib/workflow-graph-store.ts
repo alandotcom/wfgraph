@@ -1,0 +1,576 @@
+import type { EdgeChange, NodeChange } from "@xyflow/react";
+import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
+import type { Getter, Setter } from "jotai";
+import { atom } from "jotai";
+import {
+  hasUnsavedChangesAtom,
+  saveWorkflowAtom,
+} from "@/lib/workflow-save-store";
+import {
+  formatTemplateToken,
+  parseTemplate,
+} from "@/shared/workflow/node-references";
+import type {
+  WorkflowEdge,
+  WorkflowNode,
+  WorkflowNodeData,
+} from "@/shared/workflow/types";
+
+/**
+ * The graph the editor is showing, and every operation that may change it.
+ *
+ * The node and edge cells are private on purpose. They used to be exported
+ * writable, and three modules wrote them directly: creating an edge and running
+ * auto-layout both changed the graph without recording an undo step, so neither
+ * could be undone. Exporting read-only views instead makes that mistake fail to
+ * compile, because jotai types the setter of a read-only atom as `never`.
+ *
+ * Add an operation here rather than reaching for the cells.
+ */
+const nodesStateAtom = atom<WorkflowNode[]>([]);
+const edgesStateAtom = atom<WorkflowEdge[]>([]);
+
+/** Read-only. Mutate through the action atoms below so undo always sees it. */
+export const nodesAtom = atom((get) => get(nodesStateAtom));
+export const edgesAtom = atom((get) => get(edgesStateAtom));
+
+export const selectedNodeAtom = atom<string | null>(null);
+export const selectedEdgeAtom = atom<string | null>(null);
+
+// Tracks a just-created node so the config panel can focus its search input.
+// Cleared once the node gets an action type or loses selection.
+export const newlyCreatedNodeIdAtom = atom<string | null>(null);
+
+type HistoryState = {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+};
+
+const historyAtom = atom<HistoryState[]>([]);
+const futureAtom = atom<HistoryState[]>([]);
+
+// Deep enough that no one reaches the end by hand, bounded so a long editing
+// session cannot pin two copies of the graph per step in memory forever.
+const HISTORY_LIMIT = 50;
+
+// Whether a node drag is mid-flight, so the whole drag records one undo step
+// rather than one per frame.
+const isDraggingAtom = atom(false);
+
+/** Snapshot the graph so the next change is undoable, and drop any redo branch. */
+function pushHistory(get: Getter, set: Setter) {
+  const snapshot: HistoryState = {
+    nodes: get(nodesStateAtom),
+    edges: get(edgesStateAtom),
+  };
+  const history = [...get(historyAtom), snapshot];
+
+  set(historyAtom, history.slice(-HISTORY_LIMIT));
+  set(futureAtom, []);
+}
+
+/** Hand the current nodes and edges to the save queue, which owns the flags. */
+function requestGraphSave(
+  get: Getter,
+  set: Setter,
+  options?: { immediate?: boolean }
+) {
+  void set(
+    saveWorkflowAtom,
+    { nodes: get(nodesStateAtom), edges: get(edgesStateAtom) },
+    options
+  );
+}
+
+/**
+ * Replace the graph with what came back from the server.
+ *
+ * Clearing history is the point. It used to be impossible from outside this
+ * module, so undo history survived navigating between workflows: pressing undo
+ * after switching wrote the previous workflow's graph into the current one, and
+ * autosave then persisted it under the wrong id.
+ */
+export const loadWorkflowGraphAtom = atom(
+  null,
+  (_get, set, graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) => {
+    set(nodesStateAtom, graph.nodes);
+    set(edgesStateAtom, graph.edges);
+    set(historyAtom, []);
+    set(futureAtom, []);
+    set(selectedNodeAtom, null);
+    set(selectedEdgeAtom, null);
+    set(newlyCreatedNodeIdAtom, null);
+    set(hasUnsavedChangesAtom, false);
+  }
+);
+
+/** Drop selection flags without touching the graph's shape. Not an undo step. */
+export const clearGraphSelectionAtom = atom(null, (get, set) => {
+  set(
+    nodesStateAtom,
+    get(nodesStateAtom).map((node) => ({ ...node, selected: false }))
+  );
+  set(
+    edgesStateAtom,
+    get(edgesStateAtom).map((edge) => ({ ...edge, selected: false }))
+  );
+  set(selectedNodeAtom, null);
+  set(selectedEdgeAtom, null);
+});
+
+/** Make one node the only selected node. Selection only, so not an undo step. */
+export const selectOnlyNodeAtom = atom(null, (get, set, nodeId: string) => {
+  set(
+    nodesStateAtom,
+    get(nodesStateAtom).map((node) => ({
+      ...node,
+      selected: node.id === nodeId,
+    }))
+  );
+  set(selectedNodeAtom, nodeId);
+  set(selectedEdgeAtom, null);
+});
+
+export const onNodesChangeAtom = atom(
+  null,
+  (get, set, changes: NodeChange<WorkflowNode>[]) => {
+    const currentNodes = get(nodesStateAtom);
+
+    // Trigger nodes are the workflow's entrypoint; the graph is invalid without
+    // one, so drop any attempt to remove them.
+    const filteredChanges = changes.filter((change) => {
+      if (change.type === "remove") {
+        const nodeToRemove = currentNodes.find((n) => n.id === change.id);
+        return nodeToRemove?.data.type !== "trigger";
+      }
+      return true;
+    });
+
+    // React Flow drives the Delete key and node dragging through here, so this
+    // is where most destructive edits actually arrive. Snapshot before applying
+    // them, or the commonest way to lose work is the one undo cannot reach.
+    const hasRemoval = filteredChanges.some(
+      (change) => change.type === "remove"
+    );
+    const isDragFrame = filteredChanges.some(
+      (change) => change.type === "position" && change.dragging === true
+    );
+    const isDragSettled = filteredChanges.some(
+      (change) => change.type === "position" && change.dragging === false
+    );
+
+    if (hasRemoval) {
+      pushHistory(get, set);
+    } else if (isDragFrame && !get(isDraggingAtom)) {
+      // A drag arrives as a stream of frames. Only the first still has the
+      // pre-drag positions worth snapshotting.
+      pushHistory(get, set);
+      set(isDraggingAtom, true);
+    }
+
+    if (isDragSettled) {
+      set(isDraggingAtom, false);
+    }
+
+    const newNodes = applyNodeChanges<WorkflowNode>(
+      filteredChanges,
+      currentNodes
+    );
+    set(nodesStateAtom, newNodes);
+
+    // Mirror React Flow's own selection state onto our selection atoms.
+    const selectedNode = newNodes.find((n) => n.selected);
+    if (selectedNode) {
+      set(selectedNodeAtom, selectedNode.id);
+      set(selectedEdgeAtom, null);
+      const newlyCreatedId = get(newlyCreatedNodeIdAtom);
+      if (newlyCreatedId && newlyCreatedId !== selectedNode.id) {
+        set(newlyCreatedNodeIdAtom, null);
+      }
+    } else if (get(selectedNodeAtom)) {
+      const currentSelection = get(selectedNodeAtom);
+      const stillExists = newNodes.find((n) => n.id === currentSelection);
+      if (!stillExists) {
+        set(selectedNodeAtom, null);
+      }
+      set(newlyCreatedNodeIdAtom, null);
+    }
+
+    if (hasRemoval) {
+      requestGraphSave(get, set, { immediate: true });
+    } else if (isDragSettled) {
+      // Only a settled drag is worth saving; saving mid-drag would fire per frame.
+      requestGraphSave(get, set);
+    }
+  }
+);
+
+export const onEdgesChangeAtom = atom(
+  null,
+  (get, set, changes: EdgeChange[]) => {
+    const hasRemoval = changes.some((change) => change.type === "remove");
+    if (hasRemoval) {
+      pushHistory(get, set);
+    }
+
+    const newEdges = applyEdgeChanges(changes, get(edgesStateAtom));
+    set(edgesStateAtom, newEdges);
+
+    const selectedEdge = newEdges.find((e) => e.selected);
+    if (selectedEdge) {
+      set(selectedEdgeAtom, selectedEdge.id);
+      set(selectedNodeAtom, null);
+    } else if (get(selectedEdgeAtom)) {
+      const currentSelection = get(selectedEdgeAtom);
+      const stillExists = newEdges.find((e) => e.id === currentSelection);
+      if (!stillExists) {
+        set(selectedEdgeAtom, null);
+      }
+    }
+
+    if (hasRemoval) {
+      requestGraphSave(get, set, { immediate: true });
+    }
+  }
+);
+
+export const addNodeAtom = atom(null, (get, set, node: WorkflowNode) => {
+  pushHistory(get, set);
+
+  const updatedNodes = get(nodesStateAtom).map((n) => ({
+    ...n,
+    selected: false,
+  }));
+  set(nodesStateAtom, [...updatedNodes, { ...node, selected: true }]);
+  set(selectedNodeAtom, node.id);
+
+  // A brand new action node has no action picked yet, so the panel opens on its
+  // search input rather than on an empty config form.
+  if (node.data.type === "action" && !node.data.config?.actionType) {
+    set(newlyCreatedNodeIdAtom, node.id);
+  }
+
+  requestGraphSave(get, set, { immediate: true });
+});
+
+/** Connect two nodes. An undo step, which is what the canvas used to skip. */
+export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {
+  pushHistory(get, set);
+  set(edgesStateAtom, [...get(edgesStateAtom), edge]);
+  requestGraphSave(get, set, { immediate: true });
+});
+
+/** Apply auto-layout positions. Also an undo step, for the same reason. */
+export const applyNodeLayoutAtom = atom(
+  null,
+  (get, set, nodes: WorkflowNode[]) => {
+    pushHistory(get, set);
+    set(nodesStateAtom, nodes);
+    requestGraphSave(get, set, { immediate: true });
+  }
+);
+
+export const updateNodeDataAtom = atom(
+  null,
+  (get, set, { id, data }: { id: string; data: Partial<WorkflowNodeData> }) => {
+    const currentNodes = get(nodesStateAtom);
+
+    const oldNode = currentNodes.find((node) => node.id === id);
+    const oldLabel = oldNode?.data.label;
+    const newLabel = data.label;
+    const isLabelChange = newLabel !== undefined && oldLabel !== newLabel;
+
+    const newNodes = currentNodes.map((node) => {
+      if (node.id === id) {
+        return { ...node, data: { ...node.data, ...data } };
+      }
+
+      // A rename has to sweep every other node's config, because tokens carry
+      // the label they were written against.
+      if (isLabelChange && oldLabel) {
+        const updatedConfig = updateTemplatesInConfig(
+          node.data.config || {},
+          id,
+          oldLabel,
+          newLabel
+        );
+
+        if (updatedConfig !== node.data.config) {
+          return { ...node, data: { ...node.data, config: updatedConfig } };
+        }
+      }
+
+      return node;
+    });
+
+    set(nodesStateAtom, newNodes);
+
+    // A status change is execution progress, not an edit, so it neither dirties
+    // the workflow nor triggers a save.
+    if (!data.status) {
+      requestGraphSave(get, set);
+    }
+  }
+);
+
+/**
+ * Rewrite the label baked into every token that names `nodeId`.
+ *
+ * Tokens carry a label purely so the editor can show something readable, so a
+ * rename has to sweep the configs that reference the renamed node. Tokens
+ * already carrying the new label are left alone, which is what keeps a rename
+ * from marking the workflow dirty when nothing actually moved.
+ */
+function updateTemplatesInConfig(
+  config: Record<string, unknown>,
+  nodeId: string,
+  oldLabel: string,
+  newLabel: string
+): Record<string, unknown> {
+  let hasChanges = false;
+  const updated: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(config)) {
+    if (typeof value === "string") {
+      updated[key] = parseTemplate(value)
+        .map((segment) => {
+          if (segment.kind === "literal") {
+            return segment.text;
+          }
+
+          const { token } = segment;
+          if (token.nodeId !== nodeId || token.nodeLabel !== oldLabel) {
+            return token.raw;
+          }
+
+          hasChanges = true;
+          return formatTemplateToken({
+            nodeId,
+            nodeLabel: newLabel,
+            fieldPath: token.fieldPath,
+          });
+        })
+        .join("");
+    } else if (
+      typeof value === "object" &&
+      value !== null &&
+      !Array.isArray(value)
+    ) {
+      // The recursion needs a keyed value to walk. The copy is what gets passed
+      // down, so it is also what the identity check below compares against: the
+      // recursion returns its own argument when nothing inside it was renamed.
+      const nested: Record<string, unknown> = { ...value };
+      const nestedUpdated = updateTemplatesInConfig(
+        nested,
+        nodeId,
+        oldLabel,
+        newLabel
+      );
+      if (nestedUpdated !== nested) {
+        hasChanges = true;
+      }
+      updated[key] = nestedUpdated;
+    } else {
+      updated[key] = value;
+    }
+  }
+
+  return hasChanges ? updated : config;
+}
+
+export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
+  const currentNodes = get(nodesStateAtom);
+
+  const nodeToDelete = currentNodes.find((node) => node.id === nodeId);
+  if (nodeToDelete?.data.type === "trigger") {
+    return;
+  }
+
+  pushHistory(get, set);
+
+  set(
+    nodesStateAtom,
+    currentNodes.filter((node) => node.id !== nodeId)
+  );
+  set(
+    edgesStateAtom,
+    get(edgesStateAtom).filter(
+      (edge) => edge.source !== nodeId && edge.target !== nodeId
+    )
+  );
+
+  if (get(selectedNodeAtom) === nodeId) {
+    set(selectedNodeAtom, null);
+  }
+
+  requestGraphSave(get, set, { immediate: true });
+});
+
+export const deleteEdgeAtom = atom(null, (get, set, edgeId: string) => {
+  const currentEdges = get(edgesStateAtom);
+  const remaining = currentEdges.filter((edge) => edge.id !== edgeId);
+  if (remaining.length === currentEdges.length) {
+    return;
+  }
+
+  pushHistory(get, set);
+  set(edgesStateAtom, remaining);
+
+  if (get(selectedEdgeAtom) === edgeId) {
+    set(selectedEdgeAtom, null);
+  }
+
+  requestGraphSave(get, set, { immediate: true });
+});
+
+export const deleteSelectedItemsAtom = atom(null, (get, set) => {
+  const currentNodes = get(nodesStateAtom);
+  const currentEdges = get(edgesStateAtom);
+  const selectedNodeIds = new Set(
+    currentNodes
+      .filter((node) => node.selected && node.data.type !== "trigger")
+      .map((node) => node.id)
+  );
+
+  // Trigger nodes survive being selected; the graph needs an entrypoint.
+  const remainingNodes = currentNodes.filter(
+    (node) => node.data.type === "trigger" || !node.selected
+  );
+  const remainingEdges = currentEdges.filter(
+    (edge) =>
+      !(
+        edge.selected ||
+        selectedNodeIds.has(edge.source) ||
+        selectedNodeIds.has(edge.target)
+      )
+  );
+
+  // Selecting only a trigger and pressing delete removes nothing, and an undo
+  // step for a change that did not happen is worse than no undo step.
+  if (
+    remainingNodes.length === currentNodes.length &&
+    remainingEdges.length === currentEdges.length
+  ) {
+    return;
+  }
+
+  pushHistory(get, set);
+  set(nodesStateAtom, remainingNodes);
+  set(edgesStateAtom, remainingEdges);
+  set(selectedNodeAtom, null);
+  set(selectedEdgeAtom, null);
+
+  requestGraphSave(get, set, { immediate: true });
+});
+
+/**
+ * Strip the workflow back to its trigger.
+ *
+ * Trigger nodes survive, the same way they survive every other delete path: the
+ * server rejects a graph with no trigger, so wiping the canvas outright produced
+ * something that could never be saved.
+ */
+export const clearWorkflowAtom = atom(null, (get, set) => {
+  const currentNodes = get(nodesStateAtom);
+  const triggers = currentNodes.filter((node) => node.data.type === "trigger");
+  if (
+    triggers.length === currentNodes.length &&
+    get(edgesStateAtom).length === 0
+  ) {
+    return;
+  }
+
+  pushHistory(get, set);
+  set(nodesStateAtom, triggers);
+  // Every edge had at least one end on a removed node.
+  set(edgesStateAtom, []);
+  set(selectedNodeAtom, null);
+  set(selectedEdgeAtom, null);
+
+  requestGraphSave(get, set, { immediate: true });
+});
+
+export const undoAtom = atom(null, (get, set) => {
+  const history = get(historyAtom);
+  const previousState = history.at(-1);
+  if (!previousState) {
+    return;
+  }
+
+  set(futureAtom, [
+    ...get(futureAtom),
+    { nodes: get(nodesStateAtom), edges: get(edgesStateAtom) },
+  ]);
+  set(historyAtom, history.slice(0, -1));
+  set(nodesStateAtom, previousState.nodes);
+  set(edgesStateAtom, previousState.edges);
+
+  requestGraphSave(get, set, { immediate: true });
+});
+
+export const redoAtom = atom(null, (get, set) => {
+  const future = get(futureAtom);
+  const nextState = future.at(-1);
+  if (!nextState) {
+    return;
+  }
+
+  set(historyAtom, [
+    ...get(historyAtom),
+    { nodes: get(nodesStateAtom), edges: get(edgesStateAtom) },
+  ]);
+  set(futureAtom, future.slice(0, -1));
+  set(nodesStateAtom, nextState.nodes);
+  set(edgesStateAtom, nextState.edges);
+
+  requestGraphSave(get, set, { immediate: true });
+});
+
+export const canUndoAtom = atom((get) => get(historyAtom).length > 0);
+export const canRedoAtom = atom((get) => get(futureAtom).length > 0);
+
+/** Reset run badges. Execution state, so it neither dirties nor saves. */
+export const clearNodeStatusesAtom = atom(null, (get, set) => {
+  set(
+    nodesStateAtom,
+    get(nodesStateAtom).map((node) => ({
+      ...node,
+      data: { ...node.data, status: "idle" as const },
+    }))
+  );
+});
+
+export const setNodeStatusesAtom = atom(
+  null,
+  (
+    get,
+    set,
+    statuses: Array<{
+      nodeId: string;
+      status: "idle" | "running" | "success" | "error" | "cancelled";
+    }>
+  ) => {
+    if (statuses.length === 0) {
+      return;
+    }
+
+    const statusByNodeId = new Map(
+      statuses.map((statusEntry) => [statusEntry.nodeId, statusEntry.status])
+    );
+
+    let hasUpdates = false;
+    const nextNodes = get(nodesStateAtom).map((node) => {
+      const nextStatus = statusByNodeId.get(node.id);
+      if (!nextStatus || node.data.status === nextStatus) {
+        return node;
+      }
+
+      hasUpdates = true;
+      return { ...node, data: { ...node.data, status: nextStatus } };
+    });
+
+    if (hasUpdates) {
+      set(nodesStateAtom, nextNodes);
+    }
+  }
+);

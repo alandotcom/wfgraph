@@ -39,37 +39,44 @@ import {
 } from "@/components/workflow/workflow-node-dimensions";
 import { UserMenu } from "@/components/workflows/user-menu";
 import { integrationsAtom } from "@/lib/integrations-store";
-import { ApiError, api } from "@/lib/rpc-client";
+import { api } from "@/lib/rpc-client";
 import {
   addNodeAtom,
   canRedoAtom,
   canUndoAtom,
+  clearGraphSelectionAtom,
   clearWorkflowAtom,
-  currentWorkflowIdAtom,
-  currentWorkflowModeAtom,
-  currentWorkflowNameAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
   edgesAtom,
-  hasUnsavedChangesAtom,
-  isExecutingAtom,
-  isGeneratingAtom,
-  isSavingAtom,
-  isTransitioningFromHomepageAtom,
-  isWorkflowOwnerAtom,
   nodesAtom,
-  propertiesPanelActiveTabAtom,
   redoAtom,
   selectedEdgeAtom,
-  selectedExecutionIdAtom,
   selectedNodeAtom,
-  triggerExecuteAtom,
   undoAtom,
   updateNodeDataAtom,
-  type WorkflowEdge,
-  type WorkflowNode,
+} from "@/lib/workflow-graph-store";
+import {
+  createWorkflowAtom,
+  currentWorkflowIdAtom,
+  currentWorkflowModeAtom,
+  currentWorkflowNameAtom,
+  hasUnsavedChangesAtom,
+  isSavingAtom,
+  isWorkflowOwnerAtom,
+  saveWorkflowAtom,
+  setWorkflowModeAtom,
   workflowNameErrorAtom,
-} from "@/lib/workflow-store";
+} from "@/lib/workflow-save-store";
+import {
+  isExecutingAtom,
+  isGeneratingAtom,
+  isTransitioningFromHomepageAtom,
+  propertiesPanelActiveTabAtom,
+  selectedExecutionIdAtom,
+  triggerExecuteAtom,
+} from "@/lib/workflow-ui-store";
+import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
 import {
   findActionById,
   flattenConfigFields,
@@ -402,15 +409,10 @@ type WorkflowHandlerParams = {
   }) => void;
   isExecuting: boolean;
   setIsExecuting: (value: boolean) => void;
-  setIsSaving: (value: boolean) => void;
-  setHasUnsavedChanges: (value: boolean) => void;
-  setCurrentWorkflowId: (id: string | null) => void;
   setCurrentWorkflowName: (name: string) => void;
   setWorkflowNameError: (message: string | null) => void;
   setIsTransitioningFromHomepage: (value: boolean) => void;
   setActiveTab: (value: string) => void;
-  setNodes: (nodes: WorkflowNode[]) => void;
-  setEdges: (edges: WorkflowEdge[]) => void;
   setSelectedNodeId: (id: string | null) => void;
   setSelectedExecutionId: (id: string | null) => void;
   userIntegrations: Array<{ id: string; type: IntegrationType }>;
@@ -424,25 +426,24 @@ function useWorkflowHandlers({
   updateNodeData,
   isExecuting,
   setIsExecuting,
-  setIsSaving,
-  setHasUnsavedChanges,
-  setCurrentWorkflowId,
   setCurrentWorkflowName,
   setWorkflowNameError,
   setIsTransitioningFromHomepage,
   setActiveTab,
-  setNodes,
-  setEdges,
   setSelectedNodeId,
   setSelectedExecutionId,
   userIntegrations,
 }: WorkflowHandlerParams) {
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
+  const clearGraphSelection = useSetAtom(clearGraphSelectionAtom);
+  const saveWorkflow = useSetAtom(saveWorkflowAtom);
+  const createWorkflow = useSetAtom(createWorkflowAtom);
 
   const handleSave = async () => {
-    const realNodes = nodes.filter((node) => node.type !== "add");
-    if (realNodes.length === 0) {
+    // The `add` node is a placeholder, so a canvas holding only one has nothing
+    // worth saving. The save itself strips it; this is the emptiness check.
+    if (!nodes.some((node) => node.type !== "add")) {
       setWorkflowNameError("Add at least one step before saving.");
       return;
     }
@@ -453,53 +454,51 @@ function useWorkflowHandlers({
       return;
     }
 
-    setIsSaving(true);
-    try {
-      if (!currentWorkflowId) {
-        const createdWorkflow = await api.workflow.create({
-          name: trimmedWorkflowName,
-          description: "",
-          nodes: realNodes,
-          edges,
-        });
+    // The save queue drives the saving indicator, so there is nothing to
+    // bracket here — it already covers autosaves this handler never sees.
+    if (currentWorkflowId) {
+      const outcome = await saveWorkflow(
+        { name: trimmedWorkflowName, nodes, edges },
+        { immediate: true }
+      );
 
-        setCurrentWorkflowId(createdWorkflow.id);
-        setCurrentWorkflowName(createdWorkflow.name);
-        setWorkflowNameError(null);
-        setHasUnsavedChanges(false);
-
-        try {
-          sessionStorage.setItem("animate-sidebar", "true");
-        } catch {
-          // Ignore if session storage is unavailable.
-        }
-        setIsTransitioningFromHomepage(true);
-        await navigate({
-          to: "/workflows/$workflowId",
-          params: { workflowId: createdWorkflow.id },
-          replace: true,
-        });
+      if (outcome && !outcome.ok) {
+        setWorkflowNameError(
+          outcome.error.message || "Failed to save workflow. Please try again."
+        );
         return;
       }
 
-      await api.workflow.update(currentWorkflowId, {
-        name: trimmedWorkflowName,
-        nodes: realNodes,
-        edges,
-      });
       setCurrentWorkflowName(trimmedWorkflowName);
       setWorkflowNameError(null);
-      setHasUnsavedChanges(false);
-    } catch (error) {
-      console.error("Failed to save workflow:", error);
-      let message = "Failed to save workflow. Please try again.";
-      if (error instanceof ApiError || error instanceof Error) {
-        message = error.message;
-      }
-      setWorkflowNameError(message);
-    } finally {
-      setIsSaving(false);
+      return;
     }
+
+    // Creating adopts the new workflow's identity inside the save store.
+    const outcome = await createWorkflow({
+      name: trimmedWorkflowName,
+      nodes,
+      edges,
+    });
+
+    if (!outcome.ok) {
+      setWorkflowNameError(
+        outcome.error.message || "Failed to save workflow. Please try again."
+      );
+      return;
+    }
+
+    try {
+      sessionStorage.setItem("animate-sidebar", "true");
+    } catch {
+      // Ignore if session storage is unavailable.
+    }
+    setIsTransitioningFromHomepage(true);
+    await navigate({
+      to: "/workflows/$workflowId",
+      params: { workflowId: outcome.workflow.id },
+      replace: true,
+    });
   };
 
   const executeWorkflow = async () => {
@@ -512,8 +511,7 @@ function useWorkflowHandlers({
     setActiveTab("runs");
 
     // Deselect all nodes and edges
-    setNodes(nodes.map((node) => ({ ...node, selected: false })));
-    setEdges(edges.map((edge) => ({ ...edge, selected: false })));
+    clearGraphSelection();
     setSelectedNodeId(null);
 
     setIsExecuting(true);
@@ -585,14 +583,13 @@ function useWorkflowHandlers({
 
 // Hook for workflow state management
 function useWorkflowState() {
-  const [nodes, setNodes] = useAtom(nodesAtom);
-  const [edges, setEdges] = useAtom(edgesAtom);
+  const nodes = useAtomValue(nodesAtom);
+  const edges = useAtomValue(edgesAtom);
   const [isExecuting, setIsExecuting] = useAtom(isExecutingAtom);
   const [isGenerating] = useAtom(isGeneratingAtom);
   const clearWorkflow = useSetAtom(clearWorkflowAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
-  const setCurrentWorkflowId = useSetAtom(currentWorkflowIdAtom);
   const [workflowName, setCurrentWorkflowName] = useAtom(
     currentWorkflowNameAtom
   );
@@ -604,10 +601,8 @@ function useWorkflowState() {
     isTransitioningFromHomepageAtom
   );
   const isOwner = useAtomValue(isWorkflowOwnerAtom);
-  const [isSaving, setIsSaving] = useAtom(isSavingAtom);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useAtom(
-    hasUnsavedChangesAtom
-  );
+  const isSaving = useAtomValue(isSavingAtom);
+  const hasUnsavedChanges = useAtomValue(hasUnsavedChangesAtom);
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
   const addNode = useSetAtom(addNodeAtom);
@@ -650,7 +645,6 @@ function useWorkflowState() {
     clearWorkflow,
     updateNodeData,
     currentWorkflowId,
-    setCurrentWorkflowId,
     workflowName,
     workflowMode,
     setCurrentWorkflowName,
@@ -659,9 +653,7 @@ function useWorkflowState() {
     setIsTransitioningFromHomepage,
     isOwner,
     isSaving,
-    setIsSaving,
     hasUnsavedChanges,
-    setHasUnsavedChanges,
     undo,
     redo,
     addNode,
@@ -672,8 +664,6 @@ function useWorkflowState() {
     allWorkflows,
     setAllWorkflows,
     setActiveTab,
-    setNodes,
-    setEdges,
     setSelectedNodeId,
     setSelectedExecutionId,
     userIntegrations,
@@ -686,9 +676,9 @@ function useWorkflowState() {
 function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
+  const setWorkflowMode = useSetAtom(setWorkflowModeAtom);
   const {
     currentWorkflowId,
-    setCurrentWorkflowId,
     workflowName,
     workflowMode,
     setCurrentWorkflowName,
@@ -700,14 +690,10 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     updateNodeData,
     isExecuting,
     setIsExecuting,
-    setIsSaving,
-    setHasUnsavedChanges,
     clearWorkflow,
     setAllWorkflows,
     setIsDuplicating,
     setActiveTab,
-    setNodes,
-    setEdges,
     setSelectedNodeId,
     setSelectedExecutionId,
     userIntegrations,
@@ -723,15 +709,10 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     updateNodeData,
     isExecuting,
     setIsExecuting,
-    setIsSaving,
-    setHasUnsavedChanges,
-    setCurrentWorkflowId,
     setCurrentWorkflowName,
     setWorkflowNameError,
     setIsTransitioningFromHomepage,
     setActiveTab,
-    setNodes,
-    setEdges,
     setSelectedNodeId,
     setSelectedExecutionId,
     userIntegrations,
@@ -749,7 +730,7 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     openOverlay(ConfirmOverlay, {
       title: "Clear Workflow",
       message:
-        "Are you sure you want to clear all nodes and connections? This action cannot be undone.",
+        "Remove every step and connection? The trigger is kept, and this saves right away.",
       confirmLabel: "Clear Workflow",
       confirmVariant: "destructive" as const,
       destructive: true,
@@ -817,25 +798,24 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
       return;
     }
 
-    try {
-      const updatedWorkflow = await api.workflow.update(currentWorkflowId, {
-        mode,
-      });
-      setCurrentWorkflowMode(updatedWorkflow.mode);
-      setAllWorkflows((current) =>
-        current.map((workflow) =>
-          workflow.id === updatedWorkflow.id ? updatedWorkflow : workflow
-        )
-      );
-      toast.success(
-        mode === "test"
-          ? "Workflow set to Test mode"
-          : "Workflow set to Live mode"
-      );
-    } catch (error) {
-      console.error("Failed to update workflow mode:", error);
+    const outcome = await setWorkflowMode(mode);
+    if (!outcome?.ok) {
       toast.error("Failed to update workflow mode");
+      return;
     }
+
+    const updatedWorkflow = outcome.workflow;
+    setCurrentWorkflowMode(updatedWorkflow.mode);
+    setAllWorkflows((current) =>
+      current.map((workflow) =>
+        workflow.id === updatedWorkflow.id ? updatedWorkflow : workflow
+      )
+    );
+    toast.success(
+      mode === "test"
+        ? "Workflow set to Test mode"
+        : "Workflow set to Live mode"
+    );
   };
 
   return {
@@ -862,8 +842,8 @@ function ToolbarActions({
   const { open: openOverlay, push } = useOverlay();
   const [selectedNodeId] = useAtom(selectedNodeAtom);
   const [selectedEdgeId] = useAtom(selectedEdgeAtom);
-  const [nodes] = useAtom(nodesAtom);
-  const [edges] = useAtom(edgesAtom);
+  const nodes = useAtomValue(nodesAtom);
+  const edges = useAtomValue(edgesAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const { screenToFlowPosition } = useReactFlow();

@@ -11,24 +11,29 @@ import {
 } from "@/lib/integrations-store";
 import { api } from "@/lib/rpc-client";
 import {
+  edgesAtom,
+  loadWorkflowGraphAtom,
+  nodesAtom,
+  setNodeStatusesAtom,
+  updateNodeDataAtom,
+} from "@/lib/workflow-graph-store";
+import {
   currentWorkflowIdAtom,
   currentWorkflowModeAtom,
   currentWorkflowNameAtom,
   currentWorkflowVisibilityAtom,
-  edgesAtom,
-  hasUnsavedChangesAtom,
+  isWorkflowOwnerAtom,
+  lastSaveErrorAtom,
+  saveWorkflowAtom,
+  workflowNotFoundAtom,
+} from "@/lib/workflow-save-store";
+import {
   isExecutingAtom,
   isGeneratingAtom,
-  isSavingAtom,
-  isWorkflowOwnerAtom,
-  nodesAtom,
   selectedExecutionIdAtom,
-  setNodeStatusesAtom,
   triggerExecuteAtom,
-  updateNodeDataAtom,
-  type WorkflowNode,
-  workflowNotFoundAtom,
-} from "@/lib/workflow-store";
+} from "@/lib/workflow-ui-store";
+import { type WorkflowNode } from "@/shared/workflow/types";
 import { findActionById } from "@/plugins/registry";
 import {
   type IntegrationType,
@@ -105,19 +110,18 @@ function checkNodeIntegration(
 
 const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
   const isGenerating = useAtomValue(isGeneratingAtom);
-  const [_isSaving, setIsSaving] = useAtom(isSavingAtom);
-  const [nodes] = useAtom(nodesAtom);
-  const [edges] = useAtom(edgesAtom);
+  const lastSaveError = useAtomValue(lastSaveErrorAtom);
+  const nodes = useAtomValue(nodesAtom);
+  const edges = useAtomValue(edgesAtom);
   const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
   const [selectedExecutionId] = useAtom(selectedExecutionIdAtom);
   const setIsExecuting = useSetAtom(isExecutingAtom);
-  const setNodes = useSetAtom(nodesAtom);
-  const setEdges = useSetAtom(edgesAtom);
+  const loadWorkflowGraph = useSetAtom(loadWorkflowGraphAtom);
+  const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const setCurrentWorkflowId = useSetAtom(currentWorkflowIdAtom);
   const setCurrentWorkflowName = useSetAtom(currentWorkflowNameAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
-  const setHasUnsavedChanges = useSetAtom(hasUnsavedChangesAtom);
   const [workflowNotFound, setWorkflowNotFound] = useAtom(workflowNotFoundAtom);
   const setTriggerExecute = useSetAtom(triggerExecuteAtom);
   const setCurrentWorkflowVisibility = useSetAtom(
@@ -166,14 +170,17 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
         },
       }));
 
-      setNodes(nodesWithIdleStatus);
-      setEdges(workflow.edges);
+      // Also clears undo history, so undo cannot reach back past the switch and
+      // write the previous workflow's graph into this one.
+      loadWorkflowGraph({
+        nodes: nodesWithIdleStatus,
+        edges: workflow.edges,
+      });
       setCurrentWorkflowId(workflow.id);
       setCurrentWorkflowName(workflow.name);
       setCurrentWorkflowVisibility(workflow.visibility ?? "private");
       setCurrentWorkflowMode(workflow.mode ?? "live");
       setIsWorkflowOwner(workflow.isOwner !== false); // Default to true if not set
-      setHasUnsavedChanges(false);
       setWorkflowNotFound(false);
     } catch (error) {
       if (latestWorkflowIdRef.current !== workflowId) {
@@ -186,14 +193,12 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
     }
   }, [
     workflowId,
-    setNodes,
-    setEdges,
+    loadWorkflowGraph,
     setCurrentWorkflowId,
     setCurrentWorkflowName,
     setCurrentWorkflowVisibility,
     setCurrentWorkflowMode,
     setIsWorkflowOwner,
-    setHasUnsavedChanges,
     setWorkflowNotFound,
   ]);
 
@@ -258,9 +263,6 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
           workflowId: currentWorkflowId,
           version: integrationsVersion,
         };
-        if (fixes.length > 0) {
-          setHasUnsavedChanges(true);
-        }
       } catch (error) {
         console.error("Failed to auto-fix integrations:", error);
       }
@@ -275,32 +277,30 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
     updateNodeData,
     setGlobalIntegrations,
     setIntegrationsLoaded,
-    setHasUnsavedChanges,
   ]);
+
+  // A debounced autosave has no caller waiting on it, so a failure would
+  // otherwise reach only the console while the editor looked saved.
+  useEffect(() => {
+    if (lastSaveError) {
+      toast.error(lastSaveError.message || "Failed to save workflow");
+    }
+  }, [lastSaveError]);
 
   // Keyboard shortcuts
   const handleSave = useCallback(async () => {
     if (!currentWorkflowId || isGenerating) {
       return;
     }
-    setIsSaving(true);
-    try {
-      await api.workflow.update(currentWorkflowId, { nodes, edges });
-      setHasUnsavedChanges(false);
-    } catch (error) {
-      console.error("Failed to save workflow:", error);
-      toast.error("Failed to save workflow");
-    } finally {
-      setIsSaving(false);
+    // Goes through the same queue as autosave, so an in-flight debounced save
+    // cannot land afterwards and overwrite what this one just wrote. The queue
+    // drives the saving indicator, so there is nothing to bracket here.
+    const outcome = await saveWorkflow({ nodes, edges }, { immediate: true });
+
+    if (outcome && !outcome.ok) {
+      toast.error(outcome.error.message || "Failed to save workflow");
     }
-  }, [
-    currentWorkflowId,
-    nodes,
-    edges,
-    isGenerating,
-    setIsSaving,
-    setHasUnsavedChanges,
-  ]);
+  }, [currentWorkflowId, nodes, edges, isGenerating, saveWorkflow]);
 
   // Helper to check if target is an input element
   const isInputElement = useCallback(

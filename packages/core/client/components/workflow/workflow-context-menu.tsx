@@ -10,10 +10,10 @@ import {
   deleteEdgeAtom,
   deleteNodeAtom,
   nodesAtom,
-  propertiesPanelActiveTabAtom,
   selectedNodeAtom,
-  type WorkflowNode,
-} from "@/lib/workflow-store";
+} from "@/lib/workflow-graph-store";
+import { propertiesPanelActiveTabAtom } from "@/lib/workflow-ui-store";
+import { type WorkflowNode } from "@/shared/workflow/types";
 import { cn } from "@/shared/utils";
 
 export type ContextMenuType = "node" | "edge" | "pane" | null;

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { getDefaultStore } from "jotai";
 import { useState } from "react";
-import { edgesAtom, nodesAtom } from "@/lib/workflow-store";
+import { loadWorkflowGraphAtom } from "@/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
 import { TemplateBadgeInput } from "./template-badge-input";
 import { TemplateBadgeTextarea } from "./template-badge-textarea";
@@ -37,8 +37,7 @@ function seedTemplateContext(selectedNodeId = "wait_1") {
     { id: "edge_1", source: "trigger_1", target: "wait_1" },
   ];
 
-  store.set(nodesAtom, nodes);
-  store.set(edgesAtom, edges);
+  store.set(loadWorkflowGraphAtom, { nodes, edges });
 }
 
 function findTimestampOption(): HTMLElement {
@@ -246,8 +245,7 @@ describe("Template badge autocomplete", () => {
       { id: "edge_2", source: "http_1", target: "condition_1" },
     ];
 
-    store.set(nodesAtom, nodes);
-    store.set(edgesAtom, edges);
+    store.set(loadWorkflowGraphAtom, { nodes, edges });
 
     let latestValue = "";
     const view = render(

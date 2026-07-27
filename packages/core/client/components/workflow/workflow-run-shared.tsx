@@ -12,7 +12,7 @@ import {
   OUTPUT_DISPLAY_CONFIGS,
   type OutputDisplayConfig,
 } from "@/lib/output-display-configs";
-import type { ExecutionLogEntry as WorkflowExecutionLogEntry } from "@/lib/workflow-store";
+import type { ExecutionLogEntry as WorkflowExecutionLogEntry } from "@/shared/workflow/types";
 import { findActionById } from "@/plugins/registry";
 import { getActionOutputComponent } from "@/shared/plugins/ui-registry";
 

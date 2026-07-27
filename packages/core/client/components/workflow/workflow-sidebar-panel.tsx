@@ -7,7 +7,7 @@ import {
   isPanelAnimatingAtom,
   isSidebarCollapsedAtom,
   rightPanelWidthAtom,
-} from "@/lib/workflow-store";
+} from "@/lib/workflow-ui-store";
 import { NodeConfigPanel } from "./node-config-panel";
 
 type WorkflowSidebarPanelProps = {

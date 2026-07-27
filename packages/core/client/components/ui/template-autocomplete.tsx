@@ -7,7 +7,7 @@ import {
   getNodeOutputFields,
   getUpstreamNodes,
 } from "@/lib/upstream-node-fields";
-import { edgesAtom, nodesAtom } from "@/lib/workflow-store";
+import { edgesAtom, nodesAtom } from "@/lib/workflow-graph-store";
 import { cn } from "@/shared/utils";
 import {
   formatTemplateToken,

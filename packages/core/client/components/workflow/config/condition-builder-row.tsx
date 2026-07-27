@@ -16,7 +16,11 @@ import {
 } from "@/components/ui/select";
 import { TemplateBadgeInput } from "@/components/ui/template-badge-input";
 import { getUpstreamConditionFields } from "@/lib/upstream-node-fields";
-import { edgesAtom, nodesAtom, selectedNodeAtom } from "@/lib/workflow-store";
+import {
+  edgesAtom,
+  nodesAtom,
+  selectedNodeAtom,
+} from "@/lib/workflow-graph-store";
 import {
   BOOLEAN_OPERATOR_OPTIONS,
   type ConditionFieldDefinition,

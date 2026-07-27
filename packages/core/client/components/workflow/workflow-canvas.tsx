@@ -23,23 +23,25 @@ import { Edge } from "@/components/flow-elements/edge";
 import { Panel } from "@/components/flow-elements/panel";
 import {
   addNodeAtom,
-  autosaveAtom,
-  currentWorkflowIdAtom,
+  applyNodeLayoutAtom,
+  connectNodesAtom,
   edgesAtom,
-  hasUnsavedChangesAtom,
-  isGeneratingAtom,
-  isTransitioningFromHomepageAtom,
   nodesAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
-  propertiesPanelActiveTabAtom,
-  rightPanelWidthAtom,
   selectedEdgeAtom,
   selectedNodeAtom,
+  selectOnlyNodeAtom,
+} from "@/lib/workflow-graph-store";
+import { currentWorkflowIdAtom } from "@/lib/workflow-save-store";
+import {
+  isGeneratingAtom,
+  isTransitioningFromHomepageAtom,
+  propertiesPanelActiveTabAtom,
+  rightPanelWidthAtom,
   showMinimapAtom,
-  type WorkflowNode,
-  type WorkflowNodeType,
-} from "@/lib/workflow-store";
+} from "@/lib/workflow-ui-store";
+import type { WorkflowNode, WorkflowNodeType } from "@/shared/workflow/types";
 import {
   isConditionActionNode,
   normalizeConditionBranch,
@@ -79,8 +81,8 @@ const edgeTypes = {
 };
 
 export function WorkflowCanvas() {
-  const [nodes, setNodes] = useAtom(nodesAtom);
-  const [edges, setEdges] = useAtom(edgesAtom);
+  const nodes = useAtomValue(nodesAtom);
+  const edges = useAtomValue(edgesAtom);
   const [isGenerating] = useAtom(isGeneratingAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
@@ -93,8 +95,9 @@ export function WorkflowCanvas() {
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const setSelectedEdge = useSetAtom(selectedEdgeAtom);
   const addNode = useSetAtom(addNodeAtom);
-  const setHasUnsavedChanges = useSetAtom(hasUnsavedChangesAtom);
-  const triggerAutosave = useSetAtom(autosaveAtom);
+  const applyNodeLayout = useSetAtom(applyNodeLayoutAtom);
+  const connectNodes = useSetAtom(connectNodesAtom);
+  const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const { screenToFlowPosition, fitView, getViewport, setViewport } =
     useReactFlow();
@@ -253,9 +256,7 @@ export function WorkflowCanvas() {
       }
 
       if (changed) {
-        setNodes(nextNodes);
-        setHasUnsavedChanges(true);
-        triggerAutosave({ immediate: true });
+        applyNodeLayout(nextNodes);
       }
 
       window.requestAnimationFrame(() => {
@@ -269,16 +270,7 @@ export function WorkflowCanvas() {
         setIsReflowing(false);
       }
     }
-  }, [
-    edges,
-    fitView,
-    isGenerating,
-    nodes,
-    realNodeCount,
-    setHasUnsavedChanges,
-    setNodes,
-    triggerAutosave,
-  ]);
+  }, [applyNodeLayout, edges, fitView, isGenerating, nodes, realNodeCount]);
 
   const nodeTypes = useMemo(
     () => ({
@@ -400,18 +392,9 @@ export function WorkflowCanvas() {
         sourceHandle,
         type: "animated",
       };
-      setEdges((currentEdges) => [...currentEdges, newEdge]);
-      setHasUnsavedChanges(true);
-      // Trigger immediate autosave when nodes are connected
-      triggerAutosave({ immediate: true });
+      connectNodes(newEdge);
     },
-    [
-      normalizeSourceHandleForConnection,
-      isValidConnection,
-      setEdges,
-      setHasUnsavedChanges,
-      triggerAutosave,
-    ]
+    [normalizeSourceHandleForConnection, isValidConnection, connectNodes]
   );
 
   const onNodeClick: NodeMouseHandler = useCallback(
@@ -559,12 +542,7 @@ export function WorkflowCanvas() {
       // Deselect all other nodes and select only the new node
       // Need to do this after a delay because panOnDrag will clear selection
       setTimeout(() => {
-        setNodes((currentNodes) =>
-          currentNodes.map((n) => ({
-            ...n,
-            selected: n.id === newNode.id,
-          }))
-        );
+        selectOnlyNode(newNode.id);
       }, 50);
 
       // Create connection from the source node to the new node
@@ -593,7 +571,7 @@ export function WorkflowCanvas() {
       calculateMenuPosition,
       screenToFlowPosition,
       addNode,
-      setNodes,
+      selectOnlyNode,
       setSelectedNode,
       setActiveTab,
       normalizeSourceHandleForConnection,

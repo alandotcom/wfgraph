@@ -363,36 +363,6 @@ export const workflowApi = {
     executionId: string
   ): Promise<WorkflowExecutionStatusResult> =>
     rpc.workflow.getExecutionStatus({ executionId }),
-
-  autoSaveWorkflow: (() => {
-    let autosaveTimeout: ReturnType<typeof setTimeout> | null = null;
-    const AUTOSAVE_DELAY = 2000;
-
-    return (
-      id: string,
-      data: Partial<WorkflowData>,
-      debounce = true
-    ): Promise<SavedWorkflow> | undefined => {
-      if (!debounce) {
-        return workflowApi.update(id, data);
-      }
-
-      if (autosaveTimeout) {
-        clearTimeout(autosaveTimeout);
-      }
-
-      autosaveTimeout = setTimeout(() => {
-        workflowApi.update(id, data).catch((error) => {
-          console.error("[rpc-client] Auto-save workflow update failed", {
-            workflowId: id,
-            error,
-          });
-        });
-      }, AUTOSAVE_DELAY);
-
-      return undefined;
-    };
-  })(),
 };
 
 export const api = {

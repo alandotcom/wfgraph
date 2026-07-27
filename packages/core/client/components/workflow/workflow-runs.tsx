@@ -3,11 +3,11 @@ import { Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/rpc-client";
+import { currentWorkflowIdAtom } from "@/lib/workflow-save-store";
 import {
-  currentWorkflowIdAtom,
   executionLogsAtom,
   selectedExecutionIdAtom,
-} from "@/lib/workflow-store";
+} from "@/lib/workflow-ui-store";
 import { WorkflowRunDetail } from "./workflow-run-detail";
 import {
   applyExecutionStatusToLogs,
