@@ -51,8 +51,6 @@ const twilioPlugin: IntegrationPlugin = {
       label: "Send SMS",
       description: "Send an SMS via Twilio",
       category: "Twilio",
-      stepFunction: "sendSmsStep",
-      stepImportPath: "send-sms",
       outputFields: [
         { path: "sid", description: "Message SID" },
         { path: "status", description: "Delivery status" },

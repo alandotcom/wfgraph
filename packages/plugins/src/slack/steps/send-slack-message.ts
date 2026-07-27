@@ -125,5 +125,3 @@ export async function sendSlackMessageStep(
 
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
-
-export const _integrationType = "slack";

@@ -33,8 +33,6 @@ const acuityPlugin: IntegrationPlugin = {
       label: "List Appointment Types",
       description: "Fetch appointment types configured in Acuity",
       category: "Acuity",
-      stepFunction: "listAppointmentTypesStep",
-      stepImportPath: "list-appointment-types",
       outputFields: [
         {
           path: "appointmentTypes",
@@ -49,8 +47,6 @@ const acuityPlugin: IntegrationPlugin = {
       label: "List Appointments",
       description: "List appointments with optional filters",
       category: "Acuity",
-      stepFunction: "listAppointmentsStep",
-      stepImportPath: "list-appointments",
       outputFields: [
         { path: "appointments", description: "Array of appointments" },
         { path: "count", description: "Number of appointments returned" },
@@ -147,8 +143,6 @@ const acuityPlugin: IntegrationPlugin = {
       label: "Get Appointment",
       description: "Fetch one appointment by ID",
       category: "Acuity",
-      stepFunction: "getAppointmentStep",
-      stepImportPath: "get-appointment",
       outputFields: [
         { path: "appointment", description: "The appointment details" },
         { path: "id", description: "Appointment ID" },
@@ -179,8 +173,6 @@ const acuityPlugin: IntegrationPlugin = {
       label: "Get Availability Dates",
       description: "List dates that still have available slots",
       category: "Acuity",
-      stepFunction: "getAvailabilityDatesStep",
-      stepImportPath: "get-availability-dates",
       outputFields: [
         { path: "dates", description: "Available dates" },
         { path: "count", description: "Number of dates returned" },
@@ -219,8 +211,6 @@ const acuityPlugin: IntegrationPlugin = {
       label: "Get Availability Times",
       description: "List available time slots for a date",
       category: "Acuity",
-      stepFunction: "getAvailabilityTimesStep",
-      stepImportPath: "get-availability-times",
       outputFields: [
         { path: "slots", description: "Available time slots" },
         { path: "count", description: "Number of slots returned" },
@@ -265,8 +255,6 @@ const acuityPlugin: IntegrationPlugin = {
       label: "Create Appointment",
       description: "Book a new appointment in Acuity",
       category: "Acuity",
-      stepFunction: "createAppointmentStep",
-      stepImportPath: "create-appointment",
       outputFields: [
         { path: "appointment", description: "Created appointment payload" },
         { path: "id", description: "Created appointment ID" },
@@ -388,8 +376,6 @@ const acuityPlugin: IntegrationPlugin = {
       label: "Reschedule Appointment",
       description: "Move an appointment to a new datetime",
       category: "Acuity",
-      stepFunction: "rescheduleAppointmentStep",
-      stepImportPath: "reschedule-appointment",
       outputFields: [
         {
           path: "appointment",
@@ -454,8 +440,6 @@ const acuityPlugin: IntegrationPlugin = {
       label: "Cancel Appointment",
       description: "Cancel an appointment in Acuity",
       category: "Acuity",
-      stepFunction: "cancelAppointmentStep",
-      stepImportPath: "cancel-appointment",
       outputFields: [
         { path: "appointment", description: "Canceled appointment payload" },
         { path: "id", description: "Canceled appointment ID" },

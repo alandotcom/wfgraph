@@ -240,6 +240,3 @@ export async function sendSmsStep(input: SendSmsInput): Promise<SendSmsResult> {
 
   return withStepLogging(input, () => stepHandler(coreInput, credentials));
 }
-
-// Export marker for codegen auto-generation
-export const _integrationType = "twilio";

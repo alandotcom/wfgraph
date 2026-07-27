@@ -28,8 +28,6 @@ const slackPlugin: IntegrationPlugin = {
       label: "Send Slack Message",
       description: "Send a message to a Slack channel",
       category: "Slack",
-      stepFunction: "sendSlackMessageStep",
-      stepImportPath: "send-slack-message",
       outputFields: [
         { path: "ts", description: "Message timestamp" },
         { path: "channel", description: "Channel ID" },

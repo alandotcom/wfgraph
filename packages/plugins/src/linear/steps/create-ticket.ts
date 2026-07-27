@@ -106,5 +106,3 @@ export async function createTicketStep(
 
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
-
-export const _integrationType = "linear";

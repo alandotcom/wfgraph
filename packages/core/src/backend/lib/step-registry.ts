@@ -8,10 +8,12 @@ import type { StepFunction } from "@/shared/workflow/step-result";
 /**
  * A step module as the registry receives it: whatever a step file exports.
  *
- * The exports cannot be typed one by one here, because a step file exports more
- * than its step function (every plugin step also exports an `_integrationType`
- * string). The module is therefore read by the one name the registration
- * records, in `loadStepFunction` below.
+ * Typing the exports as step functions would reject every registration. Each
+ * step declares a narrow input type for the config fields it needs, while
+ * `StepFunction` accepts the open record the engine builds, and a function
+ * parameter narrows the wrong way for that assignment to hold. The module is
+ * therefore read by the one name the registration records, and
+ * `loadStepFunction` below is where the value becomes a typed step.
  */
 type StepModule = Record<string, unknown>;
 

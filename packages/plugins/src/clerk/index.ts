@@ -28,8 +28,6 @@ const clerkPlugin: IntegrationPlugin = {
       label: "Get User",
       description: "Fetch a user by ID from Clerk",
       category: "Clerk",
-      stepFunction: "clerkGetUserStep",
-      stepImportPath: "get-user",
       outputFields: [
         { path: "id", description: "User ID" },
         { path: "firstName", description: "First name" },
@@ -52,8 +50,6 @@ const clerkPlugin: IntegrationPlugin = {
       label: "Create User",
       description: "Create a new user in Clerk",
       category: "Clerk",
-      stepFunction: "clerkCreateUserStep",
-      stepImportPath: "create-user",
       outputFields: [
         { path: "id", description: "User ID" },
         { path: "firstName", description: "First name" },
@@ -118,8 +114,6 @@ const clerkPlugin: IntegrationPlugin = {
       label: "Update User",
       description: "Update an existing user in Clerk",
       category: "Clerk",
-      stepFunction: "clerkUpdateUserStep",
-      stepImportPath: "update-user",
       outputFields: [
         { path: "id", description: "User ID" },
         { path: "firstName", description: "First name" },
@@ -175,8 +169,6 @@ const clerkPlugin: IntegrationPlugin = {
       label: "Delete User",
       description: "Delete a user from Clerk",
       category: "Clerk",
-      stepFunction: "clerkDeleteUserStep",
-      stepImportPath: "delete-user",
       outputFields: [{ path: "deleted", description: "Deletion success" }],
       configFields: [
         {

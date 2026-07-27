@@ -118,5 +118,3 @@ export async function rescheduleAppointmentStep(
 
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
-
-export const _integrationType = "acuity";

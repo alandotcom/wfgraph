@@ -131,5 +131,3 @@ export async function clerkUpdateUserStep(
 
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
-
-export const _integrationType = "clerk";

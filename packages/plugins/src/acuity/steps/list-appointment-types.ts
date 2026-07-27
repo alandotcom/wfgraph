@@ -61,5 +61,3 @@ export async function listAppointmentTypesStep(
 
   return withStepLogging(input, () => stepHandler(credentials));
 }
-
-export const _integrationType = "acuity";

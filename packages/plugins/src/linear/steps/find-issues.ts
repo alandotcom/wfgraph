@@ -123,5 +123,3 @@ export async function findIssuesStep(
 
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
-
-export const _integrationType = "linear";

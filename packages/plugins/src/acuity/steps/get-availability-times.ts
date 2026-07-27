@@ -117,5 +117,3 @@ export async function getAvailabilityTimesStep(
 
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
-
-export const _integrationType = "acuity";

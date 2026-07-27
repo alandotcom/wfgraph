@@ -76,8 +76,6 @@ const myServicePlugin: IntegrationPlugin = {
       label: "Do Something",
       description: "Description of what this action does",
       category: "My Service",
-      stepFunction: "doSomethingStep",
-      stepImportPath: "do-something",
       configFields: [
         {
           key: "inputField",
@@ -178,9 +176,18 @@ export async function doSomethingStep(
 
   return withStepLogging(input, () => stepHandler(input, credentials));
 }
+```
 
-// Optional metadata marker (kept for compatibility across tooling/docs)
-export const _integrationType = "my-service";
+The step file exports the function and nothing else. What ties the action ID to
+that export lives in `packages/plugins/src/register-steps.ts`, which the server
+imports for its side effects:
+
+```typescript
+registerStepImporter("my-service/do-something", {
+  importer: () => import("@/my-service/steps/do-something"),
+  stepFunction: "doSomethingStep",
+  label: "Do Something",
+});
 ```
 
 ### 4. Test Function (test.ts)
@@ -315,7 +322,7 @@ Available types for action `configFields`:
 
 - Plugin folder name = plugin `type` (kebab-case): `my-service`
 - Step function name = `[actionName]Step` (camelCase): `doSomethingStep`
-- Step import path = action slug (kebab-case): `do-something`
+- Step file name = action slug (kebab-case): `do-something`
 - Credential type = `[PluginName]Credentials` (PascalCase): `MyServiceCredentials`
 - Test function = `test[PluginName]` (camelCase): `testMyService`
 - Icon component = `[PluginName]Icon` (PascalCase): `MyServiceIcon`
@@ -323,9 +330,8 @@ Available types for action `configFields`:
 
 ### Step Function Requirements
 
-1. Prefer exporting `_integrationType` constant matching the plugin type for consistency
-2. Core input type should match the configFields keys
-3. Full input type extends `StepInput` and includes `integrationId`
+1. Core input type should match the configFields keys
+2. Full input type extends `StepInput` and includes `integrationId`
 
 ### Result Types
 
@@ -341,7 +347,7 @@ type ActionResult =
 
 After creating a plugin:
 
-1. Update static registration files (`plugins/index.ts`, `shared/types/integration.ts`, and `backend/lib/step-registry.ts`)
+1. Update static registration files (`packages/plugins/src/index.ts`, the `IntegrationType` union in `packages/shared/src/types/integration.ts`, and `packages/plugins/src/register-steps.ts`)
 2. Run `bun run type-check && bun run fix` to verify types and fix formatting/linting
 3. Run `bun run dev` to test in the UI
 4. Test the connection using the integration dialog

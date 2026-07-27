@@ -38,8 +38,6 @@ const linearPlugin: IntegrationPlugin = {
       label: "Create Ticket",
       description: "Create an issue in Linear",
       category: "Linear",
-      stepFunction: "createTicketStep",
-      stepImportPath: "create-ticket",
       outputFields: [
         { path: "id", description: "Ticket ID" },
         { path: "url", description: "Ticket URL" },
@@ -83,8 +81,6 @@ const linearPlugin: IntegrationPlugin = {
       label: "Find Issues",
       description: "Search for issues in Linear",
       category: "Linear",
-      stepFunction: "findIssuesStep",
-      stepImportPath: "find-issues",
       outputFields: [
         { path: "issues", description: "Array of issues found" },
         { path: "count", description: "Number of issues" },

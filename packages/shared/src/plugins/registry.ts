@@ -116,10 +116,6 @@ export type PluginAction = {
   // Category for grouping in UI
   category: string;
 
-  // Step configuration
-  stepFunction: string; // Name of the exported function in the step file
-  stepImportPath: string; // Path to import from, relative to plugins/[plugin-name]/steps/
-
   // Config fields for the action (declarative definition)
   configFields: ActionConfigField[];
 
@@ -323,8 +319,6 @@ export function getAllActions(): ActionWithFullId[] {
       description: runtimeAction.description,
       category: runtimeAction.category,
       logoUrl: runtimeAction.logoUrl,
-      stepFunction: "runtime",
-      stepImportPath: "runtime",
       configFields: runtimeAction.configFields ?? [],
       outputFields: runtimeAction.outputFields,
       id: runtimeAction.id,
@@ -365,8 +359,6 @@ export function getActionsByCategory(): Record<string, ActionWithFullId[]> {
       description: runtimeAction.description,
       category: runtimeAction.category,
       logoUrl: runtimeAction.logoUrl,
-      stepFunction: "runtime",
-      stepImportPath: "runtime",
       configFields: runtimeAction.configFields ?? [],
       outputFields: runtimeAction.outputFields,
       id: runtimeAction.id,
@@ -428,8 +420,6 @@ export function findActionById(
         description: runtimeAction.description,
         category: runtimeAction.category,
         logoUrl: runtimeAction.logoUrl,
-        stepFunction: "runtime",
-        stepImportPath: "runtime",
         configFields: runtimeAction.configFields ?? [],
         outputFields: runtimeAction.outputFields,
         id: runtimeAction.id,
