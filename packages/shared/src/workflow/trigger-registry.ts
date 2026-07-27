@@ -989,8 +989,8 @@ const webhookTrigger = normalizeTriggerDefinition(
 );
 
 // Built-in triggers ship here. A project adds its own by passing them to
-// `createRovaApp({ triggers })` or `startRovaServer({ triggers })`, both of
-// which call `registerWorkflowTrigger(...)` for each one during startup.
+// `createRovaApp({ triggers })`, which calls `registerWorkflowTrigger(...)` for
+// each one during startup.
 const triggerRegistry = new Map<string, WorkflowTriggerDefinition>([
   [webhookTrigger.runtime.type, webhookTrigger],
   [scheduleTrigger.runtime.type, scheduleTrigger],

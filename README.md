@@ -149,6 +149,7 @@ const trigger = createTrigger({
 
 const rova = await createRovaApp({
   database: { url: process.env.DATABASE_URL! },
+  encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY! },
   migrations: { runOnStartup: true },
   inngest: {
     client: {
@@ -213,7 +214,7 @@ Two things about a Node mount are worth knowing, and the adapter handles both:
 - `@rova/core/app` -- `createRovaApp` factory, `RovaAppOptions`, `RovaApp`, and re-exported config types.
 - `@rova/core/node` -- `createRequestListener`, for hosts on Express, Fastify, or `node:http`.
 
-The first two run on any runtime with `Request` and `Response`. `startRovaServer`, which wraps `createRovaApp` in a `Bun.serve` call, is this repo's own dev entrypoint and is not published: it lives at `packages/core/src/server.ts` and only `server.ts` and `examples/library-trigger.ts` reach it.
+The first two run on any runtime with `Request` and `Response`. There is no published server wrapper: once `createRovaApp` returns a fetch handler, a wrapper saves a consumer two lines and charges an options type that reaccumulates every `Bun.serve` parameter. This repo's own dev server lives at `server.ts` in the repo root, and `examples/library-trigger.ts` shows the same shape.
 
 ### Linking for development
 
@@ -235,6 +236,7 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
 | -------------------------- | -------- | ----------------------------------------------------- |
 | `basePath`                 | No       | Path the host mounted Rova at (default `/`)           |
 | `database.url`             | Yes      | PostgreSQL connection string                          |
+| `encryption.key`           | Yes      | 64-character hex string; encrypts integration secrets |
 | `inngest.client.id`        | Yes      | Inngest application ID                                |
 | `inngest.client.*`         | No       | Inngest client config (baseUrl, eventKey, env, isDev) |
 | `inngest.serve`            | No       | Inngest serve config (signingKey, etc.)               |
@@ -280,13 +282,13 @@ Output binary:
 Run it:
 
 ```bash
-PORT=4017 DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder ./dist/server
+PORT=4017 DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder INTEGRATION_ENCRYPTION_KEY=$INTEGRATION_ENCRYPTION_KEY ./dist/server
 ```
 
 Run it with startup migrations:
 
 ```bash
-RUN_DB_MIGRATIONS=true PORT=4017 DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder ./dist/server
+RUN_DB_MIGRATIONS=true PORT=4017 DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder INTEGRATION_ENCRYPTION_KEY=$INTEGRATION_ENCRYPTION_KEY ./dist/server
 ```
 
 ## Docker Build And Run

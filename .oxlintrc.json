@@ -47,7 +47,8 @@
           "__rovaDatabaseState",
           "__rovaEncryptionState",
           "__rovaInngestState",
-          "__rovaServerRuntimeState",
+          "__rovaDevServer",
+          "__rovaDevSignalsInstalled",
           "__resizeObserverPatched"
         ]
       }
@@ -235,7 +236,6 @@
       "files": [
         "server.ts",
         "packages/core/src/app.ts",
-        "packages/core/src/server.ts",
         "packages/plugins/src/ui.ts",
         "packages/core/client/main.tsx",
         "packages/core/client/components/flow-elements/canvas.tsx",

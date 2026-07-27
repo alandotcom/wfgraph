@@ -119,3 +119,19 @@ describe("createRovaApp mounted under a sub-path", () => {
     );
   });
 });
+
+describe("createRovaApp configuration", () => {
+  // Integration credentials are stored encrypted, so a missing or malformed key
+  // has to stop startup rather than surface later as a failing integration read.
+  it("refuses to start without an encryption key", async () => {
+    await expect(
+      createRovaApp({ ...BASE_OPTIONS, encryption: { key: "  " } })
+    ).rejects.toThrow("requires encryption.key");
+  });
+
+  it("refuses an encryption key of the wrong length", async () => {
+    await expect(
+      createRovaApp({ ...BASE_OPTIONS, encryption: { key: "abc123" } })
+    ).rejects.toThrow("64-character hex string");
+  });
+});

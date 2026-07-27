@@ -10,6 +10,9 @@ import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, normalize, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { rewriteClientBaseHref } from "@/backend/lib/http/mount-path";
+import { getAppLogger } from "@/backend/lib/logger";
+
+const clientLogger = getAppLogger("http", "client");
 
 const CONTENT_TYPE_MAP: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -146,6 +149,9 @@ export async function serveClientAsset(
 
   const indexPath = join(clientDir, CLIENT_ENTRY_FILE);
   if (!(await fileExists(indexPath))) {
+    // Name the directory that was searched, since "build the client" is only
+    // actionable once an operator knows where the server expected to find it.
+    clientLogger.error("Client bundle entrypoint is missing", { indexPath });
     return Response.json(
       { error: "Client bundle not found. Build the library first." },
       { status: 503 }
@@ -155,6 +161,7 @@ export async function serveClientAsset(
   const html = await readFile(indexPath, "utf-8");
   const rewritten = rewriteClientBaseHref(html, basePath);
   if (rewritten === null) {
+    clientLogger.error("Client bundle has no <base> tag", { indexPath });
     return Response.json(
       {
         error:

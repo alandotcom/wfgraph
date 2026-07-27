@@ -1,5 +1,5 @@
 import { createAction, createTrigger } from "@rova/core";
-import { server } from "@rova/core/server";
+import { createRovaApp } from "@rova/core/app";
 import { config as loadDotEnv } from "dotenv";
 import { z } from "zod";
 
@@ -119,8 +119,14 @@ async function main(): Promise<void> {
     DEFAULT_INNGEST_BASE_URL;
   const signingKey = asNonEmptyString(Bun.env.INNGEST_SIGNING_KEY);
 
-  const handle = await server.start({
-    port,
+  const encryptionKey = asNonEmptyString(Bun.env.INTEGRATION_ENCRYPTION_KEY);
+  if (!encryptionKey) {
+    throw new Error(
+      "INTEGRATION_ENCRYPTION_KEY is required (64-character hex string). Rova stores integration credentials encrypted with it."
+    );
+  }
+
+  const rova = await createRovaApp({
     configureLogging: false,
     logger: {
       info: (...args) => console.log("[example:server]", ...args),
@@ -129,6 +135,9 @@ async function main(): Promise<void> {
     },
     database: {
       url: databaseUrl,
+    },
+    encryption: {
+      key: encryptionKey,
     },
     migrations: {
       runOnStartup: true,
@@ -147,8 +156,13 @@ async function main(): Promise<void> {
     triggers: [appointmentTrigger],
   });
 
+  // The whole mount is one fetch handler, so this is all a host has to do on a
+  // fetch-native runtime. Express and Fastify hosts wrap it once with
+  // createRequestListener from @rova/core/node instead.
+  const httpServer = Bun.serve({ port, fetch: rova.fetch });
+
   console.log("[example] configurable server started", {
-    url: handle.url.toString(),
+    url: httpServer.url.toString(),
     triggerType: APPOINTMENT_TRIGGER_TYPE,
     actionId: "appointments/cancel",
     note: "Use the built-in frontend as usual. Create a workflow with trigger Appointment Lifecycle and add the Cancel Appointment action.",

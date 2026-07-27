@@ -82,14 +82,18 @@ so Wait nodes stay outside the node-level step wrapper. Retries are function-lev
 step carrying its own counter. Step results round-trip through JSON, so a node output has
 to be JSON-safe: no `Date`, `Map`, or `Set`.
 
-**Development needs no client build.** `startRovaServer` takes a `clientHtml` option, and
-the repo's own `server.ts` passes Bun's HTML entrypoint, which Bun transpiles per request.
-Serving the client source directory as static files hands the browser TypeScript.
+**Development needs no client build.** The repo's own `server.ts` hands Bun's HTML
+entrypoint to `Bun.serve`'s `routes`, which Bun transpiles per request, so the SPA paths
+never reach `rova.fetch`. Serving the client source directory as static files hands the
+browser TypeScript instead.
 
 **The published package is not the dev tree.** `packages/core` has no `private` field, so
 it publishes. Its `files` is scoped, `@rova/shared` is inlined into the build so it never appears as a dependency,
-and the server lives at `@rova/core/server` to keep the main entry free of it. Verify a
-packaging change with `bun pm pack` and read the extracted manifest.
+and there is no published server wrapper: `createRovaApp` returns a fetch handler, which
+`Bun.serve` and `Deno.serve` take directly and `@rova/core/node` translates for Express and
+Fastify. The two `Bun.serve` calls in the tree, at `server.ts` and in
+`examples/library-trigger.ts`, both sit outside `packages/core`. Verify a packaging change
+with `bun pm pack` and read the extracted manifest.
 
 ## Code cleanliness
 

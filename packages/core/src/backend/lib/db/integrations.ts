@@ -33,44 +33,39 @@ globalThis.__rovaEncryptionState = encryptionState;
 function validateKeyFormat(key: string): void {
   if (key.length !== 64) {
     throw new Error(
-      `${ENCRYPTION_KEY_ENV} must be a 64-character hex string (32 bytes)`
+      "createRovaApp's encryption.key must be a 64-character hex string (32 bytes)"
     );
   }
 }
 
+/**
+ * The one way an encryption key enters the process.
+ *
+ * `createRovaApp` calls this with its required `encryption` option, so the key
+ * is validated once at startup rather than at the first integration read. A
+ * host that keeps the key in an environment variable passes it in from there;
+ * this module reading the variable itself would be a second, weaker path that
+ * lets a misconfigured deployment start and fail later.
+ */
 export function configureEncryptionKey(config: EncryptionRuntimeConfig): void {
   const trimmed = config.key.trim();
   if (!trimmed) {
-    throw new Error("Encryption key configuration requires a non-empty key.");
+    throw new Error(
+      `createRovaApp requires encryption.key, a 64-character hex string. Read it from ${ENCRYPTION_KEY_ENV} or wherever your app keeps its secrets.`
+    );
   }
   validateKeyFormat(trimmed);
   encryptionState.config = { key: trimmed };
 }
 
-function resolveEncryptionKey(): string | undefined {
-  return encryptionState.config?.key ?? process.env[ENCRYPTION_KEY_ENV];
-}
-
-export function validateEncryptionKeyAvailable(): void {
-  const key = resolveEncryptionKey();
-  if (!key) {
-    throw new Error(
-      `Integration encryption key is required. Provide it via the encryption.key option or set the ${ENCRYPTION_KEY_ENV} environment variable (64-character hex string).`
-    );
-  }
-  validateKeyFormat(key);
-}
-
 function getEncryptionKey(): Buffer {
-  const keyHex = resolveEncryptionKey();
+  const keyHex = encryptionState.config?.key;
 
   if (!keyHex) {
     throw new Error(
-      `Integration encryption key is required. Provide it via the encryption.key option or set the ${ENCRYPTION_KEY_ENV} environment variable (64-character hex string).`
+      "Integration encryption key is unset. It is configured by createRovaApp, so reaching this means an integration was read before the app was created."
     );
   }
-
-  validateKeyFormat(keyHex);
 
   return Buffer.from(keyHex, "hex");
 }

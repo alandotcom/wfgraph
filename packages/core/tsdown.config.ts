@@ -32,8 +32,9 @@ export default defineConfig({
   //
   // One other build step deposits its output inside this same dist/, because the
   // shipped server resolves it relative to the compiled module: the SPA bundle at
-  // dist/client, written by scripts/build-client.ts and read back in src/app.ts
-  // and src/server.ts. A bare `clean: true` deletes the whole outDir, so running
+  // dist/client, written by scripts/build-client.ts and read back in
+  // src/backend/lib/http/client-assets.ts. A bare `clean: true` deletes the whole
+  // outDir, so running
   // `tsdown` on its own wiped that out and only the root "build" script's step
   // ordering hid the damage.
   //
