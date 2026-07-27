@@ -1,7 +1,7 @@
 import { useAtomValue } from "jotai";
 import { Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +37,7 @@ import {
   NULLCHECK_OPERATOR_OPTIONS,
   NUMBER_OPERATOR_OPTIONS,
   parseConditionModel,
+  reconcileModelWithFields,
   STRING_OPERATOR_OPTIONS,
   serializeConditionModel,
   TIME_UNIT_OPTIONS,
@@ -500,7 +501,7 @@ export function ConditionBuilderRow({
   }, [availableFields]);
 
   const modelParseResult = parseConditionModel(config.conditionModel);
-  const parsedModel = modelParseResult.valid ? modelParseResult.model : null;
+  const storedModel = modelParseResult.valid ? modelParseResult.model : null;
   const expressionValue =
     typeof config.condition === "string" ? config.condition.trim() : "";
   const modelValue =
@@ -531,55 +532,15 @@ export function ConditionBuilderRow({
     persistModel(createInitialModel(seedField));
   }, [persistModel, seedField]);
 
-  useEffect(() => {
-    if (!seedField) {
-      return;
-    }
-
-    if (parsedModel || modelValue.length > 0) {
-      return;
-    }
-
-    queueMicrotask(() => {
-      persistModel(createInitialModel(seedField));
-    });
-  }, [modelValue.length, parsedModel, persistModel, seedField]);
-
-  useEffect(() => {
-    if (!parsedModel) {
-      return;
-    }
-
-    let changed = false;
-
-    const groups = parsedModel.groups.map((group) => ({
-      ...group,
-      conditions: group.conditions.map((condition) => {
-        const selectedField = fieldByPath.get(condition.field);
-        if (!selectedField) {
-          return condition;
-        }
-
-        if (selectedField.type !== condition.fieldType) {
-          changed = true;
-          return createDefaultConditionRule(selectedField, condition.id);
-        }
-
-        return condition;
-      }),
-    }));
-
-    if (!changed) {
-      return;
-    }
-
-    queueMicrotask(() => {
-      persistModel({
-        ...parsedModel,
-        groups,
-      });
-    });
-  }, [fieldByPath, parsedModel, persistModel]);
+  // Rules are reconciled against the fields available now, on the way to being
+  // rendered. An effect used to do this and write the result back through a
+  // queueMicrotask, which was there only to dodge a set-state-during-commit
+  // warning: a tell that the write was happening in the wrong phase. Nothing is
+  // written now until the user next touches the row, which is the moment the
+  // reconciled shape becomes their edit rather than a change they never made.
+  const parsedModel = storedModel
+    ? reconcileModelWithFields(storedModel, fieldByPath)
+    : null;
 
   const updateGroup = (
     groupId: string,

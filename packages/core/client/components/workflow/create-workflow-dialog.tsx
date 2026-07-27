@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,22 +43,17 @@ export function CreateWorkflowDialog({
   existingWorkflowNames,
   onCreated,
 }: CreateWorkflowDialogProps) {
-  const defaultName = useMemo(
-    () => buildNextWorkflowName(existingWorkflowNames),
-    [existingWorkflowNames]
+  // The suggested name is computed once, when this dialog mounts. Callers give
+  // it a fresh key each time they open it, so mounting is the reset.
+  //
+  // It used to be recomputed from `existingWorkflowNames` and pushed into state
+  // by an effect, which meant that a refetch of the workflow list while the
+  // dialog was open silently replaced whatever the user had typed.
+  const [workflowName, setWorkflowName] = useState(() =>
+    buildNextWorkflowName(existingWorkflowNames)
   );
-  const [workflowName, setWorkflowName] = useState(defaultName);
   const [isCreating, setIsCreating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    setWorkflowName(defaultName);
-    setErrorMessage(null);
-  }, [defaultName, open]);
 
   const createWorkflow = async () => {
     const normalizedName = workflowName.trim();
@@ -113,7 +108,7 @@ export function CreateWorkflowDialog({
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
-                createWorkflow();
+                void createWorkflow();
               }
             }}
             placeholder="Workflow name"
@@ -138,7 +133,7 @@ export function CreateWorkflowDialog({
           <Button
             disabled={isCreating}
             onClick={() => {
-              createWorkflow();
+              void createWorkflow();
             }}
             type="button"
           >

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/rpc-client";
 import { repairNodeIntegration } from "@/lib/node-integration";
+import { seedConditionModel } from "@/lib/seed-condition-model";
 import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
 import {
   clearNodeStatusesAtom,
@@ -181,6 +182,18 @@ export const PanelInner = () => {
       ...patch,
       ...(shouldClearIntegration ? { integrationId: undefined } : {}),
     };
+
+    // A Condition node has to arrive with a model, because the engine rejects
+    // one without it. The action being chosen is the moment that gap opens.
+    const conditionSeed =
+      patch.actionType === "Condition" && !newConfig.conditionModel
+        ? seedConditionModel({
+            nodeId: latestNode.id,
+            nodes: latestNodes,
+            edges: store.get(edgesAtom),
+          })
+        : undefined;
+    Object.assign(newConfig, conditionSeed);
 
     // Choosing an action is exactly when its connection can be settled, and the
     // connection list is already in hand. This used to be a fetch with an abort

@@ -546,6 +546,40 @@ export function createDefaultConditionRule(
   };
 }
 
+/**
+ * The model reconciled against the fields available upstream right now.
+ *
+ * A rule stores the type of the field it was built against, because the
+ * operators and the value editor differ per type. Editing the graph upstream
+ * can change that type under a rule that is already stored, and a rule holding
+ * a number operator against what is now a string is not answerable. Such a rule
+ * is rebuilt at its type's default, keeping its id so the row does not jump.
+ *
+ * Returns `model` itself when nothing changed. Callers reconcile during render,
+ * so identity is what stops it from looking like an edit on every pass.
+ */
+export function reconcileModelWithFields(
+  model: ConditionModel,
+  fieldsByPath: ReadonlyMap<string, ConditionFieldDefinition>
+): ConditionModel {
+  let changed = false;
+
+  const groups = model.groups.map((group) => ({
+    ...group,
+    conditions: group.conditions.map((condition) => {
+      const field = fieldsByPath.get(condition.field);
+      if (!field || field.type === condition.fieldType) {
+        return condition;
+      }
+
+      changed = true;
+      return createDefaultConditionRule(field, condition.id);
+    }),
+  }));
+
+  return changed ? { ...model, groups } : model;
+}
+
 export function createDefaultConditionModel(
   field: ConditionFieldDefinition,
   input?: { groupId?: string; conditionId?: string }

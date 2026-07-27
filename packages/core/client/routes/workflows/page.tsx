@@ -147,6 +147,9 @@ export default function WorkflowsPage() {
     "pause" | "resume" | "delete" | null
   >(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  // Bumped on every open so the dialog remounts and re-suggests a name. It stays
+  // mounted while closing, because that is what its exit animation needs.
+  const [createDialogSession, setCreateDialogSession] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState<ConfirmDeleteState | null>(
     null
   );
@@ -593,6 +596,7 @@ export default function WorkflowsPage() {
             </h1>
             <Button
               onClick={() => {
+                setCreateDialogSession((session) => session + 1);
                 setIsCreateDialogOpen(true);
               }}
               type="button"
@@ -803,6 +807,7 @@ export default function WorkflowsPage() {
         </AlertDialogContent>
       </AlertDialog>
       <CreateWorkflowDialog
+        key={createDialogSession}
         existingWorkflowNames={workflows.map((workflow) => workflow.name)}
         onCreated={async (createdWorkflow) => {
           await Promise.all([refreshWorkflows(), refreshRuns()]);

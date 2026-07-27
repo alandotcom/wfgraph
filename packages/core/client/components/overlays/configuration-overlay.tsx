@@ -1,4 +1,4 @@
-import { useIsFetching, useQueryClient } from "@tanstack/react-query";
+import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   Eraser,
@@ -22,8 +22,10 @@ import { ActionGrid } from "@/components/workflow/config/action-grid";
 import type { NodeConfigPatch } from "@/components/workflow/config/node-config-patch";
 import { TriggerConfig } from "@/components/workflow/config/trigger-config";
 import { WorkflowRuns } from "@/components/workflow/workflow-runs";
+import { repairNodeIntegration } from "@/lib/node-integration";
 import { api } from "@/lib/rpc-client";
-import { orpcQuery } from "@/lib/rpc-query";
+import { seedConditionModel } from "@/lib/seed-condition-model";
+import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
 import {
   clearNodeStatusesAtom,
   clearWorkflowAtom,
@@ -54,6 +56,9 @@ type ConfigurationOverlayProps = OverlayComponentProps;
 export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   const store = useStore();
   const queryClient = useQueryClient();
+  const { data: globalIntegrations = [] } = useQuery(
+    integrationsQueryOptions()
+  );
   const { push, closeAll } = useOverlay();
   const [selectedNodeId] = useAtom(selectedNodeAtom);
   const [selectedEdgeId] = useAtom(selectedEdgeAtom);
@@ -97,14 +102,43 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
         return;
       }
 
+      // Picking a different action invalidates whatever connection the previous
+      // action was bound to, so the two keys move together.
+      const isActionTypeUpdate = typeof patch.actionType === "string";
+      const shouldClearIntegration =
+        isActionTypeUpdate && Boolean(latestNode.data.config?.integrationId);
+
+      const newConfig: Record<string, unknown> = {
+        ...latestNode.data.config,
+        ...patch,
+        ...(shouldClearIntegration ? { integrationId: undefined } : {}),
+      };
+
+      // A Condition node has to arrive with a model, because the engine rejects
+      // one without it. The action being chosen is the moment that gap opens.
+      const conditionSeed =
+        patch.actionType === "Condition" && !newConfig.conditionModel
+          ? seedConditionModel({
+              nodeId: latestNode.id,
+              nodes: latestNodes,
+              edges: store.get(edgesAtom),
+            })
+          : undefined;
+      Object.assign(newConfig, conditionSeed);
+
+      // Choosing an action is exactly when its connection can be settled, and
+      // the connection list is already in hand.
+      const repaired = repairNodeIntegration(
+        { ...latestNode, data: { ...latestNode.data, config: newConfig } },
+        globalIntegrations
+      );
+
       updateNodeData({
         id: selectedNode.id,
-        data: {
-          config: { ...latestNode.data.config, ...patch },
-        },
+        data: { config: repaired.data.config },
       });
     },
-    [selectedNode, updateNodeData, store]
+    [selectedNode, updateNodeData, store, globalIntegrations]
   );
 
   const handleUpdateLabel = useCallback(

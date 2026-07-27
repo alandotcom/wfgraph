@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
+  type ConditionFieldDefinition,
   type ConditionModel,
   compileConditionModel,
   createDefaultConditionModel,
   parseConditionModel,
+  reconcileModelWithFields,
   serializeConditionModel,
 } from "@/workflow/conditions";
 
@@ -226,5 +228,63 @@ describe("conditions", () => {
     if (parsed.valid) {
       expect(parsed.model.groups[0].conditions[0].operator).toBe("is_set");
     }
+  });
+});
+
+describe("reconcileModelWithFields", () => {
+  const stringModel: ConditionModel = {
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: "group-1",
+        logic: "and",
+        conditions: [
+          {
+            id: "condition-1",
+            field: "customer.name",
+            fieldType: "string",
+            operator: "equals",
+            value: "Ada",
+          },
+        ],
+      },
+    ],
+  };
+
+  function fields(
+    ...definitions: ConditionFieldDefinition[]
+  ): ReadonlyMap<string, ConditionFieldDefinition> {
+    return new Map(definitions.map((field) => [field.path, field]));
+  }
+
+  it("returns the same model when every field still has its type", () => {
+    const unchanged = reconcileModelWithFields(
+      stringModel,
+      fields({ path: "customer.name", label: "Name", type: "string" })
+    );
+
+    // Identity, not just equality: the builder reconciles during render, so a
+    // fresh object every pass would read as an edit.
+    expect(unchanged).toBe(stringModel);
+  });
+
+  it("rebuilds a rule whose field changed type, keeping its id", () => {
+    const reconciled = reconcileModelWithFields(
+      stringModel,
+      fields({ path: "customer.name", label: "Name", type: "number" })
+    );
+
+    const rule = reconciled.groups[0].conditions[0];
+    expect(rule.id).toBe("condition-1");
+    expect(rule.fieldType).toBe("number");
+  });
+
+  it("leaves a rule alone when its field is no longer upstream", () => {
+    // The field may come back when the graph is reconnected, and discarding the
+    // user's rule in the meantime would lose work.
+    const reconciled = reconcileModelWithFields(stringModel, fields());
+
+    expect(reconciled).toBe(stringModel);
   });
 });

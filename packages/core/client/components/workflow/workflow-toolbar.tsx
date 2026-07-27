@@ -1181,6 +1181,9 @@ function WorkflowMenuComponent({
 }) {
   const navigate = useNavigate();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  // Bumped on every open so the dialog remounts and re-suggests a name. It stays
+  // mounted while closing, because that is what its exit animation needs.
+  const [createDialogSession, setCreateDialogSession] = useState(0);
 
   return (
     <>
@@ -1213,6 +1216,7 @@ function WorkflowMenuComponent({
               <DropdownMenuItem
                 className="flex items-center gap-2"
                 onClick={() => {
+                  setCreateDialogSession((session) => session + 1);
                   setIsCreateDialogOpen(true);
                 }}
               >
@@ -1277,6 +1281,7 @@ function WorkflowMenuComponent({
         )}
       </div>
       <CreateWorkflowDialog
+        key={createDialogSession}
         existingWorkflowNames={state.allWorkflows.map(
           (workflow) => workflow.name
         )}
