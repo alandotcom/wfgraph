@@ -120,10 +120,6 @@ const rovaServerRuntimeState: RovaServerRuntimeState =
 
 globalThis.__rovaServerRuntimeState = rovaServerRuntimeState;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function normalizePath(pathname: string): string {
   if (pathname.length > 1 && pathname.endsWith("/")) {
     return pathname.slice(0, -1);
@@ -239,88 +235,102 @@ async function serveClientEntry(
   );
 }
 
+/**
+ * Render the first console-style argument as a log message.
+ *
+ * The embedded console adapter below accepts whatever a caller passes, the way
+ * console.log does, and the app logger wants a string.
+ */
+function toMessage(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value instanceof Error) {
+    return value.message;
+  }
+  if (value === undefined) {
+    return "";
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return `${value}`;
+  }
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (typeof value === "symbol") {
+    return value.description ?? "symbol";
+  }
+  // Every primitive is handled above, so what is left is an array or an
+  // object, and JSON.stringify renders both.
+  if (typeof value === "object" && value !== null) {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "[unserializable]";
+    }
+  }
+  return "";
+}
+
+/** Turn the arguments after the message into the logger's properties bag. */
+function toProperties(
+  value: unknown,
+  rest: unknown[]
+): Record<string, unknown> | undefined {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    // A copy of the own enumerable keys, which is what a properties bag is.
+    const properties: Record<string, unknown> = { ...value };
+    if (rest.length === 0) {
+      return properties;
+    }
+    return { ...properties, extra: rest };
+  }
+
+  if (value === undefined && rest.length === 0) {
+    return;
+  }
+
+  return {
+    details:
+      value === undefined && rest.length === 1 ? rest[0] : [value, ...rest],
+  };
+}
+
+function forwardToLogger(
+  method: (message: string, properties?: Record<string, unknown>) => void,
+  args: unknown[]
+) {
+  const [messageValue, propertiesValue, ...rest] = args;
+  const properties = toProperties(propertiesValue, rest);
+  if (properties) {
+    method(toMessage(messageValue), properties);
+    return;
+  }
+  method(toMessage(messageValue));
+}
+
 function resolveLogger(logger: RovaLogger | undefined): RovaLogger {
   if (logger) {
     return logger;
   }
 
   const appLogger = getAppLogger("server");
-  const toMessage = (value: unknown): string => {
-    if (typeof value === "string") {
-      return value;
-    }
-    if (value instanceof Error) {
-      return value.message;
-    }
-    if (value === undefined) {
-      return "";
-    }
-    if (typeof value === "number" || typeof value === "boolean") {
-      return `${value}`;
-    }
-    if (typeof value === "bigint") {
-      return value.toString();
-    }
-    if (typeof value === "symbol") {
-      return value.description ?? "symbol";
-    }
-    if (Array.isArray(value) || isRecord(value)) {
-      try {
-        return JSON.stringify(value);
-      } catch {
-        return "[unserializable]";
-      }
-    }
-    return "";
-  };
-  const toProperties = (
-    value: unknown,
-    rest: unknown[]
-  ): Record<string, unknown> | undefined => {
-    if (isRecord(value)) {
-      if (rest.length === 0) {
-        return value;
-      }
-      return { ...value, extra: rest };
-    }
-
-    if (value === undefined && rest.length === 0) {
-      return;
-    }
-
-    return {
-      details:
-        value === undefined && rest.length === 1 ? rest[0] : [value, ...rest],
-    };
-  };
-  const forward = (
-    method: (message: string, properties?: Record<string, unknown>) => void,
-    args: unknown[]
-  ) => {
-    const [messageValue, propertiesValue, ...rest] = args;
-    const properties = toProperties(propertiesValue, rest);
-    if (properties) {
-      method(toMessage(messageValue), properties);
-      return;
-    }
-    method(toMessage(messageValue));
-  };
 
   const resolved: RovaLogger = {
     info: (...args) => {
-      forward(appLogger.info.bind(appLogger), args);
+      forwardToLogger(appLogger.info.bind(appLogger), args);
     },
     warn: (...args) => {
-      forward(appLogger.warn.bind(appLogger), args);
+      forwardToLogger(appLogger.warn.bind(appLogger), args);
     },
     error: (...args) => {
-      forward(appLogger.error.bind(appLogger), args);
+      forwardToLogger(appLogger.error.bind(appLogger), args);
     },
   };
 
   if (typeof appLogger.debug === "function") {
     resolved.debug = (...args) => {
-      forward(appLogger.debug.bind(appLogger), args);
+      forwardToLogger(appLogger.debug.bind(appLogger), args);
     };
   }
 

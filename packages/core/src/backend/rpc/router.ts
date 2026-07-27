@@ -1,4 +1,5 @@
 import { implement } from "@orpc/server";
+import { z } from "zod";
 import { getAppLogger } from "@/backend/lib/logger";
 import { deleteApiKeyResult } from "@/backend/services/api-keys/api-key.api-keys";
 import {
@@ -44,28 +45,33 @@ import { type RpcCompatibleResult, toRpcData } from "./errors";
 
 const rpcLogger = getAppLogger("rpc", "handler");
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
+/**
+ * The handler options object oRPC passes as the first argument, narrowed to the
+ * one member the failure log needs. `rpcHandler` is generic over every route, so
+ * its `args` are `unknown` and the route's own input type is out of reach here;
+ * every contract input is an object, and a parse recovers that much.
+ */
+const rpcHandlerArgsSchema = z.looseObject({
+  input: z.looseObject({}).optional().catch(undefined),
+});
 
 function summarizeRpcInput(args: unknown[]): unknown {
   if (args.length === 0) {
     return undefined;
   }
-  const first = args[0];
-  if (!isRecord(first)) {
-    return undefined;
-  }
 
-  const input = first.input;
-  if (!isRecord(input)) {
+  const parsed = rpcHandlerArgsSchema.safeParse(args[0]);
+  const input = parsed.success ? parsed.data.input : undefined;
+  if (!input) {
     return undefined;
   }
 
   const summary: Record<string, unknown> = {};
   for (const key of Object.keys(input)) {
-    const value = input[key];
-    if (isRecord(value)) {
+    const value = Reflect.get(input, key);
+    // Nested objects are logged as their key list, which keeps a graph payload
+    // or a credential bag out of the log line.
+    if (typeof value === "object" && value !== null) {
       summary[key] = `{${Object.keys(value).join(", ")}}`;
     } else {
       summary[key] = value;
