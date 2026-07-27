@@ -2,8 +2,8 @@ import { checkCelBooleanExpression } from "@/backend/lib/cel/environment";
 import {
   compileConditionModel,
   parseConditionModel,
-} from "@/shared/workflow/conditions";
-import type { WorkflowNode } from "@/shared/workflow/types";
+} from "@rova/shared/workflow/conditions";
+import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 export type WorkflowConditionsValidationResult =
   | { valid: true }

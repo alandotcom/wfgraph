@@ -124,12 +124,6 @@ const config: KnipConfig = {
       // File reports still apply, which is how the six unused components in it
       // were found.
       ignoreIssues: { "src/components/ui/**": ["exports", "types"] },
-
-      // The SPA reaches @rova/shared through the "@/shared/*" path alias rather
-      // than the package specifier, so knip sees no import of it. Declaring it
-      // is still right: it is what the client depends on, and the alias is the
-      // one thing isolated linking cannot check.
-      ignoreDependencies: ["@rova/shared"],
     },
 
     "packages/plugins": {
@@ -146,11 +140,10 @@ const config: KnipConfig = {
         // import that the transform adds and @types/react is what tsc reads.
         "react",
         "@types/react",
-        // Plugin code compiles against core and shared source through the
-        // `@/backend/*` and `@/shared/*` aliases. Declaring the two workspaces
-        // records that edge for Bun's isolated linker.
+        // Plugin code still reaches core through the `@/backend/*` alias, which
+        // knip cannot follow. That edge is the one the alias ban has not closed
+        // yet; @rova/shared is now imported by name and needs no entry.
         "@rova/core",
-        "@rova/shared",
       ],
     },
   },

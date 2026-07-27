@@ -1,6 +1,6 @@
 import { compact } from "es-toolkit/array";
 import { z } from "zod";
-import type { ResultComponentProps } from "@/shared/plugins/ui-registry";
+import type { ResultComponentProps } from "@rova/shared/plugins/ui-registry";
 
 // This component renders a Clerk step's result read back out of the execution log,
 // so the output arrives as untyped JSON. The logging layer unwraps the standardized

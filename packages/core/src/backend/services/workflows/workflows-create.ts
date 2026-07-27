@@ -13,16 +13,16 @@ import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditi
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import { validateWorkflowIntegrations } from "@/backend/lib/workflow-integration-validation";
 import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers";
-import { getErrorMessage } from "@/shared/utils";
-import { generateId } from "@/shared/utils/id";
+import { getErrorMessage } from "@rova/shared/utils";
+import { generateId } from "@rova/shared/utils/id";
 import type {
   ApiErrorPayload,
   WorkflowApiPayload,
-} from "@/shared/workflow/api-contracts";
+} from "@rova/shared/workflow/api-contracts";
 import {
   createSerializedWorkflowGraph,
   isSerializedWorkflowGraph,
-} from "@/shared/workflow/graph";
+} from "@rova/shared/workflow/graph";
 
 function createDefaultTriggerNode() {
   return {

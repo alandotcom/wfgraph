@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
-import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
+import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type {
   SerializedWorkflowGraph,
   WorkflowEdge,
   WorkflowNode,
-} from "@/shared/workflow/types";
+} from "@rova/shared/workflow/types";
 
 function createBaseTriggerNode(id = "trigger_1"): WorkflowNode {
   return {

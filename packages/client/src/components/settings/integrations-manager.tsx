@@ -12,7 +12,7 @@ import { IntegrationIcon } from "@/components/ui/integration-icon";
 import { Spinner } from "@/components/ui/spinner";
 import type { Integration } from "@/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
-import { getIntegrationLabels } from "@/plugins/registry";
+import { getIntegrationLabels } from "@rova/shared/plugins/registry";
 
 // System integrations that don't have plugins
 const SYSTEM_INTEGRATION_LABELS: Record<string, string> = {

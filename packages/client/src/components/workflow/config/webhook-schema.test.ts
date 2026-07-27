@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { getValueByPath } from "@/shared/utils/object-path";
+import { getValueByPath } from "@rova/shared/utils/object-path";
 import {
   flattenSchemaPathOptions,
   inferPrimitiveType,

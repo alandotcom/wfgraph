@@ -6,11 +6,11 @@
  * and the editor is the masking below.
  */
 
-import { getIntegration as getPluginFromRegistry } from "@/plugins/registry";
+import { getIntegration as getPluginFromRegistry } from "@rova/shared/plugins/registry";
 import type {
   IntegrationConfig,
   IntegrationType,
-} from "@/shared/types/integration";
+} from "@rova/shared/types/integration";
 
 export const SECRET_MASK = "********";
 

@@ -5,7 +5,7 @@ import {
   markExecutionRunning,
   markWaitStateStatus,
 } from "@/backend/lib/workflow-wait-state";
-import { parseCsvSet } from "@/shared/utils/csv";
+import { parseCsvSet } from "@rova/shared/utils/csv";
 
 const logger = getAppLogger("workflow", "wait-resume");
 

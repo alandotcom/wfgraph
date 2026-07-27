@@ -9,9 +9,9 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { IntegrationType } from "@/shared/types/integration";
-import { generateId } from "@/shared/utils/id";
-import type { SerializedWorkflowGraph } from "@/shared/workflow/types";
+import type { IntegrationType } from "@rova/shared/types/integration";
+import { generateId } from "@rova/shared/utils/id";
+import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
 
 export const workflowsSchema: PgSchema<"_workflows"> = pgSchema("_workflows");
 

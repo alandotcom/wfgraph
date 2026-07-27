@@ -1,4 +1,4 @@
-import { getRelativeTime } from "@/shared/utils/time";
+import { getRelativeTime } from "@rova/shared/utils/time";
 import {
   type ExecutionEvent,
   type ExecutionLog,

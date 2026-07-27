@@ -2,23 +2,23 @@ import { createORPCClient, ORPCError } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { ContractRouterClient } from "@orpc/contract";
 import { getBasePath } from "@/lib/base-path";
-import type { RpcContract } from "@/shared/rpc/contracts";
-import { getRpcErrorMessage } from "@/shared/rpc/error-message";
-import type { JsonObject } from "@/shared/types/json";
-import type { WorkflowApiPayload } from "@/shared/workflow/api-contracts";
+import type { RpcContract } from "@rova/shared/rpc/contracts";
+import { getRpcErrorMessage } from "@rova/shared/rpc/error-message";
+import type { JsonObject } from "@rova/shared/types/json";
+import type { WorkflowApiPayload } from "@rova/shared/workflow/api-contracts";
 import {
   createSerializedWorkflowGraph,
   toWorkflowGraphData,
-} from "@/shared/workflow/graph";
+} from "@rova/shared/workflow/graph";
 import type {
   SerializedWorkflowGraph,
   WorkflowEdge,
   WorkflowMode,
   WorkflowNode,
   WorkflowVisibility,
-} from "@/shared/workflow/types";
+} from "@rova/shared/workflow/types";
 
-export type { WorkflowVisibility } from "@/shared/workflow/types";
+export type { WorkflowVisibility } from "@rova/shared/workflow/types";
 
 export type WorkflowData = {
   id?: string;

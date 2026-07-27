@@ -1,4 +1,4 @@
-import { cn } from "@/shared/utils";
+import { cn } from "@rova/shared/utils";
 
 interface AnimatedBorderProps {
   className?: string;

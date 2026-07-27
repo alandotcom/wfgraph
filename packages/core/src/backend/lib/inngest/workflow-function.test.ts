@@ -12,7 +12,7 @@ import { InngestTestEngine } from "@inngest/test";
 import { dbWorkflowStore } from "@/backend/lib/workflow-engine/db-store";
 import type { WorkflowExecutionRuntime } from "@/backend/lib/workflow-engine/runtime";
 import type { WorkflowStore } from "@/backend/lib/workflow-engine/store";
-import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
+import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 
 // Bun applies module mocks process-wide, so replacing the engine outright would
 // also replace it for every other file in the run - `replay-e2e.test.ts` needs

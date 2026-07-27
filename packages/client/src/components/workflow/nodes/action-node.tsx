@@ -30,15 +30,15 @@ import { selectedExecutionIdAtom } from "@/lib/workflow-ui-store";
 import {
   type ExecutionLogEntry,
   type WorkflowNodeData,
-} from "@/shared/workflow/types";
-import { findActionById, getIntegration } from "@/plugins/registry";
-import { getIntegrationUi } from "@/shared/plugins/ui-registry";
-import { cn } from "@/shared/utils";
+} from "@rova/shared/workflow/types";
+import { findActionById, getIntegration } from "@rova/shared/plugins/registry";
+import { getIntegrationUi } from "@rova/shared/plugins/ui-registry";
+import { cn } from "@rova/shared/utils";
 import {
   parseTimestampWithTimezone,
   resolveWaitUntil,
-} from "@/shared/utils/wait-time";
-import { isConditionActionType } from "@/shared/workflow/condition-branch";
+} from "@rova/shared/utils/wait-time";
+import { isConditionActionType } from "@rova/shared/workflow/condition-branch";
 import { useAfterPaint, useNowMs } from "@/hooks/effects";
 import { useExecutionLogsByNode } from "@/hooks/use-execution-logs";
 import {

@@ -1,9 +1,9 @@
-import { findActionById } from "@/plugins/registry";
+import { findActionById } from "@rova/shared/plugins/registry";
 import {
   getMissingRequiredFieldsForNodes,
   type ResolveActionByType,
-} from "@/shared/workflow/action-config-validation";
-import type { WorkflowNode } from "@/shared/workflow/types";
+} from "@rova/shared/workflow/action-config-validation";
+import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 export type WorkflowActionValidationResult =
   | { valid: true }

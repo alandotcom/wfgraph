@@ -9,11 +9,11 @@ import {
   getUpstreamNodes,
 } from "@/lib/upstream-node-fields";
 import { edgesAtom, nodesAtom } from "@/lib/workflow-graph-store";
-import { cn } from "@/shared/utils";
+import { cn } from "@rova/shared/utils";
 import {
   formatTemplateToken,
   type ReferenceField,
-} from "@/shared/workflow/node-references";
+} from "@rova/shared/workflow/node-references";
 
 type TemplateAutocompleteProps = {
   isOpen: boolean;

@@ -20,11 +20,11 @@ import {
   type JsonObject,
   jsonObjectSchema,
   type JsonValue,
-} from "@/shared/types/json";
+} from "@rova/shared/types/json";
 import {
   parseWorkflowSchemaFieldsOrJsonSchema,
   type WorkflowSchemaField,
-} from "@/shared/workflow/schema-codec";
+} from "@rova/shared/workflow/schema-codec";
 import type { NodeConfigPatch } from "./node-config-patch";
 
 /** Which editor the user has open for a schema: the field builder or raw JSON. */

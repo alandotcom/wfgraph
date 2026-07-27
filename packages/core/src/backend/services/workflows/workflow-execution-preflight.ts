@@ -7,16 +7,16 @@ import { validateWorkflowActionConfigs } from "@/backend/lib/workflow-action-val
 import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import { validateWorkflowIntegrations } from "@/backend/lib/workflow-integration-validation";
-import type { ApiErrorPayload } from "@/shared/workflow/api-contracts";
+import type { ApiErrorPayload } from "@rova/shared/workflow/api-contracts";
 import {
   resolveWorkflowTriggerDefinition,
   type TriggerExecutionType,
   type WorkflowTriggerDefinition,
-} from "@/shared/workflow/trigger-registry";
+} from "@rova/shared/workflow/trigger-registry";
 import type {
   SerializedWorkflowGraph,
   WorkflowNode,
-} from "@/shared/workflow/types";
+} from "@rova/shared/workflow/types";
 
 type PreflightLogger = {
   error: (message: string, properties?: Record<string, unknown>) => void;

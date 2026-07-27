@@ -12,16 +12,16 @@ import {
 import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
 import { CURRENT_WORKFLOW_NAME } from "@/backend/lib/workflow-constants";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
-import { getErrorMessage } from "@/shared/utils";
-import { generateId } from "@/shared/utils/id";
+import { getErrorMessage } from "@rova/shared/utils";
+import { generateId } from "@rova/shared/utils/id";
 import type {
   ApiErrorPayload,
   WorkflowApiPayload,
-} from "@/shared/workflow/api-contracts";
+} from "@rova/shared/workflow/api-contracts";
 import {
   createSerializedWorkflowGraph,
   isSerializedWorkflowGraph,
-} from "@/shared/workflow/graph";
+} from "@rova/shared/workflow/graph";
 
 const workflowsCurrentLogger = getAppLogger("workflow", "current");
 

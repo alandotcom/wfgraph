@@ -4,8 +4,8 @@ import {
   type ResolveActionByType,
   validateWorkflowIntegrations,
 } from "@/backend/lib/workflow-integration-validation";
-import type { IntegrationType } from "@/shared/types/integration";
-import type { WorkflowNode } from "@/shared/workflow/types";
+import type { IntegrationType } from "@rova/shared/types/integration";
+import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 function createActionNode(config: Record<string, unknown>): WorkflowNode {
   return {

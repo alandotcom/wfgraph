@@ -15,7 +15,7 @@ import {
   markWaitStateStatus,
 } from "@/backend/lib/workflow-wait-state";
 import { validateApiKey } from "@/backend/services/api-keys/auth";
-import { getErrorMessage } from "@/shared/utils";
+import { getErrorMessage } from "@rova/shared/utils";
 
 const workflowResumeLogger = getAppLogger("workflow", "resume");
 

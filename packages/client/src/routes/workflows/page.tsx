@@ -30,7 +30,7 @@ import {
 import { CreateWorkflowDialog } from "@/components/workflow/create-workflow-dialog";
 import { api, type SavedWorkflow, toSavedWorkflows } from "@/lib/rpc-client";
 import { orpcQuery } from "@/lib/rpc-query";
-import { getRelativeTime } from "@/shared/utils/time";
+import { getRelativeTime } from "@rova/shared/utils/time";
 
 type WorkflowExecutionStatus =
   | "pending"

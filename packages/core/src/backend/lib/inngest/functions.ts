@@ -3,9 +3,9 @@ import { CURRENT_WORKFLOW_NAME } from "@/backend/lib/workflow-constants";
 import {
   serializedWorkflowGraphSchema,
   type WorkflowTriggerConfigInput,
-} from "@/shared/workflow/schemas";
-import type { InngestEventTriggerConfig } from "@/shared/workflow/trigger-registry";
-import { resolveWorkflowTriggerDefinition } from "@/shared/workflow/trigger-registry";
+} from "@rova/shared/workflow/schemas";
+import type { InngestEventTriggerConfig } from "@rova/shared/workflow/trigger-registry";
+import { resolveWorkflowTriggerDefinition } from "@rova/shared/workflow/trigger-registry";
 import { createWorkflowRunRequestedFunction } from "./workflow-function";
 
 const REGISTRY_CACHE_TTL_MS = 5000;

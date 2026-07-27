@@ -1,8 +1,8 @@
 import { ArrowLeft, Ban, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/shared/utils";
-import { getRelativeTime } from "@/shared/utils/time";
+import { cn } from "@rova/shared/utils";
+import { getRelativeTime } from "@rova/shared/utils/time";
 import { type WorkflowExecution } from "@/lib/execution-logs";
 import {
   formatDuration,

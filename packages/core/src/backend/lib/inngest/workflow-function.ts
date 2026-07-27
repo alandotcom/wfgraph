@@ -5,8 +5,8 @@ import {
 } from "@/backend/lib/workflow-engine/core";
 import { dbWorkflowStore } from "@/backend/lib/workflow-engine/db-store";
 import type { WorkflowExecutionRuntime } from "@/backend/lib/workflow-engine/runtime";
-import { jsonObjectSchema } from "@/shared/types/json";
-import { serializedWorkflowGraphSchema } from "@/shared/workflow/schemas";
+import { jsonObjectSchema } from "@rova/shared/types/json";
+import { serializedWorkflowGraphSchema } from "@rova/shared/workflow/schemas";
 import { getInngestClient } from "./client";
 
 function toDurationString(milliseconds: number): string {

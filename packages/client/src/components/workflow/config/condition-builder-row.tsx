@@ -45,7 +45,7 @@ import {
   type TimestampAbsoluteOperator,
   type TimestampRelativeOperator,
   type TimeUnit,
-} from "@/shared/workflow/conditions";
+} from "@rova/shared/workflow/conditions";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 type ConditionBuilderRowProps = {

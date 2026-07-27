@@ -13,7 +13,7 @@
  * a host-defined integration offer a connection test, and that arrives with the
  * rest of the host-integration surface.
  */
-import type { IntegrationType } from "@/shared/types/integration";
+import type { IntegrationType } from "@rova/shared/types/integration";
 
 export type IntegrationTestResult = {
   success: boolean;

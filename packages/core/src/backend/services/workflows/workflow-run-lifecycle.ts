@@ -6,12 +6,12 @@ import {
   logWorkflowAuditEvent,
   type WorkflowAuditEventType,
 } from "@/backend/lib/workflow-audit";
-import type { JsonObject } from "@/shared/types/json";
-import type { WorkflowExecutionIgnoredReason } from "@/shared/workflow/execution-contracts";
+import type { JsonObject } from "@rova/shared/types/json";
+import type { WorkflowExecutionIgnoredReason } from "@rova/shared/workflow/execution-contracts";
 import type {
   SerializedWorkflowGraph,
   WorkflowMode,
-} from "@/shared/workflow/types";
+} from "@rova/shared/workflow/types";
 
 /**
  * Every way a run can enter the system. Manual comes from the execute route,

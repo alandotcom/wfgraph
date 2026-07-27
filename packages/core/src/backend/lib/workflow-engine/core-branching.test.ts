@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   registerRuntimeAction,
   unregisterRuntimeAction,
-} from "@/shared/workflow/action-registry";
+} from "@rova/shared/workflow/action-registry";
 import {
   compileConditionModel,
   type ConditionModel,
   serializeConditionModel,
-} from "@/shared/workflow/conditions";
-import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
-import type { WorkflowNode } from "@/shared/workflow/types";
+} from "@rova/shared/workflow/conditions";
+import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
+import type { WorkflowNode } from "@rova/shared/workflow/types";
 import { executeWorkflow } from "./core";
 import {
   createRecordingWorkflowStore,

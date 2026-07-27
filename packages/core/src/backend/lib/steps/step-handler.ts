@@ -5,7 +5,7 @@
 
 import { getAppLogger } from "@/backend/lib/logger";
 import { redactSensitiveData } from "@/backend/lib/utils/redact";
-import type { StepResult } from "@/shared/workflow/step-result";
+import type { StepResult } from "@rova/shared/workflow/step-result";
 import {
   logStepCompleteDb,
   logStepStartDb,

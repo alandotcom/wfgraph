@@ -16,11 +16,11 @@ import {
   type ActionConfigField,
   type ActionConfigFieldBase,
   isFieldGroup,
-} from "@/plugins/registry";
+} from "@rova/shared/plugins/registry";
 import {
   parseWorkflowSchemaFieldsOrJsonSchema,
   parseWorkflowSchemaFieldsString,
-} from "@/shared/workflow/schema-codec";
+} from "@rova/shared/workflow/schema-codec";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { SchemaBuilder } from "./schema-builder";
 

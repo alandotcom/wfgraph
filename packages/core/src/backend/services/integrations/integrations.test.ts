@@ -37,7 +37,7 @@ mock.module("@/backend/lib/db/integrations", () => ({
   updateIntegration: mocks.updateIntegration,
 }));
 
-mock.module("@/plugins/registry", () => ({
+mock.module("@rova/shared/plugins/registry", () => ({
   getCredentialMapping: mocks.getCredentialMapping,
   getIntegration: mocks.getPluginFromRegistry,
 }));

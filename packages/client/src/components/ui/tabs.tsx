@@ -1,7 +1,7 @@
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import type * as React from "react";
 
-import { cn } from "@/shared/utils";
+import { cn } from "@rova/shared/utils";
 
 function Tabs({
   className,

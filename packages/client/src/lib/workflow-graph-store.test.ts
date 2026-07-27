@@ -24,7 +24,7 @@ import {
   hasUnsavedChangesAtom,
   workflowApiAtom,
 } from "@/lib/workflow-save-store";
-import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 import { savedWorkflow } from "./workflow-save-test-support";
 
 type Store = ReturnType<typeof createJotaiStore>;

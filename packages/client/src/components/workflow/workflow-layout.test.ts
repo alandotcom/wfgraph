@@ -3,7 +3,7 @@ import type {
   WorkflowEdge,
   WorkflowNode,
   WorkflowNodeType,
-} from "@/shared/workflow/types";
+} from "@rova/shared/workflow/types";
 import { layoutWorkflowNodes } from "./workflow-layout";
 
 function buildNode(

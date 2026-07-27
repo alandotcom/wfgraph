@@ -10,7 +10,7 @@ import { Drawer as DrawerPrimitive } from "vaul";
 import { Dialog, DialogPortal } from "@/components/ui/dialog";
 import { useDomEvent, useMeasuredHeight } from "@/hooks/effects";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { cn } from "@/shared/utils";
+import { cn } from "@rova/shared/utils";
 import { useOverlay } from "./overlay-provider";
 
 // iOS-like spring configuration

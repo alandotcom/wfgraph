@@ -3,7 +3,7 @@ import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IntegrationIcon } from "@/components/ui/integration-icon";
 import { useIsMobile } from "@/hooks/use-mobile";
-import type { IntegrationType } from "@/shared/types/integration";
+import type { IntegrationType } from "@rova/shared/types/integration";
 import { ConfigureConnectionOverlay } from "./add-connection-overlay";
 import { ConfigurationOverlay } from "./configuration-overlay";
 import { Overlay } from "./overlay";

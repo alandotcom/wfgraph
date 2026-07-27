@@ -1,4 +1,4 @@
-import { registerIntegrationUi } from "@/shared/plugins/ui-registry";
+import { registerIntegrationUi } from "@rova/shared/plugins/ui-registry";
 import { LinearIcon } from "./icon";
 
 // The editor-facing half of the Linear plugin. Its counterpart, index.ts, holds

@@ -1,10 +1,10 @@
-import { findActionById } from "@/plugins/registry";
+import { findActionById } from "@rova/shared/plugins/registry";
 import {
   type IntegrationType,
   isIntegrationType,
-} from "@/shared/types/integration";
-import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
-import type { WorkflowNode } from "@/shared/workflow/types";
+} from "@rova/shared/types/integration";
+import { SYSTEM_ACTION_INTEGRATIONS } from "@rova/shared/workflow/system-action-integrations";
+import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 /**
  * Keeping a node's `integrationId` pointing at a connection that still exists.

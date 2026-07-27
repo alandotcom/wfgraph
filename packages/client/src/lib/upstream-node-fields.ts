@@ -1,16 +1,16 @@
 import { findRuntimeTrigger } from "@/lib/runtime-extensions";
-import { findActionById } from "@/plugins/registry";
+import { findActionById } from "@rova/shared/plugins/registry";
 import type {
   ConditionFieldDefinition,
   ConditionFieldType,
-} from "@/shared/workflow/conditions";
+} from "@rova/shared/workflow/conditions";
 import {
   flattenSchemaToReferenceFields,
   type ReferenceField,
   type UpstreamField,
-} from "@/shared/workflow/node-references";
-import { parseWorkflowSchemaFieldsString } from "@/shared/workflow/schema-codec";
-import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
+} from "@rova/shared/workflow/node-references";
+import { parseWorkflowSchemaFieldsString } from "@rova/shared/workflow/schema-codec";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 
 /** First declaration of a path wins, so defaults stay ahead of schema extras. */
 function dedupeByPath(fields: ReferenceField[]): ReferenceField[] {

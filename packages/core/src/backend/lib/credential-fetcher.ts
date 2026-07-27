@@ -14,11 +14,14 @@
  * - Step returns: { result: data }  ← Safe to log (no credentials)
  */
 
-import { getCredentialMapping, getIntegration } from "@/plugins/registry";
+import {
+  getCredentialMapping,
+  getIntegration,
+} from "@rova/shared/plugins/registry";
 import type {
   IntegrationConfig,
   IntegrationType,
-} from "@/shared/types/integration";
+} from "@rova/shared/types/integration";
 import { getIntegrationById } from "./db/integrations";
 import { getAppLogger } from "./logger";
 

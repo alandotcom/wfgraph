@@ -15,12 +15,12 @@ import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
 } from "@/backend/services/workflows/workflow-mappers";
-import { getErrorMessage } from "@/shared/utils";
+import { getErrorMessage } from "@rova/shared/utils";
 import type {
   ApiErrorPayload,
   WorkflowApiPayload,
-} from "@/shared/workflow/api-contracts";
-import type { SerializedWorkflowGraph } from "@/shared/workflow/types";
+} from "@rova/shared/workflow/api-contracts";
+import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
 
 const workflowServiceLogger = getAppLogger("workflow", "service");
 

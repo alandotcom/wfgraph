@@ -2,7 +2,7 @@ import { useAtomValue } from "jotai";
 import { useCallback, useRef, useState } from "react";
 import { useAfterCommit } from "@/hooks/effects";
 import { nodesAtom } from "@/lib/workflow-graph-store";
-import { findTemplateTokens } from "@/shared/workflow/node-references";
+import { findTemplateTokens } from "@rova/shared/workflow/node-references";
 import {
   type BadgeEditor,
   createBadgeEditor,

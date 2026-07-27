@@ -28,18 +28,18 @@ export type {
   ActionWithFullId,
   IntegrationPlugin,
   PluginAction,
-} from "@/shared/plugins/registry";
+} from "@rova/shared/plugins/registry";
 export type {
   RegisteredRuntimeAction,
   RuntimeActionMetadata,
-} from "@/shared/workflow/action-registry";
+} from "@rova/shared/workflow/action-registry";
 
 // Export the registry utilities
 export {
   clearRuntimeActions,
   getRuntimeActions,
   registerRuntimeAction,
-} from "@/shared/workflow/action-registry";
+} from "@rova/shared/workflow/action-registry";
 export {
   computeActionId,
   findActionById,
@@ -60,7 +60,7 @@ export {
   isFieldGroup,
   parseActionId,
   registerIntegration,
-} from "@/shared/plugins/registry";
+} from "@rova/shared/plugins/registry";
 
 // The flat field shape an action or trigger declares in `outputFields`.
-export type { ReferenceField } from "@/shared/workflow/node-references";
+export type { ReferenceField } from "@rova/shared/workflow/node-references";

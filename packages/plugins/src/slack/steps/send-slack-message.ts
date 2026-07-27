@@ -3,7 +3,7 @@ import {
   type StepInput,
   withStepLogging,
 } from "@/backend/lib/steps/step-handler";
-import type { StepError } from "@/shared/workflow/step-result";
+import type { StepError } from "@rova/shared/workflow/step-result";
 import { z } from "zod";
 import { callSlack, describeSlackFailure } from "@/slack/client";
 import type { SlackCredentials } from "@/slack/credentials";

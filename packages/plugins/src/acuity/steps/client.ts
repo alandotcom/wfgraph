@@ -1,6 +1,6 @@
 import { Acuity, AcuityError } from "@fountain-bio/acuity";
 import type { AcuityCredentials } from "@/acuity/credentials";
-import { getErrorMessage } from "@/shared/utils";
+import { getErrorMessage } from "@rova/shared/utils";
 
 export function createAcuityClient(
   credentials: AcuityCredentials

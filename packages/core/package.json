@@ -52,6 +52,7 @@
     "@fastify/middie": "^9.3.3",
     "@inngest/test": "^0.1.9",
     "@opentelemetry/sdk-trace-base": "^1.25.0",
+    "@rova/shared": "workspace:*",
     "@types/express": "^5.0.6",
     "express": "^5.2.1",
     "fastify": "^5.10.0"

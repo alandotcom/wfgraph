@@ -6,7 +6,7 @@ import {
 } from "@/backend/lib/steps/step-handler";
 import type { LinearCredentials } from "@/linear/credentials";
 import { toLinearError } from "@/linear/errors";
-import { getErrorMessage } from "@/shared/utils";
+import { getErrorMessage } from "@rova/shared/utils";
 
 type LinearIssue = {
   id: string;

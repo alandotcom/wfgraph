@@ -12,8 +12,8 @@ import {
   getIntegrationDescriptions,
   getIntegrationLabels,
   getSortedIntegrationTypes,
-} from "@/plugins/registry";
-import type { IntegrationType } from "@/shared/types/integration";
+} from "@rova/shared/plugins/registry";
+import type { IntegrationType } from "@rova/shared/types/integration";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";

@@ -2,9 +2,9 @@
  * Executable step function for HTTP Request action
  */
 
-import { getErrorMessage } from "@/shared/utils";
-import { validateWorkflowOutputAgainstSchema } from "@/shared/workflow/schema-validation";
-import type { StepError } from "@/shared/workflow/step-result";
+import { getErrorMessage } from "@rova/shared/utils";
+import { validateWorkflowOutputAgainstSchema } from "@rova/shared/workflow/schema-validation";
+import type { StepError } from "@rova/shared/workflow/step-result";
 import { type StepInput, withStepLogging } from "./step-handler";
 
 /**

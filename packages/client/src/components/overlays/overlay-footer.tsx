@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/shared/utils";
+import { cn } from "@rova/shared/utils";
 import type { OverlayAction, OverlayFooterProps } from "./types";
 
 /**

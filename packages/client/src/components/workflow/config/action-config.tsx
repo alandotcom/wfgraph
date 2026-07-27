@@ -30,17 +30,17 @@ import {
   findActionById,
   getActionsByCategory,
   getAllIntegrations,
-} from "@/plugins/registry";
+} from "@rova/shared/plugins/registry";
 import {
   type IntegrationType,
   isIntegrationType,
-} from "@/shared/types/integration";
+} from "@rova/shared/types/integration";
 import {
   parseWorkflowSchemaFieldsOrJsonSchema,
   parseWorkflowSchemaFieldsString,
   workflowSchemaFieldsToJsonSchemaDocument,
-} from "@/shared/workflow/schema-codec";
-import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
+} from "@rova/shared/workflow/schema-codec";
+import { SYSTEM_ACTION_INTEGRATIONS } from "@rova/shared/workflow/system-action-integrations";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";

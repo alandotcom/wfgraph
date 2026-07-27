@@ -1,5 +1,5 @@
-import type { IntegrationPlugin } from "@/shared/plugins/registry";
-import { registerIntegration } from "@/shared/plugins/registry";
+import type { IntegrationPlugin } from "@rova/shared/plugins/registry";
+import { registerIntegration } from "@rova/shared/plugins/registry";
 
 const slackPlugin: IntegrationPlugin = {
   type: "slack",

@@ -19,12 +19,12 @@ import {
   getCredentialMapping,
   getIntegrationTypes,
   getIntegration as getPluginFromRegistry,
-} from "@/plugins/registry";
+} from "@rova/shared/plugins/registry";
 import type {
   IntegrationConfig,
   IntegrationType,
-} from "@/shared/types/integration";
-import { getErrorMessage } from "@/shared/utils";
+} from "@rova/shared/types/integration";
+import { getErrorMessage } from "@rova/shared/utils";
 import {
   createSecretConfigKeyTest,
   maskIntegrationConfig,

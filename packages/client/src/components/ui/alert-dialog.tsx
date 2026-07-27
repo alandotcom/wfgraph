@@ -1,7 +1,7 @@
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 import type * as React from "react";
 import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/shared/utils";
+import { cn } from "@rova/shared/utils";
 
 function AlertDialog({
   ...props

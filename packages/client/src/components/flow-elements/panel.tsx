@@ -1,6 +1,6 @@
 import { Panel as PanelPrimitive } from "@xyflow/react";
 import type { ComponentProps } from "react";
-import { cn } from "@/shared/utils";
+import { cn } from "@rova/shared/utils";
 
 type PanelProps = ComponentProps<typeof PanelPrimitive>;
 

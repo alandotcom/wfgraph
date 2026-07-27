@@ -19,39 +19,39 @@ import { withSpan } from "@/backend/lib/telemetry";
 import {
   decodeIsoTimestamp,
   encodeIsoTimestamp,
-} from "@/shared/types/timestamp";
+} from "@rova/shared/types/timestamp";
 import {
   type JsonObject,
   type JsonValue,
   readJsonValue,
-} from "@/shared/types/json";
-import { getErrorMessageAsync } from "@/shared/utils";
-import { resolveWaitUntil } from "@/shared/utils/wait-time";
-import { normalizeConditionBranch } from "@/shared/workflow/condition-branch";
+} from "@rova/shared/types/json";
+import { getErrorMessageAsync } from "@rova/shared/utils";
+import { resolveWaitUntil } from "@rova/shared/utils/wait-time";
+import { normalizeConditionBranch } from "@rova/shared/workflow/condition-branch";
 import {
   collectTimestampFieldPaths,
   parseConditionModel,
-} from "@/shared/workflow/conditions";
-import { toWorkflowGraphData } from "@/shared/workflow/graph";
+} from "@rova/shared/workflow/conditions";
+import { toWorkflowGraphData } from "@rova/shared/workflow/graph";
 import {
   parseTemplate,
   resolveOutputPath,
   type TemplateToken,
   unwrapStepOutput,
-} from "@/shared/workflow/node-references";
-import { validateWorkflowOutputAgainstSchema } from "@/shared/workflow/schema-validation";
-import type { StepResult } from "@/shared/workflow/step-result";
+} from "@rova/shared/workflow/node-references";
+import { validateWorkflowOutputAgainstSchema } from "@rova/shared/workflow/schema-validation";
+import type { StepResult } from "@rova/shared/workflow/step-result";
 import {
   evaluateWorkflowTrigger,
   resolveWorkflowTriggerDefinition,
-} from "@/shared/workflow/trigger-registry";
-import { resolveWebhookTriggerRuntimeConfig } from "@/shared/workflow/triggers/webhook-trigger";
+} from "@rova/shared/workflow/trigger-registry";
+import { resolveWebhookTriggerRuntimeConfig } from "@rova/shared/workflow/triggers/webhook-trigger";
 import type {
   ConditionBranch,
   SerializedWorkflowGraph,
   WorkflowEdge,
   WorkflowNode,
-} from "@/shared/workflow/types";
+} from "@rova/shared/workflow/types";
 import {
   createInMemoryWorkflowRuntime,
   type WorkflowExecutionRuntime,

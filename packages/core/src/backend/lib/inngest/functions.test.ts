@@ -1,12 +1,12 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { z } from "zod";
 import { CURRENT_WORKFLOW_NAME } from "@/backend/lib/workflow-constants";
-import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
+import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import {
   createTrigger,
   registerWorkflowTrigger,
   unregisterWorkflowTrigger,
-} from "@/shared/workflow/trigger-registry";
+} from "@rova/shared/workflow/trigger-registry";
 import { buildWorkflowFunctions } from "./functions";
 
 function createTriggerNodeGraph(triggerConfig?: Record<string, unknown>) {

@@ -10,17 +10,17 @@ import {
   success,
 } from "@/backend/lib/service-result";
 import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers";
-import { getErrorMessage } from "@/shared/utils";
-import { generateId } from "@/shared/utils/id";
+import { getErrorMessage } from "@rova/shared/utils";
+import { generateId } from "@rova/shared/utils/id";
 import type {
   ApiErrorPayload,
   WorkflowApiPayload,
-} from "@/shared/workflow/api-contracts";
+} from "@rova/shared/workflow/api-contracts";
 import {
   createSerializedWorkflowGraph,
   toWorkflowGraphData,
-} from "@/shared/workflow/graph";
-import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
+} from "@rova/shared/workflow/graph";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 
 function stripIntegrationIds(nodes: WorkflowNode[]): WorkflowNode[] {
   return nodes.map((node) => {

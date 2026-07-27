@@ -1,4 +1,4 @@
-import type { ExecutionLogEntry } from "@/shared/workflow/types";
+import type { ExecutionLogEntry } from "@rova/shared/workflow/types";
 
 /**
  * The shapes a workflow run takes on the client, and the pure functions that

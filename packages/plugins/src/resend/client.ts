@@ -12,7 +12,7 @@
  */
 
 import { z } from "zod";
-import type { JsonObject } from "@/shared/types/json";
+import type { JsonObject } from "@rova/shared/types/json";
 import { parsePayload, requestVendor } from "@/vendor-http";
 
 const RESEND_API_BASE = "https://api.resend.com";

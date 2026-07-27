@@ -81,25 +81,25 @@ import {
   propertiesPanelActiveTabAtom,
   selectedExecutionIdAtom,
 } from "@/lib/workflow-ui-store";
-import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 import {
   findActionById,
   flattenConfigFields,
   getIntegrationLabels,
-} from "@/plugins/registry";
+} from "@rova/shared/plugins/registry";
 import {
   type IntegrationType,
   isIntegrationType,
-} from "@/shared/types/integration";
+} from "@rova/shared/types/integration";
 import {
   getMissingRequiredFieldsForNodes,
   type MissingRequiredFieldInfo,
-} from "@/shared/workflow/action-config-validation";
-import { findTemplateTokens } from "@/shared/workflow/node-references";
+} from "@rova/shared/workflow/action-config-validation";
+import { findTemplateTokens } from "@rova/shared/workflow/node-references";
 import {
   SYSTEM_ACTION_INTEGRATIONS,
   SYSTEM_INTEGRATION_LABELS,
-} from "@/shared/workflow/system-action-integrations";
+} from "@rova/shared/workflow/system-action-integrations";
 
 // Helper functions to reduce complexity
 function updateNodesStatus(

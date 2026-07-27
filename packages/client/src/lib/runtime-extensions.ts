@@ -1,12 +1,12 @@
 import { z } from "zod";
 import { getBasePath } from "@/lib/base-path";
-import type { ActionConfigField } from "@/plugins/registry";
+import type { ActionConfigField } from "@rova/shared/plugins/registry";
 import {
   clearRuntimeActions,
   registerRuntimeAction,
   type RuntimeActionMetadata,
-} from "@/shared/workflow/action-registry";
-import type { ReferenceField } from "@/shared/workflow/node-references";
+} from "@rova/shared/workflow/action-registry";
+import type { ReferenceField } from "@rova/shared/workflow/node-references";
 
 export type RuntimeTriggerDefinition = {
   type: string;

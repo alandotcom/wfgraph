@@ -2,7 +2,7 @@ import { Handle, Position } from "@xyflow/react";
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { AnimatedBorder } from "@/components/ui/animated-border";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
-import { cn } from "@/shared/utils";
+import { cn } from "@rova/shared/utils";
 
 export type NodeProps = ComponentProps<typeof Card> & {
   handles: {

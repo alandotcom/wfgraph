@@ -1,6 +1,6 @@
 import { Database, HelpCircle } from "lucide-react";
-import { getIntegrationUi } from "@/shared/plugins/ui-registry";
-import { cn } from "@/shared/utils";
+import { getIntegrationUi } from "@rova/shared/plugins/ui-registry";
+import { cn } from "@rova/shared/utils";
 
 interface IntegrationIconProps {
   integration: string;

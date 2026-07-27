@@ -38,22 +38,22 @@ import {
   configureAppLoggingWithBridge,
 } from "@/backend/lib/logger";
 import { initializeWorkflowTriggers } from "@/backend/lib/workflow-trigger-bootstrap";
-import { unregisterIntegration } from "@/shared/plugins/registry";
+import { unregisterIntegration } from "@rova/shared/plugins/registry";
 import {
   type IntegrationType,
   isIntegrationType,
-} from "@/shared/types/integration";
-import type { RovaLogger } from "@/shared/types/logger";
+} from "@rova/shared/types/integration";
+import type { RovaLogger } from "@rova/shared/types/logger";
 import {
   type RuntimeExtensionActionDefinition,
   registerRuntimeAction,
   unregisterRuntimeAction,
-} from "@/shared/workflow/action-registry";
+} from "@rova/shared/workflow/action-registry";
 import {
   type RuntimeExtensionTriggerDefinition,
   registerWorkflowTrigger,
   unregisterWorkflowTrigger,
-} from "@/shared/workflow/trigger-registry";
+} from "@rova/shared/workflow/trigger-registry";
 
 export type { DatabaseRuntimeConfig } from "@/backend/lib/db";
 export type { EncryptionRuntimeConfig } from "@/backend/lib/db/integrations";
@@ -62,10 +62,10 @@ export type {
   InngestServeRuntimeConfig,
 } from "@/backend/lib/inngest/client";
 export type { RovaAuth } from "@/backend/lib/http/authorize";
-export type { IntegrationType } from "@/shared/types/integration";
-export type { RovaLogger } from "@/shared/types/logger";
-export type { RuntimeExtensionActionDefinition } from "@/shared/workflow/action-registry";
-export type { RuntimeExtensionTriggerDefinition } from "@/shared/workflow/trigger-registry";
+export type { IntegrationType } from "@rova/shared/types/integration";
+export type { RovaLogger } from "@rova/shared/types/logger";
+export type { RuntimeExtensionActionDefinition } from "@rova/shared/workflow/action-registry";
+export type { RuntimeExtensionTriggerDefinition } from "@rova/shared/workflow/trigger-registry";
 
 export type PluginConfig = {
   /** Whether this plugin is enabled (default: true) */

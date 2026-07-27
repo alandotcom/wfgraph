@@ -4,7 +4,7 @@ import { createContext, useContext, useMemo } from "react";
 import type { ComponentProps, ReactNode } from "react";
 import { Children, isValidElement } from "react";
 
-import { cn } from "@/shared/utils";
+import { cn } from "@rova/shared/utils";
 
 type SelectProps = Omit<
   ComponentProps<typeof SelectPrimitive.Root>,

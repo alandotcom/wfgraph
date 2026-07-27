@@ -1,6 +1,6 @@
 import dagre from "@dagrejs/dagre";
 import { hierarchy, tree } from "d3-hierarchy";
-import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,

@@ -1,6 +1,6 @@
 import type { Workflow } from "@/backend/lib/db/schema";
-import type { WorkflowApiPayload } from "@/shared/workflow/api-contracts";
-import type { SerializedWorkflowGraph } from "@/shared/workflow/types";
+import type { WorkflowApiPayload } from "@rova/shared/workflow/api-contracts";
+import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
 
 type WorkflowPayloadSource = Pick<
   Workflow,

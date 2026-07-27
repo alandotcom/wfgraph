@@ -13,7 +13,7 @@
  * `WorkflowSchemaField`. This module reads that tree and flattens it.
  */
 
-import type { JsonObject, JsonValue } from "@/shared/types/json";
+import type { JsonObject, JsonValue } from "@/types/json";
 import type {
   WorkflowSchemaField,
   WorkflowSchemaFieldType,

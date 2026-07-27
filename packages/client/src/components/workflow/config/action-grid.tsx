@@ -26,8 +26,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { hasTouchSupport } from "@/hooks/use-touch";
-import { getAllActions } from "@/plugins/registry";
-import { cn } from "@/shared/utils";
+import { getAllActions } from "@rova/shared/plugins/registry";
+import { cn } from "@rova/shared/utils";
 
 type ActionType = {
   id: string;

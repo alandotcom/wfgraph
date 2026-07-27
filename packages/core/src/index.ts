@@ -6,10 +6,10 @@ export {
   type OutputSchema,
   type RuntimeExtensionActionDefinition,
   type TypedActionResult,
-} from "@/shared/workflow/action-registry";
+} from "@rova/shared/workflow/action-registry";
 export {
   type CreateTriggerInput,
   createTrigger,
   type RuntimeExtensionTriggerDefinition,
   type TriggerPayloadSchema,
-} from "@/shared/workflow/trigger-registry";
+} from "@rova/shared/workflow/trigger-registry";

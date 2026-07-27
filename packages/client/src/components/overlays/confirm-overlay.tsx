@@ -1,5 +1,5 @@
 import { AlertTriangleIcon } from "lucide-react";
-import { cn } from "@/shared/utils";
+import { cn } from "@rova/shared/utils";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
 import type { OverlayAction, OverlayActionVariant } from "./types";

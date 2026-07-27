@@ -9,9 +9,9 @@ import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-w
 import { orchestrateTriggerExecution } from "@/backend/services/workflows/trigger-orchestrator";
 import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight";
 import { startWorkflowRun } from "@/backend/services/workflows/workflow-run-lifecycle";
-import { type JsonObject, jsonObjectSchema } from "@/shared/types/json";
-import type { InngestEventTriggerConfig } from "@/shared/workflow/trigger-registry";
-import { evaluateWorkflowTrigger } from "@/shared/workflow/trigger-registry";
+import { type JsonObject, jsonObjectSchema } from "@rova/shared/types/json";
+import type { InngestEventTriggerConfig } from "@rova/shared/workflow/trigger-registry";
+import { evaluateWorkflowTrigger } from "@rova/shared/workflow/trigger-registry";
 import { getInngestClient } from "./client";
 
 const eventListenerLogger = getAppLogger("workflow", "event-listener");

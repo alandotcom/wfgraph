@@ -20,7 +20,7 @@ import {
   markExecutionRunning,
   markWaitStateStatus,
 } from "@/backend/lib/workflow-wait-state";
-import { isoTimestampToDate } from "@/shared/types/timestamp";
+import { isoTimestampToDate } from "@rova/shared/types/timestamp";
 import type { WorkflowStore } from "./store";
 
 export const dbWorkflowStore: WorkflowStore = {

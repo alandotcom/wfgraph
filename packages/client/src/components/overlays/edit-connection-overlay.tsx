@@ -8,7 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { api, type Integration } from "@/lib/rpc-client";
-import { getIntegration, getIntegrationLabels } from "@/plugins/registry";
+import {
+  getIntegration,
+  getIntegrationLabels,
+} from "@rova/shared/plugins/registry";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";

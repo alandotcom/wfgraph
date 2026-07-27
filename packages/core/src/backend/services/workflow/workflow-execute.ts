@@ -16,12 +16,12 @@ import {
   recordTerminalWorkflowRun,
   startWorkflowRun,
 } from "@/backend/services/workflows/workflow-run-lifecycle";
-import type { JsonObject } from "@/shared/types/json";
-import { getErrorMessage } from "@/shared/utils";
-import type { ApiErrorPayload } from "@/shared/workflow/api-contracts";
-import type { WorkflowExecuteResponse } from "@/shared/workflow/execution-contracts";
-import { evaluateWorkflowTrigger } from "@/shared/workflow/trigger-registry";
-import { resolveWebhookTriggerRuntimeConfig } from "@/shared/workflow/triggers/webhook-trigger";
+import type { JsonObject } from "@rova/shared/types/json";
+import { getErrorMessage } from "@rova/shared/utils";
+import type { ApiErrorPayload } from "@rova/shared/workflow/api-contracts";
+import type { WorkflowExecuteResponse } from "@rova/shared/workflow/execution-contracts";
+import { evaluateWorkflowTrigger } from "@rova/shared/workflow/trigger-registry";
+import { resolveWebhookTriggerRuntimeConfig } from "@rova/shared/workflow/triggers/webhook-trigger";
 
 const executeLogger = getAppLogger("workflow", "execute");
 

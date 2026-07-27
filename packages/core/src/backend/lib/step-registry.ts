@@ -2,8 +2,8 @@ import {
   getRuntimeAction,
   type RuntimeActionExecuteInput,
   type RuntimeActionResult,
-} from "@/shared/workflow/action-registry";
-import type { StepFunction } from "@/shared/workflow/step-result";
+} from "@rova/shared/workflow/action-registry";
+import type { StepFunction } from "@rova/shared/workflow/step-result";
 
 /**
  * A step module as the registry receives it: whatever a step file exports.

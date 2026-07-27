@@ -18,9 +18,9 @@ import {
   type RuntimeActionResult,
   registerRuntimeAction,
   unregisterRuntimeAction,
-} from "@/shared/workflow/action-registry";
-import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
-import type { WorkflowNode } from "@/shared/workflow/types";
+} from "@rova/shared/workflow/action-registry";
+import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
+import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 // The real function reaches for the Postgres-backed store. Persistence is not
 // what this test is about, so swap in the noop adapter and keep the run off a

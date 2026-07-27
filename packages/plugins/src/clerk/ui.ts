@@ -1,4 +1,4 @@
-import { registerIntegrationUi } from "@/shared/plugins/ui-registry";
+import { registerIntegrationUi } from "@rova/shared/plugins/ui-registry";
 import { UserCard } from "./components/user-card";
 import { ClerkIcon } from "./icon";
 

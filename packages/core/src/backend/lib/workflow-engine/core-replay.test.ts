@@ -14,9 +14,9 @@ import {
   type RuntimeActionResult,
   registerRuntimeAction,
   unregisterRuntimeAction,
-} from "@/shared/workflow/action-registry";
-import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
-import type { WorkflowNode } from "@/shared/workflow/types";
+} from "@rova/shared/workflow/action-registry";
+import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
+import type { WorkflowNode } from "@rova/shared/workflow/types";
 import { executeWorkflow } from "./core";
 import {
   createRecordingWorkflowStore,

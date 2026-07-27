@@ -1,4 +1,4 @@
-import { cn } from "@/shared/utils";
+import { cn } from "@rova/shared/utils";
 import { TemplateAutocomplete } from "./template-autocomplete";
 import { useTemplateBadgeField } from "./use-template-badge-field";
 

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { registerIntegration, unregisterIntegration } from "@/plugins/registry";
-import type { IntegrationPlugin } from "@/plugins/registry";
+import {
+  registerIntegration,
+  unregisterIntegration,
+} from "@rova/shared/plugins/registry";
+import type { IntegrationPlugin } from "@rova/shared/plugins/registry";
 import { maskIntegrationConfig } from "./integration-config-masking";
 
 const slackLike: IntegrationPlugin = {

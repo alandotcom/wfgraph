@@ -1,5 +1,5 @@
-import type { JsonObject } from "@/shared/types/json";
-import type { SerializedWorkflowGraph } from "@/shared/workflow/types";
+import type { JsonObject } from "@rova/shared/types/json";
+import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
 import { getInngestClient } from "./client";
 
 export type WorkflowRunRequestedEventData = {

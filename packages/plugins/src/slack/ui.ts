@@ -1,4 +1,4 @@
-import { registerIntegrationUi } from "@/shared/plugins/ui-registry";
+import { registerIntegrationUi } from "@rova/shared/plugins/ui-registry";
 import { SlackIcon } from "./icon";
 
 // The editor-facing half of the Slack plugin. Its counterpart, index.ts, holds

@@ -8,11 +8,11 @@ import {
   success,
 } from "@/backend/lib/service-result";
 import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers";
-import { getErrorMessage } from "@/shared/utils";
+import { getErrorMessage } from "@rova/shared/utils";
 import type {
   ApiErrorPayload,
   WorkflowApiPayload,
-} from "@/shared/workflow/api-contracts";
+} from "@rova/shared/workflow/api-contracts";
 
 const workflowsLogger = getAppLogger("workflow", "list");
 

@@ -189,6 +189,48 @@
       }
     },
     {
+      // A `@/` alias resolves to a file, never to a manifest, so Bun's isolated
+      // linker cannot see it. That is how packages/core came to inline five
+      // vendor SDKs and how the SPA reached the whole of core. A specifier that
+      // leaves the package has to be a package name, which the linker checks
+      // and knip can read.
+      //
+      // `@/` still means "this package's own src", which is what these rules
+      // leave alone.
+      "files": [
+        "packages/core/src/**/*.ts",
+        "packages/client/src/**/*.{ts,tsx}",
+        "packages/plugins/src/**/*.{ts,tsx}"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@/shared/**",
+                  "@/plugins/registry",
+                  "@/plugins/ui-registry"
+                ],
+                "message": "Import @rova/shared by name: `@rova/shared/types/json`, not `@/shared/types/json`. An alias is invisible to the package linker."
+              },
+              {
+                "group": [
+                  "../../shared/**",
+                  "../../../shared/**",
+                  "../../core/**",
+                  "../../../core/**",
+                  "../../client/**"
+                ],
+                "message": "Reaching into another package by relative path skips its manifest. Import it by package name."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       // @rova/shared is the runtime-agnostic package: it declares its own npm
       // dependencies and nothing else, and both @rova/core and @rova/plugins
       // compile against its source through path aliases. Nothing may point the

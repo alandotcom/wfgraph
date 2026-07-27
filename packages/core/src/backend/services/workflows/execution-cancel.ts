@@ -14,7 +14,7 @@ import {
   markExecutionCancelled,
   markWaitingStatesCancelled,
 } from "@/backend/lib/workflow-wait-state";
-import { getErrorMessage } from "@/shared/utils";
+import { getErrorMessage } from "@rova/shared/utils";
 
 const executionCancelLogger = getAppLogger("workflow", "execution-cancel");
 

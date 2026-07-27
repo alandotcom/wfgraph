@@ -2,7 +2,7 @@
  * Executable step function for Condition action
  */
 
-import type { StepResult } from "@/shared/workflow/step-result";
+import type { StepResult } from "@rova/shared/workflow/step-result";
 import { type StepInput, withStepLogging } from "./step-handler";
 
 export type ConditionInput = StepInput & {

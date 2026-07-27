@@ -1,7 +1,7 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 
-import { cn } from "@/shared/utils";
+import { cn } from "@rova/shared/utils";
 
 const cardVariants = cva(
   "flex flex-col rounded-xl border text-card-foreground shadow-sm",

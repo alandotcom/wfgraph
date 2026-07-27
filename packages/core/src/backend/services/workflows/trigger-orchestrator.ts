@@ -1,11 +1,11 @@
-import { parseCsvSet } from "@/shared/utils/object-path";
+import { parseCsvSet } from "@rova/shared/utils/object-path";
 import type {
   WorkflowExecutionCancelledResponse,
   WorkflowExecutionIgnoredResponse,
   WorkflowExecutionResumedResponse,
   WorkflowExecutionRunningResponse,
-} from "@/shared/workflow/execution-contracts";
-import type { TriggerRoutingDecision } from "@/shared/workflow/trigger-registry";
+} from "@rova/shared/workflow/execution-contracts";
+import type { TriggerRoutingDecision } from "@rova/shared/workflow/trigger-registry";
 
 type TriggerWaitState = {
   id: string;

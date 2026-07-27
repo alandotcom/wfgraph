@@ -7,9 +7,9 @@ import {
   NodeDescription,
   NodeTitle,
 } from "@/components/flow-elements/node";
-import type { WorkflowNodeData } from "@/shared/workflow/types";
-import { cn } from "@/shared/utils";
-import { parseScheduleExpression } from "@/shared/utils/schedule-expression";
+import type { WorkflowNodeData } from "@rova/shared/workflow/types";
+import { cn } from "@rova/shared/utils";
+import { parseScheduleExpression } from "@rova/shared/utils/schedule-expression";
 
 type TriggerNodeProps = NodeProps & {
   data?: WorkflowNodeData;

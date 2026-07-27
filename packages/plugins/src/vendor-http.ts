@@ -14,7 +14,7 @@
  */
 
 import type { z } from "zod";
-import { type JsonValue, readJsonValue } from "@/shared/types/json";
+import { type JsonValue, readJsonValue } from "@rova/shared/types/json";
 
 /**
  * What came back, before any vendor's meaning is read into it.

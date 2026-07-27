@@ -9,8 +9,8 @@
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import { createSerializedWorkflowGraph } from "@/shared/workflow/graph";
-import type { WorkflowNode } from "@/shared/workflow/types";
+import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
+import type { WorkflowNode } from "@rova/shared/workflow/types";
 import { executeWorkflow } from "./core";
 import {
   createRecordingWorkflowStore,

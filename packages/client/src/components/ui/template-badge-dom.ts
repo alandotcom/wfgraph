@@ -1,6 +1,6 @@
-import { findActionById } from "@/plugins/registry";
-import { parseTemplate, type TemplateToken } from "@/shared/workflow/node-references";
-import type { WorkflowNode } from "@/shared/workflow/types";
+import { findActionById } from "@rova/shared/plugins/registry";
+import { parseTemplate, type TemplateToken } from "@rova/shared/workflow/node-references";
+import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 /**
  * The contentEditable behind the template fields, as plain DOM.

@@ -13,7 +13,7 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
-import { getErrorMessage } from "@/shared/utils";
+import { getErrorMessage } from "@rova/shared/utils";
 
 const workflowExecutionsLogger = getAppLogger("workflow", "executions");
 

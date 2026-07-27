@@ -8,7 +8,7 @@ import {
 } from "@/backend/lib/steps/step-handler";
 import { describeResendFailure, sendResendEmail } from "@/resend/client";
 import type { ResendCredentials } from "@/resend/credentials";
-import type { JsonObject } from "@/shared/types/json";
+import type { JsonObject } from "@rova/shared/types/json";
 
 type SendEmailResult =
   | { success: true; data: { id: string; reasonCode?: string } }

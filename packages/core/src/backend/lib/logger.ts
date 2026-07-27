@@ -9,7 +9,7 @@ import {
   resetSync,
 } from "@logtape/logtape";
 import { getPrettyFormatter } from "@logtape/pretty";
-import type { RovaLogger } from "@/shared/types/logger";
+import type { RovaLogger } from "@rova/shared/types/logger";
 
 const LOGGER_ROOT = "app";
 

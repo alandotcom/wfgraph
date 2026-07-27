@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { WorkflowSchemaField } from "@/shared/workflow/schema-codec";
+import type { WorkflowSchemaField } from "@rova/shared/workflow/schema-codec";
 
 export type SchemaField = WorkflowSchemaField & { id?: string };
 

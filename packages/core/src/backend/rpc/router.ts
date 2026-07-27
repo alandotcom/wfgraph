@@ -39,7 +39,7 @@ import {
   getWorkflowsCurrent,
   postWorkflowsCurrent,
 } from "@/backend/services/workflows/workflows-current";
-import { rpcContract } from "@/shared/rpc/contracts";
+import { rpcContract } from "@rova/shared/rpc/contracts";
 import type { RpcContext } from "./context";
 import { type RpcCompatibleResult, toRpcData } from "./errors";
 

@@ -7,8 +7,8 @@ import {
 import {
   clearRuntimeActions,
   registerRuntimeAction,
-} from "@/shared/workflow/action-registry";
-import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
+} from "@rova/shared/workflow/action-registry";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 
 function createNode(input: {
   id: string;

@@ -11,7 +11,7 @@ import {
   success,
 } from "@/backend/lib/service-result";
 import { redactSensitiveData } from "@/backend/lib/utils/redact";
-import { getErrorMessage } from "@/shared/utils";
+import { getErrorMessage } from "@rova/shared/utils";
 
 const executionLogsLogger = getAppLogger("workflow", "execution-logs");
 

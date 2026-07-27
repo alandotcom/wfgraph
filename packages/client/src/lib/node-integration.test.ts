@@ -4,7 +4,7 @@ import {
   repairNodeIntegrations,
   requiredIntegrationType,
 } from "@/lib/node-integration";
-import type { WorkflowNode } from "@/shared/workflow/types";
+import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 function actionNode(
   config: Record<string, unknown>,

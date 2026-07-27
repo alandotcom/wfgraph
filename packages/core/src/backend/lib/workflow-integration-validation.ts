@@ -4,13 +4,13 @@ import {
   validateIntegrationIds as validateIntegrationIdsInDb,
 } from "@/backend/lib/db/integrations";
 import { getAppLogger } from "@/backend/lib/logger";
-import { findActionById } from "@/plugins/registry";
+import { findActionById } from "@rova/shared/plugins/registry";
 import {
   type IntegrationType,
   isIntegrationType,
-} from "@/shared/types/integration";
-import { SYSTEM_ACTION_INTEGRATIONS } from "@/shared/workflow/system-action-integrations";
-import type { WorkflowNode } from "@/shared/workflow/types";
+} from "@rova/shared/types/integration";
+import { SYSTEM_ACTION_INTEGRATIONS } from "@rova/shared/workflow/system-action-integrations";
+import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 type ResolvedAction = {
   integration?: unknown;

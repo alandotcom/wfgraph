@@ -13,7 +13,7 @@
  */
 
 import { getAppLogger } from "@/backend/lib/logger";
-import { getErrorMessage } from "@/shared/utils";
+import { getErrorMessage } from "@rova/shared/utils";
 
 const authLogger = getAppLogger("http", "auth");
 

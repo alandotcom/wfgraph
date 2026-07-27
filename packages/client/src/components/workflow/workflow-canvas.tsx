@@ -46,11 +46,14 @@ import {
   rightPanelWidthAtom,
   showMinimapAtom,
 } from "@/lib/workflow-ui-store";
-import type { WorkflowNode, WorkflowNodeType } from "@/shared/workflow/types";
+import type {
+  WorkflowNode,
+  WorkflowNodeType,
+} from "@rova/shared/workflow/types";
 import {
   isConditionActionNode,
   normalizeConditionBranch,
-} from "@/shared/workflow/condition-branch";
+} from "@rova/shared/workflow/condition-branch";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
 import { TriggerNode } from "./nodes/trigger-node";

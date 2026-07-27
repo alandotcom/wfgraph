@@ -16,9 +16,9 @@ import { Button } from "@/components/ui/button";
 import type { Integration } from "@/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
 import { repairIntegrationsAtom } from "@/lib/workflow-graph-store";
-import { getIntegration } from "@/plugins/registry";
-import type { IntegrationType } from "@/shared/types/integration";
-import { cn } from "@/shared/utils";
+import { getIntegration } from "@rova/shared/plugins/registry";
+import type { IntegrationType } from "@rova/shared/types/integration";
+import { cn } from "@rova/shared/utils";
 
 type IntegrationSelectorProps = {
   integrationType: IntegrationType;

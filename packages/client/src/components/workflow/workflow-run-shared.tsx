@@ -12,8 +12,8 @@ import {
   OUTPUT_DISPLAY_CONFIGS,
   type OutputDisplayConfig,
 } from "@/lib/output-display-configs";
-import { findActionById } from "@/plugins/registry";
-import { getActionOutputComponent } from "@/shared/plugins/ui-registry";
+import { findActionById } from "@rova/shared/plugins/registry";
+import { getActionOutputComponent } from "@rova/shared/plugins/ui-registry";
 
 // Status helpers
 

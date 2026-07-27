@@ -2,7 +2,7 @@ import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
 import { CheckIcon } from "lucide-react";
 import type * as React from "react";
 
-import { cn } from "@/shared/utils";
+import { cn } from "@rova/shared/utils";
 
 function Checkbox({
   className,

@@ -3,8 +3,8 @@ import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditi
 import {
   createDefaultConditionModel,
   serializeConditionModel,
-} from "@/shared/workflow/conditions";
-import type { WorkflowNode } from "@/shared/workflow/types";
+} from "@rova/shared/workflow/conditions";
+import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 function createConditionNode(config: Record<string, unknown>): WorkflowNode {
   return {

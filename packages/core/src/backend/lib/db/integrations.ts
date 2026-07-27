@@ -4,7 +4,7 @@ import { getAppLogger } from "@/backend/lib/logger";
 import type {
   IntegrationConfig,
   IntegrationType,
-} from "@/shared/types/integration";
+} from "@rova/shared/types/integration";
 import { db } from "./index";
 import { integrations, type NewIntegration } from "./schema";
 
