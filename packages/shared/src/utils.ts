@@ -1,13 +1,58 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { z } from "zod";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+/** An `{ message }` carrier, the shape SDKs nest one level down. */
+const nestedErrorSchema = z.looseObject({
+  message: z.string().optional().catch(undefined),
+});
+
+/**
+ * The union of every place a thrown value is known to carry its message.
+ *
+ * A thrown value arrives as `unknown`, so this is where it becomes typed. Each
+ * member is `.optional().catch(undefined)` so a field of the wrong type is
+ * dropped while its siblings survive, which is how the per-field `typeof`
+ * checks below used to behave. `looseObject` keeps unknown keys and accepts
+ * class instances, so an SDK error object passes with its own fields intact.
+ */
+const errorEnvelopeSchema = z.looseObject({
+  message: z.string().optional().catch(undefined),
+  // Some SDKs put the HTTP body on the error, with `error` as text or an object.
+  responseBody: z
+    .looseObject({
+      error: z
+        .union([z.string(), nestedErrorSchema])
+        .optional()
+        .catch(undefined),
+    })
+    .optional()
+    .catch(undefined),
+  error: z.union([z.string(), nestedErrorSchema]).optional().catch(undefined),
+  data: z
+    .looseObject({
+      error: z.string().optional().catch(undefined),
+      message: z.string().optional().catch(undefined),
+    })
+    .optional()
+    .catch(undefined),
+  reason: z.string().optional().catch(undefined),
+  statusText: z.string().optional().catch(undefined),
+  status: z.number().optional().catch(undefined),
+});
+
+/**
+ * A Promise-like: any object carrying a callable `then`. The object test is the
+ * parse; the refinement reads the one member that makes it awaitable, off a
+ * value zod has already typed.
+ */
+const thenableSchema = z
+  .looseObject({})
+  .refine((value) => typeof value.then === "function");
 
 /**
  * Extract a meaningful error message from various error types.
@@ -36,55 +81,54 @@ export function getErrorMessage(error: unknown): string {
   }
 
   // Handle objects
-  if (isRecord(error)) {
-    const obj = error;
+  const envelope = errorEnvelopeSchema.safeParse(error);
+  if (envelope.success) {
+    const obj = envelope.data;
 
     // Check for common error message properties
-    if (typeof obj.message === "string" && obj.message) {
+    if (obj.message) {
       return obj.message;
     }
 
     // Some SDKs wrap errors in responseBody or data
-    if (isRecord(obj.responseBody)) {
-      const body = obj.responseBody;
+    const body = obj.responseBody;
+    if (body) {
       if (typeof body.error === "string") {
         return body.error;
       }
-      if (isRecord(body.error) && typeof body.error.message === "string") {
+      if (body.error?.message !== undefined) {
         return body.error.message;
       }
     }
 
     // Check for nested error property
-    if (typeof obj.error === "string" && obj.error) {
-      return obj.error;
-    }
-    if (isRecord(obj.error)) {
-      const nestedError = obj.error;
-      if (typeof nestedError.message === "string") {
-        return nestedError.message;
+    if (typeof obj.error === "string") {
+      if (obj.error) {
+        return obj.error;
       }
+    } else if (obj.error?.message !== undefined) {
+      return obj.error.message;
     }
 
     // Check for data.error pattern (common in API responses)
-    if (isRecord(obj.data)) {
-      const data = obj.data;
-      if (typeof data.error === "string") {
+    const data = obj.data;
+    if (data) {
+      if (data.error !== undefined) {
         return data.error;
       }
-      if (typeof data.message === "string") {
+      if (data.message !== undefined) {
         return data.message;
       }
     }
 
     // Check for reason property (common in some error types)
-    if (typeof obj.reason === "string" && obj.reason) {
+    if (obj.reason) {
       return obj.reason;
     }
 
     // Check for statusText (HTTP errors)
-    if (typeof obj.statusText === "string" && obj.statusText) {
-      const status = typeof obj.status === "number" ? ` (${obj.status})` : "";
+    if (obj.statusText) {
+      const status = obj.status === undefined ? "" : ` (${obj.status})`;
       return `${obj.statusText}${status}`;
     }
 
@@ -125,7 +169,7 @@ export async function getErrorMessageAsync(error: unknown): Promise<string> {
   }
 
   // Check if it's a thenable (Promise-like)
-  if (isRecord(error) && "then" in error && typeof error.then === "function") {
+  if (thenableSchema.safeParse(error).success) {
     try {
       const resolvedValue = await Promise.resolve(error);
       // The promise resolved - check if it contains error info
