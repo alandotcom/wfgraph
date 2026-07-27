@@ -39,7 +39,7 @@ import {
   resolveWaitUntil,
 } from "@/shared/utils/wait-time";
 import { isConditionActionType } from "@/shared/workflow/condition-branch";
-import { useAfterCommit, useNowMs } from "@/hooks/effects";
+import { useAfterPaint, useNowMs } from "@/hooks/effects";
 import { useExecutionLogsByNode } from "@/hooks/use-execution-logs";
 import {
   integrationIdsQueryOptions,
@@ -510,8 +510,16 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
   // A condition node renders two source handles where every other node renders
   // one. React Flow caches handle positions and has no way to notice that, so
-  // it has to be told once the new handles are in the DOM.
-  useAfterCommit(isConditionAction ? id : null, () => {
+  // it has to be told.
+  //
+  // After paint, not during the commit. React Flow measures a node's handles in
+  // its own commit-phase work, which for a node component runs after that
+  // component's own effects; telling it from a passive effect lands too early
+  // and the measurement it then takes is of the handles as they were. The
+  // symptom is a condition node whose true and false handles are on screen and
+  // draggable-looking, while React Flow still has only the single default
+  // handle recorded and starts no connection from either.
+  useAfterPaint(isConditionAction ? id : null, () => {
     if (isConditionAction) {
       updateNodeInternals(id);
     }
