@@ -374,7 +374,35 @@ describe("webhookSchemaPatchFromSamplePayload", () => {
   it("leaves both schemas alone when the payload teaches nothing", () => {
     expect(webhookSchemaPatchFromSamplePayload("")).toEqual({});
     expect(webhookSchemaPatchFromSamplePayload("{half typed")).toEqual({});
-    expect(webhookSchemaPatchFromSamplePayload("[1,2,3]")).toEqual({});
+  });
+
+  it("leaves both schemas alone for JSON that is not a request body", () => {
+    // A request body is a JSON object. Every other JSON value gets turned away
+    // at the parse, so a stray paste cannot overwrite a saved schema.
+    for (const raw of ["[1,2,3]", "[]", "null", '"appt_1"', "42", "true"]) {
+      expect(webhookSchemaPatchFromSamplePayload(raw)).toEqual({});
+    }
+  });
+
+  it("descends through the whole payload, however deeply nested", () => {
+    const inferred = JSON.stringify([
+      {
+        name: "data",
+        type: "object",
+        fields: [
+          {
+            name: "items",
+            type: "array",
+            itemType: "object",
+            fields: [{ name: "sku", type: "string" }],
+          },
+        ],
+      },
+    ]);
+
+    expect(
+      webhookSchemaPatchFromSamplePayload('{"data":{"items":[{"sku":"S1"}]}}')
+    ).toEqual({ webhookSchema: inferred, webhookOutputSchema: inferred });
   });
 });
 

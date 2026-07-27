@@ -23,6 +23,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { getRuntimeTriggers } from "@/lib/runtime-extensions";
+import type { JsonObject } from "@/shared/types/json";
 import { cn } from "@/shared/utils";
 import { parseCsvSet } from "@/shared/utils/csv";
 import { getValueByPath } from "@/shared/utils/object-path";
@@ -55,7 +56,7 @@ type TriggerConfigProps = {
 type WebhookPreset = {
   id: string;
   label: string;
-  payload: Record<string, unknown>;
+  payload: JsonObject;
 };
 
 type WebhookSectionKey =

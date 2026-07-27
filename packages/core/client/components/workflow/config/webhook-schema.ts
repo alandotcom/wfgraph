@@ -17,6 +17,11 @@
  */
 
 import {
+  type JsonObject,
+  jsonObjectSchema,
+  type JsonValue,
+} from "@/shared/types/json";
+import {
   parseWorkflowSchemaFieldsOrJsonSchema,
   type WorkflowSchemaField,
 } from "@/shared/workflow/schema-codec";
@@ -33,10 +38,6 @@ export type SchemaPathOption = {
 
 const ISO8601_TIMESTAMP_REGEX =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /** Read a config value that is expected to be a string, with a stand-in value. */
 export function readConfigString(
@@ -107,8 +108,13 @@ export function isIso8601Timestamp(value: string): boolean {
   return !Number.isNaN(Date.parse(normalized));
 }
 
+/**
+ * `undefined` is admitted because an empty array in the sample payload offers no
+ * element to describe, and such an array is still reported as an array of
+ * strings.
+ */
 export function inferPrimitiveType(
-  value: unknown
+  value: JsonValue | undefined
 ): "string" | "number" | "boolean" | "timestamp" {
   if (typeof value === "number") {
     return "number";
@@ -131,12 +137,12 @@ export function inferPrimitiveType(
  */
 export function inferSchemaField(
   name: string,
-  value: unknown
+  value: JsonValue | undefined
 ): WorkflowSchemaField {
   if (Array.isArray(value)) {
     const first = value.at(0);
 
-    if (isRecord(first)) {
+    if (typeof first === "object" && first !== null && !Array.isArray(first)) {
       return {
         name,
         type: "array",
@@ -152,7 +158,7 @@ export function inferSchemaField(
     };
   }
 
-  if (isRecord(value)) {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
     return {
       name,
       type: "object",
@@ -168,7 +174,7 @@ export function inferSchemaField(
 
 /** Turn a sample webhook payload into the schema it implies. */
 export function inferSchemaFromPayload(
-  payload: Record<string, unknown>
+  payload: JsonObject
 ): WorkflowSchemaField[] {
   return Object.entries(payload).map(([key, value]) =>
     inferSchemaField(key, value)
@@ -255,12 +261,12 @@ export function webhookSchemaPatchFromSamplePayload(
   }
 
   try {
-    const parsed: unknown = JSON.parse(rawPayload);
-    if (!isRecord(parsed)) {
+    const parsed = jsonObjectSchema.safeParse(JSON.parse(rawPayload));
+    if (!parsed.success) {
       return {};
     }
 
-    return webhookRequestSchemaPatch(inferSchemaFromPayload(parsed));
+    return webhookRequestSchemaPatch(inferSchemaFromPayload(parsed.data));
   } catch {
     return {};
   }
