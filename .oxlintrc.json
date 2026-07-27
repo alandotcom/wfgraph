@@ -128,6 +128,51 @@
       }
     },
     {
+      // @rova/shared is the runtime-agnostic package: it declares its own npm
+      // dependencies and nothing else, and both @rova/core and @rova/plugins
+      // compile against its source through path aliases. Nothing may point the
+      // other way.
+      //
+      // Bun's isolated linker enforces that for npm specifiers, because a package
+      // only gets a node_modules holding what it declared. It cannot see an import
+      // written as a tsconfig path alias: tsc and the bundler both resolve
+      // `@/backend/lib/logger` from packages/shared straight to
+      // packages/core/src/backend/lib/logger.ts with no manifest consulted, which
+      // hands shared the whole of core and every dependency core declares. That is
+      // what this rule covers. `@/*` resolves against packages/shared/src first,
+      // so the groups below name the directory prefixes that exist only in core:
+      // `backend` for the server, and the SPA's top-level folders.
+      "files": ["packages/shared/src/**/*.ts", "packages/shared/src/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@/backend",
+                  "@/backend/**",
+                  "@/components/**",
+                  "@/hooks/**",
+                  "@/lib/**",
+                  "@/routes/**",
+                  "@rova/core",
+                  "@rova/core/**",
+                  "@rova/plugins",
+                  "@rova/plugins/**",
+                  "../../core/**",
+                  "../../plugins/**",
+                  "../../../core/**",
+                  "../../../plugins/**"
+                ],
+                "message": "@rova/shared cannot import @rova/core or @rova/plugins source. Shared is the bottom of the dependency graph: move the shared piece into packages/shared, or invert the call so core passes it in."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": [
         "server.ts",
         "packages/core/src/hono.ts",

@@ -1,9 +1,15 @@
 [install]
 # Isolated linking gives each workspace package a node_modules containing only the
-# dependencies that package declares. An import of something undeclared then fails to
-# resolve, so a phantom dependency shows up as a build error at the moment it is
-# introduced. Bun already picks isolated for workspace projects whose lockfile carries
-# configVersion 1, so this line pins the choice where a reader can see it.
+# dependencies that package declares. An npm specifier for something undeclared then
+# fails to resolve, so a phantom dependency shows up as a build error at the moment it
+# is introduced. Bun already picks isolated for workspace projects whose lockfile
+# carries configVersion 1, so this line pins the choice where a reader can see it.
+#
+# The reach of this stops at npm specifiers. A cross-package import written as a
+# tsconfig path alias (`@/backend/lib/logger`) resolves to a file, never to a manifest,
+# so the linker never sees it and packages/shared could pull in the whole of
+# packages/core through one. The no-restricted-imports override in .oxlintrc.json
+# scoped to packages/shared/src closes that side.
 linker = "isolated"
 
 [serve.static]
