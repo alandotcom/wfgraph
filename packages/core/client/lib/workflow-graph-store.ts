@@ -3,9 +3,16 @@ import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 import { repairNodeIntegrations } from "@/lib/node-integration";
+import type { SavedWorkflow } from "@/lib/rpc-client";
 import {
+  currentWorkflowIdAtom,
+  currentWorkflowModeAtom,
+  currentWorkflowNameAtom,
+  currentWorkflowVisibilityAtom,
   hasUnsavedChangesAtom,
+  isWorkflowOwnerAtom,
   saveWorkflowAtom,
+  workflowNotFoundAtom,
 } from "@/lib/workflow-save-store";
 import {
   formatTemplateToken,
@@ -102,6 +109,39 @@ export const loadWorkflowGraphAtom = atom(
     set(selectedEdgeAtom, null);
     set(newlyCreatedNodeIdAtom, null);
     set(hasUnsavedChangesAtom, false);
+  }
+);
+
+/**
+ * Put a workflow on screen: the graph, its identity, and who may edit it.
+ *
+ * Called from the route's loader, before the editor renders. Loading used to be
+ * an effect in the editor that fetched, then wrote these one at a time, with a
+ * ref comparing workflow ids to throw away a response that arrived after the
+ * user had already navigated somewhere else. A loader has neither problem: it
+ * runs before the component and the router cancels it on navigation.
+ */
+export const hydrateWorkflowAtom = atom(
+  null,
+  (_get, set, workflow: SavedWorkflow) => {
+    // Statuses belong to a run, not to the workflow, so a freshly loaded graph
+    // shows none of the previous run's progress. Clearing selection stops a
+    // node from arriving pre-selected in a workflow the user has just opened.
+    const nodes = workflow.nodes.map((node) => ({
+      ...node,
+      selected: false,
+      data: { ...node.data, status: "idle" as const },
+    }));
+
+    // Also clears undo history, so undo cannot reach back past the switch and
+    // write the previous workflow's graph into this one.
+    set(loadWorkflowGraphAtom, { nodes, edges: workflow.edges });
+    set(currentWorkflowIdAtom, workflow.id);
+    set(currentWorkflowNameAtom, workflow.name);
+    set(currentWorkflowVisibilityAtom, workflow.visibility ?? "private");
+    set(currentWorkflowModeAtom, workflow.mode ?? "live");
+    set(isWorkflowOwnerAtom, workflow.isOwner !== false);
+    set(workflowNotFoundAtom, false);
   }
 );
 

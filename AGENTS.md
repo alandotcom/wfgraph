@@ -98,7 +98,8 @@ packaging change with `bun pm pack` and read the extracted manifest.
   `compact(...)` over `filter(Boolean)`, `uniq(...)` and `partition(...)` over manual
   `Set` juggling.
 - If an `es-toolkit` call needs an unsafe cast, write a small typed helper instead.
-- Jotai by intent: `useAtom` read/write, `useAtomValue` read, `useSetAtom` write.
+- Jotai by intent: `useAtom` read/write, `useAtomValue` read, `useSetAtom` write. Jotai
+  holds UI state only; anything the server owns lives in the query cache.
 - Server-side barrel files are allowed.
 - Route handlers stay light; domain logic belongs in
   `packages/core/src/backend/services/<domain>`.
@@ -113,6 +114,36 @@ SQL in `packages/core/drizzle/`.
 
 Import the typed RPC client as `import { api } from "@/lib/rpc-client"`. There is no
 `@/lib/api-client`.
+
+Reads go through TanStack Query, not through `api` directly.
+`packages/core/client/lib/rpc-query.ts` wraps the contract with
+`@orpc/tanstack-query`, so a query key is derived from the contract path and cannot
+drift from `packages/shared/src/rpc/contracts.ts`. Invalidate an area with
+`orpcQuery.integration.key()`, one entry with
+`orpcQuery.workflow.getById.queryKey({ input })`. Pass a `select` as a module-level
+function: TanStack memoises it by identity, and an inline arrow re-runs the transform
+on every render.
+
+`@orpc/tanstack-query` pins its `@orpc/client` peer to an exact version, so all six
+`@orpc/*` packages move together.
+
+**Never invalidate `orpcQuery.workflow.key()` from the editor.** Any non-status patch
+queues a save, so a broad invalidation would refetch the workflow, rehydrate the graph,
+re-run the integration repair, and save again, discarding whatever the user typed while
+the request was in flight. The editor invalidates `workflow.getAll.key()` and nothing
+wider.
+
+## Effects
+
+`packages/core/client/hooks/effects.ts` is the only file in the client that may import
+`useEffect` or `useLayoutEffect`; `no-restricted-imports` enforces it. Reach for one of
+its named hooks, and if none of them fits, the work is very likely not an effect:
+fetching belongs in a query, a derived value belongs in render, and telling a parent
+something belongs in the handler that caused it.
+
+The nine `no-effect/*` rules
+(`eslint-plugin-react-you-might-not-need-an-effect`, loaded through oxlint's
+`jsPlugins`) name the cases where React can do the work without an effect.
 
 ## Documentation
 

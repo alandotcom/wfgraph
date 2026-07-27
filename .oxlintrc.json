@@ -136,11 +136,31 @@
         "react/react-in-jsx-scope": "off",
         // The no-effect rules infer whether an effect body is asynchronous by
         // looking at how promises are handled, so this has to be on wherever
-        // those rules do their work. It was off here for long enough that the
-        // client accumulated unawaited calls; they are being cleared alongside
-        // the effects themselves.
+        // those rules do their work.
         "typescript/no-floating-promises": "error",
-        "react-hooks-js/incompatible-library": "off"
+        "react-hooks-js/incompatible-library": "off",
+        // packages/core/client/hooks/effects.ts is the only file that calls
+        // useEffect. Everything else reaches an effect through the hooks it
+        // exports, which name what is being synchronised instead of leaving a
+        // reader to work it out from a dependency array. An effect that does
+        // not fit one of those hooks is usually not an effect: see
+        // https://react.dev/learn/you-might-not-need-an-effect.
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "react",
+                "importNames": ["useEffect", "useLayoutEffect"],
+                // The UI primitives write `import type * as React` for
+                // `ComponentProps`, and a type-only import cannot call
+                // anything, so it is not what this rule is aimed at.
+                "allowTypeImports": true,
+                "message": "Use a named hook from @/hooks/effects. If none of them fits, the work probably belongs in an event handler, in render, or in a query."
+              }
+            ]
+          }
+        ]
       }
     },
     {

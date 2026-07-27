@@ -1,12 +1,13 @@
 import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
-import * as React from "react";
+import { createContext, useContext, useMemo } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { Children, isValidElement } from "react";
 
 import { cn } from "@/shared/utils";
 
 type SelectProps = Omit<
-  React.ComponentProps<typeof SelectPrimitive.Root>,
+  ComponentProps<typeof SelectPrimitive.Root>,
   "multiple" | "value" | "defaultValue" | "onValueChange"
 > & {
   value?: string;
@@ -14,9 +15,9 @@ type SelectProps = Omit<
   onValueChange?: (value: string) => void;
 };
 
-const SelectItemsContext = React.createContext<Record<string, string>>({});
+const SelectItemsContext = createContext<Record<string, string>>({});
 
-function getTextContent(node: React.ReactNode): string {
+function getTextContent(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") {
     return String(node);
   }
@@ -25,20 +26,20 @@ function getTextContent(node: React.ReactNode): string {
     return node.map(getTextContent).join(" ");
   }
 
-  if (isValidElement<{ children?: React.ReactNode }>(node)) {
+  if (isValidElement<{ children?: ReactNode }>(node)) {
     return getTextContent(node.props.children);
   }
 
   return "";
 }
 
-function collectSelectItems(node: React.ReactNode) {
+function collectSelectItems(node: ReactNode) {
   const items: Array<{ value: string; label: string }> = [];
 
-  const visit = (childNode: React.ReactNode) => {
+  const visit = (childNode: ReactNode) => {
     Children.forEach(childNode, (child) => {
       if (
-        !isValidElement<{ value?: unknown; children?: React.ReactNode }>(child)
+        !isValidElement<{ value?: unknown; children?: ReactNode }>(child)
       ) {
         return;
       }
@@ -61,7 +62,7 @@ function collectSelectItems(node: React.ReactNode) {
 }
 
 function Select({ onValueChange, children, ...props }: SelectProps) {
-  const labelByValue = React.useMemo(() => {
+  const labelByValue = useMemo(() => {
     const next: Record<string, string> = {};
     for (const item of collectSelectItems(children)) {
       next[item.value] = item.label;
@@ -89,14 +90,14 @@ function Select({ onValueChange, children, ...props }: SelectProps) {
 
 function SelectGroup({
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Group>) {
+}: ComponentProps<typeof SelectPrimitive.Group>) {
   return <SelectPrimitive.Group data-slot="select-group" {...props} />;
 }
 
 function SelectValue({
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Value>) {
-  const labels = React.useContext(SelectItemsContext);
+}: ComponentProps<typeof SelectPrimitive.Value>) {
+  const labels = useContext(SelectItemsContext);
 
   return (
     <SelectPrimitive.Value data-slot="select-value" {...props}>
@@ -115,7 +116,7 @@ function SelectTrigger({
   size = "default",
   children,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
+}: ComponentProps<typeof SelectPrimitive.Trigger> & {
   size?: "sm" | "default";
 }) {
   return (
@@ -145,9 +146,9 @@ function SelectContent({
   alignOffset = 0,
   alignItemWithTrigger = false,
   ...popupProps
-}: React.ComponentProps<typeof SelectPrimitive.Popup> &
+}: ComponentProps<typeof SelectPrimitive.Popup> &
   Pick<
-    React.ComponentProps<typeof SelectPrimitive.Positioner>,
+    ComponentProps<typeof SelectPrimitive.Positioner>,
     "align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger"
   >) {
   return (
@@ -183,7 +184,7 @@ function SelectContent({
 function SelectLabel({
   className,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.GroupLabel>) {
+}: ComponentProps<typeof SelectPrimitive.GroupLabel>) {
   return (
     <SelectPrimitive.GroupLabel
       className={cn("px-2 py-1.5 text-muted-foreground text-xs", className)}
@@ -197,7 +198,7 @@ function SelectItem({
   className,
   children,
   ...props
-}: Omit<React.ComponentProps<typeof SelectPrimitive.Item>, "value"> & {
+}: Omit<ComponentProps<typeof SelectPrimitive.Item>, "value"> & {
   value: string;
 }) {
   return (
@@ -222,7 +223,7 @@ function SelectItem({
 function SelectSeparator({
   className,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Separator>) {
+}: ComponentProps<typeof SelectPrimitive.Separator>) {
   return (
     <SelectPrimitive.Separator
       className={cn("pointer-events-none -mx-1 my-1 h-px bg-border", className)}
@@ -235,7 +236,7 @@ function SelectSeparator({
 function SelectScrollUpButton({
   className,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.ScrollUpArrow>) {
+}: ComponentProps<typeof SelectPrimitive.ScrollUpArrow>) {
   return (
     <SelectPrimitive.ScrollUpArrow
       className={cn(
@@ -253,7 +254,7 @@ function SelectScrollUpButton({
 function SelectScrollDownButton({
   className,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.ScrollDownArrow>) {
+}: ComponentProps<typeof SelectPrimitive.ScrollDownArrow>) {
   return (
     <SelectPrimitive.ScrollDownArrow
       className={cn(
