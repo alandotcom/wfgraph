@@ -43,13 +43,30 @@ const config: KnipConfig = {
   workspaces: {
     ".": {
       entry: [
-        // The dev/compile server, the embedded-mode example, and the build and
-        // migration scripts. scripts/plugins/* holds Bun build plugins that the
-        // scripts in scripts/ import.
+        // Every entry is named on its own line, because knip treats an entry as
+        // reachable by definition. `scripts/*.ts` and `examples/*.ts` made each
+        // directory entirely self-justifying, so a file nobody ran and nobody
+        // imported sat there reported as fine. Naming them means adding one is a
+        // visible decision, and anything else in these two trees has to earn its
+        // place by being imported.
+        //
+        // knip already reads the "scripts" block of package.json and treats a
+        // file a script runs as an entry, which covers scripts/build-client.ts,
+        // scripts/compile.ts and scripts/copy-migrations.ts. Listing those here
+        // draws a "redundant entry pattern" hint. What remains is the four it
+        // cannot see.
+        //
+        // Run by "dev:app", whose command carries env assignments and a `--hot`
+        // flag ahead of the file:
         "server.ts",
-        "examples/*.ts",
-        "scripts/*.ts",
-        "scripts/plugins/*.ts",
+        // Run by "example:library-trigger", whose command is a single `sh -c`
+        // string that knip does not read into:
+        "examples/library-trigger.ts",
+        // Run by the afterFileEdit hook in .cursor/hooks.json:
+        "scripts/format-edited-file.ts",
+        // Run by hand against a deployed database. Nothing in the repo calls it,
+        // which is why it has to be listed rather than found.
+        "scripts/migrate-prod.ts",
       ],
       project: ["*.ts", "*.mjs", "examples/**/*.ts", "scripts/**/*.ts"],
 
