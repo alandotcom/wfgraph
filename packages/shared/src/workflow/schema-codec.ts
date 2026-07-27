@@ -1,4 +1,6 @@
+import { compact } from "es-toolkit/array";
 import { startCase } from "es-toolkit/string";
+import { z } from "zod";
 import type { ActionConfigFieldBase } from "@/plugins/registry";
 
 /**
@@ -49,9 +51,134 @@ export type WorkflowSchemaField = {
 
 type JsonSchemaType = WorkflowSchemaFieldType | WorkflowSchemaItemType;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+/**
+ * A `type` keyword, which JSON Schema allows to be one name or a list of names
+ * (`{ type: ["null", "boolean"] }` for a nullable boolean).
+ */
+const typeNameSchema = z
+  .union([z.string(), z.array(z.string())])
+  .optional()
+  .catch(undefined);
+
+const optionalString = z.string().optional().catch(undefined);
+
+/**
+ * Any JSON value is allowed in these slots, so the members below keep them as
+ * `unknown` and the readers pick out the shapes they can use.
+ */
+const jsonValueSchema = z.unknown().optional().catch(undefined);
+const jsonValueArraySchema = z.array(z.unknown()).optional().catch(undefined);
+
+/**
+ * A node of a JSON Schema document, holding only the keywords this module reads.
+ * Recursive members are written out by hand because a schema that refers to
+ * itself gives TypeScript nothing to infer from; the annotation on
+ * `jsonSchemaNodeSchema` below ties the two together.
+ *
+ * A member is `undefined` when the document left it out and also when the
+ * document had it in a shape this module cannot use.
+ */
+interface JsonSchemaNode {
+  type?: string | string[];
+  format?: string;
+  pattern?: string;
+  description?: string;
+  enum?: unknown[];
+  const?: unknown;
+  required?: string[];
+  default?: unknown;
+  examples?: unknown[];
+  minimum?: number;
+  properties?: JsonSchemaProperties;
+  items?: JsonSchemaNode;
+  anyOf?: (JsonSchemaNode | undefined)[];
+  oneOf?: (JsonSchemaNode | undefined)[];
 }
+
+/** A `properties` map, whose members drop out individually when malformed. */
+type JsonSchemaProperties = Record<string, JsonSchemaNode | undefined>;
+
+/**
+ * `looseObject` keeps every keyword the shape below does not name, so parsing a
+ * document does not quietly strip parts of it.
+ *
+ * Every member is `.optional().catch(undefined)`, which is what makes a saved
+ * schema with one broken member still readable: the broken member alone comes
+ * back as absent and the rest of the document parses. Recursive members are
+ * declared as getters so the schema can refer to itself.
+ */
+const jsonSchemaNodeSchema: z.ZodType<JsonSchemaNode> = z.looseObject({
+  type: typeNameSchema,
+  format: optionalString,
+  pattern: optionalString,
+  description: optionalString,
+  enum: jsonValueArraySchema,
+  const: jsonValueSchema,
+  required: z.array(z.string()).optional().catch(undefined),
+  default: jsonValueSchema,
+  examples: jsonValueArraySchema,
+  minimum: z.number().optional().catch(undefined),
+  get properties() {
+    return z
+      .record(z.string(), jsonSchemaNodeSchema.optional().catch(undefined))
+      .optional()
+      .catch(undefined);
+  },
+  get items() {
+    return jsonSchemaNodeSchema.optional().catch(undefined);
+  },
+  get anyOf() {
+    return z
+      .array(jsonSchemaNodeSchema.optional().catch(undefined))
+      .optional()
+      .catch(undefined);
+  },
+  get oneOf() {
+    return z
+      .array(jsonSchemaNodeSchema.optional().catch(undefined))
+      .optional()
+      .catch(undefined);
+  },
+});
+
+/**
+ * A field of the schema dialect this project stores itself: a flat array of
+ * named fields, which the schema builder in the editor writes and reads.
+ */
+interface WorkflowFieldRecord {
+  name?: string;
+  type?: string | string[];
+  itemType?: string | string[];
+  format?: string;
+  description?: string;
+  enumValues?: unknown[];
+  fields?: WorkflowFieldRecords;
+}
+
+/** A `fields` array, whose entries drop out individually when malformed. */
+type WorkflowFieldRecords = (WorkflowFieldRecord | undefined)[];
+
+/** Tolerance and recursion work the same way as the JSON Schema node above. */
+const workflowFieldRecordSchema: z.ZodType<WorkflowFieldRecord> = z.looseObject(
+  {
+    name: optionalString,
+    type: typeNameSchema,
+    itemType: typeNameSchema,
+    format: optionalString,
+    description: optionalString,
+    enumValues: jsonValueArraySchema,
+    get fields() {
+      return z
+        .array(workflowFieldRecordSchema.optional().catch(undefined))
+        .optional()
+        .catch(undefined);
+    },
+  }
+);
+
+const workflowFieldRecordArraySchema = z.array(
+  workflowFieldRecordSchema.optional().catch(undefined)
+);
 
 export function isWorkflowSchemaFieldType(
   value: unknown
@@ -78,40 +205,38 @@ export function isWorkflowSchemaItemType(
   );
 }
 
-function extractEnumValues(
-  value: Record<string, unknown>
-): string[] | undefined {
-  if (!Array.isArray(value.enum)) {
+/** Enum members that can be shown as choices: strings and numbers. */
+function toEnumValues(values: unknown[] | undefined): string[] | undefined {
+  if (!values) {
     return undefined;
   }
 
-  const values = value.enum
+  const enumValues = values
     .filter(
       (item: unknown) => typeof item === "string" || typeof item === "number"
     )
     .map(String);
 
-  return values.length > 0 ? values : undefined;
+  return enumValues.length > 0 ? enumValues : undefined;
 }
 
-function normalizeJsonSchemaType(value: unknown): JsonSchemaType | null {
+function normalizeJsonSchemaType(
+  value: string | string[] | undefined
+): JsonSchemaType | null {
   if (typeof value === "string") {
     return isWorkflowSchemaFieldType(value) ? value : null;
   }
 
-  if (!Array.isArray(value)) {
+  if (!value) {
     return null;
   }
 
-  const firstSupportedType = value.find((item) =>
-    isWorkflowSchemaFieldType(item)
-  );
-  return isWorkflowSchemaFieldType(firstSupportedType)
-    ? firstSupportedType
-    : null;
+  return value.find(isWorkflowSchemaFieldType) ?? null;
 }
 
-function normalizeSchemaFormat(value: unknown): "timestamp" | undefined {
+function normalizeSchemaFormat(
+  value: string | undefined
+): "timestamp" | undefined {
   if (
     value === "date-time" ||
     value === "datetime" ||
@@ -124,36 +249,36 @@ function normalizeSchemaFormat(value: unknown): "timestamp" | undefined {
   return undefined;
 }
 
-function isIsoDatePattern(value: unknown): boolean {
-  if (typeof value !== "string") {
+function isIsoDatePattern(value: string | undefined): boolean {
+  if (!value) {
     return false;
   }
   return value.startsWith("^([+-]?\\d{4}") && value.includes("0[1-9]|1[0-2]");
 }
 
-function isTimestampString(prop: Record<string, unknown>): boolean {
+function isTimestampString(prop: JsonSchemaNode): boolean {
   return (
     normalizeSchemaFormat(prop.format) === "timestamp" ||
     isIsoDatePattern(prop.pattern)
   );
 }
 
-function parseNestedWorkflowSchemaFields(
-  value: unknown
+function workflowSchemaFieldsFromRecords(
+  records: WorkflowFieldRecords | undefined
 ): WorkflowSchemaField[] {
-  if (!Array.isArray(value)) {
+  if (!records) {
     return [];
   }
 
-  return value.flatMap((field) => {
-    const parsedField = parseWorkflowSchemaField(field);
-    return parsedField ? [parsedField] : [];
+  return records.flatMap((record) => {
+    const field = record ? workflowSchemaFieldFromRecord(record) : null;
+    return field ? [field] : [];
   });
 }
 
 function resolvePrimitiveWorkflowSchemaType(input: {
   type: JsonSchemaType;
-  format: unknown;
+  format: string | undefined;
 }): WorkflowSchemaFieldType {
   if (
     input.type === "string" &&
@@ -165,14 +290,14 @@ function resolvePrimitiveWorkflowSchemaType(input: {
   return input.type;
 }
 
-function parseArrayWorkflowSchemaField(input: {
+function arrayWorkflowSchemaFieldFromRecord(input: {
   name: string;
-  value: Record<string, unknown>;
+  record: WorkflowFieldRecord;
   description?: string;
 }): WorkflowSchemaField {
-  const { name, value, description } = input;
-  const normalizedItemType = normalizeJsonSchemaType(value.itemType);
-  const normalizedFormat = normalizeSchemaFormat(value.format);
+  const { name, record, description } = input;
+  const normalizedItemType = normalizeJsonSchemaType(record.itemType);
+  const normalizedFormat = normalizeSchemaFormat(record.format);
   let itemType: WorkflowSchemaItemType = "string";
   if (isWorkflowSchemaItemType(normalizedItemType)) {
     itemType = normalizedItemType;
@@ -187,36 +312,31 @@ function parseArrayWorkflowSchemaField(input: {
     itemType,
     fields:
       itemType === "object"
-        ? parseNestedWorkflowSchemaFields(value.fields)
+        ? workflowSchemaFieldsFromRecords(record.fields)
         : undefined,
     description,
   };
 }
 
-export function parseWorkflowSchemaField(
-  value: unknown
+function workflowSchemaFieldFromRecord(
+  record: WorkflowFieldRecord
 ): WorkflowSchemaField | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const name = typeof value.name === "string" ? value.name.trim() : "";
+  const name = record.name?.trim() ?? "";
   if (!name) {
     return null;
   }
 
-  const description =
-    typeof value.description === "string" ? value.description : undefined;
+  const description = record.description;
   const normalizedType =
-    normalizeJsonSchemaType(value.type) ||
-    (Array.isArray(value.fields) ? "object" : null) ||
-    (value.itemType !== undefined ? "array" : null) ||
+    normalizeJsonSchemaType(record.type) ||
+    (record.fields ? "object" : null) ||
+    (record.itemType !== undefined ? "array" : null) ||
     "string";
 
   if (normalizedType === "array") {
-    return parseArrayWorkflowSchemaField({
+    return arrayWorkflowSchemaFieldFromRecord({
       name,
-      value,
+      record,
       description,
     });
   }
@@ -225,35 +345,36 @@ export function parseWorkflowSchemaField(
     return {
       name,
       type: "object",
-      fields: parseNestedWorkflowSchemaFields(value.fields),
+      fields: workflowSchemaFieldsFromRecords(record.fields),
       description,
     };
   }
 
-  const enumValues = Array.isArray(value.enumValues)
-    ? value.enumValues
-        .filter(
-          (item: unknown) =>
-            typeof item === "string" || typeof item === "number"
-        )
-        .map(String)
-    : undefined;
+  const enumValues = toEnumValues(record.enumValues);
 
   return {
     name,
     type: resolvePrimitiveWorkflowSchemaType({
       type: normalizedType,
-      format: value.format,
+      format: record.format,
     }),
     description,
-    ...(enumValues && enumValues.length > 0 ? { enumValues } : {}),
+    ...(enumValues ? { enumValues } : {}),
   };
+}
+
+export function parseWorkflowSchemaField(
+  value: unknown
+): WorkflowSchemaField | null {
+  const parsed = workflowFieldRecordSchema.safeParse(value);
+  return parsed.success ? workflowSchemaFieldFromRecord(parsed.data) : null;
 }
 
 export function parseWorkflowSchemaFields(
   value: unknown
 ): WorkflowSchemaField[] {
-  return parseNestedWorkflowSchemaFields(value);
+  const parsed = workflowFieldRecordArraySchema.safeParse(value);
+  return parsed.success ? workflowSchemaFieldsFromRecords(parsed.data) : [];
 }
 
 export function parseWorkflowSchemaFieldsString(
@@ -272,31 +393,23 @@ export function parseWorkflowSchemaFieldsString(
 }
 
 function resolveConstBranches(
-  nonNullBranches: unknown[],
-  description: unknown
-): Record<string, unknown> | null {
-  const allConst = nonNullBranches.every(
-    (b: unknown) => isRecord(b) && "const" in b
-  );
+  nonNullBranches: JsonSchemaNode[],
+  description: string | undefined
+): JsonSchemaNode | null {
+  const allConst = nonNullBranches.every((branch) => "const" in branch);
   if (!allConst) {
     return null;
   }
 
-  const constValues: string[] = [];
-  for (const b of nonNullBranches) {
-    if (
-      isRecord(b) &&
-      (typeof b.const === "string" || typeof b.const === "number")
-    ) {
-      constValues.push(String(b.const));
-    }
-  }
+  const constValues = toEnumValues(
+    nonNullBranches.map((branch) => branch.const)
+  );
 
-  const result: Record<string, unknown> = { type: "string" };
-  if (constValues.length > 0) {
+  const result: JsonSchemaNode = { type: "string" };
+  if (constValues) {
     result.enum = constValues;
   }
-  if (typeof description === "string") {
+  if (description !== undefined) {
     result.description = description;
   }
   return result;
@@ -309,21 +422,16 @@ function resolveConstBranches(
  * nullable union.
  */
 function resolveNullableJsonSchema(
-  value: Record<string, unknown>
-): Record<string, unknown> | null {
-  let branches: unknown[] | null = null;
-  if (Array.isArray(value.anyOf)) {
-    branches = value.anyOf;
-  } else if (Array.isArray(value.oneOf)) {
-    branches = value.oneOf;
-  }
+  value: JsonSchemaNode
+): JsonSchemaNode | null {
+  const branches = value.anyOf ?? value.oneOf;
 
   if (!branches || branches.length < 2) {
     return null;
   }
 
-  const nonNullBranches = branches.filter(
-    (b: unknown) => isRecord(b) && b.type !== "null"
+  const nonNullBranches = compact(branches).filter(
+    (branch) => branch.type !== "null"
   );
 
   if (nonNullBranches.length === 0) {
@@ -331,9 +439,9 @@ function resolveNullableJsonSchema(
   }
 
   // Single non-null branch (e.g. `"string | null"` → `{ anyOf: [{type:"string"}, {type:"null"}] }`)
-  if (nonNullBranches.length === 1 && isRecord(nonNullBranches[0])) {
+  if (nonNullBranches.length === 1) {
     const branch = nonNullBranches[0];
-    if (typeof value.description === "string" && !branch.description) {
+    if (value.description !== undefined && !branch.description) {
       return { ...branch, description: value.description };
     }
     return branch;
@@ -345,7 +453,7 @@ function resolveNullableJsonSchema(
 
 function parseNonNullableJsonSchemaProperty(
   name: string,
-  value: Record<string, unknown>
+  value: JsonSchemaNode
 ): WorkflowSchemaField | null {
   const normalizedType =
     normalizeJsonSchemaType(value.type) ||
@@ -356,8 +464,7 @@ function parseNonNullableJsonSchemaProperty(
     return null;
   }
 
-  const description =
-    typeof value.description === "string" ? value.description : undefined;
+  const description = value.description;
 
   if (
     normalizedType === "string" ||
@@ -365,7 +472,7 @@ function parseNonNullableJsonSchemaProperty(
     normalizedType === "boolean" ||
     normalizedType === "timestamp"
   ) {
-    const enumValues = extractEnumValues(value);
+    const enumValues = toEnumValues(value.enum);
     return {
       name,
       type:
@@ -386,7 +493,7 @@ function parseNonNullableJsonSchemaProperty(
     };
   }
 
-  const items = isRecord(value.items) ? value.items : null;
+  const items = value.items;
   let normalizedItemType =
     normalizeJsonSchemaType(items?.type) ||
     (items?.properties ? "object" : null) ||
@@ -413,12 +520,8 @@ function parseNonNullableJsonSchemaProperty(
 
 function parseJsonSchemaProperty(
   name: string,
-  value: unknown
+  value: JsonSchemaNode
 ): WorkflowSchemaField | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
   const resolved = resolveNullableJsonSchema(value);
   if (resolved) {
     const field = parseNonNullableJsonSchemaProperty(name, resolved);
@@ -431,13 +534,17 @@ function parseJsonSchemaProperty(
   return parseNonNullableJsonSchemaProperty(name, value);
 }
 
-function parseJsonSchemaProperties(value: unknown): WorkflowSchemaField[] {
-  if (!isRecord(value)) {
+function parseJsonSchemaProperties(
+  properties: JsonSchemaProperties | undefined
+): WorkflowSchemaField[] {
+  if (!properties) {
     return [];
   }
 
-  return Object.entries(value).flatMap(([name, property]) => {
-    const parsedProperty = parseJsonSchemaProperty(name, property);
+  return Object.entries(properties).flatMap(([name, property]) => {
+    const parsedProperty = property
+      ? parseJsonSchemaProperty(name, property)
+      : null;
     return parsedProperty ? [parsedProperty] : [];
   });
 }
@@ -449,18 +556,21 @@ export function parseWorkflowSchemaFieldsOrJsonSchema(
     return parseWorkflowSchemaFields(value);
   }
 
-  if (!isRecord(value)) {
+  const parsed = jsonSchemaNodeSchema.safeParse(value);
+  if (!parsed.success) {
     return null;
   }
 
+  const document = parsed.data;
   const rootType =
-    normalizeJsonSchemaType(value.type) || (value.properties ? "object" : null);
+    normalizeJsonSchemaType(document.type) ||
+    (document.properties ? "object" : null);
 
   if (rootType && rootType !== "object") {
     return null;
   }
 
-  return parseJsonSchemaProperties(value.properties);
+  return parseJsonSchemaProperties(document.properties);
 }
 
 function workflowSchemaFieldToJsonSchemaNode(
@@ -548,12 +658,14 @@ export function workflowSchemaFieldsToJsonSchemaDocument(
 }
 
 function deriveConfigFieldType(
-  property: Record<string, unknown>
+  property: JsonSchemaNode
 ): ActionConfigFieldBase["type"] {
-  if (Array.isArray(property.enum)) {
+  if (property.enum) {
     return "select";
   }
 
+  // A `type` list (`["string", "null"]`) carries no single form control, so it
+  // falls through to the default below.
   const type = typeof property.type === "string" ? property.type : undefined;
 
   switch (type) {
@@ -569,19 +681,16 @@ function deriveConfigFieldType(
   }
 }
 
-function deriveConfigFieldLabel(
-  key: string,
-  property: Record<string, unknown>
-): string {
-  return typeof property.description === "string" && property.description.trim()
+function deriveConfigFieldLabel(key: string, property: JsonSchemaNode): string {
+  return property.description?.trim()
     ? property.description.trim()
     : startCase(key);
 }
 
 function deriveSelectOptions(
-  property: Record<string, unknown>
+  property: JsonSchemaNode
 ): ActionConfigFieldBase["options"] {
-  if (Array.isArray(property.enum)) {
+  if (property.enum) {
     return property.enum.map((v: unknown) => ({
       value: String(v),
       label: String(v),
@@ -595,7 +704,7 @@ function deriveSelectOptions(
 
 function jsonSchemaPropertyToConfigField(
   key: string,
-  property: Record<string, unknown>,
+  property: JsonSchemaNode,
   required: boolean
 ): ActionConfigFieldBase {
   const fieldType = deriveConfigFieldType(property);
@@ -617,15 +726,16 @@ function jsonSchemaPropertyToConfigField(
         : JSON.stringify(property.default);
   }
 
-  if (
-    Array.isArray(property.examples) &&
-    property.examples.length > 0 &&
-    property.examples[0] !== undefined
-  ) {
-    field.example = String(property.examples[0]);
+  // An example is any JSON value, so it is rendered the same way as a default.
+  const [firstExample] = property.examples ?? [];
+  if (firstExample !== undefined) {
+    field.example =
+      typeof firstExample === "string"
+        ? firstExample
+        : JSON.stringify(firstExample);
   }
 
-  if (fieldType === "number" && typeof property.minimum === "number") {
+  if (fieldType === "number" && property.minimum !== undefined) {
     field.min = property.minimum;
   }
 
@@ -636,25 +746,29 @@ function jsonSchemaPropertyToConfigField(
   return field;
 }
 
+/**
+ * `Record<string, unknown>` is the parameter type because that is what
+ * Standard Schema's `jsonSchema.output()` hands back, so the document is parsed
+ * here to reach its keywords with types attached.
+ */
 export function configFieldsFromJsonSchema(
   jsonSchema: Record<string, unknown>
 ): ActionConfigFieldBase[] {
-  const properties = isRecord(jsonSchema.properties)
-    ? jsonSchema.properties
-    : undefined;
+  const parsed = jsonSchemaNodeSchema.safeParse(jsonSchema);
+  if (!parsed.success) {
+    return [];
+  }
 
+  const { properties, required } = parsed.data;
   if (!properties) {
     return [];
   }
 
-  const requiredSet = new Set(
-    Array.isArray(jsonSchema.required) ? jsonSchema.required : []
-  );
+  const requiredSet = new Set(required ?? []);
 
-  return Object.entries(properties).flatMap(([key, value]) => {
-    if (!isRecord(value)) {
-      return [];
-    }
-    return [jsonSchemaPropertyToConfigField(key, value, requiredSet.has(key))];
-  });
+  return Object.entries(properties).flatMap(([key, property]) =>
+    property
+      ? [jsonSchemaPropertyToConfigField(key, property, requiredSet.has(key))]
+      : []
+  );
 }

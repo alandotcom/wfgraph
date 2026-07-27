@@ -48,6 +48,28 @@ describe("parseWorkflowSchemaField", () => {
       description: undefined,
     });
   });
+
+  it("treats a mistyped itemType as absent, leaving a plain string field", () => {
+    // Only a named item type makes a field an array. A number in `itemType`
+    // names nothing, so the field falls back to the default type.
+    expect(parseWorkflowSchemaField({ name: "tags", itemType: 5 })).toEqual({
+      name: "tags",
+      type: "string",
+      description: undefined,
+    });
+  });
+
+  it("still reads an unrecognized item type name as an array of strings", () => {
+    expect(
+      parseWorkflowSchemaField({ name: "tags", itemType: "bogus" })
+    ).toEqual({
+      name: "tags",
+      type: "array",
+      itemType: "string",
+      fields: undefined,
+      description: undefined,
+    });
+  });
 });
 
 describe("parseWorkflowSchemaFieldsString", () => {
@@ -112,6 +134,41 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema", () => {
     });
 
     expect(schema).toBeNull();
+  });
+
+  it("drops one malformed property and still reads the rest of the document", () => {
+    // A saved schema with one broken member has to stay readable, otherwise the
+    // whole schema panel empties over a single bad field.
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        notANode: "nope",
+        mistypedDescription: { type: "number", description: 7 },
+      },
+    });
+
+    expect(schema).toEqual([
+      { name: "id", type: "string", description: undefined },
+      { name: "mistypedDescription", type: "number", description: undefined },
+    ]);
+  });
+
+  it("drops a property whose only type evidence is an unusable properties or items", () => {
+    // `properties: "nope"` is no object map and `items: "nope"` is no node, so
+    // neither says what the field holds and neither field is offered.
+    const schema = parseWorkflowSchemaFieldsOrJsonSchema({
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        brokenObject: { properties: "nope" },
+        brokenArray: { items: "nope" },
+      },
+    });
+
+    expect(schema).toEqual([
+      { name: "id", type: "string", description: undefined },
+    ]);
   });
 });
 
@@ -284,6 +341,21 @@ describe("configFieldsFromJsonSchema", () => {
     expect(fields.find((f) => f.key === "phone")?.required).toBeUndefined();
   });
 
+  it("ignores a required list that is not all field names", () => {
+    // `required` is a list of property names. A member that is not a name makes
+    // the list unreadable, and both arktype and zod emit string arrays, so a
+    // mixed list means the document was hand-edited and is not trusted.
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      required: ["email", 7],
+      properties: {
+        email: { type: "string", description: "Email" },
+      },
+    });
+
+    expect(fields[0]?.required).toBeUndefined();
+  });
+
   it("maps default values to defaultValue as string", () => {
     const fields = configFieldsFromJsonSchema({
       type: "object",
@@ -308,6 +380,21 @@ describe("configFieldsFromJsonSchema", () => {
     });
 
     expect(fields[0]?.example).toBe("https://example.com/webhook");
+  });
+
+  it("renders a structured example as its JSON text, the way a default is rendered", () => {
+    const fields = configFieldsFromJsonSchema({
+      type: "object",
+      properties: {
+        payload: {
+          type: "string",
+          description: "Payload",
+          examples: [{ deep: 1 }],
+        },
+      },
+    });
+
+    expect(fields[0]?.example).toBe('{"deep":1}');
   });
 
   it("returns empty array for schema without properties", () => {
