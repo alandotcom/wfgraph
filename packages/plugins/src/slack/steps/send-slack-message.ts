@@ -5,6 +5,7 @@ import {
   withStepLogging,
 } from "@/backend/lib/steps/step-handler";
 import { getErrorMessage } from "@/shared/utils";
+import type { StepError } from "@/shared/workflow/step-result";
 import type { SlackCredentials } from "@/slack/credentials";
 
 type SlackWebApiError = {
@@ -16,7 +17,7 @@ type SlackWebApiError = {
 
 type SendSlackMessageResult =
   | { success: true; ts: string; channel: string; reasonCode?: string }
-  | { success: false; error: string };
+  | { success: false; error: StepError };
 
 export type SendSlackMessageCoreInput = {
   slackChannel: string;
@@ -68,8 +69,10 @@ async function stepHandler(
   if (!apiKey) {
     return {
       success: false,
-      error:
-        "SLACK_API_KEY is not configured. Please add it in Project Integrations.",
+      error: {
+        message:
+          "SLACK_API_KEY is not configured. Please add it in Project Integrations.",
+      },
     };
   }
 
@@ -91,7 +94,9 @@ async function stepHandler(
   } catch (error) {
     return {
       success: false,
-      error: `Failed to send Slack message: ${getSlackErrorMessage(error)}`,
+      error: {
+        message: `Failed to send Slack message: ${getSlackErrorMessage(error)}`,
+      },
     };
   }
 }

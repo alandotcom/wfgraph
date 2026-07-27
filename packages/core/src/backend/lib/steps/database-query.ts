@@ -10,11 +10,12 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres, { type Sql } from "postgres";
 import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import { validateWorkflowOutputAgainstSchema } from "@/shared/workflow/schema-validation";
+import type { StepError } from "@/shared/workflow/step-result";
 import { type StepInput, withStepLogging } from "./step-handler";
 
 type DatabaseQueryResult =
   | { success: true; rows: unknown; count: number }
-  | { success: false; error: string };
+  | { success: false; error: StepError };
 
 export type DatabaseQueryInput = StepInput & {
   integrationId?: string;
@@ -90,7 +91,7 @@ async function databaseQuery(
 ): Promise<DatabaseQueryResult> {
   const queryResult = resolveQueryString(input);
   if (!queryResult.ok) {
-    return { success: false, error: queryResult.error };
+    return { success: false, error: { message: queryResult.error } };
   }
 
   const credentials = input.integrationId
@@ -102,8 +103,10 @@ async function databaseQuery(
   if (!databaseUrl) {
     return {
       success: false,
-      error:
-        "DATABASE_URL is not configured. Please add it in Project Integrations.",
+      error: {
+        message:
+          "DATABASE_URL is not configured. Please add it in Project Integrations.",
+      },
     };
   }
 
@@ -128,7 +131,7 @@ async function databaseQuery(
     if (!schemaValidation.ok) {
       return {
         success: false,
-        error: schemaValidation.error,
+        error: { message: schemaValidation.error },
       };
     }
 
@@ -141,7 +144,9 @@ async function databaseQuery(
     await cleanupClient(client);
     return {
       success: false,
-      error: `Database query failed: ${getDatabaseErrorMessage(error)}`,
+      error: {
+        message: `Database query failed: ${getDatabaseErrorMessage(error)}`,
+      },
     };
   }
 }

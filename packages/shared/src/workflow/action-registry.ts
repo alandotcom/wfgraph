@@ -15,6 +15,7 @@ import {
   jsonSchemaLibraryOptions,
   parseWorkflowSchemaFieldsOrJsonSchema,
 } from "@/workflow/schema-codec";
+import type { StepError, StepResult } from "@/workflow/step-result";
 
 /**
  * A Standard Schema that supports both validation and JSON Schema generation.
@@ -43,9 +44,12 @@ export type RuntimeActionExecuteInput = {
   context: RuntimeActionExecutionContext;
 };
 
-export type RuntimeActionResult =
-  | { success: true; data?: unknown }
-  | { success: false; error?: string | { message?: string } };
+/**
+ * What a runtime action's `execute` resolves to. A runtime action answers with
+ * the same wrapper every other step returns, so the engine handles a runtime
+ * action and a plugin step identically.
+ */
+export type RuntimeActionResult = StepResult;
 
 export type RuntimeActionDefinition = {
   /**
@@ -128,7 +132,7 @@ export type CreateActionInput<TPayload extends Record<string, unknown>> = Omit<
 /** Typed success result when outputSchema is provided. */
 export type TypedActionResult<TOutput extends Record<string, unknown>> =
   | { success: true; data: TOutput }
-  | { success: false; error?: string | { message?: string } };
+  | { success: false; error: StepError };
 
 /**
  * A Standard Schema that also implements the JSON Schema interface
@@ -165,10 +169,6 @@ export type RuntimeActionMetadata = Omit<RuntimeActionDefinition, "execute">;
 
 const runtimeActionRegistry = new Map<string, RuntimeActionDefinition>();
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isPromiseLike<T>(value: unknown): value is Promise<T> {
   return (
     (typeof value === "object" || typeof value === "function") &&
@@ -198,7 +198,7 @@ function validateActionPayload<TPayload extends Record<string, unknown>>(
     return;
   }
 
-  if (!("value" in parsed && isRecord(parsed.value))) {
+  if (!("value" in parsed)) {
     return;
   }
 

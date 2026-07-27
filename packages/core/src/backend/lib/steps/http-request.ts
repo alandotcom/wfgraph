@@ -4,11 +4,18 @@
 
 import { getErrorMessage } from "@/shared/utils";
 import { validateWorkflowOutputAgainstSchema } from "@/shared/workflow/schema-validation";
+import type { StepError } from "@/shared/workflow/step-result";
 import { type StepInput, withStepLogging } from "./step-handler";
 
+/**
+ * `status` sits beside `error` on the failure arm, matching how the success arm
+ * carries it beside `data`: it describes the response, and a failure may have no
+ * response at all. A 500 reports a status; a request that timed out has none,
+ * while both supply a message saying what went wrong.
+ */
 type HttpRequestResult =
   | { success: true; data: unknown; status: number }
-  | { success: false; error: string; status?: number };
+  | { success: false; error: StepError; status?: number };
 
 export type HttpRequestInput = StepInput & {
   endpoint: string;
@@ -93,7 +100,7 @@ async function httpRequest(
   if (!input.endpoint) {
     return {
       success: false,
-      error: "HTTP request failed: URL is required",
+      error: { message: "HTTP request failed: URL is required" },
     };
   }
 
@@ -110,7 +117,9 @@ async function httpRequest(
 
         return {
           success: false,
-          error: `HTTP request failed with status ${response.status}: ${errorText}`,
+          error: {
+            message: `HTTP request failed with status ${response.status}: ${errorText}`,
+          },
           status: response.status,
         };
       }
@@ -126,7 +135,7 @@ async function httpRequest(
       if (!schemaValidation.ok) {
         return {
           success: false,
-          error: schemaValidation.error,
+          error: { message: schemaValidation.error },
         };
       }
 
@@ -139,13 +148,15 @@ async function httpRequest(
       if (isTimeoutError(error)) {
         return {
           success: false,
-          error: `HTTP request failed: request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`,
+          error: {
+            message: `HTTP request failed: request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`,
+          },
         };
       }
 
       return {
         success: false,
-        error: `HTTP request failed: ${getErrorMessage(error)}`,
+        error: { message: `HTTP request failed: ${getErrorMessage(error)}` },
       };
     }
   };

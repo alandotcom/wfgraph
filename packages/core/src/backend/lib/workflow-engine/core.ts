@@ -8,6 +8,7 @@ import { getAppLogger } from "@/backend/lib/logger";
 import {
   getActionLabel,
   getStepImporter,
+  loadStepFunction,
   type StepImporter,
 } from "@/backend/lib/step-registry";
 import type { StepContext } from "@/backend/lib/steps/step-handler";
@@ -24,6 +25,7 @@ import {
   unwrapStepOutput,
 } from "@/shared/workflow/node-references";
 import { validateWorkflowOutputAgainstSchema } from "@/shared/workflow/schema-validation";
+import type { StepResult, StepReturn } from "@/shared/workflow/step-result";
 import {
   evaluateWorkflowTrigger,
   resolveWorkflowTriggerDefinition,
@@ -52,7 +54,13 @@ export type { WorkflowStore } from "./store";
  */
 const WAIT_ACTION_TYPE = "Wait";
 
-// System actions that don't have plugins - maps to module import functions
+/**
+ * Built-in actions dispatched by export name, the same way a plugin step is.
+ *
+ * Condition and Wait are built-in too but are absent here: the engine calls
+ * both directly, because it evaluates the condition expression itself and the
+ * wait suspends the run through the durable runtime.
+ */
 const SYSTEM_ACTIONS: Record<string, StepImporter> = {
   "Database Query": {
     importer: () => import("@/backend/lib/steps/database-query"),
@@ -61,10 +69,6 @@ const SYSTEM_ACTIONS: Record<string, StepImporter> = {
   "HTTP Request": {
     importer: () => import("@/backend/lib/steps/http-request"),
     stepFunction: "httpRequestStep",
-  },
-  Condition: {
-    importer: () => import("@/backend/lib/steps/condition"),
-    stepFunction: "conditionStep",
   },
 };
 
@@ -84,10 +88,19 @@ type NodeOutputs = Record<string, { label: string; data: unknown }>;
  */
 type NodeWorkOutcome = {
   result: ExecutionResult;
-  /** Disabled nodes fan out to every branch instead of routing on a condition. */
-  skippedDisabled?: boolean;
   /** Action node without an actionType: recorded as failed, no output stored. */
   unconfigured?: boolean;
+  /**
+   * Trigger routing decided this event is none of the workflow's business, so
+   * the branch below the trigger stays unrun.
+   */
+  triggerIgnored?: boolean;
+  /**
+   * The branch a Condition node picked. Absent on every other node, and absent
+   * on a disabled Condition node, which evaluated nothing and therefore fans
+   * out to every branch below it.
+   */
+  conditionValue?: boolean;
 };
 
 export type WorkflowExecutionInput = {
@@ -118,6 +131,10 @@ type ConditionEvalResult = {
   result: boolean;
 };
 
+/**
+ * A node output as read by a CEL condition: JSON that came back from a plugin's
+ * own API call, so its shape belongs to that API and nothing here knows it.
+ */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -130,30 +147,6 @@ function readConfigString(
   return typeof value === "string" ? value : undefined;
 }
 
-function hasSuccessFlag(
-  value: unknown
-): value is { success: boolean; error?: unknown } {
-  return isRecord(value) && typeof value.success === "boolean";
-}
-
-function readStepErrorMessage(value: unknown): string | undefined {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (isRecord(value) && typeof value.message === "string") {
-    return value.message;
-  }
-}
-
-function hasHaltBranch(value: unknown): boolean {
-  return isRecord(value) && value.haltBranch === true;
-}
-
-/** Unwraps a standardized `{ success, data }` step result for logging. */
-function readStepData(value: unknown): unknown {
-  return isRecord(value) && "data" in value ? value.data : value;
-}
-
 /**
  * Opens a step-log row around a runtime-extension action, then closes it with
  * the outcome. Plugin and system steps do their own logging inside the step
@@ -164,12 +157,12 @@ function readStepData(value: unknown): unknown {
  * store. A logging failure must never fail the step it is describing, so every
  * write is best-effort.
  */
-async function withStoreStepLogging<TOutput>(
+async function withStoreStepLogging(
   store: WorkflowStore,
   context: StepContext,
   // Runtime actions may be written sync or async; accept either.
-  runStep: () => TOutput | Promise<TOutput>
-): Promise<TOutput> {
+  runStep: () => StepResult | Promise<StepResult>
+): Promise<StepResult> {
   const { executionId } = context;
   // No execution to attach rows to (a store that persists still needs an id).
   const handle = executionId
@@ -202,15 +195,12 @@ async function withStoreStepLogging<TOutput>(
   try {
     const result = await runStep();
 
-    if (hasSuccessFlag(result) && !result.success) {
-      const message =
-        readStepErrorMessage(result.error) ?? "Step execution failed";
-      await complete("error", result.error ?? { message }, message);
-    } else if (hasSuccessFlag(result)) {
-      // Standardized results log their payload rather than the wrapper.
-      await complete("success", readStepData(result));
+    if (result.success) {
+      // A success logs its payload. An action that reports success and nothing
+      // else leaves only the wrapper to log.
+      await complete("success", "data" in result ? result.data : result);
     } else {
-      await complete("success", result);
+      await complete("error", result.error, result.error.message);
     }
 
     return result;
@@ -218,17 +208,6 @@ async function withStoreStepLogging<TOutput>(
     await complete("error", undefined, await getErrorMessageAsync(error));
     throw error;
   }
-}
-
-function isTriggeredFalse(value: unknown): boolean {
-  return isRecord(value) && value.triggered === false;
-}
-
-function readConditionValue(value: unknown): boolean | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  return typeof value.condition === "boolean" ? value.condition : undefined;
 }
 
 function getConditionNextNodeIds(input: {
@@ -336,7 +315,7 @@ function executeActionStep(input: {
   outputs: NodeOutputs;
   context: StepContext;
   store: WorkflowStore;
-}) {
+}): Promise<StepReturn> {
   return withSpan(
     "rova.workflow.action.execute",
     {
@@ -354,7 +333,7 @@ async function executeActionStepInner(input: {
   outputs: NodeOutputs;
   context: StepContext;
   store: WorkflowStore;
-}) {
+}): Promise<StepReturn> {
   const { actionType, config, outputs, context, store } = input;
   const integrationId = readConfigString(config, "integrationId");
 
@@ -364,17 +343,12 @@ async function executeActionStepInner(input: {
     _context: context,
   };
 
-  // Special handling for Condition action - needs template evaluation
+  // The Condition action evaluates its expression here, against the outputs of
+  // the nodes upstream, and the step it calls records the decision. That step is
+  // imported directly so its answer keeps its type all the way back to the
+  // traversal, which routes on it.
   if (actionType === "Condition") {
-    const systemAction = SYSTEM_ACTIONS.Condition;
-    const module = await systemAction.importer();
-    const stepFn = module[systemAction.stepFunction];
-    if (typeof stepFn !== "function") {
-      return {
-        success: false,
-        error: `Step function "${systemAction.stepFunction}" not found for action "${actionType}".`,
-      };
-    }
+    const { conditionStep } = await import("@/backend/lib/steps/condition");
     const originalExpression = stepInput.condition;
     const { result: evaluatedCondition } = evaluateConditionExpression(
       originalExpression,
@@ -384,7 +358,7 @@ async function executeActionStepInner(input: {
       evaluatedCondition,
     });
 
-    return await stepFn({
+    return await conditionStep({
       condition: evaluatedCondition,
       // Include original expression for step logs.
       expression:
@@ -396,12 +370,13 @@ async function executeActionStepInner(input: {
   // Check system actions first (Database Query, HTTP Request)
   const systemAction = SYSTEM_ACTIONS[actionType];
   if (systemAction) {
-    const module = await systemAction.importer();
-    const stepFunction = module[systemAction.stepFunction];
-    if (typeof stepFunction !== "function") {
+    const stepFunction = await loadStepFunction(systemAction);
+    if (!stepFunction) {
       return {
         success: false,
-        error: `Step function "${systemAction.stepFunction}" not found for action "${actionType}".`,
+        error: {
+          message: `Step function "${systemAction.stepFunction}" not found for action "${actionType}".`,
+        },
       };
     }
     return await stepFunction(stepInput);
@@ -429,22 +404,25 @@ async function executeActionStepInner(input: {
       );
     }
 
-    const module = await stepImporter.importer();
-    const stepFunction = module[stepImporter.stepFunction];
-    if (typeof stepFunction === "function") {
+    const stepFunction = await loadStepFunction(stepImporter);
+    if (stepFunction) {
       return await stepFunction(stepInput);
     }
 
     return {
       success: false,
-      error: `Step function "${stepImporter.stepFunction}" not found in module for action "${actionType}". Check that the plugin exports the correct function name.`,
+      error: {
+        message: `Step function "${stepImporter.stepFunction}" not found in module for action "${actionType}". Check that the plugin exports the correct function name.`,
+      },
     };
   }
 
   // Fallback for unknown action types
   return {
     success: false,
-    error: `Unknown action type: "${actionType}". This action is not registered in the plugin system. Available system actions: ${Object.keys(SYSTEM_ACTIONS).join(", ")}.`,
+    error: {
+      message: `Unknown action type: "${actionType}". This action is not registered in the plugin system. Available system actions: ${Object.keys(SYSTEM_ACTIONS).join(", ")}.`,
+    },
   };
 }
 
@@ -1484,16 +1462,15 @@ async function executeWorkflowInner(
     // Disabled nodes emit a null output so downstream templates don't hard-fail.
     if (node.data.enabled === false) {
       namedNodeLogger.info("Skipping disabled node");
-      return {
-        result: { success: true, data: null },
-        skippedDisabled: true,
-      };
+      return { result: { success: true, data: null } };
     }
 
     let result: ExecutionResult = {
       success: false,
       error: "Node execution did not produce a result.",
     };
+    let triggerIgnored = false;
+    let conditionValue: boolean | undefined;
 
     if (node.data.type === "trigger") {
       namedNodeLogger.debug("Executing trigger node");
@@ -1536,6 +1513,7 @@ async function executeWorkflowInner(
       }
 
       if (ignoreReason) {
+        triggerIgnored = true;
         triggerData = {
           ...triggerData,
           triggered: false,
@@ -1650,9 +1628,12 @@ async function executeWorkflowInner(
       // IMPORTANT: We pass integrationId via config, not actual credentials
       // Steps fetch credentials internally using fetchCredentials(integrationId)
       actionLogger.debug("Calling executeActionStep");
-      let stepResult: unknown;
+
+      // The Wait action is the one action the engine runs itself, so its result
+      // is an ExecutionResult already and carries the branch-halting decision
+      // the durable runtime made. Everything else comes back as a StepResult.
       if (actionType === WAIT_ACTION_TYPE) {
-        stepResult = await executeWaitAction({
+        const waitResult = await executeWaitAction({
           config: processedConfig,
           context: stepContext,
           runtime,
@@ -1662,43 +1643,56 @@ async function executeWorkflowInner(
           workflowRunId: currentWorkflowRunId,
           eventContext,
         });
+
+        if (waitResult.success) {
+          result = {
+            success: true,
+            data: waitResult,
+            haltBranch: waitResult.haltBranch === true,
+          };
+        } else {
+          actionLogger.error("Wait failed", {
+            nodeId: node.id,
+            nodeLabel: node.data.label,
+            error: waitResult.error,
+          });
+          result = { success: false, error: waitResult.error };
+        }
       } else {
-        stepResult = await executeActionStep({
+        const stepResult = await executeActionStep({
           actionType,
           config: processedConfig,
           outputs,
           context: stepContext,
           store,
         });
-      }
 
-      actionLogger.debug("Step result received", {
-        hasResult: !!stepResult,
-        resultType: typeof stepResult,
-      });
+        // The Condition step's whole answer is the branch it picked, so it
+        // carries a `condition` where every other step carries a success flag.
+        // Reading the branch here, while it still has a type, saves the
+        // traversal from digging the boolean back out of the stored output.
+        if ("condition" in stepResult) {
+          conditionValue = stepResult.condition;
+        }
 
-      // Check if the step returned an error result
-      if (hasSuccessFlag(stepResult) && !stepResult.success) {
-        // Support both old format (error: string) and new format (error: { message: string })
-        const errorMessage =
-          readStepErrorMessage(stepResult.error) ??
-          `Step "${actionType}" in node "${node.data.label || node.id}" failed without a specific error message.`;
-        actionLogger.error("Action step failed", {
-          actionType,
-          nodeId: node.id,
-          nodeLabel: node.data.label,
-          error: errorMessage,
-        });
-        result = {
-          success: false,
-          error: errorMessage,
-        };
-      } else {
-        result = {
-          success: true,
-          data: stepResult,
-          haltBranch: hasHaltBranch(stepResult),
-        };
+        if ("success" in stepResult && !stepResult.success) {
+          const errorMessage = stepResult.error.message;
+          actionLogger.error("Action step failed", {
+            actionType,
+            nodeId: node.id,
+            nodeLabel: node.data.label,
+            error: errorMessage,
+          });
+          result = {
+            success: false,
+            error: errorMessage,
+          };
+        } else {
+          result = {
+            success: true,
+            data: stepResult,
+          };
+        }
       }
     } else {
       namedNodeLogger.error("Unknown node type");
@@ -1708,7 +1702,7 @@ async function executeWorkflowInner(
       };
     }
 
-    return { result };
+    return { result, triggerIgnored, conditionValue };
   }
 
   /**
@@ -1788,11 +1782,7 @@ async function executeWorkflowInner(
         let shouldContinueDownstream = true;
 
         // Webhook trigger routing may intentionally ignore an event.
-        if (
-          node.data.type === "trigger" &&
-          result.data &&
-          isTriggeredFalse(result.data)
-        ) {
+        if (outcome.triggerIgnored) {
           namedNodeLogger.info(
             "Skipping downstream nodes because trigger was not fired"
           );
@@ -1809,12 +1799,12 @@ async function executeWorkflowInner(
         // Check if this is a condition node. A disabled condition node never
         // evaluated anything, so it fans out to every branch instead.
         const isConditionNode =
-          outcome.skippedDisabled !== true &&
+          node.data.enabled !== false &&
           node.data.type === "action" &&
           node.data.config?.actionType === "Condition";
 
         if (isConditionNode && shouldContinueDownstream) {
-          const conditionResult = readConditionValue(result.data);
+          const conditionResult = outcome.conditionValue;
           namedNodeLogger.debug("Condition node result", {
             conditionResult,
           });

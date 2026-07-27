@@ -5,6 +5,7 @@
 
 import { getAppLogger } from "@/backend/lib/logger";
 import { redactSensitiveData } from "@/backend/lib/utils/redact";
+import type { StepReturn } from "@/shared/workflow/step-result";
 import {
   logStepCompleteDb,
   logStepStartDb,
@@ -171,35 +172,6 @@ export type StepInputWithWorkflow = {
   _context?: StepContextWithWorkflow;
 };
 
-type StandardizedStepResult =
-  | { success: true; data?: unknown }
-  | { success: false; error?: string | { message: string } };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isStandardizedStepResult(
-  value: unknown
-): value is StandardizedStepResult {
-  if (!isRecord(value) || typeof value.success !== "boolean") {
-    return false;
-  }
-
-  if (value.success) {
-    return true;
-  }
-
-  if (!("error" in value) || value.error === undefined) {
-    return true;
-  }
-
-  return (
-    typeof value.error === "string" ||
-    (isRecord(value.error) && typeof value.error.message === "string")
-  );
-}
-
 function hasWorkflowCompleteContext(
   context: StepContext | undefined
 ): context is StepContextWithWorkflow {
@@ -222,7 +194,7 @@ function hasWorkflowCompleteContext(
  *   });
  * }
  */
-export async function withStepLogging<TOutput>(
+export async function withStepLogging<TOutput extends StepReturn>(
   input: StepInput,
   stepLogic: () => Promise<TOutput>
 ): Promise<TOutput> {
@@ -233,31 +205,24 @@ export async function withStepLogging<TOutput>(
 
   try {
     const result = await stepLogic();
-    const standardizedResult = isStandardizedStepResult(result)
-      ? result
-      : undefined;
+    // Widened so the two shapes can be told apart by the property each carries.
+    // The caller still gets its own narrower type back.
+    const reported: StepReturn = result;
 
-    if (standardizedResult?.success === false) {
-      // Support both old format (error: string) and new format (error: { message: string })
-      const errorMessage =
-        typeof standardizedResult.error === "string"
-          ? standardizedResult.error
-          : standardizedResult.error?.message || "Step execution failed";
-      // Log just the error object, not the full result
-      const loggedOutput = standardizedResult.error ?? {
-        message: errorMessage,
-      };
-      await logStepComplete(logInfo, "error", loggedOutput, errorMessage);
-    } else if (standardizedResult?.success === true) {
-      // For standardized success results, log just the data
+    if (!("success" in reported)) {
+      // The Condition step, whose whole answer is the branch it picked.
+      await logStepComplete(logInfo, "success", reported);
+    } else if (reported.success) {
+      // A success logs its payload. A step that reports success without one has
+      // nothing but the wrapper to show.
+      await logStepComplete(logInfo, "success", reported.data ?? reported);
+    } else {
       await logStepComplete(
         logInfo,
-        "success",
-        standardizedResult.data ?? standardizedResult
+        "error",
+        reported.error,
+        reported.error.message
       );
-    } else {
-      // For non-standardized results, log as-is
-      await logStepComplete(logInfo, "success", result);
     }
 
     // If this step should also log workflow completion, do it now
