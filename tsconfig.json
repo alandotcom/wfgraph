@@ -15,6 +15,7 @@
     "incremental": true,
     "types": ["bun-types", "node"],
     "strictNullChecks": true,
+    "noImplicitReturns": true,
     "paths": {
       "@rova/shared": ["./packages/shared/src"],
       "@rova/core": ["./packages/core/src/index.ts"],

@@ -48,7 +48,7 @@ export function parseWebhookMockInput(
 ): Record<string, unknown> | undefined {
   const mockInputRaw = asNonEmptyString(config?.webhookMockRequest);
   if (!mockInputRaw) {
-    return;
+    return undefined;
   }
 
   try {
@@ -57,10 +57,10 @@ export function parseWebhookMockInput(
       return parsed.data;
     }
   } catch {
-    return;
+    return undefined;
   }
 
-  return;
+  return undefined;
 }
 
 export function resolveWebhookTriggerRuntimeConfig(

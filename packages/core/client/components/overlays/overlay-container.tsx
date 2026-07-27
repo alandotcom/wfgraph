@@ -99,6 +99,8 @@ function DesktopOverlayContainer() {
         setMinHeight(height);
       }
     }
+
+    return undefined;
   }, [isOpen]);
 
   // Use live stack for options checks (only when open)
@@ -125,6 +127,8 @@ function DesktopOverlayContainer() {
       document.addEventListener("keydown", handleEscapeKey);
       return () => document.removeEventListener("keydown", handleEscapeKey);
     }
+
+    return undefined;
   }, [isOpen, handleEscapeKey]);
 
   if (!isOpen) {
@@ -236,6 +240,8 @@ function MobileOverlayContainer() {
         setMinHeight(height);
       }
     }
+
+    return undefined;
   }, [isOpen]);
 
   // Use live stack for options checks (only when open)
@@ -256,6 +262,8 @@ function MobileOverlayContainer() {
       document.addEventListener("keydown", handleEscapeKey);
       return () => document.removeEventListener("keydown", handleEscapeKey);
     }
+
+    return undefined;
   }, [isOpen, handleEscapeKey]);
 
   return (

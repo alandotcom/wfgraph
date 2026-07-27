@@ -29,7 +29,7 @@ export function createReactCompilerPlugin(): BunPlugin {
     setup(build) {
       build.onLoad({ filter: SOURCE_FILE_PATTERN }, async (args) => {
         if (!isProcessableSource(args.path)) {
-          return;
+          return undefined;
         }
 
         const source = await Bun.file(args.path).text();
@@ -48,7 +48,7 @@ export function createReactCompilerPlugin(): BunPlugin {
         });
 
         if (!transformed?.code) {
-          return;
+          return undefined;
         }
 
         return {

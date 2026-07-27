@@ -59,6 +59,8 @@ function describeLossyType(value: object): string | undefined {
   if (ArrayBuffer.isView(value)) {
     return "binary data";
   }
+
+  return undefined;
 }
 
 /**
@@ -75,7 +77,7 @@ function findNonJsonSafeValue(
   }
 
   if (typeof value !== "object" || value === null) {
-    return;
+    return undefined;
   }
 
   const lossyType = describeLossyType(value);
@@ -95,7 +97,7 @@ function findNonJsonSafeValue(
         return found;
       }
     }
-    return;
+    return undefined;
   }
 
   for (const [key, item] of Object.entries(value)) {
@@ -104,6 +106,8 @@ function findNonJsonSafeValue(
       return found;
     }
   }
+
+  return undefined;
 }
 
 /** Production builds skip the walk entirely; it exists to catch mistakes early. */

@@ -46,16 +46,18 @@
         ]
       }
     ],
-    // typescript-eslint's own documentation for this rule says to prefer tsconfig's
-    // noImplicitReturns, because that is driven by the compiler's control-flow analysis
-    // and covers more ground. Here the rule reports 69 sites where the compiler reports
-    // 12. Most of the surplus is a bare `return;` supplying the undefined branch of a
-    // helper already declared `T | undefined`, which strict mode already proves. The rest
-    // is idiomatic framework code: a React effect returning a cleanup only on the branch
-    // that started a timer, and Hono middleware answering with a Response on a match
-    // while falling through to next() otherwise. Turning noImplicitReturns on is its own
-    // piece of work, since those 12 compiler sites include the React and Hono shapes.
-    "typescript/consistent-return": "off",
+    // This rule and tsconfig's noImplicitReturns are both on, because measurement
+    // showed they cover different ground. The compiler option reports a function
+    // whose control flow runs off the closing brace while another branch returned a
+    // value; it says nothing about an explicit bare `return;`, which is a value
+    // return of undefined as far as the checker is concerned. This rule reports
+    // both. Enabling each one separately over the tree at the time gave 12 sites for
+    // the compiler and 73 for the rule, and the 12 were not a subset: the compiler
+    // alone found two fall-through gaps this rule missed, and this rule alone found
+    // the bare-return mismatches in main.tsx, inngest/client.ts and step-registry.ts.
+    // Every site is now written as an explicit `return undefined;`, so a function
+    // that returns a value on one path states what it returns on all of them.
+    "typescript/consistent-return": "error",
     "react/rules-of-hooks": "off",
     "react/exhaustive-deps": "off",
     "react-hooks-js/config": "error",

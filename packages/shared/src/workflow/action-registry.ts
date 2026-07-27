@@ -195,11 +195,11 @@ function validateActionPayload<TPayload extends Record<string, unknown>>(
     Array.isArray(parsed.issues) &&
     parsed.issues.length > 0
   ) {
-    return;
+    return undefined;
   }
 
   if (!("value" in parsed)) {
-    return;
+    return undefined;
   }
 
   return parsed.value;

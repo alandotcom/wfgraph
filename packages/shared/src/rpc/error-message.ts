@@ -1,6 +1,6 @@
 function asNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") {
-    return;
+    return undefined;
   }
 
   const trimmed = value.trim();

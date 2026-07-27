@@ -6,7 +6,7 @@ export type ParseResult<T> =
 
 function normalizeRawValue(value: unknown): string | undefined {
   if (value === undefined || value === null) {
-    return;
+    return undefined;
   }
 
   if (typeof value === "string") {
@@ -18,7 +18,7 @@ function normalizeRawValue(value: unknown): string | undefined {
     return String(value);
   }
 
-  return;
+  return undefined;
 }
 
 export function parseRequiredInteger(

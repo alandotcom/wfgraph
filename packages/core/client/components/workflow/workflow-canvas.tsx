@@ -162,7 +162,7 @@ export function WorkflowCanvas() {
   useEffect(() => {
     // Skip if we've already fitted view for this workflow
     if (fittedViewForWorkflowRef.current === currentWorkflowId) {
-      return;
+      return undefined;
     }
 
     // Skip fitView for homepage -> workflow transition (viewport already set from homepage)

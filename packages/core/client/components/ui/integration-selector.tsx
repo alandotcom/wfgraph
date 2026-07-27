@@ -82,6 +82,8 @@ export function IntegrationSelector({
       }, 0);
       return () => clearTimeout(timer);
     }
+
+    return undefined;
   }, [integrationsVersion, loadIntegrations]);
 
   // Auto-select first integration when none is selected or current selection is invalid

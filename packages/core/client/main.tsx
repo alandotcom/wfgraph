@@ -38,7 +38,7 @@ function getErrorMessage(reason: unknown): string | undefined {
     return reason.message;
   }
 
-  return;
+  return undefined;
 }
 
 const patchResizeObserver = () => {

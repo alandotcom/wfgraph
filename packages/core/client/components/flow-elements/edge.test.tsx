@@ -76,7 +76,7 @@ mock.module("@xyflow/react", () => ({
       return targetNode;
     }
 
-    return;
+    return undefined;
   },
 }));
 

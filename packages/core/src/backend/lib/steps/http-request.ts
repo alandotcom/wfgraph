@@ -41,7 +41,7 @@ function parseHeaders(httpHeaders?: string): Record<string, string> {
 
 function parseBody(httpMethod: string, httpBody?: string): string | undefined {
   if (httpMethod === "GET" || !httpBody) {
-    return;
+    return undefined;
   }
   try {
     const parsedBody = JSON.parse(httpBody);

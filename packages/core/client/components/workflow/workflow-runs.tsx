@@ -239,7 +239,7 @@ export function WorkflowRuns({
   // Poll for executions and refresh active run logs
   useEffect(() => {
     if (!(isActive && currentWorkflowId)) {
-      return;
+      return undefined;
     }
 
     const pollExecutions = async () => {

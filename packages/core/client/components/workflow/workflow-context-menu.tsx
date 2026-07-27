@@ -107,7 +107,7 @@ export function WorkflowContextMenu({
   // Close menu when clicking outside
   useEffect(() => {
     if (!menuState) {
-      return;
+      return undefined;
     }
 
     const handleClickOutside = (event: MouseEvent) => {

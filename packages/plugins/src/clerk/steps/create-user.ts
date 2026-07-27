@@ -38,7 +38,7 @@ function parseMetadataJson(value: string): Record<string, unknown> | undefined {
   try {
     parsed = JSON.parse(value);
   } catch {
-    return;
+    return undefined;
   }
 
   const result = clerkMetadataSchema.safeParse(parsed);

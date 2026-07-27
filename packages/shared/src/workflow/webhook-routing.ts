@@ -36,12 +36,12 @@ export type WebhookRoutingDecision =
 
 export function asNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") {
-    return;
+    return undefined;
   }
 
   const trimmed = value.trim();
   if (!trimmed) {
-    return;
+    return undefined;
   }
 
   return trimmed;
@@ -52,7 +52,7 @@ function parseWebhookConfig(
 ): WebhookTriggerConfigInput | undefined {
   const parsed = webhookTriggerConfigSchema.safeParse(value);
   if (!parsed.success) {
-    return;
+    return undefined;
   }
 
   return parsed.data;

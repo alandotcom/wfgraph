@@ -73,7 +73,7 @@ async function handleStopOrRestart(
     input.routingDecision.kind !== "stop" &&
     input.routingDecision.kind !== "restart"
   ) {
-    return;
+    return undefined;
   }
 
   if (input.waitStates.length === 0) {
@@ -85,7 +85,7 @@ async function handleStopOrRestart(
       };
     }
     // restart with nothing running → fall through to start a new execution
-    return;
+    return undefined;
   }
 
   if (input.routingDecision.kind === "stop") {
@@ -111,14 +111,14 @@ async function handleResumes(
   input: TriggerOrchestratorInput
 ): Promise<WorkflowExecutionResumedResponse | undefined> {
   if (!input.enableResumes) {
-    return;
+    return undefined;
   }
 
   if (
     !(input.eventType && input.correlationKey) ||
     input.waitStates.length === 0
   ) {
-    return;
+    return undefined;
   }
 
   const resumableCount = countResumableWaitStates(
@@ -126,7 +126,7 @@ async function handleResumes(
     input.eventType
   );
   if (resumableCount === 0) {
-    return;
+    return undefined;
   }
 
   const resumedCount = await input.resumeWaitStates(
@@ -141,7 +141,7 @@ async function handleResumes(
     };
   }
 
-  return;
+  return undefined;
 }
 
 export async function orchestrateTriggerExecution(

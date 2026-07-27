@@ -497,13 +497,13 @@ function validateTriggerPayload<TPayload extends Record<string, unknown>>(
   if (isSafeParseSchema(schema)) {
     const parsed = schema.safeParse(payload);
     if (!parsed.success) {
-      return;
+      return undefined;
     }
     return parsed.data;
   }
 
   if (!isStandardSchema(schema)) {
-    return;
+    return undefined;
   }
 
   const standardSchema = schema["~standard"];
@@ -520,11 +520,11 @@ function validateTriggerPayload<TPayload extends Record<string, unknown>>(
     Array.isArray(parsed.issues) &&
     parsed.issues.length
   ) {
-    return;
+    return undefined;
   }
 
   if (!("value" in parsed)) {
-    return;
+    return undefined;
   }
 
   return parsed.value;

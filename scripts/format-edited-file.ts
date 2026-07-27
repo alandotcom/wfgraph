@@ -25,6 +25,8 @@ async function readEditedFilePath(): Promise<string | undefined> {
     // Fall through to the warning below: unreadable stdin and a payload missing
     // the path both mean the same thing here.
   }
+
+  return undefined;
 }
 
 const filePath = await readEditedFilePath();

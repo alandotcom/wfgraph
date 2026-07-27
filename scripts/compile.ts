@@ -69,12 +69,12 @@ function resolveCompileTarget(
   value: string | undefined
 ): Bun.Build.CompileTarget | undefined {
   if (!value) {
-    return;
+    return undefined;
   }
 
   const normalized = value.trim();
   if (!normalized) {
-    return;
+    return undefined;
   }
 
   return isCompileTarget(normalized) ? normalized : undefined;

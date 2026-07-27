@@ -71,7 +71,7 @@ function parseTags(
     parsed = JSON.parse(tagsJson);
   } catch (error) {
     console.error("[Resend] Failed to parse tags JSON:", error);
-    return;
+    return undefined;
   }
 
   const result = emailTagsSchema.safeParse(parsed);
@@ -81,7 +81,7 @@ function parseTags(
       "[Resend] Tags JSON must be a list of { name, value } entries:",
       z.prettifyError(result.error)
     );
-    return;
+    return undefined;
   }
 
   return result.data;
@@ -91,7 +91,7 @@ function parseTemplateVariables(
   templateVariables: string | undefined
 ): z.infer<typeof templateVariablesSchema> | undefined {
   if (!templateVariables) {
-    return;
+    return undefined;
   }
 
   let parsed: unknown;
@@ -100,7 +100,7 @@ function parseTemplateVariables(
     parsed = JSON.parse(templateVariables);
   } catch (error) {
     console.error("[Resend] Failed to parse template variables JSON:", error);
-    return;
+    return undefined;
   }
 
   const result = templateVariablesSchema.safeParse(parsed);
@@ -110,7 +110,7 @@ function parseTemplateVariables(
       "[Resend] Template variables JSON must map names to strings or numbers:",
       z.prettifyError(result.error)
     );
-    return;
+    return undefined;
   }
 
   return result.data;

@@ -49,7 +49,7 @@ function findTriggerNodeConfig(
 ): WorkflowTriggerConfigInput | undefined {
   const parsedGraph = serializedWorkflowGraphSchema.safeParse(graph);
   if (!parsedGraph.success) {
-    return;
+    return undefined;
   }
 
   for (const node of parsedGraph.data.nodes) {
@@ -58,6 +58,8 @@ function findTriggerNodeConfig(
       return nodeData.config;
     }
   }
+
+  return undefined;
 }
 
 function findEventTriggers(

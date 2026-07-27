@@ -86,7 +86,7 @@ export function WorkflowSidebarPanel({
   // Trigger slide-in animation on mount (only for homepage -> workflow transition)
   useEffect(() => {
     if (!enableEntryAnimation) {
-      return;
+      return undefined;
     }
 
     let shouldAnimate = false;
@@ -133,7 +133,7 @@ export function WorkflowSidebarPanel({
   // Fail-safe: ensure the panel is visible on desktop even if animation state gets stuck.
   useEffect(() => {
     if (isMobile || panelVisible) {
-      return;
+      return undefined;
     }
     const timer = setTimeout(() => setPanelVisible(true), 500);
     return () => clearTimeout(timer);

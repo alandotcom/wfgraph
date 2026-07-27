@@ -947,7 +947,7 @@ export function ActionConfig({
   // Determine the integration type for the current action
   const integrationType: IntegrationType | undefined = useMemo(() => {
     if (!actionType) {
-      return;
+      return undefined;
     }
 
     // Check system actions first

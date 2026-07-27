@@ -90,17 +90,17 @@ function safeParseJson(text: string): unknown {
 
 async function getRequestLogBody(req: Request): Promise<unknown> {
   if (!METHODS_WITH_BODY.has(req.method.toUpperCase())) {
-    return;
+    return undefined;
   }
 
   const contentType = req.headers.get("content-type") ?? undefined;
   if (!isJsonContentType(contentType)) {
-    return;
+    return undefined;
   }
 
   const rawBody = await req.clone().text();
   if (!rawBody) {
-    return;
+    return undefined;
   }
 
   const truncated = truncateTextForLogs(rawBody);
@@ -120,12 +120,12 @@ async function getRequestLogBody(req: Request): Promise<unknown> {
 async function getResponseLogBody(res: Response): Promise<unknown> {
   const contentType = res.headers.get("content-type") ?? undefined;
   if (!isJsonContentType(contentType)) {
-    return;
+    return undefined;
   }
 
   const rawBody = await res.clone().text();
   if (!rawBody) {
-    return;
+    return undefined;
   }
 
   const truncated = truncateTextForLogs(rawBody);
@@ -264,6 +264,7 @@ export function createApiApp(options?: CreateApiAppOptions) {
       }
 
       await next();
+      return undefined;
     })
     .use("/rest/*", async (c, next) => {
       const { matched, response } = await openApiRestHandler.handle(c.req.raw, {
@@ -276,6 +277,7 @@ export function createApiApp(options?: CreateApiAppOptions) {
       }
 
       await next();
+      return undefined;
     })
     .get("/openapi.json", async (c) => {
       const prefix = resolvePrefix(c, "");

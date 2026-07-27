@@ -277,7 +277,7 @@ export function getRuntimeActions(): RuntimeActionDefinition[] {
  */
 export function getIntegration(type: string): IntegrationPlugin | undefined {
   if (!isIntegrationType(type)) {
-    return;
+    return undefined;
   }
   return integrationRegistry.get(type);
 }
@@ -383,7 +383,7 @@ export function findActionById(
   actionId: string | undefined | null
 ): ActionWithFullId | undefined {
   if (!actionId) {
-    return;
+    return undefined;
   }
 
   const cached = actionByIdCache.get(actionId);
@@ -445,7 +445,7 @@ export function findActionById(
   }
 
   actionByIdCache.set(actionId, undefined);
-  return;
+  return undefined;
 }
 
 /**

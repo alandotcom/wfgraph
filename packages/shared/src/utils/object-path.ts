@@ -10,12 +10,12 @@ export function getValueByPath(
   path: string | undefined
 ): unknown {
   if (!path) {
-    return;
+    return undefined;
   }
 
   const trimmed = path.trim();
   if (!trimmed) {
-    return;
+    return undefined;
   }
 
   const segments = compact(trimmed.split("."));
@@ -23,13 +23,13 @@ export function getValueByPath(
 
   for (const segment of segments) {
     if (current === null || current === undefined) {
-      return;
+      return undefined;
     }
 
     if (Array.isArray(current)) {
       const index = Number.parseInt(segment, 10);
       if (Number.isNaN(index)) {
-        return;
+        return undefined;
       }
       current = current[index];
       continue;
@@ -43,7 +43,7 @@ export function getValueByPath(
       continue;
     }
 
-    return;
+    return undefined;
   }
 
   return current;

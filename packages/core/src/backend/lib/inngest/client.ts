@@ -13,7 +13,7 @@ function getInngestBaseUrl() {
     }
   }
 
-  return;
+  return undefined;
 }
 
 export type InngestClientRuntimeConfig = ConstructorParameters<

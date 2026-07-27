@@ -36,7 +36,7 @@ type SendResult =
 
 function getEventId(result: unknown): string | undefined {
   if (!result) {
-    return;
+    return undefined;
   }
 
   if (Array.isArray(result)) {
@@ -44,7 +44,7 @@ function getEventId(result: unknown): string | undefined {
   }
 
   if (typeof result !== "object") {
-    return;
+    return undefined;
   }
 
   const typed = result as SendResult;
@@ -69,7 +69,7 @@ function getEventId(result: unknown): string | undefined {
     return typed.ids[0];
   }
 
-  return;
+  return undefined;
 }
 
 export async function sendWorkflowRunRequested(

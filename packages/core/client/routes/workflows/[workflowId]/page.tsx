@@ -390,7 +390,7 @@ const WorkflowEditor = ({ workflowId }: WorkflowPageProps) => {
         nodesRef.current.map((node) => ({ nodeId: node.id, status: "idle" }))
       );
       setIsExecuting(false);
-      return;
+      return undefined;
     }
 
     // Start polling for the selected execution

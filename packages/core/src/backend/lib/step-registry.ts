@@ -46,7 +46,7 @@ export async function loadStepFunction(
   const exported = module[importer.stepFunction];
 
   if (typeof exported !== "function") {
-    return;
+    return undefined;
   }
 
   // All the module tells us is that this export is callable. That it is a step,
@@ -73,7 +73,7 @@ export function getStepImporter(actionType: string): StepImporter | undefined {
 
   const runtimeAction = getRuntimeAction(actionType);
   if (!runtimeAction) {
-    return;
+    return undefined;
   }
 
   return {

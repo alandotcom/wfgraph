@@ -11,13 +11,13 @@ const DEFAULT_DATABASE_URL =
 
 function toOptionalUrl(value: string | undefined): string | undefined {
   if (!value) {
-    return;
+    return undefined;
   }
 
   try {
     return new URL(value).toString();
   } catch {
-    return;
+    return undefined;
   }
 }
 

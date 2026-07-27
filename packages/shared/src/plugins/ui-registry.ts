@@ -66,7 +66,7 @@ export function registerIntegrationUi(
  */
 export function getIntegrationUi(type: string): IntegrationUi | undefined {
   if (!isIntegrationType(type)) {
-    return;
+    return undefined;
   }
   return integrationUiRegistry.get(type);
 }
@@ -81,7 +81,7 @@ export function getActionOutputComponent(
 ): React.ComponentType<ResultComponentProps> | undefined {
   const parsed = parseActionId(actionId);
   if (!parsed || !isIntegrationType(parsed.integration)) {
-    return;
+    return undefined;
   }
   return integrationUiRegistry.get(parsed.integration)?.outputComponents?.[
     parsed.slug

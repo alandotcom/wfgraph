@@ -287,7 +287,7 @@ function toProperties(
   }
 
   if (value === undefined && rest.length === 0) {
-    return;
+    return undefined;
   }
 
   return {

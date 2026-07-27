@@ -142,7 +142,7 @@ export function getNodeTypeFromSerializedNode(
 ): WorkflowNodeType | undefined {
   const parsed = workflowNodeAttributesSchema.safeParse(node.attributes);
   if (!parsed.success) {
-    return;
+    return undefined;
   }
 
   const dataType = parsed.data.data.type;
@@ -150,7 +150,7 @@ export function getNodeTypeFromSerializedNode(
     return dataType;
   }
 
-  return;
+  return undefined;
 }
 
 export function getSerializedWorkflowGraphError(graph: unknown): string {
