@@ -53,6 +53,10 @@ declare global {
 }
 
 const rova = await createRovaApp({
+  // This server binds to localhost for a developer's own machine, so nothing in
+  // front of it needs gating. A deployment of this same file behind a real
+  // hostname has to replace this with a predicate.
+  auth: "external",
   database: {
     url: Bun.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
   },

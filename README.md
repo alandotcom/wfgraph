@@ -150,6 +150,7 @@ const trigger = createTrigger({
 const rova = await createRovaApp({
   database: { url: process.env.DATABASE_URL! },
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY! },
+  auth: (request) => hasValidSession(request),
   migrations: { runOnStartup: true },
   inngest: {
     client: {
@@ -245,27 +246,33 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
 
 ### createRovaApp options
 
-| Option                     | Required | Description                                           |
-| -------------------------- | -------- | ----------------------------------------------------- |
-| `basePath`                 | No       | Path the host mounted Rova at (default `/`)           |
-| `database.url`             | Yes      | PostgreSQL connection string                          |
-| `encryption.key`           | Yes      | 64-character hex string; encrypts integration secrets |
-| `inngest.client.id`        | Yes      | Inngest application ID                                |
-| `inngest.client.*`         | No       | Inngest client config (baseUrl, eventKey, env, isDev) |
-| `inngest.serve`            | No       | Inngest serve config (signingKey, etc.)               |
-| `migrations.runOnStartup`  | No       | Run Drizzle migrations at startup (default `false`)   |
-| `migrations.migrationsDir` | No       | Custom migrations directory                           |
-| `logger`                   | No       | Custom logger conforming to `RovaLogger` interface    |
-| `configureLogging`         | No       | Enable built-in structured logging (default `true`)   |
-| `triggers`                 | No       | Array of custom trigger definitions                   |
-| `actions`                  | No       | Array of custom action definitions                    |
-| `serveClient`              | No       | Serve the workflow builder SPA (default `true`)       |
+| Option                     | Required | Description                                                |
+| -------------------------- | -------- | ---------------------------------------------------------- |
+| `basePath`                 | No       | Path the host mounted Rova at (default `/`)                |
+| `database.url`             | Yes      | PostgreSQL connection string                               |
+| `encryption.key`           | Yes      | 64-character hex string; encrypts integration secrets      |
+| `auth`                     | Yes      | Predicate deciding who reaches the editor, or `"external"` |
+| `inngest.client.id`        | Yes      | Inngest application ID                                     |
+| `inngest.client.*`         | No       | Inngest client config (baseUrl, eventKey, env, isDev)      |
+| `inngest.serve`            | No       | Inngest serve config (signingKey, etc.)                    |
+| `migrations.runOnStartup`  | No       | Run Drizzle migrations at startup (default `false`)        |
+| `migrations.migrationsDir` | No       | Custom migrations directory                                |
+| `logger`                   | No       | Custom logger conforming to `RovaLogger` interface         |
+| `configureLogging`         | No       | Enable built-in structured logging (default `true`)        |
+| `triggers`                 | No       | Array of custom trigger definitions                        |
+| `actions`                  | No       | Array of custom action definitions                         |
+| `serveClient`              | No       | Serve the workflow builder SPA (default `true`)            |
 
 ### Notes
 
 - The consumer is responsible for running Inngest (either self-hosted or cloud). Rova does not spawn `inngest-cli`.
 - For local development in this repo, `bun run dev` starts Inngest CLI as a separate process.
 - `createRovaApp` returns `{ fetch, dispose }`. Call `dispose()` to unregister runtime triggers/actions.
+- `auth` decides who reaches the editor. Rova refuses to start in production without it, because the failure it prevents is the quiet one: an editor reachable from the internet, running registered actions with credentials decrypted out of the `integrations` table.
+  - Pass a predicate `(request: Request) => boolean | Promise<boolean>` reading whatever session your app already uses. It covers the RPC, REST, OpenAPI, extensions, and SPA routes.
+  - The Inngest callback and the webhook and resume paths are deliberately left out. Those callers are machines carrying a signing key, an API key, or a hook token, and a session check would break all three. Which of Rova's routes are which is Rova's knowledge, which is why the predicate is an option rather than middleware you wrap the mount in.
+  - Pass `"external"` when something in front of Rova already gates it.
+- **Set `inngest.serve.signingKey` on any deployment.** `/api/inngest` sits outside the `auth` gate because Inngest signs its callbacks, and that holds only with a signing key configured. Without one the Inngest SDK runs in dev mode and skips signature verification, so an anonymous POST to that path can execute a workflow function with a payload of its choosing. Rova logs an error at startup when no key is set.
 - Mounting under a sub-path means passing `basePath`. Rova builds its API prefix, the SPA's `<base href>`, and every asset URL from it, so the host states the mount point once rather than Rova deducing it per request. A host that mounts at `/workflows` and omits `basePath` gets a client that requests its assets from the root.
 - `rova.fetch` answers API routes under `/api/*` and serves the SPA under `/*`. Hand it straight to `Bun.serve`, `Deno.serve`, or a Workers `export default`.
 - Action extensions are strict-schema actions via `createAction(...)`:

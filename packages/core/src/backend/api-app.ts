@@ -8,6 +8,10 @@ import {
 } from "@/backend/lib/inngest/client";
 import { getInngestFunctions } from "@/backend/lib/inngest/functions";
 import { getAppLogger } from "@/backend/lib/logger";
+import {
+  type Authorize,
+  UNAUTHORIZED_BODY,
+} from "@/backend/lib/http/authorize";
 import type { RpcContext } from "@/backend/rpc/context";
 import {
   createOpenApiReferenceHandler,
@@ -181,11 +185,33 @@ export type CreateApiAppOptions = {
    * so nothing here has to deduce it from the request.
    */
   basePath: `/${string}`;
+  /** Every route answers to this except those in MACHINE_ROUTES. */
+  authorize: Authorize;
 };
 
+/**
+ * Routes reached by machines, each carrying a credential of its own: Inngest
+ * signs its callback, the webhook path checks an API key, the resume path a hook
+ * token. A session check would break all three.
+ *
+ * Written as the exception, so a route added to this file is gated by default
+ * and opening one is an edit here with a reason attached. Listing what to gate
+ * instead fails the other way: forgetting it publishes an endpoint silently.
+ *
+ * Inngest verifies that signature only when a signing key is configured;
+ * `reportInngestCallbackExposure` says so at startup when one is not.
+ */
+export const MACHINE_ROUTES = [
+  "/inngest",
+  "/workflows/:workflowId/webhook",
+  "/workflows/hooks/:token/resume",
+] as const;
+
+type ApiEnv = { Variables: { rovaMachineRoute?: true } };
+
 export function createApiApp(options: CreateApiAppOptions) {
-  const { basePath } = options;
-  const app = new Hono().basePath(basePath);
+  const { basePath, authorize } = options;
+  const app = new Hono<ApiEnv>().basePath(basePath);
   const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
 
   app.use("*", async (c, next) => {
@@ -248,6 +274,23 @@ export function createApiApp(options: CreateApiAppOptions) {
     } else {
       requestLogger.info(responseSummary, responseLog);
     }
+  });
+
+  // Markers before the gate: Hono runs matching middleware in registration order.
+  for (const route of MACHINE_ROUTES) {
+    app.use(route, async (c, next) => {
+      c.set("rovaMachineRoute", true);
+      await next();
+    });
+  }
+
+  app.use("*", async (c, next) => {
+    if (c.get("rovaMachineRoute") || (await authorize(c.req.raw))) {
+      await next();
+      return undefined;
+    }
+
+    return c.json(UNAUTHORIZED_BODY, 401);
   });
 
   app.onError((error, c) => {

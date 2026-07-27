@@ -127,6 +127,9 @@ async function main(): Promise<void> {
   }
 
   const rova = await createRovaApp({
+    // An example on localhost. A real host passes a predicate that reads
+    // whatever session its own users already carry.
+    auth: "external",
     configureLogging: false,
     logger: {
       info: (...args) => console.log("[example:server]", ...args),

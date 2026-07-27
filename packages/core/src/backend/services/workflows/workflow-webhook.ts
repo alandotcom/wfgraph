@@ -69,20 +69,23 @@ export async function postWorkflowWebhookResult(input: {
   try {
     const { workflowId, authHeader, body } = input;
 
-    const workflow = await db.query.workflows.findFirst({
-      where: eq(workflows.id, workflowId),
-    });
-
-    if (!workflow) {
-      return failure("not_found", { error: "Workflow not found" });
-    }
-
+    // Credentials before the lookup: answering "not found" versus
+    // "unauthorized" to an unauthenticated caller tells them which ids exist,
+    // and this route is reachable without a session by design.
     const apiKeyValidation = await validateApiKey(authHeader);
 
     if (!apiKeyValidation.valid) {
       return failure("unauthorized", {
         error: apiKeyValidation.error,
       });
+    }
+
+    const workflow = await db.query.workflows.findFirst({
+      where: eq(workflows.id, workflowId),
+    });
+
+    if (!workflow) {
+      return failure("not_found", { error: "Workflow not found" });
     }
 
     const preflight = await runWorkflowExecutionPreflight({

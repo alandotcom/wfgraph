@@ -1,4 +1,5 @@
 import { Inngest } from "inngest";
+import { getAppLogger } from "@/backend/lib/logger";
 
 function getInngestBaseUrl() {
   const candidates = [process.env.INNGEST_BASE_URL, process.env.INNGEST_DEV];
@@ -106,6 +107,27 @@ export function configureInngestServe(
 
 export function getInngestServeConfig(): InngestServeRuntimeConfig {
   return inngestRuntimeState.serveConfig;
+}
+
+/**
+ * `/api/inngest` sits outside the host's auth gate because Inngest signs its
+ * callbacks. That holds only with a signing key configured; without one the SDK
+ * runs in dev mode and skips verification, leaving an anonymous POST able to
+ * execute a workflow function with a payload of its choosing.
+ *
+ * A log rather than a refusal, because local development legitimately runs
+ * unsigned against `inngest dev` and the check that would tell them apart is the
+ * same environment-variable guess that made the auth option unreliable.
+ */
+export function reportInngestCallbackExposure(): void {
+  const signingKey = inngestRuntimeState.serveConfig.signingKey;
+  if (typeof signingKey === "string" && signingKey.trim()) {
+    return;
+  }
+
+  getAppLogger("inngest").error(
+    "The Inngest callback at /api/inngest is unsigned: no inngest.serve.signingKey is configured, so it will accept and execute a request from anyone who can reach it. Set a signing key for any deployment that is not a local dev loop."
+  );
 }
 
 export function getInngestClient(): Inngest {

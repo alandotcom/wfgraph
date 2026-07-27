@@ -130,6 +130,7 @@ beforeAll(async () => {
   await ensureClientEntry();
 
   rova = await createRovaApp({
+    auth: "external",
     basePath: MOUNT,
     database: { url: "postgresql://rova:rova@127.0.0.1:1/rova_test" },
     encryption: { key: "b".repeat(64) },

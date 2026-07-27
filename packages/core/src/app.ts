@@ -13,6 +13,11 @@ import {
   runMigrations,
 } from "@/backend/lib/db/migrations";
 import {
+  resolveAuthorize,
+  type RovaAuth,
+  UNAUTHORIZED_BODY,
+} from "@/backend/lib/http/authorize";
+import {
   resolveClientDir,
   serveClientAsset,
 } from "@/backend/lib/http/client-assets";
@@ -25,6 +30,7 @@ import {
   configureInngestServe,
   type InngestClientRuntimeConfig,
   type InngestServeRuntimeConfig,
+  reportInngestCallbackExposure,
 } from "@/backend/lib/inngest/client";
 import {
   configureAppLogging,
@@ -54,6 +60,7 @@ export type {
   InngestClientRuntimeConfig,
   InngestServeRuntimeConfig,
 } from "@/backend/lib/inngest/client";
+export type { RovaAuth } from "@/backend/lib/http/authorize";
 export type { IntegrationType } from "@/shared/types/integration";
 export type { RovaLogger } from "@/shared/types/logger";
 export type { RuntimeExtensionActionDefinition } from "@/shared/workflow/action-registry";
@@ -72,6 +79,16 @@ export type RovaAppOptions = {
    * once here instead of Rova guessing per request.
    */
   basePath?: string;
+  /**
+   * Who may reach the editor: a predicate over the request, or "external" when
+   * something in front of Rova already gates it.
+   *
+   * Required everywhere rather than only in production, since the check that
+   * would tell the two apart reads an environment variable that says
+   * "production" and misses "prod" and an unset one. Covers everything Rova
+   * serves except `MACHINE_ROUTES`.
+   */
+  auth: RovaAuth;
   logger?: RovaLogger;
   configureLogging?: boolean;
   database: DatabaseRuntimeConfig;
@@ -108,6 +125,7 @@ export type RovaApp = {
 
 export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
+  const authorize = resolveAuthorize(options.auth);
 
   if (!options.database.url?.trim()) {
     throw new Error("createRovaApp requires database.url");
@@ -136,6 +154,7 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
   configureDatabaseRuntime(options.database);
   configureInngestClient(options.inngest.client);
   configureInngestServe(options.inngest.serve);
+  reportInngestCallbackExposure();
 
   const registeredTriggerTypes = new Set<string>();
   const registeredActionIds = new Set<string>();
@@ -157,7 +176,7 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
     migrationsDir: options.migrations?.migrationsDir,
   });
 
-  const apiApp = createApiApp({ basePath: `${basePath}/api` });
+  const apiApp = createApiApp({ basePath: `${basePath}/api`, authorize });
   const fullApp = new Hono();
 
   fullApp.route("/", apiApp);
@@ -169,6 +188,12 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
       const pathname = toMountRelativePath(c.req.path, basePath);
       if (pathname === null) {
         return c.json({ error: "Not found" }, 404);
+      }
+
+      // A host wanting a login redirect instead of a 401 puts it in front of
+      // the mount.
+      if (!(await authorize(c.req.raw))) {
+        return c.json(UNAUTHORIZED_BODY, 401);
       }
 
       return await serveClientAsset({ clientDir, basePath, pathname });
