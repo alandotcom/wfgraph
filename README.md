@@ -111,6 +111,7 @@ Rova Workflow Builder mounts into a host app as a single fetch handler. Import `
 
 ```ts
 import { z } from "zod";
+import { clientBundle } from "@rova/client";
 import { createAction, createTrigger } from "@rova/core";
 import { createRovaApp } from "@rova/core/app";
 
@@ -120,11 +121,9 @@ const action = createAction({
   description: "Sends a custom message",
   category: "Custom",
   logoUrl: "https://cdn.example.com/logos/custom-action.svg",
-  configFields: [
-    { key: "text", label: "Text", type: "template-textarea", required: true },
-  ],
+  // The config form is derived from this schema; `.describe()` names each field.
   schema: z.object({
-    text: z.string().trim().min(1),
+    text: z.string().trim().min(1).describe("Text"),
   }),
   async execute({ payload }) {
     return { success: true, data: { echoed: payload.text } };
@@ -152,6 +151,7 @@ const rova = await createRovaApp({
   database: { url: process.env.DATABASE_URL! },
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY! },
   auth: (request) => hasValidSession(request),
+  client: clientBundle,
   migrations: { runOnStartup: true },
   inngest: {
     client: {
@@ -167,7 +167,8 @@ const rova = await createRovaApp({
   triggers: [trigger],
 });
 
-// rova.fetch answers the API under /api/* and the SPA under /*
+// rova.fetch answers the API under /api/* and, since a client was handed over,
+// the editor under /*
 Bun.serve({ port: 3000, fetch: rova.fetch });
 ```
 
@@ -240,6 +241,7 @@ The editor bundled into `@rova/core` is built from this repo, so it still lists 
 - `@rova/core` -- `createAction`, `createTrigger`, and related types.
 - `@rova/core/app` -- `createRovaApp` factory, `RovaAppOptions`, `RovaApp`, and re-exported config types.
 - `@rova/core/node` -- `createRequestListener`, for hosts on Express, Fastify, or `node:http`.
+- `@rova/client` -- `clientBundle`, the built editor, passed to `createRovaApp` as `client`.
 
 The first two run on any runtime with `Request` and `Response`. There is no published server wrapper: once `createRovaApp` returns a fetch handler, a wrapper saves a consumer two lines and charges an options type that reaccumulates every `Bun.serve` parameter. This repo's own dev server lives at `server.ts` in the repo root, and `examples/library-trigger.ts` shows the same shape.
 
