@@ -132,6 +132,8 @@ beforeAll(async () => {
   rova = await createRovaApp({
     auth: "external",
     basePath: MOUNT,
+    // Deliberately a different identity from app.test.ts. `bun test` runs both
+    // files in one process, so this only passes if dispose released the claim.
     database: { url: "postgresql://rova:rova@127.0.0.1:1/rova_test" },
     encryption: { key: "b".repeat(64) },
     inngest: { client: { id: "rova-node-test" } },

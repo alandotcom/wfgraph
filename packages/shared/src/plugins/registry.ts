@@ -1,4 +1,8 @@
 import { type IntegrationType, isIntegrationType } from "@/types/integration";
+import {
+  getRuntimeActionRegistryVersion,
+  getRuntimeActions,
+} from "@/workflow/action-registry";
 import type { ReferenceField } from "@/workflow/node-references";
 
 /**
@@ -168,17 +172,6 @@ export type ActionWithFullId = PluginAction & {
   logoUrl?: string;
 };
 
-export type RuntimeActionDefinition = {
-  id: string;
-  label: string;
-  description: string;
-  category: string;
-  logoUrl?: string;
-  configFields?: ActionConfigField[];
-  outputFields?: ReferenceField[];
-  integration?: string;
-};
-
 /**
  * Integration Registry
  * Auto-populated by plugin files
@@ -191,14 +184,10 @@ export type RuntimeActionDefinition = {
 const _g = globalThis as Record<symbol, unknown>;
 
 const _intKey = Symbol.for("@rova/integration-registry");
-const _rtKey = Symbol.for("@rova/runtime-action-registry");
 const _cacheKey = Symbol.for("@rova/action-by-id-cache");
 
 if (!_g[_intKey]) {
   _g[_intKey] = new Map<IntegrationType, IntegrationPlugin>();
-}
-if (!_g[_rtKey]) {
-  _g[_rtKey] = new Map<string, RuntimeActionDefinition>();
 }
 if (!_g[_cacheKey]) {
   _g[_cacheKey] = new Map<string, ActionWithFullId | undefined>();
@@ -209,12 +198,6 @@ const integrationRegistry = _g[_intKey] as Map<
   IntegrationType,
   IntegrationPlugin
 >;
-// eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- initialized above
-const runtimeActionRegistry = _g[_rtKey] as Map<
-  string,
-  RuntimeActionDefinition
->;
-
 /**
  * Compute full action ID from integration type and action slug
  */
@@ -258,20 +241,6 @@ export function unregisterIntegration(type: IntegrationType): void {
   actionByIdCache.clear();
 }
 
-export function registerRuntimeAction(action: RuntimeActionDefinition): void {
-  runtimeActionRegistry.set(action.id, action);
-  actionByIdCache.clear();
-}
-
-export function clearRuntimeActions(): void {
-  runtimeActionRegistry.clear();
-  actionByIdCache.clear();
-}
-
-export function getRuntimeActions(): RuntimeActionDefinition[] {
-  return Array.from(runtimeActionRegistry.values());
-}
-
 /**
  * Get an integration plugin
  */
@@ -312,7 +281,7 @@ export function getAllActions(): ActionWithFullId[] {
     }
   }
 
-  for (const runtimeAction of runtimeActionRegistry.values()) {
+  for (const runtimeAction of getRuntimeActions()) {
     actions.push({
       slug: runtimeAction.id,
       label: runtimeAction.label,
@@ -348,7 +317,7 @@ export function getActionsByCategory(): Record<string, ActionWithFullId[]> {
     }
   }
 
-  for (const runtimeAction of runtimeActionRegistry.values()) {
+  for (const runtimeAction of getRuntimeActions()) {
     if (!categories[runtimeAction.category]) {
       categories[runtimeAction.category] = [];
     }
@@ -370,6 +339,9 @@ export function getActionsByCategory(): Record<string, ActionWithFullId[]> {
 }
 
 // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- cross-bundle singleton
+let cachedRuntimeVersion = -1;
+
+// eslint-disable-next-line typescript/no-unsafe-type-assertion -- initialized above
 const actionByIdCache = _g[_cacheKey] as Map<
   string,
   ActionWithFullId | undefined
@@ -384,6 +356,14 @@ export function findActionById(
 ): ActionWithFullId | undefined {
   if (!actionId) {
     return undefined;
+  }
+
+  // The runtime-action half of this cache is invalidated by whoever writes to
+  // that registry, which is a different module, so the version it last saw is
+  // the only thing that can tell us the answer went stale.
+  if (cachedRuntimeVersion !== getRuntimeActionRegistryVersion()) {
+    cachedRuntimeVersion = getRuntimeActionRegistryVersion();
+    actionByIdCache.clear();
   }
 
   const cached = actionByIdCache.get(actionId);
@@ -412,7 +392,7 @@ export function findActionById(
   }
 
   // Fall back to label-based lookup (exact label match)
-  for (const runtimeAction of runtimeActionRegistry.values()) {
+  for (const runtimeAction of getRuntimeActions()) {
     if (runtimeAction.id === actionId || runtimeAction.label === actionId) {
       const result: ActionWithFullId = {
         slug: runtimeAction.id,

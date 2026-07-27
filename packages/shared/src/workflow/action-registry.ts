@@ -6,6 +6,7 @@ import type {
   ActionConfigField,
   ActionConfigFieldBase,
 } from "@/plugins/registry";
+import type { IntegrationType } from "@/types/integration";
 import {
   type ReferenceField,
   schemaFieldToReferenceField,
@@ -51,7 +52,7 @@ export type RuntimeActionExecuteInput = {
  */
 export type RuntimeActionResult = StepResult;
 
-export type RuntimeActionDefinition = {
+export type RuntimeActionMetadata = {
   /**
    * Unique identifier in `"category/slug"` format (e.g. `"appointments/cancel"`).
    * Used internally to dispatch execution and register the action.
@@ -87,10 +88,15 @@ export type RuntimeActionDefinition = {
    * Field paths should not include the `data.` prefix -- they are unwrapped automatically.
    */
   outputFields?: ReferenceField[];
+};
 
-  execute: (
-    input: RuntimeActionExecuteInput
-  ) => RuntimeActionResult | Promise<RuntimeActionResult>;
+export type RuntimeActionExecute = (
+  input: RuntimeActionExecuteInput
+) => RuntimeActionResult | Promise<RuntimeActionResult>;
+
+/** What a host writes: metadata plus the implementation. */
+export type RuntimeActionDefinition = RuntimeActionMetadata & {
+  execute: RuntimeActionExecute;
 };
 
 export type RuntimeExtensionActionDefinition = RuntimeActionDefinition & {
@@ -165,9 +171,55 @@ export type CreateActionInputWithOutput<
   }) => TypedActionResult<TOutput> | Promise<TypedActionResult<TOutput>>;
 };
 
-export type RuntimeActionMetadata = Omit<RuntimeActionDefinition, "execute">;
+/**
+ * What the registry holds.
+ *
+ * The server registers actions it can run; the browser registers the same
+ * actions as metadata, arriving over /api/extensions with no `execute` to send.
+ * They differ in what they put in, not in which registry they put it in.
+ */
+export type RegisteredRuntimeAction = RuntimeActionMetadata & {
+  /** Defaulted at registration, so readers never have to. */
+  category: string;
+  /** Set when the action came from a plugin, never by `createAction`. */
+  integration?: IntegrationType;
+  execute?: RuntimeActionExecute;
+};
 
-const runtimeActionRegistry = new Map<string, RuntimeActionDefinition>();
+/** What `/api/extensions` sends: what the editor draws from, minus what cannot serialize. */
+export type RuntimeActionWireMetadata = Omit<
+  RegisteredRuntimeAction,
+  "execute"
+>;
+
+// Symbol.for on globalThis, so the registry stays one map even when this module
+// is duplicated across bundles: the @rova/core build inlines @rova/shared while
+// @rova/plugins imports it separately.
+// eslint-disable-next-line typescript/no-unsafe-type-assertion -- cross-bundle singleton via Symbol.for
+const globalStore = globalThis as Record<symbol, unknown>;
+const registryKey = Symbol.for("@rova/runtime-action-registry");
+
+globalStore[registryKey] ??= {
+  actions: new Map<string, RegisteredRuntimeAction>(),
+  version: 0,
+};
+
+// eslint-disable-next-line typescript/no-unsafe-type-assertion -- initialized above
+const registryState = globalStore[registryKey] as {
+  actions: Map<string, RegisteredRuntimeAction>;
+  version: number;
+};
+
+const runtimeActionRegistry = registryState.actions;
+
+/**
+ * Bumped on every write. Anything caching a view of this registry compares the
+ * number it last saw, which is what keeps a cached lookup from outliving the
+ * action it described.
+ */
+export function getRuntimeActionRegistryVersion(): number {
+  return registryState.version;
+}
 
 function isPromiseLike<T>(value: unknown): value is Promise<T> {
   return (
@@ -219,9 +271,9 @@ function configFieldsFromInputSchema(
   }
 }
 
-function normalizeRuntimeActionDefinition(
-  definition: RuntimeActionDefinition
-): RuntimeActionDefinition {
+function normalizeRuntimeActionMetadata(
+  definition: RuntimeActionMetadata
+): RuntimeActionMetadata & { category: string } {
   const actionId = definition.id.trim();
   const label = definition.label.trim();
   const description = definition.description.trim();
@@ -346,46 +398,58 @@ export function createAction<TPayload extends Record<string, unknown>>(
       : derived;
   }
 
-  const normalizedDefinition = normalizeRuntimeActionDefinition({
+  const execute: RuntimeActionExecute = async ({ payload, context }) => {
+    const validatedPayload = validateActionPayload(input.schema, payload);
+    if (!validatedPayload) {
+      const payloadKeys = Object.keys(payload);
+      return {
+        success: false,
+        error: {
+          message: `Action "${input.id}" received an invalid payload. Payload keys: [${payloadKeys.join(", ")}]`,
+        },
+      };
+    }
+
+    try {
+      return await input.execute({ payload: validatedPayload, context });
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          message: getActionErrorMessage(error),
+        },
+      };
+    }
+  };
+
+  const normalized = normalizeRuntimeActionMetadata({
     ...input,
     configFields: derivedConfigFields,
     outputFields: resolvedOutputFields,
-    execute: async ({ payload, context }) => {
-      const validatedPayload = validateActionPayload(input.schema, payload);
-      if (!validatedPayload) {
-        const payloadKeys = Object.keys(payload);
-        return {
-          success: false,
-          error: {
-            message: `Action "${input.id}" received an invalid payload. Payload keys: [${payloadKeys.join(", ")}]`,
-          },
-        };
-      }
-
-      try {
-        return await input.execute({ payload: validatedPayload, context });
-      } catch (error) {
-        return {
-          success: false,
-          error: {
-            message: getActionErrorMessage(error),
-          },
-        };
-      }
-    },
   });
 
   return {
-    ...normalizedDefinition,
+    ...normalized,
+    execute,
     __runtimeExtensionActionBrand: true,
   };
 }
 
 export function registerRuntimeAction(
-  definition: RuntimeActionDefinition
+  definition: RuntimeActionMetadata & {
+    integration?: IntegrationType;
+    execute?: RuntimeActionExecute;
+  }
 ): void {
-  const normalizedDefinition = normalizeRuntimeActionDefinition(definition);
-  runtimeActionRegistry.set(normalizedDefinition.id, normalizedDefinition);
+  const { execute, integration, ...metadata } = definition;
+  const normalized = normalizeRuntimeActionMetadata(metadata);
+
+  runtimeActionRegistry.set(normalized.id, {
+    ...normalized,
+    ...(integration ? { integration } : {}),
+    ...(execute ? { execute } : {}),
+  });
+  registryState.version += 1;
 }
 
 export function unregisterRuntimeAction(actionId: string): void {
@@ -394,15 +458,25 @@ export function unregisterRuntimeAction(actionId: string): void {
     return;
   }
   runtimeActionRegistry.delete(normalizedId);
+  registryState.version += 1;
 }
 
 export function getRuntimeAction(
   actionId: string
-): RuntimeActionDefinition | undefined {
+): RegisteredRuntimeAction | undefined {
   return runtimeActionRegistry.get(actionId);
 }
 
-export function listRuntimeActions(): RuntimeActionMetadata[] {
+export function getRuntimeActions(): RegisteredRuntimeAction[] {
+  return Array.from(runtimeActionRegistry.values());
+}
+
+export function clearRuntimeActions(): void {
+  runtimeActionRegistry.clear();
+  registryState.version += 1;
+}
+
+export function listRuntimeActions(): RuntimeActionWireMetadata[] {
   return Array.from(runtimeActionRegistry.values()).map(
     ({ execute: _execute, ...metadata }) => metadata
   );

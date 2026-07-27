@@ -30,8 +30,20 @@ const encryptionState: EncryptionRuntimeState =
 
 globalThis.__rovaEncryptionState = encryptionState;
 
-function validateKeyFormat(key: string): void {
-  if (key.length !== 64) {
+/**
+ * The key's shape, checked without storing it, so `createRovaApp` can report a
+ * bad key as a bad key before it claims the process.
+ */
+export function assertValidEncryptionKey(key: string): void {
+  const trimmed = key.trim();
+
+  if (!trimmed) {
+    throw new Error(
+      `createRovaApp requires encryption.key, a 64-character hex string. Read it from ${ENCRYPTION_KEY_ENV} or wherever your app keeps its secrets.`
+    );
+  }
+
+  if (trimmed.length !== 64) {
     throw new Error(
       "createRovaApp's encryption.key must be a 64-character hex string (32 bytes)"
     );
@@ -48,14 +60,8 @@ function validateKeyFormat(key: string): void {
  * lets a misconfigured deployment start and fail later.
  */
 export function configureEncryptionKey(config: EncryptionRuntimeConfig): void {
-  const trimmed = config.key.trim();
-  if (!trimmed) {
-    throw new Error(
-      `createRovaApp requires encryption.key, a 64-character hex string. Read it from ${ENCRYPTION_KEY_ENV} or wherever your app keeps its secrets.`
-    );
-  }
-  validateKeyFormat(trimmed);
-  encryptionState.config = { key: trimmed };
+  assertValidEncryptionKey(config.key);
+  encryptionState.config = { key: config.key.trim() };
 }
 
 function getEncryptionKey(): Buffer {

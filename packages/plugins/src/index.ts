@@ -28,12 +28,19 @@ export type {
   ActionWithFullId,
   IntegrationPlugin,
   PluginAction,
-  RuntimeActionDefinition,
 } from "@/shared/plugins/registry";
+export type {
+  RegisteredRuntimeAction,
+  RuntimeActionMetadata,
+} from "@/shared/workflow/action-registry";
 
 // Export the registry utilities
 export {
   clearRuntimeActions,
+  getRuntimeActions,
+  registerRuntimeAction,
+} from "@/shared/workflow/action-registry";
+export {
   computeActionId,
   findActionById,
   flattenConfigFields,
@@ -49,12 +56,10 @@ export {
   getIntegrationLabels,
   getIntegrationTypes,
   getPluginEnvVars,
-  getRuntimeActions,
   getSortedIntegrationTypes,
   isFieldGroup,
   parseActionId,
   registerIntegration,
-  registerRuntimeAction,
 } from "@/shared/plugins/registry";
 
 // The flat field shape an action or trigger declares in `outputFields`.

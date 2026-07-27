@@ -7,12 +7,14 @@ import {
 import {
   configureEncryptionKey,
   type EncryptionRuntimeConfig,
+  assertValidEncryptionKey,
 } from "@/backend/lib/db/integrations";
 import {
   type MigrationsRuntimeOptions,
   runMigrations,
 } from "@/backend/lib/db/migrations";
 import {
+  type Authorize,
   resolveAuthorize,
   type RovaAuth,
   UNAUTHORIZED_BODY,
@@ -107,6 +109,76 @@ export type RovaAppOptions = {
   serveClient?: boolean;
 };
 
+/**
+ * One Rova per process.
+ *
+ * The database handle, the Inngest client, the encryption key, and both
+ * registries are process-global, so a second app with a different database URL
+ * silently aliases the first connection and the damage shows up later as data in
+ * the wrong database. Threading an instance handle through all of them buys
+ * nothing yet: two instances means two tenants, and no table carries a tenant
+ * column. Relaxing this later is invisible to every existing caller.
+ */
+const IDENTITY_FIELDS = [
+  "databaseUrl",
+  "encryptionKey",
+  "inngestClientId",
+] as const;
+
+type RovaInstanceIdentity = Record<(typeof IDENTITY_FIELDS)[number], string>;
+
+declare global {
+  var __rovaActiveInstance:
+    | { identity: RovaInstanceIdentity; holders: number }
+    | undefined;
+}
+
+/**
+ * Take the process, and hand back the release.
+ *
+ * Counted rather than a flag, because two apps of the same identity are allowed
+ * and a single boolean would let the first one's dispose hand the process to a
+ * third app with a different database while the second is still serving.
+ */
+function claimProcess(identity: RovaInstanceIdentity): () => void {
+  const active = globalThis.__rovaActiveInstance;
+
+  if (active) {
+    const differing = IDENTITY_FIELDS.filter(
+      (field) => active.identity[field] !== identity[field]
+    );
+
+    if (differing.length > 0) {
+      throw new Error(
+        `A Rova app is already running in this process with a different ${differing.join(", ")}. Rova holds its database, Inngest client, and registries as process globals, so one process runs one app. Call dispose() on the first before creating another.`
+      );
+    }
+  }
+
+  globalThis.__rovaActiveInstance = {
+    identity,
+    holders: (active?.holders ?? 0) + 1,
+  };
+
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+
+    const current = globalThis.__rovaActiveInstance;
+    if (!current) {
+      return;
+    }
+
+    globalThis.__rovaActiveInstance =
+      current.holders <= 1
+        ? undefined
+        : { ...current, holders: current.holders - 1 };
+  };
+}
+
 export type RovaApp = {
   /**
    * The whole mounted app as one fetch handler. Bun, Deno, Cloudflare Workers,
@@ -134,6 +206,36 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
   if (!options.inngest.client.id?.trim()) {
     throw new Error("createRovaApp requires inngest.client.id");
   }
+
+  assertValidEncryptionKey(options.encryption.key);
+
+  // Before any configure* call, so a conflict is reported from here rather than
+  // by whichever global happens to notice first.
+  const releaseProcess = claimProcess({
+    databaseUrl: options.database.url.trim(),
+    encryptionKey: options.encryption.key.trim(),
+    inngestClientId: options.inngest.client.id.trim(),
+  });
+
+  try {
+    return await buildRovaApp(options, { basePath, authorize, releaseProcess });
+  } catch (error) {
+    // A claim left behind by a failed startup would answer the retry with "an
+    // app is already running" and bury the real error.
+    releaseProcess();
+    throw error;
+  }
+}
+
+async function buildRovaApp(
+  options: RovaAppOptions,
+  runtime: {
+    basePath: "" | `/${string}`;
+    authorize: Authorize;
+    releaseProcess: () => void;
+  }
+): Promise<RovaApp> {
+  const { basePath, authorize, releaseProcess } = runtime;
 
   if (options.plugins) {
     for (const [type, config] of Object.entries(options.plugins)) {
@@ -201,6 +303,8 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
   }
 
   const dispose = (): void => {
+    releaseProcess();
+
     for (const triggerType of registeredTriggerTypes) {
       unregisterWorkflowTrigger(triggerType);
     }

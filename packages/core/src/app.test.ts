@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { z } from "zod";
+import { createTrigger } from "@/index";
 import { createRovaApp, type RovaApp } from "@/app";
 import { createApiApp, MACHINE_ROUTES } from "@/backend/api-app";
 
@@ -257,5 +259,123 @@ describe("createRovaApp configuration", () => {
     await expect(
       createRovaApp({ ...BASE_OPTIONS, encryption: { key: "abc123" } })
     ).rejects.toThrow("64-character hex string");
+  });
+
+  // The database handle, the Inngest client, and both registries are process
+  // globals. A second app on a different database used to alias the first
+  // connection and surface later as rows in the wrong place.
+  it("refuses a second app configured differently", async () => {
+    const app = await createTestApp();
+    try {
+      await expect(
+        createRovaApp({
+          ...BASE_OPTIONS,
+          database: { url: "postgresql://other:other@127.0.0.1:1/other" },
+        })
+      ).rejects.toThrow("already running in this process");
+    } finally {
+      app.dispose();
+    }
+  });
+
+  it("names the fields that disagree", async () => {
+    const app = await createTestApp();
+    try {
+      await expect(
+        createRovaApp({
+          ...BASE_OPTIONS,
+          inngest: { client: { id: "someone-else" } },
+        })
+      ).rejects.toThrow("inngestClientId");
+    } finally {
+      app.dispose();
+    }
+  });
+
+  it("releases the claim when startup fails after taking it", async () => {
+    await expect(
+      createRovaApp({
+        ...BASE_OPTIONS,
+        // A trigger type that is already built in, so registration throws well
+        // after the process has been claimed.
+        triggers: [
+          createTrigger({
+            type: "Webhook",
+            label: "Clashing",
+            description: "Collides with the built-in webhook trigger",
+            schema: z.object({ id: z.string() }),
+            correlationIdPath: "id",
+            lifecycle: {
+              onStart: () => true,
+              onRestart: () => false,
+              onStop: () => false,
+            },
+          }),
+        ],
+      })
+    ).rejects.toThrow("already registered");
+
+    // A claim left behind would answer this with "an app is already running"
+    // and bury whatever the operator actually needs to fix.
+    const app = await createRovaApp({
+      ...BASE_OPTIONS,
+      inngest: { client: { id: "after-failed-startup" } },
+    });
+    app.dispose();
+  });
+
+  // Two apps of one identity are allowed, so the claim is counted. A flag would
+  // let the first dispose hand the process to a third app on another database
+  // while the second is still serving.
+  it("holds the claim until the last app disposes", async () => {
+    const first = await createTestApp();
+    const second = await createTestApp();
+
+    first.dispose();
+
+    await expect(
+      createRovaApp({
+        ...BASE_OPTIONS,
+        database: { url: "postgresql://other:other@127.0.0.1:1/other" },
+      })
+    ).rejects.toThrow("already running in this process");
+
+    second.dispose();
+  });
+
+  // Registering a trigger type twice throws, so a second app carrying the same
+  // trigger only starts if dispose gave the first one's registrations back.
+  it("releases its registrations on dispose", async () => {
+    const trigger = createTrigger({
+      type: "DisposeProbe",
+      label: "Dispose Probe",
+      description: "Registered twice, on purpose",
+      schema: z.object({ id: z.string() }),
+      correlationIdPath: "id",
+      lifecycle: {
+        onStart: () => true,
+        onRestart: () => false,
+        onStop: () => false,
+      },
+    });
+
+    const first = await createRovaApp({ ...BASE_OPTIONS, triggers: [trigger] });
+    first.dispose();
+
+    const second = await createRovaApp({
+      ...BASE_OPTIONS,
+      triggers: [trigger],
+    });
+    try {
+      const extensions = (await (
+        await get(second, "/api/extensions")
+      ).json()) as { triggers: Array<{ type: string }> };
+
+      expect(extensions.triggers.map((entry) => entry.type)).toContain(
+        "DisposeProbe"
+      );
+    } finally {
+      second.dispose();
+    }
   });
 });

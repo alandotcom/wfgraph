@@ -17,14 +17,33 @@ import type { StepFunction } from "@/shared/workflow/step-result";
  */
 type StepModule = Record<string, unknown>;
 
-export type StepImporter = {
-  importer: () => Promise<StepModule>;
-  stepFunction: string;
-  label?: string;
-  execute?: (
-    input: RuntimeActionExecuteInput
-  ) => RuntimeActionResult | Promise<RuntimeActionResult>;
-};
+/**
+ * How the engine reaches an action's implementation.
+ *
+ * A plugin step is a named export of a module loaded on demand. A runtime action
+ * carries its function directly. These were one shape with optional fields,
+ * which meant a runtime action wore a module importer's clothes: a fake export
+ * name and an importer returning `{}`. An action registered as metadata alone,
+ * which is what the browser holds, then reached the module path and reported
+ * that a plugin was missing an export it never had.
+ */
+export type StepImporter =
+  | {
+      kind: "module";
+      importer: () => Promise<StepModule>;
+      stepFunction: string;
+      label?: string;
+    }
+  | {
+      kind: "runtime";
+      execute: (
+        input: RuntimeActionExecuteInput
+      ) => RuntimeActionResult | Promise<RuntimeActionResult>;
+      label?: string;
+    };
+
+/** The module half, for the loader and the built-in actions. */
+export type ModuleStepImporter = Extract<StepImporter, { kind: "module" }>;
 
 /**
  * Resolve a registration to the step function it names.
@@ -40,7 +59,7 @@ export type StepImporter = {
  * registration and exported function name disagree.
  */
 export async function loadStepFunction(
-  importer: StepImporter
+  importer: ModuleStepImporter
 ): Promise<StepFunction | undefined> {
   const module = await importer.importer();
   const exported = module[importer.stepFunction];
@@ -56,7 +75,7 @@ export async function loadStepFunction(
   return (input) => exported(input);
 }
 
-const STEP_IMPORTERS: Record<string, StepImporter> = {};
+const STEP_IMPORTERS: Record<string, ModuleStepImporter> = {};
 
 const SYSTEM_ACTION_LABELS: Record<string, string> = {
   Condition: "Condition",
@@ -72,15 +91,17 @@ export function getStepImporter(actionType: string): StepImporter | undefined {
   }
 
   const runtimeAction = getRuntimeAction(actionType);
-  if (!runtimeAction) {
+  // An entry with no `execute` is metadata registered for the editor to draw,
+  // which the browser holds and the server never should. It has no
+  // implementation, so it is not an importer.
+  if (!runtimeAction?.execute) {
     return undefined;
   }
 
   return {
-    importer: async () => ({}),
-    stepFunction: "__runtime_execute__",
-    label: runtimeAction.label,
+    kind: "runtime",
     execute: runtimeAction.execute,
+    label: runtimeAction.label,
   };
 }
 
@@ -99,7 +120,7 @@ export function getActionLabel(actionType: string): string | undefined {
 
 export function registerStepImporter(
   actionType: string,
-  importer: StepImporter
+  importer: Omit<ModuleStepImporter, "kind">
 ): void {
-  STEP_IMPORTERS[actionType] = importer;
+  STEP_IMPORTERS[actionType] = { kind: "module", ...importer };
 }

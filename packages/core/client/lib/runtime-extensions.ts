@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { getBasePath } from "@/lib/base-path";
+import type { ActionConfigField } from "@/plugins/registry";
 import {
-  type ActionConfigField,
   clearRuntimeActions,
-  type RuntimeActionDefinition,
   registerRuntimeAction,
-} from "@/plugins/registry";
+  type RuntimeActionMetadata,
+} from "@/shared/workflow/action-registry";
 import type { ReferenceField } from "@/shared/workflow/node-references";
 
 export type RuntimeTriggerDefinition = {
@@ -92,7 +92,7 @@ const referenceFieldSchema: z.ZodType<ReferenceField> = z.object({
  * uses to draw the action selector and its config form, and the run itself
  * happens on the server.
  */
-const runtimeActionSchema: z.ZodType<RuntimeActionDefinition> = z.object({
+const runtimeActionSchema: z.ZodType<RuntimeActionMetadata> = z.object({
   // The selector keys on id and shows label, so both must carry a value.
   id: z.string().trim().min(1),
   label: z.string().trim().min(1),

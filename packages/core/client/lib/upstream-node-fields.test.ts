@@ -4,7 +4,10 @@ import {
   getUpstreamConditionFields,
   getUpstreamNodes,
 } from "@/lib/upstream-node-fields";
-import { clearRuntimeActions, registerRuntimeAction } from "@/plugins/registry";
+import {
+  clearRuntimeActions,
+  registerRuntimeAction,
+} from "@/shared/workflow/action-registry";
 import type { WorkflowEdge, WorkflowNode } from "@/shared/workflow/types";
 
 function createNode(input: {

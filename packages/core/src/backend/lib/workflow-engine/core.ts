@@ -11,7 +11,7 @@ import {
   getActionLabel,
   getStepImporter,
   loadStepFunction,
-  type StepImporter,
+  type ModuleStepImporter,
 } from "@/backend/lib/step-registry";
 import type { StepContext } from "@/backend/lib/steps/step-handler";
 import { triggerStep } from "@/backend/lib/steps/trigger";
@@ -76,12 +76,14 @@ const WAIT_ACTION_TYPE = "Wait";
  * both directly, because it evaluates the condition expression itself and the
  * wait suspends the run through the durable runtime.
  */
-const SYSTEM_ACTIONS: Record<string, StepImporter> = {
+const SYSTEM_ACTIONS: Record<string, ModuleStepImporter> = {
   "Database Query": {
+    kind: "module",
     importer: () => import("@/backend/lib/steps/database-query"),
     stepFunction: "databaseQueryStep",
   },
   "HTTP Request": {
+    kind: "module",
     importer: () => import("@/backend/lib/steps/http-request"),
     stepFunction: "httpRequestStep",
   },
@@ -524,7 +526,7 @@ async function executeActionStepInner(input: {
   // Look up plugin action from the generated step registry
   const stepImporter = getStepImporter(actionType);
   if (stepImporter) {
-    if (typeof stepImporter.execute === "function") {
+    if (stepImporter.kind === "runtime") {
       const {
         actionType: _ignoredActionType,
         integrationId: _ignoredIntegrationId,

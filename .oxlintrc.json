@@ -47,6 +47,7 @@
           "__rovaDatabaseState",
           "__rovaEncryptionState",
           "__rovaInngestState",
+          "__rovaActiveInstance",
           "__rovaDevServer",
           "__rovaDevSignalsInstalled",
           "__resizeObserverPatched"
