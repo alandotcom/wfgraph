@@ -8,6 +8,8 @@ import {
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "#src/backend/lib/workflow-wait-state";
+import type { JsonObject } from "@rova/shared/types/json";
 
 /** One row of `workflow_executions`, as the run panel and the engine see it. */
 export type WorkflowExecution = typeof workflowExecutions.$inferSelect;
@@ -18,6 +20,42 @@ export type WorkflowExecutionLog = typeof workflowExecutionLogs.$inferSelect;
 /** One row of `workflow_execution_events`, the audit trail beside a run. */
 export type WorkflowExecutionEvent =
   typeof workflowExecutionEvents.$inferSelect;
+
+/** One row of `workflow_wait_states`, a node parked waiting to be woken. */
+export type WorkflowWaitState = typeof workflowWaitStates.$inferSelect;
+
+/**
+ * The columns every entrypoint fills when it opens a run.
+ *
+ * Status is not among them: which status a new row gets follows from which
+ * method is called, so `insertRunning` writes "running" itself rather than
+ * trusting a caller to pass it.
+ */
+export type NewExecution = {
+  workflowId: string;
+  triggerType: NonNullable<WorkflowExecution["triggerType"]>;
+  runMode: WorkflowExecution["runMode"];
+  triggerEventType?: string;
+  correlationKey?: string;
+  input: JsonObject;
+};
+
+/**
+ * A run that reached its verdict without executing the graph. It starts and
+ * completes at the same instant, which is what keeps it visible in the runs
+ * list beside runs that did execute.
+ *
+ * Its status is the caller's to choose, from the three a run can be in when it
+ * never executed.
+ */
+export type NewTerminalExecution = NewExecution & {
+  status: Extract<
+    WorkflowExecution["status"],
+    "success" | "error" | "cancelled"
+  >;
+  output?: Record<string, unknown>;
+  error?: string;
+};
 
 /** A run without the columns that say how it was triggered. */
 export type ExecutionSummary = Pick<
@@ -93,6 +131,51 @@ export class ExecutionRepo extends Context.Service<
     readonly existsById: (
       executionId: string
     ) => Effect.Effect<boolean, DatabaseError>;
+    /**
+     * Which workflow a run belongs to, which is all the cancel path needs of the
+     * run itself before it starts writing audit rows against the workflow.
+     */
+    readonly findWorkflowIdById: (
+      executionId: string
+    ) => Effect.Effect<string | null, DatabaseError>;
+    /** Open a run. The row exists before the Inngest event that drives it. */
+    readonly insertRunning: (
+      input: NewExecution
+    ) => Effect.Effect<WorkflowExecution, DatabaseError>;
+    /** Record a run that never started, already in its terminal status. */
+    readonly insertTerminal: (
+      input: NewTerminalExecution
+    ) => Effect.Effect<WorkflowExecution, DatabaseError>;
+    /** Attach the Inngest event id once the enqueue has answered with one. */
+    readonly setRunId: (input: {
+      executionId: string;
+      runId: string | null;
+    }) => Effect.Effect<void, DatabaseError>;
+    /**
+     * Close a run whose enqueue was refused, answering whether a row was
+     * written. Without it the row sits in "running" with nothing behind it that
+     * could ever finish it.
+     *
+     * A rejected send is ambiguous: Inngest may have accepted the event and
+     * failed on the way back, in which case the run is already executing. The
+     * in-flight guard is what makes the ambiguity safe, since the compensation
+     * can then only touch a run that has not reached a verdict, and a `false`
+     * answer means the run got there first. The event carries an idempotency
+     * key, so retrying a send later stays free whenever we decide to.
+     */
+    readonly markEnqueueFailed: (input: {
+      executionId: string;
+      error: string;
+    }) => Effect.Effect<boolean, DatabaseError>;
+    /**
+     * The waiting node one hook token addresses, or null when the token names
+     * no wait or one that has already moved on. Status is part of the question
+     * rather than of the answer, since a resumed wait and an absent one are the
+     * same "no longer active" to the caller.
+     */
+    readonly findWaitingStateByToken: (
+      hookToken: string
+    ) => Effect.Effect<WorkflowWaitState | null, DatabaseError>;
     /** One run's node logs, newest first, whole rows. */
     readonly listLogs: (
       executionId: string
@@ -249,6 +332,100 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
             });
 
             return execution !== undefined;
+          }),
+
+        findWorkflowIdById: (executionId) =>
+          database.query(async (db) => {
+            const execution = await db.query.workflowExecutions.findFirst({
+              where: eq(workflowExecutions.id, executionId),
+              columns: { workflowId: true },
+            });
+
+            return execution?.workflowId ?? null;
+          }),
+
+        insertRunning: (input) =>
+          database.query(async (db) => {
+            const [execution] = await db
+              .insert(workflowExecutions)
+              .values({
+                workflowId: input.workflowId,
+                status: "running",
+                triggerType: input.triggerType,
+                runMode: input.runMode,
+                triggerEventType: input.triggerEventType,
+                correlationKey: input.correlationKey,
+                input: input.input,
+              })
+              .returning();
+
+            return execution;
+          }),
+
+        insertTerminal: (input) =>
+          database.query(async (db) => {
+            const now = new Date();
+            const [execution] = await db
+              .insert(workflowExecutions)
+              .values({
+                workflowId: input.workflowId,
+                status: input.status,
+                triggerType: input.triggerType,
+                runMode: input.runMode,
+                triggerEventType: input.triggerEventType,
+                correlationKey: input.correlationKey,
+                input: input.input,
+                output: input.output,
+                error: input.error,
+                startedAt: now,
+                completedAt: now,
+                cancelledAt: input.status === "cancelled" ? now : null,
+              })
+              .returning();
+
+            return execution;
+          }),
+
+        setRunId: (input) =>
+          database.query(async (db) => {
+            await db
+              .update(workflowExecutions)
+              .set({ workflowRunId: input.runId })
+              .where(eq(workflowExecutions.id, input.executionId));
+          }),
+
+        markEnqueueFailed: (input) =>
+          database.query(async (db) => {
+            const closed = await db
+              .update(workflowExecutions)
+              .set({
+                status: "error",
+                error: input.error,
+                completedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(workflowExecutions.id, input.executionId),
+                  inArray(workflowExecutions.status, [
+                    ...IN_FLIGHT_EXECUTION_STATUSES,
+                  ])
+                )
+              )
+              .returning({ id: workflowExecutions.id });
+
+            return closed.length > 0;
+          }),
+
+        findWaitingStateByToken: (hookToken) =>
+          database.query(async (db) => {
+            const waitState = await db.query.workflowWaitStates.findFirst({
+              where: and(
+                eq(workflowWaitStates.hookToken, hookToken),
+                eq(workflowWaitStates.status, "waiting")
+              ),
+            });
+
+            return waitState ?? null;
           }),
 
         listLogs: (executionId) =>

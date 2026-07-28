@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/database";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
 import { InvalidInput } from "#src/backend/lib/effect/failures";
 import {
   ExecutionRepo,

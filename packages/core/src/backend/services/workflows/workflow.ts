@@ -1,9 +1,7 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import {
-  callDbModule,
-  internalFailureRelayingCause,
-} from "#src/backend/lib/effect/database";
+import { callDbModule } from "#src/backend/lib/effect/database";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
 import {
   Conflict,
   IntegrationValidationFailed,

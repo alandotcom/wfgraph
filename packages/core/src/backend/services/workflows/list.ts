@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/database";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
 

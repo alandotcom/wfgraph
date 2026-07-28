@@ -1,18 +1,57 @@
-import type { ResolvedTriggerRouting } from "@rova/shared/workflow/routing-policy";
+import { Effect } from "effect";
+import type { EffectLogger } from "#src/backend/lib/effect/app-logger";
+import {
+  callDbModule,
+  type DatabaseError,
+} from "#src/backend/lib/effect/database";
+import {
+  callInngestModule,
+  type InngestError,
+} from "#src/backend/lib/effect/inngest-client";
 import { cancelInFlightRuns } from "#src/backend/lib/workflow-cancellation";
 import {
   listWorkflowInFlightExecutionsByCorrelation,
   listWorkflowWaitingStatesByCorrelation,
 } from "#src/backend/lib/workflow-wait-state";
+import type { ResolvedTriggerRouting } from "@rova/shared/workflow/routing-policy";
 import {
   orchestrateTriggerExecution,
+  type ResumeWaitStates,
   type TriggerOrchestratorResult,
-  type TriggerWaitState,
-} from "./orchestrator";
+  type TriggerOrchestratorResultWithoutResume,
+} from "#src/backend/services/workflows/triggering/orchestrator";
 
-type TriggerRoutingLogger = {
-  error: (message: string, properties?: Record<string, unknown>) => void;
-  info: (message: string, properties?: Record<string, unknown>) => void;
+/**
+ * The logger `cancelInFlightRuns` takes: plain calls, because that module still
+ * speaks Promises and writes its operator lines as it goes.
+ *
+ * Running a log Effect here is safe and stays so only while these lines are
+ * `Effect.sync` over logtape, which is the whole of what `AppLogger` builds.
+ * Stage 7 brings cancellation itself onto Effect and this bridge goes with it.
+ */
+function toPlainLogger(logger: EffectLogger) {
+  return {
+    error: (message: string, properties?: Record<string, unknown>) =>
+      Effect.runSync(logger.error(message, properties)),
+    info: (message: string, properties?: Record<string, unknown>) =>
+      Effect.runSync(logger.info(message, properties)),
+  };
+}
+
+type RoutedTriggerInput<E, R> = {
+  workflowId: string;
+  runMode: "live" | "test";
+  routing: ResolvedTriggerRouting;
+  /** Names the entrypoint in cancel reasons, e.g. "webhook event". */
+  sourceNoun: string;
+  logger: EffectLogger;
+  startExecution: () => Effect.Effect<
+    { executionId: string; runId?: string; runMode: "live" | "test" },
+    E,
+    R
+  >;
+  /** Absent for an entrypoint that has no delivering event to wake a wait with. */
+  resumeWaitStates?: ResumeWaitStates<E, R>;
 };
 
 /**
@@ -20,68 +59,98 @@ type TriggerRoutingLogger = {
  * acting on it: fetch the correlation key's candidates (waiting states for
  * resume matching, in-flight executions for cancel/replace), wire the
  * cancellation closure with its reason, and orchestrate. Entrypoints supply
- * only what genuinely differs: how a run starts, whether resumes are
- * enabled, and the noun naming them in cancel reasons.
+ * only what genuinely differs: how a run starts, whether they can resume a
+ * wait at all, and the noun naming them in cancel reasons.
+ *
+ * The two signatures carry the orchestrator's own distinction through: an
+ * entrypoint that supplies no resume callback is answered a result that has no
+ * "resumed" case in it.
  */
-export async function orchestrateRoutedTrigger(input: {
-  workflowId: string;
-  runMode: "live" | "test";
-  routing: ResolvedTriggerRouting;
-  /** Names the entrypoint in cancel reasons, e.g. "webhook event". */
-  sourceNoun: string;
-  enableResumes: boolean;
-  logger: TriggerRoutingLogger;
-  startExecution: () => Promise<{
-    executionId: string;
-    runId?: string;
-    runMode: "live" | "test";
-  }>;
-  resumeWaitStates: (
-    eventType: string,
-    waitStates: TriggerWaitState[]
-  ) => Promise<number>;
-}): Promise<TriggerOrchestratorResult> {
-  const { routing } = input;
-  const { correlationKey } = routing;
+export function orchestrateRoutedTrigger<E, R>(
+  input: RoutedTriggerInput<E, R> & { resumeWaitStates: ResumeWaitStates<E, R> }
+): Effect.Effect<
+  TriggerOrchestratorResult,
+  E | DatabaseError | InngestError,
+  R
+>;
+export function orchestrateRoutedTrigger<E, R>(
+  input: RoutedTriggerInput<E, R> & { resumeWaitStates?: undefined }
+): Effect.Effect<
+  TriggerOrchestratorResultWithoutResume,
+  E | DatabaseError | InngestError,
+  R
+>;
+export function orchestrateRoutedTrigger<E, R>(
+  input: RoutedTriggerInput<E, R>
+): Effect.Effect<
+  TriggerOrchestratorResult,
+  E | DatabaseError | InngestError,
+  R
+> {
+  return Effect.gen(function* () {
+    const { routing } = input;
+    const { correlationKey } = routing;
 
-  const [waitStates, inFlightExecutions] =
-    correlationKey === undefined
-      ? [[], []]
-      : await Promise.all([
-          listWorkflowWaitingStatesByCorrelation({
-            workflowId: input.workflowId,
-            correlationKey,
-            runMode: input.runMode,
-          }),
-          listWorkflowInFlightExecutionsByCorrelation({
-            workflowId: input.workflowId,
-            correlationKey,
-            runMode: input.runMode,
-          }),
-        ]);
-  const inFlightExecutionIds = inFlightExecutions.map(
-    (execution) => execution.id
-  );
+    const [waitStates, inFlightExecutions] =
+      correlationKey === undefined
+        ? [[], []]
+        : yield* Effect.all(
+            [
+              callDbModule(() =>
+                listWorkflowWaitingStatesByCorrelation({
+                  workflowId: input.workflowId,
+                  correlationKey,
+                  runMode: input.runMode,
+                })
+              ),
+              callDbModule(() =>
+                listWorkflowInFlightExecutionsByCorrelation({
+                  workflowId: input.workflowId,
+                  correlationKey,
+                  runMode: input.runMode,
+                })
+              ),
+            ],
+            { concurrency: "unbounded" }
+          );
 
-  return await orchestrateTriggerExecution({
-    runMode: input.runMode,
-    routing,
-    inFlightExecutionIds,
-    waitStates,
-    enableResumes: input.enableResumes,
-    startExecution: input.startExecution,
-    cancelInFlightRuns: async (eventType) =>
-      await cancelInFlightRuns({
-        workflowId: input.workflowId,
-        executionIds: inFlightExecutionIds,
-        waitStates,
-        eventType,
-        reason:
-          routing.action === "replace"
-            ? `Replaced by ${input.sourceNoun} ${eventType}`
-            : `Cancelled by ${input.sourceNoun} ${eventType}`,
-        logger: input.logger,
-      }),
-    resumeWaitStates: input.resumeWaitStates,
+    const inFlightExecutionIds = inFlightExecutions.map(
+      (execution) => execution.id
+    );
+
+    const shared = {
+      runMode: input.runMode,
+      routing,
+      inFlightExecutionIds,
+      waitStates,
+      startExecution: input.startExecution,
+      cancelInFlightRuns: (eventType?: string) =>
+        callInngestModule(() =>
+          cancelInFlightRuns({
+            workflowId: input.workflowId,
+            executionIds: inFlightExecutionIds,
+            waitStates,
+            eventType,
+            reason:
+              routing.action === "replace"
+                ? `Replaced by ${input.sourceNoun} ${eventType}`
+                : `Cancelled by ${input.sourceNoun} ${eventType}`,
+            logger: toPlainLogger(input.logger),
+          })
+        ),
+    };
+
+    // The branch is what picks the orchestrator's signature: passing an
+    // optional callback through would match neither, since "supplied" and
+    // "absent" are what the two overloads are distinguishing.
+    const resumeWaitStates = input.resumeWaitStates;
+    return yield* resumeWaitStates
+      ? orchestrateTriggerExecution<E | DatabaseError | InngestError, R>({
+          ...shared,
+          resumeWaitStates,
+        })
+      : orchestrateTriggerExecution<E | DatabaseError | InngestError, R>(
+          shared
+        );
   });
 }

@@ -31,6 +31,7 @@ import {
   type RovaInngestConfig,
   reportInngestCallbackExposure,
 } from "#src/backend/lib/inngest/client";
+import { invalidateInngestFunctionsCache } from "#src/backend/lib/inngest/functions";
 import {
   configureAppLogging,
   configureAppLoggingWithBridge,
@@ -115,76 +116,6 @@ export type RovaClientBundle = {
   dir: string;
 };
 
-/**
- * One Rova per process.
- *
- * The database handle, the Inngest client, the encryption key, and both
- * registries are process-global, so a second app with a different database URL
- * silently aliases the first connection and the damage shows up later as data in
- * the wrong database. Threading an instance handle through all of them buys
- * nothing yet: two instances means two tenants, and no table carries a tenant
- * column. Relaxing this later is invisible to every existing caller.
- */
-const IDENTITY_FIELDS = [
-  "databaseUrl",
-  "encryptionKey",
-  "inngestClientId",
-] as const;
-
-type RovaInstanceIdentity = Record<(typeof IDENTITY_FIELDS)[number], string>;
-
-declare global {
-  var __rovaActiveInstance:
-    | { identity: RovaInstanceIdentity; holders: number }
-    | undefined;
-}
-
-/**
- * Take the process, and hand back the release.
- *
- * Counted rather than a flag, because two apps of the same identity are allowed
- * and a single boolean would let the first one's dispose hand the process to a
- * third app with a different database while the second is still serving.
- */
-function claimProcess(identity: RovaInstanceIdentity): () => void {
-  const active = globalThis.__rovaActiveInstance;
-
-  if (active) {
-    const differing = IDENTITY_FIELDS.filter(
-      (field) => active.identity[field] !== identity[field]
-    );
-
-    if (differing.length > 0) {
-      throw new Error(
-        `A Rova app is already running in this process with a different ${differing.join(", ")}. Rova holds its database, Inngest client, and registries as process globals, so one process runs one app. Call dispose() on the first before creating another.`
-      );
-    }
-  }
-
-  globalThis.__rovaActiveInstance = {
-    identity,
-    holders: (active?.holders ?? 0) + 1,
-  };
-
-  let released = false;
-  return () => {
-    if (released) {
-      return;
-    }
-    released = true;
-
-    const current = globalThis.__rovaActiveInstance;
-    if (!current) {
-      return;
-    }
-
-    globalThis.__rovaActiveInstance =
-      current.holders <= 1
-        ? undefined
-        : { ...current, holders: current.holders - 1 };
-  };
-}
-
 export type RovaApp = {
   /**
    * The whole mounted app as one fetch handler. Bun, Deno, Cloudflare Workers,
@@ -201,11 +132,20 @@ export type RovaApp = {
   /**
    * Give back everything this app holds. Awaiting it waits for the Effect
    * runtime's Layers to finalize; a host that fires and forgets still releases
-   * the process claim and the registrations synchronously.
+   * the registrations synchronously.
    */
   dispose: () => Promise<void>;
 };
 
+/**
+ * One Rova per process.
+ *
+ * The database handle, the Inngest client, the encryption key, and both
+ * registries are process-global, so a second app with a different database URL
+ * silently aliases the first connection. ADR-0002 makes a second app per
+ * process undefined behavior rather than a supported arrangement that fails
+ * loudly.
+ */
 export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const authorize = resolveAuthorize(options.auth);
@@ -220,22 +160,7 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
 
   assertValidEncryptionKey(options.encryption.key);
 
-  // Before any configure* call, so a conflict is reported from here rather than
-  // by whichever global happens to notice first.
-  const releaseProcess = claimProcess({
-    databaseUrl: options.database.url.trim(),
-    encryptionKey: options.encryption.key.trim(),
-    inngestClientId: options.inngest.id.trim(),
-  });
-
-  try {
-    return await buildRovaApp(options, { basePath, authorize, releaseProcess });
-  } catch (error) {
-    // A claim left behind by a failed startup would answer the retry with "an
-    // app is already running" and bury the real error.
-    releaseProcess();
-    throw error;
-  }
+  return await buildRovaApp(options, { basePath, authorize });
 }
 
 /**
@@ -261,10 +186,9 @@ async function buildRovaApp(
   startup: {
     basePath: "" | `/${string}`;
     authorize: Authorize;
-    releaseProcess: () => void;
   }
 ): Promise<RovaApp> {
-  const { basePath, authorize, releaseProcess } = startup;
+  const { basePath, authorize } = startup;
 
   if (options.plugins) {
     for (const [type, config] of Object.entries(options.plugins)) {
@@ -314,7 +238,6 @@ async function buildRovaApp(
     return await assembleRovaApp(options, {
       basePath,
       authorize,
-      releaseProcess,
       runtime,
       registeredTriggerTypes,
       registeredActionIds,
@@ -338,7 +261,6 @@ async function assembleRovaApp(
   startup: {
     basePath: "" | `/${string}`;
     authorize: Authorize;
-    releaseProcess: () => void;
     runtime: RovaRuntime;
     registeredTriggerTypes: Set<string>;
     registeredActionIds: Set<string>;
@@ -347,7 +269,6 @@ async function assembleRovaApp(
   const {
     basePath,
     authorize,
-    releaseProcess,
     runtime,
     registeredTriggerTypes,
     registeredActionIds,
@@ -383,8 +304,6 @@ async function assembleRovaApp(
   }
 
   const dispose = async (): Promise<void> => {
-    releaseProcess();
-
     for (const triggerType of registeredTriggerTypes) {
       unregisterWorkflowTrigger(triggerType);
     }
@@ -394,6 +313,11 @@ async function assembleRovaApp(
       unregisterRuntimeAction(actionId);
     }
     registeredActionIds.clear();
+
+    // The cached Inngest functions close over this runtime, so they go before
+    // it does. Otherwise a `/inngest` request arriving during teardown is
+    // served event listeners that run services on a finalized runtime.
+    invalidateInngestFunctionsCache();
 
     await runtime.dispose();
   };

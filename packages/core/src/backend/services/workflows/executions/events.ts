@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/database";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
 

@@ -1,7 +1,6 @@
 import { Effect } from "effect";
-import { nanoid } from "nanoid";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { internalFailureRelayingCause } from "#src/backend/lib/effect/database";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
 import {
   InternalFailure,
   InvalidInput,
@@ -14,27 +13,9 @@ import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
+  withDefaultTriggerNode,
 } from "#src/backend/services/workflows/mappers";
 import { generateId } from "@rova/shared/utils/id";
-import {
-  createSerializedWorkflowGraph,
-  isSerializedWorkflowGraph,
-} from "@rova/shared/workflow/graph";
-
-function createDefaultTriggerNode() {
-  return {
-    id: nanoid(),
-    type: "trigger" as const,
-    position: { x: 0, y: 0 },
-    data: {
-      label: "",
-      description: "",
-      type: "trigger" as const,
-      config: { triggerType: "Webhook" },
-      status: "idle" as const,
-    },
-  };
-}
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
 const loggerFor = () =>
@@ -86,15 +67,9 @@ export const postWorkflowsCurrent = Effect.fn("postWorkflowsCurrent")(
   function* (body: { graph: unknown }) {
     const repo = yield* WorkflowRepo;
 
-    const graphToValidate =
-      isSerializedWorkflowGraph(body.graph) && body.graph.nodes.length === 0
-        ? createSerializedWorkflowGraph({
-            nodes: [createDefaultTriggerNode()],
-            edges: [],
-          })
-        : body.graph;
-
-    const graphValidation = validateWorkflowGraph(graphToValidate);
+    const graphValidation = validateWorkflowGraph(
+      withDefaultTriggerNode(body.graph)
+    );
     if (!graphValidation.valid) {
       return yield* Effect.fail(
         new InvalidInput({ error: graphValidation.error })

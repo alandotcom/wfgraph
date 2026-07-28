@@ -1,8 +1,8 @@
 import { ORPCError } from "@orpc/server";
 import type {
+  ServiceFailure,
   ServiceFailureKind,
-  ServiceResult,
-} from "#src/backend/lib/service-result";
+} from "#src/backend/lib/effect/failures";
 import { getRpcErrorMessage } from "@rova/shared/rpc/error-message";
 
 const FAILURE_KIND_TO_ORPC_CODE = {
@@ -13,32 +13,22 @@ const FAILURE_KIND_TO_ORPC_CODE = {
   internal: "INTERNAL_SERVER_ERROR",
 } as const satisfies Record<ServiceFailureKind, string>;
 
-function throwOrpcError(kind: ServiceFailureKind, payload: unknown): never {
-  // oRPC derives the wire status from the code, so nothing here names one.
-  throw new ORPCError(FAILURE_KIND_TO_ORPC_CODE[kind], {
+/**
+ * One of the two edges: a domain failure becomes the oRPC error a procedure
+ * throws.
+ *
+ * The failure's own `payload` is both the message source and the `data` the
+ * client reads, which is how the integration failures carry their ids through
+ * to the editor. oRPC derives the wire status from the code, so nothing here
+ * names one.
+ */
+export function toOrpcError(
+  failure: ServiceFailure
+): ORPCError<string, unknown> {
+  const payload = failure.payload;
+
+  return new ORPCError(FAILURE_KIND_TO_ORPC_CODE[failure.kind], {
     message: getRpcErrorMessage(payload),
     data: payload,
   });
-}
-
-function serviceResultToData<TData>(
-  result: ServiceResult<TData, ServiceFailureKind, unknown>
-): TData {
-  if (!result.ok) {
-    throwOrpcError(result.kind, result.error);
-  }
-
-  return result.data;
-}
-
-export type RpcCompatibleResult<TData> = ServiceResult<
-  TData,
-  ServiceFailureKind,
-  unknown
->;
-
-export async function toRpcData<TData>(
-  result: RpcCompatibleResult<TData> | Promise<RpcCompatibleResult<TData>>
-): Promise<TData> {
-  return serviceResultToData(await result);
 }

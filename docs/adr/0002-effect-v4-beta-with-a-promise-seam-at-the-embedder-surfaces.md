@@ -40,8 +40,8 @@ Effect Schema replaces Zod everywhere, including the RPC contracts in `@rova/sha
 timestamp codec, and `JsonValue` parsing. Service failures become tagged errors built with
 `Schema.TaggedErrorClass`. The two adapters at the edges keep doing their translation job:
 `packages/core/src/backend/rpc/errors.ts` maps a failure to an oRPC code, and
-`packages/core/src/backend/lib/http/response-from-service-result.ts` maps it to an HTTP
-status. Knowledge of status codes stays at those two edges, exactly where it lives today.
+`packages/core/src/backend/lib/http/failure-response.ts` maps it to an HTTP status.
+Knowledge of status codes stays at those two edges, exactly where it lives today.
 
 oRPC moves to the 2.x beta together with `@orpc/experimental-effect`, which lets a
 contract take Effect Schema directly, gives Effect-native handlers, and generates the
@@ -62,6 +62,14 @@ story: one Rova per process remains the only supported arrangement. Constructing
 second app in a process is undefined behavior (decided 2026-07-28). The runtime work
 is justified by dependency injection and testability, and nothing is added, tested,
 or documented to make multiple apps work.
+
+**Amendment, 2026-07-28.** Stage 3b deleted `claimProcess` and `service-result.ts` as
+planned, but the database handle and the Inngest client outlive it into stage 7. The run
+engine consumes both from outside any runtime, since the step store, the step logger, the
+credential fetcher, and the function registry all import them directly, so they cannot
+be deleted until stage 7 brings that interior across. `DatabaseLayer` and
+`InngestClientLayer` are built from those globals in the meantime, which is what lets the
+services above them be injected and tested now.
 
 ## Sequencing
 
@@ -90,10 +98,14 @@ Schema-typed inputs already in place, sparing a second pass over the same files.
   ethos is one way to do a thing.
 - **Staying on oRPC 1.x** rejected: v1 generates its OpenAPI document through `@orpc/zod`
   and has no Effect Schema path, so removing Zod would break the `/rest` spec.
-- **Wrapping the existing globals in Layers as a bridge step** rejected: the seam would be
-  cosmetic. Two app instances would still collide over the same globals, and every Layer
-  would be a pass-through to module state. Deleting the entire bridge would leave
-  behaviour identical, which is the test that tells you it carries no structure.
+- **Wrapping the existing globals in Layers as a bridge step** rejected as an end state:
+  the seam would be cosmetic. Two app instances would still collide over the same globals,
+  and every Layer would be a pass-through to module state. Deleting the entire bridge
+  would leave behaviour identical, which is the test that tells you it carries no
+  structure. It was adopted as an intermediate for stages 3b through 7, which is a
+  different claim: a pass-through Layer carries no structure of its own, and it does make
+  the services above it injectable and testable now, which is the whole reason the runtime
+  exists. See the 2026-07-28 amendment above.
 
 ## Consequences
 

@@ -4,14 +4,6 @@ import type {
   WorkflowVisibility,
 } from "./types";
 
-export type ApiErrorPayload = {
-  error: string;
-  code?: string;
-  invalidIntegrationIds?: readonly string[];
-  message?: string;
-  details?: string;
-};
-
 export type WorkflowApiPayload = {
   id: string;
   name: string;

@@ -1,69 +1,48 @@
-import { eq } from "drizzle-orm";
-import { db } from "#src/backend/lib/db/index";
-import { workflows } from "#src/backend/lib/db/schema";
-import { getAppLogger } from "#src/backend/lib/logger";
-import {
-  failure,
-  type ServiceResult,
-  success,
-} from "#src/backend/lib/service-result";
+import { Effect } from "effect";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
 import { orchestrateRoutedTrigger } from "#src/backend/services/workflows/triggering/routing";
-import { runWorkflowExecutionPreflight } from "#src/backend/services/workflows/triggering/preflight";
+import { loadWorkflowForRun } from "#src/backend/services/workflows/triggering/preflight";
 import {
   buildIgnoredRunAuditMessage,
+  recordPausedRunIgnored,
   recordTerminalWorkflowRun,
   startWorkflowRun,
 } from "#src/backend/services/workflows/triggering/run-lifecycle";
 import type { JsonObject } from "@rova/shared/types/json";
-import { getErrorMessage } from "@rova/shared/utils";
-import type { ApiErrorPayload } from "@rova/shared/workflow/api-contracts";
 import type { WorkflowExecuteResponse } from "@rova/shared/workflow/execution-contracts";
 import { routeWorkflowTrigger } from "@rova/shared/workflow/trigger-registry";
 import { resolveWebhookTriggerRuntimeConfig } from "@rova/shared/workflow/triggers/webhook-trigger";
 
-const executeLogger = getAppLogger("workflow", "execute");
+/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+const loggerFor = (workflowId: string) =>
+  Effect.map(AppLogger, (appLogger) =>
+    appLogger.get("workflow", "execute").with({ workflowId })
+  );
 
-export async function postWorkflowExecuteResult(
-  workflowId: string,
-  body: {
-    /**
-     * The manual-run payload. It stands in for a webhook body, follows the same
-     * path onto the Inngest event and into the JSONB
-     * `workflow_executions.input` column, and so carries the same JSON-only
-     * contract.
-     */
-    input?: JsonObject;
-  }
-): Promise<
-  ServiceResult<
-    WorkflowExecuteResponse,
-    "invalid" | "not_found" | "internal",
-    ApiErrorPayload
-  >
-> {
-  const requestLogger = executeLogger.with({ workflowId });
-  try {
-    const workflow = await db.query.workflows.findFirst({
-      where: eq(workflows.id, workflowId),
+export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
+  function* (
+    workflowId: string,
+    body: {
+      /**
+       * The manual-run payload. It stands in for a webhook body, follows the
+       * same path onto the Inngest event and into the JSONB
+       * `workflow_executions.input` column, and so carries the same JSON-only
+       * contract.
+       */
+      input?: JsonObject;
+    }
+  ) {
+    const logger = yield* loggerFor(workflowId);
+
+    const { workflow, preflight } = yield* loadWorkflowForRun({
+      workflowId,
+      logger,
     });
 
-    if (!workflow) {
-      return failure("not_found", { error: "Workflow not found" });
-    }
-
-    const preflight = await runWorkflowExecutionPreflight({
-      workflow,
-      logger: requestLogger,
-    });
-    if (!preflight.ok) {
-      return preflight;
-    }
-
-    const { workflowGraph, triggerConfig, triggerDefinition } = preflight.data;
+    const { workflowGraph, triggerConfig, triggerDefinition } = preflight;
     const triggerConfigRecord: Record<string, unknown> = triggerConfig ?? {};
     const triggerExecutionType = triggerDefinition.runtime.executionType;
-    const isOrchestratedTrigger =
-      triggerExecutionType === "webhook" || triggerExecutionType === "event";
     const webhookRuntimeConfig =
       triggerExecutionType === "webhook"
         ? resolveWebhookTriggerRuntimeConfig(triggerConfigRecord)
@@ -80,28 +59,11 @@ export async function postWorkflowExecuteResult(
     }
 
     if (workflow.isPaused) {
-      const ignoredExecution = await recordTerminalWorkflowRun({
+      const ignoredExecution = yield* recordPausedRunIgnored({
         workflowId,
-        trigger: { type: "manual" },
+        triggerType: "manual",
         runMode,
         payload: effectiveInput,
-        status: "success",
-        output: {
-          status: "ignored",
-          reason: "workflow_paused",
-          runMode,
-        },
-        audit: {
-          eventType: "run_ignored",
-          message: buildIgnoredRunAuditMessage({
-            triggerType: "manual",
-            reason: "workflow_paused",
-          }),
-          metadata: {
-            reason: "workflow_paused",
-            runMode,
-          },
-        },
       });
 
       const response: WorkflowExecuteResponse = {
@@ -110,7 +72,7 @@ export async function postWorkflowExecuteResult(
         runMode,
         reason: "workflow_paused",
       };
-      return success(response);
+      return response;
     }
 
     // A manual run has no delivering Inngest event; classification owns the
@@ -121,7 +83,7 @@ export async function postWorkflowExecuteResult(
     });
     const { eventType, correlationKey, action } = routing;
 
-    requestLogger.info("Workflow execute request received", {
+    yield* logger.info("Workflow execute request received", {
       workflowName: workflow.name,
       triggerType: triggerDefinition.runtime.type.toLowerCase(),
       runMode,
@@ -132,8 +94,13 @@ export async function postWorkflowExecuteResult(
       action,
     });
 
-    if (!isOrchestratedTrigger) {
-      const startedExecution = await startWorkflowRun({
+    // Only the two routed trigger kinds have a routing policy to act on; every
+    // other trigger a manual run can name just starts.
+    if (
+      triggerExecutionType !== "webhook" &&
+      triggerExecutionType !== "event"
+    ) {
+      const startedExecution = yield* startWorkflowRun({
         workflow: {
           id: workflowId,
           name: workflow.name,
@@ -151,18 +118,17 @@ export async function postWorkflowExecuteResult(
         runId: startedExecution.runId,
         runMode,
       };
-      return success(response);
+      return response;
     }
 
-    const orchestrated = await orchestrateRoutedTrigger({
+    const orchestrated = yield* orchestrateRoutedTrigger({
       workflowId,
       runMode,
       routing,
       sourceNoun: "execute event",
-      enableResumes: false,
-      logger: executeLogger,
-      startExecution: async () =>
-        await startWorkflowRun({
+      logger,
+      startExecution: () =>
+        startWorkflowRun({
           workflow: {
             id: workflowId,
             name: workflow.name,
@@ -173,7 +139,9 @@ export async function postWorkflowExecuteResult(
           requestPayload: body.input ?? {},
           runMode,
         }),
-      resumeWaitStates: async () => 0,
+      // No resume callback: a manual run has no delivering event, so there is
+      // nothing here that could wake a waiting run, and "resumed" is not one of
+      // the outcomes this call can be answered with.
     });
 
     if (orchestrated.status === "running") {
@@ -186,7 +154,7 @@ export async function postWorkflowExecuteResult(
         cancelledWaits: orchestrated.cancelledWaits,
         failedExecutions: orchestrated.failedExecutions,
       };
-      return success(response);
+      return response;
     }
 
     if (orchestrated.status === "cancelled") {
@@ -196,7 +164,7 @@ export async function postWorkflowExecuteResult(
         cancellationAuditMessage = `Cancelled by execute event ${eventType}`;
       }
 
-      const terminalExecution = await recordTerminalWorkflowRun({
+      const terminalExecution = yield* recordTerminalWorkflowRun({
         workflowId,
         trigger: { type: triggerExecutionType, eventType, correlationKey },
         runMode: orchestrated.runMode,
@@ -230,20 +198,11 @@ export async function postWorkflowExecuteResult(
         cancelledWaits: orchestrated.cancelledWaits,
         failedExecutions: orchestrated.failedExecutions,
       };
-      return success(response);
-    }
-
-    if (orchestrated.status === "resumed") {
-      requestLogger.error(
-        "Unexpected resumed outcome for manual execute orchestration"
-      );
-      return failure("internal", {
-        error: "Unexpected routing outcome while executing workflow",
-      });
+      return response;
     }
 
     const ignoredReason = orchestrated.reason;
-    const terminalExecution = await recordTerminalWorkflowRun({
+    const terminalExecution = yield* recordTerminalWorkflowRun({
       workflowId,
       trigger: { type: triggerExecutionType, eventType, correlationKey },
       runMode,
@@ -278,16 +237,18 @@ export async function postWorkflowExecuteResult(
       runMode,
       reason: ignoredReason,
     };
-
-    return success(response);
-  } catch (error) {
-    requestLogger.error(
-      `Failed to start workflow execution: ${getErrorMessage(error)}`,
-      { error }
-    );
-    return failure("internal", {
-      error:
-        error instanceof Error ? error.message : "Failed to execute workflow",
-    });
-  }
-}
+    return response;
+  },
+  // A rejected query and a refused Inngest send both leave the caller with the
+  // same nothing, and the operator with the same line to grep for.
+  (effect, workflowId) =>
+    effect.pipe(
+      Effect.catchTags(
+        seamFailureHandlers(
+          loggerFor(workflowId),
+          "Failed to start workflow execution",
+          "Failed to execute workflow"
+        )
+      )
+    )
+);

@@ -1,158 +1,124 @@
-import { sql } from "drizzle-orm";
-import { nanoid } from "nanoid";
-import { db } from "#src/backend/lib/db/index";
-import { workflows } from "#src/backend/lib/db/schema";
-import { invalidateInngestFunctionsCache } from "#src/backend/lib/inngest/functions";
-import { getAppLogger } from "#src/backend/lib/logger";
+import { Effect } from "effect";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { callDbModule } from "#src/backend/lib/effect/database";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
 import {
-  failure,
-  type ServiceResult,
-  success,
-} from "#src/backend/lib/service-result";
+  Conflict,
+  IntegrationValidationFailed,
+  InvalidInput,
+} from "#src/backend/lib/effect/failures";
+import { invalidateInngestFunctionsCache } from "#src/backend/lib/inngest/functions";
 import { validateWorkflowConditionConfigs } from "#src/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
 import { validateWorkflowIntegrations } from "#src/backend/lib/workflow-integration-validation";
-import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
-import { getErrorMessage } from "@rova/shared/utils";
-import { generateId } from "@rova/shared/utils/id";
-import type {
-  ApiErrorPayload,
-  WorkflowApiPayload,
-} from "@rova/shared/workflow/api-contracts";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
-  createSerializedWorkflowGraph,
-  isSerializedWorkflowGraph,
-} from "@rova/shared/workflow/graph";
+  toWorkflowApiPayload,
+  withDefaultTriggerNode,
+} from "#src/backend/services/workflows/mappers";
+import { generateId } from "@rova/shared/utils/id";
 
-function createDefaultTriggerNode() {
-  return {
-    id: nanoid(),
-    type: "trigger" as const,
-    position: { x: 0, y: 0 },
-    data: {
-      label: "",
-      description: "",
-      type: "trigger" as const,
-      config: { triggerType: "Webhook" },
-      status: "idle" as const,
-    },
-  };
-}
+/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+const loggerFor = () =>
+  Effect.map(AppLogger, (appLogger) => appLogger.get("workflow", "create"));
 
-const workflowCreateLogger = getAppLogger("workflow", "create");
+export const postWorkflowsCreate = Effect.fn("postWorkflowsCreate")(
+  function* (body: { name: string; description?: string; graph: unknown }) {
+    const repo = yield* WorkflowRepo;
+    const logger = yield* loggerFor();
 
-type CreateWorkflowResult = ServiceResult<
-  WorkflowApiPayload,
-  "invalid" | "conflict" | "internal",
-  ApiErrorPayload
->;
-
-export async function postWorkflowsCreate(body: {
-  name: string;
-  description?: string;
-  graph: unknown;
-}): Promise<CreateWorkflowResult> {
-  try {
     const workflowName = body.name.trim();
     if (!workflowName) {
-      workflowCreateLogger.warn(
-        "Rejected workflow create request with empty name"
+      yield* logger.warn("Rejected workflow create request with empty name");
+      return yield* Effect.fail(
+        new InvalidInput({ error: "Workflow name is required" })
       );
-      return failure("invalid", { error: "Workflow name is required" });
     }
 
-    const existingWorkflow = await db.query.workflows.findFirst({
-      where: sql`lower(${workflows.name}) = lower(${workflowName})`,
-      columns: { id: true },
-    });
-    if (existingWorkflow) {
-      workflowCreateLogger.warn("Duplicate workflow name on create", {
-        workflowName,
-      });
-      return failure("conflict", {
-        error: `Workflow name "${workflowName}" already exists`,
-      });
+    const nameTaken = yield* repo.hasWithName(workflowName);
+    if (nameTaken) {
+      yield* logger.warn("Duplicate workflow name on create", { workflowName });
+      return yield* Effect.fail(
+        new Conflict({
+          error: `Workflow name "${workflowName}" already exists`,
+        })
+      );
     }
 
-    const graphWithDefaultTrigger =
-      isSerializedWorkflowGraph(body.graph) && body.graph.nodes.length === 0
-        ? createSerializedWorkflowGraph({
-            nodes: [createDefaultTriggerNode()],
-            edges: [],
-          })
-        : body.graph;
-
-    const graphValidation = validateWorkflowGraph(graphWithDefaultTrigger);
+    const graphValidation = validateWorkflowGraph(
+      withDefaultTriggerNode(body.graph)
+    );
     if (!graphValidation.valid) {
-      workflowCreateLogger.warn("Rejected invalid workflow graph on create", {
+      yield* logger.warn("Rejected invalid workflow graph on create", {
         workflowName,
         error: graphValidation.error,
       });
-      return failure("invalid", { error: graphValidation.error });
+      return yield* Effect.fail(
+        new InvalidInput({ error: graphValidation.error })
+      );
     }
 
     const conditionValidation = validateWorkflowConditionConfigs(
       graphValidation.nodes
     );
     if (!conditionValidation.valid) {
-      workflowCreateLogger.warn(
+      yield* logger.warn(
         "Rejected workflow create due to invalid condition configuration",
         {
           workflowName,
           error: conditionValidation.error,
         }
       );
-      return failure("invalid", { error: conditionValidation.error });
+      return yield* Effect.fail(
+        new InvalidInput({ error: conditionValidation.error })
+      );
     }
 
-    const integrationValidation = await validateWorkflowIntegrations(
-      graphValidation.nodes
+    // The only way this fails is the integration rows it reads, so a rejected
+    // query arrives here as the same database failure a repository answers with.
+    const integrationValidation = yield* callDbModule(() =>
+      validateWorkflowIntegrations(graphValidation.nodes)
     );
     if (!integrationValidation.valid) {
-      workflowCreateLogger.warn(
+      yield* logger.warn(
         "Rejected workflow create due to invalid integrations",
         {
           workflowName,
           invalidIntegrationIds: integrationValidation.invalidIds,
         }
       );
-      return failure("invalid", {
-        error: "Invalid integration references in workflow",
-        code: "integration_validation_failed",
-        invalidIntegrationIds: integrationValidation.invalidIds ?? [],
-      });
+      return yield* Effect.fail(
+        new IntegrationValidationFailed({
+          error: "Invalid integration references in workflow",
+          invalidIntegrationIds: integrationValidation.invalidIds ?? [],
+        })
+      );
     }
 
     const workflowId = generateId();
-
-    const [newWorkflow] = await db
-      .insert(workflows)
-      .values({
-        id: workflowId,
-        name: workflowName,
-        description: body.description,
-        graph: graphValidation.graph,
-      })
-      .returning();
+    const newWorkflow = yield* repo.insert({
+      id: workflowId,
+      name: workflowName,
+      description: body.description,
+      graph: graphValidation.graph,
+    });
 
     invalidateInngestFunctionsCache();
 
-    workflowCreateLogger.info("Workflow created", {
+    yield* logger.info("Workflow created", {
       workflowId,
       workflowName,
       nodeCount: graphValidation.nodes.length,
       edgeCount: graphValidation.edges.length,
     });
 
-    return success(toWorkflowApiPayload(newWorkflow));
-  } catch (error) {
-    workflowCreateLogger.error(
-      `Failed to create workflow: ${getErrorMessage(error)}`,
-      { error }
-    );
-    return failure("internal", {
-      error:
-        error instanceof Error ? error.message : "Failed to create workflow",
-    });
-  }
-}
+    return toWorkflowApiPayload(newWorkflow);
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureRelayingCause(loggerFor(), "Failed to create workflow")
+      )
+    )
+);

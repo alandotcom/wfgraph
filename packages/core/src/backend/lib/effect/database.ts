@@ -1,11 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { getDb, type RovaDatabase } from "#src/backend/lib/db/index";
-import {
-  AppLogger,
-  type EffectLogger,
-} from "#src/backend/lib/effect/app-logger";
-import { InternalFailure } from "#src/backend/lib/effect/failures";
-import { getErrorMessage } from "@rova/shared/utils";
 
 /**
  * A query did not reach the database, or the database refused it.
@@ -48,9 +42,12 @@ export class Database extends Context.Service<
  * rather than at startup, and this Layer shares one pool with the services that
  * have not migrated and still import the `db` proxy directly.
  *
- * Stage 3b of the Effect migration builds the handle inside this Layer from the
+ * Stage 7 of the Effect migration builds the handle inside this Layer from the
  * options `createRovaApp` receives and deletes `getDb` along with the
- * `globalThis` state behind it.
+ * `globalThis` state behind it. It outlives stage 3b because the run engine
+ * reads the same handle from outside any runtime: the workflow function's step
+ * store, the step logger, and the credential fetcher all import the `db` proxy,
+ * and none of them is reached through an Effect yet.
  */
 export const DatabaseLayer: Layer.Layer<Database> = Layer.succeed(Database, {
   query: (run) =>
@@ -61,16 +58,17 @@ export const DatabaseLayer: Layer.Layer<Database> = Layer.succeed(Database, {
 });
 
 /**
- * Run a call into one of the `backend/lib/db/*` modules and give it the same
- * typed error channel a query gets.
+ * Run a call into one of the `backend/lib` modules that holds its own database
+ * handle, and give it the same typed error channel a query gets.
  *
- * Those modules hold their own handle, so a repository that delegates to one
- * needs the `DatabaseError` mapping without needing the `Database` service. A
- * repository that writes its own Drizzle takes `Database` instead.
+ * Those modules query through the `db` proxy rather than through this service,
+ * so a caller that delegates to one needs the `DatabaseError` mapping without
+ * needing the `Database` service. A repository that writes its own Drizzle takes
+ * `Database` instead. A helper that mixes queries with an Inngest send is not
+ * one of these; `callInngestModule` is its seam.
  *
- * This goes away with `getDb`, at the end of stage 3b: once those modules run
- * their queries on the handle the Layer owns, their repositories go back to
- * `database.query`.
+ * This goes away with `getDb`, in stage 7: once those modules run their queries
+ * on the handle the Layer owns, their callers go back to `database.query`.
  */
 export const callDbModule = <A>(
   run: () => Promise<A>
@@ -79,62 +77,3 @@ export const callDbModule = <A>(
     try: run,
     catch: (cause) => new DatabaseError({ cause }),
   });
-
-/**
- * The answer a service gives when its query failed: the underlying error in the
- * log for whoever operates this, and `message` for whoever called it.
- *
- * Written as a handler for `Effect.catchTag("DatabaseError", ...)`, which is the
- * shape the try/catch blocks that returned `failure("internal", ...)` collapse
- * into.
- */
-export const internalFailure =
-  (logger: EffectLogger, message: string) =>
-  (databaseError: DatabaseError): Effect.Effect<never, InternalFailure> =>
-    Effect.gen(function* () {
-      const { cause } = databaseError;
-      yield* logger.error(`${message}: ${getErrorMessage(cause)}`, {
-        error: cause,
-      });
-      return yield* Effect.fail(new InternalFailure({ error: message, cause }));
-    });
-
-/**
- * The same answer, except that the caller reads the message from underneath.
- *
- * Every service in the workflows domain words its failure this way: a thrown
- * `Error` hands its own message to whoever called, and `message` is the fallback
- * for something thrown that was not an `Error`. The log line is unchanged, so
- * `message` is still what an operator greps for.
- *
- * Which of the two a service uses is not a style choice. The editor shows this
- * text next to the graph the user was editing, and "duplicate key value violates
- * unique constraint" is what tells them their save collided; the API key screens
- * answer a fixed sentence because a caller there can do nothing with the detail.
- *
- * The logger arrives as the Effect that produces it rather than as a logger,
- * because the workflows services state this policy once for a whole function, in
- * an `Effect.fn` transform. A transform runs outside the generator body and so
- * cannot `yield*` `AppLogger` itself; handing it the same `loggerFor(...)` the
- * body yields is what lets one policy cover every query in the function. The
- * `internalFailure` above still takes a logger, because its callers still catch
- * inside the body; batch 3 of stage 3b brings them across.
- */
-export const internalFailureRelayingCause =
-  (logger: Effect.Effect<EffectLogger, never, AppLogger>, message: string) =>
-  (
-    databaseError: DatabaseError
-  ): Effect.Effect<never, InternalFailure, AppLogger> =>
-    Effect.gen(function* () {
-      const { cause } = databaseError;
-      const serviceLogger = yield* logger;
-      yield* serviceLogger.error(`${message}: ${getErrorMessage(cause)}`, {
-        error: cause,
-      });
-      return yield* Effect.fail(
-        new InternalFailure({
-          error: cause instanceof Error ? cause.message : message,
-          cause,
-        })
-      );
-    });

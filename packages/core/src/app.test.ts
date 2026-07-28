@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,7 +6,17 @@ import { z } from "zod";
 import { createTrigger } from "#src/index";
 import { createRovaApp, type RovaApp } from "#src/app";
 import { createApiApp, MACHINE_ROUTES } from "#src/backend/api-app";
+import { getInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { createRovaRuntime } from "#src/backend/runtime";
+
+// The function registry reads the workflows table to decide which Inngest
+// functions exist. Which functions it builds is beside the point here, so the
+// query answers nothing and the connection is never opened; vitest scopes a
+// mock to the file that declares it.
+vi.mock("#src/backend/lib/db/index", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("#src/backend/lib/db/index")>()),
+  db: { query: { workflows: { findMany: () => Promise.resolve([]) } } },
+}));
 
 // createRovaApp opens no connections: the database client is lazy and
 // migrations only run when asked. Every route exercised below answers from
@@ -258,6 +268,39 @@ describe("createRovaApp with an auth predicate", () => {
     }
   });
 
+  // Every other answer the webhook route gives carries CORS, including the 500
+  // built by onError, so a body the route refuses before the service is reached
+  // has to as well. Without it a browser-side sender sees an opaque response and
+  // cannot tell a malformed request from an outage.
+  it("carries CORS on the webhook refusals the route makes itself", async () => {
+    const app = await createGuardedApp(false);
+    try {
+      const badBody = await app.fetch(
+        new Request("http://localhost/rova/api/workflows/wf_1/webhook", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(["wrong", "shape"]),
+        })
+      );
+      expect(badBody.status).toBe(400);
+      expect(badBody.headers.get("Access-Control-Allow-Origin")).toBe("*");
+
+      // A path segment of nothing but whitespace is the one way the id fails its
+      // own schema, since Hono never matches an empty segment.
+      const badParams = await app.fetch(
+        new Request("http://localhost/rova/api/workflows/%20/webhook", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        })
+      );
+      expect(badParams.status).toBe(400);
+      expect(badParams.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    } finally {
+      await app.dispose();
+    }
+  });
+
   it("refuses the editor itself, not only its data", async () => {
     const app = await createGuardedApp(false, { dir: clientDir });
     try {
@@ -304,82 +347,33 @@ describe("createRovaApp configuration", () => {
     ).rejects.toThrow("64-character hex string");
   });
 
-  // The database handle, the Inngest client, and both registries are process
-  // globals. A second app on a different database used to alias the first
-  // connection and surface later as rows in the wrong place.
-  it("refuses a second app configured differently", async () => {
-    const app = await createTestApp();
-    try {
-      await expect(
-        createRovaApp({
-          ...BASE_OPTIONS,
-          database: { url: "postgresql://other:other@127.0.0.1:1/other" },
-        })
-      ).rejects.toThrow("already running in this process");
-    } finally {
-      await app.dispose();
-    }
-  });
-
-  it("names the fields that disagree", async () => {
-    const app = await createTestApp();
-    try {
-      await expect(
-        createRovaApp({
-          ...BASE_OPTIONS,
-          inngest: { id: "someone-else", isDev: true },
-        })
-      ).rejects.toThrow("inngestClientId");
-    } finally {
-      await app.dispose();
-    }
-  });
-
-  it("releases the claim when startup fails after taking it", async () => {
-    await expect(
-      createRovaApp({
-        ...BASE_OPTIONS,
-        // A trigger type that is already built in, so registration throws well
-        // after the process has been claimed.
-        triggers: [
-          createTrigger({
-            type: "Webhook",
-            label: "Clashing",
-            description: "Collides with the built-in webhook trigger",
-            schema: z.object({ id: z.string(), event: z.string() }),
-            correlationIdPath: "id",
-            eventTypePath: "event",
-          }),
-        ],
-      })
-    ).rejects.toThrow("already registered");
-
-    // A claim left behind would answer this with "an app is already running"
-    // and bury whatever the operator actually needs to fix.
-    const app = await createRovaApp({
-      ...BASE_OPTIONS,
-      inngest: { id: "after-failed-startup", isDev: true },
-    });
-    await app.dispose();
-  });
-
-  // Two apps of one identity are allowed, so the claim is counted. A flag would
-  // let the first dispose hand the process to a third app on another database
-  // while the second is still serving.
-  it("holds the claim until the last app disposes", async () => {
+  // The cached Inngest functions close over the runtime the app owns, so a
+  // second app served the first one's array would be running event listeners on
+  // a finalized runtime. Dispose dropping the cache is what prevents it, and
+  // identity is how that shows: a rebuild answers a new array.
+  it("rebuilds the Inngest registry after an app is disposed", async () => {
     const first = await createTestApp();
-    const second = await createTestApp();
+    const firstRuntime = createRovaRuntime();
+    const secondRuntime = createRovaRuntime();
 
-    await first.dispose();
+    try {
+      const built = await getInngestFunctions(firstRuntime);
+      // Within its short TTL the registry answers the same array, which is what
+      // makes the comparison below mean something.
+      expect(await getInngestFunctions(firstRuntime)).toBe(built);
 
-    await expect(
-      createRovaApp({
-        ...BASE_OPTIONS,
-        database: { url: "postgresql://other:other@127.0.0.1:1/other" },
-      })
-    ).rejects.toThrow("already running in this process");
+      await first.dispose();
 
-    await second.dispose();
+      const second = await createTestApp();
+      try {
+        expect(await getInngestFunctions(secondRuntime)).not.toBe(built);
+      } finally {
+        await second.dispose();
+      }
+    } finally {
+      await firstRuntime.dispose();
+      await secondRuntime.dispose();
+    }
   });
 
   // Registering a trigger type twice throws, so a second app carrying the same

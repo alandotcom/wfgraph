@@ -100,39 +100,65 @@ schema violation raises `EventValidationError`, which extends `NonRetriableError
 malformed run fails once rather than spending every retry on the same bad JSON. Schemas
 here may not use transforms; the SDK rejects any whose input and output types differ.
 
-**Services return a domain failure kind, not an HTTP status.**
-`packages/core/src/backend/lib/service-result.ts` defines
-`invalid | unauthorized | not_found | conflict | internal`. The adapters at the edges
-translate; nothing inside the backend names a status code.
+**A service returns an Effect whose error channel names a domain failure, never an HTTP
+status.** `packages/core/src/backend/lib/effect/failures.ts` holds one tagged error class
+per kind (`invalid | unauthorized | not_found | conflict | internal`), and each carries
+the payload its caller receives from a `payload` getter beside the fields it is built
+from. `IntegrationValidationFailed` is the one that has more to say than a sentence: its
+kind is `invalid`, and its payload carries the offending integration ids, which
+`getRpcErrorMessage` appends to the message it builds and which nothing else reads today.
+The two adapters at the edges translate a kind and nothing else does:
+`backend/rpc/errors.ts` into an oRPC code, `backend/lib/http/failure-response.ts` into an
+HTTP status.
 
-**The backend is migrating to Effect, one service at a time.** ADR-0002 has the plan and
-ADR-0005 the data layer. What exists today:
-`packages/core/src/backend/lib/effect/failures.ts` holds one tagged error per failure kind
-above, each carrying the `{ error }` body the caller already receives.
+`rpcEffectHandler` in `backend/rpc/router.ts` runs a procedure's Effect on the runtime
+carried by `RpcContext`, logs a failure once, and fails with the oRPC error. `runPromise`
+squashes that down to the error itself, which is the object oRPC catches. The two plain
+Hono routes (webhook intake, wait-hook resume) run theirs the same way and build a
+`Response` from the failure.
+
+**The backend runs on Effect.** ADR-0002 has the plan and ADR-0005 the data layer.
 `database.ts` holds the `Database` service, which runs a Drizzle query and fails with a
-tagged `DatabaseError`, plus `internalFailure(logger, message)`, the handler that turns one
-into the logged "internal" answer a service used to write in a `catch` block. `app-logger.ts`
-wraps the logtape logger so a log line is an Effect. `packages/core/src/backend/runtime.ts`
-composes the Layer graph, and `createRovaApp` builds one `ManagedRuntime` from it and
-disposes it. The runtime is owned by the app rather than by a module so that a service's
-dependencies can be replaced in a test, which is the whole of what it buys: one Rova per
-process stays the only supported arrangement, and constructing a second app in a process
-is undefined behavior.
+tagged `DatabaseError`; `inngest-client.ts` holds `InngestClient`, the three sends that
+drive runs, failing with a tagged `InngestError`. `internal-failure.ts` holds both
+handlers that turn one of those into the logged "internal" answer a service used to write
+in a `catch` block, and where a service catches decides which it takes.
+`internalFailure(logger, message)` is for a body-level `Effect.catchTag`, which already
+has the logger in hand. `internalFailureRelayingCause(loggerEffect, message,
+callerMessage?)` is for a function-level `Effect.fn` transform, which runs outside the
+generator and so takes the logger as the Effect that produces it; it hands a thrown
+`Error`'s own message to the caller, and `callerMessage` is the fallback for whichever
+entrypoints word their log line and their caller-facing sentence differently. This is the
+shape the workflows services use. `seamFailureHandlers(loggerEffect, message,
+callerMessage?)` beside them builds one relaying handler and answers both tags with it,
+so a service that queries and enqueues states its policy once. `app-logger.ts` wraps the
+logtape logger so a log line is an Effect. `packages/core/src/backend/runtime.ts`
+composes the Layer graph, and
+`createRovaApp` builds one `ManagedRuntime` from it and disposes it. The runtime is owned
+by the app rather than by a module so that a service's dependencies can be replaced in a
+test, which is the whole of what it buys: one Rova per process stays the only supported
+arrangement, and constructing a second app in a process is undefined behavior.
 
-A migrated service takes its database questions from a repository service beside it
-(`services/api-keys/repo.ts` is the worked example), never from `Database` directly, and
-the type system holds it to that: `RovaServices` in `runtime.ts` leaves `Database` out, so
-a service body that writes `yield* Database` needs a service the runtime does not provide
-and fails to type-check where it is run. `DatabaseLayer` is provided into the repository
-layers instead. The
-repository is the seam a test stands on: provide a `Layer.succeed(SomeRepo, ...)` that
-answers from memory, and the service needs no database and no `vi.mock`. `services/api-keys`
-is the whole of what has moved so far; the other services still return `ServiceResult` and
-still import the `db` proxy, and both paths share one database and one Inngest client.
+A service takes its database questions from the repository service for its aggregate
+(`services/api-keys/repo.ts` is the smallest worked example), never from `Database`
+directly, and the type system holds it to that: `RovaServices` in `runtime.ts` leaves
+`Database` out, so a service body that writes `yield* Database` needs a service the runtime
+does not provide and fails to type-check where it is run. `DatabaseLayer` is provided into
+the repository layers instead. The repository is the seam a test stands on: hand
+`stubWorkflowRepo({ findById: ... })` the one method the subject asks for, and the service
+needs no database and no `vi.mock`. Those factories live in
+`backend/lib/effect/test-layers.ts`, together with `SilentAppLoggerLayer` and
+`makeRecordingLogger`; each fills every method a test did not name with an `Effect.die`, so
+a query the test never accounted for kills it rather than reading a fake empty result. That
+module is test support and ships nowhere: `packages/core` publishes `dist` and `drizzle`,
+and no entry reaches it.
 
-`rpcEffectHandler` in `backend/rpc/router.ts` runs a service Effect down to a
-`ServiceResult` on the runtime carried by `RpcContext`, so the oRPC error map and the HTTP
-response helper stay unchanged while the two models coexist.
+The run engine has not moved yet. The `db` proxy, `getDb`, and the process-global Inngest
+client survive because the workflow function's step store, the step logger, the credential
+fetcher, and the function registry all read them from outside any runtime; stage 7 owns
+their deletion. `callDbModule` and `callInngestModule` are the seams a service crosses to
+reach a `backend/lib` module that still speaks Promises, each giving it the tagged error
+channel its own queries have.
 
 **Third-party libraries.** Check official usage with Context7 or Exa before writing
 against a library, and never take a version from memory. Prefer latest stable, and verify
@@ -147,7 +173,9 @@ temporal dead zone. Put that variable in `vi.hoisted`, which vitest lifts higher
 The stub reaches only the file that declares it, because vitest resets the module registry
 between test files, so a stub needs no on/off flag and the subject can be a plain static
 import. For a stub that only one case in a file wants, `vi.doMock` stays where it is
-written and takes effect on the next dynamic import.
+written and takes effect on the next dynamic import. `vi` itself has to be imported from
+`vitest`; `@effect/vitest` re-exports the name, but the copy reaching a test that way
+cannot find the module registry and every `vi.mock` in the file throws at collection.
 
 **Inngest shapes the workflow engine.** `step.*` inside `step.run()` is a runtime error,
 so Wait nodes stay outside the node-level step wrapper. Retries are function-level, each

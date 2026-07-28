@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { Workflow } from "#src/backend/lib/db/schema";
-import { buildWorkflowUpdateData, toWorkflowApiPayload } from "./mappers";
+import {
+  createSerializedWorkflowGraph,
+  isSerializedWorkflowGraph,
+} from "@rova/shared/workflow/graph";
+import {
+  buildWorkflowUpdateData,
+  toWorkflowApiPayload,
+  withDefaultTriggerNode,
+} from "./mappers";
 
 function createWorkflow(overrides: Partial<Workflow> = {}): Workflow {
   return {
@@ -51,5 +59,54 @@ describe("workflow mappers", () => {
       mode: "test",
       updatedAt,
     });
+  });
+});
+
+/**
+ * Both ways a workflow is written for the first time run through this: the
+ * create endpoint and the editor's autosave. An empty graph would otherwise
+ * save as a workflow that can never be triggered.
+ */
+describe("withDefaultTriggerNode", () => {
+  it("gives an empty graph a webhook trigger to start from", () => {
+    const filled = withDefaultTriggerNode({ nodes: [], edges: [] });
+
+    expect(isSerializedWorkflowGraph(filled)).toBe(true);
+    if (!isSerializedWorkflowGraph(filled)) {
+      return;
+    }
+
+    expect(filled.nodes).toHaveLength(1);
+    const node = filled.nodes[0]?.attributes.data;
+    expect(node?.type).toBe("trigger");
+    expect(node?.config).toMatchObject({ triggerType: "Webhook" });
+    expect(node?.status).toBe("idle");
+  });
+
+  it("hands back a graph that already has nodes", () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        {
+          id: "action-1",
+          type: "action",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Send email",
+            type: "action",
+            config: { actionId: "resend/send-email" },
+          },
+        },
+      ],
+      edges: [],
+    });
+
+    expect(withDefaultTriggerNode(graph)).toBe(graph);
+  });
+
+  // Deciding whether a value is a graph at all is validation's job, and it runs
+  // next, so anything that is not one travels on unchanged rather than being
+  // replaced by a graph nobody asked for.
+  it("hands back a value that is not a graph", () => {
+    expect(withDefaultTriggerNode("not a graph")).toBe("not a graph");
   });
 });

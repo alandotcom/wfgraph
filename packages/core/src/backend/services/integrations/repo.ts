@@ -66,9 +66,11 @@ export class IntegrationRepo extends Context.Service<
  * typed error channel. What the seam buys is that channel and a place for a test
  * to stand, rather than the query builder.
  *
- * Stage 3b's finale is what changes this: `backend/lib/db/integrations.ts` has to
- * run its queries on the handle the Layer owns before `getDb` can be deleted,
- * and these methods go back to `database.query` when it does.
+ * Stage 7 is what changes this: `backend/lib/db/integrations.ts` has to run its
+ * queries on the handle the Layer owns before `getDb` can be deleted, and these
+ * methods go back to `database.query` when it does. It waits that long because
+ * the run engine reads the same module for a step's credentials, from outside
+ * any runtime.
  *
  * Delegating also means an encryption failure arrives as a `DatabaseError`,
  * which is the mapping the pre-Effect code had: both a refused query and an

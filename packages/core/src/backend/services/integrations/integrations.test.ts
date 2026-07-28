@@ -1,13 +1,13 @@
 // `it` comes from the `layer` callback below, typed with the services that layer
 // provides, so nothing here imports the bare one.
 import { afterEach, assert, describe, layer } from "@effect/vitest";
-import { Effect, Layer } from "effect";
-import {
-  AppLogger,
-  type EffectLogger,
-} from "#src/backend/lib/effect/app-logger";
+import { Effect } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
+import {
+  SilentAppLoggerLayer,
+  stubIntegrationRepo,
+} from "#src/backend/lib/effect/test-layers";
 import {
   registerIntegrationTest,
   unregisterIntegrationTest,
@@ -17,7 +17,6 @@ import {
   postIntegrationTest,
   putIntegration,
 } from "#src/backend/services/integrations/integrations";
-import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import {
   type IntegrationPlugin,
   registerIntegration,
@@ -89,7 +88,9 @@ function makeIntegrationRepo(stored: StoredIntegration) {
     }>,
   };
 
-  const repoLayer = Layer.succeed(IntegrationRepo, {
+  // Secret handling never reaches the rest of the table, so every other method
+  // refuses.
+  const repoLayer = stubIntegrationRepo({
     findById: (integrationId) =>
       Effect.succeed(integrationId === stored.id ? stored : null),
     update: (integrationId, updates) =>
@@ -103,35 +104,17 @@ function makeIntegrationRepo(stored: StoredIntegration) {
           updatedAt: new Date("2026-01-03T00:00:00.000Z"),
         };
       }),
-    // Secret handling never reaches the rest of the table.
-    listByType: () => Effect.die("listByType is not part of secret handling"),
-    insert: () => Effect.die("insert is not part of secret handling"),
-    deleteById: () => Effect.die("deleteById is not part of secret handling"),
   });
 
   return { layer: repoLayer, calls };
 }
-
-const silentLogger: EffectLogger = {
-  debug: () => Effect.void,
-  info: () => Effect.void,
-  warn: () => Effect.void,
-  error: () => Effect.void,
-  with: () => silentLogger,
-};
-
-// The logger fake holds no state, so it belongs to the whole block. The
-// repository does, so it is built inside each test instead.
-const TestAppLoggerLayer = Layer.succeed(AppLogger, {
-  get: () => silentLogger,
-});
 
 describe("integration service secret handling", () => {
   afterEach(() => {
     unregisterIntegration("slack");
   });
 
-  layer(TestAppLoggerLayer)((it) => {
+  layer(SilentAppLoggerLayer)((it) => {
     it.effect("masks secret fields in the integration it returns", () =>
       Effect.gen(function* () {
         registerIntegration(slackLike);
@@ -209,17 +192,13 @@ describe("integration service secret handling", () => {
 /**
  * A repository whose read fails the way a database that has gone away does.
  */
-const unreadableIntegrationRepo = Layer.succeed(IntegrationRepo, {
+const unreadableIntegrationRepo = stubIntegrationRepo({
   findById: () =>
     Effect.fail(
       new DatabaseError({
         cause: new Error("terminating connection due to administrator command"),
       })
     ),
-  listByType: () => Effect.die("listByType is not part of a connection test"),
-  insert: () => Effect.die("insert is not part of a connection test"),
-  update: () => Effect.die("update is not part of a connection test"),
-  deleteById: () => Effect.die("deleteById is not part of a connection test"),
 });
 
 /**
@@ -234,7 +213,7 @@ describe("integration connection test failures", () => {
     unregisterIntegrationTest("slack");
   });
 
-  layer(TestAppLoggerLayer)((it) => {
+  layer(SilentAppLoggerLayer)((it) => {
     it.effect("answers with what the vendor's test function threw", () =>
       Effect.gen(function* () {
         registerIntegration(slackLike);

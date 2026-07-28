@@ -1,27 +1,31 @@
-import { eq, sql } from "drizzle-orm";
+import { Effect } from "effect";
+import { omit } from "es-toolkit/object";
 import { nanoid } from "nanoid";
-import { db } from "#src/backend/lib/db/index";
-import { workflows } from "#src/backend/lib/db/schema";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import {
+  Conflict,
+  InternalFailure,
+  NotFound,
+} from "#src/backend/lib/effect/failures";
 import { invalidateInngestFunctionsCache } from "#src/backend/lib/inngest/functions";
-import { getAppLogger } from "#src/backend/lib/logger";
-import {
-  failure,
-  type ServiceResult,
-  success,
-} from "#src/backend/lib/service-result";
+import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
-import { getErrorMessage } from "@rova/shared/utils";
 import { generateId } from "@rova/shared/utils/id";
-import type {
-  ApiErrorPayload,
-  WorkflowApiPayload,
-} from "@rova/shared/workflow/api-contracts";
-import {
-  createSerializedWorkflowGraph,
-  toWorkflowGraphData,
-} from "@rova/shared/workflow/graph";
+import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 
+/**
+ * A copy points at no integration: connections are per-workflow, so the person
+ * who copies one picks its credentials again.
+ *
+ * The key is removed rather than set to `undefined`. The trigger config schemas
+ * are `.strict()`, so a `Webhook` config carrying an `integrationId` key falls
+ * out of the webhook branch of the union into the custom-trigger branch, which
+ * refuses that very type name. Present-and-undefined counts as carrying it. That
+ * threw on every copy of a webhook-triggered workflow.
+ */
 function stripIntegrationIds(nodes: WorkflowNode[]): WorkflowNode[] {
   return nodes.map((node) => {
     const newNode: WorkflowNode = { ...node, id: nanoid() };
@@ -29,10 +33,7 @@ function stripIntegrationIds(nodes: WorkflowNode[]): WorkflowNode[] {
     if (currentData) {
       const updatedData = { ...currentData };
       if (updatedData.config) {
-        updatedData.config = {
-          ...updatedData.config,
-          integrationId: undefined,
-        };
+        updatedData.config = omit(updatedData.config, ["integrationId"]);
       }
       updatedData.status = "idle";
       newNode.data = updatedData;
@@ -59,83 +60,101 @@ function updateEdgeReferences(
   }));
 }
 
-const workflowDuplicateLogger = getAppLogger("workflow", "duplicate");
+/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+const loggerFor = (workflowId: string) =>
+  Effect.map(AppLogger, (appLogger) =>
+    appLogger.get("workflow", "duplicate").with({ workflowId })
+  );
 
-type DuplicateWorkflowResult = ServiceResult<
-  WorkflowApiPayload,
-  "not_found" | "conflict" | "internal",
-  ApiErrorPayload
->;
+export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
+  function* (workflowId: string) {
+    const repo = yield* WorkflowRepo;
+    const logger = yield* loggerFor(workflowId);
 
-export async function postWorkflowDuplicate(
-  workflowId: string
-): Promise<DuplicateWorkflowResult> {
-  const requestLogger = workflowDuplicateLogger.with({ workflowId });
-  try {
-    const sourceWorkflow = await db.query.workflows.findFirst({
-      where: eq(workflows.id, workflowId),
-    });
+    const sourceWorkflow = yield* repo.findById(workflowId);
 
     if (!sourceWorkflow) {
-      return failure("not_found", { error: "Workflow not found" });
+      return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
     }
 
-    const sourceGraph = sourceWorkflow.graph;
-    const { nodes: oldNodes, edges: oldEdges } =
-      toWorkflowGraphData(sourceGraph);
+    // The graph column is untyped JSON, so a stored graph that no longer parses
+    // is possible and reading it directly would throw out of the generator as a
+    // defect. Validating first is the same guard `getWorkflow` puts on the same
+    // column, and it hands back the nodes and edges, so nothing parses twice.
+    const sourceValidation = validateWorkflowGraph(sourceWorkflow.graph);
+    if (!sourceValidation.valid) {
+      yield* logger.error("Stored workflow graph is invalid on duplicate", {
+        reason: sourceValidation.error,
+      });
+      return yield* Effect.fail(
+        new InternalFailure({ error: "Workflow graph is invalid" })
+      );
+    }
+
+    const { nodes: oldNodes, edges: oldEdges } = sourceValidation;
     const newNodes = stripIntegrationIds(oldNodes);
     const newEdges = updateEdgeReferences(oldEdges, oldNodes, newNodes);
     const newGraph = createSerializedWorkflowGraph({
       nodes: newNodes,
       edges: newEdges,
-      attributes: sourceGraph.attributes,
+      attributes: sourceValidation.graph.attributes,
     });
 
-    const baseName = `${sourceWorkflow.name} (Copy)`;
-    const workflowName = baseName;
-    const existingWorkflow = await db.query.workflows.findFirst({
-      where: sql`lower(${workflows.name}) = lower(${workflowName})`,
-      columns: { id: true },
-    });
-    if (existingWorkflow) {
-      requestLogger.warn("Duplicate workflow name on duplicate", {
+    // The rewrite renames every node and edge, so the copy is a graph this
+    // function built rather than one it read. Checking it here is what turns our
+    // own bug into a failure the caller can read instead of a row that no screen
+    // can load afterwards.
+    const copyValidation = validateWorkflowGraph(newGraph);
+    if (!copyValidation.valid) {
+      yield* logger.error("Duplicated workflow graph is invalid", {
+        reason: copyValidation.error,
+      });
+      return yield* Effect.fail(
+        new InternalFailure({ error: "Duplicated workflow graph is invalid" })
+      );
+    }
+
+    const workflowName = `${sourceWorkflow.name} (Copy)`;
+    const nameTaken = yield* repo.hasWithName(workflowName);
+    if (nameTaken) {
+      yield* logger.warn("Duplicate workflow name on duplicate", {
         workflowName,
       });
-      return failure("conflict", {
-        error: `Workflow name "${workflowName}" already exists`,
-      });
+      return yield* Effect.fail(
+        new Conflict({
+          error: `Workflow name "${workflowName}" already exists`,
+        })
+      );
     }
 
     const newWorkflowId = generateId();
-    const [newWorkflow] = await db
-      .insert(workflows)
-      .values({
-        id: newWorkflowId,
-        name: workflowName,
-        description: sourceWorkflow.description,
-        graph: newGraph,
-        mode: sourceWorkflow.mode,
-        visibility: "private",
-      })
-      .returning();
+    const newWorkflow = yield* repo.insert({
+      id: newWorkflowId,
+      name: workflowName,
+      description: sourceWorkflow.description,
+      graph: newGraph,
+      mode: sourceWorkflow.mode,
+      visibility: "private",
+    });
 
     invalidateInngestFunctionsCache();
 
-    requestLogger.info("Workflow duplicated", {
+    yield* logger.info("Workflow duplicated", {
       sourceWorkflowName: sourceWorkflow.name,
       workflowName,
       newWorkflowId,
     });
 
-    return success(toWorkflowApiPayload(newWorkflow));
-  } catch (error) {
-    requestLogger.error(
-      `Failed to duplicate workflow: ${getErrorMessage(error)}`,
-      { error }
-    );
-    return failure("internal", {
-      error:
-        error instanceof Error ? error.message : "Failed to duplicate workflow",
-    });
-  }
-}
+    return toWorkflowApiPayload(newWorkflow);
+  },
+  (effect, workflowId) =>
+    effect.pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureRelayingCause(
+          loggerFor(workflowId),
+          "Failed to duplicate workflow"
+        )
+      )
+    )
+);

@@ -74,6 +74,14 @@ const config: KnipConfig = {
       // rest.
       entry: [],
       project: ["src/**/*.{ts,tsx}"],
+
+      // This package's "exports" map is `"./*": "./src/*.ts"`, so knip takes
+      // every source file here as an entry, and an entry's exports are exempt by
+      // default. That left the whole package unchecked for dead exports while
+      // the config above read as though it were checked. This turns the check
+      // back on; nothing outside the repo consumes @rova/shared, so an export
+      // no sibling imports is dead.
+      includeEntryExports: true,
     },
 
     "packages/core": {

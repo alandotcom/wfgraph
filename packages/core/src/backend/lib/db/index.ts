@@ -53,7 +53,8 @@ const createSqlClient = (url: string, max: number): Sql =>
   postgres(url, { max });
 
 type DatabaseRuntimeState = {
-  config: DatabaseRuntimeConfig | null;
+  /** Normalized on the way in, so two configs compare field by field. */
+  config: Required<DatabaseRuntimeConfig> | null;
   queryClient: Sql | null;
   migrationClient: Sql | null;
   db: PostgresJsDatabase<typeof schema> | null;
@@ -133,9 +134,18 @@ export function configureDatabaseRuntime(config: DatabaseRuntimeConfig): void {
     throw new Error("Database configuration requires a non-empty url.");
   }
 
+  // A config already recorded but no handle opened yet is still a second app
+  // claiming the process. Overwriting it here would let the first app's services
+  // query the second app's database the moment something opens the pool, which
+  // is the same collision the initialized branch below refuses.
   if (databaseState.config && !databaseState.db && !databaseState.queryClient) {
-    databaseState.config = normalizedConfig;
-    return;
+    if (areConfigsEquivalent(databaseState.config, normalizedConfig)) {
+      return;
+    }
+
+    throw new Error(
+      "Database runtime is already configured with a different configuration. Restart the process to apply a new database config."
+    );
   }
 
   if (

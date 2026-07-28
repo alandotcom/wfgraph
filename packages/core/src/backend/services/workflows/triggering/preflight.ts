@@ -1,13 +1,16 @@
+import { Effect } from "effect";
+import type { EffectLogger } from "#src/backend/lib/effect/app-logger";
+import { callDbModule } from "#src/backend/lib/effect/database";
 import {
-  failure,
-  type ServiceResult,
-  success,
-} from "#src/backend/lib/service-result";
+  IntegrationValidationFailed,
+  InvalidInput,
+  NotFound,
+} from "#src/backend/lib/effect/failures";
 import { validateWorkflowActionConfigs } from "#src/backend/lib/workflow-action-validation";
 import { validateWorkflowConditionConfigs } from "#src/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
 import { validateWorkflowIntegrations } from "#src/backend/lib/workflow-integration-validation";
-import type { ApiErrorPayload } from "@rova/shared/workflow/api-contracts";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   resolveWorkflowTriggerDefinition,
   type TriggerExecutionType,
@@ -17,10 +20,6 @@ import type {
   SerializedWorkflowGraph,
   WorkflowNode,
 } from "@rova/shared/workflow/types";
-
-type PreflightLogger = {
-  error: (message: string, properties?: Record<string, unknown>) => void;
-};
 
 type WorkflowForPreflight = {
   name: string;
@@ -35,57 +34,74 @@ export type WorkflowExecutionPreflight = {
   triggerDefinition: WorkflowTriggerDefinition;
 };
 
-export async function runWorkflowExecutionPreflight(input: {
+/**
+ * Everything that has to hold before a stored graph is allowed to run: it
+ * parses, its actions and conditions are configured, the integrations it names
+ * exist, and its trigger is the kind the entrypoint asking can drive.
+ *
+ * The logger arrives from the caller rather than from `AppLogger` here, because
+ * these lines belong to the entrypoint's category and carry the ids it bound.
+ */
+export const runWorkflowExecutionPreflight = Effect.fn(
+  "runWorkflowExecutionPreflight"
+)(function* (input: {
   workflow: WorkflowForPreflight;
-  logger: PreflightLogger;
+  logger: EffectLogger;
   requireExecutionType?: TriggerExecutionType;
-}): Promise<
-  ServiceResult<WorkflowExecutionPreflight, "invalid", ApiErrorPayload>
-> {
+}) {
   const { workflow, logger, requireExecutionType } = input;
 
   const graphValidation = validateWorkflowGraph(workflow.graph);
   if (!graphValidation.valid) {
-    logger.error("Invalid workflow graph", {
+    yield* logger.error("Invalid workflow graph", {
       workflowName: workflow.name,
       error: graphValidation.error,
     });
-    return failure("invalid", { error: "Workflow graph is invalid" });
+    return yield* Effect.fail(
+      new InvalidInput({ error: "Workflow graph is invalid" })
+    );
   }
 
   const actionValidation = validateWorkflowActionConfigs(graphValidation.nodes);
   if (!actionValidation.valid) {
-    logger.error("Invalid workflow action configuration", {
+    yield* logger.error("Invalid workflow action configuration", {
       workflowName: workflow.name,
       error: actionValidation.error,
     });
-    return failure("invalid", { error: actionValidation.error });
+    return yield* Effect.fail(
+      new InvalidInput({ error: actionValidation.error })
+    );
   }
 
   const conditionValidation = validateWorkflowConditionConfigs(
     graphValidation.nodes
   );
   if (!conditionValidation.valid) {
-    logger.error("Invalid workflow condition configuration", {
+    yield* logger.error("Invalid workflow condition configuration", {
       workflowName: workflow.name,
       error: conditionValidation.error,
     });
-    return failure("invalid", { error: conditionValidation.error });
+    return yield* Effect.fail(
+      new InvalidInput({ error: conditionValidation.error })
+    );
   }
 
-  const integrationValidation = await validateWorkflowIntegrations(
-    graphValidation.nodes
+  // The only way this fails is the integration rows it reads, so a rejected
+  // query arrives here as the same database failure a repository answers with.
+  const integrationValidation = yield* callDbModule(() =>
+    validateWorkflowIntegrations(graphValidation.nodes)
   );
   if (!integrationValidation.valid) {
-    logger.error("Invalid integration references in workflow", {
+    yield* logger.error("Invalid integration references in workflow", {
       workflowName: workflow.name,
       invalidIntegrationIds: integrationValidation.invalidIds,
     });
-    return failure("invalid", {
-      error: "Workflow contains invalid integration references",
-      code: "integration_validation_failed",
-      invalidIntegrationIds: integrationValidation.invalidIds ?? [],
-    });
+    return yield* Effect.fail(
+      new IntegrationValidationFailed({
+        error: "Workflow contains invalid integration references",
+        invalidIntegrationIds: integrationValidation.invalidIds ?? [],
+      })
+    );
   }
 
   const triggerNode = graphValidation.nodes.find(
@@ -99,16 +115,51 @@ export async function runWorkflowExecutionPreflight(input: {
     (!triggerNode ||
       triggerDefinition.runtime.executionType !== requireExecutionType)
   ) {
-    return failure("invalid", {
-      error: `This workflow is not configured for ${requireExecutionType} triggers`,
-    });
+    return yield* Effect.fail(
+      new InvalidInput({
+        error: `This workflow is not configured for ${requireExecutionType} triggers`,
+      })
+    );
   }
 
-  return success({
+  const preflight: WorkflowExecutionPreflight = {
     workflowGraph: graphValidation.graph,
     workflowNodes: graphValidation.nodes,
     triggerNode,
     triggerConfig,
     triggerDefinition,
-  });
-}
+  };
+  return preflight;
+});
+
+/**
+ * The prelude the two HTTP entrypoints share: find the workflow the request
+ * names, then check that it may run. Either step's refusal is the answer the
+ * caller gets, so neither is handled here.
+ *
+ * The event listener runs the same two steps itself rather than through this,
+ * because it turns both refusals into a return value for Inngest and names the
+ * workflow in the line it writes about the second one.
+ */
+export const loadWorkflowForRun = Effect.fn("loadWorkflowForRun")(
+  function* (input: {
+    workflowId: string;
+    logger: EffectLogger;
+    requireExecutionType?: TriggerExecutionType;
+  }) {
+    const repo = yield* WorkflowRepo;
+    const workflow = yield* repo.findById(input.workflowId);
+
+    if (!workflow) {
+      return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
+    }
+
+    const preflight = yield* runWorkflowExecutionPreflight({
+      workflow,
+      logger: input.logger,
+      requireExecutionType: input.requireExecutionType,
+    });
+
+    return { workflow, preflight };
+  }
+);

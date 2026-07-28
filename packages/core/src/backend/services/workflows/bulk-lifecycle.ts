@@ -1,175 +1,170 @@
-import { eq } from "drizzle-orm";
+import { Effect } from "effect";
 import { uniq } from "es-toolkit/array";
-import { db } from "#src/backend/lib/db/index";
-import { workflows } from "#src/backend/lib/db/schema";
-import { getAppLogger } from "#src/backend/lib/logger";
-import {
-  failure,
-  type ServiceFailureKind,
-  type ServiceResult,
-  success,
-} from "#src/backend/lib/service-result";
-import { getErrorMessage } from "@rova/shared/utils";
-
-const workflowsBulkLifecycleLogger = getAppLogger("workflow", "bulk-lifecycle");
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { deleteWorkflow } from "#src/backend/services/workflows/workflow";
 
 type WorkflowBulkAction = "pause" | "resume" | "delete";
 
-type WorkflowBulkLifecycleInput = {
-  workflowIds: string[];
+type WorkflowBulkLifecycleOutcome = {
+  workflowId: string;
   action: WorkflowBulkAction;
-  /**
-   * How one workflow is deleted, handed in because deleting has moved to Effect
-   * while this service has not: the router runs `deleteWorkflow` on the app's
-   * runtime and passes the promise it produces. Batch 3 of stage 3b turns this
-   * function into an Effect of its own, at which point it calls `deleteWorkflow`
-   * directly and this field goes away.
-   */
-  deleteOne: (
-    workflowId: string
-  ) => Promise<ServiceResult<unknown, ServiceFailureKind, { error: string }>>;
+  ok: boolean;
+  deleted?: boolean;
+  error?: string;
 };
 
-type WorkflowBulkLifecycleResult = {
-  summary: {
-    requested: number;
-    succeeded: number;
-    failed: number;
-  };
-  results: Array<{
+/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+const loggerFor = (input: { action: WorkflowBulkAction; requested: number }) =>
+  Effect.map(AppLogger, (appLogger) =>
+    appLogger.get("workflow", "bulk-lifecycle").with({
+      action: input.action,
+      requestedCount: input.requested,
+    })
+  );
+
+/** The logger for one workflow's own verdict within a bulk action. */
+const itemLoggerFor = (input: {
+  workflowId: string;
+  action: WorkflowBulkAction;
+}) =>
+  Effect.map(AppLogger, (appLogger) =>
+    appLogger.get("workflow", "bulk-lifecycle").with({
+      action: input.action,
+      workflowId: input.workflowId,
+    })
+  );
+
+/**
+ * Pause or resume one workflow, answering the same shape a deletion does.
+ *
+ * A pause that changes nothing writes nothing: the read that decides is also
+ * the read that tells a missing workflow from a present one, and this path is
+ * asked about whole selections at a time.
+ *
+ * A refused query is this workflow's verdict and travels no further, which is
+ * the same boundary the delete branch gets from `deleteWorkflow`. Without it one
+ * unlucky row would fail the whole call and the caller would learn nothing about
+ * the workflows that did change.
+ */
+const setPausedState = Effect.fn("setWorkflowPausedState")(
+  function* (input: {
     workflowId: string;
     action: WorkflowBulkAction;
-    ok: boolean;
-    deleted?: boolean;
-    error?: string;
-  }>;
-};
+    isPaused: boolean;
+  }) {
+    const repo = yield* WorkflowRepo;
+    const existing = yield* repo.findPausedById(input.workflowId);
 
-type WorkflowBulkLifecycleError = { error: string };
+    if (!existing) {
+      const missing: WorkflowBulkLifecycleOutcome = {
+        workflowId: input.workflowId,
+        action: input.action,
+        ok: false,
+        error: "Workflow not found",
+      };
+      return missing;
+    }
 
-async function setWorkflowPausedState(input: {
-  workflowId: string;
-  isPaused: boolean;
-}) {
-  const existing = await db.query.workflows.findFirst({
-    where: eq(workflows.id, input.workflowId),
-    columns: {
-      id: true,
-      isPaused: true,
-    },
-  });
+    if (existing.isPaused !== input.isPaused) {
+      yield* repo.setPaused({
+        workflowId: input.workflowId,
+        isPaused: input.isPaused,
+      });
+    }
 
-  if (!existing) {
-    return {
-      ok: false,
-      error: "Workflow not found",
-    } as const;
-  }
-
-  if (existing.isPaused === input.isPaused) {
-    return {
+    const changed: WorkflowBulkLifecycleOutcome = {
+      workflowId: input.workflowId,
+      action: input.action,
       ok: true,
-    } as const;
-  }
-
-  await db
-    .update(workflows)
-    .set({
-      isPaused: input.isPaused,
-      updatedAt: new Date(),
-    })
-    .where(eq(workflows.id, input.workflowId));
-
-  return {
-    ok: true,
-  } as const;
-}
-
-export async function postWorkflowsBulkLifecycleResult(
-  input: WorkflowBulkLifecycleInput
-): Promise<
-  ServiceResult<
-    WorkflowBulkLifecycleResult,
-    "internal",
-    WorkflowBulkLifecycleError
-  >
-> {
-  const workflowIds = uniq(input.workflowIds);
-  const requestLogger = workflowsBulkLifecycleLogger.with({
-    action: input.action,
-    requestedCount: workflowIds.length,
-  });
-
-  try {
-    const results: WorkflowBulkLifecycleResult["results"] = await Promise.all(
-      workflowIds.map(async (workflowId) => {
-        if (input.action === "delete") {
-          const deletion = await input.deleteOne(workflowId);
-
-          if (deletion.ok) {
-            return {
-              workflowId,
-              action: input.action,
-              ok: true,
-              deleted: true,
-            };
-          }
-
-          return {
-            workflowId,
-            action: input.action,
-            ok: false,
-            error: deletion.error.error,
-          };
-        }
-
-        const pauseUpdate = await setWorkflowPausedState({
-          workflowId,
-          isPaused: input.action === "pause",
-        });
-
-        if (pauseUpdate.ok) {
-          return {
-            workflowId,
-            action: input.action,
-            ok: true,
-          };
-        }
-
-        return {
-          workflowId,
+    };
+    return changed;
+  },
+  (effect, input) =>
+    effect.pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureRelayingCause(
+          itemLoggerFor(input),
+          `Failed to ${input.action} workflow`
+        )
+      ),
+      Effect.match({
+        onSuccess: (outcome) => outcome,
+        onFailure: (failure): WorkflowBulkLifecycleOutcome => ({
+          workflowId: input.workflowId,
           action: input.action,
           ok: false,
-          error: pauseUpdate.error,
-        };
+          error: failure.payload.error,
+        }),
       })
-    );
+    )
+);
 
-    const succeeded = results.filter((result) => result.ok).length;
+/**
+ * Apply one lifecycle action to a selection of workflows, best-effort.
+ *
+ * Every workflow gets its own verdict and one failure never sinks the batch,
+ * which is what the summary counts. Deleting reuses `deleteWorkflow` rather
+ * than deleting here, so the two paths cannot drift over what deleting a
+ * workflow entails; its failure becomes this workflow's `error` and goes no
+ * further.
+ *
+ * There is no function-level failure policy left to state: every query runs
+ * inside the loop, and each branch has already turned a refusal into that
+ * workflow's row. This function's own error channel is empty.
+ */
+export const postWorkflowsBulkLifecycle = Effect.fn(
+  "postWorkflowsBulkLifecycle"
+)(function* (input: { workflowIds: string[]; action: WorkflowBulkAction }) {
+  const workflowIds = uniq(input.workflowIds);
+  const logger = yield* loggerFor({
+    action: input.action,
+    requested: workflowIds.length,
+  });
 
-    requestLogger.info("Completed bulk workflow lifecycle action", {
+  const results = yield* Effect.forEach(
+    workflowIds,
+    (workflowId) =>
+      input.action === "delete"
+        ? deleteWorkflow(workflowId).pipe(
+            Effect.match({
+              onSuccess: (): WorkflowBulkLifecycleOutcome => ({
+                workflowId,
+                action: input.action,
+                ok: true,
+                deleted: true,
+              }),
+              onFailure: (failure): WorkflowBulkLifecycleOutcome => ({
+                workflowId,
+                action: input.action,
+                ok: false,
+                error: failure.payload.error,
+              }),
+            })
+          )
+        : setPausedState({
+            workflowId,
+            action: input.action,
+            isPaused: input.action === "pause",
+          }),
+    { concurrency: "unbounded" }
+  );
+
+  const succeeded = results.filter((result) => result.ok).length;
+
+  yield* logger.info("Completed bulk workflow lifecycle action", {
+    succeeded,
+    failed: results.length - succeeded,
+  });
+
+  return {
+    summary: {
+      requested: workflowIds.length,
       succeeded,
       failed: results.length - succeeded,
-    });
-
-    return success({
-      summary: {
-        requested: workflowIds.length,
-        succeeded,
-        failed: results.length - succeeded,
-      },
-      results,
-    });
-  } catch (error) {
-    requestLogger.error(
-      `Failed bulk workflow lifecycle action: ${getErrorMessage(error)}`,
-      { error }
-    );
-    return failure("internal", {
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed bulk workflow lifecycle action",
-    });
-  }
-}
+    },
+    results,
+  };
+});

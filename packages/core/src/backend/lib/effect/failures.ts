@@ -1,14 +1,34 @@
 import { Schema } from "effect";
-import type { ServiceFailureKind } from "#src/backend/lib/service-result";
+
+/**
+ * Why a service call failed, stated in the domain's own terms.
+ *
+ * Services answer with one of these rather than an HTTP status, so that nothing
+ * inside the backend has to know how a failure will eventually be transported.
+ * The adapters at the edges each translate a kind into whatever their transport
+ * expects.
+ *
+ * - `invalid`: the caller's input or the resource it points at does not pass validation.
+ * - `unauthorized`: the caller's credentials did not authenticate. This is distinct from
+ *   `invalid` because the inbound webhook and wait-hook endpoints are reached by third
+ *   parties, who need to tell a rejected API key apart from a malformed request.
+ * - `not_found`: the addressed resource does not exist.
+ * - `conflict`: the request collides with existing state, such as a duplicate name.
+ * - `internal`: something failed on our side and the caller cannot fix it.
+ */
+export type ServiceFailureKind =
+  | "invalid"
+  | "unauthorized"
+  | "not_found"
+  | "conflict"
+  | "internal";
 
 /**
  * Why a service call failed, as a tagged error the type system can see.
  *
- * These are the Effect half of `ServiceFailureKind`: one class per kind, meaning
- * exactly what the doc comment on that type says. A service written with Effect
- * puts one of these in its error channel instead of returning
- * `failure(kind, payload)`, so a caller that forgets a failure case stops
- * compiling rather than reading `result.ok` and moving on.
+ * One class per kind, meaning exactly what the doc comment above says. A service
+ * puts one of these in its error channel, so a caller that forgets a failure
+ * case stops compiling rather than reading a flag and moving on.
  *
  * Each class carries the payload the caller receives, which for most of them is
  * the single `error` message every service already answers with. A failure that
@@ -17,8 +37,8 @@ import type { ServiceFailureKind } from "#src/backend/lib/service-result";
  * `payload` accordingly.
  *
  * The two adapters at the edges keep translating: `backend/rpc/errors.ts` turns
- * a kind into an oRPC code, `backend/lib/http/response-from-service-result.ts`
- * into an HTTP status. Nothing here names a status code.
+ * a kind into an oRPC code, `backend/lib/http/failure-response.ts` into an HTTP
+ * status. Nothing here names a status code.
  *
  * These classes are schema-backed but nothing encodes or decodes them today:
  * they are constructed in a service and read at the promise seam, both inside
@@ -32,8 +52,8 @@ import type { ServiceFailureKind } from "#src/backend/lib/service-result";
  * The single kind one failure class means, checked against the full set.
  *
  * Written as a constraint rather than as `kind: ServiceFailureKind` so that each
- * class keeps its own literal: that is what lets `runToServiceResult` report the
- * two kinds a service can actually produce instead of all five.
+ * class keeps its own literal, which is what lets a caller narrowing on a
+ * service's failures see only the kinds that service can actually produce.
  */
 type Kind<K extends ServiceFailureKind> = K;
 
@@ -41,9 +61,8 @@ type Kind<K extends ServiceFailureKind> = K;
  * What a caller reads off a failure.
  *
  * `error` is the sentence, and the two integration fields are the exception the
- * shape has to make room for: `getRpcErrorMessage` appends the ids to the
- * message when it sees the code, and the editor reads them off the oRPC error's
- * `data` to highlight the offending nodes.
+ * shape has to make room for: `getRpcErrorMessage` reads the code and appends
+ * the ids to the message it builds, and it is the only consumer of them today.
  *
  * Each failure class answers one of these from its `payload` getter, so the
  * shape a caller sees is decided beside the fields it is built from rather than
@@ -76,10 +95,10 @@ export class InvalidInput extends Schema.TaggedErrorClass<InvalidInput>()(
  * longer exists, or one whose type does not match what the action needs.
  *
  * Its kind is `invalid` like any other rejected input, and the reason it is a
- * class of its own is the list: the editor highlights exactly the nodes it
- * names, so the ids have to survive the trip to the client rather than being
+ * class of its own is the list: the ids travel to the client as data rather than
  * flattened into the sentence. Its payload is the `code`/`invalidIntegrationIds`
- * body that `getRpcErrorMessage` reads.
+ * body that `getRpcErrorMessage` reads, which appends the ids to the message it
+ * builds and is the only thing that reads them today.
  */
 export class IntegrationValidationFailed extends Schema.TaggedErrorClass<IntegrationValidationFailed>()(
   "IntegrationValidationFailed",

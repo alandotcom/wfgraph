@@ -6,7 +6,7 @@ import {
   AppLogger,
   type EffectLogger,
 } from "#src/backend/lib/effect/app-logger";
-import { internalFailure } from "#src/backend/lib/effect/database";
+import { internalFailure } from "#src/backend/lib/effect/internal-failure";
 import {
   InternalFailure,
   InvalidInput,

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { compare, hash } from "bcryptjs";
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { internalFailure } from "#src/backend/lib/effect/database";
+import { internalFailure } from "#src/backend/lib/effect/internal-failure";
 import {
   InternalFailure,
   Unauthorized,

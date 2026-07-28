@@ -1,5 +1,10 @@
+import { nanoid } from "nanoid";
 import type { Workflow } from "#src/backend/lib/db/schema";
 import type { WorkflowApiPayload } from "@rova/shared/workflow/api-contracts";
+import {
+  createSerializedWorkflowGraph,
+  isSerializedWorkflowGraph,
+} from "@rova/shared/workflow/graph";
 import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
 
 type WorkflowPayloadSource = Pick<
@@ -45,6 +50,38 @@ export function toWorkflowApiPayload(
     createdAt: workflow.createdAt.toISOString(),
     updatedAt: workflow.updatedAt.toISOString(),
   };
+}
+
+/**
+ * Give an empty graph the trigger every workflow needs to be runnable.
+ *
+ * Both ways a workflow is written for the first time go through here: the
+ * create endpoint and the editor's autosave. A graph with nodes is handed back
+ * untouched, and so is anything that is not a graph at all, since deciding that
+ * is validation's job and it runs next.
+ */
+export function withDefaultTriggerNode(graph: unknown): unknown {
+  if (!isSerializedWorkflowGraph(graph) || graph.nodes.length > 0) {
+    return graph;
+  }
+
+  return createSerializedWorkflowGraph({
+    nodes: [
+      {
+        id: nanoid(),
+        type: "trigger",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "",
+          description: "",
+          type: "trigger",
+          config: { triggerType: "Webhook" },
+          status: "idle",
+        },
+      },
+    ],
+    edges: [],
+  });
 }
 
 export function buildWorkflowUpdateData(

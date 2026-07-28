@@ -72,10 +72,23 @@ export function assertValidEncryptionKey(
  * host that keeps the key in an environment variable passes it in from there;
  * this module reading the variable itself would be a second, weaker path that
  * lets a misconfigured deployment start and fail later.
+ *
+ * A second call carrying a different key is refused, the way the database and
+ * Inngest configuration are. Rebinding it silently would leave every row written
+ * under the first key undecryptable while the process kept running as if
+ * nothing had changed.
  */
 export function configureEncryptionKey(config: EncryptionRuntimeConfig): void {
   assertValidEncryptionKey(config.key);
-  encryptionState.config = { key: config.key.trim() };
+  const key = config.key.trim();
+
+  if (encryptionState.config && encryptionState.config.key !== key) {
+    throw new Error(
+      "Integration encryption key is already configured with a different value. Restart the process to apply a new encryption key."
+    );
+  }
+
+  encryptionState.config = { key };
 }
 
 function getEncryptionKey(): Buffer {

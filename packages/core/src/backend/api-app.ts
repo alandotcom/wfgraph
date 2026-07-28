@@ -1,7 +1,9 @@
 import { RPCHandler } from "@orpc/server/fetch";
+import { Effect } from "effect";
 import { Hono } from "hono";
 import { serve as serveInngest } from "inngest/hono";
 import { z } from "zod";
+import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
 import {
   getInngestClient,
   getInngestServeConfig,
@@ -20,10 +22,7 @@ import {
 } from "#src/backend/rpc/openapi";
 import { rpcRouter } from "#src/backend/rpc/router";
 import { postWorkflowResume } from "#src/backend/services/workflows/triggering/resume";
-import {
-  optionsWorkflowWebhook,
-  postWorkflowWebhook,
-} from "#src/backend/services/workflows/triggering/webhook";
+import { postWorkflowWebhook } from "#src/backend/services/workflows/triggering/webhook";
 import { jsonObjectSchema } from "@rova/shared/types/json";
 import { getErrorMessage } from "@rova/shared/utils";
 import { listRuntimeActions } from "@rova/shared/workflow/action-registry";
@@ -213,7 +212,23 @@ export const MACHINE_ROUTES = [
   "/workflows/hooks/:token/resume",
 ] as const;
 
-type ApiEnv = { Variables: { rovaMachineRoute?: true } };
+const WEBHOOK_ROUTE = "/workflows/:workflowId/webhook";
+
+/**
+ * The webhook intake endpoint is called from browsers and from third-party
+ * senders, so it answers preflight requests and carries these on every answer it
+ * gives. CORS is a property of the transport, which is why it is stated here
+ * beside the routes rather than inside the service.
+ */
+const webhookCorsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+type ApiEnv = {
+  Variables: { rovaMachineRoute?: true; rovaWebhookRoute?: true };
+};
 
 export function createApiApp(options: CreateApiAppOptions) {
   const { basePath, authorize, runtime } = options;
@@ -290,6 +305,15 @@ export function createApiApp(options: CreateApiAppOptions) {
     });
   }
 
+  // Marks the one route whose failures still need CORS. A defect leaves the
+  // route handler through `onError`, which builds its 500 without knowing what
+  // was being served, and a sender reading a bodyless opaque response cannot
+  // tell an outage from a rejection.
+  app.use(WEBHOOK_ROUTE, async (c, next) => {
+    c.set("rovaWebhookRoute", true);
+    await next();
+  });
+
   app.use("*", async (c, next) => {
     if (c.get("rovaMachineRoute") || (await authorize(c.req.raw))) {
       await next();
@@ -307,7 +331,11 @@ export function createApiApp(options: CreateApiAppOptions) {
       error,
     });
 
-    return c.json({ error: "Internal Server Error" }, 500);
+    return c.json(
+      { error: "Internal Server Error" },
+      500,
+      c.get("rovaWebhookRoute") ? webhookCorsHeaders : undefined
+    );
   });
 
   // oRPC needs to know the absolute path its handlers are mounted at so it can
@@ -396,7 +424,10 @@ export function createApiApp(options: CreateApiAppOptions) {
     .all("/og", (c) => c.json({ error: "Not found" }, 404))
     .all("/og/*", (c) => c.json({ error: "Not found" }, 404))
     .on(["GET", "POST", "PUT"], "/inngest", async (c) => {
-      const functions = await getInngestFunctions();
+      // The registry is where this app's runtime reaches the event listeners it
+      // builds: they run migrated services, and nothing there may reach for a
+      // runtime of its own.
+      const functions = await getInngestFunctions(runtime);
       const inngestHandler = serveInngest({
         client: getInngestClient(),
         functions,
@@ -406,24 +437,43 @@ export function createApiApp(options: CreateApiAppOptions) {
       });
       return await inngestHandler(c);
     })
-    .options("/workflows/:workflowId/webhook", () => optionsWorkflowWebhook())
-    .post("/workflows/:workflowId/webhook", async (c) => {
+    .options(WEBHOOK_ROUTE, () =>
+      Response.json({}, { headers: webhookCorsHeaders })
+    )
+    .post(WEBHOOK_ROUTE, async (c) => {
+      // Both refusals below carry the CORS headers for the same reason the
+      // service's failures do: a browser-side sender reading an opaque response
+      // cannot tell a malformed request from an outage.
       const params = workflowIdParamsSchema.safeParse(c.req.param());
       if (!params.success) {
-        return c.json({ error: z.prettifyError(params.error) }, 400);
+        return c.json(
+          { error: z.prettifyError(params.error) },
+          400,
+          webhookCorsHeaders
+        );
       }
 
       const body = await parseJsonBody(c.req.raw, webhookBodySchema);
       if (!body.ok) {
-        return c.json({ error: body.error }, 400);
+        return c.json({ error: body.error }, 400, webhookCorsHeaders);
       }
 
-      return await postWorkflowWebhook({
-        workflowId: params.data.workflowId,
-        authHeader: c.req.header("Authorization") ?? null,
-        body: body.data,
-        runtime,
-      });
+      return await runtime.runPromise(
+        postWorkflowWebhook({
+          workflowId: params.data.workflowId,
+          authHeader: c.req.header("Authorization") ?? null,
+          body: body.data,
+        }).pipe(
+          Effect.match({
+            onSuccess: (data) =>
+              Response.json(data, { headers: webhookCorsHeaders }),
+            onFailure: (failure) =>
+              responseFromServiceFailure(failure, {
+                headers: webhookCorsHeaders,
+              }),
+          })
+        )
+      );
     })
     .post("/workflows/hooks/:token/resume", async (c) => {
       const params = tokenParamsSchema.safeParse(c.req.param());
@@ -436,11 +486,17 @@ export function createApiApp(options: CreateApiAppOptions) {
         return c.json({ error: body.error }, 400);
       }
 
-      return await postWorkflowResume(
-        params.data.token,
-        body.data,
-        c.req.header("Authorization") ?? null,
-        runtime
+      return await runtime.runPromise(
+        postWorkflowResume({
+          token: params.data.token,
+          body: body.data,
+          authHeader: c.req.header("Authorization") ?? null,
+        }).pipe(
+          Effect.match({
+            onSuccess: (data) => Response.json(data),
+            onFailure: (failure) => responseFromServiceFailure(failure),
+          })
+        )
       );
     });
 

@@ -61,9 +61,3 @@ export type WorkflowExecuteResponse =
   | WorkflowExecutionRunningResponse
   | (WorkflowExecutionCancelledResponse & { executionId: string })
   | (WorkflowExecutionIgnoredResponse & { executionId: string });
-
-export type WorkflowWebhookResponse =
-  | WorkflowExecutionRunningResponse
-  | WorkflowExecutionCancelledResponse
-  | WorkflowExecutionIgnoredResponse
-  | WorkflowExecutionResumedResponse;

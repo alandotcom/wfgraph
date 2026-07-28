@@ -1,9 +1,9 @@
 import { implement } from "@orpc/server";
-import type { Effect } from "effect";
+import { Effect } from "effect";
 import { z } from "zod";
 import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import { getAppLogger } from "#src/backend/lib/logger";
-import { type RovaServices, runToServiceResult } from "#src/backend/runtime";
+import type { RovaServices } from "#src/backend/runtime";
 import { deleteApiKey } from "#src/backend/services/api-keys/api-key";
 import {
   getApiKeys,
@@ -18,8 +18,8 @@ import {
   postIntegrationTest,
   putIntegration,
 } from "#src/backend/services/integrations/integrations";
-import { postWorkflowExecuteResult } from "#src/backend/services/workflows/triggering/execute";
-import { postExecutionCancelResult } from "#src/backend/services/workflows/executions/cancel";
+import { postWorkflowExecute } from "#src/backend/services/workflows/triggering/execute";
+import { postExecutionCancel } from "#src/backend/services/workflows/executions/cancel";
 import { getExecutionEvents } from "#src/backend/services/workflows/executions/events";
 import { getExecutionLogs } from "#src/backend/services/workflows/executions/logs";
 import { getExecutionStatus } from "#src/backend/services/workflows/executions/status";
@@ -34,25 +34,26 @@ import {
   getWorkflowExecutions,
 } from "#src/backend/services/workflows/executions/list";
 import { getWorkflowExecutionsGlobal } from "#src/backend/services/workflows/executions/global";
-import { postWorkflowWebhookResult } from "#src/backend/services/workflows/triggering/webhook";
+import { postWorkflowWebhook } from "#src/backend/services/workflows/triggering/webhook";
 import { getWorkflows } from "#src/backend/services/workflows/list";
-import { postWorkflowsBulkLifecycleResult } from "#src/backend/services/workflows/bulk-lifecycle";
+import { postWorkflowsBulkLifecycle } from "#src/backend/services/workflows/bulk-lifecycle";
 import { postWorkflowsCreate } from "#src/backend/services/workflows/create";
 import {
   getWorkflowsCurrent,
   postWorkflowsCurrent,
 } from "#src/backend/services/workflows/current";
 import { rpcContract } from "@rova/shared/rpc/contracts";
+import { getErrorMessage } from "@rova/shared/utils";
 import type { RpcContext } from "./context";
-import { type RpcCompatibleResult, toRpcData } from "./errors";
+import { toOrpcError } from "./errors";
 
 const rpcLogger = getAppLogger("rpc", "handler");
 
 /**
  * The handler options object oRPC passes as the first argument, narrowed to the
- * one member the failure log needs. `rpcHandler` is generic over every route, so
- * its `args` are `unknown` and the route's own input type is out of reach here;
- * every contract input is an object, and a parse recovers that much.
+ * one member the failure log needs. `rpcEffectHandler` is generic over every
+ * route, so its `args` are `unknown` and the route's own input type is out of
+ * reach here; every contract input is an object, and a parse recovers that much.
  */
 const rpcHandlerArgsSchema = z.looseObject({
   input: z.looseObject({}).optional().catch(undefined),
@@ -83,50 +84,58 @@ function summarizeRpcInput(args: unknown[]): unknown {
   return summary;
 }
 
-function rpcHandler<TArgs extends unknown[], TOutput>(
-  handler: (
-    ...args: TArgs
-  ) => RpcCompatibleResult<TOutput> | Promise<RpcCompatibleResult<TOutput>>
-): (...args: TArgs) => Promise<TOutput> {
-  return async (...args) => {
-    const result = await handler(...args);
-    if (!result.ok) {
-      rpcLogger.warn(
-        `RPC handler returned failure [${result.kind}]: ${JSON.stringify(result.error)}`,
-        {
-          kind: result.kind,
-          error: result.error,
-          input: summarizeRpcInput(args),
-        }
-      );
-    }
-    return toRpcData(Promise.resolve(result));
-  };
-}
-
 /**
- * The same handler for a service that has been migrated to Effect.
+ * Runs a procedure's Effect on the runtime the request carries, and turns a
+ * domain failure into the oRPC error oRPC expects a handler to throw.
  *
- * The Effect is run down to a `ServiceResult` on the runtime carried by the
- * request context, then handed to `rpcHandler` above, so a migrated procedure
- * logs the same failure line and answers with the same oRPC code as one that has
- * not been migrated yet. Stage 3b of the Effect migration ends with every
- * procedure here, and `rpcHandler` retiring.
+ * The failure is logged on the way past, at the one place every procedure
+ * shares. The payload rides as a structured property rather than inside the
+ * message, because logtape reads `{...}` in a message as a placeholder and would
+ * eat a serialized one.
+ *
+ * `Effect.fail` carrying the oRPC error is what makes the promise reject with
+ * it: `runPromise` squashes a failure cause down to the error itself, so oRPC
+ * catches the same object it would have caught from a `throw`.
+ *
+ * A defect is left to reject the promise and reach oRPC's own 500, but it is
+ * logged first. Before the services returned Effects a bug inside one was caught
+ * by the same `try` its failures were, so it at least left a line naming itself;
+ * a defect that only produced oRPC's bodyless "Internal Server Error" would be
+ * a step backwards for whoever has to find it.
  *
  * Generic over the service's failures rather than over the whole union, so the
- * narrowing `runToServiceResult` produces survives the trip through here.
+ * narrowing a service's error channel expresses survives the trip through here.
  */
-function rpcEffectHandler<
+export function rpcEffectHandler<
   TArgs extends [{ context: RpcContext }, ...unknown[]],
   TOutput,
   TFailure extends ServiceFailure,
 >(
   handler: (...args: TArgs) => Effect.Effect<TOutput, TFailure, RovaServices>
 ): (...args: TArgs) => Promise<TOutput> {
-  return rpcHandler(
-    async (...args: TArgs) =>
-      await runToServiceResult(args[0].context.runtime, handler(...args))
-  );
+  return async (...args) =>
+    await args[0].context.runtime.runPromise(
+      handler(...args).pipe(
+        Effect.tapError((failure) =>
+          Effect.sync(() => {
+            rpcLogger.warn(`RPC handler returned failure [${failure.kind}]`, {
+              kind: failure.kind,
+              error: failure.payload,
+              input: summarizeRpcInput(args),
+            });
+          })
+        ),
+        Effect.tapDefect((defect) =>
+          Effect.sync(() => {
+            rpcLogger.error(`RPC handler died: ${getErrorMessage(defect)}`, {
+              error: defect,
+              input: summarizeRpcInput(args),
+            });
+          })
+        ),
+        Effect.catch((failure) => Effect.fail(toOrpcError(failure)))
+      )
+    );
 }
 
 // Output schemas exist so the client infers a return type and so the OpenAPI
@@ -199,7 +208,7 @@ export const rpcRouter = rpc.router({
       rpcEffectHandler(({ input }) => getWorkflow(input.workflowId))
     ),
     create: rpc.workflow.create.handler(
-      rpcHandler(({ input }) =>
+      rpcEffectHandler(({ input }) =>
         postWorkflowsCreate({
           name: input.name,
           description: input.description,
@@ -221,7 +230,7 @@ export const rpcRouter = rpc.router({
       rpcEffectHandler(({ input }) => deleteWorkflow(input.workflowId))
     ),
     duplicate: rpc.workflow.duplicate.handler(
-      rpcHandler(({ input }) => postWorkflowDuplicate(input.workflowId))
+      rpcEffectHandler(({ input }) => postWorkflowDuplicate(input.workflowId))
     ),
     getCurrent: rpc.workflow.getCurrent.handler(
       rpcEffectHandler(() => getWorkflowsCurrent())
@@ -234,21 +243,20 @@ export const rpcRouter = rpc.router({
       )
     ),
     execute: rpc.workflow.execute.handler(
-      rpcHandler(({ input }) =>
-        postWorkflowExecuteResult(input.workflowId, {
+      rpcEffectHandler(({ input }) =>
+        postWorkflowExecute(input.workflowId, {
           input: input.input,
         })
       )
     ),
     triggerWebhook: rpc.workflow.triggerWebhook.handler(
-      rpcHandler(({ context, input }) => {
-        return postWorkflowWebhookResult({
+      rpcEffectHandler(({ context, input }) =>
+        postWorkflowWebhook({
           workflowId: input.workflowId,
           authHeader: context.headers.get("Authorization"),
           body: input.input ?? {},
-          runtime: context.runtime,
-        });
-      })
+        })
+      )
     ),
     getExecutions: rpc.workflow.getExecutions.handler(
       rpcEffectHandler(({ input }) => getWorkflowExecutions(input.workflowId))
@@ -264,12 +272,10 @@ export const rpcRouter = rpc.router({
       )
     ),
     bulkLifecycle: rpc.workflow.bulkLifecycle.handler(
-      rpcHandler(({ context, input }) =>
-        postWorkflowsBulkLifecycleResult({
+      rpcEffectHandler(({ input }) =>
+        postWorkflowsBulkLifecycle({
           workflowIds: input.workflowIds,
           action: input.action,
-          deleteOne: (workflowId) =>
-            runToServiceResult(context.runtime, deleteWorkflow(workflowId)),
         })
       )
     ),
@@ -285,7 +291,7 @@ export const rpcRouter = rpc.router({
       rpcEffectHandler(({ input }) => getExecutionEvents(input.executionId))
     ),
     cancelExecution: rpc.workflow.cancelExecution.handler(
-      rpcHandler(({ input }) => postExecutionCancelResult(input.executionId))
+      rpcEffectHandler(({ input }) => postExecutionCancel(input.executionId))
     ),
     getExecutionStatus: rpc.workflow.getExecutionStatus.handler(
       rpcEffectHandler(({ input }) => getExecutionStatus(input.executionId))

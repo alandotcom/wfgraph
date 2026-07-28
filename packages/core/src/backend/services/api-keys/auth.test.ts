@@ -2,20 +2,17 @@
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
 import { compare, hash } from "bcryptjs";
-import { Effect, Latch, Layer } from "effect";
-import {
-  AppLogger,
-  type EffectLogger,
-} from "#src/backend/lib/effect/app-logger";
+import { Effect, Latch } from "effect";
 import { Unauthorized } from "#src/backend/lib/effect/failures";
+import {
+  SilentAppLoggerLayer,
+  stubApiKeyRepo,
+} from "#src/backend/lib/effect/test-layers";
 import {
   createApiKeyRecord,
   validateApiKey,
 } from "#src/backend/services/api-keys/auth";
-import {
-  type ApiKeyCandidate,
-  ApiKeyRepo,
-} from "#src/backend/services/api-keys/repo";
+import type { ApiKeyCandidate } from "#src/backend/services/api-keys/repo";
 
 /**
  * A fake repository holding the keys one test stored, and a record of what it
@@ -38,7 +35,9 @@ function makeApiKeyRepo(candidates: ApiKeyCandidate[]) {
     touchedFirst: Latch.makeUnsafe(),
   };
 
-  const repoLayer = Layer.succeed(ApiKeyRepo, {
+  // Verification never reads or writes the management side of the table, so
+  // every other method refuses.
+  const repoLayer = stubApiKeyRepo({
     findByPrefix: (keyPrefix) =>
       Effect.sync(() => {
         calls.prefixLookups.push(keyPrefix);
@@ -49,31 +48,13 @@ function makeApiKeyRepo(candidates: ApiKeyCandidate[]) {
         calls.touched.push(keyId);
         calls.touchedFirst.openUnsafe();
       }),
-    // Verification never reads or writes the management side of the table.
-    listNewestFirst: () => Effect.die("listNewestFirst is not part of auth"),
-    insert: () => Effect.die("insert is not part of auth"),
-    deleteById: () => Effect.die("deleteById is not part of auth"),
   });
 
   return { layer: repoLayer, calls };
 }
 
-const silentLogger: EffectLogger = {
-  debug: () => Effect.void,
-  info: () => Effect.void,
-  warn: () => Effect.void,
-  error: () => Effect.void,
-  with: () => silentLogger,
-};
-
-// The logger fake holds no state, so it belongs to the whole block. The
-// repository does, so it is built inside each test instead.
-const TestAppLoggerLayer = Layer.succeed(AppLogger, {
-  get: () => silentLogger,
-});
-
 describe("api key auth", () => {
-  layer(TestAppLoggerLayer)((it) => {
+  layer(SilentAppLoggerLayer)((it) => {
     it.effect("creates a prefixed API key with bcrypt hash", () =>
       Effect.gen(function* () {
         const record = yield* createApiKeyRecord();

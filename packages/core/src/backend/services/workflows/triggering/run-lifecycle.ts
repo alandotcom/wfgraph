@@ -1,11 +1,12 @@
-import { eq } from "drizzle-orm";
-import { db } from "#src/backend/lib/db/index";
-import { workflowExecutions } from "#src/backend/lib/db/schema";
-import { sendWorkflowRunRequested } from "#src/backend/lib/inngest/runtime-events";
+import { Effect } from "effect";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { callDbModule } from "#src/backend/lib/effect/database";
+import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
   logWorkflowAuditEvent,
   type WorkflowAuditEventType,
 } from "#src/backend/lib/workflow-audit";
+import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
 import type { JsonObject } from "@rova/shared/types/json";
 import type { WorkflowExecutionIgnoredReason } from "@rova/shared/workflow/execution-contracts";
 import type {
@@ -138,95 +139,119 @@ export function buildIgnoredRunAuditMessage(input: {
     : `Ignored ${subject} because no in-flight runs were found`;
 }
 
+/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+const loggerFor = (workflowId: string) =>
+  Effect.map(AppLogger, (appLogger) =>
+    appLogger.get("workflow", "run-lifecycle").with({ workflowId })
+  );
+
 /**
  * Inserts the execution row, enqueues the Inngest run, and records the timeline
- * entry. A failed enqueue marks the row as errored before rethrowing, so a run
- * is never left sitting in "running" with nothing behind it.
+ * entry. A refused enqueue marks the row as errored before the failure travels
+ * on, so a run is never left sitting in "running" with nothing behind it.
  */
-export async function startWorkflowRun(
+export const startWorkflowRun = Effect.fn("startWorkflowRun")(function* (
   input: StartWorkflowRunInput
-): Promise<StartedWorkflowRun> {
+) {
+  const repo = yield* ExecutionRepo;
+  const inngest = yield* InngestClient;
   const { workflow, trigger, runMode, payload } = input;
+  const logger = yield* loggerFor(workflow.id);
 
-  const [execution] = await db
-    .insert(workflowExecutions)
-    .values({
-      workflowId: workflow.id,
-      status: "running",
-      triggerType: trigger.type,
-      runMode,
-      triggerEventType: trigger.eventType,
-      correlationKey: trigger.correlationKey,
-      input: payload,
-    })
-    .returning();
-
-  const run = await sendWorkflowRunRequested({
-    graph: workflow.graph,
-    triggerInput: payload,
-    requestPayload: input.requestPayload ?? payload,
-    executionId: execution.id,
+  const execution = yield* repo.insertRunning({
     workflowId: workflow.id,
-    workflowName: workflow.name,
+    triggerType: trigger.type,
     runMode,
-    eventContext: {
-      eventType: trigger.eventType,
-      correlationKey: trigger.correlationKey,
-    },
-  }).catch(async (error) => {
-    await db
-      .update(workflowExecutions)
-      .set({
-        status: "error",
-        error: error instanceof Error ? error.message : "Failed to enqueue run",
-        completedAt: new Date(),
-      })
-      .where(eq(workflowExecutions.id, execution.id));
-    throw error;
+    triggerEventType: trigger.eventType,
+    correlationKey: trigger.correlationKey,
+    input: payload,
   });
 
-  await db
-    .update(workflowExecutions)
-    .set({ workflowRunId: run.eventId ?? null })
-    .where(eq(workflowExecutions.id, execution.id));
+  const run = yield* inngest
+    .sendRunRequested({
+      graph: workflow.graph,
+      triggerInput: payload,
+      requestPayload: input.requestPayload ?? payload,
+      executionId: execution.id,
+      workflowId: workflow.id,
+      workflowName: workflow.name,
+      runMode,
+      eventContext: {
+        eventType: trigger.eventType,
+        correlationKey: trigger.correlationKey,
+      },
+    })
+    .pipe(
+      Effect.tapError((failure) =>
+        Effect.gen(function* () {
+          const closed = yield* repo.markEnqueueFailed({
+            executionId: execution.id,
+            error:
+              failure.cause instanceof Error
+                ? failure.cause.message
+                : "Failed to enqueue run",
+          });
 
-  await logWorkflowAuditEvent({
-    workflowId: workflow.id,
+          if (!closed) {
+            // Inngest took the event and failed on the way back: the run is
+            // already executing and reached a verdict of its own, which the
+            // compensation is not allowed to overwrite.
+            yield* logger.info(
+              "Enqueue reported failure but the run had already left the in-flight statuses",
+              { executionId: execution.id }
+            );
+          }
+        })
+      )
+    );
+
+  yield* repo.setRunId({
     executionId: execution.id,
-    eventType: "run_started",
-    message: buildRunStartedAuditMessage({
-      triggerType: trigger.type,
-      runMode,
-      eventType: trigger.eventType,
-    }),
-    metadata: {
-      triggerType: trigger.type,
-      runMode,
-      eventType: trigger.eventType,
-      correlationKey: trigger.correlationKey,
-      runId: run.eventId,
-    },
+    runId: run.eventId ?? null,
   });
 
-  return {
+  yield* callDbModule(() =>
+    logWorkflowAuditEvent({
+      workflowId: workflow.id,
+      executionId: execution.id,
+      eventType: "run_started",
+      message: buildRunStartedAuditMessage({
+        triggerType: trigger.type,
+        runMode,
+        eventType: trigger.eventType,
+      }),
+      metadata: {
+        triggerType: trigger.type,
+        runMode,
+        eventType: trigger.eventType,
+        correlationKey: trigger.correlationKey,
+        runId: run.eventId,
+      },
+    })
+  );
+
+  const started: StartedWorkflowRun = {
     executionId: execution.id,
     runId: run.eventId,
     runMode,
   };
-}
+  return started;
+});
 
 /**
  * Writes an execution row for a request that reached a verdict without ever
  * running the graph, such as a cancellation or an ignored event. The row starts
  * and completes at the same instant so the run list still shows the decision.
+ *
+ * A caller owes a row whenever the runs list is the only feedback it gives: the
+ * manual execute route answers a screen whose next question is "what happened",
+ * and a decision with no row reads there as nothing having happened at all.
  */
-export async function recordTerminalWorkflowRun(
-  input: RecordTerminalWorkflowRunInput
-) {
-  const now = new Date();
-  const [execution] = await db
-    .insert(workflowExecutions)
-    .values({
+export const recordTerminalWorkflowRun = Effect.fn("recordTerminalWorkflowRun")(
+  function* (input: RecordTerminalWorkflowRunInput) {
+    const repo = yield* ExecutionRepo;
+
+    const execution = yield* repo.insertTerminal({
       workflowId: input.workflowId,
       status: input.status,
       triggerType: input.trigger.type,
@@ -236,19 +261,58 @@ export async function recordTerminalWorkflowRun(
       input: input.payload,
       output: input.output,
       error: input.error,
-      startedAt: now,
-      completedAt: now,
-      cancelledAt: input.status === "cancelled" ? now : null,
-    })
-    .returning();
+    });
 
-  await logWorkflowAuditEvent({
-    workflowId: input.workflowId,
-    executionId: execution.id,
-    eventType: input.audit.eventType,
-    message: input.audit.message,
-    metadata: input.audit.metadata,
-  });
+    yield* callDbModule(() =>
+      logWorkflowAuditEvent({
+        workflowId: input.workflowId,
+        executionId: execution.id,
+        eventType: input.audit.eventType,
+        message: input.audit.message,
+        metadata: input.audit.metadata,
+      })
+    );
 
-  return execution;
-}
+    return execution;
+  }
+);
+
+/**
+ * The terminal row a paused workflow's request gets.
+ *
+ * The manual and webhook entrypoints both answer a paused workflow with an
+ * ignored run rather than silence, and they word it identically down to the
+ * metadata; only the trigger type differs.
+ */
+export const recordPausedRunIgnored = Effect.fn("recordPausedRunIgnored")(
+  function* (input: {
+    workflowId: string;
+    triggerType: WorkflowRunTriggerType;
+    runMode: WorkflowMode;
+    payload: JsonObject;
+  }) {
+    return yield* recordTerminalWorkflowRun({
+      workflowId: input.workflowId,
+      trigger: { type: input.triggerType },
+      runMode: input.runMode,
+      payload: input.payload,
+      status: "success",
+      output: {
+        status: "ignored",
+        reason: "workflow_paused",
+        runMode: input.runMode,
+      },
+      audit: {
+        eventType: "run_ignored",
+        message: buildIgnoredRunAuditMessage({
+          triggerType: input.triggerType,
+          reason: "workflow_paused",
+        }),
+        metadata: {
+          reason: "workflow_paused",
+          runMode: input.runMode,
+        },
+      },
+    });
+  }
+);

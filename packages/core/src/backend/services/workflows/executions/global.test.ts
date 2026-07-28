@@ -1,16 +1,15 @@
 // `it` comes from the `layer` callback below, typed with the services that layer
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
-import { Effect, Layer } from "effect";
-import {
-  AppLogger,
-  type EffectLogger,
-} from "#src/backend/lib/effect/app-logger";
+import { Effect } from "effect";
 import { InvalidInput } from "#src/backend/lib/effect/failures";
 import {
-  ExecutionRepo,
-  type ExecutionPageQuery,
-  type GlobalExecutionRow,
+  SilentAppLoggerLayer,
+  stubExecutionRepo,
+} from "#src/backend/lib/effect/test-layers";
+import type {
+  ExecutionPageQuery,
+  GlobalExecutionRow,
 } from "#src/backend/services/workflows/executions/repo";
 import { getWorkflowExecutionsGlobal } from "#src/backend/services/workflows/executions/global";
 
@@ -90,45 +89,20 @@ function makeExecutionRepo(rows: GlobalExecutionRow[]) {
     pages: [] as ExecutionPageQuery[],
   };
 
-  const repoLayer = Layer.succeed(ExecutionRepo, {
+  // The runs list reads nothing else, so every other method refuses.
+  const repoLayer = stubExecutionRepo({
     listPage: (query) =>
       Effect.sync(() => {
         calls.pages.push(query);
         return rows.slice(0, query.limit);
       }),
-    // The runs list reads nothing else.
-    listByWorkflow: () => Effect.die("listByWorkflow is not part of the page"),
-    findSummaryById: () =>
-      Effect.die("findSummaryById is not part of the page"),
-    findStatusById: () => Effect.die("findStatusById is not part of the page"),
-    existsById: () => Effect.die("existsById is not part of the page"),
-    listLogs: () => Effect.die("listLogs is not part of the page"),
-    listNodeStatuses: () =>
-      Effect.die("listNodeStatuses is not part of the page"),
-    listEvents: () => Effect.die("listEvents is not part of the page"),
-    deleteAllForWorkflow: () =>
-      Effect.die("deleteAllForWorkflow is not part of the page"),
   });
 
   return { layer: repoLayer, calls };
 }
 
-const silentLogger: EffectLogger = {
-  debug: () => Effect.void,
-  info: () => Effect.void,
-  warn: () => Effect.void,
-  error: () => Effect.void,
-  with: () => silentLogger,
-};
-
-// The logger fake holds no state, so it belongs to the whole block. The
-// repository does, so it is built inside each test instead.
-const TestAppLoggerLayer = Layer.succeed(AppLogger, {
-  get: () => silentLogger,
-});
-
 describe("getWorkflowExecutionsGlobal", () => {
-  layer(TestAppLoggerLayer)((it) => {
+  layer(SilentAppLoggerLayer)((it) => {
     it.effect("returns paginated global workflow executions with cursor", () =>
       Effect.gen(function* () {
         const repo = makeExecutionRepo(page);

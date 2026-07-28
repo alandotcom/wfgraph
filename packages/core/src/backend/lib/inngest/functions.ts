@@ -1,5 +1,6 @@
 import type { InngestFunction } from "inngest";
 import { db } from "#src/backend/lib/db/index";
+import type { RovaRuntime } from "#src/backend/runtime";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import {
   serializedWorkflowGraphSchema,
@@ -109,7 +110,8 @@ export function buildWorkflowFunctions(
 }
 
 async function buildEventListenerFunctions(
-  eventTriggers: EventTriggerInfo[]
+  eventTriggers: EventTriggerInfo[],
+  runtime: RovaRuntime
 ): Promise<WorkflowFunction[]> {
   if (eventTriggers.length === 0) {
     return [];
@@ -123,11 +125,14 @@ async function buildEventListenerFunctions(
       id: toEventListenerFunctionId(trigger.workflowId),
       workflowId: trigger.workflowId,
       inngestEventTrigger: trigger.inngestEventTrigger,
+      runtime,
     })
   );
 }
 
-async function loadWorkflowFunctionsFromDb(): Promise<WorkflowFunction[]> {
+async function loadWorkflowFunctionsFromDb(
+  runtime: RovaRuntime
+): Promise<WorkflowFunction[]> {
   const workflowDefinitions = await db.query.workflows.findMany({
     columns: {
       id: true,
@@ -142,13 +147,27 @@ async function loadWorkflowFunctionsFromDb(): Promise<WorkflowFunction[]> {
 
   const runRequestedFunctions = buildWorkflowFunctions(savedWorkflows);
   const eventTriggers = findEventTriggers(savedWorkflows);
-  const eventListenerFunctions =
-    await buildEventListenerFunctions(eventTriggers);
+  const eventListenerFunctions = await buildEventListenerFunctions(
+    eventTriggers,
+    runtime
+  );
 
   return [...runRequestedFunctions, ...eventListenerFunctions];
 }
 
-export async function getInngestFunctions(): Promise<WorkflowFunction[]> {
+/**
+ * The registry the `/inngest` route serves, rebuilt when its short cache
+ * expires.
+ *
+ * The runtime arrives from the route rather than from a module-level handle,
+ * because the event listeners built here run migrated services on it. Caching
+ * functions that close over a runtime is safe because the app that owns that
+ * runtime clears this cache as the first thing it does when disposing, so no
+ * cached function outlives the runtime it was built against.
+ */
+export async function getInngestFunctions(
+  runtime: RovaRuntime
+): Promise<WorkflowFunction[]> {
   const now = Date.now();
   if (hasRegistryCache && now < cacheExpiresAt) {
     return cachedFunctions;
@@ -158,21 +177,41 @@ export async function getInngestFunctions(): Promise<WorkflowFunction[]> {
     return await inflightRegistryBuild;
   }
 
-  inflightRegistryBuild = loadWorkflowFunctionsFromDb()
+  // The build writes to the cache only while it is still the build this module
+  // is waiting on. An invalidation that lands mid-flight replaces or clears
+  // `inflightRegistryBuild`, and the identity check is what makes that stick:
+  // the abandoned build finishes and stores nothing.
+  const build: Promise<WorkflowFunction[]> = loadWorkflowFunctionsFromDb(
+    runtime
+  )
     .then((functions) => {
-      cachedFunctions = functions;
-      hasRegistryCache = true;
-      cacheExpiresAt = Date.now() + REGISTRY_CACHE_TTL_MS;
+      if (inflightRegistryBuild === build) {
+        cachedFunctions = functions;
+        hasRegistryCache = true;
+        cacheExpiresAt = Date.now() + REGISTRY_CACHE_TTL_MS;
+      }
       return functions;
     })
     .finally(() => {
-      inflightRegistryBuild = null;
+      if (inflightRegistryBuild === build) {
+        inflightRegistryBuild = null;
+      }
     });
+  inflightRegistryBuild = build;
 
-  return await inflightRegistryBuild;
+  return await build;
 }
 
+/**
+ * Drop the registry, including a build still in flight.
+ *
+ * Forgetting the in-flight promise matters on the dispose path: a build started
+ * before the app began tearing down would otherwise land afterwards and store
+ * event listeners closed over a runtime that has already been finalized.
+ */
 export function invalidateInngestFunctionsCache() {
+  cachedFunctions = [];
   hasRegistryCache = false;
   cacheExpiresAt = 0;
+  inflightRegistryBuild = null;
 }
