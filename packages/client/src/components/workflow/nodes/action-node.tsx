@@ -7,14 +7,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import {
   AlertTriangle,
-  Ban,
-  Check,
   Code,
   Database,
   EyeOff,
   GitBranch,
   Hourglass,
-  XCircle,
   Zap,
 } from "lucide-react";
 import { memo, useMemo, useState } from "react";
@@ -393,39 +390,6 @@ const getProviderLogo = (actionType: string) => {
   return <Zap className="size-12 text-amber-300" strokeWidth={1.5} />;
 };
 
-// Status badge component
-const StatusBadge = ({
-  status,
-}: {
-  status?: "idle" | "running" | "success" | "error" | "cancelled";
-}) => {
-  // Don't show badge for idle or running (running has BorderBeam animation)
-  if (!status || status === "idle" || status === "running") {
-    return null;
-  }
-
-  return (
-    <div
-      className={cn(
-        "absolute top-2 right-2 rounded-full p-1",
-        status === "success" && "bg-green-500/50",
-        status === "error" && "bg-red-500/50",
-        status === "cancelled" && "bg-slate-500/60"
-      )}
-    >
-      {status === "success" && (
-        <Check className="size-3.5 text-white" strokeWidth={2.5} />
-      )}
-      {status === "error" && (
-        <XCircle className="size-3.5 text-white" strokeWidth={2.5} />
-      )}
-      {status === "cancelled" && (
-        <Ban className="size-3.5 text-white" strokeWidth={2.5} />
-      )}
-    </div>
-  );
-};
-
 // Model badge component for AI nodes
 const ModelBadge = ({ model }: { model: string }) => {
   if (!model) {
@@ -658,8 +622,6 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
         </div>
       )}
 
-      {/* Status indicator badge in top right */}
-      <StatusBadge status={status} />
       {isConditionAction && (
         <>
           <div className="pointer-events-none absolute -bottom-8 left-[38%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none">

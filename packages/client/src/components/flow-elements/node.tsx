@@ -1,4 +1,5 @@
 import { Handle, Position } from "@xyflow/react";
+import { Ban, Check, Loader2, XCircle } from "lucide-react";
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { AnimatedBorder } from "@/components/ui/animated-border";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
@@ -10,6 +11,60 @@ export type NodeProps = ComponentProps<typeof Card> & {
     source: boolean | NodeHandleConfig[];
   };
   status?: "idle" | "running" | "success" | "error" | "cancelled";
+};
+
+// Run status is worn as a border color, which a colorblind user cannot read and
+// a screen reader cannot see at all. This chip is the text equivalent: every
+// non-idle status renders its word next to its icon, and the whole thing is a
+// live region so status transitions are announced.
+const STATUS_CHIP = {
+  running: {
+    label: "Running",
+    Icon: Loader2,
+    className: "bg-primary/5 text-foreground",
+    iconClassName: "animate-spin motion-reduce:animate-none",
+  },
+  success: {
+    label: "Succeeded",
+    Icon: Check,
+    className: "bg-green-500/10 text-green-700 dark:text-green-400",
+    iconClassName: "",
+  },
+  error: {
+    label: "Failed",
+    Icon: XCircle,
+    className: "bg-red-500/10 text-red-700 dark:text-red-400",
+    iconClassName: "",
+  },
+  cancelled: {
+    label: "Cancelled",
+    Icon: Ban,
+    className: "bg-slate-500/10 text-slate-700 dark:text-slate-400",
+    iconClassName: "",
+  },
+} as const;
+
+const NodeStatusChip = ({ status }: { status?: NodeProps["status"] }) => {
+  if (!status || status === "idle") {
+    return null;
+  }
+
+  const chip = STATUS_CHIP[status];
+  return (
+    <div
+      className={cn(
+        "absolute top-2 right-2 z-10 flex items-center gap-1 rounded-full py-0.5 pr-2 pl-1.5 font-medium text-[10px] leading-none",
+        chip.className
+      )}
+      role="status"
+    >
+      <chip.Icon
+        className={cn("size-3", chip.iconClassName)}
+        strokeWidth={2.5}
+      />
+      {chip.label}
+    </div>
+  );
 };
 
 type NodeHandleConfig = {
@@ -69,6 +124,7 @@ export const Node = ({ handles, className, status, ...props }: NodeProps) => (
     {...props}
   >
     {status === "running" && <AnimatedBorder />}
+    <NodeStatusChip status={status} />
     {renderHandles("target", handles.target)}
     {renderHandles("source", handles.source)}
     {props.children}

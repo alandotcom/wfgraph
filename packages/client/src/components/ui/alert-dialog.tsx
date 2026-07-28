@@ -1,5 +1,6 @@
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 import type * as React from "react";
+import type { VariantProps } from "class-variance-authority";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@rova/shared/utils";
 
@@ -119,11 +120,13 @@ function AlertDialogDescription({
 
 function AlertDialogAction({
   className,
+  variant,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Close>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Close> &
+  Pick<VariantProps<typeof buttonVariants>, "variant">) {
   return (
     <AlertDialogPrimitive.Close
-      className={cn(buttonVariants(), className)}
+      className={cn(buttonVariants({ variant }), className)}
       {...props}
     />
   );

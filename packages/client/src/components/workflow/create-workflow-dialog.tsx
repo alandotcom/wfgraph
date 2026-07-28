@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/rpc-client";
 import { orpcQuery, refreshWorkflowList } from "@/lib/rpc-query";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
@@ -111,14 +112,17 @@ export function CreateWorkflowDialog({
         <DialogHeader>
           <DialogTitle>Create Workflow</DialogTitle>
           <DialogDescription>
-            Choose a name for the new workflow before creating it.
+            Choose a name for the new workflow.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-2">
+          <Label htmlFor="create-workflow-name">Name</Label>
           <Input
+            aria-invalid={errorMessage ? true : undefined}
             autoFocus
             disabled={isCreating}
+            id="create-workflow-name"
             onChange={(event) => {
               setWorkflowName(event.target.value);
               if (errorMessage) {

@@ -5,6 +5,10 @@ import { createRoot } from "react-dom/client";
 // separate imports so that server bundles can take the metadata alone.
 import "@rova/plugins";
 import "@rova/plugins/ui";
+// Self-hosted variable fonts. The theme's --font-geist-sans/--font-geist-mono
+// variables in globals.css point at the families these register.
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
 import "@/routes/globals.css";
 import { queryClient } from "@/lib/query-client";
 import { hydrateRuntimeExtensionsFromApi } from "@/lib/runtime-extensions";

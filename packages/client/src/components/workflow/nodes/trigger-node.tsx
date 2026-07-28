@@ -1,6 +1,6 @@
 import type { NodeProps } from "@xyflow/react";
 import cronstrue from "cronstrue";
-import { Ban, Check, Clock, Play, Webhook, XCircle } from "lucide-react";
+import { Clock, Play, Webhook } from "lucide-react";
 import { memo } from "react";
 import {
   Node,
@@ -38,37 +38,6 @@ function getScheduleSummary(
   } catch {
     return "Invalid cron expression";
   }
-}
-
-function TriggerStatusBadge({
-  status,
-}: {
-  status: WorkflowNodeData["status"];
-}) {
-  if (!status || status === "idle" || status === "running") {
-    return null;
-  }
-
-  return (
-    <div
-      className={cn(
-        "absolute top-2 right-2 rounded-full p-1",
-        status === "success" && "bg-green-500/50",
-        status === "error" && "bg-red-500/50",
-        status === "cancelled" && "bg-slate-500/60"
-      )}
-    >
-      {status === "success" && (
-        <Check className="size-3.5 text-white" strokeWidth={2.5} />
-      )}
-      {status === "error" && (
-        <XCircle className="size-3.5 text-white" strokeWidth={2.5} />
-      )}
-      {status === "cancelled" && (
-        <Ban className="size-3.5 text-white" strokeWidth={2.5} />
-      )}
-    </div>
-  );
 }
 
 function renderTriggerIcon(triggerType: string) {
@@ -125,8 +94,6 @@ export const TriggerNode = memo(({ data, selected }: TriggerNodeProps) => {
       handles={{ target: false, source: true }}
       status={status}
     >
-      <TriggerStatusBadge status={status} />
-
       <div className="flex flex-col items-center justify-center gap-3 p-6">
         {renderTriggerIcon(triggerType)}
         <div className="flex flex-col items-center gap-1 text-center">

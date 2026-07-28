@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,9 +60,13 @@ type RunsCursor = {
 
 type ConfirmDeleteState = {
   workflowIds: string[];
+  workflowNames: string[];
   title: string;
   description: string;
 };
+
+// Above this many workflows, the delete dialog demands the count be typed back.
+const DELETE_CHALLENGE_THRESHOLD = 3;
 
 const STATUS_OPTIONS: WorkflowExecutionStatus[] = [
   "running",
@@ -154,6 +160,8 @@ export default function WorkflowsPage() {
   // Bumped on every open so the dialog remounts and re-suggests a name. It stays
   // mounted while closing, because that is what its exit animation needs.
   const [createDialogSession, setCreateDialogSession] = useState(0);
+  // What the user has typed into the bulk-delete count challenge.
+  const [deleteChallenge, setDeleteChallenge] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<ConfirmDeleteState | null>(
     null
   );
@@ -363,24 +371,35 @@ export default function WorkflowsPage() {
     [runLifecycle]
   );
 
-  const openDeleteConfirmation = useCallback((workflowIds: string[]) => {
-    if (workflowIds.length === 0) {
-      return;
-    }
+  const openDeleteConfirmation = useCallback(
+    (workflowIds: string[]) => {
+      if (workflowIds.length === 0) {
+        return;
+      }
 
-    const title =
-      workflowIds.length === 1 ? "Delete Workflow" : "Delete Workflows";
-    const description =
-      workflowIds.length === 1
-        ? "This will permanently delete the workflow and all related runs/events. This cannot be undone."
-        : `This will permanently delete ${workflowIds.length} workflows and all related runs/events. This cannot be undone.`;
+      const namesById = new Map(
+        workflows.map((workflow) => [workflow.id, workflow.name])
+      );
+      const workflowNames = workflowIds.map(
+        (id) => namesById.get(id) ?? "Untitled workflow"
+      );
 
-    setConfirmDelete({
-      workflowIds,
-      title,
-      description,
-    });
-  }, []);
+      const title =
+        workflowIds.length === 1 ? "Delete Workflow" : "Delete Workflows";
+      const description =
+        workflowIds.length === 1
+          ? `This will permanently delete "${workflowNames[0]}" and all of its runs and events. This cannot be undone.`
+          : `This will permanently delete ${workflowIds.length} workflows and all of their runs and events. This cannot be undone.`;
+
+      setConfirmDelete({
+        workflowIds,
+        workflowNames,
+        title,
+        description,
+      });
+    },
+    [workflows]
+  );
 
   const renderWorkflowContent = () => {
     if (isLoadingWorkflows && workflowRows.length === 0) {
@@ -405,6 +424,7 @@ export default function WorkflowsPage() {
           <tr className="border-b">
             <th className="w-10 px-4 py-2">
               <Checkbox
+                aria-label="Select all workflows"
                 checked={allSelected}
                 onCheckedChange={(checked) => {
                   toggleSelectAll(checked);
@@ -438,6 +458,7 @@ export default function WorkflowsPage() {
               <tr className="border-b last:border-b-0" key={workflow.id}>
                 <td className="px-4 py-3">
                   <Checkbox
+                    aria-label={`Select ${workflow.name}`}
                     checked={isSelected}
                     onCheckedChange={(checked) => {
                       toggleSelectOne(workflow.id, checked);
@@ -784,6 +805,7 @@ export default function WorkflowsPage() {
         onOpenChange={(open) => {
           if (!open) {
             setConfirmDelete(null);
+            setDeleteChallenge("");
           }
         }}
         open={confirmDelete !== null}
@@ -795,9 +817,42 @@ export default function WorkflowsPage() {
               {confirmDelete?.description}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {confirmDelete && confirmDelete.workflowNames.length > 1 ? (
+            <ul className="list-disc pl-5 text-muted-foreground text-sm">
+              {confirmDelete.workflowIds.slice(0, 3).map((id, index) => (
+                <li key={id}>{confirmDelete.workflowNames[index]}</li>
+              ))}
+              {confirmDelete.workflowNames.length > 3 ? (
+                <li>and {confirmDelete.workflowNames.length - 3} more</li>
+              ) : null}
+            </ul>
+          ) : null}
+          {confirmDelete &&
+          confirmDelete.workflowIds.length > DELETE_CHALLENGE_THRESHOLD ? (
+            <div className="space-y-2">
+              <Label htmlFor="delete-challenge">
+                Type {confirmDelete.workflowIds.length} to confirm
+              </Label>
+              <Input
+                autoComplete="off"
+                id="delete-challenge"
+                inputMode="numeric"
+                onChange={(event) => {
+                  setDeleteChallenge(event.target.value);
+                }}
+                value={deleteChallenge}
+              />
+            </div>
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              disabled={
+                confirmDelete !== null &&
+                confirmDelete.workflowIds.length > DELETE_CHALLENGE_THRESHOLD &&
+                deleteChallenge.trim() !==
+                  String(confirmDelete.workflowIds.length)
+              }
               onClick={() => {
                 if (!confirmDelete) {
                   return;
@@ -805,7 +860,9 @@ export default function WorkflowsPage() {
 
                 runLifecycleAction("delete", confirmDelete.workflowIds);
                 setConfirmDelete(null);
+                setDeleteChallenge("");
               }}
+              variant="destructive"
             >
               Delete
             </AlertDialogAction>
