@@ -143,6 +143,35 @@ describe("toStandardSchema with Effect Schema", () => {
     expect("issues" in bad && bad.issues?.length).toBeGreaterThan(0);
   });
 
+  it("bakes parse options into validate, where a consumer cannot pass any", () => {
+    // The reason `toStandardSchema` takes parse options at all. oRPC and
+    // Inngest both validate a payload by calling `~standard.validate(value)`,
+    // with nowhere to say `onExcessProperty`, so a schema that has to reject an
+    // unknown key has to carry that decision with it. Effect has no per-schema
+    // `.strict()`; this is the whole mechanism.
+    const fields = { triggerType: Schema.Literal("Webhook") };
+
+    const strict = toStandardSchema(Schema.Struct(fields), {
+      onExcessProperty: "error",
+    });
+    const strictResult = strict["~standard"].validate({
+      triggerType: "Webhook",
+      integrationId: "stray",
+    });
+    expect("issues" in strictResult && strictResult.issues?.length).toBe(1);
+
+    // Without the option the same stray key is dropped and the value passes,
+    // which is what every schema that does not ask for strictness still wants.
+    const open = toStandardSchema(Schema.Struct(fields));
+    const openResult = open["~standard"].validate({
+      triggerType: "Webhook",
+      integrationId: "stray",
+    });
+    expect("value" in openResult && openResult.value).toEqual({
+      triggerType: "Webhook",
+    });
+  });
+
   it("keeps an annotated description at the top of the derived JSON Schema", () => {
     // `annotate` before `check`, not after: a check applied last nests the
     // description inside `allOf`, where the field-label reader cannot see it.
@@ -258,13 +287,33 @@ describe("createAction with Effect schemas", () => {
     ).toBe(false);
   });
 
-  it("does not yet surface an Effect date field as a timestamp", () => {
-    // Effect hangs every check-derived keyword off `allOf`, so the `format` and
-    // `pattern` that name a timestamp sit one level below where
-    // `parseWorkflowSchemaFieldsOrJsonSchema` reads them. Arktype and Zod both
-    // write those keywords flat, which is why only this arm falls back to
-    // "string". Teaching the reader to look through `allOf` belongs with the
-    // rest of `schema-codec.ts`; until then this is the difference.
+  it("surfaces an Effect pattern field as a timestamp through allOf", () => {
+    // Effect hangs every check-derived keyword off `allOf`, so the `pattern`
+    // that names a timestamp sits one level below where arktype and Zod write
+    // it. `parseWorkflowSchemaFieldsOrJsonSchema` looks through `allOf`, which
+    // is what puts this arm level with the other two.
+    const schema = toStandardSchema(
+      Schema.Struct({
+        createdAt: Schema.String.check(
+          Schema.isPattern(new RegExp(ISO_DATE_PATTERN))
+        ),
+      })
+    );
+    const jsonSchema = schema["~standard"].jsonSchema.output({
+      target: "draft-2020-12",
+    });
+
+    expect(parseWorkflowSchemaFieldsOrJsonSchema(jsonSchema)).toEqual([
+      { name: "createdAt", type: "timestamp", description: undefined },
+    ]);
+  });
+
+  it("leaves an Effect date morph as a plain string", () => {
+    // Not an `allOf` problem: Effect derives neither `format` nor `pattern` for
+    // `DateFromString`, so its JSON Schema is a bare `{ type: "string" }` and
+    // there is no keyword anywhere in it to recognise. An Effect schema that
+    // wants its dates read as timestamps has to carry the pattern itself, as
+    // the case above does.
     const schema = toStandardSchema(
       Schema.Struct({ createdAt: Schema.DateFromString })
     );

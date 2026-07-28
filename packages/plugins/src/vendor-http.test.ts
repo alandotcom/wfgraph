@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { z } from "zod";
+import { Schema } from "effect";
 import { parsePayload, requestVendor } from "#src/vendor-http";
 
 const realFetch = globalThis.fetch;
@@ -101,7 +101,7 @@ describe("requestVendor", () => {
 });
 
 describe("parsePayload", () => {
-  const schema = z.object({ id: z.string() });
+  const schema = Schema.Struct({ id: Schema.String });
 
   it("returns the parsed value when the payload matches", () => {
     expect(parsePayload({ id: "1", extra: true }, schema)).toEqual({ id: "1" });

@@ -11,20 +11,20 @@
  * is asserted in resend/steps/send-email.test.ts.
  */
 
-import { z } from "zod";
+import { Schema } from "effect";
 import type { JsonObject } from "@rova/shared/types/json";
 import { parsePayload, requestVendor } from "#src/vendor-http";
 
 const RESEND_API_BASE = "https://api.resend.com";
 
 /** Resend's error body. `name` is the machine-readable slug. */
-const resendErrorSchema = z.object({
-  statusCode: z.number().optional(),
-  name: z.string().optional(),
-  message: z.string().optional(),
+const resendErrorSchema = Schema.Struct({
+  statusCode: Schema.optionalKey(Schema.Finite),
+  name: Schema.optionalKey(Schema.String),
+  message: Schema.optionalKey(Schema.String),
 });
 
-const sentEmailSchema = z.object({ id: z.string() });
+const sentEmailSchema = Schema.Struct({ id: Schema.String });
 
 export type ResendFailure =
   | { kind: "unreachable"; message: string }
@@ -49,10 +49,10 @@ export function describeResendFailure(failure: ResendFailure): string {
   return failure.message;
 }
 
-async function requestResend<TSchema extends z.ZodType>(
+async function requestResend<S extends Schema.ConstraintDecoder<unknown>>(
   apiKey: string,
   path: string,
-  schema: TSchema,
+  schema: S,
   init: {
     method: string;
     jsonBody?: JsonObject;
@@ -62,7 +62,7 @@ async function requestResend<TSchema extends z.ZodType>(
      */
     idempotencyKey?: string;
   }
-): Promise<ResendResult<z.infer<TSchema>>> {
+): Promise<ResendResult<S["Type"]>> {
   const headers: Record<string, string> = {
     authorization: `Bearer ${apiKey}`,
   };
@@ -128,5 +128,5 @@ export function sendResendEmail(
 export function listResendDomains(
   apiKey: string
 ): Promise<ResendResult<unknown>> {
-  return requestResend(apiKey, "/domains", z.unknown(), { method: "GET" });
+  return requestResend(apiKey, "/domains", Schema.Unknown, { method: "GET" });
 }

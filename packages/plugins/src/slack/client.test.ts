@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { z } from "zod";
+import { Schema } from "effect";
 import { callSlack, describeSlackFailure } from "#src/slack/client";
 
 /**
@@ -9,7 +9,10 @@ import { callSlack, describeSlackFailure } from "#src/slack/client";
  */
 
 const realFetch = globalThis.fetch;
-const postMessageSchema = z.object({ ts: z.string(), channel: z.string() });
+const postMessageSchema = Schema.Struct({
+  ts: Schema.String,
+  channel: Schema.String,
+});
 let requests: Request[] = [];
 
 function stubFetch(
@@ -58,7 +61,7 @@ describe("callSlack", () => {
   it("sends an empty object for a call that takes no arguments", async () => {
     stubFetch(() => Response.json({ ok: true }));
 
-    await callSlack("xoxb-token", "auth.test", z.object({}));
+    await callSlack("xoxb-token", "auth.test", Schema.Struct({}));
 
     expect(await requests[0]?.text()).toBe("{}");
   });
@@ -68,16 +71,20 @@ describe("callSlack", () => {
   it("reports a rejected call that arrived as HTTP 200", async () => {
     stubFetch(() => Response.json({ ok: false, error: "invalid_auth" }));
 
-    expect(await callSlack("xoxb-bad", "auth.test", z.object({}))).toEqual({
-      ok: false,
-      failure: { kind: "rejected", status: 200, slackError: "invalid_auth" },
-    });
+    expect(await callSlack("xoxb-bad", "auth.test", Schema.Struct({}))).toEqual(
+      {
+        ok: false,
+        failure: { kind: "rejected", status: 200, slackError: "invalid_auth" },
+      }
+    );
   });
 
   it("names the status when something other than Slack answered", async () => {
     stubFetch(() => new Response("nope", { status: 503 }));
 
-    expect(await callSlack("xoxb-token", "auth.test", z.object({}))).toEqual({
+    expect(
+      await callSlack("xoxb-token", "auth.test", Schema.Struct({}))
+    ).toEqual({
       ok: false,
       failure: { kind: "http", status: 503 },
     });
@@ -94,7 +101,9 @@ describe("callSlack", () => {
   it("reports an unreachable Slack rather than throwing", async () => {
     stubFetch(() => Promise.reject(new Error("getaddrinfo ENOTFOUND")));
 
-    expect(await callSlack("xoxb-token", "auth.test", z.object({}))).toEqual({
+    expect(
+      await callSlack("xoxb-token", "auth.test", Schema.Struct({}))
+    ).toEqual({
       ok: false,
       failure: { kind: "unreachable", message: "getaddrinfo ENOTFOUND" },
     });

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { decodeIsoTimestamp } from "#src/types/timestamp";
 
 /**
@@ -287,9 +287,38 @@ function toOperatorExpression(operator: NumberOperator): string {
  *
  * Unknown keys are dropped, so a rule that kept an operand from an operator the
  * user has since changed away from still loads, without that operand.
+ *
+ * Two rules govern where a message is attached, and both follow from Effect
+ * reading the annotation off whichever node produced the issue:
+ *
+ * - Annotate the base type first. `.annotate()` applied to a schema that
+ *   already carries a check lands on the check, and a wrong-typed value never
+ *   reaches a check, so the message would go unread for exactly the input that
+ *   needs it most: `Schema.Finite.annotate({ message })` answers `"5"` with
+ *   Effect's own "Expected number" instead.
+ * - Annotate each check separately. A check reports its own issue and reads its
+ *   own annotation, so a message on a sibling check does not cover it.
  */
 function requiredTextSchema(message: string) {
-  return z.string({ error: message }).trim().min(1, { error: message });
+  return Schema.String.annotate({ message })
+    .pipe(Schema.decodeTo(Schema.String, SchemaTransformation.trim()))
+    .check(Schema.isMinLength(1).annotate({ message }))
+    .annotateKey({ messageMissingKey: message });
+}
+
+/**
+ * One message for a field, wherever the field goes wrong.
+ *
+ * A value of the wrong type and an absent key are different issues to Effect,
+ * each reading a different annotation, and the pair has to be written together
+ * or a rule that is simply missing its operator answers "Missing key". Apply
+ * this to the base type: whatever is checked is checked afterwards, so that the
+ * message stays on the type rather than moving onto the check.
+ */
+function withMessage<S extends Schema.Top>(schema: S, message: string) {
+  return schema
+    .annotate({ message })
+    .annotateKey({ messageMissingKey: message });
 }
 
 /** The parts every rule carries, whatever kind of field it points at. */
@@ -299,78 +328,106 @@ function conditionRuleShape<TFieldType extends ConditionFieldType>(
   return {
     id: requiredTextSchema("Condition id is required"),
     field: requiredTextSchema("Condition field is required"),
-    fieldType: z.literal(fieldType),
+    fieldType: Schema.Literal(fieldType),
   };
 }
 
-/** Null checks read a field's presence, so they take no operand of their own. */
-const nullCheckOperatorSchema = z.enum(["is_set", "is_not_set"]);
+/**
+ * Null checks read a field's presence, so they take no operand of their own.
+ *
+ * The message belongs to the field type rather than to the operator pair,
+ * because this is one of the arms a rule of that type can take: a timestamp
+ * rule that names an operator no timestamp arm accepts has an invalid timestamp
+ * operator, whichever arm noticed.
+ */
+function nullCheckRuleSchema<TFieldType extends ConditionFieldType>(
+  fieldType: TFieldType,
+  message: string
+) {
+  return Schema.Struct({
+    ...conditionRuleShape(fieldType),
+    operator: withMessage(Schema.Literals(["is_set", "is_not_set"]), message),
+  });
+}
 
+const TIMESTAMP_OPERATOR_ERROR = "Timestamp operator is invalid";
 const TIMESTAMP_AMOUNT_ERROR = "Timestamp amount must be a positive integer";
 const DATE_TIME_ERROR =
   "Timestamp absolute operators require a valid date-time";
+const STRING_OPERATOR_ERROR = "String operator is invalid";
+const NUMBER_OPERATOR_ERROR = "Number operator is invalid";
+const NUMBER_VALUE_ERROR = "Number conditions require a finite numeric value";
+const BOOLEAN_OPERATOR_ERROR = "Boolean operator is invalid";
 
-const timestampConditionRuleSchema = z.discriminatedUnion(
-  "operator",
-  [
-    z.object({
-      ...conditionRuleShape("timestamp"),
-      operator: nullCheckOperatorSchema,
-    }),
-    z.object({
-      ...conditionRuleShape("timestamp"),
-      operator: z.enum([
+/**
+ * Every rule shape the model admits, in one union.
+ *
+ * Zod described this as a union per field type, each holding a union per
+ * operator. Effect picks the union members it will try by looking for a field
+ * whose schema is a single literal, and takes the union of what every such
+ * field selects rather than the intersection. A nested union carries no literal
+ * of its own, so an outer union of unions would try every arm for every input
+ * and never reach its own message. Flattened, `fieldType` selects the arms of
+ * one field type and nothing else, which is the dispatch this model wants.
+ *
+ * The arms that carry an operand come before the null-check arm of the same
+ * field type, so a rule that is missing an operand reports the missing operand
+ * ahead of the null-check arm's complaint about the operator.
+ */
+const conditionRuleVariants = [
+  Schema.Struct({
+    ...conditionRuleShape("timestamp"),
+    operator: withMessage(
+      Schema.Literals([
         "within_next",
         "more_than_from_now",
         "less_than_ago",
         "more_than_ago",
       ]),
-      amount: z
-        .number({ error: TIMESTAMP_AMOUNT_ERROR })
-        .int({ error: TIMESTAMP_AMOUNT_ERROR })
-        .positive({ error: TIMESTAMP_AMOUNT_ERROR }),
-      unit: z.enum(["minutes", "hours", "days", "weeks"], {
-        error: "Timestamp unit is invalid",
-      }),
-    }),
-    z.object({
-      ...conditionRuleShape("timestamp"),
-      operator: z.enum(["before", "after"]),
-      dateTime: z
-        .string({ error: DATE_TIME_ERROR })
-        .trim()
-        .refine(isIsoTimestamp, { error: DATE_TIME_ERROR }),
-    }),
-  ],
-  { error: "Timestamp operator is invalid" }
-);
-
-const stringConditionRuleSchema = z.discriminatedUnion(
-  "operator",
-  [
-    z.object({
-      ...conditionRuleShape("string"),
-      operator: nullCheckOperatorSchema,
-    }),
-    z.object({
-      ...conditionRuleShape("string"),
-      operator: z.enum(["equals", "not_equals", "contains"]),
-      value: z.string({ error: "String conditions require a text value" }),
-    }),
-  ],
-  { error: "String operator is invalid" }
-);
-
-const numberConditionRuleSchema = z.discriminatedUnion(
-  "operator",
-  [
-    z.object({
-      ...conditionRuleShape("number"),
-      operator: nullCheckOperatorSchema,
-    }),
-    z.object({
-      ...conditionRuleShape("number"),
-      operator: z.enum([
+      TIMESTAMP_OPERATOR_ERROR
+    ),
+    // The checks rule out NaN and the infinities along with the fractions and
+    // the non-positive counts; a count of time units has to be a real positive
+    // whole number to be compiled into a CEL duration.
+    amount: withMessage(Schema.Number, TIMESTAMP_AMOUNT_ERROR).check(
+      Schema.isFinite().annotate({ message: TIMESTAMP_AMOUNT_ERROR }),
+      Schema.isInt().annotate({ message: TIMESTAMP_AMOUNT_ERROR }),
+      Schema.isGreaterThan(0).annotate({ message: TIMESTAMP_AMOUNT_ERROR })
+    ),
+    unit: withMessage(
+      Schema.Literals(["minutes", "hours", "days", "weeks"]),
+      "Timestamp unit is invalid"
+    ),
+  }),
+  Schema.Struct({
+    ...conditionRuleShape("timestamp"),
+    operator: withMessage(
+      Schema.Literals(["before", "after"]),
+      TIMESTAMP_OPERATOR_ERROR
+    ),
+    dateTime: Schema.String.annotate({ message: DATE_TIME_ERROR })
+      .pipe(Schema.decodeTo(Schema.String, SchemaTransformation.trim()))
+      .check(
+        Schema.makeFilter((value: string) =>
+          isIsoTimestamp(value) ? undefined : DATE_TIME_ERROR
+        )
+      )
+      .annotateKey({ messageMissingKey: DATE_TIME_ERROR }),
+  }),
+  nullCheckRuleSchema("timestamp", TIMESTAMP_OPERATOR_ERROR),
+  Schema.Struct({
+    ...conditionRuleShape("string"),
+    operator: withMessage(
+      Schema.Literals(["equals", "not_equals", "contains"]),
+      STRING_OPERATOR_ERROR
+    ),
+    value: withMessage(Schema.String, "String conditions require a text value"),
+  }),
+  nullCheckRuleSchema("string", STRING_OPERATOR_ERROR),
+  Schema.Struct({
+    ...conditionRuleShape("number"),
+    operator: withMessage(
+      Schema.Literals([
         "equals",
         "not_equals",
         "greater_than",
@@ -378,77 +435,103 @@ const numberConditionRuleSchema = z.discriminatedUnion(
         "less_than",
         "less_or_equal",
       ]),
-      // z.number() admits finite numbers only, which is the operand a
-      // comparison can be compiled against.
-      value: z.number({
-        error: "Number conditions require a finite numeric value",
-      }),
-    }),
-  ],
-  { error: "Number operator is invalid" }
-);
-
-const booleanConditionRuleSchema = z.discriminatedUnion(
-  "operator",
-  [
-    z.object({
-      ...conditionRuleShape("boolean"),
-      operator: nullCheckOperatorSchema,
-    }),
-    z.object({
-      ...conditionRuleShape("boolean"),
-      operator: z.enum(["is_true", "is_false"]),
-    }),
-  ],
-  { error: "Boolean operator is invalid" }
-);
+      NUMBER_OPERATOR_ERROR
+    ),
+    // The check rules out NaN and the infinities, leaving the finite numbers a
+    // comparison can be compiled against.
+    value: withMessage(Schema.Number, NUMBER_VALUE_ERROR).check(
+      Schema.isFinite().annotate({ message: NUMBER_VALUE_ERROR })
+    ),
+  }),
+  nullCheckRuleSchema("number", NUMBER_OPERATOR_ERROR),
+  Schema.Struct({
+    ...conditionRuleShape("boolean"),
+    operator: withMessage(
+      Schema.Literals(["is_true", "is_false"]),
+      BOOLEAN_OPERATOR_ERROR
+    ),
+  }),
+  nullCheckRuleSchema("boolean", BOOLEAN_OPERATOR_ERROR),
+] as const;
 
 /**
  * A rule has to be an object before its field type can be read, and the gate in
  * front of the union is what lets a rule that is a string or an array say so.
  */
-const conditionRuleSchema = z
-  .looseObject({}, { error: "Condition must be an object" })
+const conditionRuleSchema = Schema.Record(Schema.String, Schema.Unknown)
+  .annotate({ message: "Condition must be an object" })
   .pipe(
-    z.discriminatedUnion(
-      "fieldType",
-      [
-        timestampConditionRuleSchema,
-        stringConditionRuleSchema,
-        numberConditionRuleSchema,
-        booleanConditionRuleSchema,
-      ],
-      { error: "Condition field type is invalid" }
+    Schema.decodeTo(
+      Schema.Union(conditionRuleVariants).annotate({
+        message: "Condition field type is invalid",
+      })
     )
   );
 
 const GROUP_CONDITIONS_ERROR = "Each group must contain at least one condition";
 
-const conditionGroupSchema = z.object(
-  {
-    id: requiredTextSchema("Group id is required"),
-    logic: z.enum(["and", "or"], { error: "Group logic is invalid" }),
-    conditions: z
-      .array(conditionRuleSchema, { error: GROUP_CONDITIONS_ERROR })
-      .min(1, { error: GROUP_CONDITIONS_ERROR }),
-  },
-  { error: "Group must be an object" }
-);
+const conditionGroupSchema = Schema.Struct({
+  id: requiredTextSchema("Group id is required"),
+  logic: withMessage(Schema.Literals(["and", "or"]), "Group logic is invalid"),
+  conditions: withMessage(
+    Schema.mutable(Schema.Array(conditionRuleSchema)),
+    GROUP_CONDITIONS_ERROR
+  ).check(Schema.isMinLength(1).annotate({ message: GROUP_CONDITIONS_ERROR })),
+}).annotate({ message: "Group must be an object" });
 
 const MODEL_GROUPS_ERROR = "Condition model must contain at least one group";
 
-const conditionModelSchema = z.object(
-  {
-    version: z.literal(2, { error: "Condition model version must be 2" }),
-    groupLogic: z.enum(["and", "or"], {
-      error: "Condition model group logic is invalid",
-    }),
-    groups: z
-      .array(conditionGroupSchema, { error: MODEL_GROUPS_ERROR })
-      .min(1, { error: MODEL_GROUPS_ERROR }),
-  },
-  { error: "Condition model must be an object" }
-);
+const conditionModelSchema = Schema.Struct({
+  version: withMessage(Schema.Literal(2), "Condition model version must be 2"),
+  groupLogic: withMessage(
+    Schema.Literals(["and", "or"]),
+    "Condition model group logic is invalid"
+  ),
+  groups: withMessage(
+    Schema.mutable(Schema.Array(conditionGroupSchema)),
+    MODEL_GROUPS_ERROR
+  ).check(Schema.isMinLength(1).annotate({ message: MODEL_GROUPS_ERROR })),
+}).annotate({ message: "Condition model must be an object" });
+
+const decodeConditionModel = Schema.decodeUnknownResult(conditionModelSchema);
+const formatConditionIssues = SchemaIssue.makeFormatterStandardSchemaV1();
+
+/**
+ * The one issue worth showing out of everything a failed decode reported.
+ *
+ * Effect tries every union arm whose `fieldType` matches and reports what each
+ * of them made of the rule, so a rule that names an operator only one arm
+ * accepts still draws a complaint from every sibling arm about that operator.
+ * The arm that recognised the operator is the one Zod's discriminated union
+ * would have picked, and it is the only arm that did not complain about
+ * `operator` -- so an operator issue is worth reporting only when it is all
+ * there is, which is when the operator really is one no arm accepts.
+ */
+type FormattedIssue = ReturnType<
+  typeof formatConditionIssues
+>["issues"][number];
+
+/**
+ * The key an issue points at. Standard Schema allows a path segment to be
+ * either the key itself or an object wrapping it; Effect only ever writes the
+ * first form, and this reads both so the narrowing costs nothing.
+ */
+function issueLeafKey(issue: FormattedIssue): PropertyKey | undefined {
+  const segment = issue.path?.at(-1);
+  if (segment === null || segment === undefined) {
+    return undefined;
+  }
+
+  return typeof segment === "object" ? segment.key : segment;
+}
+
+function selectReportedIssue(
+  issues: readonly FormattedIssue[]
+): string | undefined {
+  const specific = issues.find((issue) => issueLeafKey(issue) !== "operator");
+
+  return (specific ?? issues[0])?.message;
+}
 
 export function parseConditionModel(input: unknown): ConditionModelParseResult {
   let parsed: unknown = input;
@@ -466,18 +549,16 @@ export function parseConditionModel(input: unknown): ConditionModelParseResult {
     }
   }
 
-  const model = conditionModelSchema.safeParse(parsed);
-  if (!model.success) {
-    // Issues arrive in the order the model declares its parts, so the first one
-    // is the earliest thing wrong and the one worth reporting.
-    const [firstIssue] = model.error.issues;
+  const model = decodeConditionModel(parsed);
+  if (Result.isFailure(model)) {
+    const { issues } = formatConditionIssues(model.failure.issue);
     return {
       valid: false,
-      error: firstIssue ? firstIssue.message : "Condition model is invalid",
+      error: selectReportedIssue(issues) ?? "Condition model is invalid",
     };
   }
 
-  return { valid: true, model: model.data };
+  return { valid: true, model: model.success };
 }
 
 export function serializeConditionModel(model: ConditionModel): string {

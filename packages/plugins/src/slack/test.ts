@@ -1,9 +1,11 @@
-import { z } from "zod";
+import { Schema } from "effect";
 import { callSlack, describeSlackFailure } from "#src/slack/client";
 
 // auth.test is Slack's own "is this token any good" call: it takes no arguments
 // and answers with the workspace and bot the token belongs to.
-const authTestSchema = z.object({ team: z.string().optional() });
+const authTestSchema = Schema.Struct({
+  team: Schema.optionalKey(Schema.String),
+});
 
 export async function testSlack(credentials: Record<string, string>) {
   const apiKey = credentials.SLACK_API_KEY;

@@ -1,6 +1,8 @@
-import { z } from "zod";
+import { Schema } from "effect";
+import { compact } from "es-toolkit/array";
 import { getBasePath } from "#src/lib/base-path";
 import type { ActionConfigField } from "@rova/shared/plugins/registry";
+import { readAs } from "@rova/shared/types/schema";
 import {
   clearRuntimeActions,
   registerRuntimeAction,
@@ -30,20 +32,24 @@ const runtimeTriggerRegistry = new Map<string, RuntimeTriggerDefinition>();
 
 let hydrationPromise: Promise<void> | null = null;
 
-const selectOptionSchema = z.object({
-  value: z.string(),
-  label: z.string(),
+const selectOptionSchema = Schema.Struct({
+  value: Schema.String,
+  label: Schema.String,
 });
 
 /**
  * One declarative config field, matching `ActionConfigFieldBase` in the plugin
  * registry. The field types are a closed set because the config renderer
  * switches on them: a field the renderer cannot draw is not a usable field.
+ *
+ * The list fields are wrapped in `Schema.mutable` because the registry's own
+ * types spell them as mutable arrays, and a decoded `readonly` array would not
+ * satisfy them.
  */
-const actionConfigFieldBaseSchema = z.object({
-  key: z.string(),
-  label: z.string(),
-  type: z.enum([
+const actionConfigFieldBaseSchema = Schema.Struct({
+  key: Schema.String,
+  label: Schema.String,
+  type: Schema.Literals([
     "template-input",
     "template-textarea",
     "text",
@@ -52,44 +58,52 @@ const actionConfigFieldBaseSchema = z.object({
     "schema-builder",
     "key-value",
   ]),
-  placeholder: z.string().optional(),
-  defaultValue: z.string().optional(),
-  example: z.string().optional(),
-  options: z.array(selectOptionSchema).optional(),
-  rows: z.number().optional(),
-  min: z.number().optional(),
-  required: z.boolean().optional(),
-  showWhen: z
-    .object({
-      field: z.string(),
-      equals: z.string(),
+  placeholder: Schema.optionalKey(Schema.String),
+  defaultValue: Schema.optionalKey(Schema.String),
+  example: Schema.optionalKey(Schema.String),
+  options: Schema.optionalKey(Schema.mutable(Schema.Array(selectOptionSchema))),
+  rows: Schema.optionalKey(Schema.Finite),
+  min: Schema.optionalKey(Schema.Finite),
+  required: Schema.optionalKey(Schema.Boolean),
+  showWhen: Schema.optionalKey(
+    Schema.Struct({
+      field: Schema.String,
+      equals: Schema.String,
     })
-    .optional(),
+  ),
 });
 
-const actionConfigFieldGroupSchema = z.object({
-  label: z.string(),
-  type: z.literal("group"),
-  fields: z.array(actionConfigFieldBaseSchema),
-  defaultExpanded: z.boolean().optional(),
+const actionConfigFieldGroupSchema = Schema.Struct({
+  label: Schema.String,
+  type: Schema.Literal("group"),
+  fields: Schema.mutable(Schema.Array(actionConfigFieldBaseSchema)),
+  defaultExpanded: Schema.optionalKey(Schema.Boolean),
 });
 
-// The annotation is the check: if the registry's field contract gains a case,
-// this stops compiling until the schema above learns about it.
-const actionConfigFieldSchema: z.ZodType<ActionConfigField> = z.union([
+// The annotation is the check: a schema that admits a field the registry's own
+// contract does not have -- a type literal the config renderer cannot draw, say
+// -- stops compiling here.
+const actionConfigFieldSchema: Schema.Codec<ActionConfigField> = Schema.Union([
   actionConfigFieldGroupSchema,
   actionConfigFieldBaseSchema,
 ]);
 
-const referenceFieldSchema: z.ZodType<ReferenceField> = z.object({
-  path: z.string(),
-  description: z.string(),
-  type: z
-    .enum(["string", "number", "boolean", "timestamp", "array", "object"])
-    .optional(),
-  format: z.literal("timestamp").optional(),
-  nullable: z.boolean().optional(),
-  enumValues: z.array(z.string()).optional(),
+const referenceFieldSchema: Schema.Codec<ReferenceField> = Schema.Struct({
+  path: Schema.String,
+  description: Schema.String,
+  type: Schema.optionalKey(
+    Schema.Literals([
+      "string",
+      "number",
+      "boolean",
+      "timestamp",
+      "array",
+      "object",
+    ])
+  ),
+  format: Schema.optionalKey(Schema.Literal("timestamp")),
+  nullable: Schema.optionalKey(Schema.Boolean),
+  enumValues: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
 });
 
 /**
@@ -100,45 +114,65 @@ const referenceFieldSchema: z.ZodType<ReferenceField> = z.object({
  * uses to draw the action selector and its config form, and the run itself
  * happens on the server.
  */
-const runtimeActionSchema: z.ZodType<RuntimeActionMetadata> = z.object({
+const runtimeActionSchema: Schema.Codec<RuntimeActionMetadata> = Schema.Struct({
   // The selector keys on id and shows label, so both must carry a value.
-  id: z.string().trim().min(1),
-  label: z.string().trim().min(1),
-  description: z.string(),
-  category: z.string(),
-  integration: z.string().optional(),
-  logoUrl: z.string().optional(),
-  configFields: z.array(actionConfigFieldSchema).optional(),
-  outputFields: z.array(referenceFieldSchema).optional(),
+  id: Schema.Trim.check(Schema.isNonEmpty()),
+  label: Schema.Trim.check(Schema.isNonEmpty()),
+  description: Schema.String,
+  category: Schema.String,
+  integration: Schema.optionalKey(Schema.String),
+  logoUrl: Schema.optionalKey(Schema.String),
+  configFields: Schema.optionalKey(
+    Schema.mutable(Schema.Array(actionConfigFieldSchema))
+  ),
+  outputFields: Schema.optionalKey(
+    Schema.mutable(Schema.Array(referenceFieldSchema))
+  ),
 });
 
-const runtimeTriggerSchema: z.ZodType<RuntimeTriggerDefinition> = z.object({
-  type: z.string().trim().min(1),
-  label: z.string().trim().min(1),
-  executionType: z.enum(["manual", "webhook", "event"]),
-  description: z.string().optional(),
-  logoUrl: z.string().optional(),
-  configFields: z.array(actionConfigFieldSchema).optional(),
-  outputFields: z.array(referenceFieldSchema).optional(),
-  eventTypes: z.array(z.string()).optional(),
-  correlationPath: z.string().optional(),
-});
+const runtimeTriggerSchema: Schema.Codec<RuntimeTriggerDefinition> =
+  Schema.Struct({
+    type: Schema.Trim.check(Schema.isNonEmpty()),
+    label: Schema.Trim.check(Schema.isNonEmpty()),
+    executionType: Schema.Literals(["manual", "webhook", "event"]),
+    description: Schema.optionalKey(Schema.String),
+    logoUrl: Schema.optionalKey(Schema.String),
+    configFields: Schema.optionalKey(
+      Schema.mutable(Schema.Array(actionConfigFieldSchema))
+    ),
+    outputFields: Schema.optionalKey(
+      Schema.mutable(Schema.Array(referenceFieldSchema))
+    ),
+    eventTypes: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
+    correlationPath: Schema.optionalKey(Schema.String),
+  });
+
+const readRuntimeAction = readAs(runtimeActionSchema);
+const readRuntimeTrigger = readAs(runtimeTriggerSchema);
 
 /**
- * An array whose entries are validated one at a time, keeping the ones that pass.
- * A definition the editor cannot use costs only itself: the rest of the host
- * app's actions and triggers still reach the selector.
+ * The envelope only has to be an object holding two lists. Each entry stays
+ * `unknown` here so that one unusable definition does not sink the list it sits
+ * in; `keepValidEntries` reads them one at a time below.
  */
-function droppingInvalidEntries<T>(entrySchema: z.ZodType<T>) {
-  return z
-    .array(entrySchema.nullable().catch(null))
-    .transform((entries) => entries.filter((entry) => entry !== null));
-}
+const readRuntimeExtensionsPayload = readAs(
+  Schema.Struct({
+    actions: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+    triggers: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+  })
+);
 
-const runtimeExtensionsPayloadSchema = z.object({
-  actions: droppingInvalidEntries(runtimeActionSchema).optional(),
-  triggers: droppingInvalidEntries(runtimeTriggerSchema).optional(),
-});
+/**
+ * Validates entries one at a time, keeping the ones that pass. A definition the
+ * editor cannot use costs only itself: the rest of the host app's actions and
+ * triggers still reach the selector.
+ */
+function keepValidEntries<T>(
+  entries: readonly unknown[] | undefined,
+  read: (entry: unknown) => T | undefined
+): T[] {
+  return compact(entries?.map(read) ?? []);
+}
 
 export function getRuntimeTriggers(): RuntimeTriggerDefinition[] {
   return Array.from(runtimeTriggerRegistry.values());
@@ -172,22 +206,26 @@ export function hydrateRuntimeExtensionsFromApi(): Promise<void> {
         return;
       }
 
-      const payload = runtimeExtensionsPayloadSchema.safeParse(
-        await response.json()
-      );
+      const payload = readRuntimeExtensionsPayload(await response.json());
 
       clearRuntimeActions();
       runtimeTriggerRegistry.clear();
 
-      if (!payload.success) {
+      if (!payload) {
         return;
       }
 
-      for (const action of payload.data.actions ?? []) {
+      for (const action of keepValidEntries(
+        payload.actions,
+        readRuntimeAction
+      )) {
         registerRuntimeAction(action);
       }
 
-      for (const trigger of payload.data.triggers ?? []) {
+      for (const trigger of keepValidEntries(
+        payload.triggers,
+        readRuntimeTrigger
+      )) {
         runtimeTriggerRegistry.set(trigger.type, trigger);
       }
     } catch {

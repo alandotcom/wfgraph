@@ -14,8 +14,8 @@ import {
   Hourglass,
   Zap,
 } from "lucide-react";
+import { Schema } from "effect";
 import { memo, useMemo, useState } from "react";
-import { z } from "zod";
 import {
   Node,
   NodeDescription,
@@ -30,6 +30,7 @@ import {
 } from "@rova/shared/workflow/types";
 import { findActionById, getIntegration } from "@rova/shared/plugins/registry";
 import { getIntegrationUi } from "@rova/shared/plugins/ui-registry";
+import { readAs } from "@rova/shared/types/schema";
 import { cn } from "@rova/shared/utils";
 import {
   parseTimestampWithTimezone,
@@ -56,15 +57,17 @@ type WaitPreviewData = {
  * `unknown` because `resolveWaitUntil` accepts an ISO timestamp, a duration
  * string, or a unix epoch number and decides for itself what each one is.
  */
-const runtimeWaitInputSchema = z.object({
-  // A mode of whitespace means the same thing as an absent one: a plain delay.
-  waitMode: z.string().trim().optional(),
-  waitTimezone: z.string().trim().optional(),
-  waitDuration: z.unknown().optional(),
-  waitUntil: z.unknown().optional(),
-  waitOffset: z.unknown().optional(),
-  waitTimeout: z.unknown().optional(),
-});
+const readRuntimeWaitInput = readAs(
+  Schema.Struct({
+    // A mode of whitespace means the same thing as an absent one: a plain delay.
+    waitMode: Schema.optionalKey(Schema.Trim),
+    waitTimezone: Schema.optionalKey(Schema.Trim),
+    waitDuration: Schema.optionalKey(Schema.Unknown),
+    waitUntil: Schema.optionalKey(Schema.Unknown),
+    waitOffset: Schema.optionalKey(Schema.Unknown),
+    waitTimeout: Schema.optionalKey(Schema.Unknown),
+  })
+);
 
 function readConfigString(
   config: Record<string, unknown> | undefined,
@@ -221,8 +224,7 @@ function useRuntimeWaitPreview(
       return null;
     }
 
-    const parsed = runtimeWaitInputSchema.safeParse(nodeLog?.input);
-    return parsed.success ? parsed.data : null;
+    return readRuntimeWaitInput(nodeLog?.input) ?? null;
   }, [shouldShowRuntimeWaitPreview, nodeLog?.input]);
 
   const startedAt =

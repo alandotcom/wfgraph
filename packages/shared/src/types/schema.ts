@@ -4,7 +4,7 @@
  * handing a schema to the parts of the codebase that speak Standard Schema.
  */
 
-import { Option, Schema } from "effect";
+import { Option, Schema, type SchemaAST } from "effect";
 
 /**
  * The member a schema must carry to be read by `readAs`, and which nothing
@@ -53,11 +53,26 @@ export function readAs<S extends Schema.ConstraintDecoder<unknown>>(
  * the first and derives the action's form fields from the second -- so this is
  * the bridge every registry-facing Effect schema crosses.
  *
+ * `parseOptions` is how a schema carries decode behaviour across that bridge.
+ * Effect treats those options as an argument to a decode, but a Standard Schema
+ * consumer calls `~standard.validate(value)` with nothing else to say, so every
+ * option would be lost at the boundary: oRPC validates an RPC payload that way,
+ * and Inngest validates an event payload that way. Passing them here closes
+ * them over inside the `validate` this builds, which is what lets a schema stay
+ * strict about unknown keys once it leaves this module. Effect has no
+ * per-schema equivalent of Zod's `.strict()`, so
+ * `{ onExcessProperty: "error" }` given here is the whole mechanism.
+ *
  * Both Effect functions assign onto the schema they are given, so the value
- * that comes back is the same object, now carrying `~standard`.
+ * that comes back is the same object, now carrying `~standard`. That also means
+ * the first call wins: a schema that already has a `validate` keeps it, options
+ * and all, so a schema wanting these options has to cross this bridge once.
  */
 export function toStandardSchema<S extends Schema.ConstraintDecoder<unknown>>(
-  schema: S
+  schema: S,
+  parseOptions?: SchemaAST.ParseOptions
 ) {
-  return Schema.toStandardJSONSchemaV1(Schema.toStandardSchemaV1(schema));
+  return Schema.toStandardJSONSchemaV1(
+    Schema.toStandardSchemaV1(schema, { parseOptions })
+  );
 }

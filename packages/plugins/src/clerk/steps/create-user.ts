@@ -1,6 +1,6 @@
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
-import { z } from "zod";
+import { Schema } from "effect";
 import {
   fetchCredentials,
   type StepInput,
@@ -12,6 +12,7 @@ import {
   toClerkApiUser,
 } from "#src/clerk/client";
 import type { ClerkCredentials } from "#src/clerk/credentials";
+import { readAs } from "@rova/shared/types/schema";
 import { type ClerkUserResult, toClerkUserData } from "#src/clerk/types";
 
 export type ClerkCreateUserCoreInput = {
@@ -30,7 +31,7 @@ export type ClerkCreateUserInput = StepInput &
 
 // Clerk stores any JSON object as user metadata, so a workflow author's pasted
 // text only has to be a JSON object to be usable here.
-const clerkMetadataSchema = z.record(z.string(), z.unknown());
+const readClerkMetadata = readAs(Schema.Record(Schema.String, Schema.Unknown));
 
 function parseMetadataJson(value: string): Record<string, unknown> | undefined {
   let parsed: unknown;
@@ -41,8 +42,7 @@ function parseMetadataJson(value: string): Record<string, unknown> | undefined {
     return undefined;
   }
 
-  const result = clerkMetadataSchema.safeParse(parsed);
-  return result.success ? result.data : undefined;
+  return readClerkMetadata(parsed);
 }
 
 /**

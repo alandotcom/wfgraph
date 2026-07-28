@@ -13,28 +13,30 @@
 
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
-import { z } from "zod";
+import { Schema } from "effect";
 import { parsePayload, requestVendor } from "#src/vendor-http";
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
 
 /** Twilio's error body, the same shape on every endpoint. */
-const twilioErrorSchema = z.object({
-  code: z.number().optional(),
-  message: z.string().optional(),
-  more_info: z.string().optional(),
+const twilioErrorSchema = Schema.Struct({
+  code: Schema.optionalKey(Schema.Finite),
+  message: Schema.optionalKey(Schema.String),
+  more_info: Schema.optionalKey(Schema.String),
 });
 
 /** The Message resource, as much of it as this plugin reads. */
-const twilioMessageSchema = z.object({
-  sid: z.string(),
-  status: z.string(),
-  to: z.string(),
-  from: z.string().nullish(),
-  messaging_service_sid: z.string().nullish(),
+const twilioMessageSchema = Schema.Struct({
+  sid: Schema.String,
+  status: Schema.String,
+  to: Schema.String,
+  // Twilio leaves an unused field out on some responses and sends null on
+  // others, so both stand for "not set" here.
+  from: Schema.optionalKey(Schema.NullishOr(Schema.String)),
+  messaging_service_sid: Schema.optionalKey(Schema.NullishOr(Schema.String)),
 });
 
-export type TwilioMessage = z.infer<typeof twilioMessageSchema>;
+export type TwilioMessage = typeof twilioMessageSchema.Type;
 
 export type TwilioFailure =
   | { kind: "unreachable"; message: string }
@@ -68,12 +70,12 @@ function toBasicAuth(accountSid: string, authToken: string): string {
   return `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`;
 }
 
-async function requestTwilio<TSchema extends z.ZodType>(
+async function requestTwilio<S extends Schema.ConstraintDecoder<unknown>>(
   credentials: TwilioCredentialPair,
   path: string,
-  schema: TSchema,
+  schema: S,
   init: { method: string; body?: URLSearchParams }
-): Promise<TwilioResult<z.infer<TSchema>>> {
+): Promise<TwilioResult<S["Type"]>> {
   const headers: Record<string, string> = {
     authorization: toBasicAuth(credentials.accountSid, credentials.authToken),
   };
@@ -157,7 +159,7 @@ export function fetchTwilioAccount(
   return requestTwilio(
     credentials,
     `/Accounts/${encodeURIComponent(credentials.accountSid)}.json`,
-    z.object({ sid: z.string() }),
+    Schema.Struct({ sid: Schema.String }),
     { method: "GET" }
   );
 }

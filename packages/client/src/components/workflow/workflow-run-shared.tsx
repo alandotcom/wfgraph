@@ -5,14 +5,15 @@ import {
   Copy,
   ExternalLink,
 } from "lucide-react";
+import { Schema } from "effect";
 import { useState } from "react";
-import { z } from "zod";
 import { Button } from "#src/components/ui/button";
 import {
   OUTPUT_DISPLAY_CONFIGS,
   type OutputDisplayConfig,
 } from "#src/lib/output-display-configs";
 import { findActionById } from "@rova/shared/plugins/registry";
+import { readAs } from "@rova/shared/types/schema";
 import { getActionOutputComponent } from "@rova/shared/plugins/ui-registry";
 
 // Status helpers
@@ -79,22 +80,24 @@ function getOutputConfig(nodeType: string): OutputDisplayConfig | undefined {
   return OUTPUT_DISPLAY_CONFIGS[nodeType];
 }
 
+const readNonEmptyString = readAs(Schema.NonEmptyString);
+
 /**
  * Read the one field a display config names out of a step's stored output.
  *
- * The output is JSONB coming back from the database, so the field is parsed
- * rather than assumed. The key comes from the plugin's own display config, which
- * is why the schema is built per call.
+ * The output is JSONB coming back from the database, so the field is read rather
+ * than assumed. The key comes from the plugin's own display config, so the object
+ * is stepped into by hand and the leaf is what gets validated.
  */
 function getOutputDisplayValue(
   output: unknown,
   config: { type: "image" | "video" | "url"; field: string }
 ): string | undefined {
-  const parsed = z
-    .object({ [config.field]: z.string().min(1) })
-    .safeParse(output);
+  if (output === null || typeof output !== "object" || Array.isArray(output)) {
+    return undefined;
+  }
 
-  return parsed.success ? parsed.data[config.field] : undefined;
+  return readNonEmptyString(Reflect.get(output, config.field));
 }
 
 /**
@@ -102,13 +105,14 @@ function getOutputDisplayValue(
  * log, so it is parsed too. The length floor keeps a short string that happens to
  * be named `base64` out of an image tag's src.
  */
-const base64ImageOutputSchema = z.object({
-  base64: z.string().min(101),
-});
+const readBase64Image = readAs(
+  Schema.Struct({
+    base64: Schema.String.check(Schema.isMinLength(101)),
+  })
+);
 
 export function readBase64ImageOutput(output: unknown): string | null {
-  const parsed = base64ImageOutputSchema.safeParse(output);
-  return parsed.success ? parsed.data.base64 : null;
+  return readBase64Image(output)?.base64 ?? null;
 }
 
 // URL detection helper

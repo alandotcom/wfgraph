@@ -230,6 +230,69 @@ describe("conditions", () => {
     }
   });
 
+  // A rule reaches the parser as JSON, so an operand the editor writes as a
+  // number can arrive as text. The message has to name the operand rather than
+  // repeat Effect's own "Expected number", which is what an annotation attached
+  // to a check instead of to the type would leave behind.
+  function ruleModel(rule: Record<string, unknown>) {
+    return JSON.stringify({
+      version: 2,
+      groupLogic: "and",
+      groups: [{ id: "g1", logic: "and", conditions: [rule] }],
+    });
+  }
+
+  it("names the operand when a timestamp amount arrives as text", () => {
+    const parsed = parseConditionModel(
+      ruleModel({
+        id: "c1",
+        field: "appointment.datetime",
+        fieldType: "timestamp",
+        operator: "within_next",
+        amount: "5",
+        unit: "days",
+      })
+    );
+
+    expect(parsed).toEqual({
+      valid: false,
+      error: "Timestamp amount must be a positive integer",
+    });
+  });
+
+  it("names the operand when a number value arrives as text", () => {
+    const parsed = parseConditionModel(
+      ruleModel({
+        id: "c1",
+        field: "order.total",
+        fieldType: "number",
+        operator: "equals",
+        value: "5",
+      })
+    );
+
+    expect(parsed).toEqual({
+      valid: false,
+      error: "Number conditions require a finite numeric value",
+    });
+  });
+
+  it("names the operator when a rule is missing it", () => {
+    const parsed = parseConditionModel(
+      ruleModel({
+        id: "c1",
+        field: "order.total",
+        fieldType: "number",
+        value: 5,
+      })
+    );
+
+    expect(parsed).toEqual({
+      valid: false,
+      error: "Number operator is invalid",
+    });
+  });
+
   it("compiles a field whose name is a CEL type constant", () => {
     // Bare `type` resolves to CEL's type-of-type, so an unrooted expression
     // fails to compile with "no such overload: type == string".

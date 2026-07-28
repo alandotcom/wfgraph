@@ -1,7 +1,8 @@
+import { Schema } from "effect";
 import { compact } from "es-toolkit/array";
 import { startCase } from "es-toolkit/string";
-import { z } from "zod";
 import type { ActionConfigFieldBase } from "#src/plugins/registry";
+import { readAs } from "#src/types/schema";
 
 /**
  * Library-specific options passed through StandardSchema's `libraryOptions`.
@@ -52,28 +53,7 @@ export type WorkflowSchemaField = {
 type JsonSchemaType = WorkflowSchemaFieldType | WorkflowSchemaItemType;
 
 /**
- * A `type` keyword, which JSON Schema allows to be one name or a list of names
- * (`{ type: ["null", "boolean"] }` for a nullable boolean).
- */
-const typeNameSchema = z
-  .union([z.string(), z.array(z.string())])
-  .optional()
-  .catch(undefined);
-
-const optionalString = z.string().optional().catch(undefined);
-
-/**
- * Any JSON value is allowed in these slots, so the members below keep them as
- * `unknown` and the readers pick out the shapes they can use.
- */
-const jsonValueSchema = z.unknown().optional().catch(undefined);
-const jsonValueArraySchema = z.array(z.unknown()).optional().catch(undefined);
-
-/**
  * A node of a JSON Schema document, holding only the keywords this module reads.
- * Recursive members are written out by hand because a schema that refers to
- * itself gives TypeScript nothing to infer from; the annotation on
- * `jsonSchemaNodeSchema` below ties the two together.
  *
  * A member is `undefined` when the document left it out and also when the
  * document had it in a shape this module cannot use.
@@ -93,53 +73,11 @@ interface JsonSchemaNode {
   items?: JsonSchemaNode;
   anyOf?: (JsonSchemaNode | undefined)[];
   oneOf?: (JsonSchemaNode | undefined)[];
+  allOf?: (JsonSchemaNode | undefined)[];
 }
 
 /** A `properties` map, whose members drop out individually when malformed. */
 type JsonSchemaProperties = Record<string, JsonSchemaNode | undefined>;
-
-/**
- * `looseObject` keeps every keyword the shape below does not name, so parsing a
- * document does not quietly strip parts of it.
- *
- * Every member is `.optional().catch(undefined)`, which is what makes a saved
- * schema with one broken member still readable: the broken member alone comes
- * back as absent and the rest of the document parses. Recursive members are
- * declared as getters so the schema can refer to itself.
- */
-const jsonSchemaNodeSchema: z.ZodType<JsonSchemaNode> = z.looseObject({
-  type: typeNameSchema,
-  format: optionalString,
-  pattern: optionalString,
-  description: optionalString,
-  enum: jsonValueArraySchema,
-  const: jsonValueSchema,
-  required: z.array(z.string()).optional().catch(undefined),
-  default: jsonValueSchema,
-  examples: jsonValueArraySchema,
-  minimum: z.number().optional().catch(undefined),
-  get properties() {
-    return z
-      .record(z.string(), jsonSchemaNodeSchema.optional().catch(undefined))
-      .optional()
-      .catch(undefined);
-  },
-  get items() {
-    return jsonSchemaNodeSchema.optional().catch(undefined);
-  },
-  get anyOf() {
-    return z
-      .array(jsonSchemaNodeSchema.optional().catch(undefined))
-      .optional()
-      .catch(undefined);
-  },
-  get oneOf() {
-    return z
-      .array(jsonSchemaNodeSchema.optional().catch(undefined))
-      .optional()
-      .catch(undefined);
-  },
-});
 
 /**
  * A field of the schema dialect this project stores itself: a flat array of
@@ -158,27 +96,108 @@ interface WorkflowFieldRecord {
 /** A `fields` array, whose entries drop out individually when malformed. */
 type WorkflowFieldRecords = (WorkflowFieldRecord | undefined)[];
 
-/** Tolerance and recursion work the same way as the JSON Schema node above. */
-const workflowFieldRecordSchema: z.ZodType<WorkflowFieldRecord> = z.looseObject(
-  {
-    name: optionalString,
-    type: typeNameSchema,
-    itemType: typeNameSchema,
-    format: optionalString,
-    description: optionalString,
-    enumValues: jsonValueArraySchema,
-    get fields() {
-      return z
-        .array(workflowFieldRecordSchema.optional().catch(undefined))
-        .optional()
-        .catch(undefined);
-    },
-  }
+/**
+ * The leaf readers every keyword below goes through.
+ *
+ * A document arriving here was written by somebody else -- a saved schema
+ * string, a JSON Schema an action's own library derived -- so no keyword can be
+ * assumed to hold what its name suggests. `readAs` answers `undefined` for a
+ * value that is not what the schema describes, which is what lets one broken
+ * keyword drop out while the rest of the document still reads. That per-keyword
+ * tolerance is why these are separate leaf reads rather than one struct: a
+ * struct sinks every sibling alongside the member that failed.
+ */
+const readObject = readAs(Schema.Record(Schema.String, Schema.Unknown));
+const readString = readAs(Schema.String);
+const readNumber = readAs(Schema.Number);
+const readStringArray = readAs(Schema.mutable(Schema.Array(Schema.String)));
+const readUnknownArray = readAs(Schema.mutable(Schema.Array(Schema.Unknown)));
+
+/**
+ * A `type` keyword, which JSON Schema allows to be one name or a list of names
+ * (`{ type: ["null", "boolean"] }` for a nullable boolean).
+ */
+const readTypeName = readAs(
+  Schema.Union([Schema.String, Schema.mutable(Schema.Array(Schema.String))])
 );
 
-const workflowFieldRecordArraySchema = z.array(
-  workflowFieldRecordSchema.optional().catch(undefined)
-);
+/** Reads the members of an `anyOf`/`oneOf`/`allOf`, each one tolerated alone. */
+function readNodeBranches(
+  value: unknown
+): (JsonSchemaNode | undefined)[] | undefined {
+  const branches = readUnknownArray(value);
+  return branches?.map(readJsonSchemaNode);
+}
+
+function readJsonSchemaProperties(
+  value: unknown
+): JsonSchemaProperties | undefined {
+  const properties = readObject(value);
+  if (!properties) {
+    return undefined;
+  }
+
+  const out: JsonSchemaProperties = {};
+  for (const [key, property] of Object.entries(properties)) {
+    out[key] = readJsonSchemaNode(property);
+  }
+  return out;
+}
+
+function readJsonSchemaNode(value: unknown): JsonSchemaNode | undefined {
+  const node = readObject(value);
+  if (!node) {
+    return undefined;
+  }
+
+  return {
+    type: readTypeName(node.type),
+    format: readString(node.format),
+    pattern: readString(node.pattern),
+    description: readString(node.description),
+    enum: readUnknownArray(node.enum),
+    // `const` is the one keyword whose presence matters apart from its value:
+    // `resolveConstBranches` asks whether a branch declared one at all, and
+    // `{ const: null }` is a legal branch. So the key is carried over only when
+    // the document had it, rather than always written as possibly-undefined.
+    ...(Object.hasOwn(node, "const") ? { const: node.const } : {}),
+    required: readStringArray(node.required),
+    default: node.default,
+    examples: readUnknownArray(node.examples),
+    minimum: readNumber(node.minimum),
+    properties: readJsonSchemaProperties(node.properties),
+    items: readJsonSchemaNode(node.items),
+    anyOf: readNodeBranches(node.anyOf),
+    oneOf: readNodeBranches(node.oneOf),
+    allOf: readNodeBranches(node.allOf),
+  };
+}
+
+function readWorkflowFieldRecords(
+  value: unknown
+): WorkflowFieldRecords | undefined {
+  const records = readUnknownArray(value);
+  return records?.map(readWorkflowFieldRecord);
+}
+
+function readWorkflowFieldRecord(
+  value: unknown
+): WorkflowFieldRecord | undefined {
+  const record = readObject(value);
+  if (!record) {
+    return undefined;
+  }
+
+  return {
+    name: readString(record.name),
+    type: readTypeName(record.type),
+    itemType: readTypeName(record.itemType),
+    format: readString(record.format),
+    description: readString(record.description),
+    enumValues: readUnknownArray(record.enumValues),
+    fields: readWorkflowFieldRecords(record.fields),
+  };
+}
 
 export function isWorkflowSchemaFieldType(
   value: unknown
@@ -256,11 +275,28 @@ function isIsoDatePattern(value: string | undefined): boolean {
   return value.startsWith("^([+-]?\\d{4}") && value.includes("0[1-9]|1[0-2]");
 }
 
+/**
+ * Whether a string property names a moment in time.
+ *
+ * The keywords that say so sit flat on the property in a document Zod or
+ * arktype derived, but Effect hangs everything a `.check(...)` contributed off
+ * `allOf`, so `Schema.String.check(Schema.isPattern(...))` puts the pattern one
+ * level down. Looking through `allOf` is what lets an Effect-derived schema
+ * describe a timestamp field the same way the other two do.
+ *
+ * `Schema.DateFromString` still arrives as a bare `{ type: "string" }`: Effect
+ * derives no `format` and no `pattern` for it, so there is nothing here to find.
+ * A schema that wants its dates recognised has to carry the keyword.
+ */
 function isTimestampString(prop: JsonSchemaNode): boolean {
-  return (
+  if (
     normalizeSchemaFormat(prop.format) === "timestamp" ||
     isIsoDatePattern(prop.pattern)
-  );
+  ) {
+    return true;
+  }
+
+  return compact(prop.allOf ?? []).some(isTimestampString);
 }
 
 function workflowSchemaFieldsFromRecords(
@@ -366,15 +402,14 @@ function workflowSchemaFieldFromRecord(
 export function parseWorkflowSchemaField(
   value: unknown
 ): WorkflowSchemaField | null {
-  const parsed = workflowFieldRecordSchema.safeParse(value);
-  return parsed.success ? workflowSchemaFieldFromRecord(parsed.data) : null;
+  const record = readWorkflowFieldRecord(value);
+  return record ? workflowSchemaFieldFromRecord(record) : null;
 }
 
 export function parseWorkflowSchemaFields(
   value: unknown
 ): WorkflowSchemaField[] {
-  const parsed = workflowFieldRecordArraySchema.safeParse(value);
-  return parsed.success ? workflowSchemaFieldsFromRecords(parsed.data) : [];
+  return workflowSchemaFieldsFromRecords(readWorkflowFieldRecords(value));
 }
 
 export function parseWorkflowSchemaFieldsString(
@@ -556,12 +591,11 @@ export function parseWorkflowSchemaFieldsOrJsonSchema(
     return parseWorkflowSchemaFields(value);
   }
 
-  const parsed = jsonSchemaNodeSchema.safeParse(value);
-  if (!parsed.success) {
+  const document = readJsonSchemaNode(value);
+  if (!document) {
     return null;
   }
 
-  const document = parsed.data;
   const rootType =
     normalizeJsonSchemaType(document.type) ||
     (document.properties ? "object" : null);
@@ -748,18 +782,18 @@ function jsonSchemaPropertyToConfigField(
 
 /**
  * `Record<string, unknown>` is the parameter type because that is what
- * Standard Schema's `jsonSchema.output()` hands back, so the document is parsed
+ * Standard Schema's `jsonSchema.output()` hands back, so the document is read
  * here to reach its keywords with types attached.
  */
 export function configFieldsFromJsonSchema(
   jsonSchema: Record<string, unknown>
 ): ActionConfigFieldBase[] {
-  const parsed = jsonSchemaNodeSchema.safeParse(jsonSchema);
-  if (!parsed.success) {
+  const document = readJsonSchemaNode(jsonSchema);
+  if (!document) {
     return [];
   }
 
-  const { properties, required } = parsed.data;
+  const { properties, required } = document;
   if (!properties) {
     return [];
   }

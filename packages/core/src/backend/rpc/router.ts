@@ -1,6 +1,5 @@
 import { implement } from "@orpc/server";
-import { Effect } from "effect";
-import { z } from "zod";
+import { Effect, Schema } from "effect";
 import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { RovaServices } from "#src/backend/runtime";
@@ -43,6 +42,7 @@ import {
   postWorkflowsCurrent,
 } from "#src/backend/services/workflows/current";
 import { rpcContract } from "@rova/shared/rpc/contracts";
+import { readAs } from "@rova/shared/types/schema";
 import { getErrorMessage } from "@rova/shared/utils";
 import type { RpcContext } from "./context";
 import { toOrpcError } from "./errors";
@@ -53,19 +53,21 @@ const rpcLogger = getAppLogger("rpc", "handler");
  * The handler options object oRPC passes as the first argument, narrowed to the
  * one member the failure log needs. `rpcEffectHandler` is generic over every
  * route, so its `args` are `unknown` and the route's own input type is out of
- * reach here; every contract input is an object, and a parse recovers that much.
+ * reach here; every contract input is an object, and a read recovers that much.
+ *
+ * One leaf at a time, because this runs on the failure path: a handler options
+ * object shaped differently than expected should cost the log line its input
+ * summary, not throw a second error on top of the one being reported.
  */
-const rpcHandlerArgsSchema = z.looseObject({
-  input: z.looseObject({}).optional().catch(undefined),
-});
+const readAnyObject = readAs(Schema.Record(Schema.String, Schema.Unknown));
 
 function summarizeRpcInput(args: unknown[]): unknown {
   if (args.length === 0) {
     return undefined;
   }
 
-  const parsed = rpcHandlerArgsSchema.safeParse(args[0]);
-  const input = parsed.success ? parsed.data.input : undefined;
+  const handlerArgs = readAnyObject(args[0]);
+  const input = handlerArgs ? readAnyObject(handlerArgs.input) : undefined;
   if (!input) {
     return undefined;
   }

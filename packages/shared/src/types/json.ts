@@ -71,7 +71,12 @@ export function readJsonObject(value: unknown): JsonObject | null {
  * The same shape in Zod, for the schemas that have not moved yet: the oRPC
  * contracts in `rpc/contracts.ts` and the Inngest event types in
  * `backend/lib/inngest/events.ts` both embed it inside a Zod object. Delete
- * this in batch B, when those two move to Effect Schema.
+ * this in batch C, when those two move to Effect Schema.
+ *
+ * Both embedders move together in that batch rather than one per batch, because
+ * `contracts.ts` and `events.ts` also share `serializedWorkflowGraphSchema`:
+ * Zod cannot hold a foreign Standard Schema inside a `z.object`, so the graph
+ * cannot move while either embedder is still described in Zod.
  */
 export const jsonObjectZodSchema: z.ZodType<JsonObject, JsonObject> = z.record(
   z.string(),

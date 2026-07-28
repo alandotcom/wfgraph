@@ -3,7 +3,7 @@ import {
   type LinearErrorRaw,
   parseLinearError,
 } from "@linear/sdk";
-import { z } from "zod";
+import { Option, Schema } from "effect";
 
 /**
  * The error payload Linear's `parseLinearError` reads: the GraphQL request that
@@ -15,41 +15,49 @@ import { z } from "zod";
  * (`response.data`, `response.headers`) and the validated value is handed on to
  * Linear whole. The named fields are the ones Linear reads unguarded: a `message`
  * that is not a string, or a `response.errors` that is not a list of objects,
- * makes Linear's own parsing throw.
+ * makes Linear's own parsing throw. `onExcessProperty: "preserve"` in the decode
+ * below is what keeps the unnamed fields, at every level, on the value that comes
+ * back; the default strips them.
  *
  * Fields are described as the API sends them. Linear's LinearErrorRaw types both
  * the per-error `message` and `extensions.type` as its LinearErrorType enum, while
  * the wire carries readable text ("Authentication required") and a lowercase
  * phrase ("authentication error") that Linear maps back to the enum itself.
  */
-const linearGraphqlErrorSchema = z.looseObject({
-  message: z.string().optional(),
-  path: z.array(z.string()).optional(),
-  extensions: z
-    .looseObject({
-      type: z.string().optional(),
-      userError: z.boolean().optional(),
-      userPresentableMessage: z.string().optional(),
+const linearGraphqlErrorSchema = Schema.Struct({
+  message: Schema.optionalKey(Schema.String),
+  path: Schema.optionalKey(Schema.Array(Schema.String)),
+  extensions: Schema.optionalKey(
+    Schema.Struct({
+      type: Schema.optionalKey(Schema.String),
+      userError: Schema.optionalKey(Schema.Boolean),
+      userPresentableMessage: Schema.optionalKey(Schema.String),
     })
-    .optional(),
+  ),
 });
 
-const linearErrorRawSchema = z.looseObject({
-  name: z.string().optional(),
-  message: z.string().optional(),
-  request: z
-    .looseObject({
-      query: z.string().optional(),
-      variables: z.record(z.string(), z.unknown()).optional(),
+const linearErrorRawSchema = Schema.Struct({
+  name: Schema.optionalKey(Schema.String),
+  message: Schema.optionalKey(Schema.String),
+  request: Schema.optionalKey(
+    Schema.Struct({
+      query: Schema.optionalKey(Schema.String),
+      variables: Schema.optionalKey(
+        Schema.Record(Schema.String, Schema.Unknown)
+      ),
     })
-    .optional(),
-  response: z
-    .looseObject({
-      status: z.number().optional(),
-      error: z.string().optional(),
-      errors: z.array(linearGraphqlErrorSchema).optional(),
+  ),
+  response: Schema.optionalKey(
+    Schema.Struct({
+      status: Schema.optionalKey(Schema.Finite),
+      error: Schema.optionalKey(Schema.String),
+      errors: Schema.optionalKey(Schema.Array(linearGraphqlErrorSchema)),
     })
-    .optional(),
+  ),
+});
+
+const readLinearErrorRaw = Schema.decodeUnknownOption(linearErrorRawSchema, {
+  onExcessProperty: "preserve",
 });
 
 /**
@@ -63,9 +71,9 @@ export function toLinearError(error: unknown): LinearError {
     return error;
   }
 
-  const raw = linearErrorRawSchema.safeParse(error);
+  const raw = Option.getOrUndefined(readLinearErrorRaw(error));
 
-  if (raw.success) {
+  if (raw) {
     // Linear's own type for this payload disagrees with what its API sends for the
     // GraphQL error fields, so the validated value goes back under Linear's type.
     // The assertion narrows `message` and `extensions.type` from the string the wire
@@ -73,7 +81,7 @@ export function toLinearError(error: unknown): LinearError {
     // Removing the assertion turns this into a type error, so the narrowing is the
     // point rather than an oversight.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    return parseLinearError(raw.data as LinearErrorRaw);
+    return parseLinearError(raw as LinearErrorRaw);
   }
 
   if (error instanceof Error) {

@@ -1,6 +1,6 @@
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
-import { z } from "zod";
+import { Result, Schema } from "effect";
 import {
   fetchCredentials,
   type StepInput,
@@ -53,19 +53,27 @@ function isValidTestEmailAddress(value: string): boolean {
 // Tags and template variables reach this step as JSON strings a workflow author
 // typed into the node config, so both are parsed at that boundary. Text that does
 // not describe what Resend accepts is logged and dropped, leaving the email to
-// send without it.
-const emailTagsSchema = z.array(
-  z.object({ name: z.string(), value: z.string() })
+// send without it. Both decodes ask for every issue rather than the first, so one
+// log line accounts for the whole string the author typed.
+const emailTagsSchema = Schema.mutable(
+  Schema.Array(Schema.Struct({ name: Schema.String, value: Schema.String }))
 );
 
-const templateVariablesSchema = z.record(
-  z.string(),
-  z.union([z.string(), z.number()])
+const templateVariablesSchema = Schema.Record(
+  Schema.String,
+  Schema.Union([Schema.String, Schema.Finite])
 );
 
-function parseTags(
-  tagsJson: string
-): z.infer<typeof emailTagsSchema> | undefined {
+const decodeEmailTags = Schema.decodeUnknownResult(emailTagsSchema, {
+  errors: "all",
+});
+
+const decodeTemplateVariables = Schema.decodeUnknownResult(
+  templateVariablesSchema,
+  { errors: "all" }
+);
+
+function parseTags(tagsJson: string): typeof emailTagsSchema.Type | undefined {
   let parsed: unknown;
 
   try {
@@ -75,22 +83,22 @@ function parseTags(
     return undefined;
   }
 
-  const result = emailTagsSchema.safeParse(parsed);
+  const result = decodeEmailTags(parsed);
 
-  if (!result.success) {
+  if (Result.isFailure(result)) {
     console.error(
       "[Resend] Tags JSON must be a list of { name, value } entries:",
-      z.prettifyError(result.error)
+      result.failure.message
     );
     return undefined;
   }
 
-  return result.data;
+  return result.success;
 }
 
 function parseTemplateVariables(
   templateVariables: string | undefined
-): z.infer<typeof templateVariablesSchema> | undefined {
+): typeof templateVariablesSchema.Type | undefined {
   if (!templateVariables) {
     return undefined;
   }
@@ -104,17 +112,17 @@ function parseTemplateVariables(
     return undefined;
   }
 
-  const result = templateVariablesSchema.safeParse(parsed);
+  const result = decodeTemplateVariables(parsed);
 
-  if (!result.success) {
+  if (Result.isFailure(result)) {
     console.error(
       "[Resend] Template variables JSON must map names to strings or numbers:",
-      z.prettifyError(result.error)
+      result.failure.message
     );
     return undefined;
   }
 
-  return result.data;
+  return result.success;
 }
 
 /**

@@ -32,9 +32,9 @@ plugins/[plugin-name]/
 **Call vendors with `fetch`, not their SDK.** `vendor-http.ts` holds the one
 request function every plugin's `client.ts` is built on: it survives a `fetch`
 that throws, reads a JSON body, and tells "never arrived" apart from "the vendor
-said no". A client adds the vendor's auth, its body encoding, and Zod schemas for
-what it answers, so a step gets typed fields and an unexpected body fails where
-it happened. An SDK earns its place only when it carries protocol logic worth
+said no". A client adds the vendor's auth, its body encoding, and Effect Schemas
+for what it answers, so a step gets typed fields and an unexpected body fails
+where it happened. An SDK earns its place only when it carries protocol logic worth
 borrowing, which is why `@clerk/backend` (JWT verification) and `@linear/sdk` (a
 typed GraphQL client) stayed and `twilio`, `resend`, and `@slack/web-api` did
 not. The `dependencies` field on a plugin definition exists for that exception.

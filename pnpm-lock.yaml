@@ -230,6 +230,9 @@ importers:
       d3-hierarchy:
         specifier: ^3.1.2
         version: 3.1.2
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.102
       es-toolkit:
         specifier: 'catalog:'
         version: 1.50.0
@@ -272,9 +275,6 @@ importers:
       vite:
         specifier: 'catalog:'
         version: 8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0)
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
 
   packages/core:
     dependencies:
@@ -375,12 +375,12 @@ importers:
       '@linear/sdk':
         specifier: ^75.0.0
         version: 75.0.0(graphql@17.0.2)
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.102
       es-toolkit:
         specifier: 'catalog:'
         version: 1.50.0
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
     devDependencies:
       '@rova/core':
         specifier: workspace:*

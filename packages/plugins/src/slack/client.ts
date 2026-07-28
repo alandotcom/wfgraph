@@ -16,7 +16,7 @@
  * a coarser answer to a rate limit than honouring `Retry-After` would be.
  */
 
-import { z } from "zod";
+import { Schema } from "effect";
 import type { JsonObject } from "@rova/shared/types/json";
 import { parsePayload, requestVendor } from "#src/vendor-http";
 
@@ -24,11 +24,12 @@ const SLACK_API_BASE = "https://slack.com/api";
 
 /**
  * Slack answers every call with this envelope, on success and failure alike.
- * Loose, because the fields a caller actually wants sit beside these two.
+ * The fields a caller actually wants sit beside these two, which is why the
+ * caller's own schema reads the same payload again below.
  */
-const slackEnvelopeSchema = z.looseObject({
-  ok: z.boolean(),
-  error: z.string().optional(),
+const slackEnvelopeSchema = Schema.Struct({
+  ok: Schema.Boolean,
+  error: Schema.optionalKey(Schema.String),
 });
 
 export type SlackFailure =
@@ -52,12 +53,12 @@ export function describeSlackFailure(failure: SlackFailure): string {
   return `HTTP ${failure.status}`;
 }
 
-export async function callSlack<TSchema extends z.ZodType>(
+export async function callSlack<S extends Schema.ConstraintDecoder<unknown>>(
   token: string,
   method: string,
-  schema: TSchema,
+  schema: S,
   body?: JsonObject
-): Promise<SlackResult<z.infer<TSchema>>> {
+): Promise<SlackResult<S["Type"]>> {
   const response = await requestVendor({
     url: `${SLACK_API_BASE}/${method}`,
     method: "POST",

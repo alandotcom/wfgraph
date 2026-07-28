@@ -7,13 +7,13 @@
  * leaves each client holding only what is genuinely its own: how it
  * authenticates, how it encodes a body, and what its error payload looks like.
  *
- * The response body is parsed with Zod at this boundary rather than being read
- * field by field, so a client hands its caller typed values and a vendor that
- * answers something unexpected fails where it happened instead of further down
- * as an empty string.
+ * The response body is decoded against a schema at this boundary rather than
+ * being read field by field, so a client hands its caller typed values and a
+ * vendor that answers something unexpected fails where it happened instead of
+ * further down as an empty string.
  */
 
-import type { z } from "zod";
+import { Option, Schema } from "effect";
 import { type JsonValue, readJsonValue } from "@rova/shared/types/json";
 
 /**
@@ -83,11 +83,16 @@ async function readJsonBody(
  * Read a payload as the shape a vendor documents, or undefined when it is not
  * that shape. Callers decide what an unreadable body means for them: a failed
  * send should say so rather than report success with blank fields.
+ *
+ * This is `readAs` from `@rova/shared/types/schema` with its compile-time guard
+ * dropped, which is what lets a caller ask for nothing in particular. A vendor
+ * client checking that credentials work only needs a body to have arrived, and
+ * `Schema.Unknown` says exactly that; the absent body it would otherwise read as
+ * a value is already the caller's failure case here.
  */
-export function parsePayload<TSchema extends z.ZodType>(
+export function parsePayload<S extends Schema.ConstraintDecoder<unknown>>(
   payload: JsonValue | undefined,
-  schema: TSchema
-): z.infer<TSchema> | undefined {
-  const result = schema.safeParse(payload);
-  return result.success ? result.data : undefined;
+  schema: S
+): S["Type"] | undefined {
+  return Option.getOrUndefined(Schema.decodeUnknownOption(schema)(payload));
 }

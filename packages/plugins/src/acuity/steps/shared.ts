@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { Result, Schema } from "effect";
 
 export type ParseResult<T> =
   | { ok: true; value: T }
@@ -136,15 +136,31 @@ export function parseCommaSeparatedIntegerList(
  * Acuity takes the answers to a booking form's custom questions as fieldID/value
  * pairs. Workflow authors type those pairs as a JSON string into the node config,
  * so this schema is the boundary between that text and the Acuity client.
+ *
+ * `errors: "all"` because what the decode says about the text is what the author
+ * reads back in the step's failure: naming one mistake at a time would send them
+ * round the loop once per mistake.
  */
-const acuityCustomFieldsSchema = z.array(
-  z.object({
-    fieldID: z.number().int().positive(),
-    value: z.union([z.string(), z.array(z.string())]),
-  })
+const acuityCustomFieldsSchema = Schema.mutable(
+  Schema.Array(
+    Schema.Struct({
+      fieldID: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+      value: Schema.Union([
+        Schema.String,
+        Schema.mutable(Schema.Array(Schema.String)),
+      ]),
+    })
+  )
 );
 
-type AcuityCustomFields = z.infer<typeof acuityCustomFieldsSchema>;
+const decodeCustomFields = Schema.decodeUnknownResult(
+  acuityCustomFieldsSchema,
+  {
+    errors: "all",
+  }
+);
+
+type AcuityCustomFields = typeof acuityCustomFieldsSchema.Type;
 
 export function parseCustomFieldsJson(
   value: unknown
@@ -167,14 +183,14 @@ export function parseCustomFieldsJson(
     };
   }
 
-  const result = acuityCustomFieldsSchema.safeParse(parsed);
+  const result = decodeCustomFields(parsed);
 
-  if (!result.success) {
+  if (Result.isFailure(result)) {
     return {
       ok: false,
-      error: `Custom Fields JSON must be an array of objects with numeric fieldID and value (string or string[]). ${z.prettifyError(result.error)}`,
+      error: `Custom Fields JSON must be an array of objects with numeric fieldID and value (string or string[]). ${result.failure.message}`,
     };
   }
 
-  return { ok: true, value: result.data };
+  return { ok: true, value: result.success };
 }

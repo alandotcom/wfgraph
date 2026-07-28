@@ -1,26 +1,27 @@
 import { compact } from "es-toolkit/array";
-import { z } from "zod";
+import { Schema } from "effect";
 import type { ResultComponentProps } from "@rova/shared/plugins/ui-registry";
+import { readAs } from "@rova/shared/types/schema";
 
 // This component renders a Clerk step's result read back out of the execution log,
 // so the output arrives as untyped JSON. The logging layer unwraps the standardized
 // { success, data } wrapper, leaving the user data a Clerk step returned. Anything
 // that is not that user shape renders nothing.
-const clerkUserDataSchema = z.object({
-  id: z.string(),
-  firstName: z.string().nullable(),
-  lastName: z.string().nullable(),
-  primaryEmailAddress: z.string().nullable(),
-  createdAt: z.number(),
-});
+const readClerkUserData = readAs(
+  Schema.Struct({
+    id: Schema.String,
+    firstName: Schema.NullOr(Schema.String),
+    lastName: Schema.NullOr(Schema.String),
+    primaryEmailAddress: Schema.NullOr(Schema.String),
+    createdAt: Schema.Finite,
+  })
+);
 
 export function UserCard({ output }: ResultComponentProps) {
-  const parsed = clerkUserDataSchema.safeParse(output);
-  if (!parsed.success) {
+  const data = readClerkUserData(output);
+  if (!data) {
     return null;
   }
-
-  const data = parsed.data;
 
   const initials = compact([data.firstName?.[0], data.lastName?.[0]])
     .join("")

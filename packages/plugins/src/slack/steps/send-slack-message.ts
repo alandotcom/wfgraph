@@ -4,7 +4,7 @@ import {
   withStepLogging,
 } from "@rova/core/plugin";
 import type { StepError } from "@rova/shared/workflow/step-result";
-import { z } from "zod";
+import { Schema } from "effect";
 import { callSlack, describeSlackFailure } from "#src/slack/client";
 import type { SlackCredentials } from "#src/slack/credentials";
 
@@ -20,9 +20,9 @@ export type SendSlackMessageCoreInput = {
 type SlackTestBehavior = "log_only" | "send_message";
 
 // What chat.postMessage answers with, as much of it as this step reports on.
-const postMessageSchema = z.object({
-  ts: z.string(),
-  channel: z.string(),
+const postMessageSchema = Schema.Struct({
+  ts: Schema.String,
+  channel: Schema.String,
 });
 
 export type SendSlackMessageInput = StepInput &

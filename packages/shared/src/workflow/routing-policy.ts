@@ -34,7 +34,7 @@ const readPolicy = readAs(
 
 /**
  * The same shape in Zod, for `workflow/schemas.ts`, which embeds it in the
- * trigger config objects it still describes in Zod. Delete this in batch B,
+ * trigger config objects it still describes in Zod. Delete this in batch C,
  * when that module moves to Effect Schema.
  */
 export const routingPolicyZodSchema = z.record(
