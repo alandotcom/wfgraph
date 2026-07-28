@@ -22,10 +22,11 @@ import type { NodeConfigPatch } from "./node-config-patch";
  * Writing a config change to the selected node, with everything that has to
  * settle at the same moment.
  *
- * Shared by the two places a node is configured, the sidebar panel and the
- * configuration overlay, which are near-duplicates of each other. They had
- * drifted apart here: the overlay never cleared a stale connection when the
- * action changed, and never repaired one.
+ * This is the write half of `NodeConfigPanel`, kept out of it because the rules
+ * below are worth reading on their own: which keys move together, what a
+ * Condition node needs on arrival, and when a connection id may be repaired.
+ * It was extracted when the panel was two components that had drifted, one of
+ * which never cleared a stale connection as the action changed.
  */
 export function useNodeConfigWriter() {
   const store = useStore();
@@ -96,16 +97,16 @@ export function useNodeConfigWriter() {
     [store, selectedNodeId, queryClient, updateNodeData]
   );
 
-  /** Re-read the run list. Both panels put a Refresh button above it. */
+  /** Re-read the run list, behind the Refresh button above it. */
   const refreshRuns = useCallback(
     () => refreshRunHistory(queryClient),
     [queryClient]
   );
 
   /**
-   * Clearing a workflow's run history, which both panels offer behind their own
-   * confirmation. It lives here so the two cannot answer differently: written
-   * once per panel, one of them toasted and the other finished in silence.
+   * Clearing a workflow's run history, behind the panel's confirmation. The
+   * success toast is part of it: written once per panel back when there were
+   * two, one of them toasted and the other finished in silence.
    */
   const deleteRuns = useMutation(
     orpcQuery.workflow.deleteExecutions.mutationOptions({

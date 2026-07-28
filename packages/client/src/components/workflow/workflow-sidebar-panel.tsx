@@ -1,13 +1,52 @@
 import { useAtom } from "jotai";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 import { useDomEvent } from "@/hooks/effects";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   isSidebarCollapsedAtom,
   sidebarWidthPercentAtom,
 } from "@/lib/workflow-ui-store";
-import { NodeConfigPanel } from "./node-config-panel";
+import {
+  type ConfirmRequest,
+  type NodeConfigFrame,
+  NodeConfigPanel,
+} from "./node-config-panel";
+
+/**
+ * The rail's half of the node config panel: it confirms in an AlertDialog, its
+ * tabs sit above the content, and it has no `dismiss` because the rail is
+ * always on screen.
+ */
+function NodeConfigRail() {
+  const [request, setRequest] = useState<ConfirmRequest | null>(null);
+
+  const frame = useMemo<NodeConfigFrame>(
+    () => ({ confirm: setRequest, tabs: "top" }),
+    []
+  );
+
+  return (
+    <aside className="flex size-full flex-col overflow-hidden bg-card">
+      <NodeConfigPanel frame={frame} />
+      <DeleteConfirmDialog
+        confirmLabel={request?.confirmLabel}
+        description={request?.message}
+        // No dismissal in onConfirm: the dialog's action is an AlertDialog.Close,
+        // so it is already going away by the time the handler runs.
+        onConfirm={() => request?.onConfirm()}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRequest(null);
+          }
+        }}
+        open={request !== null}
+        title={request?.title}
+      />
+    </aside>
+  );
+}
 
 export function WorkflowSidebarPanel() {
   const isMobile = useIsMobile();
@@ -113,12 +152,9 @@ export function WorkflowSidebarPanel() {
               </button>
             )}
           </div>
-          <NodeConfigPanel />
+          <NodeConfigRail />
         </div>
       )}
-
-      {/* Mobile: NodeConfigPanel renders the overlay trigger button */}
-      {isMobile && <NodeConfigPanel />}
     </>
   );
 }

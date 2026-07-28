@@ -83,9 +83,6 @@ export const rightPanelWidthAtom = atom((get) =>
   get(isSidebarCollapsedAtom) ? null : `${get(sidebarWidthPercentAtom)}%`
 );
 
-export const showClearDialogAtom = atom(false);
-export const showDeleteDialogAtom = atom(false);
-
 export const isExecutingAtom = atom(false);
 export const isGeneratingAtom = atom(false);
 

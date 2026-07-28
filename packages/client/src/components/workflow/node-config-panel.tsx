@@ -1,11 +1,19 @@
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { Eraser, Eye, EyeOff, RefreshCw, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
+import {
+  Eraser,
+  Eye,
+  EyeOff,
+  Play,
+  RefreshCw,
+  Settings2,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useDeleteWorkflow } from "@/hooks/use-delete-workflow";
 import {
+  clearWorkflowAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
   deleteSelectedItemsAtom,
@@ -26,26 +34,169 @@ import {
 import {
   isGeneratingAtom,
   propertiesPanelActiveTabAtom,
-  showClearDialogAtom,
-  showDeleteDialogAtom,
 } from "@/lib/workflow-ui-store";
 import { ActionConfig } from "./config/action-config";
-import { useNodeConfigWriter } from "./config/use-node-config-writer";
 import { ActionGrid } from "./config/action-grid";
 import { TriggerConfig } from "./config/trigger-config";
+import { useNodeConfigWriter } from "./config/use-node-config-writer";
 import { WorkflowRuns } from "./workflow-runs";
 
-export const PanelInner = () => {
+/**
+ * Configuring the selected node, edge, or the workflow itself.
+ *
+ * The editor mounts this in two places: the right rail on a wide viewport, and
+ * a sheet from the toolbar's Configuration button or from the issues overlay.
+ * They used to be two components rendering the same three screens over the same
+ * atoms, and they drifted every time one of them was fixed. Everything they can
+ * share is here; what a frame genuinely owns is `NodeConfigFrame`.
+ */
+
+/** A destructive action the user has to agree to before it happens. */
+export type ConfirmRequest = {
+  title: string;
+  message: string;
+  /** Wording on the button that goes through with it. */
+  confirmLabel: string;
+  onConfirm: () => void;
+};
+
+/** What the panel cannot decide for itself, because the frame around it owns it. */
+export type NodeConfigFrame = {
+  /** How this frame asks the user to confirm. */
+  confirm: (request: ConfirmRequest) => void;
+  /**
+   * Close the frame, once what it was configuring no longer exists. A frame
+   * that is always on screen, like the rail, leaves this unset.
+   */
+  dismiss?: () => void;
+  /**
+   * Where the tab switcher sits: above the content in a rail, at the bottom of
+   * a sheet where a thumb reaches it.
+   */
+  tabs: "top" | "bottom";
+};
+
+/**
+ * The tab to render, which is the stored one unless it is the owner-only Runs
+ * tab and the viewer is not the owner.
+ */
+function useValidActiveTab() {
+  const [activeTab, setActiveTab] = useAtom(propertiesPanelActiveTabAtom);
+  const isOwner = useAtomValue(isWorkflowOwnerAtom);
+  const validActiveTab =
+    activeTab === "runs" && isOwner ? "runs" : "properties";
+  return { validActiveTab, setActiveTab } as const;
+}
+
+/**
+ * What the panel is currently configuring, for a frame that shows a title.
+ * Derived here so the header and the tab switcher cannot disagree.
+ */
+export function useNodeConfigTitle(): string {
+  const { validActiveTab } = useValidActiveTab();
+  const selectedNodeId = useAtomValue(selectedNodeAtom);
+  const selectedEdgeId = useAtomValue(selectedEdgeAtom);
+
+  if (validActiveTab === "runs") {
+    return "Runs";
+  }
+  if (selectedNodeId) {
+    return "Properties";
+  }
+  return selectedEdgeId ? "Connection" : "Workflow";
+}
+
+type TabBarProps = {
+  placement: NodeConfigFrame["tabs"];
+  activeTab: string;
+  onSelect: (tab: string) => void;
+  /** "Workflow" when nothing on the canvas is selected, "Properties" otherwise. */
+  propertiesLabel: string;
+  showRuns: boolean;
+};
+
+function TabBar({
+  placement,
+  activeTab,
+  onSelect,
+  propertiesLabel,
+  showRuns,
+}: TabBarProps) {
+  if (placement === "bottom") {
+    return (
+      <div className="flex shrink-0 items-center justify-around border-t bg-background pb-safe">
+        <button
+          className={`flex flex-1 flex-col items-center gap-1 py-3 font-medium text-xs transition-colors ${
+            activeTab === "properties"
+              ? "text-foreground"
+              : "text-muted-foreground"
+          }`}
+          onClick={() => onSelect("properties")}
+          type="button"
+        >
+          <Settings2 className="size-5" />
+          {propertiesLabel}
+        </button>
+        {showRuns ? (
+          <button
+            className={`flex flex-1 flex-col items-center gap-1 py-3 font-medium text-xs transition-colors ${
+              activeTab === "runs" ? "text-foreground" : "text-muted-foreground"
+            }`}
+            onClick={() => onSelect("runs")}
+            type="button"
+          >
+            <Play className="size-5" />
+            Runs
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="shrink-0 border-b px-4 py-2.5">
+      <div className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-muted p-[3px] text-muted-foreground">
+        <button
+          className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 py-1 font-medium text-sm transition-[color,box-shadow] ${
+            activeTab === "properties"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground"
+          }`}
+          onClick={() => onSelect("properties")}
+          type="button"
+        >
+          {propertiesLabel}
+        </button>
+        {showRuns ? (
+          <button
+            className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 py-1 font-medium text-sm transition-[color,box-shadow] ${
+              activeTab === "runs"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground"
+            }`}
+            onClick={() => onSelect("runs")}
+            type="button"
+          >
+            Runs
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const {
     updateConfig: handleUpdateConfig,
     refreshRuns: handleRefreshRuns,
     deleteRuns,
   } = useNodeConfigWriter();
-  const [selectedNodeId] = useAtom(selectedNodeAtom);
-  const [selectedEdgeId] = useAtom(selectedEdgeAtom);
+  const { validActiveTab, setActiveTab } = useValidActiveTab();
+  const selectedNodeId = useAtomValue(selectedNodeAtom);
+  const selectedEdgeId = useAtomValue(selectedEdgeAtom);
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
-  const [isGenerating] = useAtom(isGeneratingAtom);
+  const isGenerating = useAtomValue(isGeneratingAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const currentWorkflowName = useAtomValue(currentWorkflowNameAtom);
   const renameWorkflow = useSetAtom(renameWorkflowAtom);
@@ -57,79 +208,33 @@ export const PanelInner = () => {
   const deleteNode = useSetAtom(deleteNodeAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const deleteSelectedItems = useSetAtom(deleteSelectedItemsAtom);
-  const setShowClearDialog = useSetAtom(showClearDialogAtom);
-  const setShowDeleteDialog = useSetAtom(showDeleteDialogAtom);
+  const clearWorkflow = useSetAtom(clearWorkflowAtom);
+  const deleteWorkflow = useDeleteWorkflow();
   const [newlyCreatedNodeId, setNewlyCreatedNodeId] = useAtom(
     newlyCreatedNodeIdAtom
   );
-  const [showDeleteNodeAlert, setShowDeleteNodeAlert] = useState(false);
-  const [showDeleteEdgeAlert, setShowDeleteEdgeAlert] = useState(false);
-  const [showDeleteRunsAlert, setShowDeleteRunsAlert] = useState(false);
-  const [showDeleteMultiAlert, setShowDeleteMultiAlert] = useState(false);
-  const [activeTab, setActiveTab] = useAtom(propertiesPanelActiveTabAtom);
-  const validActiveTab =
-    activeTab === "runs" && isOwner ? "runs" : "properties";
+
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
 
-  // Count multiple selections
   const selectedNodes = nodes.filter((node) => node.selected);
   const selectedEdges = edges.filter((edge) => edge.selected);
   const hasMultipleSelections = selectedNodes.length + selectedEdges.length > 1;
 
-  // Build multi-selection text
   const selectionText = (() => {
     const parts: string[] = [];
     if (selectedNodes.length > 0) {
       parts.push(
-        `${selectedNodes.length} ${selectedNodes.length === 1 ? "node" : "nodes"}`
+        `${selectedNodes.length} ${selectedNodes.length === 1 ? "step" : "steps"}`
       );
     }
     if (selectedEdges.length > 0) {
       parts.push(
-        `${selectedEdges.length} ${selectedEdges.length === 1 ? "line" : "lines"}`
+        `${selectedEdges.length} ${selectedEdges.length === 1 ? "connection" : "connections"}`
       );
     }
     return parts.join(" and ");
   })();
-
-  const handleDelete = () => {
-    if (selectedNodeId) {
-      deleteNode(selectedNodeId);
-      setShowDeleteNodeAlert(false);
-    }
-  };
-
-  const handleToggleEnabled = () => {
-    if (selectedNode) {
-      const currentEnabled = selectedNode.data.enabled ?? true;
-      updateNodeData({
-        id: selectedNode.id,
-        data: { enabled: !currentEnabled },
-      });
-    }
-  };
-
-  const handleDeleteEdge = () => {
-    if (selectedEdgeId) {
-      deleteEdge(selectedEdgeId);
-      setShowDeleteEdgeAlert(false);
-    }
-  };
-
-  const handleDeleteMulti = () => {
-    deleteSelectedItems();
-    setShowDeleteMultiAlert(false);
-  };
-
-  const handleDeleteAllRuns = () => {
-    if (!currentWorkflowId) {
-      return;
-    }
-    // No dismissal here: DeleteConfirmDialog's action is an AlertDialog.Close,
-    // so the dialog is already going away by the time this runs.
-    deleteRuns.mutate({ workflowId: currentWorkflowId });
-  };
 
   const handleUpdateLabel = (label: string) => {
     if (selectedNode) {
@@ -143,7 +248,16 @@ export const PanelInner = () => {
     }
   };
 
-  const handleUpdateWorkspaceName = async (newName: string) => {
+  const handleToggleEnabled = () => {
+    if (selectedNode) {
+      updateNodeData({
+        id: selectedNode.id,
+        data: { enabled: selectedNode.data.enabled === false },
+      });
+    }
+  };
+
+  const handleUpdateWorkflowName = async (newName: string) => {
     // Debounced inside the save queue, which also merges the rename with any
     // graph edit pending in the same window into a single request.
     const error = await renameWorkflow(newName);
@@ -152,14 +266,110 @@ export const PanelInner = () => {
     }
   };
 
-  // Show action grid for unconfigured owner action nodes
+  const confirmDeleteNode = () => {
+    if (!selectedNode) {
+      return;
+    }
+    const nodeId = selectedNode.id;
+    frame.confirm({
+      title: "Delete Step",
+      message:
+        "Are you sure you want to delete this step? This action cannot be undone.",
+      confirmLabel: "Delete",
+      onConfirm: () => {
+        deleteNode(nodeId);
+        frame.dismiss?.();
+      },
+    });
+  };
+
+  const confirmDeleteEdge = () => {
+    if (!selectedEdgeId) {
+      return;
+    }
+    frame.confirm({
+      title: "Delete Connection",
+      message:
+        "Are you sure you want to delete this connection? This action cannot be undone.",
+      confirmLabel: "Delete",
+      onConfirm: () => {
+        deleteEdge(selectedEdgeId);
+        frame.dismiss?.();
+      },
+    });
+  };
+
+  const confirmDeleteSelection = () => {
+    frame.confirm({
+      title: "Delete Selected Items",
+      message: `Are you sure you want to delete ${selectionText}? This action cannot be undone.`,
+      confirmLabel: "Delete",
+      onConfirm: () => {
+        deleteSelectedItems();
+        frame.dismiss?.();
+      },
+    });
+  };
+
+  const confirmDeleteAllRuns = () => {
+    frame.confirm({
+      title: "Delete All Runs",
+      message:
+        "Are you sure you want to delete all workflow runs? This action cannot be undone.",
+      confirmLabel: "Delete",
+      onConfirm: () => {
+        if (currentWorkflowId) {
+          deleteRuns.mutate({ workflowId: currentWorkflowId });
+        }
+      },
+    });
+  };
+
+  const confirmClearWorkflow = () => {
+    frame.confirm({
+      title: "Clear Workflow",
+      message:
+        "Remove every step and connection? The trigger is kept, and this saves right away.",
+      confirmLabel: "Clear Workflow",
+      onConfirm: () => clearWorkflow(),
+    });
+  };
+
+  const confirmDeleteWorkflow = () => {
+    frame.confirm({
+      title: "Delete Workflow",
+      message: `Are you sure you want to delete "${currentWorkflowName}"? This will permanently delete the workflow. This cannot be undone.`,
+      confirmLabel: "Delete Workflow",
+      onConfirm: () => {
+        if (!currentWorkflowId) {
+          return;
+        }
+        // The overlay stack sits above the router, so a sheet survives the
+        // hook's navigation and has to be closed by hand once the delete lands.
+        deleteWorkflow.mutate(
+          { workflowId: currentWorkflowId },
+          { onSuccess: () => frame.dismiss?.() }
+        );
+      },
+    });
+  };
+
+  // An action node with no action chosen yet gets the picker instead of a
+  // config form, and the picker is the whole screen while it is up.
   const showActionGrid =
     selectedNode?.data.type === "action" &&
     !selectedNode.data.config?.actionType &&
     isOwner;
 
+  const publicWorkflowNotice = (
+    <div className="rounded-lg border border-muted bg-muted/30 p-3">
+      <p className="text-muted-foreground text-sm">
+        You are viewing a public workflow. Duplicate it to make changes.
+      </p>
+    </div>
+  );
+
   const renderPropertiesContent = () => {
-    // Multi-selection content
     if (hasMultipleSelections) {
       return (
         <div className="space-y-4 p-4">
@@ -169,26 +379,27 @@ export const PanelInner = () => {
               {selectionText} selected
             </p>
           </div>
-          <div className="flex items-center gap-2 pt-4">
-            <Button
-              onClick={() => setShowDeleteMultiAlert(true)}
-              size="sm"
-              variant="outline"
-            >
-              <Trash2 className="mr-2 size-4 text-destructive" />
-              <span className="text-destructive">Delete</span>
-            </Button>
-          </div>
+          {isOwner ? (
+            <div className="flex items-center gap-2 pt-4">
+              <Button
+                onClick={confirmDeleteSelection}
+                size="sm"
+                variant="outline"
+              >
+                <Trash2 className="mr-2 size-4 text-destructive" />
+                <span className="text-destructive">Delete</span>
+              </Button>
+            </div>
+          ) : null}
         </div>
       );
     }
 
-    // Edge properties
-    if (selectedEdge) {
+    if (selectedEdge && !selectedNode) {
       return (
         <div className="space-y-4 p-4">
           <div className="space-y-2">
-            <Label htmlFor="edge-id">Edge ID</Label>
+            <Label htmlFor="edge-id">Connection ID</Label>
             <Input disabled id="edge-id" value={selectedEdge.id} />
           </div>
           <div className="space-y-2">
@@ -202,11 +413,7 @@ export const PanelInner = () => {
 
           {isOwner ? (
             <div className="flex items-center gap-2 pt-4">
-              <Button
-                onClick={() => setShowDeleteEdgeAlert(true)}
-                size="sm"
-                variant="outline"
-              >
+              <Button onClick={confirmDeleteEdge} size="sm" variant="outline">
                 <Trash2 className="mr-2 size-4 text-destructive" />
                 <span className="text-destructive">Delete</span>
               </Button>
@@ -216,7 +423,7 @@ export const PanelInner = () => {
       );
     }
 
-    // Workspace properties (no node selected)
+    // Workflow-level properties, which is what nothing being selected means.
     if (!selectedNode) {
       return (
         <div className="space-y-4 p-4">
@@ -226,7 +433,7 @@ export const PanelInner = () => {
               className={workflowNameError ? "border-destructive" : undefined}
               disabled={!isOwner}
               id="workflow-name"
-              onChange={(e) => handleUpdateWorkspaceName(e.target.value)}
+              onChange={(e) => handleUpdateWorkflowName(e.target.value)}
               value={currentWorkflowName}
             />
             {workflowNameError ? (
@@ -241,18 +448,12 @@ export const PanelInner = () => {
               value={currentWorkflowId || "Not saved"}
             />
           </div>
-          {isOwner ? null : (
-            <div className="rounded-lg border border-muted bg-muted/30 p-3">
-              <p className="text-muted-foreground text-sm">
-                You are viewing a public workflow. Duplicate it to make changes.
-              </p>
-            </div>
-          )}
+          {isOwner ? null : publicWorkflowNotice}
           {isOwner ? (
             <div className="flex items-center gap-2 pt-4">
               <Button
                 className="text-muted-foreground"
-                onClick={() => setShowClearDialog(true)}
+                onClick={confirmClearWorkflow}
                 size="sm"
                 variant="ghost"
               >
@@ -260,7 +461,7 @@ export const PanelInner = () => {
                 Clear
               </Button>
               <Button
-                onClick={() => setShowDeleteDialog(true)}
+                onClick={confirmDeleteWorkflow}
                 size="sm"
                 variant="outline"
               >
@@ -273,20 +474,19 @@ export const PanelInner = () => {
       );
     }
 
-    // Action grid for unconfigured action nodes
     if (showActionGrid) {
       return (
         <div className="px-4 pt-4">
           <ActionGrid
             disabled={isGenerating}
-            isNewlyCreated={selectedNode?.id === newlyCreatedNodeId}
+            isNewlyCreated={selectedNode.id === newlyCreatedNodeId}
             // A grid keyed to the node it configures starts fresh for each
             // one: the search box empties, and a node dropped moments ago gets
             // the autofocus that only fires on mount.
-            key={selectedNode?.id}
+            key={selectedNode.id}
             onSelectAction={(actionType) => {
               handleUpdateConfig({ actionType });
-              if (selectedNode?.id === newlyCreatedNodeId) {
+              if (selectedNode.id === newlyCreatedNodeId) {
                 setNewlyCreatedNodeId(null);
               }
             }}
@@ -295,7 +495,6 @@ export const PanelInner = () => {
       );
     }
 
-    // Node properties
     return (
       <div className="space-y-4 p-4">
         {selectedNode.data.type === "trigger" ? (
@@ -308,8 +507,7 @@ export const PanelInner = () => {
         ) : null}
 
         {selectedNode.data.type === "action" &&
-        !selectedNode.data.config?.actionType &&
-        !isOwner ? (
+        !selectedNode.data.config?.actionType ? (
           <div className="rounded-lg border border-muted bg-muted/30 p-3">
             <p className="text-muted-foreground text-sm">
               No action configured for this step.
@@ -365,13 +563,7 @@ export const PanelInner = () => {
           </div>
         ) : null}
 
-        {isOwner ? null : (
-          <div className="rounded-lg border border-muted bg-muted/30 p-3">
-            <p className="text-muted-foreground text-sm">
-              You are viewing a public workflow. Duplicate it to make changes.
-            </p>
-          </div>
-        )}
+        {isOwner ? null : publicWorkflowNotice}
 
         {isOwner ? (
           <div className="flex items-center gap-2 pt-4">
@@ -390,11 +582,7 @@ export const PanelInner = () => {
                 )}
               </Button>
             ) : null}
-            <Button
-              onClick={() => setShowDeleteNodeAlert(true)}
-              size="sm"
-              variant="outline"
-            >
+            <Button onClick={confirmDeleteNode} size="sm" variant="outline">
               <Trash2 className="mr-2 size-4 text-destructive" />
               <span className="text-destructive">Delete</span>
             </Button>
@@ -404,116 +592,57 @@ export const PanelInner = () => {
     );
   };
 
+  const tabBar = (
+    <TabBar
+      activeTab={validActiveTab}
+      onSelect={setActiveTab}
+      placement={frame.tabs}
+      propertiesLabel={
+        selectedNode || selectedEdge || hasMultipleSelections
+          ? "Properties"
+          : "Workflow"
+      }
+      showRuns={isOwner}
+    />
+  );
+
   return (
-    <>
-      <div className="flex size-full flex-col" data-testid="properties-panel">
-        {/* Tab bar - rendered once */}
-        <div className="shrink-0 border-b px-4 py-2.5">
-          <div className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-muted p-[3px] text-muted-foreground">
-            <button
-              className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 py-1 font-medium text-sm transition-[color,box-shadow] ${
-                validActiveTab === "properties"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground"
-              }`}
-              onClick={() => setActiveTab("properties")}
-              type="button"
+    // `flex-1` rather than a full height: both frames are flex columns, and the
+    // sheet puts a header above this.
+    <div
+      className="flex min-h-0 flex-1 flex-col"
+      data-testid="properties-panel"
+    >
+      {frame.tabs === "top" ? tabBar : null}
+
+      {validActiveTab === "properties" ? (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
+          {renderPropertiesContent()}
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2">
+            <Button onClick={handleRefreshRuns} size="sm" variant="outline">
+              <RefreshCw className="mr-2 size-4" />
+              Refresh
+            </Button>
+            <Button
+              className="text-muted-foreground"
+              onClick={confirmDeleteAllRuns}
+              size="sm"
+              variant="ghost"
             >
-              Properties
-            </button>
-            {isOwner ? (
-              <button
-                className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center rounded-sm px-2 py-1 font-medium text-sm transition-[color,box-shadow] ${
-                  validActiveTab === "runs"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground"
-                }`}
-                onClick={() => setActiveTab("runs")}
-                type="button"
-              >
-                Runs
-              </button>
-            ) : null}
+              <Eraser className="mr-2 size-4" />
+              Clear All
+            </Button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable_both-edges]">
+            <WorkflowRuns />
           </div>
         </div>
+      )}
 
-        {/* Properties tab */}
-        {validActiveTab === "properties" ? (
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
-            {renderPropertiesContent()}
-          </div>
-        ) : null}
-
-        {/* Runs tab */}
-        {isOwner && validActiveTab === "runs" ? (
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex shrink-0 items-center justify-between border-b px-4 py-2">
-              <span className="font-medium text-sm">Runs</span>
-              <div className="flex items-center gap-2">
-                <Button onClick={handleRefreshRuns} size="sm" variant="outline">
-                  <RefreshCw className="mr-2 size-4" />
-                  Refresh
-                </Button>
-              </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
-              <div className="space-y-4 p-4">
-                <WorkflowRuns />
-              </div>
-              <div className="border-t px-4 py-3">
-                <Button
-                  className="text-muted-foreground"
-                  onClick={() => setShowDeleteRunsAlert(true)}
-                  size="sm"
-                  variant="ghost"
-                >
-                  <Eraser className="mr-2 size-4" />
-                  Clear All
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      {/* Delete confirmation dialogs */}
-      <DeleteConfirmDialog
-        description="Are you sure you want to delete this node? This action cannot be undone."
-        onConfirm={handleDelete}
-        onOpenChange={setShowDeleteNodeAlert}
-        open={showDeleteNodeAlert}
-        title="Delete Step"
-      />
-
-      <DeleteConfirmDialog
-        description="Are you sure you want to delete this connection? This action cannot be undone."
-        onConfirm={handleDeleteEdge}
-        onOpenChange={setShowDeleteEdgeAlert}
-        open={showDeleteEdgeAlert}
-        title="Delete Edge"
-      />
-
-      <DeleteConfirmDialog
-        description="Are you sure you want to delete all workflow runs? This action cannot be undone."
-        onConfirm={handleDeleteAllRuns}
-        onOpenChange={setShowDeleteRunsAlert}
-        open={showDeleteRunsAlert}
-        title="Delete All Runs"
-      />
-
-      <DeleteConfirmDialog
-        description={`Are you sure you want to delete ${selectionText}? This action cannot be undone.`}
-        onConfirm={handleDeleteMulti}
-        onOpenChange={setShowDeleteMultiAlert}
-        open={showDeleteMultiAlert}
-        title="Delete Selected Items"
-      />
-    </>
+      {frame.tabs === "bottom" ? tabBar : null}
+    </div>
   );
-};
-
-export const NodeConfigPanel = () => (
-  <aside className="hidden size-full flex-col overflow-hidden bg-card md:flex">
-    <PanelInner />
-  </aside>
-);
+}
