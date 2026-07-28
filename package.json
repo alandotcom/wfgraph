@@ -4,32 +4,29 @@
   "private": true,
   "description": "Rova Workflow Builder — visual workflow automation with a node-based editor and plugin integrations",
   "license": "Apache-2.0",
-  "workspaces": [
-    "packages/*"
-  ],
   "scripts": {
     "prepare": "./scripts/prepare-effect.sh",
-    "dev": "concurrently --kill-others-on-fail --names app,inngest --prefix-colors blue,magenta \"bun run dev:app\" \"bun run dev:inngest\"",
-    "example:library-trigger": "sh -c 'export INNGEST_BASE_URL=${INNGEST_BASE_URL:-http://localhost:8389} APP_PORT=${PORT:-4018}; bun run build && concurrently --kill-others-on-fail --names app,inngest --prefix-colors blue,magenta \"PORT=$APP_PORT INNGEST_BASE_URL=$INNGEST_BASE_URL bun run examples/library-trigger.ts\" \"if [ -x ./node_modules/.bin/inngest ]; then until curl -sSf http://localhost:$APP_PORT/api/inngest >/dev/null 2>/dev/null; do sleep 1; done; cd examples && DO_NOT_TRACK=1 ../node_modules/.bin/inngest dev --no-discovery -u http://localhost:$APP_PORT/api/inngest -p 8389 --connect-gateway-port 8391 --connect-gateway-grpc-port 50064 --connect-executor-grpc-port 50065 --persist; else echo \\\"[inngest] inngest-cli is not installed; skipping local Inngest dev server\\\"; fi\"'",
+    "dev": "concurrently --kill-others-on-fail --names app,inngest --prefix-colors blue,magenta \"pnpm run dev:app\" \"pnpm run dev:inngest\"",
+    "example:library-trigger": "sh -c 'export INNGEST_BASE_URL=${INNGEST_BASE_URL:-http://localhost:8389} APP_PORT=${PORT:-4018}; pnpm run build && concurrently --kill-others-on-fail --names app,inngest --prefix-colors blue,magenta \"PORT=$APP_PORT INNGEST_BASE_URL=$INNGEST_BASE_URL bun examples/library-trigger.ts\" \"if [ -x ./node_modules/.bin/inngest ]; then until curl -sSf http://localhost:$APP_PORT/api/inngest >/dev/null 2>/dev/null; do sleep 1; done; cd examples && DO_NOT_TRACK=1 ../node_modules/.bin/inngest dev --no-discovery -u http://localhost:$APP_PORT/api/inngest -p 8389 --connect-gateway-port 8391 --connect-gateway-grpc-port 50064 --connect-executor-grpc-port 50065 --persist; else echo \\\"[inngest] inngest-cli is not installed; skipping local Inngest dev server\\\"; fi\"'",
     "dev:app": "NODE_ENV=development INNGEST_DEV=http://localhost:8388 bun --hot server.ts",
     "dev:inngest": "sh -c 'if [ -x ./node_modules/.bin/inngest ]; then until curl -sSf http://localhost:4017/api/inngest >/dev/null 2>/dev/null; do sleep 1; done; DO_NOT_TRACK=1 ./node_modules/.bin/inngest dev --no-discovery -u http://localhost:4017/api/inngest -p 8388 --connect-gateway-port 8390 --connect-gateway-grpc-port 50062 --connect-executor-grpc-port 50063 --persist; else echo \"[inngest] inngest-cli is not installed; skipping local Inngest dev server\"; fi'",
-    "build": "bun run build:lib && bun run build:plugins && bun run build:client",
-    "build:client": "CLIENT_DIST_DIR=packages/client/dist/client NODE_ENV=production bun run scripts/build-client.ts",
+    "build": "pnpm run build:lib && pnpm run build:plugins && pnpm run build:client",
+    "build:client": "CLIENT_DIST_DIR=packages/client/dist/client NODE_ENV=production bun scripts/build-client.ts",
     "build:lib": "cd packages/core && tsdown && cd ../client && tsdown",
-    "compile": "NODE_ENV=production bun run scripts/compile.ts",
+    "compile": "NODE_ENV=production bun scripts/compile.ts",
     "start": "NODE_ENV=production ./dist/server",
     "test": "vitest run",
     "test:watch": "vitest",
-    "type-check": "bun run tsc --noEmit",
-    "typecheck": "bun run tsc --noEmit",
+    "type-check": "pnpm exec tsc --noEmit",
+    "typecheck": "pnpm exec tsc --noEmit",
     "lint": "oxlint --type-aware .",
-    "knip": "knip-bun",
+    "knip": "knip",
     "check": "oxfmt --check .",
     "fix": "oxfmt .",
-    "db:generate": "bun --bun drizzle-kit generate --config packages/core/drizzle.config.ts",
-    "db:migrate": "bun --bun drizzle-kit migrate --config packages/core/drizzle.config.ts",
-    "db:push": "bun -bun drizzle-kit push --config packages/core/drizzle.config.ts",
-    "db:studio": "bun --bun drizzle-kit studio --config packages/core/drizzle.config.ts",
+    "db:generate": "pnpm exec drizzle-kit generate --config packages/core/drizzle.config.ts",
+    "db:migrate": "pnpm exec drizzle-kit migrate --config packages/core/drizzle.config.ts",
+    "db:push": "pnpm exec drizzle-kit push --config packages/core/drizzle.config.ts",
+    "db:studio": "pnpm exec drizzle-kit studio --config packages/core/drizzle.config.ts",
     "build:plugins": "cd packages/plugins && tsdown"
   },
   "dependencies": {
@@ -73,28 +70,5 @@
   "optionalDependencies": {
     "inngest-cli": "^1.38.1"
   },
-  "overrides": {
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
-  },
-  "packageManager": "bun@1.3.9",
-  "catalog": {
-    "@marcbachmann/cel-js": "^7.5.1",
-    "@orpc/contract": "^1.13.5",
-    "@standard-schema/spec": "^1.1.0",
-    "@testing-library/react": "^16.3.2",
-    "@types/react": "^19.2.14",
-    "@xyflow/react": "^12.10.0",
-    "es-toolkit": "^1.44.0",
-    "graphology": "^0.26.0",
-    "nanoid": "^5.1.6",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "zod": "^4.3.6"
-  },
-  "trustedDependencies": [
-    "bun",
-    "inngest-cli",
-    "protobufjs"
-  ]
+  "packageManager": "pnpm@11.17.0"
 }

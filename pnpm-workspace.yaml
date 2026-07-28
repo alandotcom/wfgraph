@@ -1,0 +1,54 @@
+# pnpm reads every setting from this file. Only auth and registry settings come
+# from .npmrc, and the "pnpm" field in package.json is not consulted at all, so
+# workspace globs, the catalog, dependency overrides and build-script approval
+# all live here.
+
+packages:
+  - "packages/*"
+
+# One version per shared dependency, referenced from a package's own manifest as
+# `"zod": "catalog:"`. pnpm rewrites those specifiers to the real range during
+# `pnpm pack` and `pnpm publish`, the same way it rewrites `workspace:*`, so a
+# published package carries ordinary semver.
+catalog:
+  "@marcbachmann/cel-js": ^7.5.1
+  "@orpc/contract": ^1.13.5
+  "@standard-schema/spec": ^1.1.0
+  "@testing-library/react": ^16.3.2
+  "@types/react": ^19.2.14
+  "@xyflow/react": ^12.10.0
+  es-toolkit: ^1.44.0
+  graphology: ^0.26.0
+  nanoid: ^5.1.6
+  react: 19.2.4
+  react-dom: 19.2.4
+  zod: ^4.3.6
+
+# Pins one React copy through the whole graph, including transitive peers.
+overrides:
+  react: 19.2.4
+  react-dom: 19.2.4
+
+# pnpm refuses to run a dependency's install scripts until the dependency is
+# named here, so a package that gains a postinstall arrives as a warning rather
+# than as executed code. Every package with an install script has to appear,
+# true or false, or the install ends with ERR_PNPM_IGNORED_BUILDS.
+#
+# inngest-cli downloads its platform binary and protobufjs generates its typed
+# accessors, so both need their scripts. The npm `bun` package satisfies
+# bun-plugin-tailwind's `bun` peer dependency, and pnpm puts it inside that
+# plugin's own node_modules, so the plugin's `bun` import lands on the package
+# rather than on the runtime's builtin module. Its postinstall is what fetches
+# the real binary the package stands in for, and without it build:client dies
+# on "Bun's postinstall script was not run". Stage 1c retires the plugin along
+# with the bun client build, and this entry goes with it.
+#
+# esbuild and @clerk/shared ship their platform binaries as optional
+# dependencies, so their scripts only re-check work the resolver already did.
+# Bun's trustedDependencies withheld those two as well.
+allowBuilds:
+  "@clerk/shared": false
+  bun: true
+  esbuild: false
+  inngest-cli: true
+  protobufjs: true

@@ -1,6 +1,6 @@
 # Agent Instructions
 
-Rova Workflow Builder: a Bun workspace monorepo with four packages under `packages/`.
+Rova Workflow Builder: a pnpm workspace monorepo with four packages under `packages/`.
 
 - `@rova/shared` (`packages/shared`) runtime-agnostic types, workflow contracts, utilities
 - `@rova/core` (`packages/core`) library entrypoints and the backend
@@ -12,34 +12,46 @@ Read the code for structure. What follows is what the code cannot tell you.
 
 ## Package management
 
-Bun only. `bun add <pkg>`, `bun run <script>`. Never npm or yarn.
+pnpm only, at the version the root `packageManager` field names. `pnpm add <pkg>`,
+`pnpm run <script>`. Never npm, yarn, or `bun install`. The bun binary is still a
+runtime here, for `dev:app`, `build:client` and `compile`, and the migration off it
+is staged.
 
-**Isolated linking is on** (`bunfig.toml` sets `linker = "isolated"`). A package may
-only import what its own `package.json` declares, so the dependency belongs on the
-package that imports it.
+**Isolated `node_modules` is pnpm's default.** Each workspace package gets a
+`node_modules` holding only what its own `package.json` declares, so an npm specifier
+for something undeclared fails to resolve. The dependency belongs on the package that
+imports it. `bunfig.toml` still carries `linker = "isolated"`, which was how the same
+guarantee was reached under Bun; it describes an install path nothing takes now.
 
 **`@/` means this package's own `src`, never another's.** An alias resolves to a
-file, so the linker cannot see it and an undeclared cross-package dependency
-stays invisible. Import a sibling by name: `@rova/shared/types/json`,
+file, so the resolver never reads a manifest for it and an undeclared cross-package
+dependency stays invisible. Import a sibling by name: `@rova/shared/types/json`,
 `@rova/core/plugin`. Lint rejects the alias forms.
 
-**Shared versions live in a Bun catalog** in the root `package.json`. When a dependency
+**Every pnpm setting lives in `pnpm-workspace.yaml`.** pnpm reads no `pnpm` field
+from `package.json` and reads only auth and registry settings from `.npmrc`, so the
+workspace globs, the catalog, `overrides` and `allowBuilds` are all in that one file.
+`allowBuilds` lists each dependency that ships an install script with a true or false
+verdict; a dependency that gains a script and is missing from the list ends the install
+with `ERR_PNPM_IGNORED_BUILDS`.
+
+**Shared versions live in the pnpm catalog** in `pnpm-workspace.yaml`. When a dependency
 is used by two or more packages, put the version there and reference it as `"catalog:"`.
-`bun publish` and `bun pm pack` rewrite those to real semver, so a published package is
+`pnpm publish` and `pnpm pack` rewrite those to real semver, so a published package is
 unaffected.
 
 ## Required checks before finishing
 
 ```bash
-bun run type-check   # tsc --noEmit, TypeScript 7
-bun run lint         # oxlint --type-aware, prints nothing when clean
-bun run test         # vitest, one project per environment
-bun run build        # library via tsdown, then the client
-bun run knip         # unused files, exports, dependencies
-bun run fix          # oxfmt, must leave the tree clean
+pnpm run type-check   # tsc --noEmit, TypeScript 7
+pnpm run lint         # oxlint --type-aware, prints nothing when clean
+pnpm run test         # vitest, one project per environment
+pnpm run build        # library via tsdown, then the client
+pnpm run knip         # unused files, exports, dependencies
+pnpm run fix          # oxfmt, must leave the tree clean
 ```
 
-Do not leave the repo with a failing check. `bun run lint` printing nothing means it
+Do not leave the repo with a failing check. `pnpm run lint` printing nothing means it
 passed; oxlint has no summary line on success.
 
 ## Conventions that differ from the defaults
@@ -125,7 +137,7 @@ and there is no published server wrapper: `createRovaApp` returns a fetch handle
 `Bun.serve` and `Deno.serve` take directly and `@rova/core/node` translates for Express and
 Fastify. The two `Bun.serve` calls in the tree, at `server.ts` and in
 `examples/library-trigger.ts`, both sit outside `packages/core`. Verify a packaging change
-with `bun pm pack` and read the extracted manifest.
+with `pnpm pack` and read the extracted manifest.
 
 ## Code cleanliness
 
@@ -143,7 +155,7 @@ with `bun pm pack` and read the extracted manifest.
 ## Database
 
 Schema is `packages/core/src/backend/lib/db/schema.ts`. Generate migrations with
-`bun run db:generate` and apply them with `bun run db:push`. Do not hand-write migration
+`pnpm run db:generate` and apply them with `pnpm run db:push`. Do not hand-write migration
 SQL in `packages/core/drizzle/`.
 
 ## API client

@@ -10,7 +10,7 @@ export default {
   schemaFilter: ["_workflows"],
   dbCredentials: {
     url:
-      Bun.env.DATABASE_URL ||
+      process.env.DATABASE_URL ||
       "postgresql://workflow:workflow@localhost:55437/workflow_builder",
   },
 } satisfies Config;

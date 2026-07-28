@@ -2,8 +2,7 @@ import type { KnipConfig } from "knip";
 
 /**
  * knip finds files, exports and dependencies that nothing reaches. Run it with
- * `bun run knip`, which uses the knip-bun binary so config files that touch
- * `Bun.env` (packages/core/drizzle.config.ts) can be loaded.
+ * `pnpm run knip`.
  *
  * Two things shape this config, and both come from how the repo is built:
  *
