@@ -10,13 +10,13 @@ import {
   postApiKeys,
 } from "#src/backend/services/api-keys/api-keys";
 import {
-  deleteIntegrationResult,
-  getIntegrationResult,
-  getIntegrationsResult,
-  postIntegrationsResult,
-  postIntegrationsTestResult,
-  postIntegrationTestResult,
-  putIntegrationResult,
+  deleteIntegration,
+  getIntegration,
+  getIntegrations,
+  postIntegrations,
+  postIntegrationsTest,
+  postIntegrationTest,
+  putIntegration,
 } from "#src/backend/services/integrations/integrations";
 import { postWorkflowExecuteResult } from "#src/backend/services/workflow/workflow-execute";
 import { postExecutionCancelResult } from "#src/backend/services/workflows/execution-cancel";
@@ -156,14 +156,14 @@ export const rpcRouter = rpc.router({
   },
   integration: {
     getAll: rpc.integration.getAll.handler(
-      rpcHandler(({ input }) => getIntegrationsResult(input.type))
+      rpcEffectHandler(({ input }) => getIntegrations(input.type))
     ),
     get: rpc.integration.get.handler(
-      rpcHandler(({ input }) => getIntegrationResult(input.integrationId))
+      rpcEffectHandler(({ input }) => getIntegration(input.integrationId))
     ),
     create: rpc.integration.create.handler(
-      rpcHandler(({ input }) =>
-        postIntegrationsResult({
+      rpcEffectHandler(({ input }) =>
+        postIntegrations({
           name: input.name,
           type: input.type,
           config: input.config,
@@ -171,22 +171,22 @@ export const rpcRouter = rpc.router({
       )
     ),
     update: rpc.integration.update.handler(
-      rpcHandler(({ input }) =>
-        putIntegrationResult(input.integrationId, {
+      rpcEffectHandler(({ input }) =>
+        putIntegration(input.integrationId, {
           name: input.name,
           config: input.config,
         })
       )
     ),
     delete: rpc.integration.delete.handler(
-      rpcHandler(({ input }) => deleteIntegrationResult(input.integrationId))
+      rpcEffectHandler(({ input }) => deleteIntegration(input.integrationId))
     ),
     testConnection: rpc.integration.testConnection.handler(
-      rpcHandler(({ input }) => postIntegrationTestResult(input.integrationId))
+      rpcEffectHandler(({ input }) => postIntegrationTest(input.integrationId))
     ),
     testCredentials: rpc.integration.testCredentials.handler(
-      rpcHandler(({ input }) =>
-        postIntegrationsTestResult({
+      rpcEffectHandler(({ input }) =>
+        postIntegrationsTest({
           type: input.type,
           config: input.config,
         })

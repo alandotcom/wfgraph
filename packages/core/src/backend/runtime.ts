@@ -15,6 +15,10 @@ import {
   ApiKeyRepo,
   ApiKeyRepoLayer,
 } from "#src/backend/services/api-keys/repo";
+import {
+  IntegrationRepo,
+  IntegrationRepoLayer,
+} from "#src/backend/services/integrations/repo";
 
 /**
  * Everything a migrated service may ask for.
@@ -25,18 +29,22 @@ import {
  * which no longer matches the `R` this runtime satisfies, and the call to
  * `runToServiceResult` stops compiling.
  */
-export type RovaServices = AppLogger | ApiKeyRepo;
+export type RovaServices = AppLogger | ApiKeyRepo | IntegrationRepo;
 
-// Each domain's repository is composed against the database here and the
-// results are merged, so the graph reads as a list of subsystems rather than one
-// nested expression. `DatabaseLayer` is named rather than rebuilt per domain:
-// Layers are memoized by reference, so one value used in every position means
-// one database service, however many domains provide it to.
+// A repository that writes its own Drizzle is composed against the database
+// here, so the graph reads as a list of subsystems rather than one nested
+// expression. `DatabaseLayer` is named rather than rebuilt per domain: Layers
+// are memoized by reference, so one value used in every position means one
+// database service, however many domains provide it to. The integration
+// repository delegates to `backend/lib/db/integrations`, which holds its own
+// handle, so it stands on its own until stage 3b's finale moves that module onto
+// this Layer.
 const ApiKeysLayer = Layer.provide(ApiKeyRepoLayer, DatabaseLayer);
 
 const RovaLayer: Layer.Layer<RovaServices> = Layer.mergeAll(
   AppLoggerLayer,
-  ApiKeysLayer
+  ApiKeysLayer,
+  IntegrationRepoLayer
 );
 
 /**

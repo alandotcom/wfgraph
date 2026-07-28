@@ -58,6 +58,26 @@ export const DatabaseLayer: Layer.Layer<Database> = Layer.succeed(Database, {
 });
 
 /**
+ * Run a call into one of the `backend/lib/db/*` modules and give it the same
+ * typed error channel a query gets.
+ *
+ * Those modules hold their own handle, so a repository that delegates to one
+ * needs the `DatabaseError` mapping without needing the `Database` service. A
+ * repository that writes its own Drizzle takes `Database` instead.
+ *
+ * This goes away with `getDb`, at the end of stage 3b: once those modules run
+ * their queries on the handle the Layer owns, their repositories go back to
+ * `database.query`.
+ */
+export const callDbModule = <A>(
+  run: () => Promise<A>
+): Effect.Effect<A, DatabaseError> =>
+  Effect.tryPromise({
+    try: run,
+    catch: (cause) => new DatabaseError({ cause }),
+  });
+
+/**
  * The answer a service gives when its query failed: the underlying error in the
  * log for whoever operates this, and `message` for whoever called it.
  *

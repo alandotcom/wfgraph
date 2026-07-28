@@ -40,6 +40,17 @@ export function registerIntegrationTest(
   integrationTestLoaders.set(type, loader);
 }
 
+/**
+ * Drop a registered test again.
+ *
+ * This map is process-wide, so a test that registers one has to put it back or
+ * every later test file in the run sees it, the way `unregisterIntegration` does
+ * for the plugin registry.
+ */
+export function unregisterIntegrationTest(type: IntegrationType): void {
+  integrationTestLoaders.delete(type);
+}
+
 export async function getIntegrationTestFunction(
   type: IntegrationType
 ): Promise<IntegrationTestFunction | null> {
