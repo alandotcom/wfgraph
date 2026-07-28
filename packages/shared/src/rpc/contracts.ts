@@ -1,8 +1,22 @@
 import { oc } from "@orpc/contract";
+import { openapi } from "@orpc/openapi";
 import { z } from "zod";
 import { jsonObjectSchema } from "@/types/json";
 import { WORKFLOW_EXECUTION_IGNORED_REASONS } from "@/workflow/execution-contracts";
 import { serializedWorkflowGraphSchema } from "@/workflow/schemas";
+
+/**
+ * Declares a procedure's REST shape. Routing metadata moved off the contract
+ * builder in oRPC 2, and this helper is the single line coupling the contracts
+ * to @orpc/openapi; when ADR-0002 stage 4 changes the construction again, the
+ * edit lands here instead of at every procedure.
+ */
+function route(
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+  path: `/${string}`
+) {
+  return oc.meta(openapi({ method, path }));
+}
 
 const idSchema = z.string().trim().min(1);
 
@@ -233,20 +247,17 @@ const workflowBulkLifecycleResultSchema = z.object({
 
 export const rpcContract = {
   apiKey: {
-    getAll: oc
-      .route({ method: "GET", path: "/api-keys" })
+    getAll: route("GET", "/api-keys")
       .input(z.object({}))
       .output(z.array(apiKeySchema)),
-    create: oc
-      .route({ method: "POST", path: "/api-keys" })
+    create: route("POST", "/api-keys")
       .input(
         z.object({
           name: z.string().nullable().optional(),
         })
       )
       .output(apiKeyCreatedSchema),
-    delete: oc
-      .route({ method: "DELETE", path: "/api-keys/{keyId}" })
+    delete: route("DELETE", "/api-keys/{keyId}")
       .input(
         z.object({
           keyId: idSchema,
@@ -255,24 +266,21 @@ export const rpcContract = {
       .output(z.object({ success: z.literal(true) })),
   },
   integration: {
-    getAll: oc
-      .route({ method: "GET", path: "/integrations" })
+    getAll: route("GET", "/integrations")
       .input(
         z.object({
           type: integrationTypeSchema.optional(),
         })
       )
       .output(z.array(integrationSchema)),
-    get: oc
-      .route({ method: "GET", path: "/integrations/{integrationId}" })
+    get: route("GET", "/integrations/{integrationId}")
       .input(
         z.object({
           integrationId: idSchema,
         })
       )
       .output(integrationWithConfigSchema),
-    create: oc
-      .route({ method: "POST", path: "/integrations" })
+    create: route("POST", "/integrations")
       .input(
         z.object({
           name: z.string(),
@@ -281,8 +289,7 @@ export const rpcContract = {
         })
       )
       .output(integrationSchema),
-    update: oc
-      .route({ method: "PUT", path: "/integrations/{integrationId}" })
+    update: route("PUT", "/integrations/{integrationId}")
       .input(
         z.object({
           integrationId: idSchema,
@@ -292,7 +299,9 @@ export const rpcContract = {
       )
       .output(integrationWithConfigSchema),
     delete: oc
-      .route({ method: "DELETE", path: "/integrations/{integrationId}" })
+      .meta(
+        openapi({ method: "DELETE", path: "/integrations/{integrationId}" })
+      )
       .input(
         z.object({
           integrationId: idSchema,
@@ -300,15 +309,16 @@ export const rpcContract = {
       )
       .output(z.object({ success: z.literal(true) })),
     testConnection: oc
-      .route({ method: "POST", path: "/integrations/{integrationId}/test" })
+      .meta(
+        openapi({ method: "POST", path: "/integrations/{integrationId}/test" })
+      )
       .input(
         z.object({
           integrationId: idSchema,
         })
       )
       .output(integrationTestResultSchema),
-    testCredentials: oc
-      .route({ method: "POST", path: "/integrations/test" })
+    testCredentials: route("POST", "/integrations/test")
       .input(
         z.object({
           type: integrationTypeSchema,
@@ -318,20 +328,17 @@ export const rpcContract = {
       .output(integrationTestResultSchema),
   },
   workflow: {
-    getAll: oc
-      .route({ method: "GET", path: "/workflows" })
+    getAll: route("GET", "/workflows")
       .input(z.object({}))
       .output(z.array(workflowApiPayloadSchema)),
-    getById: oc
-      .route({ method: "GET", path: "/workflows/{workflowId}" })
+    getById: route("GET", "/workflows/{workflowId}")
       .input(
         z.object({
           workflowId: idSchema,
         })
       )
       .output(workflowApiPayloadSchema),
-    create: oc
-      .route({ method: "POST", path: "/workflows/create" })
+    create: route("POST", "/workflows/create")
       .input(
         z.object({
           name: z.string(),
@@ -340,8 +347,7 @@ export const rpcContract = {
         })
       )
       .output(workflowApiPayloadSchema),
-    update: oc
-      .route({ method: "PATCH", path: "/workflows/{workflowId}" })
+    update: route("PATCH", "/workflows/{workflowId}")
       .input(
         z.object({
           workflowId: idSchema,
@@ -352,8 +358,7 @@ export const rpcContract = {
         })
       )
       .output(workflowApiPayloadSchema),
-    delete: oc
-      .route({ method: "DELETE", path: "/workflows/{workflowId}" })
+    delete: route("DELETE", "/workflows/{workflowId}")
       .input(
         z.object({
           workflowId: idSchema,
@@ -361,27 +366,26 @@ export const rpcContract = {
       )
       .output(z.object({ success: z.literal(true) })),
     duplicate: oc
-      .route({ method: "POST", path: "/workflows/{workflowId}/duplicate" })
+      .meta(
+        openapi({ method: "POST", path: "/workflows/{workflowId}/duplicate" })
+      )
       .input(
         z.object({
           workflowId: idSchema,
         })
       )
       .output(workflowApiPayloadSchema),
-    getCurrent: oc
-      .route({ method: "GET", path: "/workflows/current" })
+    getCurrent: route("GET", "/workflows/current")
       .input(z.object({}))
       .output(workflowApiPayloadSchema),
-    saveCurrent: oc
-      .route({ method: "POST", path: "/workflows/current" })
+    saveCurrent: route("POST", "/workflows/current")
       .input(
         z.object({
           graph: serializedWorkflowGraphSchema,
         })
       )
       .output(workflowApiPayloadSchema),
-    execute: oc
-      .route({ method: "POST", path: "/workflow/{workflowId}/execute" })
+    execute: route("POST", "/workflow/{workflowId}/execute")
       .input(
         z.object({
           workflowId: idSchema,
@@ -394,7 +398,9 @@ export const rpcContract = {
       )
       .output(workflowExecuteResponseSchema),
     triggerWebhook: oc
-      .route({ method: "POST", path: "/workflows/{workflowId}/webhook" })
+      .meta(
+        openapi({ method: "POST", path: "/workflows/{workflowId}/webhook" })
+      )
       .input(
         z.object({
           workflowId: idSchema,
@@ -403,15 +409,16 @@ export const rpcContract = {
       )
       .output(workflowWebhookResponseSchema),
     getExecutions: oc
-      .route({ method: "GET", path: "/workflows/{workflowId}/executions" })
+      .meta(
+        openapi({ method: "GET", path: "/workflows/{workflowId}/executions" })
+      )
       .input(
         z.object({
           workflowId: idSchema,
         })
       )
       .output(z.array(workflowExecutionSchema)),
-    getExecutionsGlobal: oc
-      .route({ method: "GET", path: "/workflows/executions" })
+    getExecutionsGlobal: route("GET", "/workflows/executions")
       .input(
         z.object({
           workflowIds: z.array(idSchema).optional(),
@@ -426,8 +433,7 @@ export const rpcContract = {
           nextCursor: workflowGlobalExecutionsCursorSchema.nullable(),
         })
       ),
-    bulkLifecycle: oc
-      .route({ method: "POST", path: "/workflows/bulk-lifecycle" })
+    bulkLifecycle: route("POST", "/workflows/bulk-lifecycle")
       .input(
         z.object({
           workflowIds: z.array(idSchema).min(1),
@@ -436,7 +442,12 @@ export const rpcContract = {
       )
       .output(workflowBulkLifecycleResultSchema),
     deleteExecutions: oc
-      .route({ method: "DELETE", path: "/workflows/{workflowId}/executions" })
+      .meta(
+        openapi({
+          method: "DELETE",
+          path: "/workflows/{workflowId}/executions",
+        })
+      )
       .input(
         z.object({
           workflowId: idSchema,
@@ -449,10 +460,12 @@ export const rpcContract = {
         })
       ),
     getExecutionLogs: oc
-      .route({
-        method: "GET",
-        path: "/workflows/executions/{executionId}/logs",
-      })
+      .meta(
+        openapi({
+          method: "GET",
+          path: "/workflows/executions/{executionId}/logs",
+        })
+      )
       .input(
         z.object({
           executionId: idSchema,
@@ -465,10 +478,12 @@ export const rpcContract = {
         })
       ),
     getExecutionEvents: oc
-      .route({
-        method: "GET",
-        path: "/workflows/executions/{executionId}/events",
-      })
+      .meta(
+        openapi({
+          method: "GET",
+          path: "/workflows/executions/{executionId}/events",
+        })
+      )
       .input(
         z.object({
           executionId: idSchema,
@@ -480,10 +495,12 @@ export const rpcContract = {
         })
       ),
     cancelExecution: oc
-      .route({
-        method: "POST",
-        path: "/workflows/executions/{executionId}/cancel",
-      })
+      .meta(
+        openapi({
+          method: "POST",
+          path: "/workflows/executions/{executionId}/cancel",
+        })
+      )
       .input(
         z.object({
           executionId: idSchema,
@@ -497,10 +514,12 @@ export const rpcContract = {
         })
       ),
     getExecutionStatus: oc
-      .route({
-        method: "GET",
-        path: "/workflows/executions/{executionId}/status",
-      })
+      .meta(
+        openapi({
+          method: "GET",
+          path: "/workflows/executions/{executionId}/status",
+        })
+      )
       .input(
         z.object({
           executionId: idSchema,

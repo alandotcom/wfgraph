@@ -1,10 +1,20 @@
+import { OpenAPIGenerator } from "@orpc/openapi";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
-import { OpenAPIReferencePlugin } from "@orpc/openapi/plugins";
-import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
+import { OpenAPIReferenceHandlerPlugin } from "@orpc/openapi/plugins";
+import { ZodToJsonSchemaConverter } from "@orpc/zod";
 import type { RpcContext } from "./context";
 import { rpcRouter } from "./router";
 
 export const openApiRestHandler = new OpenAPIHandler<RpcContext>(rpcRouter);
+
+/**
+ * Turns the contract's Zod schemas into the JSON Schemas the document needs. The
+ * generator holds no request state, so one instance serves every handler built
+ * below.
+ */
+const openApiGenerator = new OpenAPIGenerator({
+  converters: [new ZodToJsonSchemaConverter()],
+});
 
 /**
  * Build the handler behind `/openapi.json` and `/docs`.
@@ -18,22 +28,29 @@ export const openApiRestHandler = new OpenAPIHandler<RpcContext>(rpcRouter);
 export function createOpenApiReferenceHandler(
   restBasePath: `/${string}`
 ): OpenAPIHandler<RpcContext> {
+  // The reference plugin re-evaluates `spec` on every /openapi.json and /docs
+  // request, so a thunk here would re-run the full Zod-to-JSON-Schema
+  // conversion per hit. Generating once and handing the plugin the pending
+  // document keeps the v1 plugin's once-per-handler cost.
+  const document = openApiGenerator.generate(rpcRouter, {
+    base: {
+      info: {
+        title: "Workflow API",
+        version: "0.1.0",
+        description: "OpenAPI specification generated from oRPC contracts.",
+      },
+      servers: [{ url: restBasePath }],
+    },
+  });
+
   return new OpenAPIHandler<RpcContext>(rpcRouter, {
     plugins: [
-      new OpenAPIReferencePlugin<RpcContext>({
-        schemaConverters: [new ZodToJsonSchemaConverter()],
+      new OpenAPIReferenceHandlerPlugin<RpcContext, "scalar">({
+        spec: document,
         specPath: "/openapi.json",
         docsPath: "/docs",
-        docsProvider: "scalar",
+        provider: "scalar",
         docsTitle: "Workflow API Docs",
-        specGenerateOptions: {
-          info: {
-            title: "Workflow API",
-            version: "0.1.0",
-            description: "OpenAPI specification generated from oRPC contracts.",
-          },
-          servers: [{ url: restBasePath }],
-        },
       }),
     ],
   });

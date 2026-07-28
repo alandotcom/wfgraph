@@ -87,11 +87,14 @@ const config: KnipConfig = {
       project: ["src/**/*.{ts,tsx}"],
 
       ignoreDependencies: [
-        // packages/core/dist/index.js imports graphology, and the emitted .d.ts
-        // files import @standard-schema/spec. Both arrive through the
-        // @rova/shared source that tsdown inlines into the bundle, so the
-        // published package needs them declared here.
+        // packages/core/dist/index.js imports graphology, packages/core/dist/app.js
+        // imports @orpc/contract, and the emitted .d.ts files import
+        // @standard-schema/spec. All three arrive through the @rova/shared source
+        // that tsdown inlines into the bundle — the RPC contracts are built with
+        // `oc` from @orpc/contract — so the published package needs them declared
+        // here even though no file under packages/core/src names them.
         "graphology",
+        "@orpc/contract",
         "@standard-schema/spec",
       ],
     },

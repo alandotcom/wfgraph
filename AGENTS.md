@@ -37,7 +37,9 @@ with `ERR_PNPM_IGNORED_BUILDS`.
 **Shared versions live in the pnpm catalog** in `pnpm-workspace.yaml`. When a dependency
 is used by two or more packages, put the version there and reference it as `"catalog:"`.
 `pnpm publish` and `pnpm pack` rewrite those to real semver, so a published package is
-unaffected.
+unaffected. A family of packages that must hold one version goes in whole even where
+only one workspace package imports a member; the `@orpc/*` block is the case, and it
+carries a comment saying so.
 
 ## Required checks before finishing
 
@@ -203,8 +205,16 @@ whatever is cached without consulting staleness or invalidation, so a read that 
 reflect a write you just made is correct only while something happens to be observing
 that entry.
 
-`@orpc/tanstack-query` pins its `@orpc/client` peer to an exact version, so all six
-`@orpc/*` packages move together.
+**All six `@orpc/*` packages move together, at one exact 2.x beta.** Nothing at
+install time enforces this: the 2.x packages cross-reference each other as plain
+exact-version dependencies with no peer ranges, so a mismatched pair installs fine
+and each brings its own nested copy. The failure is silent and lands at runtime,
+because two copies mean two `ORPCError` constructors and the client's
+`instanceof ORPCError` check quietly stops matching. The catalog in
+`pnpm-workspace.yaml` holds all six, including those a single workspace package
+imports, so one entry is the only place a version can change. Bumping the line is
+deliberate work: read the release notes first, and re-run the OpenAPI document
+against the previous one, since the Zod-to-JSON-Schema output moves between betas.
 
 **A write says what it invalidates; the call site does not.** `packages/client/src/lib/rpc-query.ts`
 holds `refreshWorkflowList`, `refreshRunHistory`, and `refreshIntegrations`, and they are

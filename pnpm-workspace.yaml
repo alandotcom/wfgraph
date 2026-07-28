@@ -10,9 +10,19 @@ packages:
 # `"zod": "catalog:"`. pnpm rewrites those specifiers to the real range during
 # `pnpm pack` and `pnpm publish`, the same way it rewrites `workspace:*`, so a
 # published package carries ordinary semver.
+# The six @orpc packages are pinned to one exact 2.x beta and all listed here,
+# including the ones only a single workspace package imports. They cross-depend on
+# each other at exact versions, so a mismatched pair does not resolve; keeping the
+# version in one place is what makes "they move together" a fact rather than a rule
+# someone has to remember. A beta line also moves under you, hence the exact pin.
 catalog:
   "@marcbachmann/cel-js": ^7.5.1
-  "@orpc/contract": ^1.13.5
+  "@orpc/client": 2.0.0-beta.21
+  "@orpc/contract": 2.0.0-beta.21
+  "@orpc/openapi": 2.0.0-beta.21
+  "@orpc/server": 2.0.0-beta.21
+  "@orpc/tanstack-query": 2.0.0-beta.21
+  "@orpc/zod": 2.0.0-beta.21
   "@standard-schema/spec": ^1.1.0
   "@testing-library/react": ^16.3.2
   "@types/react": ^19.2.14

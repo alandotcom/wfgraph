@@ -101,9 +101,16 @@ function rpcHandler<TArgs extends unknown[], TOutput>(
   };
 }
 
+// Output schemas exist so the client infers a return type and so the OpenAPI
+// document has response bodies to describe. Every handler already returns a value
+// the schema was written from, so re-validating it on the way out only costs a
+// parse per response. The constraint this buys into: disabling output validation
+// also skips the encode half of a transforming schema, so an output schema here
+// must stay transform-free. Today every output field is a plain string or
+// object; a timestamp codec in an output schema would silently not encode.
 const rpc = implement(rpcContract)
   .$context<RpcContext>()
-  .$config({ initialOutputValidationIndex: -1 });
+  .$config({ disableOutputValidation: true });
 
 export const rpcRouter = rpc.router({
   apiKey: {

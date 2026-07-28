@@ -1,6 +1,10 @@
-import { createORPCClient, ORPCError } from "@orpc/client";
+import {
+  COMMON_ERROR_STATUS_MAP,
+  createORPCClient,
+  ORPCError,
+} from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
-import type { ContractRouterClient } from "@orpc/contract";
+import type { RouterContractClient } from "@orpc/contract";
 import { getBasePath } from "@/lib/base-path";
 import type { RpcContract } from "@rova/shared/rpc/contracts";
 import { getRpcErrorMessage } from "@rova/shared/rpc/error-message";
@@ -117,8 +121,44 @@ export function resolveRpcUrl(options: ResolveRpcUrlOptions = {}): string {
   }
 }
 
+/**
+ * `RPCLink` takes the server's origin and the handler's path prefix as two
+ * separate options, so the one absolute URL every caller configures is split here
+ * rather than in `resolveRpcUrl`, which stays the single answer to "where is the
+ * API".
+ */
+function splitRpcUrl(absoluteUrl: string): {
+  origin: string;
+  pathWithQuery: `/${string}`;
+} {
+  const url = new URL(absoluteUrl);
+  // The query string rides along on purpose: RPCLink parses its `url` option
+  // and re-appends the query after the procedure path. The template literal
+  // re-adds the leading slash `URL.pathname` always has, because the option's
+  // type wants a `/`-prefixed literal.
+  return {
+    origin: url.origin,
+    pathWithQuery: `/${url.pathname.slice(1)}${url.search}`,
+  };
+}
+
+/**
+ * oRPC no longer hands an HTTP status to the client; the error code is what
+ * crosses the wire, and the status comes back from the same table the server
+ * derived it from. `ApiError` is the last place in the client that speaks HTTP.
+ *
+ * The annotation widens the table's keys to `string`, because `error.code` is
+ * a string rather than a union of known codes; an unmapped code indexes to
+ * `undefined` and the `?? 500` at the call site absorbs it.
+ */
+const ORPC_CODE_TO_STATUS: Record<string, number | undefined> =
+  COMMON_ERROR_STATUS_MAP;
+
+const rpcEndpoint = splitRpcUrl(resolveRpcUrl());
+
 const link = new RPCLink({
-  url: resolveRpcUrl(),
+  origin: rpcEndpoint.origin,
+  url: rpcEndpoint.pathWithQuery,
   interceptors: [
     async (options) => {
       try {
@@ -130,7 +170,7 @@ const link = new RPCLink({
 
         if (error instanceof ORPCError) {
           throw new ApiError(
-            error.status,
+            ORPC_CODE_TO_STATUS[error.code] ?? 500,
             getRpcErrorMessage(error.data ?? error.message)
           );
         }
@@ -145,7 +185,7 @@ const link = new RPCLink({
   ],
 });
 
-export const rpc: ContractRouterClient<RpcContract> = createORPCClient(link);
+export const rpc: RouterContractClient<RpcContract> = createORPCClient(link);
 
 type RpcOutput<T> = T extends (...args: never[]) => Promise<infer TResult>
   ? TResult
