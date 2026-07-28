@@ -1,0 +1,219 @@
+---
+name: Rova Workflow Builder
+description: A self-hosted visual workflow editor that reads as an instrument, with graphite surfaces and color reserved for signal.
+colors:
+  paper: "oklch(1 0 0)"
+  graphite-ink: "oklch(0.145 0 0)"
+  graphite-mid: "oklch(0.556 0 0)"
+  graphite-line: "oklch(0.922 0 0)"
+  graphite-wash: "oklch(0.97 0 0)"
+  panel: "oklch(0.985 0 0)"
+  void: "oklch(0 0 0)"
+  paper-dark: "oklch(0.98 0 0)"
+  graphite-line-dark: "oklch(0.27 0 0)"
+  graphite-wash-dark: "oklch(0.15 0 0)"
+  signal-red: "oklch(0.577 0.245 27.325)"
+  signal-green: "oklch(0.723 0.192 149.58)"
+  signal-slate: "oklch(0.554 0.046 257.417)"
+typography:
+  title:
+    fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1rem"
+    fontWeight: 600
+    lineHeight: 1.375
+  body:
+    fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.875rem"
+    fontWeight: 400
+    lineHeight: 1.5
+  label:
+    fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.875rem"
+    fontWeight: 500
+    lineHeight: 1.25
+  mono:
+    fontFamily: "Geist Mono, ui-monospace, monospace"
+    fontSize: "0.8125rem"
+    fontWeight: 400
+    lineHeight: 1.5
+rounded:
+  sm: "6px"
+  md: "8px"
+  lg: "10px"
+  xl: "14px"
+spacing:
+  xs: "4px"
+  sm: "8px"
+  md: "16px"
+  lg: "24px"
+components:
+  button-primary:
+    backgroundColor: "{colors.graphite-ink}"
+    textColor: "{colors.paper}"
+    rounded: "{rounded.md}"
+    height: "36px"
+    padding: "8px 16px"
+  button-outline:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.graphite-ink}"
+    rounded: "{rounded.md}"
+    height: "36px"
+    padding: "8px 16px"
+  button-ghost:
+    backgroundColor: "transparent"
+    textColor: "{colors.graphite-ink}"
+    rounded: "{rounded.md}"
+    height: "36px"
+    padding: "8px 16px"
+  input:
+    backgroundColor: "transparent"
+    textColor: "{colors.graphite-ink}"
+    rounded: "{rounded.md}"
+    height: "36px"
+    padding: "4px 12px"
+  card:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.graphite-ink}"
+    rounded: "{rounded.xl}"
+    padding: "24px 0"
+  workflow-node:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.graphite-ink}"
+    rounded: "{rounded.md}"
+    width: "384px"
+---
+
+# Design System: Rova Workflow Builder
+
+## 1. Overview
+
+**Creative North Star: "The Instrument Panel"**
+
+Rova's editor is a cockpit for automation. The chrome recedes into graphite so the workflow graph owns the screen, and every light that comes on means something: a green border is a successful run, a red border is a failure, an animated border is work in progress. The user should feel they are reading gauges, never decoration.
+
+The system is built from shadcn/ui (new-york style) on Base UI primitives, styled with Tailwind v4 tokens declared in OKLCH. It is deliberately conventional where convention earns trust: standard buttons, standard dialogs, standard form controls, in the vocabulary a Linear or Vercel user already speaks. The strategic anti-references from PRODUCT.md hold here: this must never resemble the colorful n8n/Zapier canvas where every node shouts its brand, and it must never drift into SaaS-generic gradients and cream tints.
+
+**Key Characteristics:**
+
+- Achromatic field: every surface, border, and text color is a zero-chroma graphite step.
+- Color is signal: chroma appears only on run status, destructive actions, and integration icons.
+- Refined and restrained components: quiet at rest, precise on interaction.
+- Both themes are first-class; dark mode is a true-black inversion, ink and paper swapped.
+
+## 2. Colors: Graphite & Signal
+
+An achromatic graphite ramp carries the entire interface; saturated hues exist only as signals.
+
+### Primary
+
+- **Graphite Ink** (oklch(0.145 0 0)): Primary text and the filled action color. The default button is ink on paper; in dark mode the roles invert (near-white on black).
+
+### Neutral
+
+- **Paper** (oklch(1 0 0)): The content surface and card background in light mode.
+- **Panel** (oklch(0.985 0 0)): The sidebar layer, half a step off Paper so panels read as a separate plane without a border doing all the work.
+- **Graphite Wash** (oklch(0.97 0 0)): Secondary and muted fills: hover states, secondary buttons, muted badges.
+- **Graphite Line** (oklch(0.922 0 0)): Hairline borders and input strokes (oklch(0.27 0 0) in dark mode).
+- **Graphite Mid** (oklch(0.556 0 0)): Muted foreground for descriptions and placeholders. This is the darkest gray allowed to carry text on Paper (4.5:1 floor); anything lighter is decorative only.
+- **Void** (oklch(0 0 0)): Dark mode's background. True black, tuned for the OLED-dark canvas where the graph floats.
+
+### Tertiary (signals)
+
+- **Signal Red** (oklch(0.577 0.245 27.325)): Destructive actions and failed runs. The tokenized `--destructive`; node error borders currently use Tailwind red-500 (oklch(0.637 0.237 25.331)) and should converge on the token.
+- **Signal Green** (oklch(0.723 0.192 149.58)): Successful runs. Currently Tailwind green-500 on node borders; promote to a `--success` token.
+- **Signal Slate** (oklch(0.554 0.046 257.417)): Cancelled runs. Currently Tailwind slate-500.
+
+### Named Rules
+
+**The Signal Rule.** Chroma is earned by state. If an element is not communicating run status, a destructive consequence, selection, or an integration's identity, it is grayscale. There is no decorative color anywhere in the editor.
+
+**The One Ramp Rule.** All neutrals come from the zero-chroma graphite ramp. Never introduce a warm or cool tinted gray; slate-tinted text or borders would break the achromatic field.
+
+## 3. Typography
+
+**UI Font:** Geist (with ui-sans-serif, system-ui fallback)
+**Mono Font:** Geist Mono (with ui-monospace fallback), for template variables, code editors, and log output
+
+**Character:** A single well-tuned grotesque carries the whole interface, which is correct for a product register: headings, labels, buttons, and data all speak in one voice, differentiated by weight and the muted-foreground color rather than by family or dramatic size jumps.
+
+Both families are self-hosted through Fontsource variable packages, imported in `main.tsx`; `--font-geist-sans` and `--font-geist-mono` are defined in `globals.css` and point at "Geist Variable" and "Geist Mono Variable".
+
+### Hierarchy
+
+- **Title** (600, 1rem, 1.375): Card titles, node titles, dialog headings. The largest text in the working UI.
+- **Label** (500, 0.875rem, 1.25): Buttons, form labels, tabs, menu items.
+- **Body** (400, 0.875rem, 1.5): Descriptions, settings prose, run detail text. `text-base` (1rem) only on mobile inputs to prevent iOS zoom.
+- **Mono** (400, 0.8125rem, 1.5): Template expressions, cron strings, JSON output, execution logs.
+
+### Named Rules
+
+**The Fixed Scale Rule.** Sizes are fixed rem steps. No clamp(), no fluid type; this is a tool viewed at desktop DPI, and hierarchy comes from weight and color before size.
+
+## 4. Elevation
+
+Depth follows shadcn's native vocabulary and nothing more: hairline borders define structure, a whisper of shadow keeps surfaces from feeling painted on, and real shadow is reserved for things that genuinely float. In dark mode, tonal layering does most of the work (Void background, 0.04-lightness cards, 0.15 washes) because shadows read poorly on black.
+
+### Shadow Vocabulary
+
+- **shadow-xs** (`0 1px 2px 0 rgb(0 0 0 / 0.05)`): Form controls and outline buttons at rest.
+- **shadow-sm** (`0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)`): Cards and workflow nodes.
+- **shadow-lg** (`0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)`): Dialogs, dropdown menus, popovers: true overlays only.
+
+### Named Rules
+
+**The Overlay Rule.** Anything at shadow-lg must be dismissible. If it can't be dismissed, it isn't floating, and it doesn't get the shadow.
+
+## 5. Components
+
+All primitives are shadcn/ui new-york on Base UI, refined and restrained: quiet at rest, precise on interaction. Focus is always the 3px `ring-ring/50` halo with a border-color shift; hover is always a fill change, never movement.
+
+### Buttons
+
+- **Shape:** Gently rounded (8px), 36px tall at default size.
+- **Primary:** Graphite Ink fill with Paper text, hover dims to 90% opacity.
+- **Outline:** Paper fill, hairline border, shadow-xs; hover fills with Graphite Wash.
+- **Ghost:** Transparent until hovered, then Graphite Wash.
+- **Destructive:** Signal Red fill; the only chromatic button.
+- **Focus:** 3px ring at 50% ring color, visible in both themes.
+
+### Cards / Containers
+
+- **Corner Style:** 14px (rounded-xl), the roundest shape in the system.
+- **Background:** Paper with hairline Graphite Line border.
+- **Shadow Strategy:** shadow-sm per the Elevation section.
+- **Internal Padding:** 24px vertical rhythm, 16px on the small variant.
+
+### Inputs / Fields
+
+- **Style:** Transparent background, hairline border, 8px radius, 36px height, shadow-xs.
+- **Focus:** Border shifts to ring color plus the 3px halo.
+- **Error:** `aria-invalid` drives a Signal Red border and red-tinted ring; error state is attribute-driven, never a bespoke class.
+- **Disabled:** 50% opacity with pointer events off.
+
+### Workflow Node (signature component)
+
+The reason the product exists. A 384px-wide card at 8px radius sitting on the React Flow canvas: integration icon, title, and description at rest. Status is worn on the border: a 2px Signal Green border for success, Signal Red for failure, Signal Slate for cancelled, and an animated border sweep while running. Handles are 12px dots in Graphite Ink with a hairline ring, enlarged hit areas (24px desktop, 44px mobile) hidden behind them.
+
+### Navigation
+
+A quiet toolbar over the canvas and a Panel-toned sidebar for workflow lists and run history. Selection state uses Graphite Wash fills; the active workflow is marked by tone, never by an accent stripe.
+
+## 6. Do's and Don'ts
+
+### Do:
+
+- **Do** keep every neutral at zero chroma; the graphite ramp is the entire field.
+- **Do** route new status colors through tokens (`--destructive` today; add `--success` and friends rather than reaching for Tailwind palette classes like `green-500`).
+- **Do** hold body and muted text at or above 4.5:1: Graphite Mid (oklch(0.556 0 0)) is the lightness floor for text on Paper.
+- **Do** use the standard component vocabulary everywhere; a save button looks identical on every screen.
+- **Do** keep motion in the 150–250ms band, easing out, conveying state (the running-node border sweep is the model).
+- **Do** honor `prefers-reduced-motion` with a static alternative for every animation, including the node border sweep.
+
+### Don't:
+
+- **Don't** recreate the colorful n8n/Zapier canvas; integration identity lives in the icon, never in node fills or borders (PRODUCT.md's named anti-reference).
+- **Don't** introduce SaaS-generic styling: gradient accents, cream-tinted backgrounds, identical marketing card grids (PRODUCT.md's second anti-reference).
+- **Don't** use color decoratively; if it isn't status, selection, destruction, or an integration icon, it's graphite.
+- **Don't** add display fonts, clamp-scaled headings, or letter-spaced uppercase eyebrows; this is an instrument, and it speaks in one typeface at fixed sizes.
+- **Don't** put shadow-lg on anything that can't be dismissed.
+- **Don't** animate layout properties on the canvas; transform and opacity only, or React Flow's frame rate pays for it.

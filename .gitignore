@@ -54,5 +54,8 @@ tmp/
 
 .npm-cache/
 *.log
-.inngest/*.db
+**/.inngest/*.db
 dist/
+
+# Impeccable live-mode session journals: local recovery state, not project source
+**/.impeccable/live/sessions/
