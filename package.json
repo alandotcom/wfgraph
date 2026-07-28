@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "prepare": "./scripts/prepare-effect.sh",
     "dev": "concurrently --kill-others-on-fail --names app,inngest --prefix-colors blue,magenta \"bun run dev:app\" \"bun run dev:inngest\"",
     "example:library-trigger": "sh -c 'export INNGEST_BASE_URL=${INNGEST_BASE_URL:-http://localhost:8389} APP_PORT=${PORT:-4018}; bun run build && concurrently --kill-others-on-fail --names app,inngest --prefix-colors blue,magenta \"PORT=$APP_PORT INNGEST_BASE_URL=$INNGEST_BASE_URL bun run examples/library-trigger.ts\" \"if [ -x ./node_modules/.bin/inngest ]; then until curl -sSf http://localhost:$APP_PORT/api/inngest >/dev/null 2>/dev/null; do sleep 1; done; cd examples && DO_NOT_TRACK=1 ../node_modules/.bin/inngest dev --no-discovery -u http://localhost:$APP_PORT/api/inngest -p 8389 --connect-gateway-port 8391 --connect-gateway-grpc-port 50064 --connect-executor-grpc-port 50065 --persist; else echo \\\"[inngest] inngest-cli is not installed; skipping local Inngest dev server\\\"; fi\"'",
     "dev:app": "NODE_ENV=development INNGEST_DEV=http://localhost:8388 bun --hot server.ts",
