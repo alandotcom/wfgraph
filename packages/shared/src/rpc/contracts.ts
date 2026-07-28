@@ -1,7 +1,7 @@
 import { oc } from "@orpc/contract";
 import { openapi } from "@orpc/openapi";
 import { z } from "zod";
-import { jsonObjectSchema } from "#src/types/json";
+import { jsonObjectZodSchema } from "#src/types/json";
 import { WORKFLOW_EXECUTION_IGNORED_REASONS } from "#src/workflow/execution-contracts";
 import { serializedWorkflowGraphSchema } from "#src/workflow/schemas";
 
@@ -393,7 +393,7 @@ export const rpcContract = {
           // as JSON: Inngest stringifies it onto the event, and the engine
           // stores it in the JSONB `workflow_executions.input` column. The
           // schema names that, so everything downstream reads `JsonObject`.
-          input: jsonObjectSchema.optional(),
+          input: jsonObjectZodSchema.optional(),
         })
       )
       .output(workflowExecuteResponseSchema),
@@ -404,7 +404,7 @@ export const rpcContract = {
       .input(
         z.object({
           workflowId: idSchema,
-          input: jsonObjectSchema.optional(),
+          input: jsonObjectZodSchema.optional(),
         })
       )
       .output(workflowWebhookResponseSchema),

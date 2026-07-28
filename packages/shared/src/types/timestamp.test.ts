@@ -1,14 +1,19 @@
+import { Exit, Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 import {
   decodeIsoTimestamp,
+  decodeIsoTimestampOrThrow,
   encodeIsoTimestamp,
   isoTimestampToDate,
 } from "#src/types/timestamp";
 
+const decode = Schema.decodeSync(isoTimestampToDate);
+const decodeExit = Schema.decodeExit(isoTimestampToDate);
+const encodeExit = Schema.encodeExit(isoTimestampToDate);
+
 describe("isoTimestampToDate", () => {
   it("decodes an ISO string to the instant it names", () => {
-    const decoded = z.decode(isoTimestampToDate, "2026-03-01T10:00:00.000Z");
+    const decoded = decode("2026-03-01T10:00:00.000Z");
 
     expect(decoded).toBeInstanceOf(Date);
     expect(decoded.getTime()).toBe(Date.UTC(2026, 2, 1, 10, 0, 0));
@@ -19,15 +24,13 @@ describe("isoTimestampToDate", () => {
     const encoded = encodeIsoTimestamp(original);
 
     expect(encoded).toBe("2026-03-01T10:00:00.000Z");
-    expect(z.decode(isoTimestampToDate, encoded).getTime()).toBe(
-      original.getTime()
-    );
+    expect(decode(encoded).getTime()).toBe(original.getTime());
   });
 
   it("round-trips an offset string to the same instant, in UTC", () => {
     // An offset names an instant unambiguously, so it decodes; encoding always
     // writes UTC, so the string that comes back is not the one that went in.
-    const decoded = z.decode(isoTimestampToDate, "2026-03-01T11:00:00+01:00");
+    const decoded = decode("2026-03-01T11:00:00+01:00");
 
     expect(encodeIsoTimestamp(decoded)).toBe("2026-03-01T10:00:00.000Z");
   });
@@ -41,7 +44,21 @@ describe("isoTimestampToDate", () => {
     ["an empty string", ""],
   ])("refuses to decode %s", (_label, input) => {
     expect(decodeIsoTimestamp(input)).toBeNull();
-    expect(z.safeDecode(isoTimestampToDate, input).success).toBe(false);
+    expect(Exit.isFailure(decodeExit(input))).toBe(true);
+  });
+
+  // The century rules the pattern transcribes: a year divisible by 4 is a leap
+  // year, except a century year, unless that century divides by 400. The
+  // pattern is a fork of Zod's with nothing upstream to check it against, so
+  // these four cases are what specifies it.
+  it.each([
+    ["a leap day in a year divisible by four", "2024-02-29T10:00:00Z", true],
+    ["February 29 in a common year", "2025-02-29T10:00:00Z", false],
+    ["a leap day in a century divisible by 400", "2000-02-29T10:00:00Z", true],
+    ["February 29 in a century that is not", "1900-02-29T10:00:00Z", false],
+  ])("decides %s", (_label, input, isTimestamp) => {
+    expect(decodeIsoTimestamp(input) !== null).toBe(isTimestamp);
+    expect(Exit.isFailure(decodeExit(input))).toBe(!isTimestamp);
   });
 
   it("tolerates surrounding whitespace when decoding", () => {
@@ -50,12 +67,24 @@ describe("isoTimestampToDate", () => {
     );
   });
 
+  it("trims in the throwing form exactly as the answering one does", () => {
+    // Two answers to "is this a timestamp" would be one too many, so the
+    // padded string either decodes in both forms or in neither.
+    const padded = "  2026-03-01T10:00:00.000Z  ";
+
+    expect(decodeIsoTimestampOrThrow(padded)).toEqual(
+      new Date("2026-03-01T10:00:00.000Z")
+    );
+    expect(decodeIsoTimestampOrThrow(padded)).toEqual(
+      decodeIsoTimestamp(padded)
+    );
+    expect(() => decodeIsoTimestampOrThrow("  next tuesday  ")).toThrow();
+  });
+
   it("refuses to encode a Date built from unparseable text", () => {
     // The case the hand-rolled `.toISOString()` could not catch: it throws a
     // RangeError at best, and elsewhere yields the literal text "Invalid Date".
     expect(() => encodeIsoTimestamp(new Date("not a date"))).toThrow();
-    expect(z.safeEncode(isoTimestampToDate, new Date(Number.NaN)).success).toBe(
-      false
-    );
+    expect(Exit.isFailure(encodeExit(new Date(Number.NaN)))).toBe(true);
   });
 });

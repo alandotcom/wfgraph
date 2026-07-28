@@ -18,7 +18,7 @@
 
 import {
   type JsonObject,
-  jsonObjectSchema,
+  readJsonObject,
   type JsonValue,
 } from "@rova/shared/types/json";
 import {
@@ -261,12 +261,12 @@ export function webhookSchemaPatchFromSamplePayload(
   }
 
   try {
-    const parsed = jsonObjectSchema.safeParse(JSON.parse(rawPayload));
-    if (!parsed.success) {
+    const payload = readJsonObject(JSON.parse(rawPayload));
+    if (!payload) {
       return {};
     }
 
-    return webhookRequestSchemaPatch(inferSchemaFromPayload(parsed.data));
+    return webhookRequestSchemaPatch(inferSchemaFromPayload(payload));
   } catch {
     return {};
   }

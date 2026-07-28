@@ -409,6 +409,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.102
       es-toolkit:
         specifier: 'catalog:'
         version: 1.50.0

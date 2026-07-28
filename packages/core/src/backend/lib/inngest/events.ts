@@ -12,7 +12,7 @@
  */
 import { eventType } from "inngest";
 import { z } from "zod";
-import { jsonObjectSchema } from "@rova/shared/types/json";
+import { jsonObjectZodSchema } from "@rova/shared/types/json";
 import { serializedWorkflowGraphSchema } from "@rova/shared/workflow/schemas";
 
 /**
@@ -26,8 +26,8 @@ import { serializedWorkflowGraphSchema } from "@rova/shared/workflow/schemas";
 export const workflowExecutionInputSchema = z.object({
   graph: serializedWorkflowGraphSchema,
   // JSON is all that survived the trip, so JSON is what the schema accepts.
-  triggerInput: jsonObjectSchema.optional(),
-  requestPayload: jsonObjectSchema.optional(),
+  triggerInput: jsonObjectZodSchema.optional(),
+  requestPayload: jsonObjectZodSchema.optional(),
   // Both ids are required and must carry a value: every log row, timeline event,
   // and wait state the run writes hangs off them, and the enqueue side always
   // supplies them. An empty id would attach a run's whole trace to nothing.
@@ -71,7 +71,7 @@ export const workflowWaitSignal = eventType("workflow/wait.signal", {
     token: z.string().nullish(),
     eventType: z.string().optional(),
     correlationKey: z.string().optional(),
-    payload: jsonObjectSchema.optional(),
+    payload: jsonObjectZodSchema.optional(),
     signalType: z.literal("wait-resume"),
   }),
 });

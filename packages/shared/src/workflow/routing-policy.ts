@@ -1,4 +1,6 @@
+import { Schema } from "effect";
 import { z } from "zod";
+import { readAs } from "#src/types/schema";
 
 /**
  * The Routing Policy is the Workflow Builder's per-workflow mapping from
@@ -15,12 +17,30 @@ export const ROUTING_ACTIONS = [
 
 export type RoutingAction = (typeof ROUTING_ACTIONS)[number];
 
-export const routingPolicySchema = z.record(
+export type RoutingPolicy = Record<string, RoutingAction>;
+
+/**
+ * The key rule sits in a check rather than in the key schema, because a check
+ * on a key schema tells `Schema.Record` which properties to *select*: an empty
+ * Event Type would be quietly dropped and the rest of the policy would read as
+ * valid. A policy the editor could not have written is malformed, not partly
+ * usable, so the whole record has to fail.
+ */
+const readPolicy = readAs(
+  Schema.Record(Schema.String, Schema.Literals(ROUTING_ACTIONS)).check(
+    Schema.isPropertyNames(Schema.String.check(Schema.isMinLength(1)))
+  )
+);
+
+/**
+ * The same shape in Zod, for `workflow/schemas.ts`, which embeds it in the
+ * trigger config objects it still describes in Zod. Delete this in batch B,
+ * when that module moves to Effect Schema.
+ */
+export const routingPolicyZodSchema = z.record(
   z.string().min(1),
   z.enum(ROUTING_ACTIONS)
 );
-
-export type RoutingPolicy = Record<string, RoutingAction>;
 
 /**
  * What a trigger definition says about an incoming payload: vocabulary, not
@@ -44,8 +64,7 @@ export type TriggerClassification =
 export function readRoutingPolicy(
   config: Record<string, unknown> | undefined
 ): RoutingPolicy | undefined {
-  const parsed = routingPolicySchema.safeParse(config?.routingPolicy);
-  return parsed.success ? parsed.data : undefined;
+  return readPolicy(config?.routingPolicy);
 }
 
 /**

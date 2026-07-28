@@ -23,7 +23,7 @@ import {
 import { rpcRouter } from "#src/backend/rpc/router";
 import { postWorkflowResume } from "#src/backend/services/workflows/triggering/resume";
 import { postWorkflowWebhook } from "#src/backend/services/workflows/triggering/webhook";
-import { jsonObjectSchema } from "@rova/shared/types/json";
+import { type JsonObject, readJsonObject } from "@rova/shared/types/json";
 import { getErrorMessage } from "@rova/shared/utils";
 import { listRuntimeActions } from "@rova/shared/workflow/action-registry";
 import { listCustomWorkflowTriggers } from "@rova/shared/workflow/trigger-registry";
@@ -31,12 +31,6 @@ import { listCustomWorkflowTriggers } from "@rova/shared/workflow/trigger-regist
 const idSchema = z.string().trim().min(1);
 const workflowIdParamsSchema = z.object({ workflowId: idSchema });
 const tokenParamsSchema = z.object({ token: idSchema });
-
-// A webhook body is JSON by the time Hono has parsed it, and it stays JSON all
-// the way to the run: Inngest stringifies it onto the event and the engine
-// stores it in the JSONB `workflow_executions.input` column.
-const webhookBodySchema = jsonObjectSchema;
-const resumeBodySchema = jsonObjectSchema;
 
 const httpLogger = getAppLogger("http", "hono");
 const rpcLogger = getAppLogger("rpc");
@@ -88,19 +82,16 @@ function truncateTextForLogs(text: string): {
 }
 
 /**
- * Read a request body as JSON and validate it against a schema.
+ * Read a request body as the JSON object a webhook or a resume call carries.
  *
  * Rova parses untrusted input at the route boundary, which is what the project
  * asks for anyway, so no validator middleware sits between the request and the
- * service. A body that is not JSON and a body that is the wrong shape both come
- * back as a message the caller can act on.
+ * service. A body that is not JSON and a body that is JSON but not an object
+ * both come back as a message the caller can act on.
  */
-async function parseJsonBody<TSchema extends z.ZodType>(
-  request: Request,
-  schema: TSchema
-): Promise<
-  { ok: true; data: z.infer<TSchema> } | { ok: false; error: string }
-> {
+async function parseJsonObjectBody(
+  request: Request
+): Promise<{ ok: true; data: JsonObject } | { ok: false; error: string }> {
   let raw: unknown;
   try {
     raw = await request.json();
@@ -108,12 +99,12 @@ async function parseJsonBody<TSchema extends z.ZodType>(
     return { ok: false, error: "Request body must be valid JSON" };
   }
 
-  const parsed = schema.safeParse(raw);
-  if (!parsed.success) {
-    return { ok: false, error: z.prettifyError(parsed.error) };
+  const body = readJsonObject(raw);
+  if (!body) {
+    return { ok: false, error: "Request body must be a JSON object" };
   }
 
-  return { ok: true, data: parsed.data };
+  return { ok: true, data: body };
 }
 
 function safeParseJson(text: string): unknown {
@@ -453,7 +444,7 @@ export function createApiApp(options: CreateApiAppOptions) {
         );
       }
 
-      const body = await parseJsonBody(c.req.raw, webhookBodySchema);
+      const body = await parseJsonObjectBody(c.req.raw);
       if (!body.ok) {
         return c.json({ error: body.error }, 400, webhookCorsHeaders);
       }
@@ -481,7 +472,7 @@ export function createApiApp(options: CreateApiAppOptions) {
         return c.json({ error: z.prettifyError(params.error) }, 400);
       }
 
-      const body = await parseJsonBody(c.req.raw, resumeBodySchema);
+      const body = await parseJsonObjectBody(c.req.raw);
       if (!body.ok) {
         return c.json({ error: body.error }, 400);
       }

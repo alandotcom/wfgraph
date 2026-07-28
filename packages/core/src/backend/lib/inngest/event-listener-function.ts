@@ -13,7 +13,7 @@ import { orchestrateRoutedTrigger } from "#src/backend/services/workflows/trigge
 import { runWorkflowExecutionPreflight } from "#src/backend/services/workflows/triggering/preflight";
 import { startWorkflowRun } from "#src/backend/services/workflows/triggering/run-lifecycle";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import { type JsonObject, jsonObjectSchema } from "@rova/shared/types/json";
+import { type JsonObject, readJsonObject } from "@rova/shared/types/json";
 import type { InngestEventTriggerConfig } from "@rova/shared/workflow/trigger-registry";
 import { routeWorkflowTrigger } from "@rova/shared/workflow/trigger-registry";
 import { getInngestClient } from "./client";
@@ -28,8 +28,7 @@ import { getInngestClient } from "./client";
  * trigger to route on, so it is treated as an empty payload.
  */
 function toTriggerPayload(value: unknown): JsonObject {
-  const parsed = jsonObjectSchema.safeParse(value);
-  return parsed.success ? parsed.data : {};
+  return readJsonObject(value) ?? {};
 }
 
 /**

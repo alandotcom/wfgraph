@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { routingPolicySchema } from "#src/workflow/routing-policy";
+import { routingPolicyZodSchema } from "#src/workflow/routing-policy";
 
 export const webhookTriggerConfigSchema = z
   .object({
@@ -8,7 +8,7 @@ export const webhookTriggerConfigSchema = z
     webhookOutputSchema: z.string().optional(),
     webhookEventPath: z.string().optional(),
     webhookCorrelationPath: z.string().optional(),
-    routingPolicy: routingPolicySchema.optional(),
+    routingPolicy: routingPolicyZodSchema.optional(),
     webhookMockRequest: z.string().optional(),
   })
   .strict();
@@ -25,7 +25,7 @@ export const scheduleTriggerConfigSchema = z
 export const customTriggerConfigSchema = z
   .object({
     triggerType: z.string().trim().min(1),
-    routingPolicy: routingPolicySchema.optional(),
+    routingPolicy: routingPolicyZodSchema.optional(),
   })
   .catchall(z.unknown())
   .refine(

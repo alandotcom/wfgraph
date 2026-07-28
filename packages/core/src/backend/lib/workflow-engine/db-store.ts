@@ -7,7 +7,6 @@
  * run state.
  */
 
-import { z } from "zod";
 import { logWorkflowComplete } from "#src/backend/lib/steps/step-handler";
 import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
@@ -20,7 +19,7 @@ import {
   markExecutionRunning,
   markWaitStateStatus,
 } from "#src/backend/lib/workflow-wait-state";
-import { isoTimestampToDate } from "@rova/shared/types/timestamp";
+import { decodeIsoTimestampOrThrow } from "@rova/shared/types/timestamp";
 import type { WorkflowStore } from "./store";
 
 export const dbWorkflowStore: WorkflowStore = {
@@ -44,7 +43,7 @@ export const dbWorkflowStore: WorkflowStore = {
     const waitState = await createWaitState({
       ...input,
       waitUntil: input.waitUntilIso
-        ? z.decode(isoTimestampToDate, input.waitUntilIso)
+        ? decodeIsoTimestampOrThrow(input.waitUntilIso)
         : undefined,
     });
 

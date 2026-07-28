@@ -1,4 +1,4 @@
-import { type JsonObject, jsonObjectSchema } from "#src/types/json";
+import { type JsonObject, readJsonObject } from "#src/types/json";
 import type { WorkflowTriggerDefinition } from "#src/workflow/trigger-registry";
 import {
   asNonEmptyString,
@@ -14,7 +14,7 @@ import {
  * A mock request stands in for the body a real webhook would deliver, so its
  * contents belong to whichever service the workflow listens to and no field is
  * known here. What is known is the shape: a JSON object, with JSON at every
- * depth below it, which is what `jsonObjectSchema` describes and what a caller
+ * depth below it, which is what `readJsonObject` answers with and what a caller
  * gets back. Anything else the editor accepted (an array, a bare string,
  * `null`, unparseable text) is treated as no mock at all.
  */
@@ -27,15 +27,10 @@ export function parseWebhookMockInput(
   }
 
   try {
-    const parsed = jsonObjectSchema.safeParse(JSON.parse(mockInputRaw));
-    if (parsed.success) {
-      return parsed.data;
-    }
+    return readJsonObject(JSON.parse(mockInputRaw)) ?? undefined;
   } catch {
     return undefined;
   }
-
-  return undefined;
 }
 
 export function resolveWebhookTriggerRuntimeConfig(

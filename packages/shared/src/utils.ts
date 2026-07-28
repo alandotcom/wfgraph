@@ -1,58 +1,83 @@
 import { type ClassValue, clsx } from "clsx";
+import { Schema } from "effect";
 import { twMerge } from "tailwind-merge";
-import { z } from "zod";
+import { readAs } from "#src/types/schema";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** An `{ message }` carrier, the shape SDKs nest one level down. */
-const nestedErrorSchema = z.looseObject({
-  message: z.string().optional().catch(undefined),
-});
-
 /**
- * The union of every place a thrown value is known to carry its message.
+ * The two typed reads every walk below ends in.
  *
- * A thrown value arrives as `unknown`, so this is where it becomes typed. Each
- * member is `.optional().catch(undefined)` so a field of the wrong type is
- * dropped while its siblings survive, which is how the per-field `typeof`
- * checks below used to behave. `looseObject` keeps unknown keys and accepts
- * class instances, so an SDK error object passes with its own fields intact.
+ * A thrown value arrives as `unknown` and belongs to whoever threw it, so
+ * nothing about its shape can be assumed. `readAs` is what lets each leaf be
+ * read on its own terms: a `message` that came back as a number says nothing
+ * about whether `reason` beside it is still a usable string, and reading one
+ * leaf at a time is what keeps a mistyped member from hiding the rest. See
+ * `types/schema.ts` for why a single struct schema cannot do this job.
  */
-const errorEnvelopeSchema = z.looseObject({
-  message: z.string().optional().catch(undefined),
-  // Some SDKs put the HTTP body on the error, with `error` as text or an object.
-  responseBody: z
-    .looseObject({
-      error: z
-        .union([z.string(), nestedErrorSchema])
-        .optional()
-        .catch(undefined),
-    })
-    .optional()
-    .catch(undefined),
-  error: z.union([z.string(), nestedErrorSchema]).optional().catch(undefined),
-  data: z
-    .looseObject({
-      error: z.string().optional().catch(undefined),
-      message: z.string().optional().catch(undefined),
-    })
-    .optional()
-    .catch(undefined),
-  reason: z.string().optional().catch(undefined),
-  statusText: z.string().optional().catch(undefined),
-  status: z.number().optional().catch(undefined),
-});
+const readString = readAs(Schema.String);
+// `Finite`, not `Number`: an HTTP status of `NaN` is not a status, and printing
+// one beside the status text would be worse than leaving it out.
+const readNumber = readAs(Schema.Finite);
 
 /**
- * A Promise-like: any object carrying a callable `then`. The object test is the
- * parse; the refinement reads the one member that makes it awaitable, off a
- * value zod has already typed.
+ * Every place an SDK is known to leave its message, in the order this project
+ * prefers them. The first path that lands on a string with something in it
+ * wins, so a path that names a location precisely sits above the one that would
+ * otherwise shadow it.
  */
-const thenableSchema = z
-  .looseObject({})
-  .refine((value) => typeof value.then === "function");
+const MESSAGE_PATHS: readonly (readonly string[])[] = [
+  ["message"],
+  ["responseBody", "error"],
+  ["responseBody", "error", "message"],
+  ["error"],
+  ["error", "message"],
+  ["data", "error"],
+  ["data", "message"],
+  ["reason"],
+];
+
+/**
+ * Follows `path` through a value nobody validated, answering `undefined` as
+ * soon as a hop has nowhere to land.
+ *
+ * Each hop reads the member the way the language does, following the prototype
+ * chain: an SDK error class defines `message` as a getter on its prototype,
+ * which a key lookup through `Object.hasOwn` would miss entirely.
+ */
+function readValueAt(value: unknown, path: readonly string[]): unknown {
+  let current = value;
+
+  for (const key of path) {
+    if (current === null || typeof current !== "object") {
+      return undefined;
+    }
+
+    // `Reflect.get` is the typed way to ask an object of unknown shape for a
+    // member: it takes any object, reads the prototype chain, and answers
+    // whatever is there. What comes back is unchecked, which is what the
+    // `readAs` readers above are for.
+    current = Reflect.get(current, key);
+  }
+
+  return current;
+}
+
+/**
+ * The same walk, kept only when it ends on a string carrying something. An
+ * empty string is a field that was populated with nothing, which tells a reader
+ * as little as a missing field does.
+ */
+function readMessageAt(
+  value: unknown,
+  path: readonly string[]
+): string | undefined {
+  const message = readString(readValueAt(value, path));
+
+  return message === "" ? undefined : message;
+}
 
 /**
  * Extract a meaningful error message from various error types.
@@ -80,76 +105,44 @@ export function getErrorMessage(error: unknown): string {
     return error;
   }
 
-  // Handle objects
-  const envelope = errorEnvelopeSchema.safeParse(error);
-  if (envelope.success) {
-    const obj = envelope.data;
+  // An array names its members by position and a function names none at all, so
+  // neither can be the envelope the paths below read by key.
+  if (typeof error !== "object" || Array.isArray(error)) {
+    return "Unknown error";
+  }
 
-    // Check for common error message properties
-    if (obj.message) {
-      return obj.message;
-    }
-
-    // Some SDKs wrap errors in responseBody or data
-    const body = obj.responseBody;
-    if (body) {
-      if (typeof body.error === "string") {
-        return body.error;
-      }
-      if (body.error?.message !== undefined) {
-        return body.error.message;
-      }
-    }
-
-    // Check for nested error property
-    if (typeof obj.error === "string") {
-      if (obj.error) {
-        return obj.error;
-      }
-    } else if (obj.error?.message !== undefined) {
-      return obj.error.message;
-    }
-
-    // Check for data.error pattern (common in API responses)
-    const data = obj.data;
-    if (data) {
-      if (data.error !== undefined) {
-        return data.error;
-      }
-      if (data.message !== undefined) {
-        return data.message;
-      }
-    }
-
-    // Check for reason property (common in some error types)
-    if (obj.reason) {
-      return obj.reason;
-    }
-
-    // Check for statusText (HTTP errors)
-    if (obj.statusText) {
-      const status = obj.status === undefined ? "" : ` (${obj.status})`;
-      return `${obj.statusText}${status}`;
-    }
-
-    // Try to stringify the error object (but avoid [object Object])
-    try {
-      const stringified = JSON.stringify(error, null, 0);
-      if (stringified && stringified !== "{}" && stringified.length < 500) {
-        return stringified;
-      }
-    } catch {
-      // Ignore stringify errors
-    }
-
-    // Last resort: use Object.prototype.toString
-    const objectToString = Object.prototype.toString.call(error);
-    if (objectToString !== "[object Object]") {
-      return objectToString;
+  for (const path of MESSAGE_PATHS) {
+    const message = readMessageAt(error, path);
+    if (message !== undefined) {
+      return message;
     }
   }
 
-  return "Unknown error";
+  // An HTTP error says what went wrong across two fields, so this one is
+  // composed rather than read.
+  const statusText = readMessageAt(error, ["statusText"]);
+  if (statusText !== undefined) {
+    const status = readNumber(readValueAt(error, ["status"]));
+    return status === undefined ? statusText : `${statusText} (${status})`;
+  }
+
+  // Nothing known was found, so describe the value itself. Both fallbacks read
+  // the value the caller was handed, which is the only thing that still tells
+  // them where it came from.
+  try {
+    const stringified = JSON.stringify(error, null, 0);
+    if (stringified && stringified !== "{}" && stringified.length < 500) {
+      return stringified;
+    }
+  } catch {
+    // A circular structure or a throwing `toJSON` leaves nothing to print.
+  }
+
+  const objectToString = Object.prototype.toString.call(error);
+
+  return objectToString === "[object Object]"
+    ? "Unknown error"
+    : objectToString;
 }
 
 /**
@@ -168,8 +161,9 @@ export async function getErrorMessageAsync(error: unknown): Promise<string> {
     }
   }
 
-  // Check if it's a thenable (Promise-like)
-  if (thenableSchema.safeParse(error).success) {
+  // Check if it's a thenable (Promise-like): any object carrying a callable
+  // `then`, which is the one member that makes a value awaitable.
+  if (typeof readValueAt(error, ["then"]) === "function") {
     try {
       const resolvedValue = await Promise.resolve(error);
       // The promise resolved - check if it contains error info

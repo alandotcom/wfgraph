@@ -1,6 +1,8 @@
+import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { type } from "arktype";
 import { z } from "zod";
+import { toStandardSchema } from "#src/types/schema";
 import { createAction } from "./action-registry";
 import {
   jsonSchemaLibraryOptions,
@@ -109,6 +111,170 @@ describe("jsonSchemaLibraryOptions with Zod", () => {
     const props = jsonSchema.properties as Record<string, unknown>;
     expect((props.name as Record<string, unknown>).type).toBe("string");
     expect((props.age as Record<string, unknown>).type).toBe("number");
+  });
+});
+
+/**
+ * Effect splits Standard Schema across two functions, so the registries only
+ * see a schema that has been through `toStandardSchema`. These cases are the
+ * proof that what comes out the far side is the same kind of object the Zod and
+ * arktype arms above hand over.
+ */
+describe("toStandardSchema with Effect Schema", () => {
+  it("carries both halves of Standard Schema on one object", () => {
+    const schema = toStandardSchema(
+      Schema.Struct({ name: Schema.String, count: Schema.Finite })
+    );
+
+    expect(schema["~standard"].vendor).toBe("effect");
+    expect(typeof schema["~standard"].validate).toBe("function");
+    expect(typeof schema["~standard"].jsonSchema.input).toBe("function");
+    expect(typeof schema["~standard"].jsonSchema.output).toBe("function");
+  });
+
+  it("validates synchronously, as the action registry requires", () => {
+    const schema = toStandardSchema(Schema.Struct({ text: Schema.String }));
+
+    const ok = schema["~standard"].validate({ text: "hello" });
+    expect(ok).not.toBeInstanceOf(Promise);
+    expect("value" in ok && ok.value).toEqual({ text: "hello" });
+
+    const bad = schema["~standard"].validate({ text: 7 });
+    expect("issues" in bad && bad.issues?.length).toBeGreaterThan(0);
+  });
+
+  it("keeps an annotated description at the top of the derived JSON Schema", () => {
+    // `annotate` before `check`, not after: a check applied last nests the
+    // description inside `allOf`, where the field-label reader cannot see it.
+    const schema = toStandardSchema(
+      Schema.Struct({
+        text: Schema.String.annotate({ description: "Message text" }).check(
+          Schema.isMinLength(1)
+        ),
+      })
+    );
+
+    const jsonSchema = schema["~standard"].jsonSchema.input({
+      target: "draft-2020-12",
+    });
+    const props = jsonSchema.properties as Record<string, unknown>;
+    expect((props.text as Record<string, unknown>).description).toBe(
+      "Message text"
+    );
+  });
+});
+
+describe("createAction with Effect schemas", () => {
+  it("derives configFields from an Effect input schema", () => {
+    const action = createAction({
+      id: "effect/input-test",
+      label: "Effect Input Test",
+      description: "Tests Effect input schema derivation",
+      schema: toStandardSchema(
+        Schema.Struct({
+          name: Schema.String.annotate({ description: "Full name" }),
+          // `Schema.Finite`, not `Schema.Number`: Effect renders an unbounded
+          // number as an `anyOf` that also admits "Infinity" and "NaN" strings,
+          // and the field reader sees no single type in that.
+          count: Schema.Finite,
+          tone: Schema.Literals(["warm", "cool"]),
+          note: Schema.optionalKey(Schema.String),
+        })
+      ),
+      execute({ payload }) {
+        return { success: true, data: { echo: payload.name } };
+      },
+    });
+
+    expect(action.configFields).toEqual([
+      {
+        key: "name",
+        label: "Full name",
+        type: "template-input",
+        required: true,
+      },
+      { key: "count", label: "Count", type: "number", required: true },
+      {
+        key: "tone",
+        label: "Tone",
+        type: "select",
+        required: true,
+        options: [
+          { value: "warm", label: "warm" },
+          { value: "cool", label: "cool" },
+        ],
+      },
+      { key: "note", label: "Note", type: "template-input" },
+    ]);
+  });
+
+  it("derives outputFields from an Effect output schema", () => {
+    const action = createAction({
+      id: "effect/output-test",
+      label: "Effect Output Test",
+      description: "Tests Effect output schema derivation",
+      schema: toStandardSchema(Schema.Struct({ id: Schema.String })),
+      outputSchema: toStandardSchema(
+        Schema.Struct({
+          name: Schema.String,
+          nickname: Schema.NullOr(Schema.String),
+        })
+      ),
+      execute() {
+        return { success: true, data: { name: "Test", nickname: null } };
+      },
+    });
+
+    const fields = action.outputFields ?? [];
+    expect(fields.find((f) => f.path === "name")?.type).toBe("string");
+    expect(fields.find((f) => f.path === "nickname")?.type).toBe("string");
+    expect(fields.find((f) => f.path === "nickname")?.nullable).toBe(true);
+  });
+
+  it("validates the payload before execute sees it", async () => {
+    const action = createAction({
+      id: "effect/validate-test",
+      label: "Effect Validate",
+      description: "Tests Effect validation",
+      schema: toStandardSchema(
+        Schema.Struct({ text: Schema.String.check(Schema.isMinLength(1)) })
+      ),
+      execute({ payload }) {
+        return { success: true, data: { echo: payload.text } };
+      },
+    });
+
+    const context = {
+      nodeId: "n1",
+      nodeName: "Test",
+      nodeType: "effect/validate-test",
+    };
+
+    expect(
+      (await action.execute({ payload: { text: "hello" }, context })).success
+    ).toBe(true);
+    expect(
+      (await action.execute({ payload: { text: "" }, context })).success
+    ).toBe(false);
+  });
+
+  it("does not yet surface an Effect date field as a timestamp", () => {
+    // Effect hangs every check-derived keyword off `allOf`, so the `format` and
+    // `pattern` that name a timestamp sit one level below where
+    // `parseWorkflowSchemaFieldsOrJsonSchema` reads them. Arktype and Zod both
+    // write those keywords flat, which is why only this arm falls back to
+    // "string". Teaching the reader to look through `allOf` belongs with the
+    // rest of `schema-codec.ts`; until then this is the difference.
+    const schema = toStandardSchema(
+      Schema.Struct({ createdAt: Schema.DateFromString })
+    );
+    const jsonSchema = schema["~standard"].jsonSchema.output({
+      target: "draft-2020-12",
+    });
+
+    expect(parseWorkflowSchemaFieldsOrJsonSchema(jsonSchema)).toEqual([
+      { name: "createdAt", type: "string", description: undefined },
+    ]);
   });
 });
 
