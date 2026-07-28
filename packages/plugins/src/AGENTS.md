@@ -366,8 +366,8 @@ type ActionResult =
 After creating a plugin:
 
 1. Update static registration files (`packages/plugins/src/index.ts`, the `IntegrationType` union in `packages/shared/src/types/integration.ts`, and `packages/plugins/src/server.ts`, which needs both a `registerStepImporter` line per step and a `registerIntegrationTest` line for the connection test)
-2. Run `bun run type-check && bun run fix` to verify types and fix formatting/linting
-3. Run `bun run dev` to test in the UI
+2. Run `pnpm run type-check && pnpm run fix` to verify types and fix formatting/linting
+3. Run `pnpm run dev` to test in the UI
 4. Test the connection using the integration dialog
 5. Create a workflow using your action
 6. Execute the workflow to verify it works
@@ -430,7 +430,7 @@ const credentials = input.integrationId
   : {}; // Empty object if no integrationId
 
 // Handle missing credentials gracefully
-const apiKey = credentials.API_KEY || Bun.env.DEFAULT_API_KEY;
+const apiKey = credentials.API_KEY || process.env.DEFAULT_API_KEY;
 ```
 
 ### Error Handling

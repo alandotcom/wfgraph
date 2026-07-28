@@ -4,7 +4,7 @@ A visual workflow automation platform with a node-based editor, typed API routes
 
 ## Runtime Overview
 
-The backend is a Hono API that runs on any JavaScript runtime (Node.js, Bun, Deno). Local development uses Bun as the dev server. The frontend is a standalone React SPA.
+The backend is a Hono API that runs on any JavaScript runtime with `Request` and `Response`. This repo develops and deploys on Node 24. The frontend is a standalone React SPA.
 
 - API: Hono (`packages/core/src/backend/api-app.ts`)
 - Database: PostgreSQL via postgres.js + Drizzle ORM
@@ -12,11 +12,11 @@ The backend is a Hono API that runs on any JavaScript runtime (Node.js, Bun, Den
 - Frontend: React SPA + TanStack Router (`packages/client/src/main.tsx`, `packages/client/src/router.tsx`)
 - State: Jotai
 - Data fetching/cache: TanStack Query
-- Dev server: Bun (`server.ts`)
+- Dev server: `server.ts` on Node, running Vite in middleware mode
 
 ## Project Structure
 
-This is a Bun workspace monorepo with four packages:
+This is a pnpm workspace monorepo with four packages:
 
 ```
 packages/
@@ -46,7 +46,8 @@ Plugin definitions and steps are under `packages/plugins/src`.
 
 ## Prerequisites
 
-- Bun 1.3+
+- Node 24+
+- pnpm 11+ (the exact version is in the root `package.json`'s `packageManager` field; run `corepack enable` to have Node use it)
 - PostgreSQL 15+ (local or remote)
 - Docker (optional, for local Postgres via `docker compose`)
 
@@ -82,26 +83,26 @@ Examples:
 
 ```bash
 # Run migrations at app startup
-RUN_DB_MIGRATIONS=true bun run dev:app
+RUN_DB_MIGRATIONS=true pnpm run dev:app
 
 # Use a custom migration directory
-RUN_DB_MIGRATIONS=true MIGRATIONS_DIR=drizzle bun run dev:app
+RUN_DB_MIGRATIONS=true MIGRATIONS_DIR=drizzle pnpm run dev:app
 ```
 
 ## Local Development
 
 ```bash
 # Install dependencies
-bun install
+pnpm install
 
 # Optional: start local Postgres
 docker compose up -d
 
 # Apply schema
-bun run db:push
+pnpm run db:push
 
 # Start app + inngest dev process
-bun run dev
+pnpm run dev
 ```
 
 App URL: `http://localhost:4017`
@@ -111,10 +112,12 @@ App URL: `http://localhost:4017`
 Rova Workflow Builder mounts into a host app as a single fetch handler. Import `@rova/core/app` for the `createRovaApp` factory, and `@rova/core` for the `createAction`/`createTrigger` helpers. The handler has the shape `(request: Request) => Promise<Response>`, so Bun, Deno, Cloudflare Workers, and Node 18+ consume it directly.
 
 ```ts
+import { createServer } from "node:http";
 import { z } from "zod";
 import { clientBundle } from "@rova/client";
 import { createAction, createTrigger } from "@rova/core";
 import { createRovaApp } from "@rova/core/app";
+import { createRequestListener } from "@rova/core/node";
 
 const action = createAction({
   id: "custom/send-message",
@@ -165,8 +168,9 @@ const rova = await createRovaApp({
 });
 
 // rova.fetch answers the API under /api/* and, since a client was handed over,
-// the editor under /*
-Bun.serve({ port: 3000, fetch: rova.fetch });
+// the editor under /*. On Node, createRequestListener translates the fetch
+// handler into the IncomingMessage/ServerResponse pair node:http speaks.
+createServer(createRequestListener(rova)).listen(3000);
 ```
 
 ### Mounting
@@ -246,18 +250,16 @@ import "@rova/plugins/server"; // step implementations and connection tests, loa
 - `@rova/client` -- `clientBundle`, the built editor, passed to `createRovaApp` as `client`.
 - `@rova/plugins` -- the built-in integrations, and `@rova/plugins/server` for their step and connection-test registrations.
 
-The first two run on any runtime with `Request` and `Response`. There is no published server wrapper: once `createRovaApp` returns a fetch handler, a wrapper saves a consumer two lines and charges an options type that reaccumulates every `Bun.serve` parameter. This repo's own dev server lives at `server.ts` in the repo root, and `examples/library-trigger.ts` shows the same shape.
+The first two run on any runtime with `Request` and `Response`. There is no published server wrapper: once `createRovaApp` returns a fetch handler, a wrapper saves a consumer two lines and charges an options type that reaccumulates every parameter the host's own server takes. This repo's own dev server lives at `server.ts` in the repo root, and `examples/library-trigger.ts` shows the same shape.
 
 ### Linking for development
 
 To use `@rova/core` from another project during development:
 
 ```bash
-# Register the package (once, from this repo)
-cd packages/core && bun link
-
-# Link it in the consumer project
-cd /path/to/consumer && bun link @rova/core
+# From the consumer project, point at this repo's core package by path.
+# pnpm 11 takes a path here; the `--global` form of earlier versions is gone.
+cd /path/to/consumer && pnpm link /path/to/rova/packages/core
 ```
 
 A linked consumer resolves through the `"exports"` map to `packages/core/dist`, so build the package before linking it and rebuild after changing it.
@@ -283,7 +285,7 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
 ### Notes
 
 - The consumer is responsible for running Inngest (either self-hosted or cloud). Rova does not spawn `inngest-cli`.
-- For local development in this repo, `bun run dev` starts Inngest CLI as a separate process.
+- For local development in this repo, `pnpm run dev` starts Inngest CLI as a separate process.
 - `createRovaApp` returns `{ fetch, dispose }`. Call `dispose()` to unregister runtime triggers/actions.
 - `auth` decides who reaches the editor. Rova refuses to start in production without it, because the failure it prevents is the quiet one: an editor reachable from the internet, running registered actions with credentials decrypted out of the `integrations` table.
   - Pass a predicate `(request: Request) => boolean | Promise<boolean>` reading whatever session your app already uses. It covers the RPC, REST, OpenAPI, extensions, and SPA routes.
@@ -291,7 +293,7 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
   - Pass `"external"` when something in front of Rova already gates it.
 - **Set `inngest.signingKey` on any deployment.** `/api/inngest` sits outside the `auth` gate because Inngest signs its callbacks, and that holds only with a signing key configured. Without one the Inngest SDK runs in dev mode and skips signature verification, so an anonymous POST to that path can execute a workflow function with a payload of its choosing. Rova logs an error at startup when no key is set.
 - Mounting under a sub-path means passing `basePath`. Rova builds its API prefix, the SPA's `<base href>`, and every asset URL from it, so the host states the mount point once rather than Rova deducing it per request. A host that mounts at `/workflows` and omits `basePath` gets a client that requests its assets from the root.
-- `rova.fetch` answers API routes under `/api/*` and serves the SPA under `/*`. Hand it straight to `Bun.serve`, `Deno.serve`, or a Workers `export default`.
+- `rova.fetch` answers API routes under `/api/*` and serves the SPA under `/*`. Hand it straight to `Bun.serve`, `Deno.serve`, or a Workers `export default`; on Node, pass it through `createRequestListener` from `@rova/core/node` first.
 - Action extensions are strict-schema actions via `createAction(...)`:
   - `schema` validates resolved action input at runtime (Zod or Standard Schema-compatible validators).
   - `execute({ payload, context })` receives typed payload validated by `schema`.
@@ -329,6 +331,8 @@ RUN_DB_MIGRATIONS=true PORT=4017 DATABASE_URL=postgresql://workflow:workflow@loc
 
 ## Docker Build And Run
 
+The `Dockerfile` is out of date: it still targets Bun and a single-package `src/` layout, so `docker build` fails. Tracked in [#5](https://github.com/alandotcom/rova/issues/5). Use the `pnpm run build && pnpm run start` path above until it is rebuilt.
+
 Build image:
 
 ```bash
@@ -347,22 +351,25 @@ docker run --rm \
 
 ## Scripts
 
-- `bun run dev` - run app, client watcher, and inngest dev processes
-- `bun run dev:app` - run only Bun app server
-- `bun run dev:client` - run client build in watch mode
-- `bun run dev:inngest` - run only inngest dev process
-- `bun run build` - build library + client + copy migrations
-- `bun run build:lib` - build library artifacts (`packages/core/dist/`)
-- `bun run build:client` - build client SPA (`packages/core/dist/client/`)
-- `bun run start` - run the production server on Node (`server.ts` with `NODE_ENV=production`)
-- `bun run test` - run tests
-- `bun run type-check` - run TypeScript checks
-- `bun run check` - lint/format check
-- `bun run fix` - lint/format auto-fix
-- `bun run db:generate` - generate drizzle migration
-- `bun run db:migrate` - apply generated migration
-- `bun run db:push` - push schema directly
-- `bun run db:studio` - open Drizzle Studio
+- `pnpm run dev` - run the app server and the inngest dev process together
+- `pnpm run dev:app` - run only the app server (`tsx watch server.ts`, with Vite in middleware mode)
+- `pnpm run dev:inngest` - run only the inngest dev process
+- `pnpm run build` - build the library, the plugins, and the client
+- `pnpm run build:lib` - build library artifacts (`packages/core/dist/`, `packages/client/dist/`)
+- `pnpm run build:plugins` - build `@rova/plugins` (`packages/plugins/dist/`)
+- `pnpm run build:client` - build the client SPA with Vite (`packages/client/dist/client/`)
+- `pnpm run start` - run the production server (`server.ts` with `NODE_ENV=production`)
+- `pnpm run test` - run the vitest suite once
+- `pnpm run test:watch` - run vitest in watch mode
+- `pnpm run type-check` - run TypeScript checks
+- `pnpm run lint` - run oxlint with type-aware rules
+- `pnpm run knip` - report unused files, exports, and dependencies
+- `pnpm run check` - format check (oxfmt --check)
+- `pnpm run fix` - format auto-fix (oxfmt)
+- `pnpm run db:generate` - generate drizzle migration
+- `pnpm run db:migrate` - apply generated migration
+- `pnpm run db:push` - push schema directly
+- `pnpm run db:studio` - open Drizzle Studio
 
 ## API Endpoints
 
@@ -413,11 +420,13 @@ Base path: `/api`
 
 ## Typed Client
 
-Use the typed client from `packages/client/src/lib/rpc-client.ts`:
+Reads and writes in the SPA both go through `orpcQuery`, which wraps the RPC contract for TanStack Query so a query key is derived from the contract path:
 
 ```ts
-import { api } from "@/lib/rpc-client";
+import { orpcQuery } from "@/lib/rpc-query";
 ```
+
+`packages/client/src/lib/rpc-client.ts` holds what sits underneath: the raw `rpc` client, `ApiError`, and the `toSavedWorkflow`/`toSavedWorkflows` codecs.
 
 ## Database Tables
 
@@ -436,9 +445,12 @@ Defined in `packages/core/src/backend/lib/db/schema.ts`:
 Before committing:
 
 ```bash
-bun run type-check
-bun run fix
-bun run test
+pnpm run type-check
+pnpm run lint
+pnpm run test
+pnpm run knip
+pnpm run fix
+pnpm run build
 ```
 
 ## Roadmap

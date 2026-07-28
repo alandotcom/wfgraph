@@ -208,10 +208,10 @@ server.listen(port, () => {
 /**
  * A reload replaces the whole process here: `tsx watch` kills it and starts a
  * new one, so `server` and `vite` above are as long-lived as anything gets and
- * module scope holds them safely. The Bun dev server kept the same two on
- * globalThis, because `bun --hot` re-evaluated the module graph inside a process
- * that stayed up, which left an earlier run's signal handler closed over a
- * server it had already stopped.
+ * module scope holds them safely. A watcher that re-evaluated the module graph
+ * inside a process that stayed up would need these on globalThis instead,
+ * because otherwise an earlier run's signal handler stays closed over a server
+ * it has already stopped.
  */
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {

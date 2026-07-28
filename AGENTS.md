@@ -20,8 +20,7 @@ server through `tsx`, the client build through Vite, the suite through vitest. T
 **Isolated `node_modules` is pnpm's default.** Each workspace package gets a
 `node_modules` holding only what its own `package.json` declares, so an npm specifier
 for something undeclared fails to resolve. The dependency belongs on the package that
-imports it. `bunfig.toml` still carries `linker = "isolated"`, which was how the same
-guarantee was reached under Bun; it describes an install path nothing takes now.
+imports it.
 
 **`@/` means this package's own `src`, never another's.** An alias resolves to a
 file, so the resolver never reads a manifest for it and an undeclared cross-package
@@ -113,12 +112,14 @@ so Wait nodes stay outside the node-level step wrapper. Retries are function-lev
 step carrying its own counter. Step results round-trip through JSON, so a node output has
 to be JSON-safe: no `Date`, `Map`, or `Set`.
 
-**happy-dom replaces `TransformStream` and `WritableStream`.** `test-setup.ts` is a
-preload for the whole suite, so a backend test that never opens a DOM still gets happy-dom's
-globals, and its `TransformStream` is a stub whose `writable` is a boolean. The setup file
-restores Bun's two natives after registering. Inngest's execution engine builds a
-`TransformStream` on every run, so without that restore every test touching a function
-throws `getWriter is not a function`.
+**happy-dom belongs to the client project alone.** `vitest.config.ts` declares two
+projects: `node` covers `packages/{shared,core,plugins}` and runs in vitest's node
+environment, and `client` covers `packages/client`, runs in happy-dom, and is the only
+one that loads `test-setup.ts`. That boundary is load-bearing. happy-dom ships its own
+`TransformStream` whose `writable` is a boolean, and Inngest's execution engine builds a
+`TransformStream` on every run, so a backend test that inherited happy-dom's globals
+would throw `getWriter is not a function` the moment it touched a function. Keep a
+backend test file under one of the three node-project paths.
 
 **Development needs no client build.** `server.ts` creates Vite in middleware mode inside
 its own process, so `dev:app` is one process on port 4017 and Vite compiles the SPA per

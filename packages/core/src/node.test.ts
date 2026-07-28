@@ -114,8 +114,10 @@ beforeAll(async () => {
     client: { dir: clientDir },
     auth: "external",
     basePath: MOUNT,
-    // Deliberately a different identity from app.test.ts. `bun test` runs both
-    // files in one process, so this only passes if dispose released the claim.
+    // Deliberately a different identity from app.test.ts, so a reader can tell
+    // the two apart in a log. vitest gives each test file its own module
+    // registry, so the process-wide claim createRovaApp takes starts fresh here
+    // whatever app.test.ts did with its own.
     database: { url: "postgresql://rova:rova@127.0.0.1:1/rova_test" },
     encryption: { key: "b".repeat(64) },
     inngest: { id: "rova-node-test", isDev: true },

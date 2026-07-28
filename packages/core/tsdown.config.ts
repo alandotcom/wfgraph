@@ -9,10 +9,9 @@ import { defineConfig } from "tsdown";
 export default defineConfig({
   entry: ["src/index.ts", "src/app.ts", "src/node.ts", "src/plugin.ts"],
   format: "esm",
-  // tsdown calls this "platform" where bunup called it "target". It selects
-  // Node-flavoured resolution and externalization, which is what a server
-  // library needs. tsdown's own default is already "node"; stated here so the
-  // intent survives a future default change.
+  // Selects Node-flavoured resolution and externalization, which is what a
+  // server library needs. tsdown's own default is already "node"; stated here
+  // so the intent survives a future default change.
   platform: "node",
   outDir: "dist",
   // With platform "node" tsdown would default to fixed .mjs/.d.mts extensions.
@@ -25,9 +24,6 @@ export default defineConfig({
   // the repo root on purpose; see the comment at the top of that file for why the
   // declaration emitter needs a root that spans all three workspace packages.
   tsconfig: "../../tsconfig.build.json",
-  // "bun" is a runtime-provided module, so it must stay an import rather than
-  // being pulled into the bundle.
-  deps: { neverBundle: ["bun"] },
   // Wipe the output between builds so a renamed entry cannot leave a stale
   // hashed chunk behind. Nothing else writes into this dist: the SPA is
   // @rova/client's output now.

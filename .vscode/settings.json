@@ -1,5 +1,5 @@
 {
-  // oxfmt owns every language listed below, and `bun run check` (oxfmt --check)
+  // oxfmt owns every language listed below, and `pnpm run check` (oxfmt --check)
   // gates them in CI. Each one is pinned to the oxc extension so that an editor
   // save produces byte-identical output to the CI check. Markdown matters most
   // here: oxfmt pads table cells to a uniform column width, so a save handled by
@@ -43,11 +43,8 @@
   "[yaml]": {
     "editor.defaultFormatter": "oxc.oxc-vscode"
   },
-  "[toml]": {
-    "editor.defaultFormatter": "oxc.oxc-vscode"
-  },
   // Points the editor's language server at the TypeScript 7.0.2 this repo pins,
-  // so hovers and errors in the editor agree with what `bun run type-check`
+  // so hovers and errors in the editor agree with what `pnpm run type-check`
   // reports. TypeScript 7's lib directory holds no tsserver.js, which makes this
   // path look dead; it is live. The TypeScript 7 extension
   // (TypeScriptTeam.native-preview) reads `typescript.tsdk`, walks one level up

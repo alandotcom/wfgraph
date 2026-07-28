@@ -62,9 +62,9 @@ describe("rewriteClientBaseHref", () => {
     );
   });
 
-  // Bun's HTML bundler emits the self-closing form, so this is the shape the
-  // real built client actually arrives in.
-  it("rewrites the self-closing form the client bundler emits", () => {
+  // packages/client/index.html writes the self-closing form and Vite copies it
+  // through, so this is the shape the real built client actually arrives in.
+  it("rewrites the self-closing form the client build emits", () => {
     expect(
       rewriteClientBaseHref('<head><base href="/" /></head>', "/rova")
     ).toBe('<head><base href="/rova/" /></head>');

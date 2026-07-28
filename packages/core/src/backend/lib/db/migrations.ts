@@ -14,9 +14,8 @@ const currentDir = dirname(fileURLToPath(import.meta.url));
 // into it, "files" in packages/core/package.json publishes it, and each entry
 // below is that same directory seen from a layout the code can run in.
 const MIGRATIONS_DIR_CANDIDATES = [
-  // Compiled binary: `bun build --compile` gives import.meta.url a synthetic
-  // path inside the executable, so nothing relative works and the migrations sit
-  // beside the binary. This is what the Dockerfile lays out.
+  // A deployment that copies the migrations beside whatever it runs from, which
+  // is also the layout `MIGRATIONS_DIR=drizzle` names.
   resolve(process.cwd(), "drizzle"),
   // Running from source, this file being packages/core/src/backend/lib/db/.
   resolve(currentDir, "../../../../drizzle"),

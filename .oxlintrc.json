@@ -150,10 +150,11 @@
         "no-restricted-imports": [
           "error",
           {
-            // A `@/` alias resolves to a file, never to a manifest, so Bun's
-            // isolated linker cannot see it. That is how packages/core came to
-            // inline five vendor SDKs. A specifier that leaves the package has
-            // to be a package name. `@/` still means this package's own src.
+            // A `@/` alias resolves to a file, never to a manifest, so pnpm's
+            // isolated node_modules cannot see it. That is how packages/core
+            // came to inline five vendor SDKs. A specifier that leaves the
+            // package has to be a package name. `@/` still means this
+            // package's own src.
             "patterns": [
               {
                 "group": [
@@ -243,8 +244,8 @@
       // compile against its source through path aliases. Nothing may point the
       // other way.
       //
-      // Bun's isolated linker enforces that for npm specifiers, because a package
-      // only gets a node_modules holding what it declared. It cannot see an import
+      // pnpm's isolated node_modules enforces that for npm specifiers, because a
+      // package only gets what it declared. It cannot see an import
       // written as a tsconfig path alias: tsc and the bundler both resolve
       // `@/backend/lib/logger` from packages/shared straight to
       // packages/core/src/backend/lib/logger.ts with no manifest consulted, which
