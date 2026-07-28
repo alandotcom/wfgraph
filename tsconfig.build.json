@@ -24,7 +24,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
-    "types": ["bun-types", "node"],
+    "types": ["node"],
     "paths": {
       "@rova/shared/*": ["./packages/shared/src/*"],
       "@rova/plugins": ["./packages/plugins/src/index.ts"],

@@ -3,7 +3,7 @@
   "hooks": {
     "afterFileEdit": [
       {
-        "command": "bun run scripts/format-edited-file.ts"
+        "command": "pnpm exec tsx scripts/format-edited-file.ts"
       }
     ]
   }

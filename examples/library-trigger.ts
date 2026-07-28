@@ -1,13 +1,15 @@
+import { createServer } from "node:http";
 import { createAction, createTrigger } from "@rova/core";
 import { clientBundle } from "@rova/client";
 import { createRovaApp } from "@rova/core/app";
-import { SQL } from "bun";
+import { createRequestListener } from "@rova/core/node";
 import { config as loadDotEnv } from "dotenv";
+import postgres from "postgres";
 import { z } from "zod";
 
 const APPOINTMENT_TRIGGER_TYPE = "AppointmentLifecycle";
 // One above the dev server's defaults on every dial, so the example runs while
-// `bun run dev` is up: its port, its Inngest dev server, and its database are
+// `pnpm run dev` is up: its port, its Inngest dev server, and its database are
 // all its own.
 const DEFAULT_PORT = 4018;
 const DEFAULT_INNGEST_BASE_URL = "http://localhost:8389";
@@ -38,12 +40,12 @@ function asNonEmptyString(value: unknown): string | undefined {
   return trimmed;
 }
 
-// The dev server's database is shaped by `bun run db:push`, which records no
+// The dev server's database is shaped by `pnpm run db:push`, which records no
 // migration journal, so this example's startup migrator would replay the first
 // migration into it and fail on schemas that already exist. The example keeps a
 // sibling database in the same Postgres container and creates it here on first
-// run. Bun's built-in SQL client does the two admin queries, so the example
-// adds no dependency for them.
+// run. The two admin queries go through postgres.js, which is the driver
+// @rova/core already talks to Postgres with.
 async function ensureDatabaseExists(databaseUrl: string): Promise<void> {
   const databaseName = decodeURIComponent(
     new URL(databaseUrl).pathname.slice(1)
@@ -54,7 +56,7 @@ async function ensureDatabaseExists(databaseUrl: string): Promise<void> {
   const maintenanceUrl = new URL(databaseUrl);
   maintenanceUrl.pathname = "/postgres";
 
-  const admin = new SQL(maintenanceUrl);
+  const admin = postgres(maintenanceUrl.toString(), { max: 1 });
   try {
     const existing =
       await admin`SELECT 1 FROM pg_database WHERE datname = ${databaseName}`;
@@ -65,7 +67,7 @@ async function ensureDatabaseExists(databaseUrl: string): Promise<void> {
       console.log("[example] created database", databaseName);
     }
   } finally {
-    await admin.close();
+    await admin.end();
   }
 }
 
@@ -141,22 +143,24 @@ async function main(): Promise<void> {
   loadEnvironmentFiles();
 
   const databaseUrl =
-    asNonEmptyString(Bun.env.DATABASE_URL) ?? DEFAULT_DATABASE_URL;
+    asNonEmptyString(process.env.DATABASE_URL) ?? DEFAULT_DATABASE_URL;
   await ensureDatabaseExists(databaseUrl);
 
-  const portRaw = asNonEmptyString(Bun.env.PORT);
+  const portRaw = asNonEmptyString(process.env.PORT);
   const port = portRaw ? Number(portRaw) : DEFAULT_PORT;
   if (!Number.isFinite(port) || port <= 0) {
     throw new Error(`Invalid PORT value: ${portRaw}`);
   }
 
   const inngestBaseUrl =
-    asNonEmptyString(Bun.env.INNGEST_BASE_URL) ??
-    asNonEmptyString(Bun.env.INNGEST_DEV) ??
+    asNonEmptyString(process.env.INNGEST_BASE_URL) ??
+    asNonEmptyString(process.env.INNGEST_DEV) ??
     DEFAULT_INNGEST_BASE_URL;
-  const signingKey = asNonEmptyString(Bun.env.INNGEST_SIGNING_KEY);
+  const signingKey = asNonEmptyString(process.env.INNGEST_SIGNING_KEY);
 
-  const encryptionKey = asNonEmptyString(Bun.env.INTEGRATION_ENCRYPTION_KEY);
+  const encryptionKey = asNonEmptyString(
+    process.env.INTEGRATION_ENCRYPTION_KEY
+  );
   if (!encryptionKey) {
     throw new Error(
       "INTEGRATION_ENCRYPTION_KEY is required (64-character hex string). Rova stores integration credentials encrypted with it."
@@ -187,26 +191,29 @@ async function main(): Promise<void> {
     },
     inngest: {
       id: "appointment-configurable-server-example",
-      isDev: Bun.env.NODE_ENV !== "production",
+      isDev: process.env.NODE_ENV !== "production",
       baseUrl: inngestBaseUrl,
-      eventKey: asNonEmptyString(Bun.env.INNGEST_EVENT_KEY),
-      env: asNonEmptyString(Bun.env.INNGEST_ENV),
+      eventKey: asNonEmptyString(process.env.INNGEST_EVENT_KEY),
+      env: asNonEmptyString(process.env.INNGEST_ENV),
       signingKey,
     },
     actions: [cancelAppointmentAction],
     triggers: [appointmentTrigger],
   });
 
-  // The whole mount is one fetch handler, so this is all a host has to do on a
-  // fetch-native runtime. Express and Fastify hosts wrap it once with
-  // createRequestListener from @rova/core/node instead.
-  const httpServer = Bun.serve({ port, fetch: rova.fetch });
+  // The whole mount is one fetch handler. Bun, Deno and Workers take it as-is;
+  // node:http speaks IncomingMessage/ServerResponse, so createRequestListener
+  // from @rova/core/node does the one translation step. Express and Fastify
+  // hosts pass the same listener to their own mount call.
+  const httpServer = createServer(createRequestListener(rova));
 
-  console.log("[example] configurable server started", {
-    url: httpServer.url.toString(),
-    triggerType: APPOINTMENT_TRIGGER_TYPE,
-    actionId: "appointments/cancel",
-    note: "Use the built-in frontend as usual. Create a workflow with trigger Appointment Lifecycle and add the Cancel Appointment action.",
+  httpServer.listen(port, () => {
+    console.log("[example] configurable server started", {
+      url: `http://localhost:${port}/`,
+      triggerType: APPOINTMENT_TRIGGER_TYPE,
+      actionId: "appointments/cancel",
+      note: "Use the built-in frontend as usual. Create a workflow with trigger Appointment Lifecycle and add the Cancel Appointment action.",
+    });
   });
 }
 

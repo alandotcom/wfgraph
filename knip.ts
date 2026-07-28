@@ -50,14 +50,10 @@ const config: KnipConfig = {
         // place by being imported.
         //
         // knip already reads the "scripts" block of package.json and treats a
-        // file a script runs as an entry, which covers scripts/build-client.ts,
-        // scripts/compile.ts and scripts/copy-migrations.ts. Listing those here
-        // draws a "redundant entry pattern" hint. What remains is the four it
-        // cannot see.
+        // file a script runs as an entry, which covers server.ts through
+        // "start". Listing such a file here draws a "redundant entry pattern"
+        // hint. What remains is the three it cannot see.
         //
-        // Run by "dev:app", whose command carries env assignments and a `--hot`
-        // flag ahead of the file:
-        "server.ts",
         // Run by "example:library-trigger", whose command is a single `sh -c`
         // string that knip does not read into:
         "examples/library-trigger.ts",
@@ -67,21 +63,12 @@ const config: KnipConfig = {
         // which is why it has to be listed rather than found.
         "scripts/migrate-prod.ts",
       ],
-      project: ["*.ts", "*.mjs", "examples/**/*.ts", "scripts/**/*.ts"],
+      project: ["*.ts", "examples/**/*.ts", "scripts/**/*.ts"],
 
       // drizzle-kit is a root dev dependency, so knip looks for the Drizzle
       // config beside the root manifest. This repo keeps it with the schema it
       // points at.
       drizzle: { config: ["packages/core/drizzle.config.ts"] },
-
-      ignoreDependencies: [
-        // scripts/plugins/react-compiler-plugin.ts names these three as strings
-        // in the options object it hands to @babel/core, so no import statement
-        // mentions them.
-        "@babel/preset-react",
-        "@babel/preset-typescript",
-        "babel-plugin-react-compiler",
-      ],
     },
 
     "packages/shared": {

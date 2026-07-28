@@ -18,11 +18,15 @@ const run = promisify(execFile);
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 let bundleDir: string;
 
-// The test run happens before `bun run build`, so build rather than report on
-// whatever is on disk. Two full builds is the reason for the generous timeout.
+// The test run happens before `pnpm run build`, so build rather than report on
+// whatever is on disk. Two full builds is the reason for the generous timeout:
+// Vite's is a few seconds once its dependency cache is warm and considerably
+// longer on the first run in a clean checkout, which is what CI does.
 beforeAll(async () => {
-  await run("bun", ["run", "build:client"], { cwd: repoRoot });
-  await run("bun", ["x", "tsdown"], { cwd: join(repoRoot, "packages/client") });
+  await run("pnpm", ["run", "build:client"], { cwd: repoRoot });
+  await run("pnpm", ["exec", "tsdown"], {
+    cwd: join(repoRoot, "packages/client"),
+  });
 
   // A file:// URL, because the import specifier is an absolute path and the
   // module runner only accepts that scheme for one.

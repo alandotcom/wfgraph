@@ -13,9 +13,9 @@ Read the code for structure. What follows is what the code cannot tell you.
 ## Package management
 
 pnpm only, at the version the root `packageManager` field names. `pnpm add <pkg>`,
-`pnpm run <script>`. Never npm, yarn, or `bun install`. The bun binary is still a
-runtime here, for `dev:app`, `build:client` and `compile`, and the migration off it
-is staged.
+`pnpm run <script>`. Never npm, yarn, or `bun install`. Node runs everything: the
+server through `tsx`, the client build through Vite, the suite through vitest. The
+`engines` field names Node 24 as the floor, which is the version CI installs.
 
 **Isolated `node_modules` is pnpm's default.** Each workspace package gets a
 `node_modules` holding only what its own `package.json` declares, so an npm specifier
@@ -120,10 +120,13 @@ restores Bun's two natives after registering. Inngest's execution engine builds 
 `TransformStream` on every run, so without that restore every test touching a function
 throws `getWriter is not a function`.
 
-**Development needs no client build.** The repo's own `server.ts` hands Bun's HTML
-entrypoint to `Bun.serve`'s `routes`, which Bun transpiles per request, so the SPA paths
-never reach `rova.fetch` and `client` goes unset there. Serving the client source directory
-as static files hands the browser TypeScript instead.
+**Development needs no client build.** `server.ts` creates Vite in middleware mode inside
+its own process, so `dev:app` is one process on port 4017 and Vite compiles the SPA per
+request. `client` goes unset there, because the option takes a built bundle and development
+has none: the SPA paths are dispatched to Vite before `rova.fetch` sees them, and everything
+Vite does not recognise falls through to it. Production is the other arrangement, and
+`pnpm run start` runs it: the built bundle goes to `createRovaApp` as `client`, Rova applies
+the same SPA rule itself, and `server.ts` routes nothing.
 
 **Four published surfaces.** `@rova/core` is the backend, `@rova/core/plugin` the five
 names an integration package may use, `@rova/client` the editor, `@rova/plugins` the
@@ -135,9 +138,11 @@ into whichever bundle needs it.
 it publishes. Its `files` is scoped, `@rova/shared` is inlined into the build so it never appears as a dependency,
 and there is no published server wrapper: `createRovaApp` returns a fetch handler, which
 `Bun.serve` and `Deno.serve` take directly and `@rova/core/node` translates for Express and
-Fastify. The two `Bun.serve` calls in the tree, at `server.ts` and in
-`examples/library-trigger.ts`, both sit outside `packages/core`. Verify a packaging change
-with `pnpm pack` and read the extracted manifest.
+Fastify. The two `node:http` servers in the tree, at `server.ts` and in
+`examples/library-trigger.ts`, both sit outside `packages/core` and both reach the fetch
+handler through `createRequestListener` from `@rova/core/node`, which is the same
+translation an adopter on Node makes. Verify a packaging change with `pnpm pack` and read
+the extracted manifest.
 
 ## Code cleanliness
 

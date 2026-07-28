@@ -26,8 +26,9 @@ packages/
   plugins/   @rova/plugins  Integration plugins (Acuity, Clerk, Linear, Resend, Slack, Twilio)
 ```
 
-- `server.ts` -- root dev server entrypoint (imports plugins, starts server)
-- `scripts/` -- build and compile scripts
+- `server.ts` -- root server entrypoint for development and production (imports plugins, starts server)
+- `vite.config.ts` -- the SPA's build, and the dev server `server.ts` runs in middleware mode
+- `scripts/` -- standalone scripts and the shared Vite plugin
 
 ## Integrations
 
@@ -305,28 +306,25 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
   - `label`, `description`, `logoUrl`, and `configFields` control editor metadata.
 - `logoUrl` is optional; when provided, it is rendered in trigger/action selectors.
 
-## Compile Standalone Binary
+## Run In Production
 
-Build a standalone executable:
+Build the library, the plugins, and the client, then start the same `server.ts` the dev loop uses. `NODE_ENV=production` is what makes it hand the built client to `createRovaApp` rather than compile the SPA through Vite.
 
 ```bash
-bun run compile
+pnpm run build
+pnpm run start
 ```
 
-Output binary:
-
-- `dist/server`
-
-Run it:
+Point it at a database and give it an encryption key:
 
 ```bash
-PORT=4017 DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder INTEGRATION_ENCRYPTION_KEY=$INTEGRATION_ENCRYPTION_KEY ./dist/server
+PORT=4017 DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder INTEGRATION_ENCRYPTION_KEY=$INTEGRATION_ENCRYPTION_KEY pnpm run start
 ```
 
 Run it with startup migrations:
 
 ```bash
-RUN_DB_MIGRATIONS=true PORT=4017 DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder INTEGRATION_ENCRYPTION_KEY=$INTEGRATION_ENCRYPTION_KEY ./dist/server
+RUN_DB_MIGRATIONS=true PORT=4017 DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder INTEGRATION_ENCRYPTION_KEY=$INTEGRATION_ENCRYPTION_KEY pnpm run start
 ```
 
 ## Docker Build And Run
@@ -356,8 +354,7 @@ docker run --rm \
 - `bun run build` - build library + client + copy migrations
 - `bun run build:lib` - build library artifacts (`packages/core/dist/`)
 - `bun run build:client` - build client SPA (`packages/core/dist/client/`)
-- `bun run compile` - build standalone executable to `dist/server`
-- `bun run start` - run standalone compiled server (`./dist/server`)
+- `bun run start` - run the production server on Node (`server.ts` with `NODE_ENV=production`)
 - `bun run test` - run tests
 - `bun run type-check` - run TypeScript checks
 - `bun run check` - lint/format check

@@ -7,14 +7,25 @@
  * `{ file_path, edits }`. Only `file_path` is needed here; it is an absolute
  * path to the file that changed.
  */
+import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(import.meta.dir, "..");
+const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const oxfmt = resolve(repoRoot, "node_modules/.bin/oxfmt");
+
+async function readStdin(): Promise<string> {
+  let text = "";
+  process.stdin.setEncoding("utf-8");
+  for await (const chunk of process.stdin) {
+    text += chunk;
+  }
+  return text;
+}
 
 async function readEditedFilePath(): Promise<string | undefined> {
   try {
-    const payload: unknown = await Bun.stdin.json();
+    const payload: unknown = JSON.parse(await readStdin());
     if (payload && typeof payload === "object" && "file_path" in payload) {
       const { file_path: filePath } = payload;
       if (typeof filePath === "string" && filePath.length > 0) {
@@ -43,11 +54,9 @@ if (!filePath) {
 // `--no-error-on-unmatched-pattern` covers the file types oxfmt leaves alone,
 // such as this repo's .sh and .sql files. oxfmt exits 2 on those otherwise, and
 // the hook would report a failure for an edit that needed no formatting.
-const result = Bun.spawnSync({
-  cmd: [oxfmt, "--no-error-on-unmatched-pattern", filePath],
+const result = spawnSync(oxfmt, ["--no-error-on-unmatched-pattern", filePath], {
   cwd: repoRoot,
-  stdout: "inherit",
-  stderr: "inherit",
+  stdio: "inherit",
 });
 
-process.exit(result.exitCode ?? 0);
+process.exit(result.status ?? 0);

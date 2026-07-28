@@ -13,7 +13,7 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "types": ["bun-types", "node"],
+    "types": ["node"],
     "strictNullChecks": true,
     "noImplicitReturns": true,
     "paths": {
@@ -33,6 +33,7 @@
   },
   "include": [
     "server.ts",
+    "vite.config.ts",
     "vitest.config.ts",
     "test-setup.ts",
     "examples/**/*.ts",
