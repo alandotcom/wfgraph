@@ -57,8 +57,11 @@ instance. Four pieces of shared process state are deleted:
 - the module-level step and integration registries
 - the `claimProcess` guard in `packages/core/src/app.ts`
 
-Once each instance owns its own runtime, two apps can coexist in one process, so the
-one-app-per-process rule stops being a rule that anything has to enforce.
+The `claimProcess` guard goes away with the state it policed, and that is the whole
+story: one Rova per process remains the only supported arrangement. Constructing a
+second app in a process is undefined behavior (decided 2026-07-28). The runtime work
+is justified by dependency injection and testability, and nothing is added, tested,
+or documented to make multiple apps work.
 
 ## Sequencing
 
