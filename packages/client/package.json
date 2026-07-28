@@ -16,7 +16,7 @@
     "build": "tsdown"
   },
   "devDependencies": {
-    "@base-ui/react": "1.2.0",
+    "@base-ui/react": "1.6.0",
     "@dagrejs/dagre": "^2.0.4",
     "@orpc/client": "^1.13.5",
     "@orpc/contract": "catalog:",
