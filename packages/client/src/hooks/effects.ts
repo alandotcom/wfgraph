@@ -1,8 +1,10 @@
 import {
   type RefObject,
+  useCallback,
   useEffect,
-  useEffectEvent,
+  useInsertionEffect,
   useLayoutEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -22,13 +24,39 @@ import {
  * under a friendlier name, with no constraint on what the body may do, and
  * would hollow out the ban that makes this module the only home for effects.
  *
- * Every hook here takes its callback through `useEffectEvent`, so the callback
- * may be a fresh closure on every render and still not become a dependency of
- * the subscription it drives. Written as raw effects, these call sites had to
- * list their handler and the whole transitive tail of its `useCallback`
- * dependencies, and so tore down and rebuilt their timers and listeners on
- * renders that had nothing to do with the thing being synchronised.
+ * Every hook here takes its callback through `useLatestEvent` below, so the
+ * callback may be a fresh closure on every render and still not become a
+ * dependency of the subscription it drives. Written as raw effects, these call
+ * sites had to list their handler and the whole transitive tail of its
+ * `useCallback` dependencies, and so tore down and rebuilt their timers and
+ * listeners on renders that had nothing to do with the thing being
+ * synchronised.
  */
+
+/**
+ * A stable function that always invokes the latest render's `fn`.
+ *
+ * React 19.2 ships `useEffectEvent` for exactly this, but its commit-phase
+ * closure swap runs only for plain function-component fibers; under `memo` or
+ * `forwardRef` the wrapped closure stays frozen at the mount render for the
+ * component's whole life (react-dom 19.2.8 still has this; React main has the
+ * fix). The workflow canvas memoises every node component, so a hook built on
+ * it fired with mount-time values forever: a condition node added as an empty
+ * action never told React Flow about its true/false handles, because the
+ * callback still saw the empty action type. The insertion effect below runs on
+ * every commit regardless of fiber type. Swap this for `useEffectEvent` only
+ * once the released React handles memoised components, and only with
+ * effects.test.tsx passing on the exact installed version.
+ */
+function useLatestEvent<Args extends unknown[]>(
+  fn: (...args: Args) => void
+): (...args: Args) => void {
+  const latest = useRef(fn);
+  useInsertionEffect(() => {
+    latest.current = fn;
+  });
+  return useCallback((...args: Args) => latest.current(...args), []);
+}
 
 type DomEventOptions = {
   /** Attach the listener only while this is true. Defaults to true. */
@@ -71,7 +99,7 @@ export function useDomEvent(
   const capture = options?.capture ?? false;
   const deferAttach = options?.deferAttach ?? false;
 
-  const onEvent = useEffectEvent((event: Event) => handler(event));
+  const onEvent = useLatestEvent((event: Event) => handler(event));
 
   useEffect(() => {
     if (!enabled) {
@@ -93,7 +121,7 @@ export function useDomEvent(
       clearTimeout(attachTimer);
       target.removeEventListener(type, listener, capture);
     };
-  }, [target, type, enabled, capture, deferAttach]);
+  }, [target, type, enabled, capture, deferAttach, onEvent]);
 }
 
 /**
@@ -106,11 +134,11 @@ export function useDomEvent(
  * runs three times: selecting the first item again should scroll to it again.
  */
 export function useAfterCommit(key: unknown, run: () => void): void {
-  const onKeyChanged = useEffectEvent(() => run());
+  const onKeyChanged = useLatestEvent(() => run());
 
   useEffect(() => {
     onKeyChanged();
-  }, [key]);
+  }, [key, onKeyChanged]);
 }
 
 /**
@@ -123,12 +151,12 @@ export function useAfterCommit(key: unknown, run: () => void): void {
  * around its own; this is that timeout, named.
  */
 export function useAfterPaint(key: unknown, run: () => void): void {
-  const onKeyChanged = useEffectEvent(() => run());
+  const onKeyChanged = useLatestEvent(() => run());
 
   useEffect(() => {
     const timer = setTimeout(() => onKeyChanged(), 0);
     return () => clearTimeout(timer);
-  }, [key]);
+  }, [key, onKeyChanged]);
 }
 
 /**
@@ -140,7 +168,7 @@ export function useAfterPaint(key: unknown, run: () => void): void {
  * fetch is the clock below.
  */
 function useInterval(run: () => void, delayMs: number | null): void {
-  const onTick = useEffectEvent(() => run());
+  const onTick = useLatestEvent(() => run());
 
   useEffect(() => {
     if (delayMs === null) {
@@ -148,7 +176,7 @@ function useInterval(run: () => void, delayMs: number | null): void {
     }
     const interval = setInterval(() => onTick(), delayMs);
     return () => clearInterval(interval);
-  }, [delayMs]);
+  }, [delayMs, onTick]);
 }
 
 /**
