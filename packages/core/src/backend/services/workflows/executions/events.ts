@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureRelayingCause } from "#src/backend/lib/effect/database";
 import { NotFound } from "#src/backend/lib/effect/failures";
-import { ExecutionRepo } from "#src/backend/services/workflows/repo";
+import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
 const loggerFor = (executionId: string) =>

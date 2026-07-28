@@ -9,7 +9,7 @@ import {
   type ServiceResult,
   success,
 } from "#src/backend/lib/service-result";
-import { toWorkflowApiPayload } from "#src/backend/services/workflows/workflow-mappers";
+import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
 import { getErrorMessage } from "@rova/shared/utils";
 import { generateId } from "@rova/shared/utils/id";
 import type {

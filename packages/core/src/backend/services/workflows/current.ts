@@ -14,7 +14,7 @@ import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
-} from "#src/backend/services/workflows/workflow-mappers";
+} from "#src/backend/services/workflows/mappers";
 import { generateId } from "@rova/shared/utils/id";
 import {
   createSerializedWorkflowGraph,

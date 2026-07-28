@@ -19,7 +19,7 @@ import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
-} from "#src/backend/services/workflows/workflow-mappers";
+} from "#src/backend/services/workflows/mappers";
 import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
 
 /** The contract answers a delete with this and nothing else. */

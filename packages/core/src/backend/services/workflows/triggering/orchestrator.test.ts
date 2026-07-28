@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { orchestrateTriggerExecution } from "./trigger-orchestrator";
+import { orchestrateTriggerExecution } from "./orchestrator";
 
 function createWaitState(
   id: string,

@@ -6,7 +6,7 @@ import { InvalidInput } from "#src/backend/lib/effect/failures";
 import {
   ExecutionRepo,
   type GlobalExecutionRow,
-} from "#src/backend/services/workflows/repo";
+} from "#src/backend/services/workflows/executions/repo";
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;

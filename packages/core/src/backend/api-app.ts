@@ -19,11 +19,11 @@ import {
   openApiRestHandler,
 } from "#src/backend/rpc/openapi";
 import { rpcRouter } from "#src/backend/rpc/router";
-import { postWorkflowResume } from "#src/backend/services/workflows/workflow-resume";
+import { postWorkflowResume } from "#src/backend/services/workflows/triggering/resume";
 import {
   optionsWorkflowWebhook,
   postWorkflowWebhook,
-} from "#src/backend/services/workflows/workflow-webhook";
+} from "#src/backend/services/workflows/triggering/webhook";
 import { jsonObjectSchema } from "@rova/shared/types/json";
 import { getErrorMessage } from "@rova/shared/utils";
 import { listRuntimeActions } from "@rova/shared/workflow/action-registry";

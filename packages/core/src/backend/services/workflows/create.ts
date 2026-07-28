@@ -12,7 +12,7 @@ import {
 import { validateWorkflowConditionConfigs } from "#src/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
 import { validateWorkflowIntegrations } from "#src/backend/lib/workflow-integration-validation";
-import { toWorkflowApiPayload } from "#src/backend/services/workflows/workflow-mappers";
+import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
 import { getErrorMessage } from "@rova/shared/utils";
 import { generateId } from "@rova/shared/utils/id";
 import type {

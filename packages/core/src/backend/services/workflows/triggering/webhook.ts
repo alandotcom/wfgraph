@@ -12,19 +12,19 @@ import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
 import { resumeMatchingWaitHooks } from "#src/backend/lib/workflow-wait-resume";
 import { type RovaRuntime, runToServiceResult } from "#src/backend/runtime";
 import { validateApiKey } from "#src/backend/services/api-keys/auth";
-import { runWorkflowExecutionPreflight } from "#src/backend/services/workflows/workflow-execution-preflight";
+import { runWorkflowExecutionPreflight } from "#src/backend/services/workflows/triggering/preflight";
 import type { JsonObject } from "@rova/shared/types/json";
 import { getErrorMessage } from "@rova/shared/utils";
 import type { ApiErrorPayload } from "@rova/shared/workflow/api-contracts";
 import type { WorkflowWebhookResponse } from "@rova/shared/workflow/execution-contracts";
 import { routeWorkflowTrigger } from "@rova/shared/workflow/trigger-registry";
 import { resolveWebhookTriggerRuntimeConfig } from "@rova/shared/workflow/triggers/webhook-trigger";
-import { orchestrateRoutedTrigger } from "./trigger-routing";
+import { orchestrateRoutedTrigger } from "./routing";
 import {
   buildIgnoredRunAuditMessage,
   recordTerminalWorkflowRun,
   startWorkflowRun,
-} from "./workflow-run-lifecycle";
+} from "./run-lifecycle";
 
 const webhookLogger = getAppLogger("workflow", "webhook");
 

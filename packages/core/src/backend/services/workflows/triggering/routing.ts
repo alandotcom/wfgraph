@@ -8,7 +8,7 @@ import {
   orchestrateTriggerExecution,
   type TriggerOrchestratorResult,
   type TriggerWaitState,
-} from "./trigger-orchestrator";
+} from "./orchestrator";
 
 type TriggerRoutingLogger = {
   error: (message: string, properties?: Record<string, unknown>) => void;

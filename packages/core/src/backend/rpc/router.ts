@@ -18,30 +18,30 @@ import {
   postIntegrationTest,
   putIntegration,
 } from "#src/backend/services/integrations/integrations";
-import { postWorkflowExecuteResult } from "#src/backend/services/workflow/workflow-execute";
-import { postExecutionCancelResult } from "#src/backend/services/workflows/execution-cancel";
-import { getExecutionEvents } from "#src/backend/services/workflows/execution-events";
-import { getExecutionLogs } from "#src/backend/services/workflows/execution-logs";
-import { getExecutionStatus } from "#src/backend/services/workflows/execution-status";
+import { postWorkflowExecuteResult } from "#src/backend/services/workflows/triggering/execute";
+import { postExecutionCancelResult } from "#src/backend/services/workflows/executions/cancel";
+import { getExecutionEvents } from "#src/backend/services/workflows/executions/events";
+import { getExecutionLogs } from "#src/backend/services/workflows/executions/logs";
+import { getExecutionStatus } from "#src/backend/services/workflows/executions/status";
 import {
   deleteWorkflow,
   getWorkflow,
   patchWorkflow,
 } from "#src/backend/services/workflows/workflow";
-import { postWorkflowDuplicate } from "#src/backend/services/workflows/workflow-duplicate";
+import { postWorkflowDuplicate } from "#src/backend/services/workflows/duplicate";
 import {
   deleteWorkflowExecutions,
   getWorkflowExecutions,
-} from "#src/backend/services/workflows/workflow-executions";
-import { getWorkflowExecutionsGlobal } from "#src/backend/services/workflows/workflow-executions-global";
-import { postWorkflowWebhookResult } from "#src/backend/services/workflows/workflow-webhook";
-import { getWorkflows } from "#src/backend/services/workflows/workflows";
-import { postWorkflowsBulkLifecycleResult } from "#src/backend/services/workflows/workflows-bulk-lifecycle";
-import { postWorkflowsCreate } from "#src/backend/services/workflows/workflows-create";
+} from "#src/backend/services/workflows/executions/list";
+import { getWorkflowExecutionsGlobal } from "#src/backend/services/workflows/executions/global";
+import { postWorkflowWebhookResult } from "#src/backend/services/workflows/triggering/webhook";
+import { getWorkflows } from "#src/backend/services/workflows/list";
+import { postWorkflowsBulkLifecycleResult } from "#src/backend/services/workflows/bulk-lifecycle";
+import { postWorkflowsCreate } from "#src/backend/services/workflows/create";
 import {
   getWorkflowsCurrent,
   postWorkflowsCurrent,
-} from "#src/backend/services/workflows/workflows-current";
+} from "#src/backend/services/workflows/current";
 import { rpcContract } from "@rova/shared/rpc/contracts";
 import type { RpcContext } from "./context";
 import { type RpcCompatibleResult, toRpcData } from "./errors";

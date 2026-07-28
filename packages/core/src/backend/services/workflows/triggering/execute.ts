@@ -7,13 +7,13 @@ import {
   type ServiceResult,
   success,
 } from "#src/backend/lib/service-result";
-import { orchestrateRoutedTrigger } from "#src/backend/services/workflows/trigger-routing";
-import { runWorkflowExecutionPreflight } from "#src/backend/services/workflows/workflow-execution-preflight";
+import { orchestrateRoutedTrigger } from "#src/backend/services/workflows/triggering/routing";
+import { runWorkflowExecutionPreflight } from "#src/backend/services/workflows/triggering/preflight";
 import {
   buildIgnoredRunAuditMessage,
   recordTerminalWorkflowRun,
   startWorkflowRun,
-} from "#src/backend/services/workflows/workflow-run-lifecycle";
+} from "#src/backend/services/workflows/triggering/run-lifecycle";
 import type { JsonObject } from "@rova/shared/types/json";
 import { getErrorMessage } from "@rova/shared/utils";
 import type { ApiErrorPayload } from "@rova/shared/workflow/api-contracts";

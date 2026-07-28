@@ -217,6 +217,8 @@ packaging change with `pnpm pack` and read the extracted manifest.
 - Server-side barrel files are allowed.
 - Route handlers stay light; domain logic belongs in
   `packages/core/src/backend/services/<domain>`.
+- Directory traversal represents the stack: group by domain aggregate, and let one
+  directory level answer one question.
 
 ## Database
 

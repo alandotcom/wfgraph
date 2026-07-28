@@ -3,7 +3,7 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureRelayingCause } from "#src/backend/lib/effect/database";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import { redactSensitiveData } from "#src/backend/lib/utils/redact";
-import { ExecutionRepo } from "#src/backend/services/workflows/repo";
+import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
 
 function toIso(value: Date | null): string | null {
   return value?.toISOString() ?? null;

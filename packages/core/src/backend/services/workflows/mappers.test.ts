@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Workflow } from "#src/backend/lib/db/schema";
-import {
-  buildWorkflowUpdateData,
-  toWorkflowApiPayload,
-} from "./workflow-mappers";
+import { buildWorkflowUpdateData, toWorkflowApiPayload } from "./mappers";
 
 function createWorkflow(overrides: Partial<Workflow> = {}): Workflow {
   return {

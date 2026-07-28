@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { failure, success } from "#src/backend/lib/service-result";
-import { postWorkflowsBulkLifecycleResult } from "#src/backend/services/workflows/workflows-bulk-lifecycle";
+import { postWorkflowsBulkLifecycleResult } from "#src/backend/services/workflows/bulk-lifecycle";
 
 const mocks = vi.hoisted(() => {
   const findFirst = vi.fn();

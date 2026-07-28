@@ -106,7 +106,7 @@ old names, and old tests asserting them are deleted, not shimmed.
 - `fallback-trigger.ts`, `schedule-trigger.ts`: evaluate returns a
   classification from the same hardcoded `"event"` / `"data.id"` paths. The
   always-start behavior moves to the callers: manual/schedule execution
-  bypasses the orchestrator already (`workflow-execute.ts`
+  bypasses the orchestrator already (`triggering/execute.ts`
   `isOrchestratedTrigger`), so nothing there reads a policy.
 
 ### Tests (phase 1)
@@ -131,7 +131,7 @@ old names, and old tests asserting them are deleted, not shimmed.
 
 - `waitForEvents` becomes `string[]` in node config and in wait-state
   metadata. Update `workflow-engine/core.ts` (read + persist), the two
-  `parseCsvSet` readers (`trigger-orchestrator.ts`,
+  `parseCsvSet` readers (`triggering/orchestrator.ts`,
   `workflow-wait-resume.ts`) to set-membership over the array, and delete
   the now-unused `parseCsvSet` import sites (knip will confirm whether the
   helper itself survives).
@@ -165,7 +165,7 @@ old names, and old tests asserting them are deleted, not shimmed.
   `markWaitStateStatus`), count only rows actually updated, and skip the
   `run_cancelled` audit event for rows that lost the race.
 
-### `trigger-orchestrator.ts`
+### `triggering/orchestrator.ts`
 
 - Input becomes `{ runMode, eventType, correlationKey, action: RoutingAction, ignoreReason?, waitStates, inFlightExecutions, enableResumes, startExecution, cancelInFlightRuns, resumeWaitStates }`.
 - `cancel` with zero in-flight executions → ignored
@@ -191,11 +191,11 @@ old names, and old tests asserting them are deleted, not shimmed.
   from `triggerConfig`, resolve the action, fetch both wait states and
   in-flight executions by correlation, orchestrate. Cancel reason:
   `` `Replaced by event ${eventType}` `` / `` `Cancelled by event ${eventType}` ``.
-- `workflow-webhook.ts`: same changes minus `eventName` (none exists).
-  Audit-message helpers in `workflow-run-lifecycle.ts`
+- `triggering/webhook.ts`: same changes minus `eventName` (none exists).
+  Audit-message helpers in `triggering/run-lifecycle.ts`
   (`buildIgnoredRunAuditMessage`) updated for the new reasons; drop wording
   that names create/update/delete.
-- `workflow-execute.ts`: a third caller, not a pass-through. It currently
+- `triggering/execute.ts`: a third caller, not a pass-through. It currently
   forwards the trigger's `routingDecision` (~L118-169); it must now read
   `routingPolicy` from the trigger config and call `resolveRoutingAction`
   exactly like the other two callers, passing the sole declared event name
@@ -203,14 +203,14 @@ old names, and old tests asserting them are deleted, not shimmed.
 
 ### Tests (phase 2)
 
-- `trigger-orchestrator.test.ts`: rewrite for `action` input, widened cancel
+- `triggering/orchestrator.test.ts`: rewrite for `action` input, widened cancel
   (in-flight execution with no wait state gets cancelled), `no_in_flight_runs`,
   replace-with-nothing-running starts, start-consumed-by-resume pinned.
 - Cancel race test: execution completes between the in-flight query and the
   cancel write; row stays `success`, is not counted, no `run_cancelled`
   audit event. Do not build tests around `pending` (nothing writes it;
   including it in the filter is harmless).
-- `workflow-run-lifecycle.test.ts`: message-builder cases for new reasons.
+- `triggering/run-lifecycle.test.ts`: message-builder cases for new reasons.
 - `workflow-wait-resume.test.ts`: `waitForEvents` array instead of CSV.
 
 ## Phase 3 — client (`packages/client`)
@@ -295,7 +295,7 @@ old names, and old tests asserting them are deleted, not shimmed.
 - No canvas-level warning badges on the trigger node; warnings live in the
   config panels like today's webhook warnings.
 - `workflow-trigger-bootstrap.ts` no-op untouched unless knip objects.
-- Manual per-execution cancel (`execution-cancel.ts`) still refuses
+- Manual per-execution cancel (`executions/cancel.ts`) still refuses
   non-waiting executions. After this change an event can cancel a running
   execution while the Runs panel button cannot; that inconsistency is
   deliberate here and tracked as a follow-up issue, not fixed in this plan.
