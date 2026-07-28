@@ -12,6 +12,7 @@ import {
 import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
 import { CURRENT_WORKFLOW_NAME } from "@/backend/lib/workflow-constants";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
+import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers";
 import { getErrorMessage } from "@rova/shared/utils";
 import { generateId } from "@rova/shared/utils/id";
 import type {
@@ -27,7 +28,7 @@ const workflowsCurrentLogger = getAppLogger("workflow", "current");
 
 type GetCurrentWorkflowResult = ServiceResult<
   WorkflowApiPayload,
-  "internal",
+  "internal" | "not_found",
   ApiErrorPayload
 >;
 
@@ -62,9 +63,9 @@ export async function getWorkflowsCurrent(): Promise<GetCurrentWorkflowResult> {
       .limit(1);
 
     if (!currentWorkflow) {
-      return success({
-        graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
-      });
+      // Answering with a bare empty graph would be a workflow payload missing
+      // its name, mode, and timestamps, which is not a workflow.
+      return failure("not_found", { error: "No current workflow" });
     }
 
     const graphValidation = validateWorkflowGraph(currentWorkflow.graph);
@@ -83,10 +84,7 @@ export async function getWorkflowsCurrent(): Promise<GetCurrentWorkflowResult> {
     // Conditions are checked on save and again before a run, never on the way
     // out: refusing the read would leave the editor unable to open the graph
     // whose condition needs correcting.
-    return success({
-      id: currentWorkflow.id,
-      graph: currentWorkflow.graph,
-    });
+    return success(toWorkflowApiPayload(currentWorkflow));
   } catch (error) {
     workflowsCurrentLogger.error(
       `Failed to get current workflow: ${getErrorMessage(error)}`,
@@ -142,10 +140,7 @@ export async function postWorkflowsCurrent(body: {
         .where(eq(workflows.id, existingWorkflow.id))
         .returning();
 
-      return success({
-        id: updatedWorkflow.id,
-        graph: updatedWorkflow.graph,
-      });
+      return success(toWorkflowApiPayload(updatedWorkflow));
     }
 
     const workflowId = generateId();
@@ -162,10 +157,7 @@ export async function postWorkflowsCurrent(body: {
 
     invalidateInngestFunctionsCache();
 
-    return success({
-      id: savedWorkflow.id,
-      graph: savedWorkflow.graph,
-    });
+    return success(toWorkflowApiPayload(savedWorkflow));
   } catch (error) {
     workflowsCurrentLogger.error(
       `Failed to save current workflow: ${getErrorMessage(error)}`,

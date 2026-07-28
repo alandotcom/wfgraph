@@ -1,6 +1,8 @@
 import { atom } from "jotai";
+import { queryClient } from "@/lib/query-client";
 import type { SavedWorkflow } from "@/lib/rpc-client";
-import { api } from "@/lib/rpc-client";
+import { workflowApi } from "@/lib/rpc-client";
+import { orpcQuery } from "@/lib/rpc-query";
 import type {
   WorkflowEdge,
   WorkflowMode,
@@ -49,8 +51,25 @@ export const lastSaveErrorAtom = atom<Error | null>(null);
  * The subset of the workflow API this module calls, as an atom so a test can
  * substitute it per store rather than reassigning the shared client singleton.
  */
-type WorkflowSaveApi = Pick<typeof api.workflow, "create" | "update">;
-export const workflowApiAtom = atom<WorkflowSaveApi>(api.workflow);
+type WorkflowSaveApi = Pick<typeof workflowApi, "create" | "update">;
+export const workflowApiAtom = atom<WorkflowSaveApi>(workflowApi);
+
+/**
+ * A saved name, mode, or graph makes the dashboard's list wrong, and the
+ * dashboard is never mounted when this fires.
+ *
+ * Marked stale rather than refetched: the editor's own switcher observes this
+ * entry, so refetching would mean a request per debounce window while the user
+ * types. The dashboard refetches on its next mount instead. This module runs
+ * outside React, which is why it reaches for the client singleton the router's
+ * loaders already use.
+ */
+function markWorkflowListStale() {
+  void queryClient.invalidateQueries({
+    queryKey: orpcQuery.workflow.getAll.key(),
+    refetchType: "none",
+  });
+}
 
 /** Debounce window for typing-driven saves. Tests set this to 0. */
 export const autosaveDelayAtom = atom(1000);
@@ -194,6 +213,7 @@ export const saveWorkflowAtom = atom(
             );
             outcome = { ok: true, workflow };
             set(lastSaveErrorAtom, null);
+            markWorkflowListStale();
 
             // Clear the dirty flag only when nothing newer is queued and the
             // saved workflow is still the one on screen.
@@ -313,6 +333,7 @@ export const createWorkflowAtom = atom(
       set(workflowNameErrorAtom, null);
       set(hasUnsavedChangesAtom, false);
       set(lastSaveErrorAtom, null);
+      markWorkflowListStale();
       return { ok: true, workflow };
     } catch (error) {
       const saveError = toError(error);

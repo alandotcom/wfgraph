@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useReactFlow } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
@@ -19,6 +19,7 @@ import { nanoid } from "nanoid";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { Panel } from "@/components/flow-elements/panel";
+import { useDeleteWorkflow } from "@/hooks/use-delete-workflow";
 import { useDomEvent } from "@/hooks/effects";
 import { ConfigurationOverlay } from "@/components/overlays/configuration-overlay";
 import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
@@ -40,10 +41,12 @@ import {
   WORKFLOW_NODE_WIDTH,
 } from "@/components/workflow/workflow-node-dimensions";
 import { UserMenu } from "@/components/workflows/user-menu";
-import { api } from "@/lib/rpc-client";
+import type { WorkflowExecuteResult } from "@/lib/rpc-client";
 import {
   integrationsQueryOptions,
   orpcQuery,
+  refreshRunHistory,
+  refreshWorkflowList,
   workflowListQueryOptions,
 } from "@/lib/rpc-query";
 import {
@@ -321,7 +324,8 @@ function getMissingIntegrations(
 }
 
 type ExecuteWorkflowRunParams = {
-  workflowId: string;
+  /** The run mutation, with its variables already bound by the caller. */
+  runWorkflow: () => Promise<WorkflowExecuteResult>;
   nodes: WorkflowNode[];
   updateNodeData: (update: {
     id: string;
@@ -332,7 +336,7 @@ type ExecuteWorkflowRunParams = {
 };
 
 async function executeWorkflowRun({
-  workflowId,
+  runWorkflow,
   nodes,
   updateNodeData,
   setIsExecuting,
@@ -349,7 +353,7 @@ async function executeWorkflowRun({
   }
 
   try {
-    const result = await api.workflow.execute(workflowId, {});
+    const result = await runWorkflow();
 
     if (result.status !== "running" || !result.executionId) {
       if (result.status === "cancelled") {
@@ -393,10 +397,9 @@ async function executeWorkflowRun({
     // Select the new execution
     setSelectedExecutionId(result.executionId);
   } catch (error) {
+    // The mutation cache has already toasted the message. What is left is the
+    // canvas, which still shows the trigger node running.
     console.error("Failed to execute workflow:", error);
-    toast.error(
-      error instanceof Error ? error.message : "Failed to execute workflow"
-    );
     updateNodesStatus(nodes, updateNodeData, "error");
     setIsExecuting(false);
   }
@@ -441,9 +444,20 @@ function useWorkflowHandlers({
 }: WorkflowHandlerParams) {
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const clearGraphSelection = useSetAtom(clearGraphSelectionAtom);
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const createWorkflow = useSetAtom(createWorkflowAtom);
+  // No errorMessage: a rejected run carries a server message worth reading, and
+  // the mutation cache falls back to it. Every other outcome arrives as a
+  // successful response with a status on it, which executeWorkflowRun reads.
+  const runWorkflow = useMutation(
+    orpcQuery.workflow.execute.mutationOptions({
+      // A started run belongs in both run lists, and the dashboard's is the one
+      // nobody is looking at when this fires.
+      onSuccess: () => refreshRunHistory(queryClient),
+    })
+  );
 
   const handleSave = async () => {
     // The `add` node is a placeholder, so a canvas holding only one has nothing
@@ -493,10 +507,6 @@ function useWorkflowHandlers({
       return;
     }
 
-    try {
-    } catch {
-      // Ignore if session storage is unavailable.
-    }
     setIsTransitioningFromHomepage(true);
     await navigate({
       to: "/workflows/$workflowId",
@@ -520,7 +530,8 @@ function useWorkflowHandlers({
 
     setIsExecuting(true);
     await executeWorkflowRun({
-      workflowId: currentWorkflowId,
+      runWorkflow: () =>
+        runWorkflow.mutateAsync({ workflowId: currentWorkflowId, input: {} }),
       nodes,
       updateNodeData,
       setIsExecuting,
@@ -617,7 +628,6 @@ function useWorkflowState() {
   const setSelectedExecutionId = useSetAtom(selectedExecutionIdAtom);
   const { data: userIntegrations = [] } = useQuery(integrationsQueryOptions());
 
-  const [isDuplicating, setIsDuplicating] = useState(false);
   const { data: allWorkflows = [] } = useQuery(workflowListQueryOptions());
 
   return {
@@ -643,8 +653,6 @@ function useWorkflowState() {
     addNode,
     canUndo,
     canRedo,
-    isDuplicating,
-    setIsDuplicating,
     allWorkflows,
     setActiveTab,
     setSelectedNodeId,
@@ -658,6 +666,7 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const deleteWorkflow = useDeleteWorkflow();
   const setWorkflowMode = useSetAtom(setWorkflowModeAtom);
   const {
     currentWorkflowId,
@@ -673,7 +682,6 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     isExecuting,
     setIsExecuting,
     clearWorkflow,
-    setIsDuplicating,
     setActiveTab,
     setSelectedNodeId,
     setSelectedExecutionId,
@@ -744,48 +752,38 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
       confirmLabel: "Delete Workflow",
       confirmVariant: "destructive" as const,
       destructive: true,
-      onConfirm: async () => {
+      onConfirm: () => {
         if (!currentWorkflowId) {
           return;
         }
-        try {
-          await api.workflow.delete(currentWorkflowId);
-          toast.success("Workflow deleted successfully");
-          await navigate({ to: "/", replace: true });
-        } catch (error) {
-          console.error("Failed to delete workflow:", error);
-          toast.error("Failed to delete workflow. Please try again.");
-        }
+        deleteWorkflow.mutate({ workflowId: currentWorkflowId });
       },
     });
   };
 
   // The switcher dropdown opening is a good moment to re-read the list, and a
   // create or a delete elsewhere invalidates the same key.
-  const loadWorkflows = () =>
-    queryClient.invalidateQueries({
-      queryKey: orpcQuery.workflow.getAll.key(),
-    });
+  const loadWorkflows = () => refreshWorkflowList(queryClient);
 
-  const handleDuplicate = async () => {
+  const duplicateWorkflow = useMutation(
+    orpcQuery.workflow.duplicate.mutationOptions({
+      onSuccess: async (payload) => {
+        toast.success("Workflow duplicated successfully");
+        await loadWorkflows();
+        await navigate({
+          to: "/workflows/$workflowId",
+          params: { workflowId: payload.id },
+        });
+      },
+      meta: { errorMessage: "Failed to duplicate workflow. Please try again." },
+    })
+  );
+
+  const handleDuplicate = () => {
     if (!currentWorkflowId) {
       return;
     }
-
-    setIsDuplicating(true);
-    try {
-      const newWorkflow = await api.workflow.duplicate(currentWorkflowId);
-      toast.success("Workflow duplicated successfully");
-      await navigate({
-        to: "/workflows/$workflowId",
-        params: { workflowId: newWorkflow.id },
-      });
-    } catch (error) {
-      console.error("Failed to duplicate workflow:", error);
-      toast.error("Failed to duplicate workflow. Please try again.");
-    } finally {
-      setIsDuplicating(false);
-    }
+    duplicateWorkflow.mutate({ workflowId: currentWorkflowId });
   };
 
   const handleSetWorkflowMode = async (mode: "live" | "test") => {
@@ -799,8 +797,9 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
       return;
     }
 
+    // No loadWorkflows: this went through the save queue, which marks the list
+    // stale on every write it lands.
     setCurrentWorkflowMode(outcome.workflow.mode);
-    await loadWorkflows();
     toast.success(
       mode === "test"
         ? "Workflow set to Test mode"
@@ -815,6 +814,7 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     handleDeleteWorkflow,
     loadWorkflows,
     handleDuplicate,
+    isDuplicating: duplicateWorkflow.isPending,
     handleSetWorkflowMode,
   };
 }
@@ -1252,10 +1252,10 @@ function WorkflowMenuComponent({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="flex items-center gap-2"
-                    disabled={state.isDuplicating}
+                    disabled={actions.isDuplicating}
                     onClick={actions.handleDuplicate}
                   >
-                    {state.isDuplicating ? (
+                    {actions.isDuplicating ? (
                       <Loader2 className="size-4 animate-spin" />
                     ) : (
                       <Copy className="size-4" />
@@ -1285,13 +1285,12 @@ function WorkflowMenuComponent({
         existingWorkflowNames={state.allWorkflows.map(
           (workflow) => workflow.name
         )}
-        onCreated={async (createdWorkflow) => {
-          await actions.loadWorkflows();
-          await navigate({
+        onCreated={(createdWorkflowId) =>
+          navigate({
             to: "/workflows/$workflowId",
-            params: { workflowId: createdWorkflow.id },
-          });
-        }}
+            params: { workflowId: createdWorkflowId },
+          })
+        }
         onOpenChange={setIsCreateDialogOpen}
         open={isCreateDialogOpen}
       />
@@ -1338,7 +1337,7 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
           <div className="flex items-center gap-2">
             {workflowId && !state.isOwner && (
               <DuplicateButton
-                isDuplicating={state.isDuplicating}
+                isDuplicating={actions.isDuplicating}
                 onDuplicate={actions.handleDuplicate}
               />
             )}

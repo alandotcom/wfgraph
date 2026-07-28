@@ -1,9 +1,7 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { useCallback, useState } from "react";
 import { IntegrationsManager } from "@/components/settings/integrations-manager";
 import { Input } from "@/components/ui/input";
-import { orpcQuery } from "@/lib/rpc-query";
 import { AddConnectionOverlay } from "./add-connection-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -14,18 +12,10 @@ type IntegrationsOverlayProps = {
 
 export function IntegrationsOverlay({ overlayId }: IntegrationsOverlayProps) {
   const { push, closeAll } = useOverlay();
-  const queryClient = useQueryClient();
   const [filter, setFilter] = useState("");
 
   const handleAddConnection = () => {
-    push(AddConnectionOverlay, {
-      // Adding a connection from here does not go through IntegrationsManager,
-      // so this is the one write that has to say so itself.
-      onSuccess: () =>
-        queryClient.invalidateQueries({
-          queryKey: orpcQuery.integration.key(),
-        }),
-    });
+    push(AddConnectionOverlay, {});
   };
 
   const handleClose = useCallback(() => closeAll(), [closeAll]);

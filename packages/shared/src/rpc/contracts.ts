@@ -47,16 +47,22 @@ const integrationTestResultSchema = z.object({
   message: z.string(),
 });
 
+// Everything here but `description` and `isOwner` comes from a non-null column
+// through the one mapper that builds this payload, so the client never has to
+// invent a value. It used to be optional throughout, which pushed a `?? ""` into
+// every consumer — including two that fed the result straight to a router as a
+// workflow id, where the empty string resolves to a route that redirects away.
 const workflowApiPayloadSchema = z.object({
-  id: z.string().optional(),
-  name: z.string().optional(),
+  id: idSchema,
+  name: z.string(),
   description: z.string().optional(),
   graph: serializedWorkflowGraphSchema,
-  isPaused: z.boolean().optional(),
-  mode: z.enum(["live", "test"]).optional(),
-  visibility: z.enum(["private", "public"]).optional(),
-  createdAt: z.string().optional(),
-  updatedAt: z.string().optional(),
+  isPaused: z.boolean(),
+  mode: z.enum(["live", "test"]),
+  visibility: z.enum(["private", "public"]),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  /** Absent on a payload the viewer did not author. */
   isOwner: z.boolean().optional(),
 });
 const workflowRunModeSchema = z.enum(["live", "test"]);

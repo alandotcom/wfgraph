@@ -88,17 +88,26 @@ const workflowRoute = createRoute({
    * The connection list comes along because a stored integrationId can have
    * gone stale since the last save, and repairing it here is what keeps that
    * repair out of a render effect too.
+   *
+   * `fetchQuery` and not `ensureQueryData`: the latter returns whatever is
+   * cached without consulting staleness, so the `staleTime: 0` below did
+   * nothing and reopening a workflow within the cache's lifetime rehydrated the
+   * canvas from the copy fetched on the first visit. Edits made in between
+   * vanished from the screen, and the next autosave wrote that older graph
+   * back. `fetchQuery` honours both settings: the workflow is refetched every
+   * time, and the connection list is refetched only when it has gone stale or a
+   * connection write invalidated it.
    */
   loader: async ({ params }) => {
     try {
       const [payload, integrations] = await Promise.all([
-        queryClient.ensureQueryData(
+        queryClient.fetchQuery(
           orpcQuery.workflow.getById.queryOptions({
             input: { workflowId: params.workflowId },
             staleTime: 0,
           })
         ),
-        queryClient.ensureQueryData(integrationsQueryOptions()),
+        queryClient.fetchQuery(integrationsQueryOptions()),
       ]);
 
       const workflow = toSavedWorkflow(payload);

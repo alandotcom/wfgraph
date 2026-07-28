@@ -4,7 +4,6 @@ import type { ContractRouterClient } from "@orpc/contract";
 import { getBasePath } from "@/lib/base-path";
 import type { RpcContract } from "@rova/shared/rpc/contracts";
 import { getRpcErrorMessage } from "@rova/shared/rpc/error-message";
-import type { JsonObject } from "@rova/shared/types/json";
 import type { WorkflowApiPayload } from "@rova/shared/workflow/api-contracts";
 import {
   createSerializedWorkflowGraph,
@@ -151,44 +150,18 @@ export const rpc: ContractRouterClient<RpcContract> = createORPCClient(link);
 type RpcOutput<T> = T extends (...args: never[]) => Promise<infer TResult>
   ? TResult
   : never;
-type WorkflowExecuteResult = RpcOutput<typeof rpc.workflow.execute>;
-type WorkflowExecutionsResult = RpcOutput<typeof rpc.workflow.getExecutions>;
-type WorkflowDeleteExecutionsResult = RpcOutput<
-  typeof rpc.workflow.deleteExecutions
->;
-type WorkflowExecutionLogsResult = RpcOutput<
-  typeof rpc.workflow.getExecutionLogs
->;
-type WorkflowExecutionEventsResult = RpcOutput<
-  typeof rpc.workflow.getExecutionEvents
->;
-type WorkflowCancelExecutionResult = RpcOutput<
-  typeof rpc.workflow.cancelExecution
->;
-type WorkflowExecutionStatusResult = RpcOutput<
-  typeof rpc.workflow.getExecutionStatus
->;
-type WorkflowExecutionsGlobalResult = RpcOutput<
+export type WorkflowExecuteResult = RpcOutput<typeof rpc.workflow.execute>;
+export type WorkflowExecutionsGlobalResult = RpcOutput<
   typeof rpc.workflow.getExecutionsGlobal
 >;
-type WorkflowBulkLifecycleResult = RpcOutput<typeof rpc.workflow.bulkLifecycle>;
 
 export function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
   const graphData = toWorkflowGraphData(payload.graph);
 
   return {
-    id: payload.id ?? "",
-    name: payload.name ?? "",
-    description: payload.description,
-    graph: payload.graph,
+    ...payload,
     nodes: graphData.nodes,
     edges: graphData.edges,
-    isPaused: payload.isPaused ?? false,
-    mode: payload.mode ?? "live",
-    visibility: payload.visibility ?? "private",
-    createdAt: payload.createdAt ?? new Date(0).toISOString(),
-    updatedAt: payload.updatedAt ?? new Date(0).toISOString(),
-    isOwner: payload.isOwner,
   };
 }
 
@@ -214,6 +187,17 @@ function toGraphPayload(input: {
 }
 
 export type Integration = RpcOutput<typeof rpc.integration.create>;
+
+/**
+ * Saving a workflow, for the save store.
+ *
+ * Everything a component writes goes through `orpcQuery`, where the cache
+ * consequences of a write live beside the write. These two stay because the
+ * autosave queue in `workflow-save-store.ts` runs outside React, and because
+ * both reshape their arguments: a graph is assembled from nodes and edges, and
+ * the response is deserialised back into a `SavedWorkflow`. The store swaps this
+ * object out in its tests, which is the other reason it is one object.
+ */
 export const workflowApi = {
   create: (workflow: {
     name: string;
@@ -255,75 +239,4 @@ export const workflowApi = {
       })
       .then(toSavedWorkflow);
   },
-
-  delete: (id: string): Promise<{ success: true }> =>
-    rpc.workflow.delete({ workflowId: id }),
-
-  duplicate: (id: string): Promise<SavedWorkflow> =>
-    rpc.workflow.duplicate({ workflowId: id }).then(toSavedWorkflow),
-
-  execute: (
-    id: string,
-    input: JsonObject = {}
-  ): Promise<WorkflowExecuteResult> =>
-    rpc.workflow.execute({
-      workflowId: id,
-      input,
-    }),
-
-  getExecutions: (id: string): Promise<WorkflowExecutionsResult> =>
-    rpc.workflow.getExecutions({ workflowId: id }),
-
-  getExecutionsGlobal: (input: {
-    workflowIds?: string[];
-    statuses?: Array<
-      "pending" | "running" | "waiting" | "success" | "error" | "cancelled"
-    >;
-    limit?: number;
-    cursor?: { startedAt: string; id: string };
-  }): Promise<WorkflowExecutionsGlobalResult> =>
-    rpc.workflow.getExecutionsGlobal({
-      workflowIds: input.workflowIds,
-      statuses: input.statuses,
-      limit: input.limit,
-      cursor: input.cursor,
-    }),
-
-  bulkLifecycle: (input: {
-    workflowIds: string[];
-    action: "pause" | "resume" | "delete";
-  }): Promise<WorkflowBulkLifecycleResult> =>
-    rpc.workflow.bulkLifecycle({
-      workflowIds: input.workflowIds,
-      action: input.action,
-    }),
-
-  deleteExecutions: (id: string): Promise<WorkflowDeleteExecutionsResult> =>
-    rpc.workflow.deleteExecutions({ workflowId: id }),
-
-  getExecutionLogs: (
-    executionId: string
-  ): Promise<WorkflowExecutionLogsResult> =>
-    rpc.workflow.getExecutionLogs({ executionId }),
-
-  getExecutionEvents: (
-    executionId: string
-  ): Promise<WorkflowExecutionEventsResult> =>
-    rpc.workflow.getExecutionEvents({ executionId }),
-
-  cancelExecution: (
-    executionId: string
-  ): Promise<WorkflowCancelExecutionResult> =>
-    rpc.workflow.cancelExecution({ executionId }),
-
-  getExecutionStatus: (
-    executionId: string
-  ): Promise<WorkflowExecutionStatusResult> =>
-    rpc.workflow.getExecutionStatus({ executionId }),
-};
-
-export const api = {
-  apiKey: rpc.apiKey,
-  integration: rpc.integration,
-  workflow: workflowApi,
 };

@@ -1,4 +1,5 @@
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { type Integration, rpc, toSavedWorkflows } from "@/lib/rpc-client";
 
 /**
@@ -55,3 +56,48 @@ export const workflowListQueryOptions = () =>
     input: {},
     select: toSavedWorkflows,
   });
+
+/*
+ * What a write invalidates, said once.
+ *
+ * These are the only place in the client that names a workflow or integration
+ * cache key for invalidation. A write that leaves the answer to its call site is
+ * a write some call site will get wrong, which is how a deleted workflow stayed
+ * on the dashboard for a full stale window.
+ *
+ * Each one takes procedure keys, never an area key like
+ * `orpcQuery.workflow.key()`. The area also covers the editor's run queries:
+ * `getExecutions` polls every two seconds while the runs panel is open, and
+ * `getExecutionLogs` and `getExecutionEvents` poll alongside it while an
+ * unfinished run is open. Widening the key turns one write into a burst.
+ */
+
+/** The workflow list, behind the dashboard table and the toolbar's switcher. */
+export function refreshWorkflowList(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({
+    queryKey: orpcQuery.workflow.getAll.key(),
+  });
+}
+
+/**
+ * Both views of run history: the editor's per-workflow list and the dashboard's
+ * combined one. Starting, cancelling, or deleting runs makes both wrong, and
+ * whichever one is not on screen is the one that gets forgotten.
+ */
+export function refreshRunHistory(queryClient: QueryClient) {
+  return Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: orpcQuery.workflow.getExecutions.key(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: orpcQuery.workflow.getExecutionsGlobal.key(),
+    }),
+  ]);
+}
+
+/** The connection list, which every selector and every node reads. */
+export function refreshIntegrations(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({
+    queryKey: orpcQuery.integration.getAll.key(),
+  });
+}

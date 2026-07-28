@@ -9,7 +9,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback } from "react";
-import { toast } from "sonner";
 import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
 import { SmartOverlayHeader } from "@/components/overlays/overlay-header";
 import { useOverlay } from "@/components/overlays/overlay-provider";
@@ -21,9 +20,8 @@ import { useNodeConfigWriter } from "@/components/workflow/config/use-node-confi
 import { ActionGrid } from "@/components/workflow/config/action-grid";
 import { TriggerConfig } from "@/components/workflow/config/trigger-config";
 import { WorkflowRuns } from "@/components/workflow/workflow-runs";
-import { api } from "@/lib/rpc-client";
+import { useDeleteWorkflow } from "@/hooks/use-delete-workflow";
 import {
-  clearNodeStatusesAtom,
   clearWorkflowAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
@@ -50,8 +48,11 @@ import type { OverlayComponentProps } from "./types";
 type ConfigurationOverlayProps = OverlayComponentProps;
 
 export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
-  const { updateConfig: handleUpdateConfig, refreshRuns: handleRefreshRuns } =
-    useNodeConfigWriter();
+  const {
+    updateConfig: handleUpdateConfig,
+    refreshRuns: handleRefreshRuns,
+    deleteRuns,
+  } = useNodeConfigWriter();
   const { push, closeAll } = useOverlay();
   const [selectedNodeId] = useAtom(selectedNodeAtom);
   const [selectedEdgeId] = useAtom(selectedEdgeAtom);
@@ -68,7 +69,6 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
-  const clearNodeStatuses = useSetAtom(clearNodeStatusesAtom);
   const clearWorkflow = useSetAtom(clearWorkflowAtom);
   const [newlyCreatedNodeId, setNewlyCreatedNodeId] = useAtom(
     newlyCreatedNodeIdAtom
@@ -77,6 +77,8 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
+
+  const deleteWorkflow = useDeleteWorkflow();
 
   const handleUpdateLabel = useCallback(
     (label: string) => {
@@ -131,19 +133,11 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
         "Are you sure you want to delete all workflow runs? This action cannot be undone.",
       confirmLabel: "Delete",
       confirmVariant: "destructive" as const,
-      onConfirm: async () => {
+      onConfirm: () => {
         if (!currentWorkflowId) {
           return;
         }
-        try {
-          await api.workflow.deleteExecutions(currentWorkflowId);
-          clearNodeStatuses();
-          await handleRefreshRuns();
-          toast.success("All runs deleted");
-        } catch (error) {
-          console.error("Failed to delete runs:", error);
-          toast.error("Failed to delete runs");
-        }
+        deleteRuns.mutate({ workflowId: currentWorkflowId });
       },
     });
   };
@@ -203,19 +197,16 @@ export function ConfigurationOverlay({ overlayId }: ConfigurationOverlayProps) {
       confirmLabel: "Delete Workflow",
       confirmVariant: "destructive" as const,
       destructive: true,
-      onConfirm: async () => {
+      onConfirm: () => {
         if (!currentWorkflowId) {
           return;
         }
-        try {
-          await api.workflow.delete(currentWorkflowId);
-          closeAll();
-          toast.success("Workflow deleted successfully");
-          window.location.href = "/";
-        } catch (error) {
-          console.error("Failed to delete workflow:", error);
-          toast.error("Failed to delete workflow. Please try again.");
-        }
+        // The overlay stack sits above the router, so it survives the hook's
+        // navigation and has to be closed by hand once the delete lands.
+        deleteWorkflow.mutate(
+          { workflowId: currentWorkflowId },
+          { onSuccess: () => closeAll() }
+        );
       },
     });
   };

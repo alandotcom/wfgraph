@@ -9,7 +9,7 @@ import {
   toExecutionLogs,
   toWorkflowExecutions,
 } from "@/lib/execution-logs";
-import { orpcQuery } from "@/lib/rpc-query";
+import { orpcQuery, refreshRunHistory } from "@/lib/rpc-query";
 import { currentWorkflowIdAtom } from "@/lib/workflow-save-store";
 import { selectedExecutionIdAtom } from "@/lib/workflow-ui-store";
 import { WorkflowRunDetail } from "./workflow-run-detail";
@@ -77,14 +77,7 @@ export function WorkflowRuns() {
 
   const cancelExecution = useMutation(
     orpcQuery.workflow.cancelExecution.mutationOptions({
-      // Only the run list, never the whole workflow area: a broad invalidation
-      // from inside the editor would mark the workflow itself stale, and an
-      // observer on it would refetch, rehydrate the graph, re-run the
-      // integration repair and save again over whatever the user was typing.
-      onSuccess: () =>
-        queryClient.invalidateQueries({
-          queryKey: orpcQuery.workflow.getExecutions.key(),
-        }),
+      onSuccess: () => refreshRunHistory(queryClient),
       meta: { errorMessage: "Failed to cancel run" },
     })
   );

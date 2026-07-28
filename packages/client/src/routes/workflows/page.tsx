@@ -1,5 +1,6 @@
 import {
   useInfiniteQuery,
+  useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -28,8 +29,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CreateWorkflowDialog } from "@/components/workflow/create-workflow-dialog";
-import { api, type SavedWorkflow, toSavedWorkflows } from "@/lib/rpc-client";
-import { orpcQuery } from "@/lib/rpc-query";
+import {
+  type SavedWorkflow,
+  toSavedWorkflows,
+  type WorkflowExecutionsGlobalResult,
+} from "@/lib/rpc-client";
+import {
+  orpcQuery,
+  refreshRunHistory,
+  refreshWorkflowList,
+} from "@/lib/rpc-query";
 import { getRelativeTime } from "@rova/shared/utils/time";
 
 type WorkflowExecutionStatus =
@@ -40,9 +49,7 @@ type WorkflowExecutionStatus =
   | "error"
   | "cancelled";
 
-type GlobalExecutionItem = Awaited<
-  ReturnType<typeof api.workflow.getExecutionsGlobal>
->["items"][number];
+type GlobalExecutionItem = WorkflowExecutionsGlobalResult["items"][number];
 
 type RunsCursor = {
   startedAt: string;
@@ -143,9 +150,6 @@ export default function WorkflowsPage() {
     Set<WorkflowExecutionStatus>
   >(new Set());
   const [showSelectedRunsOnly, setShowSelectedRunsOnly] = useState(false);
-  const [lifecycleAction, setLifecycleAction] = useState<
-    "pause" | "resume" | "delete" | null
-  >(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts and re-suggests a name. It stays
   // mounted while closing, because that is what its exit animation needs.
@@ -232,19 +236,27 @@ export default function WorkflowsPage() {
   const isLoadingMoreRuns = runsQuery.isFetchingNextPage;
 
   const refreshWorkflows = useCallback(
-    () =>
-      queryClient.invalidateQueries({
-        queryKey: orpcQuery.workflow.getAll.key(),
-      }),
+    () => refreshWorkflowList(queryClient),
     [queryClient]
   );
 
   const refreshRuns = useCallback(
-    () =>
-      queryClient.invalidateQueries({
-        queryKey: orpcQuery.workflow.getExecutionsGlobal.key(),
-      }),
+    () => refreshRunHistory(queryClient),
     [queryClient]
+  );
+
+  const switchMode = useMutation(
+    orpcQuery.workflow.update.mutationOptions({
+      onSuccess: async (_payload, { mode }) => {
+        await refreshWorkflows();
+        toast.success(
+          mode === "test"
+            ? "Switched workflow to Test mode"
+            : "Switched workflow to Live mode"
+        );
+      },
+      meta: { errorMessage: "Failed to switch workflow mode" },
+    })
   );
 
   const toggleSelectAll = (checked: boolean) => {
@@ -282,19 +294,9 @@ export default function WorkflowsPage() {
     });
   };
 
-  const runLifecycleAction = useCallback(
-    async (action: "pause" | "resume" | "delete", workflowIds: string[]) => {
-      if (workflowIds.length === 0) {
-        return;
-      }
-
-      setLifecycleAction(action);
-      try {
-        const result = await api.workflow.bulkLifecycle({
-          workflowIds,
-          action,
-        });
-
+  const lifecycle = useMutation(
+    orpcQuery.workflow.bulkLifecycle.mutationOptions({
+      onSuccess: async (result, { action }) => {
         if (result.summary.failed === 0) {
           toast.success(
             `${getCompletedActionLabel(action)} ${result.summary.succeeded} workflow${pluralize(result.summary.succeeded, "", "s")}`
@@ -305,37 +307,60 @@ export default function WorkflowsPage() {
           );
         }
 
-        if (action === "delete") {
-          const deletedIds = new Set(
-            result.results
-              .filter((entry) => entry.ok && entry.deleted === true)
-              .map((entry) => entry.workflowId)
-          );
+        await refreshWorkflowList(queryClient);
 
-          setSelectedWorkflowIds((prev) => {
-            const next = new Set<string>();
-            for (const id of prev) {
-              if (!deletedIds.has(id)) {
-                next.add(id);
-              }
+        if (action !== "delete") {
+          // Pausing and resuming touch the workflow row and nothing else. The
+          // run history is paged, so refetching it here would mean one request
+          // per page the user has loaded, for data that cannot have changed.
+          return;
+        }
+
+        const deletedIds = new Set(
+          result.results
+            .filter((entry) => entry.ok && entry.deleted === true)
+            .map((entry) => entry.workflowId)
+        );
+
+        setSelectedWorkflowIds((prev) => {
+          const next = new Set<string>();
+          for (const id of prev) {
+            if (!deletedIds.has(id)) {
+              next.add(id);
             }
-            return next;
-          });
-        }
+          }
+          return next;
+        });
 
-        await refreshWorkflows();
-
-        if (action === "delete") {
-          await refreshRuns();
-        }
-      } catch (error) {
+        // Runs cascade with the workflow row.
+        await refreshRunHistory(queryClient);
+      },
+      // Which action failed is worth saying, and a mutation's meta cannot see
+      // its own variables.
+      onError: (error, { action }) => {
         console.error(`Failed to ${action} workflows:`, error);
         toast.error(`Failed to ${action} workflows`);
-      } finally {
-        setLifecycleAction(null);
+      },
+      meta: { errorShownByCaller: true },
+    })
+  );
+
+  // Which action is in flight, not merely that one is: the row menus and the
+  // bulk buttons all read this to disable themselves.
+  const lifecycleAction = lifecycle.isPending
+    ? lifecycle.variables.action
+    : null;
+
+  // `mutate` is stable across renders; the mutation object it hangs off is not.
+  const runLifecycle = lifecycle.mutate;
+  const runLifecycleAction = useCallback(
+    (action: "pause" | "resume" | "delete", workflowIds: string[]) => {
+      if (workflowIds.length === 0) {
+        return;
       }
+      runLifecycle({ workflowIds, action });
     },
-    [refreshRuns, refreshWorkflows]
+    [runLifecycle]
   );
 
   const openDeleteConfirmation = useCallback((workflowIds: string[]) => {
@@ -463,26 +488,11 @@ export default function WorkflowsPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
-                        onClick={async () => {
-                          try {
-                            const nextMode =
-                              workflow.mode === "test" ? "live" : "test";
-                            await api.workflow.update(workflow.id, {
-                              mode: nextMode,
-                            });
-                            await refreshWorkflows();
-                            toast.success(
-                              nextMode === "test"
-                                ? "Switched workflow to Test mode"
-                                : "Switched workflow to Live mode"
-                            );
-                          } catch (error) {
-                            console.error(
-                              "Failed to switch workflow mode:",
-                              error
-                            );
-                            toast.error("Failed to switch workflow mode");
-                          }
+                        onClick={() => {
+                          switchMode.mutate({
+                            workflowId: workflow.id,
+                            mode: workflow.mode === "test" ? "live" : "test",
+                          });
                         }}
                       >
                         {workflow.mode === "test"
@@ -491,7 +501,7 @@ export default function WorkflowsPage() {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => {
-                          void runLifecycleAction(toggleAction, [workflow.id]);
+                          runLifecycleAction(toggleAction, [workflow.id]);
                         }}
                       >
                         {toggleActionLabel}
@@ -641,7 +651,7 @@ export default function WorkflowsPage() {
                     lifecycleAction !== null
                   }
                   onClick={() => {
-                    void runLifecycleAction("pause", selectedActionableIds);
+                    runLifecycleAction("pause", selectedActionableIds);
                   }}
                   size="sm"
                   type="button"
@@ -655,7 +665,7 @@ export default function WorkflowsPage() {
                     lifecycleAction !== null
                   }
                   onClick={() => {
-                    void runLifecycleAction("resume", selectedActionableIds);
+                    runLifecycleAction("resume", selectedActionableIds);
                   }}
                   size="sm"
                   type="button"
@@ -793,12 +803,8 @@ export default function WorkflowsPage() {
                   return;
                 }
 
-                void runLifecycleAction(
-                  "delete",
-                  confirmDelete.workflowIds
-                ).finally(() => {
-                  setConfirmDelete(null);
-                });
+                runLifecycleAction("delete", confirmDelete.workflowIds);
+                setConfirmDelete(null);
               }}
             >
               Delete
@@ -809,13 +815,9 @@ export default function WorkflowsPage() {
       <CreateWorkflowDialog
         key={createDialogSession}
         existingWorkflowNames={workflows.map((workflow) => workflow.name)}
-        onCreated={async (createdWorkflow) => {
-          await Promise.all([refreshWorkflows(), refreshRuns()]);
-          await navigate({
-            to: "/workflows/$workflowId",
-            params: { workflowId: createdWorkflow.id },
-          });
-        }}
+        onCreated={(workflowId) =>
+          navigate({ to: "/workflows/$workflowId", params: { workflowId } })
+        }
         onOpenChange={setIsCreateDialogOpen}
         open={isCreateDialogOpen}
       />

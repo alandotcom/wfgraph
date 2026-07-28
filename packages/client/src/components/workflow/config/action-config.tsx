@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { HelpCircle, Plus, Settings, Zap } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { ConfigureConnectionOverlay } from "@/components/overlays/add-connection-overlay";
@@ -45,7 +45,7 @@ import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { SchemaBuilder } from "./schema-builder";
-import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
+import { integrationsQueryOptions } from "@/lib/rpc-query";
 
 type ActionConfigProps = {
   config: Record<string, unknown>;
@@ -922,7 +922,6 @@ export function ActionConfig({
   );
 
   const category = actionType ? getCategoryForAction(actionType) || "" : "";
-  const queryClient = useQueryClient();
   const { data: globalIntegrations = [] } = useQuery(
     integrationsQueryOptions()
   );
@@ -973,10 +972,11 @@ export function ActionConfig({
     if (integrationType) {
       push(ConfigureConnectionOverlay, {
         type: integrationType,
+        // The write refreshes the connection list before this runs, and
+        // updateConfig reads that list from the cache rather than from the
+        // render this callback was captured in. Both halves are needed, or the
+        // repair rebinds the node to the connection it had before.
         onSuccess: (integrationId: string) => {
-          void queryClient.invalidateQueries({
-            queryKey: orpcQuery.integration.key(),
-          });
           onUpdateConfig({ integrationId });
         },
       });

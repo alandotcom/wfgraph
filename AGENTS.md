@@ -127,26 +127,45 @@ SQL in `packages/core/drizzle/`.
 
 ## API client
 
-Import the typed RPC client as `import { api } from "@/lib/rpc-client"`. There is no
-`@/lib/api-client`.
+Reads and writes both go through `orpcQuery` from `@/lib/rpc-query`: a read is
+`queryOptions`, a write is `useMutation(orpcQuery.<ns>.<proc>.mutationOptions())`.
+`@/lib/rpc-client` exports the raw `rpc` client, `ApiError`, the response codecs
+`toSavedWorkflow`/`toSavedWorkflows`, and `workflowApi`, which reshapes graph payloads
+in both directions and exists only for the autosave queue in `workflow-save-store.ts`,
+because that runs outside React. There is no `api` object and no `@/lib/api-client`.
 
-Reads go through TanStack Query, not through `api` directly.
-`packages/client/src/lib/rpc-query.ts` wraps the contract with
-`@orpc/tanstack-query`, so a query key is derived from the contract path and cannot
-drift from `packages/shared/src/rpc/contracts.ts`. Invalidate an area with
-`orpcQuery.integration.key()`, one entry with
+A query key is derived from the contract path, so it cannot drift from
+`packages/shared/src/rpc/contracts.ts`. One entry is
 `orpcQuery.workflow.getById.queryKey({ input })`. Pass a `select` as a module-level
 function: TanStack memoises it by identity, and an inline arrow re-runs the transform
 on every render.
 
+**Read a cache entry with `fetchQuery`, not `ensureQueryData`.** The latter returns
+whatever is cached without consulting staleness or invalidation, so a read that must
+reflect a write you just made is correct only while something happens to be observing
+that entry.
+
 `@orpc/tanstack-query` pins its `@orpc/client` peer to an exact version, so all six
 `@orpc/*` packages move together.
 
-**Never invalidate `orpcQuery.workflow.key()` from the editor.** Any non-status patch
-queues a save, so a broad invalidation would refetch the workflow, rehydrate the graph,
-re-run the integration repair, and save again, discarding whatever the user typed while
-the request was in flight. The editor invalidates `workflow.getAll.key()` and nothing
-wider.
+**A write says what it invalidates; the call site does not.** `packages/client/src/lib/rpc-query.ts`
+holds `refreshWorkflowList`, `refreshRunHistory`, and `refreshIntegrations`, and they are
+the only place a cache key is named for invalidation. A mutation calls one from its
+`onSuccess`. Leaving that to the component that happens to mount the write is how a
+deleted workflow stayed on the dashboard for a full stale window.
+
+**Never invalidate an area key like `orpcQuery.workflow.key()`.** The area covers the
+editor's `getExecutions`, `getExecutionLogs`, and `getExecutionEvents`, which poll every
+two seconds while the runs panel is open, so one write becomes a burst of refetches. Each
+helper takes procedure keys. `workflow.getById` is loader-owned (`router.tsx` calls
+`ensureQueryData` with `staleTime: 0`) and has no observer, so nothing needs to invalidate
+it and a refetch of it would be wasted.
+
+**A mutation that shows its own failure says so.** `mutationMeta.errorShownByCaller: true`
+suppresses the `MutationCache` toast for a call site that renders the error inline or in a
+dialog; `errorMessage` replaces the server's wording; neither falls back to `error.message`.
+`mutationErrorToast` in `query-client.ts` is that decision as a pure function, and it is
+tested.
 
 ## Effects
 

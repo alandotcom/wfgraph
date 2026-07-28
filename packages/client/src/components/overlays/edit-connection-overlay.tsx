@@ -1,5 +1,4 @@
-import { omitBy } from "es-toolkit/object";
-import { isNil } from "es-toolkit/predicate";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Pencil, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -7,7 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { api, type Integration } from "@/lib/rpc-client";
+import {
+  announceTestResult,
+  hasProvidedConfigValues,
+} from "@/lib/connection-credentials";
+import type { Integration } from "@/lib/rpc-client";
+import { orpcQuery, refreshIntegrations } from "@/lib/rpc-query";
 import {
   getIntegration,
   getIntegrationLabels,
@@ -24,13 +28,6 @@ const getLabel = (type: string): string => {
   const labels = getIntegrationLabels() as Record<string, string>;
   return labels[type] || SYSTEM_INTEGRATION_LABELS[type] || type;
 };
-
-function hasProvidedConfigValues(config: Record<string, string>): boolean {
-  return (
-    Object.keys(omitBy(config, (value) => !value || value.length === 0))
-      .length > 0
-  );
-}
 
 type EditConnectionOverlayProps = {
   overlayId: string;
@@ -144,12 +141,7 @@ export function EditConnectionOverlay({
   onDelete,
 }: EditConnectionOverlayProps) {
   const { push, closeAll } = useOverlay();
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [_testResult, setTestResult] = useState<{
-    status: "success" | "error";
-    message: string;
-  } | null>(null);
+  const queryClient = useQueryClient();
   const [name, setName] = useState(integration.name);
   const [config, setConfig] = useState<Record<string, string>>({});
 
@@ -157,33 +149,59 @@ export function EditConnectionOverlay({
     setConfig((prev) => ({ ...prev, [key]: value }));
   };
 
-  const doSave = async () => {
-    try {
-      setSaving(true);
-      const hasNewConfig = hasProvidedConfigValues(config);
-      const updatePayload = omitBy(
-        {
-          name: name.trim(),
-          config: hasNewConfig ? config : undefined,
-        },
-        isNil
-      ) as {
-        name?: string;
-        config?: Record<string, string>;
-      };
-      await api.integration.update({
-        integrationId: integration.id,
-        ...updatePayload,
-      });
-      toast.success("Connection updated");
-      onSuccess?.();
-      closeAll();
-    } catch (error) {
-      console.error("Failed to update integration:", error);
-      toast.error("Failed to update connection");
-    } finally {
-      setSaving(false);
-    }
+  const update = useMutation(
+    orpcQuery.integration.update.mutationOptions({
+      onSuccess: async () => {
+        toast.success("Connection updated");
+        await refreshIntegrations(queryClient);
+        onSuccess?.();
+        closeAll();
+      },
+      meta: { errorMessage: "Failed to update connection" },
+    })
+  );
+
+  // A test run as part of saving, whose failure is an offer to save anyway
+  // rather than something to toast.
+  const testForSave = useMutation(
+    orpcQuery.integration.testCredentials.mutationOptions({
+      meta: { errorShownByCaller: true },
+    })
+  );
+
+  const testNewCredentials = useMutation(
+    orpcQuery.integration.testCredentials.mutationOptions({
+      onSuccess: announceTestResult,
+    })
+  );
+
+  const testStoredCredentials = useMutation(
+    orpcQuery.integration.testConnection.mutationOptions({
+      onSuccess: announceTestResult,
+    })
+  );
+
+  const saving = update.isPending || testForSave.isPending;
+  const testing =
+    testNewCredentials.isPending || testStoredCredentials.isPending;
+
+  const saveConnection = () => {
+    update.mutate({
+      integrationId: integration.id,
+      name: name.trim(),
+      // Both fields are optional on the contract, so leaving the credentials out
+      // is how "keep the stored ones" is said.
+      config: hasProvidedConfigValues(config) ? config : undefined,
+    });
+  };
+
+  const offerToSaveAnyway = (reason: string) => {
+    push(ConfirmOverlay, {
+      title: "Connection Test Failed",
+      message: `${reason}\n\nDo you want to save anyway?`,
+      confirmLabel: "Save Anyway",
+      onConfirm: saveConnection,
+    });
   };
 
   const handleSave = async () => {
@@ -191,94 +209,47 @@ export function EditConnectionOverlay({
 
     // If no new config, just save the name
     if (!hasNewConfig) {
-      await doSave();
+      saveConnection();
       return;
     }
 
     // Test before saving
     try {
-      setSaving(true);
-      setTestResult(null);
-
-      const result = await api.integration.testCredentials({
+      const result = await testForSave.mutateAsync({
         type: integration.type,
         config,
       });
 
       if (result.status === "error") {
-        push(ConfirmOverlay, {
-          title: "Connection Test Failed",
-          message: `The test failed: ${result.message}\n\nDo you want to save anyway?`,
-          confirmLabel: "Save Anyway",
-          onConfirm: async () => {
-            await doSave();
-          },
-        });
-        setSaving(false);
+        offerToSaveAnyway(`The test failed: ${result.message}`);
         return;
       }
-
-      await doSave();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to test connection";
-      push(ConfirmOverlay, {
-        title: "Connection Test Failed",
-        message: `${message}\n\nDo you want to save anyway?`,
-        confirmLabel: "Save Anyway",
-        onConfirm: async () => {
-          await doSave();
-        },
-      });
-      setSaving(false);
+      offerToSaveAnyway(
+        error instanceof Error ? error.message : "Failed to test connection"
+      );
+      return;
     }
+
+    saveConnection();
   };
 
-  const handleTest = async () => {
-    const hasNewConfig = hasProvidedConfigValues(config);
-
-    try {
-      setTesting(true);
-      setTestResult(null);
-
-      let result: { status: "success" | "error"; message: string };
-
-      if (hasNewConfig) {
-        // Test new credentials
-        result = await api.integration.testCredentials({
-          type: integration.type,
-          config,
-        });
-      } else {
-        // Test existing credentials
-        result = await api.integration.testConnection({
-          integrationId: integration.id,
-        });
-      }
-
-      setTestResult(result);
-      if (result.status === "success") {
-        toast.success(result.message || "Connection successful");
-      } else {
-        toast.error(result.message || "Connection failed");
-      }
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Connection test failed";
-      setTestResult({ status: "error", message });
-      toast.error(message);
-    } finally {
-      setTesting(false);
+  const handleTest = () => {
+    if (hasProvidedConfigValues(config)) {
+      testNewCredentials.mutate({ type: integration.type, config });
+      return;
     }
+
+    testStoredCredentials.mutate({ integrationId: integration.id });
   };
 
   const handleDelete = () => {
     push(DeleteConnectionOverlay, {
       integration,
-      onSuccess: () => {
-        onDelete?.();
-        closeAll();
-      },
+      // This overlay is the connection just deleted, so it goes with the
+      // confirmation rather than being revealed behind it.
+      onDismiss: closeAll,
+      onSuccess: onDelete,
     });
   };
 
@@ -398,6 +369,13 @@ export function EditConnectionOverlay({
 type DeleteConnectionOverlayProps = {
   overlayId: string;
   integration: Integration;
+  /**
+   * How much of the stack to close once the delete lands. Defaults to this
+   * confirmation alone; a caller that pushed it over its own overlay closes
+   * both, since what it reveals is the edit form for a deleted connection.
+   */
+  onDismiss?: () => void;
+  /** Runs after the connection list has been refreshed. */
   onSuccess?: () => void;
 };
 
@@ -407,24 +385,30 @@ type DeleteConnectionOverlayProps = {
 export function DeleteConnectionOverlay({
   overlayId,
   integration,
+  onDismiss,
   onSuccess,
 }: DeleteConnectionOverlayProps) {
   const { pop } = useOverlay();
-  const [deleting, setDeleting] = useState(false);
+  const dismiss = onDismiss ?? pop;
+  const queryClient = useQueryClient();
 
-  const handleDelete = async () => {
-    try {
-      setDeleting(true);
-      await api.integration.delete({ integrationId: integration.id });
-
-      toast.success("Connection deleted");
-      onSuccess?.();
-    } catch (error) {
-      console.error("Failed to delete integration:", error);
-      toast.error("Failed to delete connection");
-      setDeleting(false);
-    }
-  };
+  const deleteIntegration = useMutation(
+    orpcQuery.integration.delete.mutationOptions({
+      onSuccess: async () => {
+        toast.success("Connection deleted");
+        // Dismissing is this overlay's own business, and it happens before the
+        // refresh is awaited: that await is a round trip, and the screen behind
+        // this confirmation is the edit form for the connection just deleted.
+        // Leaving it to the onSuccess prop is how the Connections screen, which
+        // passes one that only invalidates, kept the confirmation on screen
+        // stuck in its loading state.
+        dismiss();
+        await refreshIntegrations(queryClient);
+        onSuccess?.();
+      },
+      meta: { errorMessage: "Failed to delete connection" },
+    })
+  );
 
   return (
     <Overlay
@@ -433,8 +417,9 @@ export function DeleteConnectionOverlay({
         {
           label: "Delete",
           variant: "destructive",
-          onClick: handleDelete,
-          loading: deleting,
+          onClick: () =>
+            deleteIntegration.mutate({ integrationId: integration.id }),
+          loading: deleteIntegration.isPending,
         },
       ]}
       overlayId={overlayId}

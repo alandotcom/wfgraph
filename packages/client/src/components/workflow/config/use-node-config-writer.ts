@@ -1,10 +1,16 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
+import { toast } from "sonner";
 import { repairNodeIntegration } from "@/lib/node-integration";
-import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
+import {
+  integrationsQueryOptions,
+  orpcQuery,
+  refreshRunHistory,
+} from "@/lib/rpc-query";
 import { seedConditionModel } from "@/lib/seed-condition-model";
 import {
+  clearNodeStatusesAtom,
   edgesAtom,
   nodesAtom,
   selectedNodeAtom,
@@ -26,7 +32,7 @@ export function useNodeConfigWriter() {
   const queryClient = useQueryClient();
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
-  const { data: integrations = [] } = useQuery(integrationsQueryOptions());
+  const clearNodeStatuses = useSetAtom(clearNodeStatusesAtom);
 
   const updateConfig = useCallback(
     (patch: NodeConfigPatch) => {
@@ -63,32 +69,54 @@ export function useNodeConfigWriter() {
         );
       }
 
-      // Choosing an action is exactly when its connection can be settled, and
-      // the connection list is already in hand. This used to be a fetch with an
-      // abort controller and a "pending" flag to hide the warning that flashed
-      // while it was in flight; with the list cached there is no flight and no
-      // flash.
-      const repaired = repairNodeIntegration(
-        { ...latestNode, data: { ...latestNode.data, config: newConfig } },
-        integrations
+      // Choosing an action is exactly when its connection can be settled, so
+      // read the connection list from the cache here rather than closing over a
+      // render's copy of it. Creating a connection from a node calls this
+      // through a callback the overlay stack froze at push time, and a list
+      // captured before that write does not contain the connection the user
+      // just made: repairNodeIntegration would see an unknown id and either
+      // rebind the node to the older connection of that type or, with none,
+      // clear it.
+      //
+      // An entry that has never been fetched is not an empty connection list,
+      // and the repair cannot tell them apart, so leave the node alone.
+      const integrations = queryClient.getQueryData(
+        integrationsQueryOptions().queryKey
       );
 
-      updateNodeData({
-        id: latestNode.id,
-        data: { config: repaired.data.config },
-      });
+      const repaired = integrations
+        ? repairNodeIntegration(
+            { ...latestNode, data: { ...latestNode.data, config: newConfig } },
+            integrations
+          ).data.config
+        : newConfig;
+
+      updateNodeData({ id: latestNode.id, data: { config: repaired } });
     },
-    [store, selectedNodeId, integrations, updateNodeData]
+    [store, selectedNodeId, queryClient, updateNodeData]
   );
 
   /** Re-read the run list. Both panels put a Refresh button above it. */
   const refreshRuns = useCallback(
-    () =>
-      queryClient.invalidateQueries({
-        queryKey: orpcQuery.workflow.getExecutions.key(),
-      }),
+    () => refreshRunHistory(queryClient),
     [queryClient]
   );
 
-  return { updateConfig, refreshRuns };
+  /**
+   * Clearing a workflow's run history, which both panels offer behind their own
+   * confirmation. It lives here so the two cannot answer differently: written
+   * once per panel, one of them toasted and the other finished in silence.
+   */
+  const deleteRuns = useMutation(
+    orpcQuery.workflow.deleteExecutions.mutationOptions({
+      onSuccess: async () => {
+        clearNodeStatuses();
+        await refreshRunHistory(queryClient);
+        toast.success("All runs deleted");
+      },
+      meta: { errorMessage: "Failed to delete runs" },
+    })
+  );
+
+  return { updateConfig, refreshRuns, deleteRuns };
 }

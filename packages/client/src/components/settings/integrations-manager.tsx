@@ -1,7 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Pencil, Trash2 } from "lucide-react";
-import { useCallback, useMemo } from "react";
-import { toast } from "sonner";
+import { useMemo } from "react";
 import {
   DeleteConnectionOverlay,
   EditConnectionOverlay,
@@ -10,6 +9,7 @@ import { useOverlay } from "@/components/overlays/overlay-provider";
 import { Button } from "@/components/ui/button";
 import { IntegrationIcon } from "@/components/ui/integration-icon";
 import { Spinner } from "@/components/ui/spinner";
+import { announceTestResult } from "@/lib/connection-credentials";
 import type { Integration } from "@/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
 import { getIntegrationLabels } from "@rova/shared/plugins/registry";
@@ -25,29 +25,14 @@ type IntegrationsManagerProps = {
 
 export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
   const { push } = useOverlay();
-  const queryClient = useQueryClient();
   const { data: integrations = [], isPending } = useQuery({
     ...integrationsQueryOptions(),
     meta: { errorMessage: "Failed to load integrations" },
   });
 
-  // Every selector and every node on the canvas reads the same cache entry, so
-  // one invalidation after an edit refreshes all of them.
-  const invalidateIntegrations = useCallback(
-    () =>
-      queryClient.invalidateQueries({ queryKey: orpcQuery.integration.key() }),
-    [queryClient]
-  );
-
   const testConnection = useMutation(
     orpcQuery.integration.testConnection.mutationOptions({
-      onSuccess: (result) => {
-        if (result.status === "success") {
-          toast.success(result.message || "Connection successful");
-        } else {
-          toast.error(result.message || "Connection test failed");
-        }
-      },
+      onSuccess: announceTestResult,
       meta: { errorMessage: "Connection test failed" },
     })
   );
@@ -84,19 +69,14 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
       });
   }, [integrations, filter]);
 
+  // No onSuccess: refreshing the connection list is the write's own business
+  // now, and this screen reads the same cache entry every selector does.
   const handleEdit = (integration: Integration) => {
-    push(EditConnectionOverlay, {
-      integration,
-      onSuccess: invalidateIntegrations,
-      onDelete: invalidateIntegrations,
-    });
+    push(EditConnectionOverlay, { integration });
   };
 
   const handleDelete = (integration: Integration) => {
-    push(DeleteConnectionOverlay, {
-      integration,
-      onSuccess: invalidateIntegrations,
-    });
+    push(DeleteConnectionOverlay, { integration });
   };
 
   // `variables` holds the input of the call in flight, which is what the old

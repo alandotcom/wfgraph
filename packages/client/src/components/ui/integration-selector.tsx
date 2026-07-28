@@ -14,7 +14,7 @@ import { EditConnectionOverlay } from "@/components/overlays/edit-connection-ove
 import { useOverlay } from "@/components/overlays/overlay-provider";
 import { Button } from "@/components/ui/button";
 import type { Integration } from "@/lib/rpc-client";
-import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
+import { integrationsQueryOptions } from "@/lib/rpc-query";
 import { repairIntegrationsAtom } from "@/lib/workflow-graph-store";
 import { getIntegration } from "@rova/shared/plugins/registry";
 import type { IntegrationType } from "@rova/shared/types/integration";
@@ -49,28 +49,27 @@ export function IntegrationSelector({
     [allIntegrations, integrationType]
   );
 
-  // One cache entry backs every selector on screen, so refetching after a
-  // connection is created or edited is a single invalidation rather than a
-  // version counter each selector has to notice and diff.
-  //
-  // Editing the connection list is also the only moment a node elsewhere in the
+  // Editing the connection list is the only moment a node elsewhere in the
   // graph can newly be pointing at something that no longer exists, so the
   // repair runs from here rather than from an effect watching for the mismatch.
-  const refreshIntegrations = useCallback(async () => {
-    await queryClient.invalidateQueries({
-      queryKey: orpcQuery.integration.key(),
-    });
+  //
+  // `fetchQuery` rather than `ensureQueryData`: the latter hands back whatever
+  // is cached without consulting staleness, so it would only be correct while
+  // some selector happens to be mounted and observing the entry the write just
+  // invalidated. Repairing against a pre-write list is what points a node at a
+  // connection that is gone.
+  const repairAgainstConnectionList = useCallback(async () => {
     repairIntegrations(
-      await queryClient.ensureQueryData(integrationsQueryOptions())
+      await queryClient.fetchQuery(integrationsQueryOptions())
     );
   }, [queryClient, repairIntegrations]);
 
   const handleNewIntegrationCreated = useCallback(
     async (integrationId: string) => {
-      await refreshIntegrations();
+      await repairAgainstConnectionList();
       onChange(integrationId);
     },
-    [refreshIntegrations, onChange]
+    [repairAgainstConnectionList, onChange]
   );
 
   const openNewConnectionOverlay = useCallback(() => {
@@ -84,11 +83,11 @@ export function IntegrationSelector({
     (integration: Integration) => {
       push(EditConnectionOverlay, {
         integration,
-        onSuccess: refreshIntegrations,
-        onDelete: refreshIntegrations,
+        onSuccess: repairAgainstConnectionList,
+        onDelete: repairAgainstConnectionList,
       });
     },
-    [push, refreshIntegrations]
+    [push, repairAgainstConnectionList]
   );
 
   const handleAddConnection = useCallback(() => {

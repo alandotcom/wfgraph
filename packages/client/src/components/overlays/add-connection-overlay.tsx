@@ -1,4 +1,4 @@
-import { omitBy } from "es-toolkit/object";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -6,7 +6,11 @@ import { Input } from "@/components/ui/input";
 import { IntegrationIcon } from "@/components/ui/integration-icon";
 import { Label } from "@/components/ui/label";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { api } from "@/lib/rpc-client";
+import {
+  announceTestResult,
+  hasProvidedConfigValues,
+} from "@/lib/connection-credentials";
+import { orpcQuery, refreshIntegrations } from "@/lib/rpc-query";
 import {
   getIntegration,
   getIntegrationDescriptions,
@@ -42,13 +46,6 @@ const getDescription = (type: IntegrationType): string =>
   getIntegrationDescriptions()[type] ||
   SYSTEM_INTEGRATION_DESCRIPTIONS[type] ||
   "";
-
-function hasProvidedConfigValues(config: Record<string, string>): boolean {
-  return (
-    Object.keys(omitBy(config, (value) => !value || value.length === 0))
-      .length > 0
-  );
-}
 
 type AddConnectionOverlayProps = {
   overlayId: string;
@@ -205,12 +202,7 @@ export function ConfigureConnectionOverlay({
   onSuccess,
 }: ConfigureConnectionOverlayProps) {
   const { push, closeAll } = useOverlay();
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [_testResult, setTestResult] = useState<{
-    status: "success" | "error";
-    message: string;
-  } | null>(null);
+  const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [config, setConfig] = useState<Record<string, string>>({});
 
@@ -218,23 +210,47 @@ export function ConfigureConnectionOverlay({
     setConfig((prev) => ({ ...prev, [key]: value }));
   };
 
-  const doSave = async () => {
-    try {
-      setSaving(true);
-      const newIntegration = await api.integration.create({
-        name: name.trim(),
-        type,
-        config,
-      });
-      toast.success("Connection created");
-      onSuccess?.(newIntegration.id);
-      closeAll();
-    } catch (error) {
-      console.error("Failed to save integration:", error);
-      toast.error("Failed to save connection");
-    } finally {
-      setSaving(false);
-    }
+  const create = useMutation(
+    orpcQuery.integration.create.mutationOptions({
+      onSuccess: async (newIntegration) => {
+        toast.success("Connection created");
+        // Before the caller hears about it: every consumer of the new id reads
+        // the connection list to resolve it.
+        await refreshIntegrations(queryClient);
+        onSuccess?.(newIntegration.id);
+        closeAll();
+      },
+      meta: { errorMessage: "Failed to save connection" },
+    })
+  );
+
+  // A test run as part of saving, whose failure is an offer to save anyway
+  // rather than something to toast.
+  const testForSave = useMutation(
+    orpcQuery.integration.testCredentials.mutationOptions({
+      meta: { errorShownByCaller: true },
+    })
+  );
+
+  const testNewCredentials = useMutation(
+    orpcQuery.integration.testCredentials.mutationOptions({
+      onSuccess: announceTestResult,
+    })
+  );
+
+  const saving = create.isPending || testForSave.isPending;
+
+  const saveConnection = () => {
+    create.mutate({ name: name.trim(), type, config });
+  };
+
+  const offerToSaveAnyway = (reason: string) => {
+    push(ConfirmOverlay, {
+      title: "Connection Test Failed",
+      message: `${reason}\n\nDo you want to save anyway?`,
+      confirmLabel: "Save Anyway",
+      onConfirm: saveConnection,
+    });
   };
 
   const handleSave = async () => {
@@ -246,66 +262,30 @@ export function ConfigureConnectionOverlay({
 
     // Test before saving
     try {
-      setSaving(true);
-      setTestResult(null);
-
-      const result = await api.integration.testCredentials({ type, config });
+      const result = await testForSave.mutateAsync({ type, config });
 
       if (result.status === "error") {
-        // Show confirmation to save anyway
-        push(ConfirmOverlay, {
-          title: "Connection Test Failed",
-          message: `The test failed: ${result.message}\n\nDo you want to save anyway?`,
-          confirmLabel: "Save Anyway",
-          onConfirm: async () => {
-            await doSave();
-          },
-        });
-        setSaving(false);
+        offerToSaveAnyway(`The test failed: ${result.message}`);
         return;
       }
-
-      await doSave();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to test connection";
-      push(ConfirmOverlay, {
-        title: "Connection Test Failed",
-        message: `${message}\n\nDo you want to save anyway?`,
-        confirmLabel: "Save Anyway",
-        onConfirm: async () => {
-          await doSave();
-        },
-      });
-      setSaving(false);
+      offerToSaveAnyway(
+        error instanceof Error ? error.message : "Failed to test connection"
+      );
+      return;
     }
+
+    saveConnection();
   };
 
-  const handleTest = async () => {
+  const handleTest = () => {
     const hasConfig = hasProvidedConfigValues(config);
     if (!hasConfig) {
       toast.error("Please enter credentials first");
       return;
     }
 
-    try {
-      setTesting(true);
-      setTestResult(null);
-      const result = await api.integration.testCredentials({ type, config });
-      setTestResult(result);
-      if (result.status === "success") {
-        toast.success(result.message || "Connection successful");
-      } else {
-        toast.error(result.message || "Connection failed");
-      }
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Connection test failed";
-      setTestResult({ status: "error", message });
-      toast.error(message);
-    } finally {
-      setTesting(false);
-    }
+    testNewCredentials.mutate({ type, config });
   };
 
   // Get plugin form fields
@@ -386,7 +366,7 @@ export function ConfigureConnectionOverlay({
           label: "Test",
           variant: "outline",
           onClick: handleTest,
-          loading: testing,
+          loading: testNewCredentials.isPending,
           disabled: saving,
         },
         { label: "Create", onClick: handleSave, loading: saving },

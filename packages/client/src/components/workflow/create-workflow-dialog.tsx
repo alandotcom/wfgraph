@@ -1,3 +1,4 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -10,13 +11,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ApiError, api, type SavedWorkflow } from "@/lib/rpc-client";
+import { ApiError } from "@/lib/rpc-client";
+import { orpcQuery, refreshWorkflowList } from "@/lib/rpc-query";
+import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 
 type CreateWorkflowDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   existingWorkflowNames: string[];
-  onCreated: (workflow: SavedWorkflow) => Promise<void> | void;
+  /** Both callers route into the new workflow, which is all they need. */
+  onCreated: (workflowId: string) => Promise<void> | void;
 };
 
 function buildNextWorkflowName(existingWorkflowNames: string[]): string {
@@ -52,42 +56,58 @@ export function CreateWorkflowDialog({
   const [workflowName, setWorkflowName] = useState(() =>
     buildNextWorkflowName(existingWorkflowNames)
   );
-  const [isCreating, setIsCreating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const createWorkflow = async () => {
+  const create = useMutation(
+    orpcQuery.workflow.create.mutationOptions({
+      onSuccess: async (payload) => {
+        await refreshWorkflowList(queryClient);
+        await onCreated(payload.id);
+        onOpenChange(false);
+        toast.success("Workflow created");
+      },
+      onError: (error) => {
+        setErrorMessage(
+          error instanceof ApiError
+            ? error.message
+            : "Failed to create workflow"
+        );
+      },
+      // The failure belongs beside the name field the user has to correct, so
+      // it is shown inline and the mutation cache stays quiet.
+      meta: { errorShownByCaller: true },
+    })
+  );
+  const isCreating = create.isPending;
+
+  const createWorkflow = () => {
     const normalizedName = workflowName.trim();
     if (!normalizedName) {
       setErrorMessage("Workflow name is required.");
       return;
     }
 
-    setIsCreating(true);
     setErrorMessage(null);
+    create.mutate({
+      name: normalizedName,
+      graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+    });
+  };
 
-    try {
-      const createdWorkflow = await api.workflow.create({
-        name: normalizedName,
-        nodes: [],
-        edges: [],
-      });
-
-      await onCreated(createdWorkflow);
+  // Escape, the backdrop, and the X are all closing intents, and this dialog is
+  // the only place a create failure is reported: it takes `errorShownByCaller`,
+  // so a request that rejects into a closed dialog is a request that vanishes.
+  // Nothing dismisses it while one is in flight except the mutation settling.
+  const handleOpenChange = (next: boolean) => {
+    if (!(next || isCreating)) {
       onOpenChange(false);
-      toast.success("Workflow created");
-    } catch (error) {
-      console.error("Failed to create workflow:", error);
-      const message =
-        error instanceof ApiError ? error.message : "Failed to create workflow";
-      setErrorMessage(message);
-    } finally {
-      setIsCreating(false);
     }
   };
 
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent>
+    <Dialog onOpenChange={handleOpenChange} open={open}>
+      <DialogContent showCloseButton={!isCreating}>
         <DialogHeader>
           <DialogTitle>Create Workflow</DialogTitle>
           <DialogDescription>
@@ -108,7 +128,7 @@ export function CreateWorkflowDialog({
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
-                void createWorkflow();
+                createWorkflow();
               }
             }}
             placeholder="Workflow name"
@@ -130,13 +150,7 @@ export function CreateWorkflowDialog({
           >
             Cancel
           </Button>
-          <Button
-            disabled={isCreating}
-            onClick={() => {
-              void createWorkflow();
-            }}
-            type="button"
-          >
+          <Button disabled={isCreating} onClick={createWorkflow} type="button">
             {isCreating ? "Creating..." : "Create Workflow"}
           </Button>
         </DialogFooter>

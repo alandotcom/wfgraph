@@ -13,14 +13,15 @@ export type ApiErrorPayload = {
 };
 
 export type WorkflowApiPayload = {
-  id?: string;
-  name?: string;
+  id: string;
+  name: string;
   description?: string;
   graph: SerializedWorkflowGraph;
-  isPaused?: boolean;
-  mode?: WorkflowMode;
-  visibility?: WorkflowVisibility;
-  createdAt?: string;
-  updatedAt?: string;
+  isPaused: boolean;
+  mode: WorkflowMode;
+  visibility: WorkflowVisibility;
+  createdAt: string;
+  updatedAt: string;
+  /** Absent on a payload the viewer did not author. */
   isOwner?: boolean;
 };

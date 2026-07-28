@@ -1,14 +1,11 @@
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Eraser, Eye, EyeOff, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { api } from "@/lib/rpc-client";
 import {
-  clearNodeStatusesAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
   deleteSelectedItemsAtom,
@@ -39,8 +36,11 @@ import { TriggerConfig } from "./config/trigger-config";
 import { WorkflowRuns } from "./workflow-runs";
 
 export const PanelInner = () => {
-  const { updateConfig: handleUpdateConfig, refreshRuns: handleRefreshRuns } =
-    useNodeConfigWriter();
+  const {
+    updateConfig: handleUpdateConfig,
+    refreshRuns: handleRefreshRuns,
+    deleteRuns,
+  } = useNodeConfigWriter();
   const [selectedNodeId] = useAtom(selectedNodeAtom);
   const [selectedEdgeId] = useAtom(selectedEdgeAtom);
   const nodes = useAtomValue(nodesAtom);
@@ -59,7 +59,6 @@ export const PanelInner = () => {
   const deleteSelectedItems = useSetAtom(deleteSelectedItemsAtom);
   const setShowClearDialog = useSetAtom(showClearDialogAtom);
   const setShowDeleteDialog = useSetAtom(showDeleteDialogAtom);
-  const clearNodeStatuses = useSetAtom(clearNodeStatusesAtom);
   const [newlyCreatedNodeId, setNewlyCreatedNodeId] = useAtom(
     newlyCreatedNodeIdAtom
   );
@@ -123,21 +122,13 @@ export const PanelInner = () => {
     setShowDeleteMultiAlert(false);
   };
 
-  const handleDeleteAllRuns = async () => {
+  const handleDeleteAllRuns = () => {
     if (!currentWorkflowId) {
       return;
     }
-
-    try {
-      await api.workflow.deleteExecutions(currentWorkflowId);
-      clearNodeStatuses();
-      setShowDeleteRunsAlert(false);
-    } catch (error) {
-      console.error("Failed to delete runs:", error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to delete runs";
-      toast.error(errorMessage);
-    }
+    // No dismissal here: DeleteConfirmDialog's action is an AlertDialog.Close,
+    // so the dialog is already going away by the time this runs.
+    deleteRuns.mutate({ workflowId: currentWorkflowId });
   };
 
   const handleUpdateLabel = (label: string) => {

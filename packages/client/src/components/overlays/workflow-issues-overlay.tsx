@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IntegrationIcon } from "@/components/ui/integration-icon";
@@ -9,7 +8,6 @@ import { ConfigurationOverlay } from "./configuration-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
 import type { OverlayComponentProps } from "./types";
-import { orpcQuery } from "@/lib/rpc-query";
 
 type BrokenReference = {
   nodeId: string;
@@ -57,7 +55,6 @@ export function WorkflowIssuesOverlay({
   allowRunAnyway = false,
 }: WorkflowIssuesOverlayProps) {
   const { push, closeAll } = useOverlay();
-  const queryClient = useQueryClient();
   const isMobile = useIsMobile();
 
   const { brokenReferences, missingRequiredFields, missingIntegrations } =
@@ -82,15 +79,9 @@ export function WorkflowIssuesOverlay({
   };
 
   const openConnectionOverlay = (integrationType: IntegrationType) => {
-    push(ConfigureConnectionOverlay, {
-      type: integrationType,
-      // Refreshing the connection list is what lets the nodes that were
-      // flagged here stop being flagged.
-      onSuccess: () =>
-        queryClient.invalidateQueries({
-          queryKey: orpcQuery.integration.key(),
-        }),
-    });
+    // The write refreshes the connection list itself, which is what lets the
+    // nodes flagged here stop being flagged.
+    push(ConfigureConnectionOverlay, { type: integrationType });
   };
 
   const handleAddIntegration = (integrationType: IntegrationType) => {

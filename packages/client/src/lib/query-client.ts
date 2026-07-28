@@ -10,8 +10,37 @@ import { toast } from "sonner";
 declare module "@tanstack/react-query" {
   interface Register {
     queryMeta: { errorMessage?: string };
-    mutationMeta: { errorMessage?: string };
+    mutationMeta: {
+      /** Toast this instead of whatever the server said. */
+      errorMessage?: string;
+      /**
+       * Set when the call site shows the failure itself, inline or in a dialog.
+       * A toast on top would say it twice.
+       */
+      errorShownByCaller?: true;
+    };
   }
+}
+
+/**
+ * What a failed mutation should say, or null to say nothing.
+ *
+ * A mutation is always something the user just did, so a failure surfaces
+ * unless the call site has claimed it. Separated from the toast so the policy
+ * can be read and tested without a DOM.
+ */
+export function mutationErrorToast(
+  error: unknown,
+  meta: { errorMessage?: string; errorShownByCaller?: true } | undefined
+): string | null {
+  if (meta?.errorShownByCaller) {
+    return null;
+  }
+
+  return (
+    meta?.errorMessage ??
+    (error instanceof Error ? error.message : "Request failed")
+  );
 }
 
 export const queryClient = new QueryClient({
@@ -30,13 +59,11 @@ export const queryClient = new QueryClient({
     },
   }),
   mutationCache: new MutationCache({
-    // A mutation is always something the user just did, so a failure always
-    // surfaces.
     onError: (error, _variables, _context, mutation) => {
-      const message = mutation.meta?.errorMessage;
-      toast.error(
-        message ?? (error instanceof Error ? error.message : "Request failed")
-      );
+      const message = mutationErrorToast(error, mutation.meta);
+      if (message !== null) {
+        toast.error(message);
+      }
     },
   }),
   defaultOptions: {
