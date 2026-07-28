@@ -15,7 +15,10 @@ packages:
 # each other at exact versions, so a mismatched pair does not resolve; keeping the
 # version in one place is what makes "they move together" a fact rather than a rule
 # someone has to remember. A beta line also moves under you, hence the exact pin.
+# `effect` and `@effect/vitest` are here for the same reason: an @effect/* package
+# is built against one exact core release, so the whole set moves as one (ADR-0002).
 catalog:
+  "@effect/vitest": 4.0.0-beta.102
   "@marcbachmann/cel-js": ^7.5.1
   "@orpc/client": 2.0.0-beta.21
   "@orpc/contract": 2.0.0-beta.21
@@ -27,6 +30,7 @@ catalog:
   "@testing-library/react": ^16.3.2
   "@types/react": ^19.2.14
   "@xyflow/react": ^12.10.0
+  effect: 4.0.0-beta.102
   es-toolkit: ^1.44.0
   graphology: ^0.26.0
   nanoid: ^5.1.6
@@ -56,8 +60,13 @@ overrides:
 # @clerk/shared's postinstall prints a telemetry notice and writes a marker file
 # into the developer's own config directory. Nothing the package needs in order
 # to work, so it stays off.
+#
+# msgpackr-extract arrives under effect, through msgpackr. It compiles a native
+# accelerator for the same encoding msgpackr already does in JavaScript, and
+# msgpackr uses the JavaScript path when the addon is absent, so it stays off.
 allowBuilds:
   "@clerk/shared": false
   esbuild: false
   inngest-cli: true
+  msgpackr-extract: false
   protobufjs: true

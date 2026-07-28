@@ -1,11 +1,11 @@
 import { implement } from "@orpc/server";
+import type { Effect } from "effect";
 import { z } from "zod";
+import type { ServiceFailure } from "@/backend/lib/effect/failures";
 import { getAppLogger } from "@/backend/lib/logger";
-import { deleteApiKeyResult } from "@/backend/services/api-keys/api-key";
-import {
-  getApiKeysResult,
-  postApiKeysResult,
-} from "@/backend/services/api-keys/api-keys";
+import { type RovaServices, runToServiceResult } from "@/backend/runtime";
+import { deleteApiKey } from "@/backend/services/api-keys/api-key";
+import { getApiKeys, postApiKeys } from "@/backend/services/api-keys/api-keys";
 import {
   deleteIntegrationResult,
   getIntegrationResult,
@@ -101,6 +101,31 @@ function rpcHandler<TArgs extends unknown[], TOutput>(
   };
 }
 
+/**
+ * The same handler for a service that has been migrated to Effect.
+ *
+ * The Effect is run down to a `ServiceResult` on the runtime carried by the
+ * request context, then handed to `rpcHandler` above, so a migrated procedure
+ * logs the same failure line and answers with the same oRPC code as one that has
+ * not been migrated yet. Stage 3b of the Effect migration ends with every
+ * procedure here, and `rpcHandler` retiring.
+ *
+ * Generic over the service's failures rather than over the whole union, so the
+ * narrowing `runToServiceResult` produces survives the trip through here.
+ */
+function rpcEffectHandler<
+  TArgs extends [{ context: RpcContext }, ...unknown[]],
+  TOutput,
+  TFailure extends ServiceFailure,
+>(
+  handler: (...args: TArgs) => Effect.Effect<TOutput, TFailure, RovaServices>
+): (...args: TArgs) => Promise<TOutput> {
+  return rpcHandler(
+    async (...args: TArgs) =>
+      await runToServiceResult(args[0].context.runtime, handler(...args))
+  );
+}
+
 // Output schemas exist so the client infers a return type and so the OpenAPI
 // document has response bodies to describe. Every handler already returns a value
 // the schema was written from, so re-validating it on the way out only costs a
@@ -114,16 +139,16 @@ const rpc = implement(rpcContract)
 
 export const rpcRouter = rpc.router({
   apiKey: {
-    getAll: rpc.apiKey.getAll.handler(rpcHandler(() => getApiKeysResult())),
+    getAll: rpc.apiKey.getAll.handler(rpcEffectHandler(() => getApiKeys())),
     create: rpc.apiKey.create.handler(
-      rpcHandler(({ input }) =>
-        postApiKeysResult({
+      rpcEffectHandler(({ input }) =>
+        postApiKeys({
           name: input.name ?? undefined,
         })
       )
     ),
     delete: rpc.apiKey.delete.handler(
-      rpcHandler(({ input }) => deleteApiKeyResult(input.keyId))
+      rpcEffectHandler(({ input }) => deleteApiKey(input.keyId))
     ),
   },
   integration: {
@@ -218,6 +243,7 @@ export const rpcRouter = rpc.router({
           workflowId: input.workflowId,
           authHeader: context.headers.get("Authorization"),
           body: input.input ?? {},
+          runtime: context.runtime,
         });
       })
     ),

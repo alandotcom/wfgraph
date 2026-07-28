@@ -171,7 +171,7 @@ afterAll(async () => {
   await close(parsedBodyServer);
   await close(bareServer);
   await close(mismatchedServer);
-  rova.dispose();
+  await rova.dispose();
   await rm(clientDir, { recursive: true, force: true });
 });
 

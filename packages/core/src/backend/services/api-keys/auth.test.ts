@@ -1,99 +1,143 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+// `it` comes from the `layer` callback below, typed with the services that layer
+// provides, so nothing here imports the bare one.
+import { assert, describe, layer } from "@effect/vitest";
+import { compare, hash } from "bcryptjs";
+import { Effect, Latch, Layer } from "effect";
+import { AppLogger, type EffectLogger } from "@/backend/lib/effect/app-logger";
+import { Unauthorized } from "@/backend/lib/effect/failures";
 import {
   createApiKeyRecord,
   validateApiKey,
 } from "@/backend/services/api-keys/auth";
+import {
+  type ApiKeyCandidate,
+  ApiKeyRepo,
+} from "@/backend/services/api-keys/repo";
 
-const mocks = vi.hoisted(() => {
-  const findMany = vi.fn();
-  const where = vi.fn(() => Promise.resolve([]));
-  const set = vi.fn(() => ({ where }));
-  const update = vi.fn(() => ({ set }));
-  const logger = {
-    warn: vi.fn(),
-    error: vi.fn(),
-    info: vi.fn(),
-    with: vi.fn(),
+/**
+ * A fake repository holding the keys one test stored, and a record of what it
+ * was asked.
+ *
+ * Verification is the only thing under test here, so the database is replaced at
+ * the repository boundary rather than stubbed as a module: the service asks
+ * `ApiKeyRepo` a domain question and this answers it. Built per test rather than
+ * reset between them, so no test can see what another one wrote.
+ *
+ * `touchedFirst` opens once the first last-used write lands. That write happens
+ * on a fiber the service detaches and does not wait for, so a test asserting it
+ * happened has to wait for it too; awaiting the latch is what makes the
+ * assertion independent of when the fiber gets scheduled.
+ */
+function makeApiKeyRepo(candidates: ApiKeyCandidate[]) {
+  const calls = {
+    prefixLookups: [] as string[],
+    touched: [] as string[],
+    touchedFirst: Latch.makeUnsafe(),
   };
 
-  logger.with.mockReturnValue(logger);
+  const repoLayer = Layer.succeed(ApiKeyRepo, {
+    findByPrefix: (keyPrefix) =>
+      Effect.sync(() => {
+        calls.prefixLookups.push(keyPrefix);
+        return candidates;
+      }),
+    touchLastUsed: (keyId) =>
+      Effect.sync(() => {
+        calls.touched.push(keyId);
+        calls.touchedFirst.openUnsafe();
+      }),
+    // Verification never reads or writes the management side of the table.
+    listNewestFirst: () => Effect.die("listNewestFirst is not part of auth"),
+    insert: () => Effect.die("insert is not part of auth"),
+    deleteById: () => Effect.die("deleteById is not part of auth"),
+  });
 
-  return {
-    findMany,
-    where,
-    set,
-    update,
-    logger,
-  };
+  return { layer: repoLayer, calls };
+}
+
+const silentLogger: EffectLogger = {
+  debug: () => Effect.void,
+  info: () => Effect.void,
+  warn: () => Effect.void,
+  error: () => Effect.void,
+  with: () => silentLogger,
+};
+
+// The logger fake holds no state, so it belongs to the whole block. The
+// repository does, so it is built inside each test instead.
+const TestAppLoggerLayer = Layer.succeed(AppLogger, {
+  get: () => silentLogger,
 });
 
-vi.mock("@/backend/lib/db", () => ({
-  db: {
-    query: {
-      apiKeys: {
-        findMany: mocks.findMany,
-      },
-    },
-    update: mocks.update,
-  },
-}));
-
-vi.mock("@/backend/lib/logger", () => ({
-  getAppLogger: () => mocks.logger,
-}));
-
-vi.mock("bcryptjs", () => ({
-  hash: async (value: string) => `hash:${value}`,
-  compare: async (value: string, hashed: string) => hashed === `hash:${value}`,
-}));
-
 describe("api key auth", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    vi.clearAllMocks();
-    mocks.logger.with.mockReturnValue(mocks.logger);
-  });
+  layer(TestAppLoggerLayer)((it) => {
+    it.effect("creates a prefixed API key with bcrypt hash", () =>
+      Effect.gen(function* () {
+        const record = yield* createApiKeyRecord();
 
-  it("creates a prefixed API key with bcrypt hash", async () => {
-    const record = await createApiKeyRecord();
+        assert.isTrue(record.key.startsWith("wfb_"));
+        assert.strictEqual(record.keyPrefix, record.key.slice(0, 11));
+        assert.isTrue(
+          yield* Effect.promise(() => compare(record.key, record.keyHash))
+        );
+      })
+    );
 
-    expect(record.key.startsWith("wfb_")).toBe(true);
-    expect(record.keyPrefix).toBe(record.key.slice(0, 11));
-    expect(record.keyHash).toBe(`hash:${record.key}`);
-  });
+    it.effect(
+      "verifies API key candidates and updates lastUsedAt on success",
+      () =>
+        Effect.gen(function* () {
+          const key = "wfb_valid_key";
+          const repo = makeApiKeyRepo([
+            {
+              id: "k1",
+              keyHash: yield* Effect.promise(() => hash("wfb_other_key", 10)),
+            },
+            { id: "k2", keyHash: yield* Effect.promise(() => hash(key, 10)) },
+          ]);
 
-  it("verifies API key candidates and updates lastUsedAt on success", async () => {
-    const key = "wfb_valid_key";
-    mocks.findMany.mockResolvedValueOnce([
-      { id: "k1", keyHash: "hash:wfb_other_key" },
-      { id: "k2", keyHash: `hash:${key}` },
-    ]);
+          const result = yield* validateApiKey(`Bearer ${key}`).pipe(
+            Effect.provide(repo.layer)
+          );
 
-    const result = await validateApiKey(`Bearer ${key}`);
+          assert.deepStrictEqual(result, { keyId: "k2" });
+          assert.deepStrictEqual(repo.calls.prefixLookups, [key.slice(0, 11)]);
 
-    expect(result).toEqual({ valid: true, keyId: "k2" });
-    expect(mocks.findMany).toHaveBeenCalledTimes(1);
-    expect(mocks.update).toHaveBeenCalledTimes(1);
-    expect(mocks.set).toHaveBeenCalledWith({ lastUsedAt: expect.any(Date) });
-    expect(mocks.where).toHaveBeenCalledTimes(1);
-  });
+          yield* repo.calls.touchedFirst.await;
+          assert.deepStrictEqual(repo.calls.touched, ["k2"]);
+        })
+    );
 
-  it("rejects requests without auth header", async () => {
-    const result = await validateApiKey(null);
+    it.effect("rejects requests without auth header", () =>
+      Effect.gen(function* () {
+        const repo = makeApiKeyRepo([]);
 
-    expect(result).toEqual({
-      valid: false,
-      error: "Missing Authorization header",
-    });
-    expect(mocks.findMany).not.toHaveBeenCalled();
-  });
+        const failure = yield* validateApiKey(null).pipe(
+          Effect.provide(repo.layer),
+          Effect.flip
+        );
 
-  it("rejects invalid keys", async () => {
-    mocks.findMany.mockResolvedValueOnce([{ id: "k1", keyHash: "hash:wfb_x" }]);
+        assert.instanceOf(failure, Unauthorized);
+        assert.strictEqual(failure.error, "Missing Authorization header");
+        assert.deepStrictEqual(repo.calls.prefixLookups, []);
+      })
+    );
 
-    const result = await validateApiKey("Bearer wfb_not_found");
+    it.effect("rejects invalid keys", () =>
+      Effect.gen(function* () {
+        const repo = makeApiKeyRepo([
+          { id: "k1", keyHash: yield* Effect.promise(() => hash("wfb_x", 10)) },
+        ]);
 
-    expect(result).toEqual({ valid: false, error: "Invalid API key" });
-    expect(mocks.update).not.toHaveBeenCalled();
+        const failure = yield* validateApiKey("Bearer wfb_not_found").pipe(
+          Effect.provide(repo.layer),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, Unauthorized);
+        assert.strictEqual(failure.error, "Invalid API key");
+        assert.deepStrictEqual(repo.calls.touched, []);
+      })
+    );
   });
 });

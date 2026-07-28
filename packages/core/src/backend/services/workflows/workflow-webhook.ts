@@ -10,6 +10,7 @@ import {
 } from "@/backend/lib/service-result";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
 import { resumeMatchingWaitHooks } from "@/backend/lib/workflow-wait-resume";
+import { type RovaRuntime, runToServiceResult } from "@/backend/runtime";
 import { validateApiKey } from "@/backend/services/api-keys/auth";
 import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight";
 import type { JsonObject } from "@rova/shared/types/json";
@@ -41,6 +42,7 @@ export async function postWorkflowWebhook(input: {
   workflowId: string;
   authHeader: string | null;
   body: JsonObject;
+  runtime: RovaRuntime;
 }) {
   return responseFromServiceResult(await postWorkflowWebhookResult(input), {
     headers: corsHeaders,
@@ -56,6 +58,13 @@ export async function postWorkflowWebhookResult(input: {
    * `workflow_executions.input` column, so JSON is the whole of its contract.
    */
   body: JsonObject;
+  /**
+   * The app's Effect runtime, needed because API key verification has moved to
+   * Effect while this service has not. Stage 3b of the Effect migration turns
+   * this function into an Effect of its own, at which point it asks for its
+   * services the way `validateApiKey` does and this parameter goes away.
+   */
+  runtime: RovaRuntime;
 }): Promise<
   ServiceResult<
     WorkflowWebhookResponse,
@@ -65,17 +74,18 @@ export async function postWorkflowWebhookResult(input: {
 > {
   const requestLogger = webhookLogger.with({ workflowId: input.workflowId });
   try {
-    const { workflowId, authHeader, body } = input;
+    const { workflowId, authHeader, body, runtime } = input;
 
     // Credentials before the lookup: answering "not found" versus
     // "unauthorized" to an unauthenticated caller tells them which ids exist,
     // and this route is reachable without a session by design.
-    const apiKeyValidation = await validateApiKey(authHeader);
+    const apiKeyValidation = await runToServiceResult(
+      runtime,
+      validateApiKey(authHeader)
+    );
 
-    if (!apiKeyValidation.valid) {
-      return failure("unauthorized", {
-        error: apiKeyValidation.error,
-      });
+    if (!apiKeyValidation.ok) {
+      return apiKeyValidation;
     }
 
     const workflow = await db.query.workflows.findFirst({

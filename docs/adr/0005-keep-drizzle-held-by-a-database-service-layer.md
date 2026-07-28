@@ -9,7 +9,8 @@ story in `@effect/sql`. We are keeping Drizzle. The schema in
 to how they are run.
 
 What changes is how the handle reaches a query. A `Database` service, declared with
-`Context.Tag`, owns the Drizzle instance and is provided through the Layer graph that
+`Context.Service` (Effect v4's spelling of the service tag), owns the Drizzle instance
+and is provided through the Layer graph that
 `createRovaApp` builds. A query runs inside `Effect.tryPromise` and fails with a tagged
 `DatabaseError`, which puts database failure in the caller's error channel where the type
 system can see it. The
@@ -34,4 +35,7 @@ handle reachable from anywhere is deleted as part of the runtime work in ADR-000
   to carry the cause if constraint violations are to be distinguished from connection
   failures further up.
 - Passing a `Database` Layer in tests replaces reaching for the module-level `db` export,
-  which is what makes two app instances in one process viable.
+  which is what lets a service be exercised without a database. This sentence used to
+  claim the Layer made two app instances in one process viable; that is not a goal, and
+  one Rova per process remains the only supported arrangement. See the dependency-wiring
+  amendment in ADR-0002 (decided 2026-07-28).

@@ -1,40 +1,32 @@
-import { eq } from "drizzle-orm";
-import { db } from "@/backend/lib/db";
-import { apiKeys } from "@/backend/lib/db/schema";
-import { getAppLogger } from "@/backend/lib/logger";
-import {
-  failure,
-  type ServiceResult,
-  success,
-} from "@/backend/lib/service-result";
-import { getErrorMessage } from "@rova/shared/utils";
+import { Effect } from "effect";
+import { AppLogger } from "@/backend/lib/effect/app-logger";
+import { internalFailure } from "@/backend/lib/effect/database";
+import { NotFound } from "@/backend/lib/effect/failures";
+import { ApiKeyRepo } from "./repo";
 
-const apiKeyLogger = getAppLogger("api-keys");
+/** The contract answers a delete with this and nothing else. */
+type ApiKeyDeleted = { success: true };
 
-type DeleteApiKeyError = { error: string };
-
-export async function deleteApiKeyResult(
+export const deleteApiKey = Effect.fn("deleteApiKey")(function* (
   keyId: string
-): Promise<
-  ServiceResult<{ success: true }, "not_found" | "internal", DeleteApiKeyError>
-> {
-  const requestLogger = apiKeyLogger.with({ keyId });
-  try {
-    const result = await db
-      .delete(apiKeys)
-      .where(eq(apiKeys.id, keyId))
-      .returning({ id: apiKeys.id });
+) {
+  const repo = yield* ApiKeyRepo;
+  const logger = (yield* AppLogger).get("api-keys").with({ keyId });
 
-    if (result.length === 0) {
-      requestLogger.warn("API key not found for delete");
-      return failure("not_found", { error: "API key not found" });
-    }
+  const deletedIds = yield* repo
+    .deleteById(keyId)
+    .pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailure(logger, "Failed to delete API key")
+      )
+    );
 
-    return success({ success: true });
-  } catch (error) {
-    requestLogger.error(`Failed to delete API key: ${getErrorMessage(error)}`, {
-      error,
-    });
-    return failure("internal", { error: "Failed to delete API key" });
+  if (deletedIds.length === 0) {
+    yield* logger.warn("API key not found for delete");
+    return yield* Effect.fail(new NotFound({ error: "API key not found" }));
   }
-}
+
+  const deleted: ApiKeyDeleted = { success: true };
+  return deleted;
+});

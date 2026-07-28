@@ -1,15 +1,8 @@
-import { db } from "@/backend/lib/db";
-import { apiKeys } from "@/backend/lib/db/schema";
-import { getAppLogger } from "@/backend/lib/logger";
-import {
-  failure,
-  type ServiceResult,
-  success,
-} from "@/backend/lib/service-result";
-import { getErrorMessage } from "@rova/shared/utils";
+import { Effect } from "effect";
+import { AppLogger } from "@/backend/lib/effect/app-logger";
+import { internalFailure } from "@/backend/lib/effect/database";
 import { createApiKeyRecord } from "./auth";
-
-const apiKeysLogger = getAppLogger("api-keys");
+import { type ApiKeySummary, ApiKeyRepo } from "./repo";
 
 type ApiKeyListItem = {
   id: string;
@@ -19,83 +12,54 @@ type ApiKeyListItem = {
   lastUsedAt: string | null;
 };
 
-type ApiKeyCreated = {
-  id: string;
-  name: string | null;
-  keyPrefix: string;
-  createdAt: string;
-  lastUsedAt: string | null;
+type ApiKeyCreated = ApiKeyListItem & {
   key: string;
 };
 
-type ApiKeyError = { error: string };
+/** Timestamps cross the wire as ISO strings, which is what the contract states. */
+function toListItem(key: ApiKeySummary): ApiKeyListItem {
+  return {
+    id: key.id,
+    name: key.name,
+    keyPrefix: key.keyPrefix,
+    createdAt: key.createdAt.toISOString(),
+    lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
+  };
+}
 
-export async function getApiKeysResult(): Promise<
-  ServiceResult<ApiKeyListItem[], "internal", ApiKeyError>
-> {
-  try {
-    const keys = await db.query.apiKeys.findMany({
-      columns: {
-        id: true,
-        name: true,
-        keyPrefix: true,
-        createdAt: true,
-        lastUsedAt: true,
-      },
-      orderBy: (table, { desc }) => [desc(table.createdAt)],
-    });
+export const getApiKeys = Effect.fn("getApiKeys")(function* () {
+  const repo = yield* ApiKeyRepo;
+  const logger = (yield* AppLogger).get("api-keys");
 
-    return success(
-      keys.map((key) => ({
-        id: key.id,
-        name: key.name,
-        keyPrefix: key.keyPrefix,
-        createdAt: key.createdAt.toISOString(),
-        lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
-      }))
+  const keys = yield* repo
+    .listNewestFirst()
+    .pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailure(logger, "Failed to list API keys")
+      )
     );
-  } catch (error) {
-    apiKeysLogger.error(`Failed to list API keys: ${getErrorMessage(error)}`, {
-      error,
-    });
-    return failure("internal", { error: "Failed to list API keys" });
-  }
-}
 
-export async function postApiKeysResult(body: {
+  return keys.map(toListItem);
+});
+
+export const postApiKeys = Effect.fn("postApiKeys")(function* (body: {
   name?: string;
-}): Promise<ServiceResult<ApiKeyCreated, "internal", ApiKeyError>> {
-  try {
-    const name = body.name || null;
+}) {
+  const repo = yield* ApiKeyRepo;
+  const logger = (yield* AppLogger).get("api-keys");
 
-    const { key, keyHash, keyPrefix } = await createApiKeyRecord();
+  const { key, keyHash, keyPrefix } = yield* createApiKeyRecord();
 
-    const [newKey] = await db
-      .insert(apiKeys)
-      .values({
-        name,
-        keyHash,
-        keyPrefix,
-      })
-      .returning({
-        id: apiKeys.id,
-        name: apiKeys.name,
-        keyPrefix: apiKeys.keyPrefix,
-        createdAt: apiKeys.createdAt,
-      });
+  const created = yield* repo
+    .insert({ name: body.name || null, keyHash, keyPrefix })
+    .pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailure(logger, "Failed to create API key")
+      )
+    );
 
-    return success({
-      id: newKey.id,
-      name: newKey.name,
-      keyPrefix: newKey.keyPrefix,
-      createdAt: newKey.createdAt.toISOString(),
-      lastUsedAt: null,
-      key,
-    });
-  } catch (error) {
-    apiKeysLogger.error(`Failed to create API key: ${getErrorMessage(error)}`, {
-      error,
-    });
-    return failure("internal", { error: "Failed to create API key" });
-  }
-}
+  const apiKey: ApiKeyCreated = { ...toListItem(created), key };
+  return apiKey;
+});

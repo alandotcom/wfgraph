@@ -32,6 +32,12 @@ const schema: {
   integrations,
 };
 
+/**
+ * The Drizzle handle, with this app's tables attached. The `Database` service in
+ * `backend/lib/effect/database.ts` hands one of these to every query it runs.
+ */
+export type RovaDatabase = PostgresJsDatabase<typeof schema>;
+
 const DEFAULT_DATABASE_URL =
   "postgresql://workflow:workflow@localhost:55437/workflow_builder";
 const DEFAULT_QUERY_CONNECTIONS = 10;

@@ -36,6 +36,7 @@ import {
   configureAppLoggingWithBridge,
 } from "@/backend/lib/logger";
 import { initializeWorkflowTriggers } from "@/backend/lib/workflow-trigger-bootstrap";
+import { createRovaRuntime, type RovaRuntime } from "@/backend/runtime";
 import { unregisterIntegration } from "@rova/shared/plugins/registry";
 import {
   type IntegrationType,
@@ -197,7 +198,12 @@ export type RovaApp = {
    * what lets an adapter tell a mount-point mismatch from an ordinary 404.
    */
   basePath: "" | `/${string}`;
-  dispose: () => void;
+  /**
+   * Give back everything this app holds. Awaiting it waits for the Effect
+   * runtime's Layers to finalize; a host that fires and forgets still releases
+   * the process claim and the registrations synchronously.
+   */
+  dispose: () => Promise<void>;
 };
 
 export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
@@ -252,13 +258,13 @@ async function assertClientBundle(clientDir: string): Promise<void> {
 
 async function buildRovaApp(
   options: RovaAppOptions,
-  runtime: {
+  startup: {
     basePath: "" | `/${string}`;
     authorize: Authorize;
     releaseProcess: () => void;
   }
 ): Promise<RovaApp> {
-  const { basePath, authorize, releaseProcess } = runtime;
+  const { basePath, authorize, releaseProcess } = startup;
 
   if (options.plugins) {
     for (const [type, config] of Object.entries(options.plugins)) {
@@ -300,7 +306,58 @@ async function buildRovaApp(
     migrationsDir: options.migrations?.migrationsDir,
   });
 
-  const apiApp = createApiApp({ basePath: `${basePath}/api`, authorize });
+  // The Layer graph this instance owns. Building it is lazy, so an app that
+  // never serves a migrated procedure never constructs a service.
+  const runtime = createRovaRuntime();
+
+  try {
+    return await assembleRovaApp(options, {
+      basePath,
+      authorize,
+      releaseProcess,
+      runtime,
+      registeredTriggerTypes,
+      registeredActionIds,
+    });
+  } catch (error) {
+    // Nothing else holds this runtime yet, so a failure from here on leaves it
+    // to be finalized by whoever created it, which is this function.
+    await runtime.dispose();
+    throw error;
+  }
+}
+
+/**
+ * Everything after the runtime exists, split out so the `catch` above has a
+ * whole function to guard: a bad `client.dir` throws from in here, and the
+ * runtime built a few lines earlier has to be finalized rather than left holding
+ * whatever its Layers acquired.
+ */
+async function assembleRovaApp(
+  options: RovaAppOptions,
+  startup: {
+    basePath: "" | `/${string}`;
+    authorize: Authorize;
+    releaseProcess: () => void;
+    runtime: RovaRuntime;
+    registeredTriggerTypes: Set<string>;
+    registeredActionIds: Set<string>;
+  }
+): Promise<RovaApp> {
+  const {
+    basePath,
+    authorize,
+    releaseProcess,
+    runtime,
+    registeredTriggerTypes,
+    registeredActionIds,
+  } = startup;
+
+  const apiApp = createApiApp({
+    basePath: `${basePath}/api`,
+    authorize,
+    runtime,
+  });
   const fullApp = new Hono();
 
   fullApp.route("/", apiApp);
@@ -325,7 +382,7 @@ async function buildRovaApp(
     });
   }
 
-  const dispose = (): void => {
+  const dispose = async (): Promise<void> => {
     releaseProcess();
 
     for (const triggerType of registeredTriggerTypes) {
@@ -337,6 +394,8 @@ async function buildRovaApp(
       unregisterRuntimeAction(actionId);
     }
     registeredActionIds.clear();
+
+    await runtime.dispose();
   };
 
   return {

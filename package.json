@@ -37,6 +37,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.28.4",
+    "@effect/vitest": "catalog:",
     "@rolldown/plugin-babel": "^0.2.3",
     "@rova/client": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",

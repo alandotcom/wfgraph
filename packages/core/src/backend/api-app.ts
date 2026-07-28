@@ -13,6 +13,7 @@ import {
   UNAUTHORIZED_BODY,
 } from "@/backend/lib/http/authorize";
 import type { RpcContext } from "@/backend/rpc/context";
+import type { RovaRuntime } from "@/backend/runtime";
 import {
   createOpenApiReferenceHandler,
   openApiRestHandler,
@@ -187,6 +188,11 @@ export type CreateApiAppOptions = {
   basePath: `/${string}`;
   /** Every route answers to this except those in MACHINE_ROUTES. */
   authorize: Authorize;
+  /**
+   * The Effect runtime the app instance owns, put on every request context so a
+   * procedure whose service has been migrated can run its Effect on it.
+   */
+  runtime: RovaRuntime;
 };
 
 /**
@@ -210,7 +216,7 @@ export const MACHINE_ROUTES = [
 type ApiEnv = { Variables: { rovaMachineRoute?: true } };
 
 export function createApiApp(options: CreateApiAppOptions) {
-  const { basePath, authorize } = options;
+  const { basePath, authorize, runtime } = options;
   const app = new Hono<ApiEnv>().basePath(basePath);
   const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
 
@@ -318,7 +324,7 @@ export function createApiApp(options: CreateApiAppOptions) {
     .use("/rpc/*", async (c, next) => {
       const { matched, response } = await rpcHandler.handle(c.req.raw, {
         prefix: resolvePrefix("/rpc"),
-        context: { headers: c.req.raw.headers },
+        context: { headers: c.req.raw.headers, runtime },
       });
 
       if (matched) {
@@ -343,7 +349,7 @@ export function createApiApp(options: CreateApiAppOptions) {
     .use("/rest/*", async (c, next) => {
       const { matched, response } = await openApiRestHandler.handle(c.req.raw, {
         prefix: resolvePrefix("/rest"),
-        context: { headers: c.req.raw.headers },
+        context: { headers: c.req.raw.headers, runtime },
       });
 
       if (matched) {
@@ -357,7 +363,7 @@ export function createApiApp(options: CreateApiAppOptions) {
       const prefix = resolvePrefix("");
       const { matched, response } = await openApiReferenceHandler.handle(
         c.req.raw,
-        { prefix, context: { headers: c.req.raw.headers } }
+        { prefix, context: { headers: c.req.raw.headers, runtime } }
       );
 
       if (!matched) {
@@ -370,7 +376,7 @@ export function createApiApp(options: CreateApiAppOptions) {
       const prefix = resolvePrefix("");
       const { matched, response } = await openApiReferenceHandler.handle(
         c.req.raw,
-        { prefix, context: { headers: c.req.raw.headers } }
+        { prefix, context: { headers: c.req.raw.headers, runtime } }
       );
 
       if (!matched) {
@@ -416,6 +422,7 @@ export function createApiApp(options: CreateApiAppOptions) {
         workflowId: params.data.workflowId,
         authHeader: c.req.header("Authorization") ?? null,
         body: body.data,
+        runtime,
       });
     })
     .post("/workflows/hooks/:token/resume", async (c) => {
@@ -432,7 +439,8 @@ export function createApiApp(options: CreateApiAppOptions) {
       return await postWorkflowResume(
         params.data.token,
         body.data,
-        c.req.header("Authorization") ?? null
+        c.req.header("Authorization") ?? null,
+        runtime
       );
     });
 

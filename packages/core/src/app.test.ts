@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createTrigger } from "@/index";
 import { createRovaApp, type RovaApp } from "@/app";
 import { createApiApp, MACHINE_ROUTES } from "@/backend/api-app";
+import { createRovaRuntime } from "@/backend/runtime";
 
 // createRovaApp opens no connections: the database client is lazy and
 // migrations only run when asked. Every route exercised below answers from
@@ -55,7 +56,7 @@ describe("createRovaApp mounted at the root", () => {
         triggers: expect.any(Array),
       });
     } finally {
-      app.dispose();
+      await app.dispose();
     }
   });
 });
@@ -66,7 +67,7 @@ describe("createRovaApp mounted under a sub-path", () => {
     try {
       expect((await get(app, "/rova/api/extensions")).status).toBe(200);
     } finally {
-      app.dispose();
+      await app.dispose();
     }
   });
 
@@ -75,7 +76,7 @@ describe("createRovaApp mounted under a sub-path", () => {
     try {
       expect((await get(app, "/api/extensions")).status).toBe(404);
     } finally {
-      app.dispose();
+      await app.dispose();
     }
   });
 
@@ -96,7 +97,7 @@ describe("createRovaApp mounted under a sub-path", () => {
       expect(response.status).toBe(400);
       expect(await response.text()).toContain("Input validation failed");
     } finally {
-      app.dispose();
+      await app.dispose();
     }
   });
 
@@ -112,7 +113,7 @@ describe("createRovaApp mounted under a sub-path", () => {
         servers: [{ url: "/rova/api/rest" }],
       });
     } finally {
-      app.dispose();
+      await app.dispose();
     }
   });
 
@@ -128,7 +129,7 @@ describe("createRovaApp mounted under a sub-path", () => {
       expect(await index.text()).toContain('<base href="/rova/" />');
       expect((await get(app, "/elsewhere/workflows/abc")).status).toBe(404);
     } finally {
-      app.dispose();
+      await app.dispose();
     }
   });
 
@@ -138,7 +139,7 @@ describe("createRovaApp mounted under a sub-path", () => {
     try {
       expect((await get(app, "/rova/")).status).toBe(404);
     } finally {
-      app.dispose();
+      await app.dispose();
     }
   });
 
@@ -166,22 +167,31 @@ describe("createRovaApp with an auth predicate", () => {
    * Read off the app itself, so a route added to createApiApp without a thought
    * for the gate fails here rather than shipping open.
    */
-  function listGatedPaths(): string[] {
-    const app = createApiApp({
-      basePath: "/rova/api",
-      authorize: () => Promise.resolve(true),
-    });
-    const machinePaths = new Set(
-      MACHINE_ROUTES.map((route) => `/rova/api${route}`)
-    );
+  async function listGatedPaths(): Promise<string[]> {
+    // Only the route table is read here. A runtime builds its Layers on the
+    // first Effect it runs and this app never serves a request, so this one is
+    // disposed having built nothing.
+    const runtime = createRovaRuntime();
+    try {
+      const app = createApiApp({
+        basePath: "/rova/api",
+        authorize: () => Promise.resolve(true),
+        runtime,
+      });
+      const machinePaths = new Set(
+        MACHINE_ROUTES.map((route) => `/rova/api${route}`)
+      );
 
-    return [
-      ...new Set(
-        app.routes
-          .map((route) => route.path)
-          .filter((path) => !machinePaths.has(path))
-      ),
-    ];
+      return [
+        ...new Set(
+          app.routes
+            .map((route) => route.path)
+            .filter((path) => !machinePaths.has(path))
+        ),
+      ];
+    } finally {
+      await runtime.dispose();
+    }
   }
 
   /** Fill in Hono's `:param` and `*` segments so a request can be made. */
@@ -191,7 +201,7 @@ describe("createRovaApp with an auth predicate", () => {
 
   it("refuses every non-machine path when the host says no", async () => {
     const app = await createGuardedApp(false);
-    const paths = listGatedPaths();
+    const paths = await listGatedPaths();
 
     try {
       expect(paths.length).toBeGreaterThan(8);
@@ -214,7 +224,7 @@ describe("createRovaApp with an auth predicate", () => {
         }
       }
     } finally {
-      app.dispose();
+      await app.dispose();
     }
   });
 
@@ -244,7 +254,7 @@ describe("createRovaApp with an auth predicate", () => {
       const inngest = await get(app, "/rova/api/inngest");
       expect(inngest.status).not.toBe(401);
     } finally {
-      app.dispose();
+      await app.dispose();
     }
   });
 
@@ -255,7 +265,7 @@ describe("createRovaApp with an auth predicate", () => {
         expect((await get(app, path)).status).toBe(401);
       }
     } finally {
-      app.dispose();
+      await app.dispose();
     }
   });
 
@@ -266,7 +276,7 @@ describe("createRovaApp with an auth predicate", () => {
       expect((await get(app, "/rova/api/openapi.json")).status).toBe(200);
       expect((await get(app, "/rova/")).status).toBe(200);
     } finally {
-      app.dispose();
+      await app.dispose();
     }
   });
 });
@@ -299,7 +309,7 @@ describe("createRovaApp configuration", () => {
         })
       ).rejects.toThrow("already running in this process");
     } finally {
-      app.dispose();
+      await app.dispose();
     }
   });
 
@@ -313,7 +323,7 @@ describe("createRovaApp configuration", () => {
         })
       ).rejects.toThrow("inngestClientId");
     } finally {
-      app.dispose();
+      await app.dispose();
     }
   });
 
@@ -342,7 +352,7 @@ describe("createRovaApp configuration", () => {
       ...BASE_OPTIONS,
       inngest: { id: "after-failed-startup", isDev: true },
     });
-    app.dispose();
+    await app.dispose();
   });
 
   // Two apps of one identity are allowed, so the claim is counted. A flag would
@@ -352,7 +362,7 @@ describe("createRovaApp configuration", () => {
     const first = await createTestApp();
     const second = await createTestApp();
 
-    first.dispose();
+    await first.dispose();
 
     await expect(
       createRovaApp({
@@ -361,7 +371,7 @@ describe("createRovaApp configuration", () => {
       })
     ).rejects.toThrow("already running in this process");
 
-    second.dispose();
+    await second.dispose();
   });
 
   // Registering a trigger type twice throws, so a second app carrying the same
@@ -377,7 +387,7 @@ describe("createRovaApp configuration", () => {
     });
 
     const first = await createRovaApp({ ...BASE_OPTIONS, triggers: [trigger] });
-    first.dispose();
+    await first.dispose();
 
     const second = await createRovaApp({
       ...BASE_OPTIONS,
@@ -392,7 +402,7 @@ describe("createRovaApp configuration", () => {
         "DisposeProbe"
       );
     } finally {
-      second.dispose();
+      await second.dispose();
     }
   });
 });

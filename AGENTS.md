@@ -38,8 +38,8 @@ with `ERR_PNPM_IGNORED_BUILDS`.
 is used by two or more packages, put the version there and reference it as `"catalog:"`.
 `pnpm publish` and `pnpm pack` rewrite those to real semver, so a published package is
 unaffected. A family of packages that must hold one version goes in whole even where
-only one workspace package imports a member; the `@orpc/*` block is the case, and it
-carries a comment saying so.
+only one workspace package imports a member; the `@orpc/*` block and the `effect` pair
+are the two cases, and each carries a comment saying so.
 
 ## Required checks before finishing
 
@@ -93,6 +93,35 @@ here may not use transforms; the SDK rejects any whose input and output types di
 `packages/core/src/backend/lib/service-result.ts` defines
 `invalid | unauthorized | not_found | conflict | internal`. The adapters at the edges
 translate; nothing inside the backend names a status code.
+
+**The backend is migrating to Effect, one service at a time.** ADR-0002 has the plan and
+ADR-0005 the data layer. What exists today:
+`packages/core/src/backend/lib/effect/failures.ts` holds one tagged error per failure kind
+above, each carrying the `{ error }` body the caller already receives.
+`database.ts` holds the `Database` service, which runs a Drizzle query and fails with a
+tagged `DatabaseError`, plus `internalFailure(logger, message)`, the handler that turns one
+into the logged "internal" answer a service used to write in a `catch` block. `app-logger.ts`
+wraps the logtape logger so a log line is an Effect. `packages/core/src/backend/runtime.ts`
+composes the Layer graph, and `createRovaApp` builds one `ManagedRuntime` from it and
+disposes it. The runtime is owned by the app rather than by a module so that a service's
+dependencies can be replaced in a test, which is the whole of what it buys: one Rova per
+process stays the only supported arrangement, and constructing a second app in a process
+is undefined behavior.
+
+A migrated service takes its database questions from a repository service beside it
+(`services/api-keys/repo.ts` is the worked example), never from `Database` directly, and
+the type system holds it to that: `RovaServices` in `runtime.ts` leaves `Database` out, so
+a service body that writes `yield* Database` needs a service the runtime does not provide
+and fails to type-check where it is run. `DatabaseLayer` is provided into the repository
+layers instead. The
+repository is the seam a test stands on: provide a `Layer.succeed(SomeRepo, ...)` that
+answers from memory, and the service needs no database and no `vi.mock`. `services/api-keys`
+is the whole of what has moved so far; the other services still return `ServiceResult` and
+still import the `db` proxy, and both paths share one database and one Inngest client.
+
+`rpcEffectHandler` in `backend/rpc/router.ts` runs a service Effect down to a
+`ServiceResult` on the runtime carried by `RpcContext`, so the oRPC error map and the HTTP
+response helper stay unchanged while the two models coexist.
 
 **Third-party libraries.** Check official usage with Context7 or Exa before writing
 against a library, and never take a version from memory. Prefer latest stable, and verify

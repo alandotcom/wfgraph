@@ -15,6 +15,7 @@ import {
   markExecutionRunning,
   markWaitStateStatus,
 } from "@/backend/lib/workflow-wait-state";
+import { type RovaRuntime, runToServiceResult } from "@/backend/runtime";
 import { validateApiKey } from "@/backend/services/api-keys/auth";
 import { getErrorMessage } from "@rova/shared/utils";
 
@@ -31,7 +32,14 @@ type WorkflowResumeError = { error: string };
 export async function postWorkflowResumeResult(
   token: string,
   body: JsonObject,
-  authHeader: string | null
+  authHeader: string | null,
+  /**
+   * The app's Effect runtime, needed because API key verification has moved to
+   * Effect while this service has not. Stage 3b of the Effect migration turns
+   * this function into an Effect of its own, at which point it asks for its
+   * services the way `validateApiKey` does and this parameter goes away.
+   */
+  runtime: RovaRuntime
 ): Promise<
   ServiceResult<
     WorkflowResumeSuccess,
@@ -57,15 +65,16 @@ export async function postWorkflowResumeResult(
       });
     }
 
-    const apiKeyValidation = await validateApiKey(authHeader);
+    const apiKeyValidation = await runToServiceResult(
+      runtime,
+      validateApiKey(authHeader)
+    );
 
-    if (!apiKeyValidation.valid) {
+    if (!apiKeyValidation.ok) {
       requestLogger.warn("Workflow resume rejected due to invalid API key", {
-        reason: apiKeyValidation.error,
+        reason: apiKeyValidation.error.error,
       });
-      return failure("unauthorized", {
-        error: apiKeyValidation.error,
-      });
+      return apiKeyValidation;
     }
 
     await sendWorkflowWaitSignal({
@@ -118,9 +127,10 @@ export async function postWorkflowResumeResult(
 export async function postWorkflowResume(
   token: string,
   body: JsonObject,
-  authHeader: string | null
+  authHeader: string | null,
+  runtime: RovaRuntime
 ) {
   return responseFromServiceResult(
-    await postWorkflowResumeResult(token, body, authHeader)
+    await postWorkflowResumeResult(token, body, authHeader, runtime)
   );
 }
