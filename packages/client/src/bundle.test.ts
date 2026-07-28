@@ -15,29 +15,28 @@ const run = promisify(execFile);
  * `import.meta.url` and only means anything from `dist/`.
  */
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
+const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 let bundleDir: string;
 
 // The test run happens before `pnpm run build`, so build rather than report on
-// whatever is on disk. Two full builds is the reason for the generous timeout:
-// Vite's is a few seconds once its dependency cache is warm and considerably
-// longer on the first run in a clean checkout, which is what CI does.
+// whatever is on disk. This package's own build script is what runs, which is
+// also what `pnpm -r build` reaches, so the test exercises the real path. Two
+// full builds is the reason for the generous timeout: Vite's is a few seconds
+// once its dependency cache is warm and considerably longer on the first run in
+// a clean checkout, which is what CI does.
 beforeAll(async () => {
   // execFile buffers stdout and stderr and rejects with ENOBUFS past its 1 MiB
   // default, which on a failing build would replace the compiler's own error
   // with a truncated one. A build's output is worth however much it is.
-  const capture = { maxBuffer: Number.POSITIVE_INFINITY };
-
-  await run("pnpm", ["run", "build:client"], { cwd: repoRoot, ...capture });
-  await run("pnpm", ["exec", "tsdown"], {
-    cwd: join(repoRoot, "packages/client"),
-    ...capture,
+  await run("pnpm", ["run", "build"], {
+    cwd: packageRoot,
+    maxBuffer: Number.POSITIVE_INFINITY,
   });
 
   // A file:// URL, because the import specifier is an absolute path and the
   // module runner only accepts that scheme for one.
   const built = (await import(
-    pathToFileURL(join(repoRoot, "packages/client/dist/index.js")).href
+    pathToFileURL(join(packageRoot, "dist/index.js")).href
   )) as { clientBundle: { dir: string } };
   bundleDir = built.clientBundle.dir;
 }, 180_000);

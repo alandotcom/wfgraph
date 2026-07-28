@@ -2,9 +2,11 @@ import { defineConfig } from "vitest/config";
 import { workspaceSourceAliases } from "./scripts/plugins/workspace-source-aliases";
 
 /**
- * This file replaces vite.config.ts for the test runner rather than extending
- * it. vitest looks for `vitest.config` before `vite.config` and stops at the
- * first match, so anything the tests need has to be declared here as well.
+ * The test runner's own Vite config. It does not extend the client's:
+ * `packages/client/vite.config.ts` configures a dev server and a build for one
+ * package, while the suite spans all four, and vitest would not read it in any
+ * case, since it looks for `vitest.config` first and stops at the first match.
+ * Anything the tests need is declared here.
  */
 
 // A test file outside every project's `include` is skipped in silence, so the

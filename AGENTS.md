@@ -58,7 +58,7 @@ are the two cases, and each carries a comment saying so.
 pnpm run type-check   # tsc --noEmit, TypeScript 7
 pnpm run lint         # oxlint --type-aware, prints nothing when clean
 pnpm run test         # vitest, one project per environment
-pnpm run build        # library via tsdown, then the client
+pnpm run build        # pnpm -r build, each package building itself
 pnpm run knip         # unused files, exports, dependencies
 pnpm run fix          # oxfmt, must leave the tree clean
 ```
@@ -166,29 +166,29 @@ names, because a test file outside every project's globs is skipped without a wo
 package's tests run from the day they are written. A test file outside `packages/` still
 runs nowhere.
 
-**vitest.config.ts replaces vite.config.ts, it does not extend it.** vitest resolves
-`vitest.config` before `vite.config` and stops at the first file it finds, so anything the
-tests need has to be declared in `vitest.config.ts` too. The `@rova/plugins` source aliases
-are shared between the two as `workspaceSourceAliases` from
-`scripts/plugins/workspace-source-aliases.ts` for exactly that reason; without them a test
-importing `@rova/plugins` would resolve through the package's `exports` to a stale `dist`.
+**There are two Vite configs and neither extends the other.**
+`packages/client/vite.config.ts` is the SPA's dev server and build, owned by the package it
+compiles. The root `vitest.config.ts` is the suite's, and vitest never reads the client's:
+it resolves `vitest.config` first and stops at the first file it finds, so anything the
+tests need is declared at the root as well. The `@rova/plugins` source aliases are shared
+between them as `workspaceSourceAliases` from `scripts/plugins/workspace-source-aliases.ts`
+for exactly that reason; without them a test importing `@rova/plugins` would resolve through
+the package's `exports` to a stale `dist`.
 
-**Development needs no client build.** `server.ts` creates Vite in middleware mode inside
-its own process, so `dev:app` is one process on port 4017 and Vite compiles the SPA per
-request. `client` goes unset there, because the option takes a built bundle and development
-has none. Dispatch order is what makes the two halves coexist: anything under
-`${rova.basePath}/api` goes to Rova before Vite is consulted, everything else meets Vite's
-middlewares, and what Vite does not recognise falls through to a callback that answers a
-page view with the SPA and hands the rest to Rova. The API has to come first because Vite's
-middleware stack answers every CORS preflight itself and rejects a non-loopback `Host`
-header, which would take the webhook route's preflight and every tunnelled webhook. The SPA
-predicate is `isSpaPath` from `@rova/core/backend/lib/http/client-assets`, imported so
-development and production cannot disagree about which paths the browser router owns; the
-list itself mirrors `packages/client/src/router.tsx`. Development binds `127.0.0.1` unless
-`HOST` says otherwise, because middleware mode moves the listen call away from Vite and
-Vite's `/@fs` route reads any file in the repo. Production is the other arrangement, and
-`pnpm run start` runs it: the built bundle goes to `createRovaApp` as `client`, Rova applies
-the same SPA rule itself, `server.ts` routes nothing, and the bind covers every interface.
+**The repo has no server of its own.** The one server is the example app,
+`examples/app.ts`, which is the adopter path written out and nothing more: options from the
+environment, a custom trigger and action, a `node:http` mount through
+`createRequestListener`. ADR-0006 has the reasoning, and the bar for a line in that file is
+whether an adopter would write it.
+
+`pnpm run dev` is three processes: the app on 4017, Vite's dev server in `packages/client`,
+and the Inngest CLI. Vite serves the editor on its own port and forwards `/api` to the app
+through `server.proxy`, which covers every backend route, since all of them sit under
+`${basePath}/api`. Vite's default history fallback answers a page view, so nothing outside
+Rova applies the SPA-path rule and no dispatch logic exists anywhere. `client` goes unset in
+development, because the option takes a built bundle and development has none. `pnpm run
+start` is the other arrangement and one process: the built bundle goes to `createRovaApp` as
+`client`, and Rova serves the editor, the assets, and the API itself.
 
 **Four published surfaces.** `@rova/core` is the backend, `@rova/core/plugin` the five
 names an integration package may use, `@rova/client` the editor, `@rova/plugins` the
@@ -200,11 +200,10 @@ into whichever bundle needs it.
 it publishes. Its `files` is scoped, `@rova/shared` is inlined into the build so it never appears as a dependency,
 and there is no published server wrapper: `createRovaApp` returns a fetch handler, which
 `Bun.serve` and `Deno.serve` take directly and `@rova/core/node` translates for Express and
-Fastify. The two `node:http` servers in the tree, at `server.ts` and in
-`examples/library-trigger.ts`, both sit outside `packages/core` and both reach the fetch
-handler through `createRequestListener` from `@rova/core/node`, which is the same
-translation an adopter on Node makes. Verify a packaging change with `pnpm pack` and read
-the extracted manifest.
+Fastify. The one `node:http` server in the tree, `examples/app.ts`, sits outside
+`packages/core` and reaches the fetch handler through `createRequestListener` from
+`@rova/core/node`, which is the same translation an adopter on Node makes. Verify a
+packaging change with `pnpm pack` and read the extracted manifest.
 
 ## Code cleanliness
 

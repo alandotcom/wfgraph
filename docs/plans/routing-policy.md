@@ -281,7 +281,7 @@ old names, and old tests asserting them are deleted, not shimmed.
   (L298-303): `eventTypePath` optional with event-name fallback, routing
   configured per workflow in the editor. Document event mode briefly while
   in there, since `lifecycle` leaves the example.
-- `examples/library-trigger.ts`: drop `lifecycle`, note that routing is
+- `examples/app.ts`: drop `lifecycle`, note that routing is
   configured in the editor's policy table.
 - `AGENTS.md`: no current line names lifecycle routing; verify and touch up
   any path this plan invalidates.

@@ -286,8 +286,16 @@ describe("createRovaApp configuration", () => {
   // has to stop startup rather than surface later as a failing integration read.
   it("refuses to start without an encryption key", async () => {
     await expect(
+      createRovaApp({ ...BASE_OPTIONS, encryption: { key: undefined } })
+    ).rejects.toThrow("encryption.key is unset");
+  });
+
+  // A host reading the key from an environment variable that is set to nothing
+  // has the same problem as one that never set it, and gets the same message.
+  it("treats a blank encryption key as unset", async () => {
+    await expect(
       createRovaApp({ ...BASE_OPTIONS, encryption: { key: "  " } })
-    ).rejects.toThrow("requires encryption.key");
+    ).rejects.toThrow("encryption.key is unset");
   });
 
   it("refuses an encryption key of the wrong length", async () => {

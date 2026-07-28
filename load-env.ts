@@ -8,8 +8,8 @@
  * means the variables are in place before @rova/core loads and reads them.
  *
  * `.env.local` wins over `.env`, and a variable the shell already set wins over
- * both. That last rule is what lets `dev:app` pin NODE_ENV and INNGEST_DEV on
- * the command line.
+ * both. That last rule is what lets `pnpm run dev` pin NODE_ENV, HOST, and
+ * INNGEST_BASE_URL on the command line.
  */
 
 import { config as loadDotEnv } from "dotenv";

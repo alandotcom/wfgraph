@@ -12,7 +12,7 @@ The backend is a Hono API that runs on any JavaScript runtime with `Request` and
 - Frontend: React SPA + TanStack Router (`packages/client/src/main.tsx`, `packages/client/src/router.tsx`)
 - State: Jotai
 - Data fetching/cache: TanStack Query
-- Dev server: `server.ts` on Node, running Vite in middleware mode
+- Dev server: Vite in `packages/client`, proxying `/api` to the example app
 
 ## Project Structure
 
@@ -26,9 +26,9 @@ packages/
   plugins/   @rova/plugins  Integration plugins (Acuity, Clerk, Linear, Resend, Slack, Twilio)
 ```
 
-- `server.ts` -- root server entrypoint for development and production (imports plugins, starts server)
-- `vite.config.ts` -- the SPA's build, and the dev server `server.ts` runs in middleware mode
-- `scripts/` -- standalone scripts and the shared Vite plugin
+- `examples/app.ts` -- the repo's only server, for development and production. It is an adopter's app: options from the environment, a custom trigger and action, a `node:http` mount. See `docs/adr/0006`.
+- `packages/client/vite.config.ts` -- the SPA's dev server and build
+- `scripts/` -- standalone scripts and the shared Vite alias module
 
 ## Integrations
 
@@ -63,7 +63,7 @@ Common optional variables:
 
 ```env
 PORT=4017
-INNGEST_DEV=http://localhost:8388
+HOST=127.0.0.1
 INNGEST_BASE_URL=http://localhost:8288
 RUN_DB_MIGRATIONS=false
 MIGRATIONS_DIR=packages/core/drizzle
@@ -80,16 +80,16 @@ The server can run Drizzle migrations automatically during startup.
   to the running code. `MIGRATIONS_DIR` overrides it and is resolved from the working
   directory. Nothing is guessed from the working directory otherwise, so an embedder's own
   `./drizzle` is never mistaken for Rova's.
-- Startup migrations run before the HTTP server starts (`server.ts`)
+- Startup migrations run before the HTTP server starts (`examples/app.ts`)
 
 Examples:
 
 ```bash
 # Run migrations at app startup
-RUN_DB_MIGRATIONS=true pnpm run dev:app
+RUN_DB_MIGRATIONS=true pnpm run dev
 
 # Use a custom migration directory, resolved from the working directory
-RUN_DB_MIGRATIONS=true MIGRATIONS_DIR=packages/core/drizzle pnpm run dev:app
+RUN_DB_MIGRATIONS=true MIGRATIONS_DIR=packages/core/drizzle pnpm run dev
 ```
 
 ## Local Development
@@ -104,11 +104,16 @@ docker compose up -d
 # Apply schema
 pnpm run db:push
 
-# Start app + inngest dev process
+# Start the app, the client dev server, and the inngest dev process
 pnpm run dev
 ```
 
-App URL: `http://localhost:4017`
+Editor URL: `http://localhost:5173`. The Vite dev server compiles the SPA and forwards
+`/api` to the app, which listens on `http://localhost:4017` and answers the API there.
+
+The webhook URL a trigger panel offers for copying carries the editor's port, so when you
+hand it to a sender outside the browser, a tunnel or a third-party service, substitute the
+app's port (4017).
 
 ## Embedding
 
@@ -156,7 +161,7 @@ const trigger = createTrigger({
 
 const rova = await createRovaApp({
   database: { url: process.env.DATABASE_URL! },
-  encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY! },
+  encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
   auth: (request) => hasValidSession(request),
   client: clientBundle,
   migrations: { runOnStartup: true },
@@ -236,7 +241,7 @@ import "@rova/plugins"; // integration metadata the editor renders
 import "@rova/plugins/server"; // step implementations and connection tests, loaded on demand
 ```
 
-`server.ts` in this repo does exactly that. `@rova/plugins` peer-depends on `@rova/core`: a second copy would mean a second database handle, which is what one-Rova-per-process exists to prevent.
+`examples/app.ts` in this repo does exactly that. `@rova/plugins` peer-depends on `@rova/core`: a second copy would mean a second database handle, which is what one-Rova-per-process exists to prevent.
 
 `@rova/client` lists all six built-ins in its palette regardless. On a server that has not registered them, creating one of those connections is refused rather than storing credentials the process cannot use.
 
@@ -253,7 +258,7 @@ import "@rova/plugins/server"; // step implementations and connection tests, loa
 - `@rova/client` -- `clientBundle`, the built editor, passed to `createRovaApp` as `client`.
 - `@rova/plugins` -- the built-in integrations, and `@rova/plugins/server` for their step and connection-test registrations.
 
-The first two run on any runtime with `Request` and `Response`. There is no published server wrapper: once `createRovaApp` returns a fetch handler, a wrapper saves a consumer two lines and charges an options type that reaccumulates every parameter the host's own server takes. This repo's own dev server lives at `server.ts` in the repo root, and `examples/library-trigger.ts` shows the same shape.
+The first two run on any runtime with `Request` and `Response`. There is no published server wrapper: once `createRovaApp` returns a fetch handler, a wrapper saves a consumer two lines and charges an options type that reaccumulates every parameter the host's own server takes. This repo has no server of its own; `examples/app.ts` is an app written the way an adopter writes one, and running it is how the mount above stays exercised.
 
 ### Linking for development
 
@@ -313,7 +318,7 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
 
 ## Run In Production
 
-Build the library, the plugins, and the client, then start the same `server.ts` the dev loop uses. `NODE_ENV=production` is what makes it hand the built client to `createRovaApp` rather than compile the SPA through Vite.
+Build every package, then start the same `examples/app.ts` the dev loop runs. `NODE_ENV=production` is what makes it hand the built client to `createRovaApp`, so one process serves the editor, its assets, and the API. There is no Vite dev server in this mode.
 
 ```bash
 pnpm run build
@@ -354,14 +359,12 @@ docker run --rm \
 
 ## Scripts
 
-- `pnpm run dev` - run the app server and the inngest dev process together
-- `pnpm run dev:app` - run only the app server (`tsx watch server.ts`, with Vite in middleware mode)
+- `pnpm run dev` - run the app, the client dev server, and the inngest dev process together
 - `pnpm run dev:inngest` - run only the inngest dev process
-- `pnpm run build` - build the library, the plugins, and the client
-- `pnpm run build:lib` - build library artifacts (`packages/core/dist/`, `packages/client/dist/`)
-- `pnpm run build:plugins` - build `@rova/plugins` (`packages/plugins/dist/`)
-- `pnpm run build:client` - build the client SPA with Vite (`packages/client/dist/client/`)
-- `pnpm run start` - run the production server (`server.ts` with `NODE_ENV=production`)
+- `pnpm run build` - `pnpm -r build`; each package builds itself, in workspace-graph order
+- `pnpm --filter @rova/client dev` - run only the client dev server (Vite, proxying `/api` to port 4017)
+- `pnpm --filter @rova/client build` - build `@rova/client` alone: the entry via tsdown, then the SPA via Vite into `packages/client/dist/client/`
+- `pnpm run start` - run the app in production mode (`examples/app.ts` with `NODE_ENV=production`)
 - `pnpm run test` - run the vitest suite once
 - `pnpm run test:watch` - run vitest in watch mode
 - `pnpm run type-check` - run TypeScript checks

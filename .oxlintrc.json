@@ -242,8 +242,7 @@
     },
     {
       "files": [
-        "server.ts",
-        "examples/library-trigger.ts",
+        "examples/app.ts",
         "scripts/migrate-prod.ts",
         "packages/core/drizzle.config.ts",
         "packages/core/src/app.ts",

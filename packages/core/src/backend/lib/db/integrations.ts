@@ -14,7 +14,14 @@ const ENCRYPTION_KEY_ENV = "INTEGRATION_ENCRYPTION_KEY";
 const integrationsDbLogger = getAppLogger("integrations", "db");
 
 export type EncryptionRuntimeConfig = {
-  key: string;
+  /**
+   * Optional in the type so a host can pass an environment variable straight
+   * through. Reading `process.env.X` gives `string | undefined`, and a required
+   * `string` here would push every host into a `?? ""` that turns a missing key
+   * into a malformed one. `assertValidEncryptionKey` is what rejects it, and it
+   * names the two cases apart.
+   */
+  key: string | undefined;
 };
 
 type EncryptionRuntimeState = {
@@ -33,13 +40,20 @@ globalThis.__rovaEncryptionState = encryptionState;
 /**
  * The key's shape, checked without storing it, so `createRovaApp` can report a
  * bad key as a bad key before it claims the process.
+ *
+ * An absent key and a wrong-shaped one are different mistakes with different
+ * fixes, so they get different messages: the first sends the reader to their
+ * secret store, the second to the value they already have. Asserting the type
+ * lets the callers below use the key as a string once this returns.
  */
-export function assertValidEncryptionKey(key: string): void {
-  const trimmed = key.trim();
+export function assertValidEncryptionKey(
+  key: string | undefined
+): asserts key is string {
+  const trimmed = key?.trim() ?? "";
 
   if (!trimmed) {
     throw new Error(
-      `createRovaApp requires encryption.key, a 64-character hex string. Read it from ${ENCRYPTION_KEY_ENV} or wherever your app keeps its secrets.`
+      `createRovaApp's encryption.key is unset. It is a 64-character hex string; read it from ${ENCRYPTION_KEY_ENV} or wherever your app keeps its secrets.`
     );
   }
 

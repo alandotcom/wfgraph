@@ -32,7 +32,7 @@
     }
   },
   // The library sources plus the client package's tiny entry. The SPA itself is
-  // built separately by Vite, through `pnpm run build:client`.
+  // built separately by Vite, the second half of `@rova/client`'s build script.
   // Sources in packages/shared and packages/plugins enter the program as
   // imports of these files.
   "include": [

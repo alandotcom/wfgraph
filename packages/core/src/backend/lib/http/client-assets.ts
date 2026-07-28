@@ -63,11 +63,12 @@ async function fileExists(filePath: string): Promise<boolean> {
  * True for a path the browser router owns, so the answer is index.html rather
  * than a file lookup.
  *
- * Exported because development serves the SPA from Vite in the repo's own
- * `server.ts` instead of from here, and that dispatch has to make the same call
- * this one does. Two copies of the rule would let a route work in one mode only.
+ * Rova is the only place this rule is applied. Development serves the editor
+ * from Vite's own dev server, whose history fallback answers a page view
+ * without asking anything here, so the rule has one implementation and one
+ * caller.
  */
-export function isSpaPath(pathname: string): boolean {
+function isSpaPath(pathname: string): boolean {
   return SPA_PATHS.has(pathname) || pathname.startsWith("/workflows/");
 }
 

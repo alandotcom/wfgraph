@@ -36,6 +36,8 @@ is gone.
 
 - The two `Bun.serve` call sites, `server.ts` and `examples/library-trigger.ts`, are
   rewritten. The dev server becomes Vite's, and the example runs through `@rova/core/node`.
+  _2026-07-28: superseded by ADR-0006. Neither file exists; the repo has one server, the
+  example app at `examples/app.ts`._
 - Development gains a client build step in the sense that Vite now owns transpilation. The
   AGENTS.md note explaining why `client` goes unset in development is replaced by whatever
   Vite's dev middleware arrangement turns out to be.

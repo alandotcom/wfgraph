@@ -3,36 +3,45 @@ import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import { workspaceSourceAliases } from "./scripts/plugins/workspace-source-aliases";
+import { workspaceSourceAliases } from "../../scripts/plugins/workspace-source-aliases";
 
 /**
- * The SPA's build and its dev server. `pnpm run build:client` runs the build
- * half; `server.ts` creates the dev half in middleware mode inside its own
- * process, so the whole repo stays on one port.
+ * The SPA's build and its dev server, both owned by the package whose source
+ * they compile. `pnpm run build` here runs the build half after tsdown; `pnpm
+ * run dev` at the repo root starts the dev half beside the example app.
  *
- * The config sits at the repo root rather than in packages/client because the
- * client build has always been driven from here, and because everything it
- * touches is a root dev dependency.
+ * Development is two processes. This one serves the editor and proxies the API
+ * to the app; the app serves the API and, in production only, the built bundle.
+ * Nothing dispatches between them in code, which is the whole point: the app is
+ * the mount an adopter writes, and a dev server that answers page views is not
+ * part of it.
  */
 
-const repoRoot = fileURLToPath(new URL(".", import.meta.url));
-const clientSrc = fileURLToPath(
-  new URL("./packages/client/src", import.meta.url)
-);
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+
+// index.html lives beside the source it loads, so the source directory is the
+// Vite project root and `outDir` below is what pulls the output back out of it.
+const clientSrc = fileURLToPath(new URL("./src", import.meta.url));
 
 // Beside @rova/client's own tsdown output, which is where `clientBundle.dir`
 // points a host.
-const outDir = fileURLToPath(
-  new URL("./packages/client/dist/client", import.meta.url)
-);
+const outDir = fileURLToPath(new URL("./dist/client", import.meta.url));
+
+// Where examples/app.ts listens, read from the same variable the app reads so
+// `PORT=4018 pnpm run dev` moves both halves together.
+//
+// The example mounts Rova at the root, which puts every backend route under
+// `/api`: rpc, rest, openapi.json, docs, extensions, inngest, and the webhook
+// and resume paths. Mounting under a `basePath` would move them all, and this
+// proxy rule would have to move with them.
+const APP_ORIGIN = `http://localhost:${process.env.PORT ?? 4017}`;
 
 export default defineConfig({
-  // index.html lives beside the source it loads, so the source directory is the
-  // project root and `outDir` below is what pulls the output back out of it.
   root: clientSrc,
   // Relative asset URLs. The server rewrites index.html's <base> tag to
   // wherever the host mounted Rova, and that tag is what resolves them, so a
-  // sub-path mount needs no rebuild.
+  // sub-path mount needs no rebuild. Vite resolves a relative base to "/" in
+  // development, where the tag is served unrewritten.
   base: "./",
   // The repo's public/ holds leftovers from the Next.js template that nothing
   // references, and it is not under this root in any case. Saying so keeps Vite
@@ -62,6 +71,11 @@ export default defineConfig({
     sourcemap: false,
   },
   server: {
+    // Vite's default appType answers an unmatched page view with index.html, so
+    // the browser router's own paths need nothing declared here.
+    proxy: {
+      "/api": APP_ORIGIN,
+    },
     fs: {
       // Sources from three workspace packages reach the browser, so the dev
       // server reads from the whole monorepo rather than the client alone.

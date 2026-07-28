@@ -49,13 +49,10 @@ const config: KnipConfig = {
         // place by being imported.
         //
         // knip already reads the "scripts" block of package.json and treats a
-        // file a script runs as an entry, which covers server.ts through
+        // file a script runs as an entry, which covers examples/app.ts through
         // "start". Listing such a file here draws a "redundant entry pattern"
-        // hint. What remains is the three it cannot see.
+        // hint. What remains is the two it cannot see.
         //
-        // Run by "example:library-trigger", whose command is a single `sh -c`
-        // string that knip does not read into:
-        "examples/library-trigger.ts",
         // Run by the afterFileEdit hook in .cursor/hooks.json:
         "scripts/format-edited-file.ts",
         // Run by hand against a deployed database. Nothing in the repo calls it,
@@ -99,10 +96,12 @@ const config: KnipConfig = {
     },
 
     "packages/client": {
-      // The SPA is rooted at the script tag in src/index.html; src/index.ts is
-      // the tiny module a host imports to hand the built bundle to
-      // createRovaApp, and knip picks that up from the "exports" map.
-      entry: ["src/main.tsx"],
+      // Both entries are found rather than named. knip's Vite plugin reads
+      // vite.config.ts, follows `root` to src/index.html, and takes the script
+      // tag there as the SPA's entry; src/index.ts, the tiny module a host
+      // imports to hand the built bundle to createRovaApp, comes from the
+      // "exports" map.
+      entry: [],
       project: ["src/**/*.{ts,tsx}", "**/*.css"],
 
       // components.json points shadcn's generator at src/components/ui, and what
