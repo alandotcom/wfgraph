@@ -7,9 +7,7 @@ import {
   type ServiceResult,
   success,
 } from "@/backend/lib/service-result";
-import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
-import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-wait-state";
-import { orchestrateTriggerExecution } from "@/backend/services/workflows/trigger-orchestrator";
+import { orchestrateRoutedTrigger } from "@/backend/services/workflows/trigger-routing";
 import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight";
 import {
   buildIgnoredRunAuditMessage,
@@ -20,7 +18,7 @@ import type { JsonObject } from "@rova/shared/types/json";
 import { getErrorMessage } from "@rova/shared/utils";
 import type { ApiErrorPayload } from "@rova/shared/workflow/api-contracts";
 import type { WorkflowExecuteResponse } from "@rova/shared/workflow/execution-contracts";
-import { evaluateWorkflowTrigger } from "@rova/shared/workflow/trigger-registry";
+import { routeWorkflowTrigger } from "@rova/shared/workflow/trigger-registry";
 import { resolveWebhookTriggerRuntimeConfig } from "@rova/shared/workflow/triggers/webhook-trigger";
 
 const executeLogger = getAppLogger("workflow", "execute");
@@ -115,11 +113,13 @@ export async function postWorkflowExecuteResult(
       return success(response);
     }
 
-    const { eventType, correlationKey, routingDecision } =
-      evaluateWorkflowTrigger({
-        config: triggerConfigRecord,
-        payload: effectiveInput,
-      });
+    // A manual run has no delivering Inngest event; classification owns the
+    // sole-declared-event-name stand-in, so no eventName is passed here.
+    const routing = routeWorkflowTrigger({
+      config: triggerConfigRecord,
+      payload: effectiveInput,
+    });
+    const { eventType, correlationKey, action } = routing;
 
     requestLogger.info("Workflow execute request received", {
       workflowName: workflow.name,
@@ -129,6 +129,7 @@ export async function postWorkflowExecuteResult(
       effectiveInputKeys: Object.keys(effectiveInput),
       eventType,
       correlationKey,
+      action,
     });
 
     if (!isOrchestratedTrigger) {
@@ -153,22 +154,13 @@ export async function postWorkflowExecuteResult(
       return success(response);
     }
 
-    const waitStates =
-      correlationKey === undefined
-        ? []
-        : await listWorkflowWaitingStatesByCorrelation({
-            workflowId,
-            correlationKey,
-            runMode,
-          });
-
-    const orchestrated = await orchestrateTriggerExecution({
+    const orchestrated = await orchestrateRoutedTrigger({
+      workflowId,
       runMode,
-      eventType,
-      correlationKey,
-      routingDecision,
-      waitStates,
+      routing,
+      sourceNoun: "execute event",
       enableResumes: false,
+      logger: executeLogger,
       startExecution: async () =>
         await startWorkflowRun({
           workflow: {
@@ -181,16 +173,6 @@ export async function postWorkflowExecuteResult(
           requestPayload: body.input ?? {},
           runMode,
         }),
-      cancelWaitStates: async (currentEventType) =>
-        await cancelWaitingRuns({
-          workflowId,
-          waitStates,
-          eventType: currentEventType,
-          reason: currentEventType
-            ? `Cancelled by execute event ${currentEventType}`
-            : "Cancelled by execute trigger lifecycle decision",
-          logger: executeLogger,
-        }),
       resumeWaitStates: async () => 0,
     });
 
@@ -202,13 +184,14 @@ export async function postWorkflowExecuteResult(
         runMode: orchestrated.runMode,
         cancelledExecutions: orchestrated.cancelledExecutions,
         cancelledWaits: orchestrated.cancelledWaits,
+        failedExecutions: orchestrated.failedExecutions,
       };
       return success(response);
     }
 
     if (orchestrated.status === "cancelled") {
       let cancellationAuditMessage =
-        "Cancelled waiting runs from execute request";
+        "Cancelled in-flight runs from execute request";
       if (eventType) {
         cancellationAuditMessage = `Cancelled by execute event ${eventType}`;
       }

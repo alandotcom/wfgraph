@@ -42,6 +42,7 @@ import {
 } from "@/components/workflow/workflow-node-dimensions";
 import { UserMenu } from "@/components/workflows/user-menu";
 import type { WorkflowExecuteResult } from "@/lib/rpc-client";
+import type { WorkflowExecutionIgnoredReason } from "@rova/shared/workflow/execution-contracts";
 import {
   integrationsQueryOptions,
   orpcQuery,
@@ -103,6 +104,17 @@ import {
   SYSTEM_ACTION_INTEGRATIONS,
   SYSTEM_INTEGRATION_LABELS,
 } from "@rova/shared/workflow/system-action-integrations";
+
+// The `satisfies` is the exhaustiveness check: a reason added to the shared
+// union fails to compile here until it has user-facing copy.
+const IGNORED_REASON_MESSAGES = {
+  missing_event_type: "No event type was found in the payload.",
+  invalid_payload: "Payload failed the trigger schema.",
+  event_not_mapped:
+    "The routing policy does not map this event type to an action.",
+  no_in_flight_runs: "No in-flight runs were found to cancel.",
+  workflow_paused: "Workflow is paused and cannot start new runs.",
+} satisfies Record<WorkflowExecutionIgnoredReason, string>;
 
 // Helper functions to reduce complexity
 function updateNodesStatus(
@@ -363,18 +375,11 @@ async function executeWorkflowRun({
             : 0;
         toast.success(
           cancelledExecutions > 0
-            ? `Cancelled ${cancelledExecutions} waiting run${cancelledExecutions === 1 ? "" : "s"}.`
-            : "Cancelled matching waiting runs."
+            ? `Cancelled ${cancelledExecutions} in-flight run${cancelledExecutions === 1 ? "" : "s"}.`
+            : "Cancelled this entity's in-flight runs."
         );
       } else if (result.status === "ignored") {
-        let ignoredMessage = "Event was ignored by routing rules.";
-        if (result.reason === "no_waiting_runs") {
-          ignoredMessage = "No matching waiting runs were found.";
-        } else if (result.reason === "workflow_paused") {
-          ignoredMessage = "Workflow is paused and cannot start new runs.";
-        }
-
-        toast.message(ignoredMessage);
+        toast.message(IGNORED_REASON_MESSAGES[result.reason]);
       } else {
         toast.message("Execution completed without starting a new run.");
       }
@@ -390,7 +395,7 @@ async function executeWorkflowRun({
       result.cancelledExecutions > 0
     ) {
       toast.message(
-        `Restarted timing after cancelling ${result.cancelledExecutions} waiting run${result.cancelledExecutions === 1 ? "" : "s"}.`
+        `Replaced this entity's runs: cancelled ${result.cancelledExecutions} in-flight run${result.cancelledExecutions === 1 ? "" : "s"}, started a new one.`
       );
     }
 

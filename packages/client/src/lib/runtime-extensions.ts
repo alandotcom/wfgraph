@@ -16,6 +16,14 @@ export type RuntimeTriggerDefinition = {
   logoUrl?: string;
   configFields?: ActionConfigField[];
   outputFields?: ReferenceField[];
+  /**
+   * The trigger's closed Event Type vocabulary, when it has one. Drives the
+   * Routing Policy rows and the Wait node's event options. Absent means the
+   * vocabulary is open and the editor falls back to free-text rows.
+   */
+  eventTypes?: string[];
+  /** The payload path runs correlate on, shown wherever correlation is explained. */
+  correlationPath?: string;
 };
 
 const runtimeTriggerRegistry = new Map<string, RuntimeTriggerDefinition>();
@@ -112,6 +120,8 @@ const runtimeTriggerSchema: z.ZodType<RuntimeTriggerDefinition> = z.object({
   logoUrl: z.string().optional(),
   configFields: z.array(actionConfigFieldSchema).optional(),
   outputFields: z.array(referenceFieldSchema).optional(),
+  eventTypes: z.array(z.string()).optional(),
+  correlationPath: z.string().optional(),
 });
 
 /**

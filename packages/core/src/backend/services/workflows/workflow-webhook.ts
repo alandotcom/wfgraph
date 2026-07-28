@@ -9,18 +9,16 @@ import {
   success,
 } from "@/backend/lib/service-result";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
-import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
 import { resumeMatchingWaitHooks } from "@/backend/lib/workflow-wait-resume";
-import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-wait-state";
 import { validateApiKey } from "@/backend/services/api-keys/auth";
 import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight";
 import type { JsonObject } from "@rova/shared/types/json";
 import { getErrorMessage } from "@rova/shared/utils";
 import type { ApiErrorPayload } from "@rova/shared/workflow/api-contracts";
 import type { WorkflowWebhookResponse } from "@rova/shared/workflow/execution-contracts";
-import { evaluateWorkflowTrigger } from "@rova/shared/workflow/trigger-registry";
+import { routeWorkflowTrigger } from "@rova/shared/workflow/trigger-registry";
 import { resolveWebhookTriggerRuntimeConfig } from "@rova/shared/workflow/triggers/webhook-trigger";
-import { orchestrateTriggerExecution } from "./trigger-orchestrator";
+import { orchestrateRoutedTrigger } from "./trigger-routing";
 import {
   buildIgnoredRunAuditMessage,
   recordTerminalWorkflowRun,
@@ -136,11 +134,11 @@ export async function postWorkflowWebhookResult(input: {
       });
     }
 
-    const { eventType, correlationKey, routingDecision } =
-      evaluateWorkflowTrigger({
-        config: triggerConfig,
-        payload: body,
-      });
+    const routing = routeWorkflowTrigger({
+      config: triggerConfig,
+      payload: body,
+    });
+    const { eventType, correlationKey, action } = routing;
     const eventTypePath = webhookRuntimeConfig.routing.eventTypePath;
     const correlationPath = webhookRuntimeConfig.routing.correlationPath;
 
@@ -151,6 +149,7 @@ export async function postWorkflowWebhookResult(input: {
       correlationPath,
       eventType,
       correlationKey,
+      action,
       requestPayloadKeys: Object.keys(body),
     });
 
@@ -165,22 +164,13 @@ export async function postWorkflowWebhookResult(input: {
       },
     });
 
-    const waitingStates =
-      correlationKey === undefined
-        ? []
-        : await listWorkflowWaitingStatesByCorrelation({
-            workflowId,
-            correlationKey,
-            runMode,
-          });
-
-    const outcome = await orchestrateTriggerExecution({
+    const outcome = await orchestrateRoutedTrigger({
+      workflowId,
       runMode,
-      eventType,
-      correlationKey,
-      routingDecision,
-      waitStates: waitingStates,
+      routing,
+      sourceNoun: "webhook event",
       enableResumes: true,
+      logger: webhookLogger,
       startExecution: async () =>
         await startWorkflowRun({
           workflow: {
@@ -191,16 +181,6 @@ export async function postWorkflowWebhookResult(input: {
           trigger: { type: "webhook", eventType, correlationKey },
           payload: body,
           runMode,
-        }),
-      cancelWaitStates: async (currentEventType) =>
-        await cancelWaitingRuns({
-          workflowId,
-          waitStates: waitingStates,
-          eventType: currentEventType,
-          reason: currentEventType
-            ? `Cancelled by webhook event ${currentEventType}`
-            : "Cancelled by webhook trigger lifecycle decision",
-          logger: webhookLogger,
         }),
       resumeWaitStates: async (currentEventType, waitStates) =>
         await resumeMatchingWaitHooks({

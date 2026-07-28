@@ -3,12 +3,13 @@
  * These replace the HTTP endpoint for better security
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
 import {
   workflowExecutionLogs,
   workflowExecutions,
 } from "@/backend/lib/db/schema";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@/backend/lib/workflow-wait-state";
 
 export type LogStepStartParams = {
   executionId: string;
@@ -85,14 +86,19 @@ export type LogWorkflowCompleteParams = {
 };
 
 /**
- * Log the completion of a workflow execution
+ * Log the completion of a workflow execution.
+ *
+ * Compare-and-set, mirroring `markExecutionCancelled`: a policy cancel can
+ * flip the row to `cancelled` while the run is finishing its last step, and
+ * the losing completion write must not resurrect it. Returns whether this
+ * write recorded the terminal status.
  */
 export async function logWorkflowCompleteDb(
   params: LogWorkflowCompleteParams
-): Promise<void> {
+): Promise<boolean> {
   const duration = Date.now() - params.startTime;
 
-  await db
+  const updated = await db
     .update(workflowExecutions)
     .set({
       status: params.status,
@@ -102,5 +108,13 @@ export async function logWorkflowCompleteDb(
       completedAt: new Date(),
       duration: duration.toString(),
     })
-    .where(eq(workflowExecutions.id, params.executionId));
+    .where(
+      and(
+        eq(workflowExecutions.id, params.executionId),
+        inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES])
+      )
+    )
+    .returning({ id: workflowExecutions.id });
+
+  return updated.length > 0;
 }

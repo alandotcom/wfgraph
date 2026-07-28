@@ -1,40 +1,11 @@
 import { type JsonObject, jsonObjectSchema } from "@/types/json";
-import type {
-  TriggerEvaluation,
-  TriggerRoutingDecision,
-  WorkflowTriggerDefinition,
-} from "@/workflow/trigger-registry";
+import type { WorkflowTriggerDefinition } from "@/workflow/trigger-registry";
 import {
   asNonEmptyString,
   buildWebhookRoutingConfig,
   deriveWebhookEventContext,
-  routeWebhookEvent,
   type WebhookRoutingConfig,
-  type WebhookRoutingDecision,
 } from "@/workflow/webhook-routing";
-
-function assertUnreachable(value: never): never {
-  throw new Error(
-    `Unhandled webhook routing decision: ${JSON.stringify(value)}`
-  );
-}
-
-function mapWebhookDecisionToTriggerDecision(
-  decision: WebhookRoutingDecision
-): TriggerRoutingDecision {
-  switch (decision.kind) {
-    case "create":
-      return { kind: "start" };
-    case "update":
-      return { kind: "restart" };
-    case "delete":
-      return { kind: "stop" };
-    case "ignore":
-      return { kind: "ignore", reason: decision.reason };
-    default:
-      return assertUnreachable(decision);
-  }
-}
 
 /**
  * Reads the mock request body a user typed into the trigger's editor, stored as
@@ -79,18 +50,13 @@ export function resolveWebhookTriggerRuntimeConfig(
   };
 }
 
-function toTriggerEvaluation(input: {
-  decision: WebhookRoutingDecision;
-  eventType: string | undefined;
-  correlationKey: string | undefined;
-}): TriggerEvaluation {
-  return {
-    eventType: input.eventType,
-    correlationKey: input.correlationKey,
-    routingDecision: mapWebhookDecisionToTriggerDecision(input.decision),
-  };
-}
-
+/**
+ * The webhook trigger classifies payloads by the builder-configured paths; it
+ * never validates against a schema (the builder's request schema is editor
+ * guidance, and the sending service is outside the builder's control), so
+ * classification always succeeds. Routing is the workflow's Routing Policy,
+ * resolved by the caller.
+ */
 export function createWebhookTriggerDefinition(): WorkflowTriggerDefinition {
   return {
     runtime: {
@@ -99,16 +65,12 @@ export function createWebhookTriggerDefinition(): WorkflowTriggerDefinition {
       evaluate(input) {
         const { routing } = resolveWebhookTriggerRuntimeConfig(input.config);
         const context = deriveWebhookEventContext(input.payload, routing);
-        const webhookDecision = routeWebhookEvent({
-          eventType: context.eventType,
-          routing,
-        });
 
-        return toTriggerEvaluation({
-          decision: webhookDecision,
+        return {
+          ok: true,
           eventType: context.eventType,
           correlationKey: context.correlationKey,
-        });
+        };
       },
     },
     ui: {

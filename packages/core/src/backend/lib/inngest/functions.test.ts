@@ -109,12 +109,9 @@ describe("event trigger detection in function registry", () => {
         event: z.string(),
         entity: z.object({ id: z.string() }),
       }),
+      // Event mode with no eventTypePath: the delivering Inngest event name
+      // is the Event Type.
       correlationIdPath: "entity.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     })
   );
 

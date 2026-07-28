@@ -46,6 +46,7 @@ import {
   evaluateWorkflowTrigger,
   resolveWorkflowTriggerDefinition,
 } from "@rova/shared/workflow/trigger-registry";
+import { readWaitForEvents } from "@rova/shared/workflow/wait-events";
 import { resolveWebhookTriggerRuntimeConfig } from "@rova/shared/workflow/triggers/webhook-trigger";
 import type {
   ConditionBranch,
@@ -823,7 +824,7 @@ async function executeWaitActionInner(
         waitTimezone: readWaitTimezone(config),
         waitGateMode: readWaitGateMode(config),
         ...readAllowedHoursConfig(config),
-        waitForEvents: config.waitForEvents,
+        waitForEvents: readWaitForEvents(config.waitForEvents),
         waitTimeout: config.waitTimeout,
       },
     })
@@ -959,6 +960,20 @@ async function prepareDelayWait(
       waitTimezone,
     },
   });
+
+  if (!waitState) {
+    // A policy cancel flipped the execution terminal between the last step
+    // and this park; Inngest is already killing the run.
+    const cancelledMessage =
+      "Execution was cancelled before the wait was registered";
+    await store.completeStepLog({
+      logId: startLog.logId,
+      startTime: startLog.startTime,
+      status: "error",
+      error: cancelledMessage,
+    });
+    return { status: "error", error: cancelledMessage };
+  }
 
   await store.recordAuditEvent({
     workflowId,
@@ -1107,8 +1122,7 @@ async function prepareHookWait(
       : undefined;
   const hookToken = explicitHookToken || generateWaitToken();
 
-  const waitForEvents =
-    typeof config.waitForEvents === "string" ? config.waitForEvents : undefined;
+  const waitForEvents = readWaitForEvents(config.waitForEvents);
 
   const waitState = await store.createWaitState({
     executionId,
@@ -1128,6 +1142,20 @@ async function prepareHookWait(
       waitTimeout: config.waitTimeout,
     },
   });
+
+  if (!waitState) {
+    // A policy cancel flipped the execution terminal between the last step
+    // and this park; Inngest is already killing the run.
+    const cancelledMessage =
+      "Execution was cancelled before the wait was registered";
+    await store.completeStepLog({
+      logId: startLog.logId,
+      startTime: startLog.startTime,
+      status: "error",
+      error: cancelledMessage,
+    });
+    return { status: "error", error: cancelledMessage };
+  }
 
   const waitModeLabel = waitMode === "event" ? "event" : "hook";
 
@@ -1317,9 +1345,10 @@ async function recordRunCompleted(input: {
   logger: ExecutionLogger;
 }) {
   const succeeded = input.status === "success";
+  let recorded = true;
 
   try {
-    await input.store.completeRun({
+    recorded = await input.store.completeRun({
       executionId: input.executionId,
       status: input.status,
       output: input.output,
@@ -1331,17 +1360,25 @@ async function recordRunCompleted(input: {
     input.logger.error("Failed to update execution record", { error });
   }
 
-  await input.store.recordAuditEvent({
-    workflowId: input.workflowId,
-    executionId: input.executionId,
-    eventType: succeeded ? "run_completed" : "run_failed",
-    message: buildRunCompletedMessage(input.runMode, succeeded),
-    metadata: {
-      duration: input.duration,
-      resultCount: input.resultCount,
-      runMode: input.runMode,
-    },
-  });
+  // A completion that lost to a cancellation must not announce itself: the
+  // timeline's last word has to match the row's terminal status.
+  if (recorded) {
+    await input.store.recordAuditEvent({
+      workflowId: input.workflowId,
+      executionId: input.executionId,
+      eventType: succeeded ? "run_completed" : "run_failed",
+      message: buildRunCompletedMessage(input.runMode, succeeded),
+      metadata: {
+        duration: input.duration,
+        resultCount: input.resultCount,
+        runMode: input.runMode,
+      },
+    });
+  } else {
+    input.logger.info("Run completion superseded by cancellation", {
+      status: input.status,
+    });
+  }
 
   return { status: input.status };
 }
@@ -1652,19 +1689,15 @@ async function executeWorkflowInner(
         triggerData = { ...triggerData, ...triggerInput };
       }
 
-      const triggerEvaluation = evaluateWorkflowTrigger({
+      // Routing was resolved at the entrypoint before this run was enqueued;
+      // inside the run the classification only guards against a payload the
+      // trigger's schema rejects.
+      const triggerClassification = evaluateWorkflowTrigger({
         config: configRecord,
         payload: triggerData,
       });
 
-      let ignoreReason: string | undefined;
-      if (triggerEvaluation.routingDecision.kind === "stop") {
-        ignoreReason = "stop_event";
-      } else if (triggerEvaluation.routingDecision.kind === "ignore") {
-        ignoreReason = triggerEvaluation.routingDecision.reason;
-      }
-
-      if (ignoreReason) {
+      if (!triggerClassification.ok) {
         triggerIgnored = true;
         // The trigger node's output is stored as JSON, where a key holding
         // `undefined` disappears anyway. Dropping those keys here makes the
@@ -1673,24 +1706,22 @@ async function executeWorkflowInner(
           {
             ...triggerData,
             triggered: false,
-            eventType: triggerEvaluation.eventType,
             eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
-            ignoredReason: ignoreReason,
+            ignoredReason: triggerClassification.reason,
           },
           isNil
         );
 
-        namedNodeLogger.info("Trigger ignored by routing rules", {
+        namedNodeLogger.info("Trigger payload failed the trigger schema", {
           triggerType: triggerDefinition.runtime.type,
-          eventType: triggerEvaluation.eventType,
           eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
-          ignoredReason: ignoreReason,
+          ignoredReason: triggerClassification.reason,
         });
       }
 
       let shouldExecuteTriggerStep = true;
 
-      if (!ignoreReason && triggerDefinition.runtime.type === "Webhook") {
+      if (!triggerIgnored && triggerDefinition.runtime.type === "Webhook") {
         const schemaValidation = validateWorkflowOutputAgainstSchema({
           schemaValue: configRecord.webhookOutputSchema,
           output: triggerData,

@@ -26,12 +26,18 @@ import { getBasePath } from "@/lib/base-path";
 import { getRuntimeTriggers } from "@/lib/runtime-extensions";
 import type { JsonObject } from "@rova/shared/types/json";
 import { cn } from "@rova/shared/utils";
-import { parseCsvSet } from "@rova/shared/utils/csv";
 import { getValueByPath } from "@rova/shared/utils/object-path";
 import { parseScheduleExpression } from "@rova/shared/utils/schedule-expression";
+import {
+  policyCanTrigger,
+  readRoutingPolicy,
+  type RoutingAction,
+} from "@rova/shared/workflow/routing-policy";
 import { workflowSchemaFieldsToJsonSchemaDocument } from "@rova/shared/workflow/schema-codec";
+import { DEFAULT_WEBHOOK_CORRELATION_PATH } from "@rova/shared/workflow/webhook-routing";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import type { UpdateNodeConfig } from "./node-config-patch";
+import { RoutingPolicyEditor } from "./routing-policy-editor";
 import { SchemaBuilder } from "./schema-builder";
 import {
   flattenSchemaPathOptions,
@@ -68,9 +74,14 @@ type WebhookSectionKey =
   | "payload"
   | "summary";
 
-type WebhookSectionState = Record<WebhookSectionKey, boolean>;
+/**
+ * The user's explicit open/close choices. A key is absent until the user
+ * has toggled that section, so defaults and warning-driven suggestions
+ * apply only while the user has expressed no preference.
+ */
+type WebhookSectionState = Partial<Record<WebhookSectionKey, boolean>>;
 
-const DEFAULT_WEBHOOK_SECTION_STATE: WebhookSectionState = {
+const DEFAULT_WEBHOOK_SECTION_STATE: Record<WebhookSectionKey, boolean> = {
   endpoint: true,
   requestSchema: true,
   outputSchema: false,
@@ -182,7 +193,10 @@ function WebhookConfigSection({
             )}
           />
           {warningCount && warningCount > 0 ? (
-            <span className="inline-flex min-w-5 items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 font-medium text-[10px] text-amber-700 dark:text-amber-200">
+            <span
+              aria-label={`${warningCount} warning${warningCount === 1 ? "" : "s"}`}
+              className="inline-flex min-w-5 items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 font-medium text-amber-700 text-xs dark:text-amber-200"
+            >
               {warningCount}
             </span>
           ) : null}
@@ -235,11 +249,9 @@ export function TriggerConfig({
   const correlationPath = readConfigString(
     config,
     "webhookCorrelationPath",
-    "data.id"
+    DEFAULT_WEBHOOK_CORRELATION_PATH
   );
-  const createEvents = readConfigString(config, "webhookCreateEvents");
-  const updateEvents = readConfigString(config, "webhookUpdateEvents");
-  const deleteEvents = readConfigString(config, "webhookDeleteEvents");
+  const routingPolicy = useMemo(() => readRoutingPolicy(config), [config]);
   const mockRequest = readConfigString(config, "webhookMockRequest");
   const scheduleTimezone = readConfigString(
     config,
@@ -275,7 +287,12 @@ export function TriggerConfig({
   );
   const [outputSchemaJsonError, setOutputSchemaJsonError] = useState("");
   const [webhookSections, setWebhookSections] = useState<WebhookSectionState>(
-    DEFAULT_WEBHOOK_SECTION_STATE
+    {}
+  );
+  // The output contract starts hidden: most builders never narrow it, and a
+  // stored narrowing (output differing from the request schema) re-opens it.
+  const [showOutputSchema, setShowOutputSchema] = useState(
+    () => JSON.stringify(outputSchema) !== JSON.stringify(requestSchema)
   );
 
   const schemaPathOptions = useMemo(
@@ -363,67 +380,35 @@ export function TriggerConfig({
     const configItems: string[] = [];
     const payloadItems: string[] = [];
 
-    if (!eventPath.trim()) {
-      configItems.push("Event type field path is empty.");
-    }
+    // A trigger with no request schema is work not yet started, not work
+    // done wrong: the panel stays quiet until there is something to check.
+    // The routing section's own helper text says what to do first.
+    if (requestSchema.length > 0) {
+      if (!eventPath.trim()) {
+        configItems.push("The Event Type field is empty.");
+      }
 
-    if (!correlationPath.trim()) {
-      configItems.push("Entity ID field path is empty.");
-    }
+      if (!correlationPath.trim()) {
+        configItems.push("The Correlation Key field is empty.");
+      }
 
-    if (requestSchema.length === 0) {
-      configItems.push(
-        "Define a request schema first, then pick routing fields from that schema."
-      );
-    } else {
       if (eventPath && !schemaPaths.includes(eventPath)) {
         configItems.push(
-          `Event type field "${eventPath}" is not in request schema.`
+          `Event Type field "${eventPath}" is not in the request schema.`
         );
       }
 
       if (correlationPath && !schemaPaths.includes(correlationPath)) {
         configItems.push(
-          `Entity ID field "${correlationPath}" is not in request schema.`
+          `Correlation Key field "${correlationPath}" is not in the request schema.`
         );
       }
-    }
 
-    const createSet = parseCsvSet(createEvents);
-    const updateSet = parseCsvSet(updateEvents);
-    const deleteSet = parseCsvSet(deleteEvents);
-
-    if (createSet.size === 0 && updateSet.size === 0 && deleteSet.size === 0) {
-      configItems.push(
-        "No events are configured. Incoming webhooks will not start, restart, or stop runs."
-      );
-    }
-
-    const overlappingCreateUpdate = [...createSet].filter((eventName) =>
-      updateSet.has(eventName)
-    );
-    if (overlappingCreateUpdate.length > 0) {
-      configItems.push(
-        `These events appear in both start and restart lists: ${overlappingCreateUpdate.join(", ")}`
-      );
-    }
-
-    const overlappingCreateDelete = [...createSet].filter((eventName) =>
-      deleteSet.has(eventName)
-    );
-    if (overlappingCreateDelete.length > 0) {
-      configItems.push(
-        `These events appear in both start and stop lists: ${overlappingCreateDelete.join(", ")}`
-      );
-    }
-
-    const overlappingUpdateDelete = [...updateSet].filter((eventName) =>
-      deleteSet.has(eventName)
-    );
-    if (overlappingUpdateDelete.length > 0) {
-      configItems.push(
-        `These events appear in both restart and stop lists: ${overlappingUpdateDelete.join(", ")}`
-      );
+      if (!policyCanTrigger(routingPolicy)) {
+        configItems.push(
+          "No event type is mapped to Start or Replace, so this workflow can never be triggered."
+        );
+      }
     }
 
     if (parsedMockRequest.error) {
@@ -437,13 +422,13 @@ export function TriggerConfig({
 
       if (eventValue === undefined) {
         payloadItems.push(
-          `Sample payload is missing event type at "${eventPath}".`
+          `Sample payload has no Event Type at "${eventPath}".`
         );
       }
 
       if (correlationValue === undefined) {
         payloadItems.push(
-          `Sample payload is missing entity ID at "${correlationPath}".`
+          `Sample payload has no Correlation Key at "${correlationPath}".`
         );
       }
 
@@ -467,14 +452,12 @@ export function TriggerConfig({
     };
   }, [
     correlationPath,
-    createEvents,
-    deleteEvents,
     eventPath,
     parsedMockRequest.error,
     parsedMockRequest.payload,
     requestSchema,
+    routingPolicy,
     schemaPaths,
-    updateEvents,
   ]);
 
   const setWebhookSectionOpen = (section: WebhookSectionKey, open: boolean) => {
@@ -486,10 +469,16 @@ export function TriggerConfig({
       return { ...prev, [section]: open };
     });
   };
+  // Warnings suggest an open section; a user's explicit choice wins. An OR
+  // here would turn the header into a dead control whenever warnings exist.
+  const sectionUserChoice = (section: WebhookSectionKey) =>
+    webhookSections[section];
   const routingSectionOpen =
-    webhookSections.routing || configWarnings.length > 0;
+    sectionUserChoice("routing") ??
+    (DEFAULT_WEBHOOK_SECTION_STATE.routing || configWarnings.length > 0);
   const payloadSectionOpen =
-    webhookSections.payload || payloadWarnings.length > 0;
+    sectionUserChoice("payload") ??
+    (DEFAULT_WEBHOOK_SECTION_STATE.payload || payloadWarnings.length > 0);
 
   const handleCopyWebhookUrl = () => {
     if (webhookUrl) {
@@ -498,13 +487,44 @@ export function TriggerConfig({
     }
   };
 
+  // Whether the stored schema still matches what the sample payload implies.
+  // Inference only overwrites an EMPTY schema on its own; a schema someone
+  // built by hand (field types, descriptions) is only replaced through the
+  // explicit sync button below.
+  const inferredSchemaFromPayload = useMemo(
+    () =>
+      parsedMockRequest.payload
+        ? inferSchemaFromPayload(parsedMockRequest.payload)
+        : undefined,
+    [parsedMockRequest.payload]
+  );
+  const schemaOutOfSyncWithPayload =
+    requestSchema.length > 0 &&
+    inferredSchemaFromPayload !== undefined &&
+    JSON.stringify(inferredSchemaFromPayload) !== JSON.stringify(requestSchema);
+
+  const handleSyncSchemaFromPayload = () => {
+    if (!inferredSchemaFromPayload) {
+      return;
+    }
+    onUpdateConfig(webhookRequestSchemaPatch(inferredSchemaFromPayload));
+    toast.success("Schema replaced from sample payload");
+  };
+
   const handleLoadPreset = (preset: WebhookPreset) => {
+    const schemaIsEmpty = requestSchema.length === 0;
     onUpdateConfig({
       webhookMockRequest: JSON.stringify(preset.payload, null, 2),
-      ...webhookRequestSchemaPatch(inferSchemaFromPayload(preset.payload)),
+      ...(schemaIsEmpty
+        ? webhookRequestSchemaPatch(inferSchemaFromPayload(preset.payload))
+        : {}),
     });
 
-    toast.success(`${preset.label} example loaded (schema synced)`);
+    toast.success(
+      schemaIsEmpty
+        ? `${preset.label} example loaded (schema synced)`
+        : `${preset.label} example loaded`
+    );
   };
 
   const handleRequestSchemaJsonChange = (nextValue: string) => {
@@ -602,9 +622,7 @@ export function TriggerConfig({
 
           {(selectedRuntimeTrigger?.configFields?.length ?? 0) > 0 && (
             <div className="space-y-3 rounded-md border bg-background p-3">
-              <p className="font-medium text-xs uppercase tracking-wide">
-                Configuration
-              </p>
+              <p className="font-medium text-sm">Configuration</p>
               <ActionConfigRenderer
                 config={config}
                 disabled={disabled}
@@ -613,6 +631,34 @@ export function TriggerConfig({
               />
             </div>
           )}
+
+          <div className="space-y-3 rounded-md border bg-background p-3">
+            <div className="space-y-1">
+              <p className="font-medium text-sm">Routing Policy</p>
+              <p className="text-muted-foreground text-xs">
+                Choose what each event type does when it arrives. Unmapped event
+                types are ignored, though they can still resume a waiting run.
+              </p>
+            </div>
+            <RoutingPolicyEditor
+              disabled={disabled}
+              eventTypes={selectedRuntimeTrigger?.eventTypes}
+              onChange={(nextPolicy) =>
+                onUpdateConfig({ routingPolicy: nextPolicy })
+              }
+              policy={routingPolicy}
+            />
+            {selectedRuntimeTrigger?.correlationPath ? (
+              <p className="text-muted-foreground text-xs">
+                Runs are correlated by{" "}
+                <code className="font-mono text-xs">
+                  {selectedRuntimeTrigger.correlationPath}
+                </code>
+                : Replace and Cancel act on runs whose value matches, and Waits
+                resume on them.
+              </p>
+            ) : null}
+          </div>
         </div>
       )}
 
@@ -620,35 +666,41 @@ export function TriggerConfig({
         <div className="overflow-hidden rounded-md border">
           <div className="p-2">
             <WebhookConfigSection
-              description="Send events to this endpoint to trigger workflow runs."
+              description="The URL your service posts events to."
               onOpenChange={(open) => setWebhookSectionOpen("endpoint", open)}
-              open={webhookSections.endpoint}
+              open={
+                sectionUserChoice("endpoint") ??
+                DEFAULT_WEBHOOK_SECTION_STATE.endpoint
+              }
               title="Webhook Endpoint"
             >
               <div className="space-y-2">
                 <Label className="ml-1" htmlFor="webhookUrl">
                   Webhook URL
                 </Label>
-                <div className="flex gap-2">
-                  <Input
-                    className="font-mono text-xs"
-                    disabled
-                    id="webhookUrl"
-                    value={
-                      webhookUrl || "Save workflow to generate webhook URL"
-                    }
-                  />
-                  <Button
-                    aria-label="Copy webhook URL"
-                    disabled={!webhookUrl}
-                    onClick={handleCopyWebhookUrl}
-                    size="icon"
-                    type="button"
-                    variant="outline"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
+                {webhookUrl ? (
+                  <div className="flex gap-2">
+                    <Input
+                      className="font-mono text-xs"
+                      id="webhookUrl"
+                      readOnly
+                      value={webhookUrl}
+                    />
+                    <Button
+                      aria-label="Copy webhook URL"
+                      onClick={handleCopyWebhookUrl}
+                      size="icon"
+                      type="button"
+                      variant="outline"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-xs" id="webhookUrl">
+                    Save the workflow to generate its webhook URL.
+                  </p>
+                )}
               </div>
             </WebhookConfigSection>
           </div>
@@ -657,11 +709,14 @@ export function TriggerConfig({
 
           <div className="p-2">
             <WebhookConfigSection
-              description="Define the request contract used by routing and autocomplete."
+              description="The fields incoming payloads carry. Paste a sample payload below to fill this in automatically."
               onOpenChange={(open) =>
                 setWebhookSectionOpen("requestSchema", open)
               }
-              open={webhookSections.requestSchema}
+              open={
+                sectionUserChoice("requestSchema") ??
+                DEFAULT_WEBHOOK_SECTION_STATE.requestSchema
+              }
               title="Request Schema"
             >
               <Tabs
@@ -693,6 +748,7 @@ export function TriggerConfig({
                 <TabsContent className="space-y-3" value="json">
                   <div className="overflow-hidden rounded-md border">
                     <CodeEditor
+                      aria-label="Request schema JSON"
                       defaultLanguage="json"
                       height="230px"
                       onChange={(value) =>
@@ -723,79 +779,92 @@ export function TriggerConfig({
                   </div>
                 </TabsContent>
               </Tabs>
-            </WebhookConfigSection>
-          </div>
 
-          <Separator />
-
-          <div className="p-2">
-            <WebhookConfigSection
-              description="Define the trigger output contract consumed by downstream actions."
-              onOpenChange={(open) =>
-                setWebhookSectionOpen("outputSchema", open)
-              }
-              open={webhookSections.outputSchema}
-              title="Output Schema"
-            >
-              <Tabs
-                onValueChange={(value) => {
-                  if (!isSchemaEditorMode(value)) {
-                    return;
-                  }
-                  setOutputSchemaEditorMode(value);
-                  if (value === "json") {
-                    setOutputSchemaJsonDraft(outputSchemaJsonValue);
-                    setOutputSchemaJsonError("");
-                  }
-                }}
-                value={outputSchemaEditorMode}
-              >
-                <TabsList className="grid w-full max-w-[280px] grid-cols-2">
-                  <TabsTrigger value="builder">Builder</TabsTrigger>
-                  <TabsTrigger value="json">JSON Schema</TabsTrigger>
-                </TabsList>
-                <TabsContent className="space-y-3" value="builder">
-                  <SchemaBuilder
-                    disabled={disabled}
-                    onChange={(nextSchema) =>
-                      onUpdateConfig(webhookOutputSchemaPatch(nextSchema))
-                    }
-                    schema={outputSchema}
-                  />
-                </TabsContent>
-                <TabsContent className="space-y-3" value="json">
-                  <div className="overflow-hidden rounded-md border">
-                    <CodeEditor
-                      defaultLanguage="json"
-                      height="230px"
-                      onChange={(value) =>
-                        handleOutputSchemaJsonChange(value || "")
-                      }
-                      options={{
-                        minimap: { enabled: false },
-                        lineNumbers: "on",
-                        scrollBeyondLastLine: false,
-                        fontSize: 12,
-                        readOnly: disabled,
-                        wordWrap: "on",
+              {/* The output contract is a narrowing of the request schema,
+                  and editing the request schema resets it. Rendering it as a
+                  subordinate disclosure (rather than a sibling section) is
+                  what makes that dependency legible. */}
+              <div className="space-y-2 border-t pt-3">
+                <p className="text-muted-foreground text-xs">
+                  Downstream steps receive every request field.{" "}
+                  {showOutputSchema ? null : (
+                    <button
+                      className="font-medium text-foreground underline underline-offset-2"
+                      onClick={() => setShowOutputSchema(true)}
+                      type="button"
+                    >
+                      Narrow the output contract
+                    </button>
+                  )}
+                </p>
+                {showOutputSchema ? (
+                  <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+                    <p className="text-muted-foreground text-xs">
+                      Editing the request schema above resets this to match.
+                    </p>
+                    <Tabs
+                      onValueChange={(value) => {
+                        if (!isSchemaEditorMode(value)) {
+                          return;
+                        }
+                        setOutputSchemaEditorMode(value);
+                        if (value === "json") {
+                          setOutputSchemaJsonDraft(outputSchemaJsonValue);
+                          setOutputSchemaJsonError("");
+                        }
                       }}
-                      value={outputSchemaJsonDraft}
-                    />
+                      value={outputSchemaEditorMode}
+                    >
+                      <TabsList className="grid w-full max-w-[280px] grid-cols-2">
+                        <TabsTrigger value="builder">Builder</TabsTrigger>
+                        <TabsTrigger value="json">JSON Schema</TabsTrigger>
+                      </TabsList>
+                      <TabsContent className="space-y-3" value="builder">
+                        <SchemaBuilder
+                          disabled={disabled}
+                          onChange={(nextSchema) =>
+                            onUpdateConfig(webhookOutputSchemaPatch(nextSchema))
+                          }
+                          schema={outputSchema}
+                        />
+                      </TabsContent>
+                      <TabsContent className="space-y-3" value="json">
+                        <div className="overflow-hidden rounded-md border">
+                          <CodeEditor
+                            aria-label="Output contract JSON"
+                            defaultLanguage="json"
+                            height="230px"
+                            onChange={(value) =>
+                              handleOutputSchemaJsonChange(value || "")
+                            }
+                            options={{
+                              minimap: { enabled: false },
+                              lineNumbers: "on",
+                              scrollBeyondLastLine: false,
+                              fontSize: 12,
+                              readOnly: disabled,
+                              wordWrap: "on",
+                            }}
+                            value={outputSchemaJsonDraft}
+                          />
+                        </div>
+                        <div className="min-h-5">
+                          {outputSchemaJsonError ? (
+                            <p className="text-destructive text-xs">
+                              {outputSchemaJsonError}
+                            </p>
+                          ) : (
+                            <p className="text-muted-foreground text-xs">
+                              Changes auto-apply when JSON is valid. Supports
+                              top-level JSON Schema <code>properties</code>.
+                            </p>
+                          )}
+                        </div>
+                      </TabsContent>
+                    </Tabs>
                   </div>
-                  <div className="min-h-5">
-                    {outputSchemaJsonError ? (
-                      <p className="text-destructive text-xs">
-                        {outputSchemaJsonError}
-                      </p>
-                    ) : (
-                      <p className="text-muted-foreground text-xs">
-                        Changes auto-apply when JSON is valid. Supports
-                        top-level JSON Schema <code>properties</code>.
-                      </p>
-                    )}
-                  </div>
-                </TabsContent>
-              </Tabs>
+                ) : null}
+              </div>
             </WebhookConfigSection>
           </div>
 
@@ -803,16 +872,14 @@ export function TriggerConfig({
 
           <div className="p-2">
             <WebhookConfigSection
-              description="Map webhook payload values to workflow start, restart, and stop behavior."
+              description="What each event type does: start a run, replace this entity's runs, cancel them, or ignore it."
               onOpenChange={(open) => setWebhookSectionOpen("routing", open)}
               open={routingSectionOpen}
-              title="Routing Rules"
+              title="Routing Policy"
               warningCount={configWarnings.length}
             >
               <div className="space-y-2">
-                <Label htmlFor="guidedEventPath">
-                  Which schema field contains the event value?
-                </Label>
+                <Label htmlFor="guidedEventPath">Event Type field</Label>
                 <Select
                   disabled={disabled || schemaPathOptions.length === 0}
                   onValueChange={(value) => {
@@ -828,22 +895,30 @@ export function TriggerConfig({
                     {eventPathOptions.map((option) => (
                       <SelectItem
                         key={`event-path-${option.path}`}
+                        label={option.path}
                         value={option.path}
                       >
-                        {option.path}
+                        <span className="flex items-baseline gap-2">
+                          {option.path}
+                          {option.type ? (
+                            <span className="text-muted-foreground text-xs">
+                              {option.type}
+                            </span>
+                          ) : null}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="text-muted-foreground text-xs">
-                  This should point to a string field like <code>event</code> or{" "}
-                  <code>meta.action</code>.
+                  The payload field naming what happened — a string field like{" "}
+                  <code>event</code> or <code>meta.action</code>.
                 </p>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="guidedCorrelationPath">
-                  Which schema field identifies the entity?
+                  Correlation Key field
                 </Label>
                 <Select
                   disabled={disabled || schemaPathOptions.length === 0}
@@ -860,78 +935,51 @@ export function TriggerConfig({
                     {correlationPathOptions.map((option) => (
                       <SelectItem
                         key={`correlation-path-${option.path}`}
+                        label={option.path}
                         value={option.path}
                       >
-                        {option.path}
+                        <span className="flex items-baseline gap-2">
+                          {option.path}
+                          {option.type ? (
+                            <span className="text-muted-foreground text-xs">
+                              {option.type}
+                            </span>
+                          ) : null}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="text-muted-foreground text-xs">
-                  Runs with the same value here are cancelled or resumed
-                  together.
+                  Runs sharing this value are about the same entity: Replace and
+                  Cancel act on them, and Waits resume on them. Defaults to{" "}
+                  <code>data.id</code>.
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="guidedCreateEvents">
-                  Values that start a run
-                </Label>
-                <Input
+                <p className="font-medium text-sm">Event Types</p>
+                <RoutingPolicyEditor
                   disabled={disabled}
-                  id="guidedCreateEvents"
-                  onChange={(e) => {
+                  eventTypes={undefined}
+                  onChange={(nextPolicy) => {
                     setWebhookSectionOpen("routing", true);
-                    onUpdateConfig({ webhookCreateEvents: e.target.value });
+                    onUpdateConfig({ routingPolicy: nextPolicy });
                   }}
-                  placeholder="appointment.create"
-                  value={createEvents}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="guidedUpdateEvents">
-                  Values that restart timing
-                </Label>
-                <Input
-                  disabled={disabled}
-                  id="guidedUpdateEvents"
-                  onChange={(e) => {
-                    setWebhookSectionOpen("routing", true);
-                    onUpdateConfig({ webhookUpdateEvents: e.target.value });
-                  }}
-                  placeholder="appointment.rescheduled"
-                  value={updateEvents}
+                  policy={routingPolicy}
+                  showTriggerabilityWarning={false}
                 />
                 <p className="text-muted-foreground text-xs">
-                  Matching waiting runs are cancelled first, then a new run
-                  starts.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="guidedDeleteEvents">
-                  Values that stop runs
-                </Label>
-                <Input
-                  disabled={disabled}
-                  id="guidedDeleteEvents"
-                  onChange={(e) => {
-                    setWebhookSectionOpen("routing", true);
-                    onUpdateConfig({ webhookDeleteEvents: e.target.value });
-                  }}
-                  placeholder="appointment.canceled"
-                  value={deleteEvents}
-                />
-                <p className="text-muted-foreground text-xs">
-                  Matching waiting runs are cancelled and no new run is created.
+                  Values arriving at the Event Type field above. An event type
+                  without a row is ignored, though it can still resume a waiting
+                  run.
                 </p>
               </div>
 
               {schemaPathOptions.length === 0 ? (
                 <p className="text-muted-foreground text-xs">
-                  Add request schema properties first to enable routing field
-                  selection.
+                  Start with the request schema above (or paste a sample payload
+                  below) — the two fields here pick from its paths.
                 </p>
               ) : null}
 
@@ -962,15 +1010,13 @@ export function TriggerConfig({
 
           <div className="p-2">
             <WebhookConfigSection
-              description="Use local examples to validate routing and schema assumptions."
+              description="Paste a real payload to build the schema and check your fields against it."
               onOpenChange={(open) => setWebhookSectionOpen("payload", open)}
               open={payloadSectionOpen}
               title="Sample Payload"
               warningCount={payloadWarnings.length}
             >
-              <Label htmlFor="webhookMockRequest">
-                Sample Payload (Optional)
-              </Label>
+              <Label htmlFor="webhookMockRequest">Sample Payload</Label>
               <div className="flex flex-wrap gap-2">
                 {WEBHOOK_PRESETS.map((preset) => (
                   <Button
@@ -989,11 +1035,17 @@ export function TriggerConfig({
                 <CodeEditor
                   defaultLanguage="json"
                   height="190px"
+                  id="webhookMockRequest"
                   onChange={(value) => {
+                    // Only an empty schema is filled in automatically; a
+                    // hand-built one is replaced solely through the explicit
+                    // sync button below, never by typing here.
                     setWebhookSectionOpen("payload", true);
                     onUpdateConfig({
                       webhookMockRequest: value || "",
-                      ...webhookSchemaPatchFromSamplePayload(value || ""),
+                      ...(requestSchema.length === 0
+                        ? webhookSchemaPatchFromSamplePayload(value || "")
+                        : {}),
                     });
                   }}
                   options={{
@@ -1007,6 +1059,22 @@ export function TriggerConfig({
                   value={mockRequest}
                 />
               </div>
+              {schemaOutOfSyncWithPayload ? (
+                <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 p-2">
+                  <p className="text-muted-foreground text-xs">
+                    This payload's shape differs from the request schema.
+                  </p>
+                  <Button
+                    disabled={disabled}
+                    onClick={handleSyncSchemaFromPayload}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    Sync schema from payload
+                  </Button>
+                </div>
+              ) : null}
               <div className="min-h-5">
                 {payloadWarnings.length > 0 ? (
                   <div className="space-y-1">
@@ -1028,32 +1096,43 @@ export function TriggerConfig({
 
           <div className="p-2">
             <WebhookConfigSection
-              description="Quick reference for how current event values map to runtime behavior."
+              description="What the current policy does with incoming events."
               onOpenChange={(open) => setWebhookSectionOpen("summary", open)}
-              open={webhookSections.summary}
+              open={
+                sectionUserChoice("summary") ??
+                DEFAULT_WEBHOOK_SECTION_STATE.summary
+              }
               title="Behavior Summary"
             >
-              <p className="text-sm">
-                Start runs when event is:{" "}
-                <span className="font-mono text-xs">
-                  {createEvents.trim() || "(none)"}
-                </span>
-              </p>
-              <p className="text-sm">
-                Restart runs when event is:{" "}
-                <span className="font-mono text-xs">
-                  {updateEvents.trim() || "(none)"}
-                </span>
-              </p>
-              <p className="text-sm">
-                Stop runs when event is:{" "}
-                <span className="font-mono text-xs">
-                  {deleteEvents.trim() || "(none)"}
-                </span>
-              </p>
+              {/* One definition per action, shared with the policy table's
+                  dropdown; two phrasings of Replace would read as two
+                  different behaviors. */}
+              {(
+                [
+                  ["start", "Start a new run"],
+                  [
+                    "replace",
+                    "Cancel this entity's runs, then start a new one",
+                  ],
+                  ["cancel", "Cancel this entity's runs"],
+                ] satisfies Array<[RoutingAction, string]>
+              ).map(([action, label]) => {
+                const mapped = Object.entries(routingPolicy ?? {})
+                  .filter(([, rowAction]) => rowAction === action)
+                  .map(([eventType]) => eventType);
+                return (
+                  <p className="text-sm" key={action}>
+                    {label}:{" "}
+                    <span className="font-mono text-xs">
+                      {mapped.length > 0 ? mapped.join(", ") : "(none)"}
+                    </span>
+                  </p>
+                );
+              })}
               <p className="text-muted-foreground text-xs">
-                Need more complex matching logic? Add a Condition step after
-                this trigger.
+                Every other event type is ignored, though it can still resume a
+                waiting run. Need more complex matching logic? Add a Condition
+                step after this trigger.
               </p>
             </WebhookConfigSection>
           </div>
@@ -1082,7 +1161,7 @@ export function TriggerConfig({
             parsedCronDescription.normalizedCron ? (
               <p className="text-muted-foreground text-xs">
                 Cron:{" "}
-                <code className="font-mono text-[11px]">
+                <code className="font-mono text-xs">
                   {parsedCronDescription.normalizedCron}
                 </code>
               </p>

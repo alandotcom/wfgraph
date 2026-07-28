@@ -66,44 +66,57 @@ describe("buildIgnoredRunAuditMessage", () => {
     ).toBe('Ignored webhook event: event type missing at path "body.type"');
   });
 
-  it("falls back to the default event path when none is configured", () => {
+  // No path is fabricated when none is known: a default would send the
+  // builder to fix a field the classifier never reads.
+  it("omits the path when none is configured", () => {
     expect(
       buildIgnoredRunAuditMessage({
         triggerType: "webhook",
         reason: "missing_event_type",
       })
-    ).toBe('Ignored webhook event: event type missing at path "event"');
+    ).toBe("Ignored webhook event: no event type was found in the payload");
   });
 
-  it("names the unconfigured event when one arrived", () => {
+  it("says the payload failed the trigger schema", () => {
     expect(
       buildIgnoredRunAuditMessage({
         triggerType: "webhook",
-        reason: "event_not_configured",
+        reason: "invalid_payload",
+      })
+    ).toBe("Ignored webhook event: payload failed the trigger schema");
+  });
+
+  it("names the event the routing policy does not map", () => {
+    expect(
+      buildIgnoredRunAuditMessage({
+        triggerType: "webhook",
+        reason: "event_not_mapped",
         eventType: "order.archived",
       })
-    ).toBe("Ignored webhook event order.archived");
+    ).toBe(
+      "Ignored webhook event order.archived: not mapped by the routing policy"
+    );
     expect(
       buildIgnoredRunAuditMessage({
         triggerType: "webhook",
-        reason: "event_not_configured",
+        reason: "event_not_mapped",
       })
-    ).toBe("Ignored webhook event not configured by routing");
+    ).toBe("Ignored webhook event: not mapped by the routing policy");
   });
 
-  it("explains that a stop event found nothing to stop", () => {
+  it("explains that a cancel event found nothing to cancel", () => {
     expect(
       buildIgnoredRunAuditMessage({
         triggerType: "webhook",
-        reason: "no_waiting_runs",
+        reason: "no_in_flight_runs",
         eventType: "order.cancelled",
       })
-    ).toBe("Ignored order.cancelled because no waiting runs were found");
+    ).toBe("Ignored order.cancelled because no in-flight runs were found");
     expect(
       buildIgnoredRunAuditMessage({
         triggerType: "manual",
-        reason: "no_waiting_runs",
+        reason: "no_in_flight_runs",
       })
-    ).toBe("Ignored execute event because no waiting runs were found");
+    ).toBe("Ignored execute event because no in-flight runs were found");
   });
 });

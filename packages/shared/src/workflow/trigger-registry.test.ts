@@ -9,48 +9,34 @@ import {
   unregisterWorkflowTrigger,
 } from "./trigger-registry";
 
+const appointmentSchema = z.object({
+  event: z.enum([
+    "appointment.created",
+    "appointment.rescheduled",
+    "appointment.canceled",
+  ]),
+  appointment: z.object({ id: z.string() }),
+});
+
 describe("createTrigger typing", () => {
-  it("types lifecycle payload from schema values", () => {
+  it("accepts paths that resolve to strings in the payload schema", () => {
     createTrigger({
       type: "TypedAppointmentTrigger",
       label: "Typed Appointment Trigger",
-      schema: z.object({
-        event: z.enum([
-          "appointment.created",
-          "appointment.rescheduled",
-          "appointment.canceled",
-        ]),
-        appointment: z.object({ id: z.string() }),
-      }),
+      schema: appointmentSchema,
       correlationIdPath: "appointment.id",
-      lifecycle: {
-        onStart: ({ payload }) => payload.event === "appointment.created",
-        onRestart: ({ payload }) => payload.event === "appointment.rescheduled",
-        onStop: ({ payload }) => payload.event === "appointment.canceled",
-      },
+      eventTypePath: "event",
     });
+  });
 
+  it("rejects paths that resolve to something other than a string", () => {
     createTrigger({
       type: "TypedAppointmentTriggerInvalid",
       label: "Typed Appointment Trigger Invalid",
-      schema: z.object({
-        event: z.enum([
-          "appointment.created",
-          "appointment.rescheduled",
-          "appointment.canceled",
-        ]),
-        appointment: z.object({ id: z.string() }),
-      }),
-      correlationIdPath: "appointment.id",
-      lifecycle: {
-        onStart: ({ payload }) => {
-          // @ts-expect-error payload.event does not include "appointment.invalid".
-          const invalidEvent: "appointment.invalid" = payload.event;
-          return invalidEvent === "appointment.invalid";
-        },
-        onRestart: () => false,
-        onStop: () => false,
-      },
+      schema: appointmentSchema,
+      // @ts-expect-error "appointment" is an object, not a string field.
+      correlationIdPath: "appointment",
+      eventTypePath: "event",
     });
   });
 });
@@ -74,70 +60,76 @@ describe("resolveWorkflowTriggerDefinition", () => {
 });
 
 describe("evaluateWorkflowTrigger", () => {
-  it("evaluates webhook event routing", () => {
-    const evaluation = evaluateWorkflowTrigger({
-      config: {
-        triggerType: "Webhook",
-      },
-      payload: {
-        event: "event.delete",
-        data: { id: "abc-123" },
-      },
+  it("classifies a webhook payload by the configured paths", () => {
+    expect(
+      evaluateWorkflowTrigger({
+        config: {
+          triggerType: "Webhook",
+        },
+        payload: {
+          event: "event.delete",
+          data: { id: "abc-123" },
+        },
+      })
+    ).toEqual({
+      ok: true,
+      eventType: "event.delete",
+      correlationKey: "abc-123",
     });
-
-    expect(evaluation.eventType).toBe("event.delete");
-    expect(evaluation.correlationKey).toBe("abc-123");
-    expect(evaluation.routingDecision).toEqual({ kind: "stop" });
   });
 
-  it("falls back to start for unknown custom trigger types", () => {
-    const evaluation = evaluateWorkflowTrigger({
-      config: {
-        triggerType: "Stripe",
-      },
-      payload: {
-        event: "invoice.created",
-        data: { id: "in_123" },
-      },
+  // A trigger type nobody registered still has to say something about the
+  // payload, so the fallback definition reads the same default paths the
+  // webhook trigger does. Routing is the workflow's policy either way.
+  it("classifies unknown custom trigger types from the default paths", () => {
+    expect(
+      evaluateWorkflowTrigger({
+        config: {
+          triggerType: "Stripe",
+        },
+        payload: {
+          event: "invoice.created",
+          data: { id: "in_123" },
+        },
+      })
+    ).toEqual({
+      ok: true,
+      eventType: "invoice.created",
+      correlationKey: "in_123",
     });
-
-    expect(evaluation.eventType).toBe("invoice.created");
-    expect(evaluation.correlationKey).toBe("in_123");
-    expect(evaluation.routingDecision).toEqual({ kind: "start" });
   });
 });
 
-describe("registerWorkflowTrigger", () => {
-  it("supports registering a strict-schema custom trigger", () => {
+describe("createTrigger classification", () => {
+  it("reads the Event Type from eventTypePath and the key from correlationIdPath", () => {
     registerWorkflowTrigger(
       createTrigger({
-        type: "InternalQueue",
-        label: "Internal Queue",
+        type: "ClassifyByPathTrigger",
+        label: "Classify By Path Trigger",
         schema: z.object({
           event: z.string(),
           job: z.object({ id: z.string() }),
         }),
         correlationIdPath: "job.id",
-        lifecycle: {
-          onStart: ({ payload }) =>
-            payload.event === "job.ready" || payload.event === "job.created",
-          onRestart: () => false,
-          onStop: () => false,
-        },
+        eventTypePath: "event",
       })
     );
 
-    const evaluation = evaluateWorkflowTrigger({
-      config: { triggerType: "InternalQueue" },
-      payload: { event: "job.ready", job: { id: "job_123" } },
+    expect(
+      evaluateWorkflowTrigger({
+        config: { triggerType: "ClassifyByPathTrigger" },
+        payload: { event: "job.ready", job: { id: "job_123" } },
+      })
+    ).toEqual({
+      ok: true,
+      eventType: "job.ready",
+      correlationKey: "job_123",
     });
 
-    expect(evaluation.eventType).toBeUndefined();
-    expect(evaluation.correlationKey).toBe("job_123");
-    expect(evaluation.routingDecision).toEqual({ kind: "start" });
+    unregisterWorkflowTrigger("ClassifyByPathTrigger");
   });
 
-  it("ignores payloads that fail strict schema validation", () => {
+  it("reports invalid_payload when the payload fails the schema", () => {
     registerWorkflowTrigger(
       createTrigger({
         type: "StrictPayloadTrigger",
@@ -147,53 +139,257 @@ describe("registerWorkflowTrigger", () => {
           entity: z.object({ id: z.string() }),
         }),
         correlationIdPath: "entity.id",
-        lifecycle: {
-          onStart: ({ payload }) => payload.event === "entity.created",
-          onRestart: () => false,
-          onStop: () => false,
-        },
+        eventTypePath: "event",
       })
     );
 
-    const evaluation = evaluateWorkflowTrigger({
-      config: { triggerType: "StrictPayloadTrigger" },
-      payload: { event: "entity.created" },
-    });
+    expect(
+      evaluateWorkflowTrigger({
+        config: { triggerType: "StrictPayloadTrigger" },
+        payload: { event: "entity.created" },
+      })
+    ).toEqual({ ok: false, reason: "invalid_payload" });
 
-    expect(evaluation.routingDecision).toEqual({
-      kind: "ignore",
-      reason: "event_not_configured",
-    });
+    unregisterWorkflowTrigger("StrictPayloadTrigger");
   });
 
-  it("surfaces lifecycle callback failures instead of silently ignoring them", () => {
+  it("classifies an event-mode payload by the delivering event name when no eventTypePath is declared", () => {
     registerWorkflowTrigger(
       createTrigger({
-        type: "FailingLifecycleTrigger",
-        label: "Failing Lifecycle Trigger",
+        type: "EventNameFallbackTrigger",
+        label: "Event Name Fallback Trigger",
+        event: "app/order.created",
+        schema: z.object({
+          order: z.object({ id: z.string() }),
+        }),
+        correlationIdPath: "order.id",
+      })
+    );
+
+    expect(
+      evaluateWorkflowTrigger({
+        config: { triggerType: "EventNameFallbackTrigger" },
+        payload: { order: { id: "ord_1" } },
+        eventName: "app/order.created",
+      })
+    ).toEqual({
+      ok: true,
+      eventType: "app/order.created",
+      correlationKey: "ord_1",
+    });
+
+    unregisterWorkflowTrigger("EventNameFallbackTrigger");
+  });
+
+  // A manual run of an event-mode trigger has no delivering event name.
+  // With exactly one declared name there is an unambiguous stand-in, and
+  // classification owns that rule.
+  it("classifies to the sole declared event name when no event name arrives", () => {
+    registerWorkflowTrigger(
+      createTrigger({
+        type: "NoEventNameTrigger",
+        label: "No Event Name Trigger",
+        event: "app/order.updated",
+        schema: z.object({
+          order: z.object({ id: z.string() }),
+        }),
+        correlationIdPath: "order.id",
+      })
+    );
+
+    expect(
+      evaluateWorkflowTrigger({
+        config: { triggerType: "NoEventNameTrigger" },
+        payload: { order: { id: "ord_2" } },
+      })
+    ).toEqual({
+      ok: true,
+      eventType: "app/order.updated",
+      correlationKey: "ord_2",
+    });
+
+    unregisterWorkflowTrigger("NoEventNameTrigger");
+  });
+
+  // Several declared names have no unambiguous stand-in, so a manual run
+  // classifies to no Event Type and reports missing_event_type downstream.
+  it("leaves the Event Type undefined for a multi-event trigger with no event name", () => {
+    registerWorkflowTrigger(
+      createTrigger({
+        type: "MultiEventNoNameTrigger",
+        label: "Multi Event No Name Trigger",
+        event: ["app/order.updated", "app/order.deleted"],
+        schema: z.object({
+          order: z.object({ id: z.string() }),
+        }),
+        correlationIdPath: "order.id",
+      })
+    );
+
+    expect(
+      evaluateWorkflowTrigger({
+        config: { triggerType: "MultiEventNoNameTrigger" },
+        payload: { order: { id: "ord_2" } },
+      })
+    ).toEqual({
+      ok: true,
+      eventType: undefined,
+      correlationKey: "ord_2",
+    });
+
+    unregisterWorkflowTrigger("MultiEventNoNameTrigger");
+  });
+
+  it("prefers eventTypePath over the delivering event name", () => {
+    registerWorkflowTrigger(
+      createTrigger({
+        type: "PathOverEventNameTrigger",
+        label: "Path Over Event Name Trigger",
+        event: "app/order.changed",
+        schema: z.object({
+          event: z.string(),
+          order: z.object({ id: z.string() }),
+        }),
+        correlationIdPath: "order.id",
+        eventTypePath: "event",
+      })
+    );
+
+    expect(
+      evaluateWorkflowTrigger({
+        config: { triggerType: "PathOverEventNameTrigger" },
+        payload: { event: "order.shipped", order: { id: "ord_3" } },
+        eventName: "app/order.changed",
+      })
+    ).toEqual({
+      ok: true,
+      eventType: "order.shipped",
+      correlationKey: "ord_3",
+    });
+
+    unregisterWorkflowTrigger("PathOverEventNameTrigger");
+  });
+
+  it("leaves the correlation key undefined when the payload carries a blank one", () => {
+    registerWorkflowTrigger(
+      createTrigger({
+        type: "BlankCorrelationTrigger",
+        label: "Blank Correlation Trigger",
         schema: z.object({
           event: z.string(),
           entity: z.object({ id: z.string() }),
         }),
         correlationIdPath: "entity.id",
-        lifecycle: {
-          onStart: () => {
-            throw new Error("boom");
-          },
-          onRestart: () => false,
-          onStop: () => false,
-        },
+        eventTypePath: "event",
       })
     );
 
-    expect(() =>
+    expect(
       evaluateWorkflowTrigger({
-        config: { triggerType: "FailingLifecycleTrigger" },
-        payload: { event: "entity.created", entity: { id: "ent_1" } },
+        config: { triggerType: "BlankCorrelationTrigger" },
+        payload: { event: "entity.created", entity: { id: "   " } },
       })
-    ).toThrow('Trigger "FailingLifecycleTrigger" lifecycle.start failed: boom');
+    ).toEqual({
+      ok: true,
+      eventType: "entity.created",
+      correlationKey: undefined,
+    });
+
+    unregisterWorkflowTrigger("BlankCorrelationTrigger");
   });
 
+  it("refuses a webhook-mode trigger that declares no eventTypePath", () => {
+    expect(() =>
+      createTrigger({
+        type: "UnclassifiableWebhookTrigger",
+        label: "Unclassifiable Webhook Trigger",
+        schema: z.object({
+          event: z.string(),
+          data: z.object({ id: z.string() }),
+        }),
+        correlationIdPath: "data.id",
+      } as never)
+    ).toThrow("Webhook-mode triggers require eventTypePath");
+  });
+});
+
+describe("createTrigger Event Type vocabulary", () => {
+  it("derives eventTypes from the enum at eventTypePath", () => {
+    const trigger = createTrigger({
+      type: "EnumVocabularyTrigger",
+      label: "Enum Vocabulary Trigger",
+      schema: appointmentSchema,
+      correlationIdPath: "appointment.id",
+      eventTypePath: "event",
+    });
+
+    expect(trigger.ui.eventTypes).toEqual([
+      "appointment.created",
+      "appointment.rescheduled",
+      "appointment.canceled",
+    ]);
+    expect(trigger.ui.correlationPath).toBe("appointment.id");
+  });
+
+  it("leaves the vocabulary open when eventTypePath points at a plain string", () => {
+    const trigger = createTrigger({
+      type: "OpenVocabularyTrigger",
+      label: "Open Vocabulary Trigger",
+      schema: z.object({
+        event: z.string(),
+        entity: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "entity.id",
+      eventTypePath: "event",
+    });
+
+    expect(trigger.ui.eventTypes).toBeUndefined();
+  });
+
+  it("uses the declared Inngest event names when an event-mode trigger omits eventTypePath", () => {
+    const trigger = createTrigger({
+      type: "EventNameVocabularyTrigger",
+      label: "Event Name Vocabulary Trigger",
+      event: ["app/order.created", "app/order.updated"],
+      schema: z.object({
+        order: z.object({ id: z.string() }),
+      }),
+      correlationIdPath: "order.id",
+    });
+
+    expect(trigger.ui.eventTypes).toEqual([
+      "app/order.created",
+      "app/order.updated",
+    ]);
+    expect(trigger.ui.correlationPath).toBe("order.id");
+  });
+
+  it("carries eventTypes and correlationPath through trigger metadata", () => {
+    registerWorkflowTrigger(
+      createTrigger({
+        type: "VocabularyMetadataTrigger",
+        label: "Vocabulary Metadata Trigger",
+        schema: z.object({
+          event: z.enum(["entity.created", "entity.deleted"]),
+          entity: z.object({ id: z.string() }),
+        }),
+        correlationIdPath: "entity.id",
+        eventTypePath: "event",
+      })
+    );
+
+    const metadata = listCustomWorkflowTriggers().find(
+      (trigger) => trigger.type === "VocabularyMetadataTrigger"
+    );
+
+    expect(metadata?.eventTypes).toEqual(["entity.created", "entity.deleted"]);
+    expect(metadata?.correlationPath).toBe("entity.id");
+
+    unregisterWorkflowTrigger("VocabularyMetadataTrigger");
+  });
+});
+
+describe("registerWorkflowTrigger", () => {
   it("includes custom trigger metadata for editor rendering", () => {
     registerWorkflowTrigger(
       createTrigger({
@@ -206,11 +402,7 @@ describe("registerWorkflowTrigger", () => {
           entity: z.object({ id: z.string() }),
         }),
         correlationIdPath: "entity.id",
-        lifecycle: {
-          onStart: ({ payload }) => payload.event === "entity.created",
-          onRestart: ({ payload }) => payload.event === "entity.updated",
-          onStop: ({ payload }) => payload.event === "entity.deleted",
-        },
+        eventTypePath: "event",
         configSchema: z.object({
           eventPath: z.string().describe("Event Path"),
         }),
@@ -254,11 +446,6 @@ describe("registerWorkflowTrigger", () => {
         order: z.object({ id: z.string() }),
       }),
       correlationIdPath: "order.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.executionType).toBe("event");
@@ -281,11 +468,6 @@ describe("registerWorkflowTrigger", () => {
         order: z.object({ id: z.string() }),
       }),
       correlationIdPath: "order.id",
-      lifecycle: {
-        onStart: ({ payload }) => payload.event === "order.created",
-        onRestart: ({ payload }) => payload.event === "order.updated",
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.executionType).toBe("event");
@@ -308,11 +490,6 @@ describe("registerWorkflowTrigger", () => {
         payment: z.object({ id: z.string() }),
       }),
       correlationIdPath: "payment.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
@@ -337,11 +514,6 @@ describe("registerWorkflowTrigger", () => {
           entity: z.object({ id: z.string() }),
         }),
         correlationIdPath: "entity.id",
-        lifecycle: {
-          onStart: () => true,
-          onRestart: () => false,
-          onStop: () => false,
-        },
       })
     ).toThrow(
       "concurrency cannot be set on both the trigger and inngest options"
@@ -362,11 +534,6 @@ describe("registerWorkflowTrigger", () => {
         notification: z.object({ id: z.string() }),
       }),
       correlationIdPath: "notification.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
@@ -390,11 +557,6 @@ describe("registerWorkflowTrigger", () => {
         entity: z.object({ id: z.string() }),
       }),
       correlationIdPath: "entity.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
@@ -417,11 +579,6 @@ describe("registerWorkflowTrigger", () => {
         entity: z.object({ id: z.string() }),
       }),
       correlationIdPath: "entity.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
@@ -447,11 +604,6 @@ describe("registerWorkflowTrigger", () => {
         }),
       }),
       correlationIdPath: "appointment.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
@@ -477,11 +629,6 @@ describe("registerWorkflowTrigger", () => {
           entity: z.object({ id: z.string() }),
         }),
         correlationIdPath: "entity.id",
-        lifecycle: {
-          onStart: () => true,
-          onRestart: () => false,
-          onStop: () => false,
-        },
       })
     ).toThrow('Invalid identifier "unknownVar" in priority.run CEL expression');
   });
@@ -497,11 +644,6 @@ describe("registerWorkflowTrigger", () => {
         entity: z.object({ id: z.string() }),
       }),
       correlationIdPath: "entity.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
@@ -525,11 +667,6 @@ describe("registerWorkflowTrigger", () => {
         entity: z.object({ id: z.string() }),
       }),
       correlationIdPath: "entity.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
@@ -555,11 +692,6 @@ describe("registerWorkflowTrigger", () => {
         entity: z.object({ id: z.string() }),
       }),
       correlationIdPath: "entity.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
@@ -586,11 +718,6 @@ describe("registerWorkflowTrigger", () => {
         entity: z.object({ id: z.string() }),
       }),
       correlationIdPath: "entity.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
@@ -613,11 +740,6 @@ describe("registerWorkflowTrigger", () => {
         entity: z.object({ id: z.string() }),
       }),
       correlationIdPath: "entity.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
@@ -640,11 +762,6 @@ describe("registerWorkflowTrigger", () => {
         entity: z.object({ id: z.string() }),
       }),
       correlationIdPath: "entity.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
@@ -667,11 +784,6 @@ describe("registerWorkflowTrigger", () => {
         entity: z.object({ id: z.string() }),
       }),
       correlationIdPath: "entity.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
@@ -696,11 +808,6 @@ describe("registerWorkflowTrigger", () => {
         entity: z.object({ id: z.string(), priority: z.string() }),
       }),
       correlationIdPath: "entity.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     const run = trigger.runtime.inngestEventTrigger?.functionOptions
@@ -725,11 +832,6 @@ describe("registerWorkflowTrigger", () => {
           entity: z.object({ id: z.string() }),
         }),
         correlationIdPath: "entity.id",
-        lifecycle: {
-          onStart: () => true,
-          onRestart: () => false,
-          onStop: () => false,
-        },
       })
     ).toThrow("Invalid CEL expression in priority.run");
   });
@@ -751,11 +853,6 @@ describe("registerWorkflowTrigger", () => {
         entity: z.object({ id: z.string() }),
       }),
       correlationIdPath: "entity.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.inngestEventTrigger?.functionOptions).toEqual({
@@ -780,11 +877,6 @@ describe("registerWorkflowTrigger", () => {
           data: z.object({ id: z.string() }),
         }),
         correlationIdPath: "data.id",
-        lifecycle: {
-          onStart: () => true,
-          onRestart: () => false,
-          onStop: () => false,
-        },
       })
     ).toThrow("Trigger event names must be non-empty strings");
   });
@@ -800,11 +892,6 @@ describe("registerWorkflowTrigger", () => {
           data: z.object({ id: z.string() }),
         }),
         correlationIdPath: "data.id",
-        lifecycle: {
-          onStart: () => true,
-          onRestart: () => false,
-          onStop: () => false,
-        },
       })
     ).toThrow("Trigger event names must be non-empty strings");
   });
@@ -823,11 +910,6 @@ describe("registerWorkflowTrigger", () => {
           data: z.object({ id: z.string() }),
         }),
         correlationIdPath: "data.id",
-        lifecycle: {
-          onStart: () => true,
-          onRestart: () => false,
-          onStop: () => false,
-        },
       })
     ).toThrow("batchEvents is not supported");
   });
@@ -842,11 +924,6 @@ describe("registerWorkflowTrigger", () => {
         data: z.object({ id: z.string() }),
       }),
       correlationIdPath: "data.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
     });
 
     expect(trigger.runtime.inngestEventTrigger?.eventNames).toEqual([
@@ -865,11 +942,7 @@ describe("registerWorkflowTrigger", () => {
         data: z.object({ id: z.string() }),
       }),
       correlationIdPath: "data.id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
+      eventTypePath: "event",
     });
 
     expect(trigger.runtime.executionType).toBe("webhook");
@@ -887,11 +960,7 @@ describe("registerWorkflowTrigger", () => {
         data: z.object({ id: z.string() }),
       }),
       correlationIdPath: "data.id",
-      lifecycle: {
-        onStart: ({ payload }) => payload.event === "entity.created",
-        onRestart: () => false,
-        onStop: () => false,
-      },
+      eventTypePath: "event",
     });
 
     registerWorkflowTrigger(ephemeralTrigger);
@@ -929,11 +998,7 @@ describe("registerWorkflowTrigger", () => {
         score: z.number(),
       }),
       correlationIdPath: "donorUuid",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
+      eventTypePath: "status",
     });
 
     expect(trigger.ui.outputFields).toBeDefined();
@@ -958,11 +1023,7 @@ describe("registerWorkflowTrigger", () => {
           active: z.boolean(),
         }),
         correlationIdPath: "entityId",
-        lifecycle: {
-          onStart: () => true,
-          onRestart: () => false,
-          onStop: () => false,
-        },
+        eventTypePath: "entityId",
       })
     );
 

@@ -328,13 +328,9 @@ describe("createRovaApp configuration", () => {
             type: "Webhook",
             label: "Clashing",
             description: "Collides with the built-in webhook trigger",
-            schema: z.object({ id: z.string() }),
+            schema: z.object({ id: z.string(), event: z.string() }),
             correlationIdPath: "id",
-            lifecycle: {
-              onStart: () => true,
-              onRestart: () => false,
-              onStop: () => false,
-            },
+            eventTypePath: "event",
           }),
         ],
       })
@@ -375,13 +371,9 @@ describe("createRovaApp configuration", () => {
       type: "DisposeProbe",
       label: "Dispose Probe",
       description: "Registered twice, on purpose",
-      schema: z.object({ id: z.string() }),
+      schema: z.object({ id: z.string(), event: z.string() }),
       correlationIdPath: "id",
-      lifecycle: {
-        onStart: () => true,
-        onRestart: () => false,
-        onStop: () => false,
-      },
+      eventTypePath: "event",
     });
 
     const first = await createRovaApp({ ...BASE_OPTIONS, triggers: [trigger] });

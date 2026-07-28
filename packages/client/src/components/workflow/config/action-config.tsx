@@ -45,6 +45,7 @@ import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { SchemaBuilder } from "./schema-builder";
+import { WaitEventSelect } from "./wait-event-select";
 import { integrationsQueryOptions } from "@/lib/rpc-query";
 
 type ActionConfigProps = {
@@ -245,6 +246,7 @@ function DatabaseQueryFields({
           <CodeEditor
             defaultLanguage="sql"
             height="150px"
+            id="dbQuery"
             onChange={(value) => onUpdateConfig({ dbQuery: value || "" })}
             options={{
               minimap: { enabled: false },
@@ -319,6 +321,7 @@ function HttpRequestFields({
           <CodeEditor
             defaultLanguage="json"
             height="100px"
+            id="httpHeaders"
             onChange={(value) => onUpdateConfig({ httpHeaders: value || "{}" })}
             options={{
               minimap: { enabled: false },
@@ -340,6 +343,7 @@ function HttpRequestFields({
           <CodeEditor
             defaultLanguage="json"
             height="120px"
+            id="httpBody"
             onChange={(value) => onUpdateConfig({ httpBody: value || "{}" })}
             options={{
               minimap: { enabled: false },
@@ -627,22 +631,11 @@ function SharedHookWaitFields({
 }: WaitFieldProps) {
   return (
     <>
-      <div className="space-y-2">
-        <Label htmlFor="waitForEvents">
-          Resume when event is (comma separated)
-        </Label>
-        <TemplateBadgeInput
-          disabled={disabled}
-          id="waitForEvents"
-          onChange={(value) => onUpdateConfig({ waitForEvents: value })}
-          placeholder="appointment.confirmed,appointment.cancelled"
-          value={readConfigString(config, "waitForEvents")}
-        />
-        <p className="text-muted-foreground text-xs">
-          Leave empty to resume on any matching event for the same correlation
-          key.
-        </p>
-      </div>
+      <WaitEventSelect
+        config={config}
+        disabled={disabled}
+        onUpdateConfig={onUpdateConfig}
+      />
 
       <div className="space-y-2">
         <Label htmlFor="waitTimeout">Stop waiting after (optional)</Label>
@@ -665,9 +658,7 @@ function SharedHookWaitFields({
 function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   return (
     <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <p className="font-medium text-xs uppercase tracking-wide">
-        Wait for Event
-      </p>
+      <p className="font-medium text-sm">Wait for Event</p>
       <SharedHookWaitFields
         config={config}
         disabled={disabled}
@@ -702,9 +693,9 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
 function HookWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   return (
     <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <p className="font-medium text-xs uppercase tracking-wide">
-        Event-Based Wait
-      </p>
+      {/* Must echo the "Wait for webhook event" option that reveals this
+          block, or the builder cannot tell their selection took. */}
+      <p className="font-medium text-sm">Wait for Webhook Event</p>
       <SharedHookWaitFields
         config={config}
         disabled={disabled}
@@ -750,7 +741,8 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           </SelectContent>
         </Select>
         <p className="text-muted-foreground text-xs">
-          Time-based delay, correlated event, or explicit webhook hook.
+          Resume on a clock, on an event matching this run's entity, or on a
+          call to a token this step issues.
         </p>
       </div>
 
@@ -1121,6 +1113,7 @@ export function ActionConfig({
             </div>
             {hasExistingConnections && (
               <Button
+                aria-label="Add connection"
                 className="size-6"
                 disabled={disabled}
                 onClick={openConnectionOverlay}

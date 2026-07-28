@@ -303,7 +303,7 @@ describe("resumeMatchingWaitHooks", () => {
         waitStates: [
           createWaitState("1", "exec_1", {
             metadata: {
-              waitForEvents: "appointment.confirmed,appointment.cancelled",
+              waitForEvents: ["appointment.confirmed", "appointment.cancelled"],
             },
           }),
         ],
@@ -321,7 +321,7 @@ describe("resumeMatchingWaitHooks", () => {
         waitStates: [
           createWaitState("1", "exec_1", {
             metadata: {
-              waitForEvents: "appointment.confirmed,appointment.cancelled",
+              waitForEvents: ["appointment.confirmed", "appointment.cancelled"],
             },
           }),
         ],
@@ -331,14 +331,14 @@ describe("resumeMatchingWaitHooks", () => {
       expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
     });
 
-    it("resumes when waitForEvents is empty (matches any event)", async () => {
+    it("resumes when waitForEvents is an empty array (matches any event)", async () => {
       const result = await resumeMatchingWaitHooks({
         workflowId: "workflow_1",
         eventType: "anything.happened",
         payload: {},
         waitStates: [
           createWaitState("1", "exec_1", {
-            metadata: { waitForEvents: "" },
+            metadata: { waitForEvents: [] },
           }),
         ],
       });
@@ -370,19 +370,40 @@ describe("resumeMatchingWaitHooks", () => {
         payload: {},
         waitStates: [
           createWaitState("1", "exec_1", {
-            metadata: { waitForEvents: "appointment.confirmed" },
+            metadata: { waitForEvents: ["appointment.confirmed"] },
           }),
           createWaitState("2", "exec_2", {
-            metadata: { waitForEvents: "appointment.cancelled" },
+            metadata: { waitForEvents: ["appointment.cancelled"] },
           }),
           createWaitState("3", "exec_3", {
-            metadata: { waitForEvents: "" },
+            metadata: { waitForEvents: [] },
           }),
         ],
       });
 
       expect(result).toBe(2);
       expect(sendWorkflowWaitSignalMock).toHaveBeenCalledTimes(2);
+    });
+
+    // Metadata arrives as JSON, so a non-string entry is representable; the
+    // string entries around it still decide the match.
+    it("matches on the string entries of a mixed waitForEvents array", async () => {
+      const result = await resumeMatchingWaitHooks({
+        workflowId: "workflow_1",
+        eventType: "appointment.confirmed",
+        payload: {},
+        waitStates: [
+          createWaitState("1", "exec_1", {
+            metadata: { waitForEvents: [42, "appointment.confirmed"] },
+          }),
+          createWaitState("2", "exec_2", {
+            metadata: { waitForEvents: [42, "appointment.cancelled"] },
+          }),
+        ],
+      });
+
+      expect(result).toBe(1);
+      expect(sendWorkflowWaitSignalMock).toHaveBeenCalledTimes(1);
     });
   });
 });

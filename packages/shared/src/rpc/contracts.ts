@@ -1,6 +1,7 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import { jsonObjectSchema } from "@/types/json";
+import { WORKFLOW_EXECUTION_IGNORED_REASONS } from "@/workflow/execution-contracts";
 import { serializedWorkflowGraphSchema } from "@/workflow/schemas";
 
 const idSchema = z.string().trim().min(1);
@@ -132,12 +133,7 @@ const executionEventSchema = z.object({
   createdAt: z.string(),
 });
 
-const ignoredReasonSchema = z.enum([
-  "missing_event_type",
-  "event_not_configured",
-  "no_waiting_runs",
-  "workflow_paused",
-]);
+const ignoredReasonSchema = z.enum(WORKFLOW_EXECUTION_IGNORED_REASONS);
 
 const workflowExecutionRunningSchema = z
   .object({
@@ -147,6 +143,7 @@ const workflowExecutionRunningSchema = z
     runMode: workflowRunModeSchema,
     cancelledExecutions: z.number().optional(),
     cancelledWaits: z.number().optional(),
+    failedExecutions: z.array(z.string()).optional(),
   })
   .loose();
 

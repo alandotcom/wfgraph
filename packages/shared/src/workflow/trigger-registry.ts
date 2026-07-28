@@ -5,13 +5,20 @@ import type { JsonObject } from "@/types/json";
 import { getValueByPath } from "@/utils/object-path";
 import type { InputSchema } from "@/workflow/action-registry";
 import {
+  flattenSchemaToReferenceFields,
   type ReferenceField,
   schemaFieldToReferenceField,
 } from "@/workflow/node-references";
 import {
+  type ResolvedTriggerRouting,
+  resolveTriggerRouting,
+  type TriggerClassification,
+} from "@/workflow/routing-policy";
+import {
   configFieldsFromJsonSchema,
   jsonSchemaLibraryOptions,
   parseWorkflowSchemaFieldsOrJsonSchema,
+  type WorkflowSchemaField,
 } from "@/workflow/schema-codec";
 import {
   createDefaultTriggerDefinition,
@@ -23,17 +30,10 @@ import { asNonEmptyString } from "@/workflow/webhook-routing";
 
 export type TriggerExecutionType = "manual" | "webhook" | "event";
 
-export type TriggerRoutingDecision =
-  | { kind: "start" }
-  | { kind: "restart" }
-  | { kind: "stop" }
-  | { kind: "ignore"; reason: "missing_event_type" | "event_not_configured" };
-
-export type TriggerEvaluation = {
-  eventType: string | undefined;
-  correlationKey: string | undefined;
-  routingDecision: TriggerRoutingDecision;
-};
+// Classification is vocabulary, not policy: the shape lives with the policy
+// module that consumes it, and is re-exported here as part of the trigger
+// definition surface.
+export type { TriggerClassification } from "@/workflow/routing-policy";
 
 type TriggerSchemaSafeParseResult<TPayload> =
   | { success: true; data: TPayload }
@@ -126,16 +126,6 @@ type TriggerStringPath<TPayload> = {
     : Path;
 }[TriggerPayloadPath<TPayload>];
 
-type TriggerLifecycleHandlerInput<TPayload extends JsonObject> = {
-  payload: TPayload;
-};
-
-export type TriggerLifecycleInput<TPayload extends JsonObject> = {
-  onStart: (input: TriggerLifecycleHandlerInput<TPayload>) => boolean;
-  onRestart: (input: TriggerLifecycleHandlerInput<TPayload>) => boolean;
-  onStop: (input: TriggerLifecycleHandlerInput<TPayload>) => boolean;
-};
-
 type InngestConcurrencyOption =
   | number
   | { limit: number; key?: string; scope?: "fn" | "env" | "account" }
@@ -153,7 +143,12 @@ export type WorkflowTriggerRuntimeDefinition = {
   evaluate: (input: {
     config: Record<string, unknown> | undefined;
     payload: JsonObject;
-  }) => TriggerEvaluation;
+    /**
+     * The Inngest event name that delivered the payload, when there is one.
+     * An event-mode trigger without `eventTypePath` classifies to this name.
+     */
+    eventName?: string;
+  }) => TriggerClassification;
 };
 
 export type WorkflowTriggerUiDefinition = {
@@ -162,6 +157,14 @@ export type WorkflowTriggerUiDefinition = {
   logoUrl?: string;
   configFields?: ActionConfigField[];
   outputFields?: ReferenceField[];
+  /**
+   * The closed Event Type vocabulary the editor renders as Routing Policy
+   * rows and Wait node options. Undefined when the vocabulary is open (the
+   * webhook trigger, or an `eventTypePath` pointing at a plain string).
+   */
+  eventTypes?: string[];
+  /** The payload path the editor names when explaining correlation. */
+  correlationPath?: string;
 };
 
 export type WorkflowTriggerDefinition = {
@@ -185,9 +188,9 @@ type CreateTriggerInputBase<TPayload extends JsonObject> = {
 
   /**
    * Zod or Standard Schema that validates incoming payloads.
-   * Payloads that fail validation are ignored (routing decision `"event_not_configured"`).
+   * Payloads that fail validation classify as `invalid_payload` and are ignored.
    * The schema's shape also drives `TriggerPayloadPath` autocomplete on path fields
-   * like `correlationIdPath`, `concurrency.key`, and `inngest.*.key`.
+   * like `correlationIdPath`, `eventTypePath`, `concurrency.key`, and `inngest.*.key`.
    */
   schema: TriggerPayloadSchema<TPayload>;
 
@@ -195,18 +198,20 @@ type CreateTriggerInputBase<TPayload extends JsonObject> = {
    * Dot-path into the validated payload that resolves to a unique string identifying
    * the entity this workflow instance tracks (e.g. `"appointment.id"`).
    * Only paths that resolve to `string` values are allowed.
-   * Used for correlation: restart/stop decisions match against running executions
-   * that share the same correlation key.
+   * Used for correlation: replace/cancel actions and wait resumption match against
+   * in-flight executions that share the same correlation key.
    */
   correlationIdPath: TriggerStringPath<TPayload>;
 
   /**
-   * Routing callbacks that decide what happens when a payload arrives.
-   * Each receives the validated payload and returns `true` to claim the event.
-   * Evaluated in order: `onStop` > `onRestart` > `onStart`.
-   * If none return `true`, the event is ignored.
+   * Dot-path into the validated payload that names the Event Type (e.g.
+   * `"event"`). When the path points at an enum, its values become the closed
+   * vocabulary the editor offers for Routing Policy rows and Wait node
+   * options. Optional in event mode, where omitting it makes the delivering
+   * Inngest event name the Event Type; required in webhook mode, which has
+   * no event name to fall back on.
    */
-  lifecycle: TriggerLifecycleInput<TPayload>;
+  eventTypePath?: TriggerStringPath<TPayload>;
 
   /** Optional description shown beneath the trigger label in the editor. */
   description?: string;
@@ -225,11 +230,14 @@ type CreateTriggerInputBase<TPayload extends JsonObject> = {
 /**
  * Webhook-mode trigger. Omit `event` (or set it to `undefined`) to receive
  * payloads via the workflow's webhook URL instead of Inngest events.
- * `concurrency` and `inngest` are not available in webhook mode.
+ * `concurrency` and `inngest` are not available in webhook mode, and
+ * `eventTypePath` is required: with no Inngest event name to fall back on, a
+ * webhook payload can only be classified by a path into it.
  */
 type CreateTriggerInputWebhook<TPayload extends JsonObject> =
   CreateTriggerInputBase<TPayload> & {
     event?: undefined;
+    eventTypePath: TriggerStringPath<TPayload>;
     concurrency?: never;
     inngest?: never;
   };
@@ -413,54 +421,6 @@ function normalizeTriggerDefinition(
   };
 }
 
-function triggerStartEvaluation(input?: {
-  eventType?: string;
-  correlationKey?: string;
-}): TriggerEvaluation {
-  return {
-    eventType: input?.eventType,
-    correlationKey: input?.correlationKey,
-    routingDecision: { kind: "start" },
-  };
-}
-
-function triggerRestartEvaluation(input?: {
-  eventType?: string;
-  correlationKey?: string;
-}): TriggerEvaluation {
-  return {
-    eventType: input?.eventType,
-    correlationKey: input?.correlationKey,
-    routingDecision: { kind: "restart" },
-  };
-}
-
-function triggerStopEvaluation(input?: {
-  eventType?: string;
-  correlationKey?: string;
-}): TriggerEvaluation {
-  return {
-    eventType: input?.eventType,
-    correlationKey: input?.correlationKey,
-    routingDecision: { kind: "stop" },
-  };
-}
-
-function triggerIgnoreEvaluation(input: {
-  reason: "missing_event_type" | "event_not_configured";
-  eventType?: string;
-  correlationKey?: string;
-}): TriggerEvaluation {
-  return {
-    eventType: input.eventType,
-    correlationKey: input.correlationKey,
-    routingDecision: {
-      kind: "ignore",
-      reason: input.reason,
-    },
-  };
-}
-
 function isPromiseLike<T>(value: unknown): value is Promise<T> {
   return (
     (typeof value === "object" || typeof value === "function") &&
@@ -528,24 +488,6 @@ function validateTriggerPayload<TPayload extends JsonObject>(
   }
 
   return parsed.value;
-}
-
-function runLifecycleHandler<TPayload extends JsonObject>(input: {
-  stage: "start" | "restart" | "stop";
-  triggerType: string;
-  handler: (input: TriggerLifecycleHandlerInput<TPayload>) => boolean;
-  payload: TPayload;
-}): boolean {
-  try {
-    return input.handler({ payload: input.payload });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "unknown lifecycle error";
-    throw new Error(
-      `Trigger "${input.triggerType}" lifecycle.${input.stage} failed: ${message}`,
-      { cause: error }
-    );
-  }
 }
 
 function prefixEventDataPath(path: string): string {
@@ -708,15 +650,18 @@ function prefixInngestOptions<TPayload extends JsonObject>(
   return result;
 }
 
-function extractStandardSchemaOutputFields(
+/**
+ * The payload schema as a field tree, when the schema can describe itself.
+ * Only schemas that implement the JSON Schema half of Standard Schema can;
+ * the rest fall back to key extraction downstream.
+ */
+function parseTriggerSchemaFields(
   schema: TriggerPayloadSchema<JsonObject>
-): ReferenceField[] | undefined {
+): WorkflowSchemaField[] | undefined {
   if (!isStandardSchema(schema)) {
     return undefined;
   }
 
-  // Only schemas that also implement the JSON Schema half of Standard Schema
-  // can describe their own shape; the rest fall back to key extraction.
   const converter = schema["~standard"].jsonSchema;
   if (!converter) {
     return undefined;
@@ -729,20 +674,18 @@ function extractStandardSchemaOutputFields(
     });
 
     const fields = parseWorkflowSchemaFieldsOrJsonSchema(jsonSchema);
-    return fields && fields.length > 0
-      ? fields.map((field) => schemaFieldToReferenceField(field))
-      : undefined;
+    return fields && fields.length > 0 ? fields : undefined;
   } catch {
     return undefined;
   }
 }
 
-function outputFieldsFromTriggerSchema<TPayload extends JsonObject>(
+function outputFieldsFromSchemaFields<TPayload extends JsonObject>(
+  schemaFields: WorkflowSchemaField[] | undefined,
   schema: TriggerPayloadSchema<TPayload>
 ): ReferenceField[] {
-  const standardFields = extractStandardSchemaOutputFields(schema);
-  if (standardFields) {
-    return standardFields;
+  if (schemaFields) {
+    return schemaFields.map((field) => schemaFieldToReferenceField(field));
   }
 
   // Fallback: extract top-level field names from Zod .shape
@@ -755,6 +698,23 @@ function outputFieldsFromTriggerSchema<TPayload extends JsonObject>(
   }
 
   return [];
+}
+
+/**
+ * The enum values at a (possibly nested) dot-path into the payload schema.
+ * `eventTypePath` accepts any depth, so the lookup flattens the field tree
+ * rather than checking top-level names only.
+ */
+function enumValuesAtPath(
+  schemaFields: WorkflowSchemaField[] | undefined,
+  path: string
+): string[] | undefined {
+  if (!schemaFields) {
+    return undefined;
+  }
+  return flattenSchemaToReferenceFields(schemaFields).find(
+    (field) => field.path === path
+  )?.enumValues;
 }
 
 function buildInngestEventTriggerConfig<TPayload extends JsonObject>(
@@ -808,9 +768,14 @@ function buildInngestEventTriggerConfig<TPayload extends JsonObject>(
  *   Payloads arrive via `inngest.send(...)` from your application code.
  *   Enables `concurrency` and `inngest` options for flow control.
  *
- * All dot-path fields (`correlationIdPath`, `concurrency.key`, `inngest.*.key`)
- * reference your schema directly -- the `event.data.` prefix required by
- * Inngest is added automatically.
+ * A definition supplies vocabulary only: the schema, the Correlation Key
+ * path, and the Event Type path. What each Event Type does to a run (start,
+ * replace, cancel, ignore) is the workflow's Routing Policy, configured per
+ * workflow in the editor (ADR 0001).
+ *
+ * All dot-path fields (`correlationIdPath`, `eventTypePath`,
+ * `concurrency.key`, `inngest.*.key`) reference your schema directly -- the
+ * `event.data.` prefix required by Inngest is added automatically.
  *
  * @example
  * ```ts
@@ -823,14 +788,10 @@ function buildInngestEventTriggerConfig<TPayload extends JsonObject>(
  *     appointment: z.object({ id: z.string(), priority: z.string() }),
  *   }),
  *   correlationIdPath: "appointment.id",
+ *   eventTypePath: "event",
  *   concurrency: { limit: 1, key: "appointment.id" },
  *   inngest: {
  *     priority: { run: 'appointment.priority == "high" ? 100 : 50' },
- *   },
- *   lifecycle: {
- *     onStart: ({ payload }) => payload.event === "appointment.created",
- *     onRestart: ({ payload }) => payload.event === "appointment.rescheduled",
- *     onStop: ({ payload }) => payload.event === "appointment.canceled",
  *   },
  * });
  * ```
@@ -841,6 +802,7 @@ export function createTrigger<TPayload extends JsonObject>(
   const triggerType = input.type.trim();
   const label = input.label.trim();
   const correlationIdPath = input.correlationIdPath.trim();
+  const eventTypePath = input.eventTypePath?.trim();
 
   if (!triggerType) {
     throw new Error("Trigger type must be a non-empty string");
@@ -854,18 +816,6 @@ export function createTrigger<TPayload extends JsonObject>(
     throw new Error("Trigger correlationIdPath must be a non-empty string");
   }
 
-  if (typeof input.lifecycle.onStart !== "function") {
-    throw new Error("Trigger lifecycle.onStart must be a function");
-  }
-
-  if (typeof input.lifecycle.onRestart !== "function") {
-    throw new Error("Trigger lifecycle.onRestart must be a function");
-  }
-
-  if (typeof input.lifecycle.onStop !== "function") {
-    throw new Error("Trigger lifecycle.onStop must be a function");
-  }
-
   const inngestEventTrigger =
     input.event !== undefined
       ? buildInngestEventTriggerConfig(input)
@@ -874,6 +824,12 @@ export function createTrigger<TPayload extends JsonObject>(
   const executionType: TriggerExecutionType = inngestEventTrigger
     ? "event"
     : "webhook";
+
+  if (executionType === "webhook" && !eventTypePath) {
+    throw new Error(
+      "Webhook-mode triggers require eventTypePath: without an Inngest event name to fall back on, payloads cannot be classified"
+    );
+  }
 
   let configFields: ActionConfigField[] | undefined;
   if (input.configSchema) {
@@ -888,73 +844,46 @@ export function createTrigger<TPayload extends JsonObject>(
     }
   }
 
-  const outputFields = outputFieldsFromTriggerSchema(input.schema);
+  const schemaFields = parseTriggerSchemaFields(input.schema);
+  const outputFields = outputFieldsFromSchemaFields(schemaFields, input.schema);
+
+  // The closed Event Type vocabulary the editor renders. An eventTypePath
+  // pointing at a schema enum (at any depth) yields its values; an
+  // event-mode trigger without a path is classified by event name, so the
+  // declared names are the vocabulary. A path at a plain string leaves the
+  // vocabulary open.
+  const eventTypes = eventTypePath
+    ? enumValuesAtPath(schemaFields, eventTypePath)
+    : inngestEventTrigger?.eventNames;
+
+  // A manual run has no delivering Inngest event. When exactly one event
+  // name is declared, it is the unambiguous stand-in; classification owns
+  // this rule so entrypoints need not know how eventName is consumed.
+  const soleEventName =
+    inngestEventTrigger?.eventNames.length === 1
+      ? inngestEventTrigger.eventNames[0]
+      : undefined;
 
   const definition = normalizeTriggerDefinition({
     runtime: {
       type: triggerType,
       executionType,
       inngestEventTrigger,
-      evaluate({ config: _config, payload }) {
+      evaluate({ config: _config, payload, eventName }) {
         const validatedPayload = validateTriggerPayload(input.schema, payload);
         if (!validatedPayload) {
-          return triggerIgnoreEvaluation({
-            reason: "event_not_configured",
-          });
+          return { ok: false, reason: "invalid_payload" };
         }
 
-        const eventType = undefined;
-        const correlationId = asNonEmptyString(
-          getValueByPath(validatedPayload, correlationIdPath)
-        );
-
-        if (
-          runLifecycleHandler({
-            stage: "stop",
-            triggerType,
-            handler: input.lifecycle.onStop,
-            payload: validatedPayload,
-          })
-        ) {
-          return triggerStopEvaluation({
-            eventType,
-            correlationKey: correlationId,
-          });
-        }
-
-        if (
-          runLifecycleHandler({
-            stage: "restart",
-            triggerType,
-            handler: input.lifecycle.onRestart,
-            payload: validatedPayload,
-          })
-        ) {
-          return triggerRestartEvaluation({
-            eventType,
-            correlationKey: correlationId,
-          });
-        }
-
-        if (
-          runLifecycleHandler({
-            stage: "start",
-            triggerType,
-            handler: input.lifecycle.onStart,
-            payload: validatedPayload,
-          })
-        ) {
-          return triggerStartEvaluation({
-            eventType,
-            correlationKey: correlationId,
-          });
-        }
-
-        return triggerIgnoreEvaluation({
-          reason: "event_not_configured",
-          eventType,
-          correlationKey: correlationId,
-        });
+        return {
+          ok: true,
+          eventType: eventTypePath
+            ? asNonEmptyString(getValueByPath(validatedPayload, eventTypePath))
+            : (asNonEmptyString(eventName) ?? soleEventName),
+          correlationKey: asNonEmptyString(
+            getValueByPath(validatedPayload, correlationIdPath)
+          ),
+        };
       },
     },
     ui: {
@@ -963,6 +892,8 @@ export function createTrigger<TPayload extends JsonObject>(
       logoUrl: input.logoUrl,
       configFields,
       outputFields: outputFields.length > 0 ? outputFields : undefined,
+      eventTypes: eventTypes && eventTypes.length > 0 ? eventTypes : undefined,
+      correlationPath: correlationIdPath,
     },
   });
 
@@ -1025,6 +956,8 @@ export function listWorkflowTriggers(): WorkflowTriggerMetadata[] {
     logoUrl: definition.ui.logoUrl,
     configFields: definition.ui.configFields ?? [],
     outputFields: definition.ui.outputFields,
+    eventTypes: definition.ui.eventTypes,
+    correlationPath: definition.ui.correlationPath,
   }));
 }
 
@@ -1054,7 +987,23 @@ export function resolveWorkflowTriggerDefinition(
 export function evaluateWorkflowTrigger(input: {
   config: Record<string, unknown> | undefined;
   payload: JsonObject;
-}): TriggerEvaluation {
+  eventName?: string;
+}): TriggerClassification {
   const trigger = resolveWorkflowTriggerDefinition(input.config);
   return trigger.runtime.evaluate(input);
+}
+
+/**
+ * Classification and policy resolution in one step: what every entrypoint
+ * does with an incoming payload before orchestrating.
+ */
+export function routeWorkflowTrigger(input: {
+  config: Record<string, unknown> | undefined;
+  payload: JsonObject;
+  eventName?: string;
+}): ResolvedTriggerRouting {
+  return resolveTriggerRouting({
+    classification: evaluateWorkflowTrigger(input),
+    config: input.config,
+  });
 }

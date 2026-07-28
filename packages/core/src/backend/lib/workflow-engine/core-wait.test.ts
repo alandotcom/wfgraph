@@ -276,6 +276,52 @@ describe("wait node - hook mode", () => {
     ]);
   });
 
+  it("copies the node's event list into the wait state metadata", async () => {
+    // Resume matching reads this list off the stored wait state, so the node
+    // config and the row have to agree entry for entry.
+    const { execution } = runWait({
+      config: {
+        waitMode: "hook",
+        waitForEvents: ["appointment.confirmed", "appointment.cancelled"],
+      },
+      store,
+      resumeEvent: {},
+    });
+    await execution;
+
+    expect(store.callsOf("createWaitState")[0]?.metadata).toMatchObject({
+      waitForEvents: ["appointment.confirmed", "appointment.cancelled"],
+    });
+  });
+
+  // The filtering happens where the list is produced, so nothing downstream of
+  // the wait state ever has to defend against a shape the editor cannot write.
+  it("stores no events for a config holding the old comma-separated string", async () => {
+    const { execution } = runWait({
+      config: { waitMode: "hook", waitForEvents: "a,b" },
+      store,
+      resumeEvent: {},
+    });
+    await execution;
+
+    expect(store.callsOf("createWaitState")[0]?.metadata).toMatchObject({
+      waitForEvents: [],
+    });
+  });
+
+  it("drops blank entries from the event list before storing it", async () => {
+    const { execution } = runWait({
+      config: { waitMode: "hook", waitForEvents: ["", " ", "x"] },
+      store,
+      resumeEvent: {},
+    });
+    await execution;
+
+    expect(store.callsOf("createWaitState")[0]?.metadata).toMatchObject({
+      waitForEvents: ["x"],
+    });
+  });
+
   it("fails the node when the configured timeout cannot be parsed", async () => {
     const { execution } = runWait({
       config: { waitMode: "hook", waitTimeout: "whenever" },

@@ -4,15 +4,13 @@ import { db } from "@/backend/lib/db";
 import { workflows } from "@/backend/lib/db/schema";
 import { getAppLogger } from "@/backend/lib/logger";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
-import { cancelWaitingRuns } from "@/backend/lib/workflow-cancellation";
 import { resumeMatchingWaitHooks } from "@/backend/lib/workflow-wait-resume";
-import { listWorkflowWaitingStatesByCorrelation } from "@/backend/lib/workflow-wait-state";
-import { orchestrateTriggerExecution } from "@/backend/services/workflows/trigger-orchestrator";
+import { orchestrateRoutedTrigger } from "@/backend/services/workflows/trigger-routing";
 import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight";
 import { startWorkflowRun } from "@/backend/services/workflows/workflow-run-lifecycle";
 import { type JsonObject, jsonObjectSchema } from "@rova/shared/types/json";
 import type { InngestEventTriggerConfig } from "@rova/shared/workflow/trigger-registry";
-import { evaluateWorkflowTrigger } from "@rova/shared/workflow/trigger-registry";
+import { routeWorkflowTrigger } from "@rova/shared/workflow/trigger-registry";
 import { getInngestClient } from "./client";
 
 const eventListenerLogger = getAppLogger("workflow", "event-listener");
@@ -95,17 +93,19 @@ export function createInngestEventListenerFunction(input: {
         return { status: "ignored", reason: "workflow_paused" };
       }
 
-      const { eventType, correlationKey, routingDecision } =
-        evaluateWorkflowTrigger({
-          config: triggerConfig,
-          payload,
-        });
+      const routing = routeWorkflowTrigger({
+        config: triggerConfig,
+        payload,
+        eventName: event.name,
+      });
+      const { eventType, correlationKey, action } = routing;
 
       requestLogger.info("Event trigger received", {
         workflowName: workflow.name,
         runMode: workflow.mode,
         eventType,
         correlationKey,
+        action,
         payloadKeys: Object.keys(payload),
       });
 
@@ -116,22 +116,13 @@ export function createInngestEventListenerFunction(input: {
         metadata: { eventType, correlationKey, runMode: workflow.mode },
       });
 
-      const waitingStates =
-        correlationKey === undefined
-          ? []
-          : await listWorkflowWaitingStatesByCorrelation({
-              workflowId: input.workflowId,
-              correlationKey,
-              runMode: workflow.mode,
-            });
-
-      const outcome = await orchestrateTriggerExecution({
+      const outcome = await orchestrateRoutedTrigger({
+        workflowId: input.workflowId,
         runMode: workflow.mode,
-        eventType,
-        correlationKey,
-        routingDecision,
-        waitStates: waitingStates,
+        routing,
+        sourceNoun: "event",
         enableResumes: true,
+        logger: eventListenerLogger,
         startExecution: async () =>
           await startWorkflowRun({
             workflow: {
@@ -142,16 +133,6 @@ export function createInngestEventListenerFunction(input: {
             trigger: { type: "event", eventType, correlationKey },
             payload,
             runMode: workflow.mode,
-          }),
-        cancelWaitStates: async (currentEventType) =>
-          await cancelWaitingRuns({
-            workflowId: input.workflowId,
-            waitStates: waitingStates,
-            eventType: currentEventType,
-            reason: currentEventType
-              ? `Cancelled by event ${currentEventType}`
-              : "Cancelled by event trigger lifecycle decision",
-            logger: eventListenerLogger,
           }),
         resumeWaitStates: async (currentEventType, waitStates) =>
           await resumeMatchingWaitHooks({

@@ -1,13 +1,12 @@
-import { parseCsvSet } from "@rova/shared/utils/object-path";
 import type {
   WorkflowExecutionCancelledResponse,
   WorkflowExecutionIgnoredResponse,
   WorkflowExecutionResumedResponse,
   WorkflowExecutionRunningResponse,
 } from "@rova/shared/workflow/execution-contracts";
-import type { TriggerRoutingDecision } from "@rova/shared/workflow/trigger-registry";
+import type { ResolvedTriggerRouting } from "@rova/shared/workflow/routing-policy";
 
-type TriggerWaitState = {
+export type TriggerWaitState = {
   id: string;
   executionId: string;
   nodeId: string;
@@ -23,9 +22,10 @@ type CancellationSummary = {
 
 type TriggerOrchestratorInput = {
   runMode: "live" | "test";
-  eventType?: string;
-  correlationKey?: string;
-  routingDecision: TriggerRoutingDecision;
+  routing: ResolvedTriggerRouting;
+  /** Every in-flight execution for the correlation key. */
+  inFlightExecutionIds: string[];
+  /** Wait states for the waiting subset of those executions. */
   waitStates: TriggerWaitState[];
   enableResumes: boolean;
   startExecution: () => Promise<{
@@ -33,7 +33,7 @@ type TriggerOrchestratorInput = {
     runId?: string;
     runMode: "live" | "test";
   }>;
-  cancelWaitStates: (eventType?: string) => Promise<CancellationSummary>;
+  cancelInFlightRuns: (eventType?: string) => Promise<CancellationSummary>;
   resumeWaitStates: (
     eventType: string,
     waitStates: TriggerWaitState[]
@@ -46,22 +46,7 @@ export type TriggerOrchestratorResult =
   | WorkflowExecutionIgnoredResponse
   | WorkflowExecutionResumedResponse;
 
-function countResumableWaitStates(
-  waitStates: TriggerWaitState[],
-  eventType: string
-): number {
-  return waitStates.filter((waitState) => {
-    if (!waitState.hookToken) {
-      return false;
-    }
-
-    const metadata = waitState.metadata ?? {};
-    const waitForEvents = parseCsvSet(metadata.waitForEvents);
-    return waitForEvents.size === 0 || waitForEvents.has(eventType);
-  }).length;
-}
-
-async function handleStopOrRestart(
+async function handleCancelOrReplace(
   input: TriggerOrchestratorInput
 ): Promise<
   | WorkflowExecutionCancelledResponse
@@ -69,34 +54,32 @@ async function handleStopOrRestart(
   | WorkflowExecutionIgnoredResponse
   | undefined
 > {
-  if (
-    input.routingDecision.kind !== "stop" &&
-    input.routingDecision.kind !== "restart"
-  ) {
+  const { routing } = input;
+  if (routing.action !== "cancel" && routing.action !== "replace") {
     return undefined;
   }
 
-  if (input.waitStates.length === 0) {
-    if (input.routingDecision.kind === "stop") {
+  if (input.inFlightExecutionIds.length === 0) {
+    if (routing.action === "cancel") {
       return {
         status: "ignored",
         runMode: input.runMode,
-        reason: "no_waiting_runs",
+        reason: "no_in_flight_runs",
       };
     }
-    // restart with nothing running → fall through to start a new execution
+    // replace with nothing running → fall through to start a new execution
     return undefined;
   }
 
-  if (input.routingDecision.kind === "stop") {
+  if (routing.action === "cancel") {
     return {
       status: "cancelled",
       runMode: input.runMode,
-      ...(await input.cancelWaitStates(input.eventType)),
+      ...(await input.cancelInFlightRuns(routing.eventType)),
     };
   }
 
-  const cancellationSummary = await input.cancelWaitStates(input.eventType);
+  const cancellationSummary = await input.cancelInFlightRuns(routing.eventType);
   const execution = await input.startExecution();
   return {
     status: "running",
@@ -114,23 +97,16 @@ async function handleResumes(
     return undefined;
   }
 
-  if (
-    !(input.eventType && input.correlationKey) ||
-    input.waitStates.length === 0
-  ) {
+  const { eventType, correlationKey } = input.routing;
+  if (!(eventType && correlationKey) || input.waitStates.length === 0) {
     return undefined;
   }
 
-  const resumableCount = countResumableWaitStates(
-    input.waitStates,
-    input.eventType
-  );
-  if (resumableCount === 0) {
-    return undefined;
-  }
-
+  // Which waits an event wakes is resume matching's own knowledge; a zero
+  // return means nothing matched and costs nothing, so there is no
+  // pre-count here to drift from the real predicate.
   const resumedCount = await input.resumeWaitStates(
-    input.eventType,
+    eventType,
     input.waitStates
   );
   if (resumedCount > 0) {
@@ -144,23 +120,35 @@ async function handleResumes(
   return undefined;
 }
 
+/**
+ * Acts on a resolved routing action. Ordering carries two deliberate rules:
+ * the policy wins over waits (a cancel/replace kills waiting runs before
+ * resume matching ever sees the event), and a resume wins over start (an
+ * Event Type mapped to Start that a waiting run is listening for wakes that
+ * run instead of starting a new one — the waiting run consumes the event).
+ * An ignored event still reaches resume matching, which is the sanctioned
+ * way to express "this event only wakes waits".
+ */
 export async function orchestrateTriggerExecution(
   input: TriggerOrchestratorInput
 ): Promise<TriggerOrchestratorResult> {
+  const { routing } = input;
+
   if (
-    input.routingDecision.kind === "ignore" &&
-    input.routingDecision.reason === "missing_event_type"
+    routing.action === "ignore" &&
+    (routing.ignoreReason === "invalid_payload" ||
+      routing.ignoreReason === "missing_event_type")
   ) {
     return {
       status: "ignored",
       runMode: input.runMode,
-      reason: "missing_event_type",
+      reason: routing.ignoreReason,
     };
   }
 
-  const stopOrRestartOutcome = await handleStopOrRestart(input);
-  if (stopOrRestartOutcome) {
-    return stopOrRestartOutcome;
+  const cancelOrReplaceOutcome = await handleCancelOrReplace(input);
+  if (cancelOrReplaceOutcome) {
+    return cancelOrReplaceOutcome;
   }
 
   const resumeOutcome = await handleResumes(input);
@@ -168,14 +156,11 @@ export async function orchestrateTriggerExecution(
     return resumeOutcome;
   }
 
-  if (
-    input.routingDecision.kind === "ignore" &&
-    input.routingDecision.reason === "event_not_configured"
-  ) {
+  if (routing.action === "ignore") {
     return {
       status: "ignored",
       runMode: input.runMode,
-      reason: "event_not_configured",
+      reason: routing.ignoreReason,
     };
   }
 

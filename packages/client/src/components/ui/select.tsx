@@ -39,13 +39,23 @@ function collectSelectItems(node: ReactNode) {
   const visit = (childNode: ReactNode) => {
     Children.forEach(childNode, (child) => {
       if (
-        !isValidElement<{ value?: unknown; children?: ReactNode }>(child)
+        !isValidElement<{
+          value?: unknown;
+          label?: unknown;
+          children?: ReactNode;
+        }>(child)
       ) {
         return;
       }
 
       if (typeof child.props.value === "string") {
-        const label = getTextContent(child.props.children).trim();
+        // An item carrying secondary text (a description under the label)
+        // declares its display label explicitly; text extraction would
+        // concatenate every nested string into the trigger.
+        const label =
+          typeof child.props.label === "string"
+            ? child.props.label
+            : getTextContent(child.props.children).trim();
         if (label) {
           items.push({ value: child.props.value, label });
         }

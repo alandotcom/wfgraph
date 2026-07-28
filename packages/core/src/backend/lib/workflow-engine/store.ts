@@ -99,16 +99,24 @@ export type WorkflowStore = {
   completeStepLog(input: CompleteStepLogInput): Promise<void>;
   /** Appends an entry to the run's timeline. */
   recordAuditEvent(input: RecordAuditEventInput): Promise<void>;
-  /** Records that the run is parked on a Wait node; returns the new row's id. */
+  /**
+   * Records that the run is parked on a Wait node; returns the new row's id,
+   * or undefined when the execution lost a race with a cancellation and may
+   * no longer park.
+   */
   createWaitState(
     input: CreateWaitStateInput
-  ): Promise<{ waitStateId: string }>;
+  ): Promise<{ waitStateId: string } | undefined>;
   /** Closes out a wait row once the run resumes, times out, or is cancelled. */
   markWaitStateStatus(input: MarkWaitStateStatusInput): Promise<void>;
   /** Moves an execution back from "waiting" to "running" after a wait. */
   markExecutionRunning(input: { executionId: string }): Promise<void>;
-  /** Writes the terminal state of the run. */
-  completeRun(input: CompleteRunInput): Promise<void>;
+  /**
+   * Writes the terminal state of the run. Returns whether this write
+   * recorded it — false when a cancellation already made the row terminal,
+   * in which case the run's own completion must not be announced either.
+   */
+  completeRun(input: CompleteRunInput): Promise<boolean>;
 };
 
 /**
@@ -123,5 +131,5 @@ export const noopWorkflowStore: WorkflowStore = {
   createWaitState: () => Promise.resolve({ waitStateId: "" }),
   markWaitStateStatus: () => Promise.resolve(),
   markExecutionRunning: () => Promise.resolve(),
-  completeRun: () => Promise.resolve(),
+  completeRun: () => Promise.resolve(true),
 };

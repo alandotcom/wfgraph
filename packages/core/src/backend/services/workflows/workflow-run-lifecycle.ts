@@ -116,18 +116,26 @@ export function buildIgnoredRunAuditMessage(input: {
   }
 
   if (input.reason === "missing_event_type") {
-    return `Ignored ${subject}: event type missing at path "${input.eventTypePath ?? "event"}"`;
+    // Only name a path that is actually known; a fabricated default sends
+    // the builder to fix a field the classifier never reads.
+    return input.eventTypePath
+      ? `Ignored ${subject}: event type missing at path "${input.eventTypePath}"`
+      : `Ignored ${subject}: no event type was found in the payload`;
   }
 
-  if (input.reason === "event_not_configured") {
+  if (input.reason === "invalid_payload") {
+    return `Ignored ${subject}: payload failed the trigger schema`;
+  }
+
+  if (input.reason === "event_not_mapped") {
     return input.eventType
-      ? `Ignored ${subject} ${input.eventType}`
-      : `Ignored ${subject} not configured by routing`;
+      ? `Ignored ${subject} ${input.eventType}: not mapped by the routing policy`
+      : `Ignored ${subject}: not mapped by the routing policy`;
   }
 
   return input.eventType
-    ? `Ignored ${input.eventType} because no waiting runs were found`
-    : `Ignored ${subject} because no waiting runs were found`;
+    ? `Ignored ${input.eventType} because no in-flight runs were found`
+    : `Ignored ${subject} because no in-flight runs were found`;
 }
 
 /**

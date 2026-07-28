@@ -6,7 +6,10 @@ import {
   markExecutionRunning,
   markWaitStateStatus,
 } from "@/backend/lib/workflow-wait-state";
-import { parseCsvSet } from "@rova/shared/utils/csv";
+import {
+  readWaitForEvents,
+  waitMatchesEvent,
+} from "@rova/shared/workflow/wait-events";
 
 const logger = getAppLogger("workflow", "wait-resume");
 
@@ -35,8 +38,8 @@ export async function resumeMatchingWaitHooks(input: {
 
       const metadata = waitState.metadata ?? {};
 
-      const waitForEvents = parseCsvSet(metadata.waitForEvents);
-      if (waitForEvents.size > 0 && !waitForEvents.has(eventType)) {
+      const waitForEvents = readWaitForEvents(metadata.waitForEvents);
+      if (!waitMatchesEvent(waitForEvents, eventType)) {
         return 0;
       }
 

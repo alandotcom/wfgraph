@@ -130,21 +130,21 @@ const action = createAction({
   },
 });
 
+// A trigger supplies vocabulary, never policy: the schema, where the
+// correlation key lives, and where the event type lives. What each event
+// type does to a run (Start, Replace, Cancel, Ignore) is the workflow's
+// Routing Policy, configured per workflow in the editor's trigger panel.
 const trigger = createTrigger({
   type: "CustomWebhook",
   label: "Custom Webhook",
-  description: "Routes custom webhook events",
+  description: "Classifies custom webhook events",
   logoUrl: "https://cdn.example.com/logos/custom-trigger.svg",
   schema: z.object({
     event: z.enum(["entity.created", "entity.updated", "entity.deleted"]),
     entity: z.object({ id: z.string() }),
   }),
   correlationIdPath: "entity.id",
-  lifecycle: {
-    onStart: ({ payload }) => payload.event === "entity.created",
-    onRestart: ({ payload }) => payload.event === "entity.updated",
-    onStop: ({ payload }) => payload.event === "entity.deleted",
-  },
+  eventTypePath: "event",
 });
 
 const rova = await createRovaApp({
@@ -297,9 +297,11 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
   - `id`, `label`, `description`, `category`, `logoUrl`, `configFields`, and `outputFields` define action metadata.
 - Trigger extensions are strict-schema triggers via `createTrigger(...)`:
   - `type` is the stable trigger ID and must be unique.
-  - `schema` validates inbound payloads at runtime (Zod or Standard Schema-compatible validators).
-  - `correlationIdPath` is required and typed from the payload schema (`string` fields only).
-  - `lifecycle.onStart`, `lifecycle.onRestart`, and `lifecycle.onStop` define routing using typed payload callbacks.
+  - `schema` validates inbound payloads at runtime (Zod or Standard Schema-compatible validators). A payload that fails is ignored as `invalid_payload`.
+  - `correlationIdPath` is required and typed from the payload schema (`string` fields only). Runs sharing its value belong to the same entity: Replace and Cancel act on them, and Waits resume on them.
+  - `eventTypePath` names where the event type lives in the payload. Pointing it at an enum gives the editor a closed list for the Routing Policy table and Wait node options. Required in webhook mode; optional in event mode, where omitting it makes the delivering Inngest event name the event type.
+  - Routing lives in the workflow, not the trigger: each workflow maps event types to Start, Replace, Cancel, or Ignore in the editor. Unmapped event types are ignored, though they still resume matching Waits.
+  - Event mode: set `event` to one or more Inngest event names to listen for `inngest.send(...)` instead of webhook calls; this also enables `concurrency` and the `inngest` options block (rateLimit, throttle, debounce, CEL `priority.run`, timeouts, retries), with all dot-path keys schema-relative and auto-prefixed with `event.data.`.
   - `label`, `description`, `logoUrl`, and `configFields` control editor metadata.
 - `logoUrl` is optional; when provided, it is rendered in trigger/action selectors.
 

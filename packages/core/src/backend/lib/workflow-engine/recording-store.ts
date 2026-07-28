@@ -111,7 +111,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     completeRun(input) {
       calls.push({ method: "completeRun", input });
       byMethod.completeRun.push(input);
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
   };
 }

@@ -133,23 +133,38 @@ export async function logWorkflowComplete(options: {
   output?: unknown;
   error?: string;
   startTime: number;
-}): Promise<void> {
+}): Promise<boolean> {
   try {
     const redactedOutput = redactSensitiveData(options.output);
 
-    await logWorkflowCompleteDb({
+    const recorded = await logWorkflowCompleteDb({
       executionId: options.executionId,
       status: options.status,
       output: redactedOutput,
       error: options.error,
       startTime: options.startTime,
     });
+
+    if (!recorded) {
+      stepHandlerLogger.info(
+        "Run completion superseded by an earlier terminal status",
+        {
+          executionId: options.executionId,
+          status: options.status,
+        }
+      );
+    }
+
+    return recorded;
   } catch (err) {
     stepHandlerLogger.warn("Failed to log workflow completion", {
       executionId: options.executionId,
       status: options.status,
       error: err,
     });
+    // A transient write failure says nothing about who owns the terminal
+    // status, so the caller still announces its own outcome.
+    return true;
   }
 }
 

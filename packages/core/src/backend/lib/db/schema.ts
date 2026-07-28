@@ -94,6 +94,12 @@ export const workflowExecutions = workflowsSchema.table(
       table.workflowId,
       table.correlationKey
     ),
+    // Partial index for the Replace/Cancel candidate query: the live set per
+    // entity stays tiny while terminal rows accrete without bound, so the
+    // index tracks only the rows the query can return.
+    index("workflow_executions_in_flight_by_correlation_idx")
+      .on(table.workflowId, table.correlationKey, table.runMode)
+      .where(sql`${table.status} in ('pending', 'running', 'waiting')`),
   ]
 );
 

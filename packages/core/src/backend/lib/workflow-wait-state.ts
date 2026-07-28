@@ -7,6 +7,26 @@ import {
 
 type WaitStatus = "waiting" | "resumed" | "timed_out" | "cancelled";
 
+/**
+ * The statuses a terminal write may replace: the one definition of "this
+ * execution is still live" shared by every status writer, so a terminal
+ * status can never be overwritten in either direction. `pending` never
+ * occurs today (startWorkflowRun inserts `running`) but is in the column's
+ * type, so the filter names it for completeness.
+ */
+export const IN_FLIGHT_EXECUTION_STATUSES = [
+  "pending",
+  "running",
+  "waiting",
+] as const;
+
+/**
+ * Parks the execution on a wait. The status flip runs first, behind the
+ * in-flight guard: a policy cancel can land between the run's last step and
+ * this park, and a cancelled execution must not gain a live wait row that
+ * resume matching would later hit. Returns undefined when that race was
+ * lost — the caller's run is already being cancelled by Inngest.
+ */
 export async function createWaitState(input: {
   executionId: string;
   workflowId: string;
@@ -19,6 +39,24 @@ export async function createWaitState(input: {
   correlationKey?: string;
   metadata?: Record<string, unknown>;
 }) {
+  const flipped = await db
+    .update(workflowExecutions)
+    .set({
+      status: "waiting",
+      waitingAt: new Date(),
+    })
+    .where(
+      and(
+        eq(workflowExecutions.id, input.executionId),
+        inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES])
+      )
+    )
+    .returning({ id: workflowExecutions.id });
+
+  if (flipped.length === 0) {
+    return undefined;
+  }
+
   const [waitState] = await db
     .insert(workflowWaitStates)
     .values({
@@ -35,14 +73,6 @@ export async function createWaitState(input: {
       metadata: input.metadata,
     })
     .returning();
-
-  await db
-    .update(workflowExecutions)
-    .set({
-      status: "waiting",
-      waitingAt: new Date(),
-    })
-    .where(eq(workflowExecutions.id, input.executionId));
 
   return waitState;
 }
@@ -65,11 +95,17 @@ export async function markExecutionRunning(executionId: string) {
   return result.length > 0;
 }
 
+/**
+ * Compare-and-set: only an in-flight execution can become cancelled. A
+ * running execution routinely completes between a policy cancel's candidate
+ * query and this write; the guard keeps the finished row's status (and the
+ * caller skips its audit event when this returns false).
+ */
 export async function markExecutionCancelled(input: {
   executionId: string;
   error?: string;
 }) {
-  await db
+  const result = await db
     .update(workflowExecutions)
     .set({
       status: "cancelled",
@@ -78,7 +114,15 @@ export async function markExecutionCancelled(input: {
       completedAt: new Date(),
       error: input.error,
     })
-    .where(eq(workflowExecutions.id, input.executionId));
+    .where(
+      and(
+        eq(workflowExecutions.id, input.executionId),
+        inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES])
+      )
+    )
+    .returning({ id: workflowExecutions.id });
+
+  return result.length > 0;
 }
 
 export async function markWaitStateStatus(input: {
@@ -137,21 +181,38 @@ export async function listExecutionWaitingStates(executionId: string) {
   });
 }
 
+/**
+ * The candidate set for a Replace/Cancel routing action: every execution for
+ * this entity that a cancel can still reach, whatever node it is standing on.
+ * runMode is a column here, so unlike the wait-state lookup no join is needed.
+ */
+export async function listWorkflowInFlightExecutionsByCorrelation(input: {
+  workflowId: string;
+  correlationKey: string;
+  runMode: "live" | "test";
+}) {
+  return await db.query.workflowExecutions.findMany({
+    columns: { id: true },
+    where: and(
+      eq(workflowExecutions.workflowId, input.workflowId),
+      eq(workflowExecutions.correlationKey, input.correlationKey),
+      eq(workflowExecutions.runMode, input.runMode),
+      inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES])
+    ),
+  });
+}
+
+/**
+ * The execution-status filter on the join makes reads self-healing: a wait
+ * row orphaned by a partially failed cancellation (execution already
+ * terminal, wait still `waiting`) never re-enters resume matching, where it
+ * would silently consume a real event against a dead run.
+ */
 export async function listWorkflowWaitingStatesByCorrelation(input: {
   workflowId: string;
   correlationKey: string;
-  runMode?: "live" | "test";
+  runMode: "live" | "test";
 }) {
-  if (!input.runMode) {
-    return await db.query.workflowWaitStates.findMany({
-      where: and(
-        eq(workflowWaitStates.workflowId, input.workflowId),
-        eq(workflowWaitStates.correlationKey, input.correlationKey),
-        eq(workflowWaitStates.status, "waiting")
-      ),
-    });
-  }
-
   return await db
     .select(getTableColumns(workflowWaitStates))
     .from(workflowWaitStates)
@@ -164,7 +225,8 @@ export async function listWorkflowWaitingStatesByCorrelation(input: {
         eq(workflowWaitStates.workflowId, input.workflowId),
         eq(workflowWaitStates.correlationKey, input.correlationKey),
         eq(workflowWaitStates.status, "waiting"),
-        eq(workflowExecutions.runMode, input.runMode)
+        eq(workflowExecutions.runMode, input.runMode),
+        inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES])
       )
     );
 }

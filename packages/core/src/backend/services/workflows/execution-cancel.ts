@@ -82,20 +82,26 @@ export async function postExecutionCancelResult(
       return failure("conflict", { error: "Execution is no longer waiting" });
     }
 
-    await markExecutionCancelled({
+    const wasInFlight = await markExecutionCancelled({
       executionId,
       error: "Cancelled manually",
     });
 
-    await logWorkflowAuditEvent({
-      workflowId: execution.workflowId,
-      executionId,
-      eventType: "run_cancelled",
-      message: "Run cancelled manually while waiting",
-      metadata: {
-        waitingStates: cancelledWaitStateIds.length,
-      },
-    });
+    // A policy cancel can flip the row between the wait-state CAS and this
+    // write. The run is cancelled either way, so the caller still gets a
+    // success; only the duplicate audit attribution is skipped, since the
+    // policy's run_cancelled entry already exists.
+    if (wasInFlight) {
+      await logWorkflowAuditEvent({
+        workflowId: execution.workflowId,
+        executionId,
+        eventType: "run_cancelled",
+        message: "Run cancelled manually while waiting",
+        metadata: {
+          waitingStates: cancelledWaitStateIds.length,
+        },
+      });
+    }
 
     return success({
       success: true,

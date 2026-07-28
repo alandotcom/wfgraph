@@ -136,7 +136,7 @@ export function WorkflowSidebarPanel() {
             tabIndex={0}
           >
             {/* Hover indicator */}
-            <div className="absolute inset-y-0 left-0 w-1 bg-transparent transition-colors group-hover:bg-blue-500 group-active:bg-blue-600" />
+            <div className="absolute inset-y-0 left-0 w-1 bg-transparent transition-colors group-hover:bg-ring group-active:bg-primary" />
             {/* Collapse button - hidden while resizing */}
             {!(isDraggingResize || panelCollapsed) && (
               <button

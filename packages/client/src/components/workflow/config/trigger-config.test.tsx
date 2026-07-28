@@ -3,8 +3,8 @@ import { fireEvent, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { TriggerConfig } from "@/components/workflow/config/trigger-config";
 
-const ROUTING_RULES_BUTTON_REGEX = /routing rules/i;
-const SAMPLE_PAYLOAD_BUTTON_REGEX = /sample payload/i;
+const ROUTING_POLICY_BUTTON_REGEX = /^routing policy/i;
+const SAMPLE_PAYLOAD_BUTTON_REGEX = /^sample payload/i;
 
 function ControlledTriggerConfig({
   initialConfig,
@@ -46,13 +46,13 @@ describe("TriggerConfig webhook sections", () => {
             },
           ]),
           webhookEventPath: "event",
-          webhookCreateEvents: "appointment.create",
+          routingPolicy: { "appointment.create": "start" },
         }}
       />
     );
 
     const routingButton = view.getByRole("button", {
-      name: ROUTING_RULES_BUTTON_REGEX,
+      name: ROUTING_POLICY_BUTTON_REGEX,
     });
 
     expect(view.getByLabelText("Webhook URL")).toBeTruthy();
@@ -62,12 +62,15 @@ describe("TriggerConfig webhook sections", () => {
 
     expect(routingButton.getAttribute("aria-expanded")).toBe("true");
 
-    expect(
-      view.getByLabelText("Which schema field contains the event value?")
-    ).toBeTruthy();
+    expect(view.getByLabelText("Event Type field")).toBeTruthy();
+    expect(view.getByText("appointment.create")).toBeTruthy();
+    expect(view.getByLabelText("Action for appointment.create")).toBeTruthy();
   });
 
-  it("auto-expands routing section when configuration warnings exist", async () => {
+  // Warnings appear once there is a schema to check against; an untouched
+  // trigger with no schema stays quiet instead of opening on three
+  // complaints about work not yet started.
+  it("stays quiet before a schema exists, then warns once one does", async () => {
     const view = render(
       <ControlledTriggerConfig
         initialConfig={{
@@ -75,18 +78,69 @@ describe("TriggerConfig webhook sections", () => {
           webhookSchema: "",
           webhookEventPath: "",
           webhookCorrelationPath: "",
-          webhookCreateEvents: "",
-          webhookUpdateEvents: "",
-          webhookDeleteEvents: "",
+        }}
+      />
+    );
+
+    expect(view.queryByText("Configuration Warnings")).toBeNull();
+
+    const withSchema = render(
+      <ControlledTriggerConfig
+        initialConfig={{
+          triggerType: "Webhook",
+          webhookSchema: JSON.stringify([{ name: "event", type: "string" }]),
+          webhookEventPath: "",
+          webhookCorrelationPath: "",
         }}
       />
     );
 
     await waitFor(() => {
-      expect(view.getByText("Configuration Warnings")).toBeTruthy();
+      expect(withSchema.getByText("Configuration Warnings")).toBeTruthy();
     });
 
-    expect(view.getByText("Event type field path is empty.")).toBeTruthy();
+    expect(withSchema.getByText("The Event Type field is empty.")).toBeTruthy();
+    expect(
+      withSchema.getByText(
+        "No event type is mapped to Start or Replace, so this workflow can never be triggered."
+      )
+    ).toBeTruthy();
+  });
+
+  it("removes a routing policy row through its remove button", async () => {
+    let latestConfig: Record<string, unknown> = {
+      triggerType: "Webhook",
+      webhookEventPath: "event",
+      webhookCorrelationPath: "data.id",
+      routingPolicy: {
+        "appointment.created": "start",
+        "appointment.canceled": "cancel",
+      },
+    };
+
+    const view = render(
+      <ControlledTriggerConfig
+        initialConfig={latestConfig}
+        onConfigChange={(nextConfig) => {
+          latestConfig = nextConfig;
+        }}
+      />
+    );
+
+    // With no warnings the section starts collapsed, and its header is a
+    // live control: one click opens it.
+    fireEvent.click(
+      view.getByRole("button", { name: ROUTING_POLICY_BUTTON_REGEX })
+    );
+    fireEvent.click(
+      view.getByRole("button", { name: "Remove appointment.canceled" })
+    );
+
+    await waitFor(() => {
+      expect(latestConfig.routingPolicy).toEqual({
+        "appointment.created": "start",
+      });
+    });
   });
 
   it("auto-expands sample payload section when payload JSON is invalid", async () => {
@@ -166,11 +220,9 @@ describe("TriggerConfig webhook sections", () => {
       />
     );
 
-    fireEvent.click(
-      view.getByRole("button", {
-        name: SAMPLE_PAYLOAD_BUTTON_REGEX,
-      })
-    );
+    // The stored payload has no Event Type at the default path, so the
+    // payload warning opens the section on its own; clicking the header here
+    // would close it (the user's choice wins over the warning suggestion).
     fireEvent.click(
       view.getByRole("button", {
         name: "Appointment Rescheduled",

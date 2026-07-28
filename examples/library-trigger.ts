@@ -86,13 +86,17 @@ async function ensureDatabaseExists(databaseUrl: string): Promise<void> {
 //
 // Multi-event example:
 //   event: ["app/appointment.created", "app/appointment.updated"],
+// The trigger supplies vocabulary only: the schema, the correlation path,
+// and the event type path. What each event type does to a run (Start,
+// Replace, Cancel, Ignore) is the workflow's Routing Policy, configured per
+// workflow in the editor's trigger panel.
 const appointmentTrigger = createTrigger({
   type: APPOINTMENT_TRIGGER_TYPE,
   label: "Appointment Lifecycle",
   event: "app/appointment.updated",
   concurrency: { limit: 1, key: "appointment.id" },
   description:
-    "Routes appointment.created/start, appointment.rescheduled/restart, and appointment.canceled/stop.",
+    "Classifies appointment.created, appointment.rescheduled, and appointment.canceled events for the routing policy.",
   schema: z.object({
     event: z.enum([
       "appointment.created",
@@ -103,11 +107,7 @@ const appointmentTrigger = createTrigger({
     appointment: appointmentSchema,
   }),
   correlationIdPath: "appointment.id",
-  lifecycle: {
-    onStart: ({ payload }) => payload.event === "appointment.created",
-    onRestart: ({ payload }) => payload.event === "appointment.rescheduled",
-    onStop: ({ payload }) => payload.event === "appointment.canceled",
-  },
+  eventTypePath: "event",
 });
 
 const cancelAppointmentAction = createAction({

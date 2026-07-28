@@ -11,6 +11,10 @@ export type CodeEditorProps = {
   className?: string;
   defaultLanguage?: string;
   height?: number | string;
+  /** Forwarded to the textarea so a `<Label htmlFor>` can reach it. */
+  id?: string;
+  /** Accessible name for editors that have no visible label. */
+  "aria-label"?: string;
   onChange?: (value: string | undefined) => void;
   options?: CodeEditorOptions;
   value?: string;
@@ -20,6 +24,8 @@ export function CodeEditor({
   className,
   defaultLanguage,
   height,
+  id,
+  "aria-label": ariaLabel,
   onChange,
   options,
   value,
@@ -30,6 +36,8 @@ export function CodeEditor({
 
   return (
     <textarea
+      aria-label={ariaLabel}
+      id={id}
       className={cn(
         "w-full resize-y bg-background px-3 py-2 font-mono text-sm outline-none",
         "placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",

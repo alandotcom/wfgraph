@@ -8,17 +8,12 @@ export function createScheduleTriggerDefinition(): WorkflowTriggerDefinition {
       type: "Schedule",
       executionType: "manual",
       evaluate(input) {
-        const eventType = asNonEmptyString(
-          getValueByPath(input.payload, "event")
-        );
-        const correlationKey = asNonEmptyString(
-          getValueByPath(input.payload, "data.id")
-        );
-
         return {
-          eventType,
-          correlationKey,
-          routingDecision: { kind: "start" },
+          ok: true,
+          eventType: asNonEmptyString(getValueByPath(input.payload, "event")),
+          correlationKey: asNonEmptyString(
+            getValueByPath(input.payload, "data.id")
+          ),
         };
       },
     },

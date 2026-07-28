@@ -48,7 +48,7 @@ export const dbWorkflowStore: WorkflowStore = {
         : undefined,
     });
 
-    return { waitStateId: waitState.id };
+    return waitState ? { waitStateId: waitState.id } : undefined;
   },
 
   markWaitStateStatus: async (input) => {

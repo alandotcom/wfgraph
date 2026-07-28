@@ -1,10 +1,5 @@
 import { compact } from "es-toolkit/array";
 import type { JsonValue } from "@/types/json";
-import { parseCsvSet as parseCsvSetFromCsv } from "./csv";
-
-export function parseCsvSet(value: unknown): Set<string> {
-  return parseCsvSetFromCsv(value);
-}
 
 /**
  * Reads a dot-separated path out of a value that arrived as JSON: a webhook

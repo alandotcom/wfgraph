@@ -1,19 +1,16 @@
 import type { JsonObject } from "@/types/json";
 import { getValueByPath } from "@/utils/object-path";
 import type {
-  TriggerEvaluation,
+  TriggerClassification,
   WorkflowTriggerDefinition,
 } from "@/workflow/trigger-registry";
 import { asNonEmptyString } from "@/workflow/webhook-routing";
 
-function evaluateDefaultRouting(payload: JsonObject): TriggerEvaluation {
-  const eventType = asNonEmptyString(getValueByPath(payload, "event"));
-  const correlationKey = asNonEmptyString(getValueByPath(payload, "data.id"));
-
+function classifyDefaultPayload(payload: JsonObject): TriggerClassification {
   return {
-    eventType,
-    correlationKey,
-    routingDecision: { kind: "start" },
+    ok: true,
+    eventType: asNonEmptyString(getValueByPath(payload, "event")),
+    correlationKey: asNonEmptyString(getValueByPath(payload, "data.id")),
   };
 }
 
@@ -23,7 +20,7 @@ export function createDefaultTriggerDefinition(): WorkflowTriggerDefinition {
       type: "Trigger",
       executionType: "manual",
       evaluate(input) {
-        return evaluateDefaultRouting(input.payload);
+        return classifyDefaultPayload(input.payload);
       },
     },
     ui: {
@@ -40,7 +37,7 @@ export function createUnknownTriggerDefinition(
       type: triggerType,
       executionType: "manual",
       evaluate(input) {
-        return evaluateDefaultRouting(input.payload);
+        return classifyDefaultPayload(input.payload);
       },
     },
     ui: {

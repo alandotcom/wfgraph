@@ -8,6 +8,13 @@
       "when": 1771978312455,
       "tag": "0000_clever_joystick",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785217225843,
+      "tag": "0001_boring_rumiko_fujikawa",
+      "breakpoints": true
     }
   ]
 }
