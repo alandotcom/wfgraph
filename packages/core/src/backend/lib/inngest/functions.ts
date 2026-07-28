@@ -1,3 +1,4 @@
+import type { InngestFunction } from "inngest";
 import { db } from "@/backend/lib/db";
 import { CURRENT_WORKFLOW_NAME } from "@/backend/lib/workflow-constants";
 import {
@@ -10,7 +11,14 @@ import { createWorkflowRunRequestedFunction } from "./workflow-function";
 
 const REGISTRY_CACHE_TTL_MS = 5000;
 
-type WorkflowFunction = ReturnType<typeof createWorkflowRunRequestedFunction>;
+/**
+ * The registry holds both kinds of function side by side: run handlers, whose
+ * trigger carries a schema, and event listeners, whose event names are only
+ * known at runtime. v4 encodes the trigger tuple in the function's type, so
+ * those two have no common specific type and the registry names the general
+ * one. `serve()` takes this same type.
+ */
+type WorkflowFunction = InngestFunction.Any;
 type WorkflowDefinition = {
   id: string;
   name: string;

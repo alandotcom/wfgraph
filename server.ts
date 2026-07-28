@@ -68,21 +68,17 @@ const rova = await createRovaApp({
     migrationsDir: Bun.env.MIGRATIONS_DIR,
   },
   inngest: {
-    client: {
-      id: Bun.env.INNGEST_APP_ID ?? "notifications-workflow",
-      isDev: Bun.env.NODE_ENV !== "production",
-      baseUrl:
-        toOptionalUrl(Bun.env.INNGEST_BASE_URL) ??
-        toOptionalUrl(Bun.env.INNGEST_DEV),
-      eventKey: Bun.env.INNGEST_EVENT_KEY,
-      env: Bun.env.INNGEST_ENV,
-    },
-    serve: {
-      signingKey: Bun.env.INNGEST_SIGNING_KEY,
-      signingKeyFallback: Bun.env.INNGEST_SIGNING_KEY_FALLBACK,
-      serveHost: Bun.env.INNGEST_SERVE_HOST,
-      servePath: Bun.env.INNGEST_SERVE_PATH,
-    },
+    id: Bun.env.INNGEST_APP_ID ?? "notifications-workflow",
+    isDev: Bun.env.NODE_ENV !== "production",
+    baseUrl:
+      toOptionalUrl(Bun.env.INNGEST_BASE_URL) ??
+      toOptionalUrl(Bun.env.INNGEST_DEV),
+    eventKey: Bun.env.INNGEST_EVENT_KEY,
+    env: Bun.env.INNGEST_ENV,
+    signingKey: Bun.env.INNGEST_SIGNING_KEY,
+    signingKeyFallback: Bun.env.INNGEST_SIGNING_KEY_FALLBACK,
+    serveOrigin: Bun.env.INNGEST_SERVE_ORIGIN,
+    servePath: Bun.env.INNGEST_SERVE_PATH,
   },
 });
 

@@ -1,6 +1,11 @@
 import type { JsonObject } from "@rova/shared/types/json";
 import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
 import { getInngestClient } from "./client";
+import {
+  workflowRunCancelRequested,
+  workflowRunRequested,
+  workflowWaitSignal,
+} from "./events";
 
 export type WorkflowRunRequestedEventData = {
   graph: SerializedWorkflowGraph;
@@ -26,68 +31,21 @@ export type WorkflowRunRequestedEventData = {
   };
 };
 
-type SendResult =
-  | {
-      eventId?: string;
-      ids?: string[];
-      id?: string;
-      eventIds?: string[];
-    }
-  | Array<{
-      eventId?: string;
-      ids?: string[];
-      id?: string;
-      eventIds?: string[];
-    }>;
-
-function getEventId(result: unknown): string | undefined {
-  if (!result) {
-    return undefined;
-  }
-
-  if (Array.isArray(result)) {
-    return getEventId(result[0]);
-  }
-
-  if (typeof result !== "object") {
-    return undefined;
-  }
-
-  const typed = result as SendResult;
-  if ("eventId" in typed && typeof typed.eventId === "string") {
-    return typed.eventId;
-  }
-  if ("id" in typed && typeof typed.id === "string") {
-    return typed.id;
-  }
-  if (
-    "eventIds" in typed &&
-    Array.isArray(typed.eventIds) &&
-    typeof typed.eventIds[0] === "string"
-  ) {
-    return typed.eventIds[0];
-  }
-  if (
-    "ids" in typed &&
-    Array.isArray(typed.ids) &&
-    typeof typed.ids[0] === "string"
-  ) {
-    return typed.ids[0];
-  }
-
-  return undefined;
-}
-
+/**
+ * Each of these passes an `id`, which is Inngest's idempotency key: a duplicate
+ * send under the same id triggers no second run. That is what keeps a retried
+ * enqueue from starting the workflow twice.
+ */
 export async function sendWorkflowRunRequested(
   data: WorkflowRunRequestedEventData
 ) {
-  const response = await getInngestClient().send({
-    id: `workflow-run-${data.executionId}`,
-    name: "workflow/run.requested",
-    data,
-  });
+  const { ids } = await getInngestClient().send(
+    workflowRunRequested.create(data, {
+      id: `workflow-run-${data.executionId}`,
+    })
+  );
 
-  return { eventId: getEventId(response) };
+  return { eventId: ids[0] };
 }
 
 export async function sendWorkflowCancelRequested(input: {
@@ -98,11 +56,11 @@ export async function sendWorkflowCancelRequested(input: {
   eventType?: string;
   correlationKey?: string;
 }) {
-  return await getInngestClient().send({
-    id: `workflow-cancel-${input.executionId}-${Date.now()}`,
-    name: "workflow/run.cancel.requested",
-    data: input,
-  });
+  return await getInngestClient().send(
+    workflowRunCancelRequested.create(input, {
+      id: `workflow-cancel-${input.executionId}-${Date.now()}`,
+    })
+  );
 }
 
 export async function sendWorkflowWaitSignal(input: {
@@ -111,14 +69,15 @@ export async function sendWorkflowWaitSignal(input: {
   token?: string | null;
   eventType?: string;
   correlationKey?: string;
-  payload?: Record<string, unknown>;
+  // JSON is what survives the send, so the caller supplies JSON.
+  payload?: JsonObject;
 }) {
-  return await getInngestClient().send({
-    id: `workflow-wait-signal-${input.executionId}-${input.nodeId}-${Date.now()}`,
-    name: "workflow/wait.signal",
-    data: {
-      ...input,
-      signalType: "wait-resume",
-    },
-  });
+  return await getInngestClient().send(
+    workflowWaitSignal.create(
+      { ...input, signalType: "wait-resume" },
+      {
+        id: `workflow-wait-signal-${input.executionId}-${input.nodeId}-${Date.now()}`,
+      }
+    )
+  );
 }

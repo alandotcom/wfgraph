@@ -1,4 +1,4 @@
-import { Inngest } from "inngest";
+import { Inngest, type RegisterOptions } from "inngest";
 import { getAppLogger } from "@/backend/lib/logger";
 
 function getInngestBaseUrl() {
@@ -17,15 +17,29 @@ function getInngestBaseUrl() {
   return undefined;
 }
 
-export type InngestClientRuntimeConfig = ConstructorParameters<
-  typeof Inngest
->[0];
-
-export type InngestServeRuntimeConfig = Record<string, unknown>;
+/**
+ * Everything a host says about Inngest, in one object.
+ *
+ * Written out by hand rather than derived from the SDK's own option types, so
+ * `@rova/core`'s published surface stops moving whenever Inngest changes its
+ * constructor. The split between what the client takes and what `serve()` takes
+ * is Inngest's business and is applied below, not something a host restates.
+ */
+export type RovaInngestConfig = {
+  id: string;
+  isDev?: boolean;
+  baseUrl?: string;
+  eventKey?: string;
+  env?: string;
+  signingKey?: string;
+  signingKeyFallback?: string;
+  /** Public origin Inngest should call back on, for example "https://app.example.com". */
+  serveOrigin?: string;
+  servePath?: string;
+};
 
 type InngestRuntimeState = {
-  clientConfig: InngestClientRuntimeConfig | null;
-  serveConfig: InngestServeRuntimeConfig;
+  config: RovaInngestConfig | null;
   client: Inngest | null;
 };
 
@@ -35,78 +49,91 @@ declare global {
 
 const inngestRuntimeState: InngestRuntimeState =
   globalThis.__rovaInngestState ?? {
-    clientConfig: null,
-    serveConfig: {},
+    config: null,
     client: null,
   };
 
 globalThis.__rovaInngestState = inngestRuntimeState;
 
-function resolveDefaultClientConfig(): InngestClientRuntimeConfig {
+function resolveDefaultConfig(): RovaInngestConfig {
   return {
     id: "notifications-workflow",
+    // v4 runs in cloud mode by default and demands a signing key there, so the
+    // dev loop has to say so rather than fall into it.
     isDev: process.env.NODE_ENV !== "production",
     baseUrl: getInngestBaseUrl(),
     eventKey: process.env.INNGEST_EVENT_KEY,
     env: process.env.INNGEST_ENV,
+    signingKey: process.env.INNGEST_SIGNING_KEY,
+    signingKeyFallback: process.env.INNGEST_SIGNING_KEY_FALLBACK,
   };
 }
 
-function normalizeClientConfig(
-  config: InngestClientRuntimeConfig
-): InngestClientRuntimeConfig {
+function normalizeConfig(config: RovaInngestConfig): RovaInngestConfig {
   return {
     ...config,
     id: (config.id ?? "").trim(),
   };
 }
 
-function areClientConfigsCompatible(
-  current: InngestClientRuntimeConfig,
-  next: InngestClientRuntimeConfig
+/**
+ * Whether a second `configureInngest` call describes the client that is already
+ * running. Covers only the fields that reach the constructor, since the serve
+ * fields are read per request and can change freely.
+ */
+function areConfigsCompatible(
+  current: RovaInngestConfig,
+  next: RovaInngestConfig
 ): boolean {
   return (
     current.id === next.id &&
     current.baseUrl === next.baseUrl &&
     current.eventKey === next.eventKey &&
     current.env === next.env &&
-    current.isDev === next.isDev
+    current.isDev === next.isDev &&
+    current.signingKey === next.signingKey &&
+    current.signingKeyFallback === next.signingKeyFallback
   );
 }
 
-export function configureInngestClient(
-  config: InngestClientRuntimeConfig
-): void {
-  const normalizedConfig = normalizeClientConfig(config);
+export function configureInngest(config: RovaInngestConfig): void {
+  const normalizedConfig = normalizeConfig(config);
 
   if (!normalizedConfig.id) {
-    throw new Error("Inngest client configuration requires a non-empty id.");
+    throw new Error("Inngest configuration requires a non-empty id.");
   }
 
   if (inngestRuntimeState.client) {
-    const currentConfig =
-      inngestRuntimeState.clientConfig ?? resolveDefaultClientConfig();
+    const currentConfig = inngestRuntimeState.config ?? resolveDefaultConfig();
 
-    if (areClientConfigsCompatible(currentConfig, normalizedConfig)) {
+    if (areConfigsCompatible(currentConfig, normalizedConfig)) {
+      inngestRuntimeState.config = normalizedConfig;
       return;
     }
 
     throw new Error(
-      "Inngest client is already initialized with a different configuration. Restart the process to apply a new Inngest client config."
+      "Inngest client is already initialized with a different configuration. Restart the process to apply a new Inngest config."
     );
   }
 
-  inngestRuntimeState.clientConfig = normalizedConfig;
+  inngestRuntimeState.config = normalizedConfig;
 }
 
-export function configureInngestServe(
-  config: InngestServeRuntimeConfig | undefined
-): void {
-  inngestRuntimeState.serveConfig = config ?? {};
+function getConfig(): RovaInngestConfig {
+  return inngestRuntimeState.config ?? resolveDefaultConfig();
 }
 
-export function getInngestServeConfig(): InngestServeRuntimeConfig {
-  return inngestRuntimeState.serveConfig;
+/**
+ * The subset `serve()` still takes. As of v4 the signing keys and base URL live
+ * on the client, so this is only the two things that describe where Inngest
+ * should call back.
+ */
+export function getInngestServeConfig(): Pick<
+  RegisterOptions,
+  "serveOrigin" | "servePath"
+> {
+  const { serveOrigin, servePath } = getConfig();
+  return { serveOrigin, servePath };
 }
 
 /**
@@ -120,13 +147,13 @@ export function getInngestServeConfig(): InngestServeRuntimeConfig {
  * same environment-variable guess that made the auth option unreliable.
  */
 export function reportInngestCallbackExposure(): void {
-  const signingKey = inngestRuntimeState.serveConfig.signingKey;
+  const { signingKey } = getConfig();
   if (typeof signingKey === "string" && signingKey.trim()) {
     return;
   }
 
   getAppLogger("inngest").error(
-    "The Inngest callback at /api/inngest is unsigned: no inngest.serve.signingKey is configured, so it will accept and execute a request from anyone who can reach it. Set a signing key for any deployment that is not a local dev loop."
+    "The Inngest callback at /api/inngest is unsigned: no inngest.signingKey is configured, so it will accept and execute a request from anyone who can reach it. Set a signing key for any deployment that is not a local dev loop."
   );
 }
 
@@ -135,8 +162,11 @@ export function getInngestClient(): Inngest {
     return inngestRuntimeState.client;
   }
 
-  const config =
-    inngestRuntimeState.clientConfig ?? resolveDefaultClientConfig();
-  inngestRuntimeState.client = new Inngest(config);
+  const {
+    serveOrigin: _serveOrigin,
+    servePath: _servePath,
+    ...clientConfig
+  } = getConfig();
+  inngestRuntimeState.client = new Inngest(clientConfig);
   return inngestRuntimeState.client;
 }

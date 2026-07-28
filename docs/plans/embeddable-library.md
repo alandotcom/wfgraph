@@ -88,7 +88,7 @@ Addresses findings 1 and, in part, 3.
 files import it, `app.ts` defines 15 routes, and the context surface in use is `c.req.raw`
 (9), `c.json` (9), `c.req.header` (7), `c.req.path` (5), `c.req.valid` (4), `c.newResponse`
 (4), `c.req.query` (2). Nearly every handler already reduces to a raw `Request` handed to
-oRPC or Inngest, both fetch-native, and inngest 3.52.0 ships an `./edge` export serving a
+oRPC or Inngest, both fetch-native, and inngest 4.13.0 ships an `./edge` export serving a
 plain fetch handler, so removal is feasible. It is still the wrong trade: Hono supplies
 method and path matching, params, the middleware chain, and correct 404s, and this codebase
 has already hand-rolled path normalization and traversal guards twice (`hono.ts:143`,

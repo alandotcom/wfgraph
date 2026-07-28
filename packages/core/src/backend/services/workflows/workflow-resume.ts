@@ -1,3 +1,4 @@
+import type { JsonObject } from "@rova/shared/types/json";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/backend/lib/db";
 import { workflowWaitStates } from "@/backend/lib/db/schema";
@@ -29,7 +30,7 @@ type WorkflowResumeError = { error: string };
 
 export async function postWorkflowResumeResult(
   token: string,
-  body: Record<string, unknown>,
+  body: JsonObject,
   authHeader: string | null
 ): Promise<
   ServiceResult<
@@ -116,7 +117,7 @@ export async function postWorkflowResumeResult(
 
 export async function postWorkflowResume(
   token: string,
-  body: Record<string, unknown>,
+  body: JsonObject,
   authHeader: string | null
 ) {
   return responseFromServiceResult(

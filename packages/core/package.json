@@ -47,14 +47,14 @@
     "graphology": "catalog:",
     "graphology-dag": "^0.4.1",
     "hono": "^4.11.9",
-    "inngest": "^3.52.0",
+    "inngest": "^4.13.0",
     "nanoid": "catalog:",
     "postgres": "^3.4.8",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@fastify/middie": "^9.3.3",
-    "@inngest/test": "^0.1.9",
+    "@inngest/test": "^1.0.0",
     "@opentelemetry/sdk-trace-base": "^1.25.0",
     "@rova/shared": "workspace:*",
     "@types/express": "^5.0.6",

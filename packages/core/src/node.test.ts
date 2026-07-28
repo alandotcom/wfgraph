@@ -118,7 +118,7 @@ beforeAll(async () => {
     // files in one process, so this only passes if dispose released the claim.
     database: { url: "postgresql://rova:rova@127.0.0.1:1/rova_test" },
     encryption: { key: "b".repeat(64) },
-    inngest: { client: { id: "rova-node-test" } },
+    inngest: { id: "rova-node-test", isDev: true },
     configureLogging: false,
   });
 

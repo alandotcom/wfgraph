@@ -14,7 +14,7 @@ const BASE_OPTIONS = {
   auth: "external",
   database: { url: "postgresql://rova:rova@127.0.0.1:1/rova_test" },
   encryption: { key: "a".repeat(64) },
-  inngest: { client: { id: "rova-app-test" } },
+  inngest: { id: "rova-app-test", isDev: true },
   configureLogging: false,
 } as const;
 
@@ -309,7 +309,7 @@ describe("createRovaApp configuration", () => {
       await expect(
         createRovaApp({
           ...BASE_OPTIONS,
-          inngest: { client: { id: "someone-else" } },
+          inngest: { id: "someone-else", isDev: true },
         })
       ).rejects.toThrow("inngestClientId");
     } finally {
@@ -344,7 +344,7 @@ describe("createRovaApp configuration", () => {
     // and bury whatever the operator actually needs to fix.
     const app = await createRovaApp({
       ...BASE_OPTIONS,
-      inngest: { client: { id: "after-failed-startup" } },
+      inngest: { id: "after-failed-startup", isDev: true },
     });
     app.dispose();
   });

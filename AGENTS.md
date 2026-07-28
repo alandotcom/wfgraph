@@ -65,6 +65,17 @@ one ISO-string-to-`Date` conversion, as a `z.codec`. Do not hand-roll `new Date(
 answers any other shape fails to compile. `outputFields` in a plugin's `index.ts` omits
 the `data.` prefix; template variables unwrap the wrapper automatically.
 
+**Rova's own events are defined once, with a schema.**
+`packages/core/src/backend/lib/inngest/events.ts` holds the three
+(`workflow/run.requested`, `workflow/run.cancel.requested`, `workflow/wait.signal`) as
+`eventType()` definitions carrying their Zod schemas. Senders build payloads with
+`.create(data, { id })`, where the id is Inngest's idempotency key, and functions declare
+the same object as their trigger. Inngest validates on send and again before calling a
+handler, so a handler receives a parsed payload and does no boundary parse of its own. A
+schema violation raises `EventValidationError`, which extends `NonRetriableError`, so a
+malformed run fails once rather than spending every retry on the same bad JSON. Schemas
+here may not use transforms; the SDK rejects any whose input and output types differ.
+
 **Services return a domain failure kind, not an HTTP status.**
 `packages/core/src/backend/lib/service-result.ts` defines
 `invalid | unauthorized | not_found | conflict | internal`. The adapters at the edges
@@ -86,6 +97,13 @@ after the mock recurses forever.
 so Wait nodes stay outside the node-level step wrapper. Retries are function-level, each
 step carrying its own counter. Step results round-trip through JSON, so a node output has
 to be JSON-safe: no `Date`, `Map`, or `Set`.
+
+**happy-dom replaces `TransformStream` and `WritableStream`.** `test-setup.ts` is a
+preload for the whole suite, so a backend test that never opens a DOM still gets happy-dom's
+globals, and its `TransformStream` is a stub whose `writable` is a boolean. The setup file
+restores Bun's two natives after registering. Inngest's execution engine builds a
+`TransformStream` on every run, so without that restore every test touching a function
+throws `getWriter is not a function`.
 
 **Development needs no client build.** The repo's own `server.ts` hands Bun's HTML
 entrypoint to `Bun.serve`'s `routes`, which Bun transpiles per request, so the SPA paths

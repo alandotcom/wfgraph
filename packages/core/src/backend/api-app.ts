@@ -36,7 +36,7 @@ const tokenParamsSchema = z.object({ token: idSchema });
 // the way to the run: Inngest stringifies it onto the event and the engine
 // stores it in the JSONB `workflow_executions.input` column.
 const webhookBodySchema = jsonObjectSchema;
-const resumeBodySchema = z.record(z.string(), z.unknown());
+const resumeBodySchema = jsonObjectSchema;
 
 const httpLogger = getAppLogger("http", "hono");
 const rpcLogger = getAppLogger("rpc");
@@ -391,11 +391,12 @@ export function createApiApp(options: CreateApiAppOptions) {
     .all("/og/*", (c) => c.json({ error: "Not found" }, 404))
     .on(["GET", "POST", "PUT"], "/inngest", async (c) => {
       const functions = await getInngestFunctions();
-      const serveOptions = getInngestServeConfig();
       const inngestHandler = serveInngest({
         client: getInngestClient(),
         functions,
-        ...(serveOptions as Record<string, unknown>),
+        // Spread of a typed pair, so a serve option Inngest renames stops
+        // compiling rather than being silently dropped on the floor.
+        ...getInngestServeConfig(),
       });
       return await inngestHandler(c);
     })

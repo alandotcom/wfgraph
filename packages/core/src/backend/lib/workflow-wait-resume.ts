@@ -1,3 +1,4 @@
+import type { JsonObject } from "@rova/shared/types/json";
 import { sendWorkflowWaitSignal } from "@/backend/lib/inngest/runtime-events";
 import { getAppLogger } from "@/backend/lib/logger";
 import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
@@ -12,7 +13,7 @@ const logger = getAppLogger("workflow", "wait-resume");
 export async function resumeMatchingWaitHooks(input: {
   workflowId: string;
   eventType?: string;
-  payload: Record<string, unknown>;
+  payload: JsonObject;
   waitStates: Array<{
     id: string;
     executionId: string;

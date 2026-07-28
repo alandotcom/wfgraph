@@ -154,14 +154,10 @@ const rova = await createRovaApp({
   client: clientBundle,
   migrations: { runOnStartup: true },
   inngest: {
-    client: {
-      id: "my-rova-app",
-      baseUrl: process.env.INNGEST_BASE_URL,
-      eventKey: process.env.INNGEST_EVENT_KEY,
-    },
-    serve: {
-      signingKey: process.env.INNGEST_SIGNING_KEY,
-    },
+    id: "my-rova-app",
+    baseUrl: process.env.INNGEST_BASE_URL,
+    eventKey: process.env.INNGEST_EVENT_KEY,
+    signingKey: process.env.INNGEST_SIGNING_KEY,
   },
   actions: [action],
   triggers: [trigger],
@@ -273,9 +269,8 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
 | `database.url`             | Yes      | PostgreSQL connection string                               |
 | `encryption.key`           | Yes      | 64-character hex string; encrypts integration secrets      |
 | `auth`                     | Yes      | Predicate deciding who reaches the editor, or `"external"` |
-| `inngest.client.id`        | Yes      | Inngest application ID                                     |
-| `inngest.client.*`         | No       | Inngest client config (baseUrl, eventKey, env, isDev)      |
-| `inngest.serve`            | No       | Inngest serve config (signingKey, etc.)                    |
+| `inngest.id`               | Yes      | Inngest application ID                                     |
+| `inngest.*`                | No       | baseUrl, eventKey, env, isDev, signingKey, serveOrigin     |
 | `migrations.runOnStartup`  | No       | Run Drizzle migrations at startup (default `false`)        |
 | `migrations.migrationsDir` | No       | Custom migrations directory                                |
 | `logger`                   | No       | Custom logger conforming to `RovaLogger` interface         |
@@ -293,7 +288,7 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
   - Pass a predicate `(request: Request) => boolean | Promise<boolean>` reading whatever session your app already uses. It covers the RPC, REST, OpenAPI, extensions, and SPA routes.
   - The Inngest callback and the webhook and resume paths are deliberately left out. Those callers are machines carrying a signing key, an API key, or a hook token, and a session check would break all three. Which of Rova's routes are which is Rova's knowledge, which is why the predicate is an option rather than middleware you wrap the mount in.
   - Pass `"external"` when something in front of Rova already gates it.
-- **Set `inngest.serve.signingKey` on any deployment.** `/api/inngest` sits outside the `auth` gate because Inngest signs its callbacks, and that holds only with a signing key configured. Without one the Inngest SDK runs in dev mode and skips signature verification, so an anonymous POST to that path can execute a workflow function with a payload of its choosing. Rova logs an error at startup when no key is set.
+- **Set `inngest.signingKey` on any deployment.** `/api/inngest` sits outside the `auth` gate because Inngest signs its callbacks, and that holds only with a signing key configured. Without one the Inngest SDK runs in dev mode and skips signature verification, so an anonymous POST to that path can execute a workflow function with a payload of its choosing. Rova logs an error at startup when no key is set.
 - Mounting under a sub-path means passing `basePath`. Rova builds its API prefix, the SPA's `<base href>`, and every asset URL from it, so the host states the mount point once rather than Rova deducing it per request. A host that mounts at `/workflows` and omits `basePath` gets a client that requests its assets from the root.
 - `rova.fetch` answers API routes under `/api/*` and serves the SPA under `/*`. Hand it straight to `Bun.serve`, `Deno.serve`, or a Workers `export default`.
 - Action extensions are strict-schema actions via `createAction(...)`:

@@ -27,10 +27,8 @@ import {
   toMountRelativePath,
 } from "@/backend/lib/http/mount-path";
 import {
-  configureInngestClient,
-  configureInngestServe,
-  type InngestClientRuntimeConfig,
-  type InngestServeRuntimeConfig,
+  configureInngest,
+  type RovaInngestConfig,
   reportInngestCallbackExposure,
 } from "@/backend/lib/inngest/client";
 import {
@@ -57,10 +55,7 @@ import {
 
 export type { DatabaseRuntimeConfig } from "@/backend/lib/db";
 export type { EncryptionRuntimeConfig } from "@/backend/lib/db/integrations";
-export type {
-  InngestClientRuntimeConfig,
-  InngestServeRuntimeConfig,
-} from "@/backend/lib/inngest/client";
+export type { RovaInngestConfig } from "@/backend/lib/inngest/client";
 export type { RovaAuth } from "@/backend/lib/http/authorize";
 export type { IntegrationType } from "@rova/shared/types/integration";
 export type { RovaLogger } from "@rova/shared/types/logger";
@@ -97,10 +92,7 @@ export type RovaAppOptions = {
     runOnStartup?: boolean;
   };
   encryption: EncryptionRuntimeConfig;
-  inngest: {
-    client: InngestClientRuntimeConfig;
-    serve?: InngestServeRuntimeConfig;
-  };
+  inngest: RovaInngestConfig;
   triggers?: RuntimeExtensionTriggerDefinition[];
   actions?: RuntimeExtensionActionDefinition[];
   /** Per-plugin configuration (all enabled by default) */
@@ -216,8 +208,8 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
     throw new Error("createRovaApp requires database.url");
   }
 
-  if (!options.inngest.client.id?.trim()) {
-    throw new Error("createRovaApp requires inngest.client.id");
+  if (!options.inngest.id?.trim()) {
+    throw new Error("createRovaApp requires inngest.id");
   }
 
   assertValidEncryptionKey(options.encryption.key);
@@ -227,7 +219,7 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
   const releaseProcess = claimProcess({
     databaseUrl: options.database.url.trim(),
     encryptionKey: options.encryption.key.trim(),
-    inngestClientId: options.inngest.client.id.trim(),
+    inngestClientId: options.inngest.id.trim(),
   });
 
   try {
@@ -285,8 +277,7 @@ async function buildRovaApp(
   configureEncryptionKey(options.encryption);
 
   configureDatabaseRuntime(options.database);
-  configureInngestClient(options.inngest.client);
-  configureInngestServe(options.inngest.serve);
+  configureInngest(options.inngest);
   reportInngestCallbackExposure();
 
   const registeredTriggerTypes = new Set<string>();

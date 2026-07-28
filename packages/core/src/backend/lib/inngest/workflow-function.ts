@@ -1,13 +1,16 @@
-import { z } from "zod";
+import type { z } from "zod";
 import {
   executeWorkflow,
   type WorkflowExecutionInput,
 } from "@/backend/lib/workflow-engine/core";
 import { dbWorkflowStore } from "@/backend/lib/workflow-engine/db-store";
 import type { WorkflowExecutionRuntime } from "@/backend/lib/workflow-engine/runtime";
-import { jsonObjectSchema } from "@rova/shared/types/json";
-import { serializedWorkflowGraphSchema } from "@rova/shared/workflow/schemas";
 import { getInngestClient } from "./client";
+import {
+  workflowExecutionInputSchema,
+  workflowRunCancelRequested,
+  workflowRunRequested,
+} from "./events";
 
 function toDurationString(milliseconds: number): string {
   const seconds = Math.max(1, Math.ceil(milliseconds / 1000));
@@ -18,44 +21,25 @@ function escapeInngestExpressionString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-/**
- * The `workflow/run.requested` event payload, as the engine needs it.
- *
- * Inngest serialized this to JSON when the run was enqueued and hands it back on
- * every attempt and every replay, so the handler learns nothing about its shape
- * from the type system. Parsing it here is the single boundary check: past this
- * point the handler and the engine work with a `WorkflowExecutionInput`.
- */
-const workflowExecutionInputSchema = z.object({
-  graph: serializedWorkflowGraphSchema,
-  // JSON is all that survived the trip, so JSON is what the schema accepts.
-  triggerInput: jsonObjectSchema.optional(),
-  requestPayload: jsonObjectSchema.optional(),
-  // Both ids are required and must carry a value: every log row, timeline event,
-  // and wait state the run writes hangs off them, and the enqueue side always
-  // supplies them. An empty id would attach a run's whole trace to nothing.
-  executionId: z.string().trim().min(1),
-  workflowId: z.string().trim().min(1),
-  workflowName: z.string().optional(),
-  workflowRunId: z.string().optional(),
-  runMode: z.enum(["live", "test"]).optional(),
-  eventContext: z
-    .object({
-      eventType: z.string().optional(),
-      correlationKey: z.string().optional(),
-    })
-    .optional(),
-});
-
 export function createWorkflowTriggerExpression(workflowId: string): string {
   return `event.data.workflowId == "${escapeInngestExpressionString(workflowId)}"`;
 }
 
+/**
+ * The trigger carries `workflowExecutionInputSchema`, and Inngest validates
+ * against it before calling this handler, so `event.data` arrives parsed. A
+ * payload that fails raises `EventValidationError`, which extends
+ * `NonRetriableError`: a malformed run fails once instead of spending all four
+ * retries re-deserializing the same bad JSON.
+ *
+ * `step` stays structurally typed rather than taken from the SDK's context, so
+ * the shape this handler depends on is stated in one readable place.
+ */
 async function workflowRunRequestedHandler({
   event,
   step,
 }: {
-  event: { data: unknown };
+  event: { data: z.infer<typeof workflowExecutionInputSchema> };
   step: {
     sleep: (id: string, durationMs: number) => Promise<void>;
     waitForEvent: (
@@ -65,14 +49,7 @@ async function workflowRunRequestedHandler({
     run: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
   };
 }) {
-  const parsedEvent = workflowExecutionInputSchema.safeParse(event.data);
-  if (!parsedEvent.success) {
-    throw new Error(
-      `Invalid workflow execution payload. ${z.prettifyError(parsedEvent.error)}`
-    );
-  }
-
-  const data: WorkflowExecutionInput = parsedEvent.data;
+  const data: WorkflowExecutionInput = event.data;
   const runtime: WorkflowExecutionRuntime = {
     sleep: async (stepId, durationMs) => {
       if (durationMs <= 0) {
@@ -137,16 +114,18 @@ export function createWorkflowRunRequestedFunction(input: {
       // retry sends again. Steps that must not double-fire should pass an
       // idempotency key to their provider rather than rely on this count.
       retries: 4,
+      triggers: [
+        {
+          event: workflowRunRequested,
+          if: createWorkflowTriggerExpression(input.workflowId),
+        },
+      ],
       cancelOn: [
         {
-          event: "workflow/run.cancel.requested",
+          event: workflowRunCancelRequested,
           if: "async.data.executionId == event.data.executionId",
         },
       ],
-    },
-    {
-      event: "workflow/run.requested",
-      if: createWorkflowTriggerExpression(input.workflowId),
     },
     workflowRunRequestedHandler
   );

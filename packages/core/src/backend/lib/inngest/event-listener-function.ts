@@ -38,12 +38,16 @@ export function createInngestEventListenerFunction(input: {
   const { eventNames, functionOptions } = input.inngestEventTrigger;
   const eventLabel = eventNames.join(", ");
 
-  const triggers = eventNames.map((name) => ({ event: name }));
-  const triggerArg = triggers.length === 1 ? triggers[0] : triggers;
-
   return getInngestClient().createFunction(
-    { ...functionOptions, id: input.id, name: `Event listener: ${eventLabel}` },
-    triggerArg,
+    {
+      ...functionOptions,
+      id: input.id,
+      name: `Event listener: ${eventLabel}`,
+      // These names come from whoever registered the trigger, so there is no
+      // schema to attach and `event.data` stays unknown until
+      // `toTriggerPayload` narrows it.
+      triggers: eventNames.map((name) => ({ event: name })),
+    },
     async ({ event }) => {
       const payload = toTriggerPayload(event.data);
 
