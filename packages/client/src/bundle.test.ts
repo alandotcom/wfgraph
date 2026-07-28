@@ -1,8 +1,11 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "vitest";
+import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { $ } from "bun";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
+
+const run = promisify(execFile);
 
 /**
  * The serving-side tests use a stand-in directory, so nothing else would notice
@@ -15,17 +18,19 @@ import { $ } from "bun";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 let bundleDir: string;
 
+// The test run happens before `bun run build`, so build rather than report on
+// whatever is on disk. Two full builds is the reason for the generous timeout.
 beforeAll(async () => {
-  // `bun test` runs before `bun run build`, so build rather than report on
-  // whatever is on disk.
-  await $`bun run build:client`.cwd(repoRoot).quiet();
-  await $`bun x tsdown`.cwd(join(repoRoot, "packages/client")).quiet();
+  await run("bun", ["run", "build:client"], { cwd: repoRoot });
+  await run("bun", ["x", "tsdown"], { cwd: join(repoRoot, "packages/client") });
 
+  // A file:// URL, because the import specifier is an absolute path and the
+  // module runner only accepts that scheme for one.
   const built = (await import(
-    join(repoRoot, "packages/client/dist/index.js")
+    pathToFileURL(join(repoRoot, "packages/client/dist/index.js")).href
   )) as { clientBundle: { dir: string } };
   bundleDir = built.clientBundle.dir;
-});
+}, 180_000);
 
 describe("clientBundle", () => {
   it("points at a directory holding the built entrypoint", async () => {

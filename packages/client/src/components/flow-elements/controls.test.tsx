@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { Controls } from "./controls";
@@ -9,7 +9,7 @@ afterEach(() => {
 
 describe("Controls", () => {
   test("renders and wires reflow action when provided", () => {
-    const onReflow = mock(() => {});
+    const onReflow = vi.fn(() => {});
 
     const { getByRole } = render(
       <ReactFlowProvider>

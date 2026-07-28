@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeTriggerDefinition } from "@/lib/runtime-extensions";
 import {
   getUpstreamConditionFields,
@@ -41,6 +41,12 @@ function createEdge(input: {
 }
 
 describe("upstream-node-fields", () => {
+  // The runtime action registry is module-level state, so a case that registers
+  // an action has to hand it back before the next one runs.
+  afterEach(() => {
+    clearRuntimeActions();
+  });
+
   it("discovers transitive upstream nodes and condition fields", () => {
     const nodes: WorkflowNode[] = [
       createNode({
@@ -163,10 +169,6 @@ describe("upstream-node-fields", () => {
       ],
     });
 
-    afterEach(() => {
-      clearRuntimeActions();
-    });
-
     const nodes: WorkflowNode[] = [
       createNode({
         id: "trigger-1",
@@ -208,7 +210,7 @@ describe("upstream-node-fields", () => {
     expect(statusField?.type).toBe("string");
   });
 
-  it("surfaces custom trigger schema fields via runtime trigger outputFields", () => {
+  it("surfaces custom trigger schema fields via runtime trigger outputFields", async () => {
     const mockTrigger: RuntimeTriggerDefinition = {
       type: "DonorEligibility",
       label: "Donor Eligibility",
@@ -220,17 +222,20 @@ describe("upstream-node-fields", () => {
       ],
     };
 
-    mock.module("@/lib/runtime-extensions", () => ({
+    // vi.doMock rather than vi.mock: only this case wants the trigger lookup
+    // stubbed, and vi.mock would be hoisted to the top of the file and apply to
+    // every case in it. Resetting the registry first makes the re-import below
+    // evaluate the subject afresh against the stub.
+    vi.resetModules();
+    vi.doMock("@/lib/runtime-extensions", () => ({
       findRuntimeTrigger: (type: string) =>
         type === "DonorEligibility" ? mockTrigger : undefined,
       getRuntimeTriggers: () => [],
       hydrateRuntimeExtensionsFromApi: () => Promise.resolve(),
     }));
 
-    // Re-import to pick up mock
-    const {
-      getNodeOutputFields: getNodeOutputFieldsMocked,
-    } = require("@/lib/upstream-node-fields");
+    const { getNodeOutputFields: getNodeOutputFieldsMocked } =
+      await import("@/lib/upstream-node-fields");
 
     const triggerNode = createNode({
       id: "trigger-1",

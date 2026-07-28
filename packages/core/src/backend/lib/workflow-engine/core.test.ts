@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type RuntimeActionResult,
   registerRuntimeAction,
@@ -57,7 +57,7 @@ function createTriggerToActionGraph(actionLabel?: string) {
 }
 
 describe("runtime action execution", () => {
-  const executeFn = mock<() => RuntimeActionResult>(() => ({
+  const executeFn = vi.fn<() => RuntimeActionResult>(() => ({
     success: true,
     data: { donorId: "d_123", name: "Test Donor" },
   }));
@@ -139,7 +139,7 @@ describe("runtime action execution", () => {
 });
 
 describe("run persistence through the store port", () => {
-  const executeFn = mock<() => RuntimeActionResult>(() => ({
+  const executeFn = vi.fn<() => RuntimeActionResult>(() => ({
     success: true,
     data: { ok: true },
   }));

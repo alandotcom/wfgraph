@@ -1,6 +1,9 @@
-import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { postWorkflowsBulkLifecycleResult } from "@/backend/services/workflows/workflows-bulk-lifecycle";
 
-const mocks = (() => {
+// vi.hoisted, because vitest lifts vi.mock above every import, and the factories
+// below read this object the moment the service module is imported.
+const mocks = vi.hoisted(() => {
   const findFirst = vi.fn();
   const where = vi.fn();
   const set = vi.fn(() => ({ where }));
@@ -23,9 +26,9 @@ const mocks = (() => {
     deleteWorkflow,
     logger,
   };
-})();
+});
 
-mock.module("@/backend/lib/db", () => ({
+vi.mock("@/backend/lib/db", () => ({
   db: {
     query: {
       workflows: {
@@ -36,16 +39,13 @@ mock.module("@/backend/lib/db", () => ({
   },
 }));
 
-mock.module("@/backend/lib/logger", () => ({
+vi.mock("@/backend/lib/logger", () => ({
   getAppLogger: () => mocks.logger,
 }));
 
-mock.module("@/backend/services/workflows/workflow", () => ({
+vi.mock("@/backend/services/workflows/workflow", () => ({
   deleteWorkflow: mocks.deleteWorkflow,
 }));
-
-const { postWorkflowsBulkLifecycleResult } =
-  await import("@/backend/services/workflows/workflows-bulk-lifecycle");
 
 describe("postWorkflowsBulkLifecycleResult", () => {
   beforeEach(() => {

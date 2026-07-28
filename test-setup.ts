@@ -1,22 +1,11 @@
-import { afterEach } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { afterEach } from "vitest";
 import { cleanup } from "@testing-library/react";
 
-// happy-dom overwrites these two with its own versions, and its TransformStream
-// is a stub whose `writable` is a boolean rather than a stream. Bun implements
-// both correctly, and this preload applies to the whole suite, so a backend test
-// that never touches the DOM would otherwise inherit the broken pair. Inngest's
-// execution engine builds a TransformStream for SSE on every run, which is where
-// this last surfaced.
-const nativeTransformStream = globalThis.TransformStream;
-const nativeWritableStream = globalThis.WritableStream;
-
-GlobalRegistrator.register({
-  url: "http://localhost:3000",
-});
-
-globalThis.TransformStream = nativeTransformStream;
-globalThis.WritableStream = nativeWritableStream;
+// Setup for the client project only; the backend packages run in vitest's node
+// environment and never see any of this. happy-dom provides the document, and
+// what follows fills the gaps the client's components reach for during a
+// render. Each shim is guarded, so a happy-dom release that grows its own
+// implementation takes over without a change here.
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -52,14 +41,16 @@ if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = ResizeObserverMock as typeof ResizeObserver;
 }
 
+// window.setTimeout rather than the bare global, because the DOM one answers a
+// number and node's answers a Timeout object, and a frame handle is a number.
 if (!globalThis.requestAnimationFrame) {
   globalThis.requestAnimationFrame = (callback: FrameRequestCallback) =>
-    setTimeout(() => callback(performance.now()), 16);
+    window.setTimeout(() => callback(performance.now()), 16);
 }
 
 if (!globalThis.cancelAnimationFrame) {
   globalThis.cancelAnimationFrame = (id: number) => {
-    clearTimeout(id);
+    window.clearTimeout(id);
   };
 }
 

@@ -33,6 +33,8 @@
   },
   "include": [
     "server.ts",
+    "vitest.config.ts",
+    "test-setup.ts",
     "examples/**/*.ts",
     "scripts/**/*.ts",
     "packages/shared/src/**/*.ts",

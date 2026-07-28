@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import type { WorkflowExecution } from "@/lib/execution-logs";
 import { WorkflowRunSummaryRow } from "./workflow-run-summary-row";
@@ -22,7 +22,7 @@ const BASE_EXECUTION: WorkflowExecution = {
 
 describe("WorkflowRunSummaryRow", () => {
   it("renders list mode with fixed layout and click behavior", () => {
-    const onClick = mock(() => undefined);
+    const onClick = vi.fn(() => undefined);
     const view = render(
       <WorkflowRunSummaryRow
         execution={BASE_EXECUTION}
@@ -45,7 +45,7 @@ describe("WorkflowRunSummaryRow", () => {
   });
 
   it("renders back button in detail mode", () => {
-    const onBack = mock(() => undefined);
+    const onBack = vi.fn(() => undefined);
     const view = render(
       <WorkflowRunSummaryRow
         execution={BASE_EXECUTION}
@@ -63,7 +63,7 @@ describe("WorkflowRunSummaryRow", () => {
   });
 
   it("renders cancel button for waiting runs", () => {
-    const onCancel = mock(() => undefined);
+    const onCancel = vi.fn(() => undefined);
     const waitingExecution: WorkflowExecution = {
       ...BASE_EXECUTION,
       id: "exec_waiting",
@@ -74,7 +74,7 @@ describe("WorkflowRunSummaryRow", () => {
     const view = render(
       <WorkflowRunSummaryRow
         execution={waitingExecution}
-        leading={{ onBack: mock(() => undefined), type: "back" }}
+        leading={{ onBack: vi.fn(() => undefined), type: "back" }}
         runNumber={3}
         trailing={{ isCanceling: false, onCancel, type: "cancel" }}
       />

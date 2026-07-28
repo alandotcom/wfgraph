@@ -1,28 +1,30 @@
-import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { sendSlackMessageStep } from "./send-slack-message";
 
 // The step's job is deciding whether and what to send, so the seam under it is
 // the Slack client. What that client puts on the wire is covered separately in
 // slack/client.test.ts, against a stubbed fetch.
-const mocks = (() => {
+//
+// vi.hoisted, because vitest lifts vi.mock above every import, and the factories
+// below read this object the moment the step module is imported.
+const mocks = vi.hoisted(() => {
   const fetchCredentials = vi.fn();
   const callSlack = vi.fn();
 
   return { fetchCredentials, callSlack };
-})();
+});
 
 // Both come from one module, so stubbing one means supplying the other.
-mock.module("@rova/core/plugin", () => ({
+vi.mock("@rova/core/plugin", () => ({
   fetchCredentials: mocks.fetchCredentials,
   withStepLogging: (_input: unknown, run: () => unknown) => run(),
 }));
 
-mock.module("@/slack/client", () => ({
+vi.mock("@/slack/client", () => ({
   callSlack: mocks.callSlack,
   describeSlackFailure: (failure: { message?: string }) =>
     failure.message ?? "slack failure",
 }));
-
-const { sendSlackMessageStep } = await import("./send-slack-message");
 
 describe("sendSlackMessageStep", () => {
   beforeEach(() => {

@@ -1,24 +1,32 @@
-import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cancelInFlightRuns } from "./workflow-cancellation";
 
-const sendWorkflowCancelRequestedMock = vi.fn();
-const logWorkflowAuditEventMock = vi.fn();
-const markExecutionCancelledMock = vi.fn();
-const markWaitingStatesCancelledMock = vi.fn();
+// vi.hoisted, because vitest lifts vi.mock above every import, and the factories
+// below read these the moment the module under test is imported.
+const {
+  sendWorkflowCancelRequestedMock,
+  logWorkflowAuditEventMock,
+  markExecutionCancelledMock,
+  markWaitingStatesCancelledMock,
+} = vi.hoisted(() => ({
+  sendWorkflowCancelRequestedMock: vi.fn(),
+  logWorkflowAuditEventMock: vi.fn(),
+  markExecutionCancelledMock: vi.fn(),
+  markWaitingStatesCancelledMock: vi.fn(),
+}));
 
-mock.module("@/backend/lib/inngest/runtime-events", () => ({
+vi.mock("@/backend/lib/inngest/runtime-events", () => ({
   sendWorkflowCancelRequested: sendWorkflowCancelRequestedMock,
 }));
 
-mock.module("@/backend/lib/workflow-audit", () => ({
+vi.mock("@/backend/lib/workflow-audit", () => ({
   logWorkflowAuditEvent: logWorkflowAuditEventMock,
 }));
 
-mock.module("@/backend/lib/workflow-wait-state", () => ({
+vi.mock("@/backend/lib/workflow-wait-state", () => ({
   markExecutionCancelled: markExecutionCancelledMock,
   markWaitingStatesCancelled: markWaitingStatesCancelledMock,
 }));
-
-const { cancelInFlightRuns } = await import("./workflow-cancellation");
 
 describe("cancelInFlightRuns", () => {
   beforeEach(() => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { validateWorkflowActionConfigs } from "@/backend/lib/workflow-action-validation";
 import type { ResolveActionByType } from "@rova/shared/workflow/action-config-validation";
 import type { WorkflowNode } from "@rova/shared/workflow/types";

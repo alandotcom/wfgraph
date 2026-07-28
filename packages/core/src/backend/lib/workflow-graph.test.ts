@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore } from "jotai";
 import type { SavedWorkflow } from "@/lib/rpc-client";
 import {

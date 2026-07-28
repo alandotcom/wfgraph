@@ -18,8 +18,8 @@
     "build:lib": "cd packages/core && tsdown && cd ../client && tsdown",
     "compile": "NODE_ENV=production bun run scripts/compile.ts",
     "start": "NODE_ENV=production ./dist/server",
-    "test": "bun test",
-    "test:watch": "bun test --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "type-check": "bun run tsc --noEmit",
     "typecheck": "bun run tsc --noEmit",
     "lint": "oxlint --type-aware .",
@@ -42,7 +42,6 @@
     "@babel/core": "^7.28.4",
     "@babel/preset-react": "^7.28.5",
     "@babel/preset-typescript": "^7.28.5",
-    "@happy-dom/global-registrator": "^20.6.2",
     "@rova/client": "workspace:*",
     "@tailwindcss/postcss": "^4.1.18",
     "@testing-library/dom": "^10.4.1",
@@ -61,13 +60,15 @@
     "drizzle-kit": "^0.31.9",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-you-might-not-need-an-effect": "1.0.1",
+    "happy-dom": "^20.11.1",
     "knip": "^6.29.0",
     "oxfmt": "^0.60.0",
     "oxlint": "^1.75.0",
     "oxlint-tsgolint": "^7.0.2001",
     "tailwindcss": "^4.1.18",
     "tsdown": "^0.22.14",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   },
   "optionalDependencies": {
     "inngest-cli": "^1.38.1"

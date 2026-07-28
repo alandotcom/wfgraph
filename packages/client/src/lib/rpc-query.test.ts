@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import {
   orpcQuery,

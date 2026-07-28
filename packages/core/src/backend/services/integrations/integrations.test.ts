@@ -1,6 +1,12 @@
-import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  getIntegration,
+  putIntegration,
+} from "@/backend/services/integrations/integrations";
 
-const mocks = (() => {
+// vi.hoisted, because vitest lifts vi.mock above every import, and the factories
+// below read this object the moment the service module is imported.
+const mocks = vi.hoisted(() => {
   const createIntegration = vi.fn();
   const deleteIntegration = vi.fn();
   const getIntegrationById = vi.fn();
@@ -27,9 +33,9 @@ const mocks = (() => {
     getPluginFromRegistry,
     logger,
   };
-})();
+});
 
-mock.module("@/backend/lib/db/integrations", () => ({
+vi.mock("@/backend/lib/db/integrations", () => ({
   createIntegration: mocks.createIntegration,
   deleteIntegration: mocks.deleteIntegration,
   getIntegration: mocks.getIntegrationById,
@@ -37,17 +43,14 @@ mock.module("@/backend/lib/db/integrations", () => ({
   updateIntegration: mocks.updateIntegration,
 }));
 
-mock.module("@rova/shared/plugins/registry", () => ({
+vi.mock("@rova/shared/plugins/registry", () => ({
   getCredentialMapping: mocks.getCredentialMapping,
   getIntegration: mocks.getPluginFromRegistry,
 }));
 
-mock.module("@/backend/lib/logger", () => ({
+vi.mock("@/backend/lib/logger", () => ({
   getAppLogger: () => mocks.logger,
 }));
-
-const { getIntegration, putIntegration } =
-  await import("@/backend/services/integrations/integrations");
 
 describe("integration service secret handling", () => {
   beforeEach(() => {

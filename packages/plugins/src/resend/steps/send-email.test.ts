@@ -1,28 +1,30 @@
-import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { sendEmailStep } from "./send-email";
 
 // The step's job is deciding whether and what to send, so the seam under it is
 // the Resend client. What that client puts on the wire is covered separately in
 // resend/client.test.ts, against a stubbed fetch.
-const mocks = (() => {
+//
+// vi.hoisted, because vitest lifts vi.mock above every import, and the factories
+// below read this object the moment the step module is imported.
+const mocks = vi.hoisted(() => {
   const fetchCredentials = vi.fn();
   const sendEmail = vi.fn();
 
   return { fetchCredentials, sendEmail };
-})();
+});
 
 // Both come from one module, so stubbing one means supplying the other.
-mock.module("@rova/core/plugin", () => ({
+vi.mock("@rova/core/plugin", () => ({
   fetchCredentials: mocks.fetchCredentials,
   withStepLogging: (_input: unknown, run: () => unknown) => run(),
 }));
 
-mock.module("@/resend/client", () => ({
+vi.mock("@/resend/client", () => ({
   sendResendEmail: mocks.sendEmail,
   describeResendFailure: (failure: { message?: string }) =>
     failure.message ?? "resend failure",
 }));
-
-const { sendEmailStep } = await import("./send-email");
 
 describe("sendEmailStep", () => {
   beforeEach(() => {

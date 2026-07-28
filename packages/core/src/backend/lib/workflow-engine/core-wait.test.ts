@@ -8,7 +8,7 @@
  * persistence segments around those boundaries. That is what these tests pin.
  */
 
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 import { executeWorkflow } from "./core";
@@ -19,7 +19,7 @@ import {
 import { createInMemoryWorkflowRuntime } from "./runtime";
 
 // Keeps step-handler's own logging (used by the trigger step) off a database.
-mock.module("@/backend/lib/workflow-logging", () => ({
+vi.mock("@/backend/lib/workflow-logging", () => ({
   logStepStartDb: () =>
     Promise.resolve({ logId: "mock-log-id", startTime: Date.now() }),
   logStepCompleteDb: () => Promise.resolve(),

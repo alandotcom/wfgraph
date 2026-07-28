@@ -9,7 +9,7 @@
  * replay, and nodes that already ran must not run again.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type RuntimeActionResult,
   registerRuntimeAction,
@@ -83,15 +83,15 @@ function createDelayWaitNode(id: string): WorkflowNode {
   };
 }
 
-const emailAction = mock<() => RuntimeActionResult>(() => ({
+const emailAction = vi.fn<() => RuntimeActionResult>(() => ({
   success: true,
   data: { sent: true },
 }));
-const followupAction = mock<() => RuntimeActionResult>(() => ({
+const followupAction = vi.fn<() => RuntimeActionResult>(() => ({
   success: true,
   data: { sent: true },
 }));
-const branchAction = mock<() => RuntimeActionResult>(() => ({
+const branchAction = vi.fn<() => RuntimeActionResult>(() => ({
   success: true,
   data: { ok: true },
 }));

@@ -1,45 +1,49 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 import { render } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
+import { Edge } from "@/components/flow-elements/edge";
 
-const sourceNode = {
-  internals: {
-    positionAbsolute: { x: 120, y: 80 },
-    handleBounds: {
-      source: [
-        {
-          id: "true",
-          position: "bottom",
-          x: 70,
-          y: 180,
-          width: 12,
-          height: 12,
-        },
-        {
-          id: "false",
-          position: "bottom",
-          x: 110,
-          y: 180,
-          width: 12,
-          height: 12,
-        },
-      ],
+// vi.hoisted, because vitest lifts vi.mock above every import, and the factory
+// below reads these the moment the edge component is imported.
+const { sourceNode, targetNode } = vi.hoisted(() => ({
+  sourceNode: {
+    internals: {
+      positionAbsolute: { x: 120, y: 80 },
+      handleBounds: {
+        source: [
+          {
+            id: "true",
+            position: "bottom",
+            x: 70,
+            y: 180,
+            width: 12,
+            height: 12,
+          },
+          {
+            id: "false",
+            position: "bottom",
+            x: 110,
+            y: 180,
+            width: 12,
+            height: 12,
+          },
+        ],
+      },
     },
   },
-};
-
-const targetNode = {
-  internals: {
-    positionAbsolute: { x: 360, y: 120 },
-    handleBounds: {
-      target: [
-        { id: "in", position: "top", x: 88, y: 0, width: 12, height: 12 },
-      ],
+  targetNode: {
+    internals: {
+      positionAbsolute: { x: 360, y: 120 },
+      handleBounds: {
+        target: [
+          { id: "in", position: "top", x: 88, y: 0, width: 12, height: 12 },
+        ],
+      },
     },
   },
-};
+}));
 
-mock.module("@xyflow/react", () => ({
+vi.mock("@xyflow/react", () => ({
   applyEdgeChanges: (_changes: unknown, edges: unknown[]) => edges,
   applyNodeChanges: (_changes: unknown, nodes: unknown[]) => nodes,
   BaseEdge: ({
@@ -79,8 +83,6 @@ mock.module("@xyflow/react", () => ({
     return undefined;
   },
 }));
-
-const { Edge } = await import("@/components/flow-elements/edge");
 
 function renderAnimatedEdge(sourceHandleId?: string) {
   return render(

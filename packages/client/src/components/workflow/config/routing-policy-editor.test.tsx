@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import { RoutingPolicyEditor } from "@/components/workflow/config/routing-policy-editor";
 import type { RoutingPolicy } from "@rova/shared/workflow/routing-policy";
@@ -18,7 +18,7 @@ function renderEditor(props: {
   eventTypes: string[] | undefined;
   showTriggerabilityWarning?: boolean;
 }) {
-  const onChange = mock((_policy: RoutingPolicy) => undefined);
+  const onChange = vi.fn((_policy: RoutingPolicy) => undefined);
   const view = render(
     <RoutingPolicyEditor
       disabled={false}

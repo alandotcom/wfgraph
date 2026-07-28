@@ -1,6 +1,12 @@
-import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createApiKeyRecord,
+  validateApiKey,
+} from "@/backend/services/api-keys/auth";
 
-const mocks = (() => {
+// vi.hoisted, because vitest lifts vi.mock above every import, and the factories
+// below read this object the moment the service module is imported.
+const mocks = vi.hoisted(() => {
   const findMany = vi.fn();
   const where = vi.fn(() => Promise.resolve([]));
   const set = vi.fn(() => ({ where }));
@@ -21,9 +27,9 @@ const mocks = (() => {
     update,
     logger,
   };
-})();
+});
 
-mock.module("@/backend/lib/db", () => ({
+vi.mock("@/backend/lib/db", () => ({
   db: {
     query: {
       apiKeys: {
@@ -34,17 +40,14 @@ mock.module("@/backend/lib/db", () => ({
   },
 }));
 
-mock.module("@/backend/lib/logger", () => ({
+vi.mock("@/backend/lib/logger", () => ({
   getAppLogger: () => mocks.logger,
 }));
 
-mock.module("bcryptjs", () => ({
+vi.mock("bcryptjs", () => ({
   hash: async (value: string) => `hash:${value}`,
   compare: async (value: string, hashed: string) => hashed === `hash:${value}`,
 }));
-
-const { createApiKeyRecord, validateApiKey } =
-  await import("@/backend/services/api-keys/auth");
 
 describe("api key auth", () => {
   beforeEach(() => {

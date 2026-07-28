@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { ApiError } from "./rpc-client";
 import { mutationErrorToast } from "./query-client";
 

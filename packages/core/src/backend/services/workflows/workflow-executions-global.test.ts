@@ -1,6 +1,9 @@
-import { beforeEach, describe, expect, it, mock, vi } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getWorkflowExecutionsGlobalResult } from "@/backend/services/workflows/workflow-executions-global";
 
-const mocks = (() => {
+// vi.hoisted, because vitest lifts vi.mock above every import, and the factories
+// below read this object the moment the service module is imported.
+const mocks = vi.hoisted(() => {
   const limit = vi.fn();
   const orderBy = vi.fn(() => ({ limit }));
   const where = vi.fn(() => ({ orderBy }));
@@ -25,20 +28,17 @@ const mocks = (() => {
     limit,
     logger,
   };
-})();
+});
 
-mock.module("@/backend/lib/db", () => ({
+vi.mock("@/backend/lib/db", () => ({
   db: {
     select: mocks.select,
   },
 }));
 
-mock.module("@/backend/lib/logger", () => ({
+vi.mock("@/backend/lib/logger", () => ({
   getAppLogger: () => mocks.logger,
 }));
-
-const { getWorkflowExecutionsGlobalResult } =
-  await import("@/backend/services/workflows/workflow-executions-global");
 
 describe("getWorkflowExecutionsGlobalResult", () => {
   beforeEach(() => {

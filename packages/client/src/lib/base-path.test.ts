@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "vitest";
 import { getBasePath } from "./base-path";
 
 // The server injects <base href> into index.html, and this tag is the only

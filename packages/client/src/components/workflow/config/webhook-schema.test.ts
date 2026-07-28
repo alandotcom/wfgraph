@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { getValueByPath } from "@rova/shared/utils/object-path";
 import {
   flattenSchemaPathOptions,

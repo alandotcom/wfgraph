@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkCelBooleanExpression } from "@/backend/lib/cel/environment";
 import {
   registerRuntimeAction,
@@ -19,7 +19,7 @@ import {
 
 // Condition steps log through step-handler, which is not behind the store
 // port; this stub keeps that path off a database.
-mock.module("@/backend/lib/workflow-logging", () => ({
+vi.mock("@/backend/lib/workflow-logging", () => ({
   logStepStartDb: () =>
     Promise.resolve({ logId: "mock-log-id", startTime: Date.now() }),
   logStepCompleteDb: () => Promise.resolve(),

@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { NodeConfigPatch } from "@/components/workflow/config/node-config-patch";
@@ -34,7 +34,7 @@ function renderSelect(options: {
     edges: [],
   });
 
-  const onUpdateConfig = mock((_patch: NodeConfigPatch) => undefined);
+  const onUpdateConfig = vi.fn((_patch: NodeConfigPatch) => undefined);
   const view = render(
     <JotaiProvider store={store}>
       <WaitEventSelect

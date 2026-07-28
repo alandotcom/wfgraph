@@ -33,7 +33,7 @@ unaffected.
 ```bash
 bun run type-check   # tsc --noEmit, TypeScript 7
 bun run lint         # oxlint --type-aware, prints nothing when clean
-bun test             # bun:test
+bun run test         # vitest, one project per environment
 bun run build        # library via tsdown, then the client
 bun run knip         # unused files, exports, dependencies
 bun run fix          # oxfmt, must leave the tree clean
@@ -88,10 +88,13 @@ do not introduce Radix. Bundle size is not a concern here.
 
 ## Pitfalls that have bitten
 
-**`mock.module` is process-wide in Bun.** A test file that stubs a module affects every
-other test file in the run. Gate a stub behind a flag set in `beforeAll`/`afterAll`, and
-bind the real function eagerly, because a module namespace is a live view and reading it
-after the mock recurses forever.
+**`vi.mock` is hoisted, and scoped to one file.** vitest lifts every `vi.mock` call above
+the imports, so a factory that reads a variable declared later in the file hits the
+temporal dead zone. Put that variable in `vi.hoisted`, which vitest lifts higher still.
+The stub reaches only the file that declares it, because vitest resets the module registry
+between test files, so a stub needs no on/off flag and the subject can be a plain static
+import. For a stub that only one case in a file wants, `vi.doMock` stays where it is
+written and takes effect on the next dynamic import.
 
 **Inngest shapes the workflow engine.** `step.*` inside `step.run()` is a runtime error,
 so Wait nodes stay outside the node-level step wrapper. Retries are function-level, each

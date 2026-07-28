@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { type } from "arktype";
 import { z } from "zod";
 import { createAction } from "./action-registry";
@@ -58,7 +58,7 @@ describe("jsonSchemaLibraryOptions with Arktype", () => {
     const props = jsonSchema.properties as Record<string, unknown>;
     const isoDate = props.isoDate as Record<string, unknown>;
     expect(isoDate.type).toBe("string");
-    expect(isoDate.pattern).toBeString();
+    expect(typeof isoDate.pattern).toBe("string");
   });
 
   it("handles mixed schema with dates and plain fields", () => {
