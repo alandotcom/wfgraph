@@ -4,9 +4,6 @@ import { sendEmailStep } from "./send-email";
 // The step's job is deciding whether and what to send, so the seam under it is
 // the Resend client. What that client puts on the wire is covered separately in
 // resend/client.test.ts, against a stubbed fetch.
-//
-// vi.hoisted, because vitest lifts vi.mock above every import, and the factories
-// below read this object the moment the step module is imported.
 const mocks = vi.hoisted(() => {
   const fetchCredentials = vi.fn();
   const sendEmail = vi.fn();

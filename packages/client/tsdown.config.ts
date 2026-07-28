@@ -1,7 +1,8 @@
 import { defineConfig } from "tsdown";
 
-// Only src/index.ts. The SPA itself is built by scripts/build-client.ts into
-// dist/client, beside this output, which is what `clientBundle.dir` resolves to.
+// Only src/index.ts. The SPA itself is built by Vite, driven by the repo root's
+// vite.config.ts through `pnpm run build:client`, into dist/client beside this
+// output, which is what `clientBundle.dir` resolves to.
 export default defineConfig({
   entry: ["src/index.ts"],
   format: "esm",

@@ -42,9 +42,13 @@ function createEdge(input: {
 
 describe("upstream-node-fields", () => {
   // The runtime action registry is module-level state, so a case that registers
-  // an action has to hand it back before the next one runs.
+  // an action has to hand it back before the next one runs. The doMock below is
+  // the same problem one level up: left installed, it would hold the stubbed
+  // runtime-extensions module and its emptied registry over every later case.
   afterEach(() => {
     clearRuntimeActions();
+    vi.doUnmock("@/lib/runtime-extensions");
+    vi.resetModules();
   });
 
   it("discovers transitive upstream nodes and condition fields", () => {

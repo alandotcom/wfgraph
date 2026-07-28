@@ -4,8 +4,6 @@ import {
   putIntegration,
 } from "@/backend/services/integrations/integrations";
 
-// vi.hoisted, because vitest lifts vi.mock above every import, and the factories
-// below read this object the moment the service module is imported.
 const mocks = vi.hoisted(() => {
   const createIntegration = vi.fn();
   const deleteIntegration = vi.fn();

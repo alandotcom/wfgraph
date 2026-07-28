@@ -38,6 +38,9 @@ const CONTENT_TYPE_MAP: Record<string, string> = {
 const CLIENT_ENTRY_FILE = "index.html";
 
 // Paths the browser router owns. They carry no file, so they get index.html.
+// The list mirrors the routes declared in packages/client/src/router.tsx, which
+// is where a new page is added; the two have to agree or a route the browser
+// knows would 404 on a fresh page load.
 const SPA_PATHS = new Set(["/", "/workflows"]);
 
 function getContentType(filePath: string): string {
@@ -56,7 +59,15 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-function isSpaPath(pathname: string): boolean {
+/**
+ * True for a path the browser router owns, so the answer is index.html rather
+ * than a file lookup.
+ *
+ * Exported because development serves the SPA from Vite in the repo's own
+ * `server.ts` instead of from here, and that dispatch has to make the same call
+ * this one does. Two copies of the rule would let a route work in one mode only.
+ */
+export function isSpaPath(pathname: string): boolean {
   return SPA_PATHS.has(pathname) || pathname.startsWith("/workflows/");
 }
 

@@ -3,8 +3,6 @@ import { render } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { Edge } from "@/components/flow-elements/edge";
 
-// vi.hoisted, because vitest lifts vi.mock above every import, and the factory
-// below reads these the moment the edge component is imported.
 const { sourceNode, targetNode } = vi.hoisted(() => ({
   sourceNode: {
     internals: {

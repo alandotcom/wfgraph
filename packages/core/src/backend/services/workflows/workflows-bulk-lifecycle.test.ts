@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { postWorkflowsBulkLifecycleResult } from "@/backend/services/workflows/workflows-bulk-lifecycle";
 
-// vi.hoisted, because vitest lifts vi.mock above every import, and the factories
-// below read this object the moment the service module is imported.
 const mocks = vi.hoisted(() => {
   const findFirst = vi.fn();
   const where = vi.fn();

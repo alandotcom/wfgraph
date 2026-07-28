@@ -45,6 +45,20 @@ describe("serveClientAsset", () => {
     expect(await response.text()).toContain('<base href="/" />');
   });
 
+  // The bare path, without the trailing slash the prefix rule above matches on.
+  // It only answers because it is spelled out in the SPA path set, so a case of
+  // its own keeps that entry from being dropped as redundant.
+  it("falls back to the SPA entry on the bare workflows list path", async () => {
+    const response = await serveClientAsset({
+      clientDir,
+      basePath: "",
+      pathname: "/workflows",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('<base href="/" />');
+  });
+
   it("points the SPA entry at the mount point when Rova is mounted under one", async () => {
     const response = await serveClientAsset({
       clientDir,

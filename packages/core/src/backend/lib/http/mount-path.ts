@@ -13,7 +13,7 @@
 const SAFE_PATH_RE = /^[a-zA-Z0-9/_.-]*$/;
 const TRAILING_SLASHES_RE = /\/+$/;
 // Matches the SPA's `<base>` tag in whatever form the client build emitted it.
-// Vite copies the tag through from packages/client/index.html verbatim, and that
+// Vite copies the tag through from packages/client/src/index.html verbatim, and that
 // file writes the self-closing `<base href="/" />`, so an exact-string replace of
 // `<base href="/">` matched nothing and a sub-path mount was silently served a
 // client that built every URL from the root.

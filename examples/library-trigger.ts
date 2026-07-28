@@ -1,9 +1,12 @@
+// First, so the rest of the graph loads with .env already applied. The repo has
+// one .env loader and this example uses it rather than its own, which is how the
+// precedence rule (.env.local over .env, the shell over both) stays in one place.
+import "../load-env";
 import { createServer } from "node:http";
 import { createAction, createTrigger } from "@rova/core";
 import { clientBundle } from "@rova/client";
 import { createRovaApp } from "@rova/core/app";
 import { createRequestListener } from "@rova/core/node";
-import { config as loadDotEnv } from "dotenv";
 import postgres from "postgres";
 import { z } from "zod";
 
@@ -21,11 +24,6 @@ const appointmentSchema = z.object({
   patientName: z.string(),
   status: z.string(),
 });
-
-function loadEnvironmentFiles(): void {
-  loadDotEnv({ path: ".env" });
-  loadDotEnv({ path: ".env.local" });
-}
 
 function asNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") {
@@ -140,8 +138,6 @@ const cancelAppointmentAction = createAction({
 });
 
 async function main(): Promise<void> {
-  loadEnvironmentFiles();
-
   const databaseUrl =
     asNonEmptyString(process.env.DATABASE_URL) ?? DEFAULT_DATABASE_URL;
   await ensureDatabaseExists(databaseUrl);

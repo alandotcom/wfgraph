@@ -66,7 +66,7 @@ PORT=4017
 INNGEST_DEV=http://localhost:8388
 INNGEST_BASE_URL=http://localhost:8288
 RUN_DB_MIGRATIONS=false
-MIGRATIONS_DIR=drizzle
+MIGRATIONS_DIR=packages/core/drizzle
 ```
 
 Integration-specific credentials can be provided via the integrations UI and/or environment variables, depending on plugin.
@@ -76,7 +76,10 @@ Integration-specific credentials can be provided via the integrations UI and/or 
 The server can run Drizzle migrations automatically during startup.
 
 - Controlled by `RUN_DB_MIGRATIONS` (default `false`)
-- Migration folder is `MIGRATIONS_DIR` (default `drizzle`)
+- Migration folder defaults to the `drizzle/` directory `@rova/core` ships, found relative
+  to the running code. `MIGRATIONS_DIR` overrides it and is resolved from the working
+  directory. Nothing is guessed from the working directory otherwise, so an embedder's own
+  `./drizzle` is never mistaken for Rova's.
 - Startup migrations run before the HTTP server starts (`server.ts`)
 
 Examples:
@@ -85,8 +88,8 @@ Examples:
 # Run migrations at app startup
 RUN_DB_MIGRATIONS=true pnpm run dev:app
 
-# Use a custom migration directory
-RUN_DB_MIGRATIONS=true MIGRATIONS_DIR=drizzle pnpm run dev:app
+# Use a custom migration directory, resolved from the working directory
+RUN_DB_MIGRATIONS=true MIGRATIONS_DIR=packages/core/drizzle pnpm run dev:app
 ```
 
 ## Local Development

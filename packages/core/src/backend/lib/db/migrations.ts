@@ -13,10 +13,12 @@ const currentDir = dirname(fileURLToPath(import.meta.url));
 // packages/core/drizzle is the one copy of the migrations. drizzle-kit generates
 // into it, "files" in packages/core/package.json publishes it, and each entry
 // below is that same directory seen from a layout the code can run in.
+// Nothing here is resolved from the working directory: an embedder who runs
+// drizzle-kit themselves has their own ./drizzle beside it, and picking that up
+// would run their migrations on Rova's connection. An operator whose migrations
+// really do sit beside the process says so with MIGRATIONS_DIR or
+// migrations.migrationsDir.
 const MIGRATIONS_DIR_CANDIDATES = [
-  // A deployment that copies the migrations beside whatever it runs from, which
-  // is also the layout `MIGRATIONS_DIR=drizzle` names.
-  resolve(process.cwd(), "drizzle"),
   // Running from source, this file being packages/core/src/backend/lib/db/.
   resolve(currentDir, "../../../../drizzle"),
   // Installed as a package, this file being bundled into a chunk in the

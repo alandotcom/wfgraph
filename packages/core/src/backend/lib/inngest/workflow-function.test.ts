@@ -9,8 +9,6 @@ import {
   createWorkflowTriggerExpression,
 } from "./workflow-function";
 
-// vi.hoisted, because vitest lifts vi.mock above every import, and the factory
-// below reads this the moment the handler module is imported.
 const { executeWorkflowMock } = vi.hoisted(() => ({
   executeWorkflowMock: vi.fn(),
 }));

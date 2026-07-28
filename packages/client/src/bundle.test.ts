@@ -23,9 +23,15 @@ let bundleDir: string;
 // Vite's is a few seconds once its dependency cache is warm and considerably
 // longer on the first run in a clean checkout, which is what CI does.
 beforeAll(async () => {
-  await run("pnpm", ["run", "build:client"], { cwd: repoRoot });
+  // execFile buffers stdout and stderr and rejects with ENOBUFS past its 1 MiB
+  // default, which on a failing build would replace the compiler's own error
+  // with a truncated one. A build's output is worth however much it is.
+  const capture = { maxBuffer: Number.POSITIVE_INFINITY };
+
+  await run("pnpm", ["run", "build:client"], { cwd: repoRoot, ...capture });
   await run("pnpm", ["exec", "tsdown"], {
     cwd: join(repoRoot, "packages/client"),
+    ...capture,
   });
 
   // A file:// URL, because the import specifier is an absolute path and the

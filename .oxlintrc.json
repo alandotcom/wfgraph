@@ -286,6 +286,9 @@
     {
       "files": [
         "server.ts",
+        "examples/library-trigger.ts",
+        "scripts/migrate-prod.ts",
+        "packages/core/drizzle.config.ts",
         "packages/core/src/app.ts",
         "packages/plugins/src/ui.ts",
         "packages/client/src/main.tsx",

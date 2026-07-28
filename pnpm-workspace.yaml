@@ -20,14 +20,17 @@ catalog:
   es-toolkit: ^1.44.0
   graphology: ^0.26.0
   nanoid: ^5.1.6
+  postgres: ^3.4.9
   react: 19.2.4
   react-dom: 19.2.4
   zod: ^4.3.6
 
-# Pins one React copy through the whole graph, including transitive peers.
+# Pins one React copy through the whole graph, including transitive peers. The
+# catalog protocol is how pnpm keeps an override and the catalog entry from
+# drifting apart, so the version is written once, above.
 overrides:
-  react: 19.2.4
-  react-dom: 19.2.4
+  react: "catalog:"
+  react-dom: "catalog:"
 
 # pnpm refuses to run a dependency's install scripts until the dependency is
 # named here, so a package that gains a postinstall arrives as a warning rather
@@ -37,8 +40,12 @@ overrides:
 # inngest-cli downloads its platform binary and protobufjs generates its typed
 # accessors, so both need their scripts.
 #
-# esbuild and @clerk/shared ship their platform binaries as optional
-# dependencies, so their scripts only re-check work the resolver already did.
+# esbuild ships its platform binaries as optional dependencies, so its script
+# only re-checks work the resolver already did.
+#
+# @clerk/shared's postinstall prints a telemetry notice and writes a marker file
+# into the developer's own config directory. Nothing the package needs in order
+# to work, so it stays off.
 allowBuilds:
   "@clerk/shared": false
   esbuild: false

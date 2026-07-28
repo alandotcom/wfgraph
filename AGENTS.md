@@ -113,21 +113,40 @@ step carrying its own counter. Step results round-trip through JSON, so a node o
 to be JSON-safe: no `Date`, `Map`, or `Set`.
 
 **happy-dom belongs to the client project alone.** `vitest.config.ts` declares two
-projects: `node` covers `packages/{shared,core,plugins}` and runs in vitest's node
-environment, and `client` covers `packages/client`, runs in happy-dom, and is the only
-one that loads `test-setup.ts`. That boundary is load-bearing. happy-dom ships its own
-`TransformStream` whose `writable` is a boolean, and Inngest's execution engine builds a
-`TransformStream` on every run, so a backend test that inherited happy-dom's globals
-would throw `getWriter is not a function` the moment it touched a function. Keep a
-backend test file under one of the three node-project paths.
+projects: `client` covers `packages/client`, runs in happy-dom, and is the only one that
+loads `test-setup.ts`; `node` takes every other `packages/*/src` test and runs in vitest's
+node environment. That boundary is load-bearing. happy-dom ships its own `TransformStream`
+whose `writable` is a boolean, and Inngest's execution engine builds a `TransformStream` on
+every run, so a backend test that inherited happy-dom's globals would throw
+`getWriter is not a function` the moment it touched a function. The node project's include
+is the whole of `packages/*/src` with the client excluded, rather than a list of package
+names, because a test file outside every project's globs is skipped without a word: a new
+package's tests run from the day they are written. A test file outside `packages/` still
+runs nowhere.
+
+**vitest.config.ts replaces vite.config.ts, it does not extend it.** vitest resolves
+`vitest.config` before `vite.config` and stops at the first file it finds, so anything the
+tests need has to be declared in `vitest.config.ts` too. The `@rova/plugins` source aliases
+are shared between the two as `workspaceSourceAliases` from
+`scripts/plugins/package-scoped-alias.ts` for exactly that reason; without them a test
+importing `@rova/plugins` would resolve through the package's `exports` to a stale `dist`.
 
 **Development needs no client build.** `server.ts` creates Vite in middleware mode inside
 its own process, so `dev:app` is one process on port 4017 and Vite compiles the SPA per
 request. `client` goes unset there, because the option takes a built bundle and development
-has none: the SPA paths are dispatched to Vite before `rova.fetch` sees them, and everything
-Vite does not recognise falls through to it. Production is the other arrangement, and
+has none. Dispatch order is what makes the two halves coexist: anything under
+`${rova.basePath}/api` goes to Rova before Vite is consulted, everything else meets Vite's
+middlewares, and what Vite does not recognise falls through to a callback that answers a
+page view with the SPA and hands the rest to Rova. The API has to come first because Vite's
+middleware stack answers every CORS preflight itself and rejects a non-loopback `Host`
+header, which would take the webhook route's preflight and every tunnelled webhook. The SPA
+predicate is `isSpaPath` from `@rova/core/backend/lib/http/client-assets`, imported so
+development and production cannot disagree about which paths the browser router owns; the
+list itself mirrors `packages/client/src/router.tsx`. Development binds `127.0.0.1` unless
+`HOST` says otherwise, because middleware mode moves the listen call away from Vite and
+Vite's `/@fs` route reads any file in the repo. Production is the other arrangement, and
 `pnpm run start` runs it: the built bundle goes to `createRovaApp` as `client`, Rova applies
-the same SPA rule itself, and `server.ts` routes nothing.
+the same SPA rule itself, `server.ts` routes nothing, and the bind covers every interface.
 
 **Four published surfaces.** `@rova/core` is the backend, `@rova/core/plugin` the five
 names an integration package may use, `@rova/client` the editor, `@rova/plugins` the

@@ -4,9 +4,6 @@ import { sendSlackMessageStep } from "./send-slack-message";
 // The step's job is deciding whether and what to send, so the seam under it is
 // the Slack client. What that client puts on the wire is covered separately in
 // slack/client.test.ts, against a stubbed fetch.
-//
-// vi.hoisted, because vitest lifts vi.mock above every import, and the factories
-// below read this object the moment the step module is imported.
 const mocks = vi.hoisted(() => {
   const fetchCredentials = vi.fn();
   const callSlack = vi.fn();

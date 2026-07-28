@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getWorkflowExecutionsGlobalResult } from "@/backend/services/workflows/workflow-executions-global";
 
-// vi.hoisted, because vitest lifts vi.mock above every import, and the factories
-// below read this object the moment the service module is imported.
 const mocks = vi.hoisted(() => {
   const limit = vi.fn();
   const orderBy = vi.fn(() => ({ limit }));

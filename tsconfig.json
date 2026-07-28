@@ -23,6 +23,13 @@
       "@rova/plugins": ["./packages/plugins/src/index.ts"],
       "@rova/plugins/*": ["./packages/plugins/src/*"],
       "@/backend/*": ["./packages/core/src/backend/*"],
+      // `@/` means the importing package's own src, and this cannot say that:
+      // tsc takes the first of the four that resolves, whoever wrote the import.
+      // scripts/plugins/package-scoped-alias.ts is the rule as the bundler and
+      // the test runner apply it, and .oxlintrc.json is what actually rejects a
+      // cross-package `@/`. Node subpath imports (`#/`) would express the scope
+      // per package and retire the divergence; until then the four entries here
+      // are a superset that happens to work.
       "@/*": [
         "./packages/shared/src/*",
         "./packages/core/src/*",

@@ -3,7 +3,10 @@ import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import { packageScopedAlias } from "./scripts/plugins/package-scoped-alias";
+import {
+  packageScopedAlias,
+  workspaceSourceAliases,
+} from "./scripts/plugins/package-scoped-alias";
 
 /**
  * The SPA's build and its dev server. `pnpm run build:client` runs the build
@@ -19,14 +22,11 @@ const repoRoot = fileURLToPath(new URL(".", import.meta.url));
 const clientSrc = fileURLToPath(
   new URL("./packages/client/src", import.meta.url)
 );
-const pluginsSrc = fileURLToPath(
-  new URL("./packages/plugins/src", import.meta.url)
-);
 
-// `build:client` sets this so the bundle lands beside @rova/client's own
-// tsdown output, which is where `clientBundle.dir` points a host.
+// Beside @rova/client's own tsdown output, which is where `clientBundle.dir`
+// points a host.
 const outDir = fileURLToPath(
-  new URL(process.env.CLIENT_DIST_DIR ?? "./dist/client", import.meta.url)
+  new URL("./packages/client/dist/client", import.meta.url)
 );
 
 export default defineConfig({
@@ -52,15 +52,7 @@ export default defineConfig({
     tailwindcss(),
   ],
   resolve: {
-    alias: [
-      // @rova/plugins publishes its dist, but the client is built from the
-      // workspace and has to see plugin sources: development would otherwise
-      // serve whatever the last `build:plugins` left behind, and the two halves
-      // of the editor would disagree about which integrations exist. The root
-      // tsconfig's paths say the same thing for tsc and for oxlint.
-      { find: /^@rova\/plugins$/, replacement: `${pluginsSrc}/index.ts` },
-      { find: /^@rova\/plugins\/(.*)$/, replacement: `${pluginsSrc}/$1` },
-    ],
+    alias: [...workspaceSourceAliases],
   },
   build: {
     outDir,

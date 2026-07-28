@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resumeMatchingWaitHooks } from "./workflow-wait-resume";
 
-// vi.hoisted, because vitest lifts vi.mock above every import, and the factories
-// below read these the moment the module under test is imported.
 const {
   sendWorkflowWaitSignalMock,
   logWorkflowAuditEventMock,

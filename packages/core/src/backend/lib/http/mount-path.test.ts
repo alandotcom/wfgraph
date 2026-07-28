@@ -62,7 +62,7 @@ describe("rewriteClientBaseHref", () => {
     );
   });
 
-  // packages/client/index.html writes the self-closing form and Vite copies it
+  // packages/client/src/index.html writes the self-closing form and Vite copies it
   // through, so this is the shape the real built client actually arrives in.
   it("rewrites the self-closing form the client build emits", () => {
     expect(
