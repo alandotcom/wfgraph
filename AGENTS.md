@@ -165,3 +165,23 @@ The nine `no-effect/*` rules
 No emojis. Do not create new markdown docs unless asked. When you change how something
 works, update the line here that describes it, and check that any path this file names
 still exists.
+
+## Agent skills
+
+Configuration the engineering skills read before they act. Editing the files under
+`docs/agents/` changes their behaviour; nothing here is enforced by lint or tests.
+
+### Issue tracker
+
+Issues live as GitHub issues on `alandotcom/rova`, driven by the `gh` CLI.
+See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles, each label string equal to its name.
+See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root, both created lazily.
+See `docs/agents/domain.md`.
