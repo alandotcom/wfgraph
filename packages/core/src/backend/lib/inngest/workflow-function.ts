@@ -1,3 +1,4 @@
+import type { InngestFunction } from "inngest";
 import type { z } from "zod";
 import {
   executeWorkflow,
@@ -93,11 +94,15 @@ async function workflowRunRequestedHandler({
   return result;
 }
 
+// The return type is stated because declaration emit cannot name the inferred
+// one: it references types inngest keeps internal (`SendSignalResponse` under
+// inngest/api). `InngestFunction.Any` is what `getInngestFunctions` collects
+// these into anyway.
 export function createWorkflowRunRequestedFunction(input: {
   id: string;
   name?: string;
   workflowId: string;
-}) {
+}): InngestFunction.Any {
   return getInngestClient().createFunction(
     {
       id: input.id,

@@ -1,14 +1,18 @@
 import { createAction, createTrigger } from "@rova/core";
 import { clientBundle } from "@rova/client";
 import { createRovaApp } from "@rova/core/app";
+import { SQL } from "bun";
 import { config as loadDotEnv } from "dotenv";
 import { z } from "zod";
 
 const APPOINTMENT_TRIGGER_TYPE = "AppointmentLifecycle";
-const DEFAULT_PORT = 4017;
-const DEFAULT_INNGEST_BASE_URL = "http://localhost:8388";
+// One above the dev server's defaults on every dial, so the example runs while
+// `bun run dev` is up: its port, its Inngest dev server, and its database are
+// all its own.
+const DEFAULT_PORT = 4018;
+const DEFAULT_INNGEST_BASE_URL = "http://localhost:8389";
 const DEFAULT_DATABASE_URL =
-  "postgresql://workflow:workflow@localhost:55437/workflow_builder";
+  "postgresql://workflow:workflow@localhost:55437/workflow_builder_example";
 const appointmentSchema = z.object({
   id: z.string(),
   startsAt: z.string(),
@@ -32,6 +36,37 @@ function asNonEmptyString(value: unknown): string | undefined {
   }
 
   return trimmed;
+}
+
+// The dev server's database is shaped by `bun run db:push`, which records no
+// migration journal, so this example's startup migrator would replay the first
+// migration into it and fail on schemas that already exist. The example keeps a
+// sibling database in the same Postgres container and creates it here on first
+// run. Bun's built-in SQL client does the two admin queries, so the example
+// adds no dependency for them.
+async function ensureDatabaseExists(databaseUrl: string): Promise<void> {
+  const databaseName = decodeURIComponent(
+    new URL(databaseUrl).pathname.slice(1)
+  );
+
+  // CREATE DATABASE has to run from a different database on the same server;
+  // `postgres` is the maintenance database every installation has.
+  const maintenanceUrl = new URL(databaseUrl);
+  maintenanceUrl.pathname = "/postgres";
+
+  const admin = new SQL(maintenanceUrl);
+  try {
+    const existing =
+      await admin`SELECT 1 FROM pg_database WHERE datname = ${databaseName}`;
+    if (existing.length === 0) {
+      await admin.unsafe(
+        `CREATE DATABASE "${databaseName.replaceAll('"', '""')}"`
+      );
+      console.log("[example] created database", databaseName);
+    }
+  } finally {
+    await admin.close();
+  }
 }
 
 // When `event` is set, workflows using this trigger listen for the named
@@ -107,6 +142,7 @@ async function main(): Promise<void> {
 
   const databaseUrl =
     asNonEmptyString(Bun.env.DATABASE_URL) ?? DEFAULT_DATABASE_URL;
+  await ensureDatabaseExists(databaseUrl);
 
   const portRaw = asNonEmptyString(Bun.env.PORT);
   const port = portRaw ? Number(portRaw) : DEFAULT_PORT;

@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import type { InngestFunction } from "inngest";
 import { db } from "@/backend/lib/db";
 import { workflows } from "@/backend/lib/db/schema";
 import { getAppLogger } from "@/backend/lib/logger";
@@ -30,11 +31,15 @@ function toTriggerPayload(value: unknown): JsonObject {
   return parsed.success ? parsed.data : {};
 }
 
+// The return type is stated because declaration emit cannot name the inferred
+// one: it references types inngest keeps internal (`SendSignalResponse` under
+// inngest/api). `InngestFunction.Any` is what `getInngestFunctions` collects
+// these into anyway.
 export function createInngestEventListenerFunction(input: {
   id: string;
   workflowId: string;
   inngestEventTrigger: InngestEventTriggerConfig;
-}) {
+}): InngestFunction.Any {
   const { eventNames, functionOptions } = input.inngestEventTrigger;
   const eventLabel = eventNames.join(", ");
 
