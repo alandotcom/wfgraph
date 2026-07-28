@@ -3,8 +3,11 @@ import { Effect } from "effect";
 import type {
   EffectLogger,
   LogProperties,
-} from "@/backend/lib/effect/app-logger";
-import { DatabaseError, internalFailure } from "@/backend/lib/effect/database";
+} from "#src/backend/lib/effect/app-logger";
+import {
+  DatabaseError,
+  internalFailure,
+} from "#src/backend/lib/effect/database";
 import {
   Conflict,
   InternalFailure,
@@ -12,9 +15,9 @@ import {
   NotFound,
   type ServiceFailure,
   Unauthorized,
-} from "@/backend/lib/effect/failures";
-import type { ServiceFailureKind } from "@/backend/lib/service-result";
-import { createRovaRuntime, runToServiceResult } from "@/backend/runtime";
+} from "#src/backend/lib/effect/failures";
+import type { ServiceFailureKind } from "#src/backend/lib/service-result";
+import { createRovaRuntime, runToServiceResult } from "#src/backend/runtime";
 
 /**
  * The seam every migrated service answers through.

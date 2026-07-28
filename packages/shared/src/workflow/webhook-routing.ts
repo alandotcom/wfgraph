@@ -1,9 +1,9 @@
-import type { JsonObject } from "@/types/json";
-import { getValueByPath } from "@/utils/object-path";
+import type { JsonObject } from "#src/types/json";
+import { getValueByPath } from "#src/utils/object-path";
 import {
   type WebhookTriggerConfigInput,
   webhookTriggerConfigSchema,
-} from "@/workflow/schemas";
+} from "#src/workflow/schemas";
 
 export const DEFAULT_WEBHOOK_EVENT_PATH = "event";
 export const DEFAULT_WEBHOOK_CORRELATION_PATH = "data.id";

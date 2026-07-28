@@ -1,13 +1,13 @@
 import { eq } from "drizzle-orm";
 import { uniq } from "es-toolkit/array";
-import { db } from "@/backend/lib/db";
-import { workflows } from "@/backend/lib/db/schema";
-import { getAppLogger } from "@/backend/lib/logger";
+import { db } from "#src/backend/lib/db/index";
+import { workflows } from "#src/backend/lib/db/schema";
+import { getAppLogger } from "#src/backend/lib/logger";
 import {
   failure,
   type ServiceResult,
   success,
-} from "@/backend/lib/service-result";
+} from "#src/backend/lib/service-result";
 import { getErrorMessage } from "@rova/shared/utils";
 import { deleteWorkflow } from "./workflow";
 

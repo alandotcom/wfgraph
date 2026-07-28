@@ -1,12 +1,12 @@
 import { useMemo } from "react";
-import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
-import { SmartOverlayHeader } from "@/components/overlays/overlay-header";
-import { useOverlay } from "@/components/overlays/overlay-provider";
+import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
+import { SmartOverlayHeader } from "#src/components/overlays/overlay-header";
+import { useOverlay } from "#src/components/overlays/overlay-provider";
 import {
   type NodeConfigFrame,
   NodeConfigPanel,
   useNodeConfigTitle,
-} from "@/components/workflow/node-config-panel";
+} from "#src/components/workflow/node-config-panel";
 import type { OverlayComponentProps } from "./types";
 
 type ConfigurationOverlayProps = OverlayComponentProps;

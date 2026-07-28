@@ -6,7 +6,7 @@ import {
   Node,
   NodeDescription,
   NodeTitle,
-} from "@/components/flow-elements/node";
+} from "#src/components/flow-elements/node";
 import type { WorkflowNodeData } from "@rova/shared/workflow/types";
 import { cn } from "@rova/shared/utils";
 import { parseScheduleExpression } from "@rova/shared/utils/schedule-expression";

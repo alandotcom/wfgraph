@@ -1,4 +1,4 @@
-import { describeTwilioFailure, fetchTwilioAccount } from "@/twilio/client";
+import { describeTwilioFailure, fetchTwilioAccount } from "#src/twilio/client";
 
 export async function testTwilio(credentials: Record<string, string>) {
   const accountSid = credentials.TWILIO_ACCOUNT_SID;

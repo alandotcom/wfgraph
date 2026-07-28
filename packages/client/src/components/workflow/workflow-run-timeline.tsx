@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { cn } from "@rova/shared/utils";
-import { type ExecutionLog } from "@/lib/execution-logs";
+import { type ExecutionLog } from "#src/lib/execution-logs";
 import {
   CollapsibleSection,
   formatDuration,

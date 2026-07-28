@@ -14,8 +14,8 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { getRequestListener } from "@hono/node-server";
-import type { RovaApp } from "@/app";
-import { getAppLogger } from "@/backend/lib/logger";
+import type { RovaApp } from "#src/app";
+import { getAppLogger } from "#src/backend/lib/logger";
 import { getErrorMessage } from "@rova/shared/utils";
 
 const nodeLogger = getAppLogger("http", "node");

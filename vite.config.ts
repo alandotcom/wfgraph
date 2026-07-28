@@ -3,10 +3,7 @@ import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import {
-  packageScopedAlias,
-  workspaceSourceAliases,
-} from "./scripts/plugins/package-scoped-alias";
+import { workspaceSourceAliases } from "./scripts/plugins/workspace-source-aliases";
 
 /**
  * The SPA's build and its dev server. `pnpm run build:client` runs the build
@@ -42,7 +39,6 @@ export default defineConfig({
   // from serving an unrelated directory in development.
   publicDir: false,
   plugins: [
-    packageScopedAlias(),
     react(),
     // The React Compiler memoizes components and hooks, which is why almost
     // nothing in the client reaches for useMemo or useCallback by hand.

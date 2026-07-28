@@ -1,16 +1,16 @@
 import { desc, eq } from "drizzle-orm";
-import { db } from "@/backend/lib/db";
+import { db } from "#src/backend/lib/db/index";
 import {
   workflowExecutionLogs,
   workflowExecutions,
-} from "@/backend/lib/db/schema";
-import { getAppLogger } from "@/backend/lib/logger";
+} from "#src/backend/lib/db/schema";
+import { getAppLogger } from "#src/backend/lib/logger";
 import {
   failure,
   type ServiceResult,
   success,
-} from "@/backend/lib/service-result";
-import { redactSensitiveData } from "@/backend/lib/utils/redact";
+} from "#src/backend/lib/service-result";
+import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import { getErrorMessage } from "@rova/shared/utils";
 
 const executionLogsLogger = getAppLogger("workflow", "execution-logs");

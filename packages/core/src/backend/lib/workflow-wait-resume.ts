@@ -1,11 +1,11 @@
 import type { JsonObject } from "@rova/shared/types/json";
-import { sendWorkflowWaitSignal } from "@/backend/lib/inngest/runtime-events";
-import { getAppLogger } from "@/backend/lib/logger";
-import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
+import { sendWorkflowWaitSignal } from "#src/backend/lib/inngest/runtime-events";
+import { getAppLogger } from "#src/backend/lib/logger";
+import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
 import {
   markExecutionRunning,
   markWaitStateStatus,
-} from "@/backend/lib/workflow-wait-state";
+} from "#src/backend/lib/workflow-wait-state";
 import {
   readWaitForEvents,
   waitMatchesEvent,

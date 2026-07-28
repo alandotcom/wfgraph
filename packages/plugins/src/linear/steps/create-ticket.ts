@@ -4,8 +4,8 @@ import {
   type StepInput,
   withStepLogging,
 } from "@rova/core/plugin";
-import type { LinearCredentials } from "@/linear/credentials";
-import { toLinearError } from "@/linear/errors";
+import type { LinearCredentials } from "#src/linear/credentials";
+import { toLinearError } from "#src/linear/errors";
 import { getErrorMessage } from "@rova/shared/utils";
 
 type CreateTicketResult =

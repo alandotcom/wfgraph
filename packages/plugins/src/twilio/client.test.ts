@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTwilioMessage, fetchTwilioAccount } from "@/twilio/client";
+import { createTwilioMessage, fetchTwilioAccount } from "#src/twilio/client";
 
 /**
  * What goes on the wire, now that this plugin builds the request itself instead

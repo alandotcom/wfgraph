@@ -17,103 +17,103 @@ import {
 } from "@rova/core/plugin";
 
 registerStepImporter("acuity/list-appointment-types", {
-  importer: () => import("@/acuity/steps/list-appointment-types"),
+  importer: () => import("#src/acuity/steps/list-appointment-types"),
   stepFunction: "listAppointmentTypesStep",
   label: "List Appointment Types",
 });
 
 registerStepImporter("acuity/list-appointments", {
-  importer: () => import("@/acuity/steps/list-appointments"),
+  importer: () => import("#src/acuity/steps/list-appointments"),
   stepFunction: "listAppointmentsStep",
   label: "List Appointments",
 });
 
 registerStepImporter("acuity/get-appointment", {
-  importer: () => import("@/acuity/steps/get-appointment"),
+  importer: () => import("#src/acuity/steps/get-appointment"),
   stepFunction: "getAppointmentStep",
   label: "Get Appointment",
 });
 
 registerStepImporter("acuity/get-availability-dates", {
-  importer: () => import("@/acuity/steps/get-availability-dates"),
+  importer: () => import("#src/acuity/steps/get-availability-dates"),
   stepFunction: "getAvailabilityDatesStep",
   label: "Get Availability Dates",
 });
 
 registerStepImporter("acuity/get-availability-times", {
-  importer: () => import("@/acuity/steps/get-availability-times"),
+  importer: () => import("#src/acuity/steps/get-availability-times"),
   stepFunction: "getAvailabilityTimesStep",
   label: "Get Availability Times",
 });
 
 registerStepImporter("acuity/create-appointment", {
-  importer: () => import("@/acuity/steps/create-appointment"),
+  importer: () => import("#src/acuity/steps/create-appointment"),
   stepFunction: "createAppointmentStep",
   label: "Create Appointment",
 });
 
 registerStepImporter("acuity/reschedule-appointment", {
-  importer: () => import("@/acuity/steps/reschedule-appointment"),
+  importer: () => import("#src/acuity/steps/reschedule-appointment"),
   stepFunction: "rescheduleAppointmentStep",
   label: "Reschedule Appointment",
 });
 
 registerStepImporter("acuity/cancel-appointment", {
-  importer: () => import("@/acuity/steps/cancel-appointment"),
+  importer: () => import("#src/acuity/steps/cancel-appointment"),
   stepFunction: "cancelAppointmentStep",
   label: "Cancel Appointment",
 });
 
 registerStepImporter("clerk/get-user", {
-  importer: () => import("@/clerk/steps/get-user"),
+  importer: () => import("#src/clerk/steps/get-user"),
   stepFunction: "clerkGetUserStep",
   label: "Get User",
 });
 
 registerStepImporter("clerk/create-user", {
-  importer: () => import("@/clerk/steps/create-user"),
+  importer: () => import("#src/clerk/steps/create-user"),
   stepFunction: "clerkCreateUserStep",
   label: "Create User",
 });
 
 registerStepImporter("clerk/update-user", {
-  importer: () => import("@/clerk/steps/update-user"),
+  importer: () => import("#src/clerk/steps/update-user"),
   stepFunction: "clerkUpdateUserStep",
   label: "Update User",
 });
 
 registerStepImporter("clerk/delete-user", {
-  importer: () => import("@/clerk/steps/delete-user"),
+  importer: () => import("#src/clerk/steps/delete-user"),
   stepFunction: "clerkDeleteUserStep",
   label: "Delete User",
 });
 
 registerStepImporter("linear/create-ticket", {
-  importer: () => import("@/linear/steps/create-ticket"),
+  importer: () => import("#src/linear/steps/create-ticket"),
   stepFunction: "createTicketStep",
   label: "Create Ticket",
 });
 
 registerStepImporter("linear/find-issues", {
-  importer: () => import("@/linear/steps/find-issues"),
+  importer: () => import("#src/linear/steps/find-issues"),
   stepFunction: "findIssuesStep",
   label: "Find Issues",
 });
 
 registerStepImporter("resend/send-email", {
-  importer: () => import("@/resend/steps/send-email"),
+  importer: () => import("#src/resend/steps/send-email"),
   stepFunction: "sendEmailStep",
   label: "Send Email",
 });
 
 registerStepImporter("slack/send-message", {
-  importer: () => import("@/slack/steps/send-slack-message"),
+  importer: () => import("#src/slack/steps/send-slack-message"),
   stepFunction: "sendSlackMessageStep",
   label: "Send Slack Message",
 });
 
 registerStepImporter("twilio/send-sms", {
-  importer: () => import("@/twilio/steps/send-sms"),
+  importer: () => import("#src/twilio/steps/send-sms"),
   stepFunction: "sendSmsStep",
   label: "Send SMS",
 });
@@ -122,25 +122,25 @@ registerStepImporter("twilio/send-sms", {
 // stays behind a dynamic import until someone presses "Test connection".
 registerIntegrationTest(
   "acuity",
-  async () => (await import("@/acuity/test")).testAcuity
+  async () => (await import("#src/acuity/test")).testAcuity
 );
 registerIntegrationTest(
   "clerk",
-  async () => (await import("@/clerk/test")).testClerk
+  async () => (await import("#src/clerk/test")).testClerk
 );
 registerIntegrationTest(
   "linear",
-  async () => (await import("@/linear/test")).testLinear
+  async () => (await import("#src/linear/test")).testLinear
 );
 registerIntegrationTest(
   "resend",
-  async () => (await import("@/resend/test")).testResend
+  async () => (await import("#src/resend/test")).testResend
 );
 registerIntegrationTest(
   "slack",
-  async () => (await import("@/slack/test")).testSlack
+  async () => (await import("#src/slack/test")).testSlack
 );
 registerIntegrationTest(
   "twilio",
-  async () => (await import("@/twilio/test")).testTwilio
+  async () => (await import("#src/twilio/test")).testTwilio
 );

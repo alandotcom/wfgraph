@@ -1,8 +1,8 @@
 import { Handle, Position } from "@xyflow/react";
 import { Ban, Check, Loader2, XCircle } from "lucide-react";
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
-import { AnimatedBorder } from "@/components/ui/animated-border";
-import { Card, CardDescription, CardTitle } from "@/components/ui/card";
+import { AnimatedBorder } from "#src/components/ui/animated-border";
+import { Card, CardDescription, CardTitle } from "#src/components/ui/card";
 import { cn } from "@rova/shared/utils";
 
 export type NodeProps = ComponentProps<typeof Card> & {

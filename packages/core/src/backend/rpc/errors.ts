@@ -2,7 +2,7 @@ import { ORPCError } from "@orpc/server";
 import type {
   ServiceFailureKind,
   ServiceResult,
-} from "@/backend/lib/service-result";
+} from "#src/backend/lib/service-result";
 import { getRpcErrorMessage } from "@rova/shared/rpc/error-message";
 
 const FAILURE_KIND_TO_ORPC_CODE = {

@@ -17,13 +17,13 @@ import {
   onNodesChangeAtom,
   snapshotHistoryAtom,
   undoAtom,
-} from "@/lib/workflow-graph-store";
+} from "#src/lib/workflow-graph-store";
 import {
   autosaveDelayAtom,
   currentWorkflowIdAtom,
   hasUnsavedChangesAtom,
   workflowApiAtom,
-} from "@/lib/workflow-save-store";
+} from "#src/lib/workflow-save-store";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 import { savedWorkflow } from "./workflow-save-test-support";
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkCelBooleanExpression,
   evaluateCelBooleanExpression,
-} from "@/backend/lib/cel/environment";
+} from "#src/backend/lib/cel/environment";
 
 describe("CEL environment", () => {
   it("validates compiled timestamp expressions", () => {

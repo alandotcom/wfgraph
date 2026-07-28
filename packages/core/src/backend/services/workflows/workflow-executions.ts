@@ -1,18 +1,18 @@
 import { desc, eq, inArray } from "drizzle-orm";
-import { db } from "@/backend/lib/db";
+import { db } from "#src/backend/lib/db/index";
 import {
   workflowExecutionEvents,
   workflowExecutionLogs,
   workflowExecutions,
   workflows,
   workflowWaitStates,
-} from "@/backend/lib/db/schema";
-import { getAppLogger } from "@/backend/lib/logger";
+} from "#src/backend/lib/db/schema";
+import { getAppLogger } from "#src/backend/lib/logger";
 import {
   failure,
   type ServiceResult,
   success,
-} from "@/backend/lib/service-result";
+} from "#src/backend/lib/service-result";
 import { getErrorMessage } from "@rova/shared/utils";
 
 const workflowExecutionsLogger = getAppLogger("workflow", "executions");

@@ -3,7 +3,7 @@ import {
   normalizeBasePath,
   rewriteClientBaseHref,
   toMountRelativePath,
-} from "@/backend/lib/http/mount-path";
+} from "#src/backend/lib/http/mount-path";
 
 describe("normalizeBasePath", () => {
   it("treats the root as no prefix at all", () => {

@@ -1,18 +1,18 @@
 import { eq } from "drizzle-orm";
-import { db } from "@/backend/lib/db";
-import { workflows } from "@/backend/lib/db/schema";
-import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
-import { getAppLogger } from "@/backend/lib/logger";
+import { db } from "#src/backend/lib/db/index";
+import { workflows } from "#src/backend/lib/db/schema";
+import { responseFromServiceResult } from "#src/backend/lib/http/response-from-service-result";
+import { getAppLogger } from "#src/backend/lib/logger";
 import {
   failure,
   type ServiceResult,
   success,
-} from "@/backend/lib/service-result";
-import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
-import { resumeMatchingWaitHooks } from "@/backend/lib/workflow-wait-resume";
-import { type RovaRuntime, runToServiceResult } from "@/backend/runtime";
-import { validateApiKey } from "@/backend/services/api-keys/auth";
-import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight";
+} from "#src/backend/lib/service-result";
+import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
+import { resumeMatchingWaitHooks } from "#src/backend/lib/workflow-wait-resume";
+import { type RovaRuntime, runToServiceResult } from "#src/backend/runtime";
+import { validateApiKey } from "#src/backend/services/api-keys/auth";
+import { runWorkflowExecutionPreflight } from "#src/backend/services/workflows/workflow-execution-preflight";
 import type { JsonObject } from "@rova/shared/types/json";
 import { getErrorMessage } from "@rova/shared/utils";
 import type { ApiErrorPayload } from "@rova/shared/workflow/api-contracts";

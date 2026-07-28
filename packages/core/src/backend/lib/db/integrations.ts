@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
-import { getAppLogger } from "@/backend/lib/logger";
+import { getAppLogger } from "#src/backend/lib/logger";
 import type {
   IntegrationConfig,
   IntegrationType,

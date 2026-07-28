@@ -2,15 +2,15 @@ import cronstrue from "cronstrue";
 import { ChevronDown, Clock, Copy, TriangleAlert, Webhook } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { CodeEditor } from "@/components/ui/code-editor";
+import { Button } from "#src/components/ui/button";
+import { CodeEditor } from "#src/components/ui/code-editor";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "#src/components/ui/collapsible";
+import { Input } from "#src/components/ui/input";
+import { Label } from "#src/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -18,12 +18,17 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TimezoneSelect } from "@/components/ui/timezone-select";
-import { getBasePath } from "@/lib/base-path";
-import { getRuntimeTriggers } from "@/lib/runtime-extensions";
+} from "#src/components/ui/select";
+import { Separator } from "#src/components/ui/separator";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "#src/components/ui/tabs";
+import { TimezoneSelect } from "#src/components/ui/timezone-select";
+import { getBasePath } from "#src/lib/base-path";
+import { getRuntimeTriggers } from "#src/lib/runtime-extensions";
 import type { JsonObject } from "@rova/shared/types/json";
 import { cn } from "@rova/shared/utils";
 import { getValueByPath } from "@rova/shared/utils/object-path";

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
-import type { WorkflowExecution } from "@/lib/execution-logs";
+import type { WorkflowExecution } from "#src/lib/execution-logs";
 import { WorkflowRunSummaryRow } from "./workflow-run-summary-row";
 
 const BASE_EXECUTION: WorkflowExecution = {

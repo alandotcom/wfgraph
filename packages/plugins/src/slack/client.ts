@@ -18,7 +18,7 @@
 
 import { z } from "zod";
 import type { JsonObject } from "@rova/shared/types/json";
-import { parsePayload, requestVendor } from "@/vendor-http";
+import { parsePayload, requestVendor } from "#src/vendor-http";
 
 const SLACK_API_BASE = "https://slack.com/api";
 

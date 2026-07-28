@@ -6,10 +6,10 @@
  * promise; add it only when a plugin cannot be written without it.
  */
 
-export { fetchCredentials } from "@/backend/lib/credential-fetcher";
-export { registerStepImporter } from "@/backend/lib/step-registry";
+export { fetchCredentials } from "#src/backend/lib/credential-fetcher";
+export { registerStepImporter } from "#src/backend/lib/step-registry";
 export {
   type StepInput,
   withStepLogging,
-} from "@/backend/lib/steps/step-handler";
-export { registerIntegrationTest } from "@/backend/services/integrations/integration-test-loaders";
+} from "#src/backend/lib/steps/step-handler";
+export { registerIntegrationTest } from "#src/backend/services/integrations/integration-test-loaders";

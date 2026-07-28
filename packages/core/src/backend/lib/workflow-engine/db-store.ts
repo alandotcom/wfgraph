@@ -8,18 +8,18 @@
  */
 
 import { z } from "zod";
-import { logWorkflowComplete } from "@/backend/lib/steps/step-handler";
-import { redactSensitiveData } from "@/backend/lib/utils/redact";
-import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
+import { logWorkflowComplete } from "#src/backend/lib/steps/step-handler";
+import { redactSensitiveData } from "#src/backend/lib/utils/redact";
+import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
 import {
   logStepCompleteDb,
   logStepStartDb,
-} from "@/backend/lib/workflow-logging";
+} from "#src/backend/lib/workflow-logging";
 import {
   createWaitState,
   markExecutionRunning,
   markWaitStateStatus,
-} from "@/backend/lib/workflow-wait-state";
+} from "#src/backend/lib/workflow-wait-state";
 import { isoTimestampToDate } from "@rova/shared/types/timestamp";
 import type { WorkflowStore } from "./store";
 

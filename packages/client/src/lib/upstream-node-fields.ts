@@ -1,4 +1,4 @@
-import { findRuntimeTrigger } from "@/lib/runtime-extensions";
+import { findRuntimeTrigger } from "#src/lib/runtime-extensions";
 import { findActionById } from "@rova/shared/plugins/registry";
 import type {
   ConditionFieldDefinition,

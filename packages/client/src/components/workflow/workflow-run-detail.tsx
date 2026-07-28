@@ -3,7 +3,7 @@ import {
   type ExecutionEvent,
   type ExecutionLog,
   type WorkflowExecution,
-} from "@/lib/execution-logs";
+} from "#src/lib/execution-logs";
 import { CollapsibleSection } from "./workflow-run-shared";
 import { WorkflowRunSummaryRow } from "./workflow-run-summary-row";
 import { WorkflowRunTimeline } from "./workflow-run-timeline";

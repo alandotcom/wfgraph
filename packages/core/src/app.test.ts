@@ -3,10 +3,10 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import { createTrigger } from "@/index";
-import { createRovaApp, type RovaApp } from "@/app";
-import { createApiApp, MACHINE_ROUTES } from "@/backend/api-app";
-import { createRovaRuntime } from "@/backend/runtime";
+import { createTrigger } from "#src/index";
+import { createRovaApp, type RovaApp } from "#src/app";
+import { createApiApp, MACHINE_ROUTES } from "#src/backend/api-app";
+import { createRovaRuntime } from "#src/backend/runtime";
 
 // createRovaApp opens no connections: the database client is lazy and
 // migrations only run when asked. Every route exercised below answers from

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { callSlack, describeSlackFailure } from "@/slack/client";
+import { callSlack, describeSlackFailure } from "#src/slack/client";
 
 /**
  * What goes on the wire, now that this plugin builds the request itself instead

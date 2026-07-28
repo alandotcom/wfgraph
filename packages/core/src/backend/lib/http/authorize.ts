@@ -12,7 +12,7 @@
  * interface weight with nothing behind it.
  */
 
-import { getAppLogger } from "@/backend/lib/logger";
+import { getAppLogger } from "#src/backend/lib/logger";
 import { getErrorMessage } from "@rova/shared/utils";
 
 const authLogger = getAppLogger("http", "auth");

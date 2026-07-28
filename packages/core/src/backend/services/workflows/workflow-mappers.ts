@@ -1,4 +1,4 @@
-import type { Workflow } from "@/backend/lib/db/schema";
+import type { Workflow } from "#src/backend/lib/db/schema";
 import type { WorkflowApiPayload } from "@rova/shared/workflow/api-contracts";
 import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
 

@@ -1,8 +1,8 @@
 import { atom } from "jotai";
-import { queryClient } from "@/lib/query-client";
-import type { SavedWorkflow } from "@/lib/rpc-client";
-import { workflowApi } from "@/lib/rpc-client";
-import { orpcQuery } from "@/lib/rpc-query";
+import { queryClient } from "#src/lib/query-client";
+import type { SavedWorkflow } from "#src/lib/rpc-client";
+import { workflowApi } from "#src/lib/rpc-client";
+import { orpcQuery } from "#src/lib/rpc-query";
 import type {
   WorkflowEdge,
   WorkflowMode,

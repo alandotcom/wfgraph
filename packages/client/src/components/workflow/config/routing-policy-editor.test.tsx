@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
-import { RoutingPolicyEditor } from "@/components/workflow/config/routing-policy-editor";
+import { RoutingPolicyEditor } from "#src/components/workflow/config/routing-policy-editor";
 import type { RoutingPolicy } from "@rova/shared/workflow/routing-policy";
 
 /**

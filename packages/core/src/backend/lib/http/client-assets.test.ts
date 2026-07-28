@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { serveClientAsset } from "@/backend/lib/http/client-assets";
+import { serveClientAsset } from "#src/backend/lib/http/client-assets";
 
 const INDEX_HTML =
   '<!doctype html><html><head><base href="/" /></head><body></body></html>';

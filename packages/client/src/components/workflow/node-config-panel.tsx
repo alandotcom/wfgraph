@@ -8,10 +8,10 @@ import {
   Settings2,
   Trash2,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useDeleteWorkflow } from "@/hooks/use-delete-workflow";
+import { Button } from "#src/components/ui/button";
+import { Input } from "#src/components/ui/input";
+import { Label } from "#src/components/ui/label";
+import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
 import {
   clearWorkflowAtom,
   deleteEdgeAtom,
@@ -23,18 +23,18 @@ import {
   selectedEdgeAtom,
   selectedNodeAtom,
   updateNodeDataAtom,
-} from "@/lib/workflow-graph-store";
+} from "#src/lib/workflow-graph-store";
 import {
   currentWorkflowIdAtom,
   currentWorkflowNameAtom,
   isWorkflowOwnerAtom,
   renameWorkflowAtom,
   workflowNameErrorAtom,
-} from "@/lib/workflow-save-store";
+} from "#src/lib/workflow-save-store";
 import {
   isGeneratingAtom,
   propertiesPanelActiveTabAtom,
-} from "@/lib/workflow-ui-store";
+} from "#src/lib/workflow-ui-store";
 import { ActionConfig } from "./config/action-config";
 import { ActionGrid } from "./config/action-grid";
 import { TriggerConfig } from "./config/trigger-config";

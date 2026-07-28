@@ -1,7 +1,7 @@
 import { Search } from "lucide-react";
 import { useCallback, useState } from "react";
-import { IntegrationsManager } from "@/components/settings/integrations-manager";
-import { Input } from "@/components/ui/input";
+import { IntegrationsManager } from "#src/components/settings/integrations-manager";
+import { Input } from "#src/components/ui/input";
 import { AddConnectionOverlay } from "./add-connection-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";

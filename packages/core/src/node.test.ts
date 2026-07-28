@@ -7,8 +7,8 @@ import { join } from "node:path";
 import middie from "@fastify/middie";
 import express from "express";
 import Fastify, { type FastifyInstance } from "fastify";
-import { createRovaApp, type RovaApp } from "@/app";
-import { createRequestListener } from "@/node";
+import { createRovaApp, type RovaApp } from "#src/app";
+import { createRequestListener } from "#src/node";
 
 // These are the tests the review that produced this plan asked for: a real
 // Express app and a real Fastify app, each mounting Rova under a sub-path, so

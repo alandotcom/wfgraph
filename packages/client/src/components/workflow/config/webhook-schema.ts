@@ -10,8 +10,8 @@
  * Path grammar note: the paths produced here address array elements with a
  * numeric segment (`items.0.sku`), because they are stored in
  * `webhookEventPath` / `webhookCorrelationPath` and resolved at run time by
- * `getValueByPath` in `@/shared/utils/object-path`, which splits on dots only.
- * The template grammar in `@/shared/workflow/node-references` flattens the same
+ * `getValueByPath` in `@rova/shared/utils/object-path`, which splits on dots only.
+ * The template grammar in `@rova/shared/workflow/node-references` flattens the same
  * kind of tree into `items[0].sku` for its own walker. Two resolvers, two
  * spellings; a path from here must never be fed to that walker or vice versa.
  */

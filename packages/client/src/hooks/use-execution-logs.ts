@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
-import { toExecutionLogsByNodeId } from "@/lib/execution-logs";
-import { orpcQuery } from "@/lib/rpc-query";
-import { selectedExecutionIdAtom } from "@/lib/workflow-ui-store";
+import { toExecutionLogsByNodeId } from "#src/lib/execution-logs";
+import { orpcQuery } from "#src/lib/rpc-query";
+import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import type { ExecutionLogEntry } from "@rova/shared/workflow/types";
 
 const NO_LOGS: Record<string, ExecutionLogEntry> = {};

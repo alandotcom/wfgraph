@@ -1,18 +1,18 @@
 import { desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { db } from "@/backend/lib/db";
-import { workflows } from "@/backend/lib/db/schema";
-import { invalidateInngestFunctionsCache } from "@/backend/lib/inngest/functions";
-import { getAppLogger } from "@/backend/lib/logger";
+import { db } from "#src/backend/lib/db/index";
+import { workflows } from "#src/backend/lib/db/schema";
+import { invalidateInngestFunctionsCache } from "#src/backend/lib/inngest/functions";
+import { getAppLogger } from "#src/backend/lib/logger";
 import {
   failure,
   type ServiceResult,
   success,
-} from "@/backend/lib/service-result";
-import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
-import { CURRENT_WORKFLOW_NAME } from "@/backend/lib/workflow-constants";
-import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
-import { toWorkflowApiPayload } from "@/backend/services/workflows/workflow-mappers";
+} from "#src/backend/lib/service-result";
+import { validateWorkflowConditionConfigs } from "#src/backend/lib/workflow-conditions-validation";
+import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
+import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
+import { toWorkflowApiPayload } from "#src/backend/services/workflows/workflow-mappers";
 import { getErrorMessage } from "@rova/shared/utils";
 import { generateId } from "@rova/shared/utils/id";
 import type {

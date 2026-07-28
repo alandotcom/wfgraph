@@ -6,8 +6,8 @@ import {
 import {
   createClerkBackendClient,
   getClerkApiErrorMessage,
-} from "@/clerk/client";
-import type { ClerkCredentials } from "@/clerk/credentials";
+} from "#src/clerk/client";
+import type { ClerkCredentials } from "#src/clerk/credentials";
 
 type DeleteUserResult =
   | { success: true; data: { deleted: true } }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getIntegration,
   putIntegration,
-} from "@/backend/services/integrations/integrations";
+} from "#src/backend/services/integrations/integrations";
 
 const mocks = vi.hoisted(() => {
   const createIntegration = vi.fn();
@@ -33,7 +33,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/backend/lib/db/integrations", () => ({
+vi.mock("#src/backend/lib/db/integrations", () => ({
   createIntegration: mocks.createIntegration,
   deleteIntegration: mocks.deleteIntegration,
   getIntegration: mocks.getIntegrationById,
@@ -46,7 +46,7 @@ vi.mock("@rova/shared/plugins/registry", () => ({
   getIntegration: mocks.getPluginFromRegistry,
 }));
 
-vi.mock("@/backend/lib/logger", () => ({
+vi.mock("#src/backend/lib/logger", () => ({
   getAppLogger: () => mocks.logger,
 }));
 

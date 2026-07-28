@@ -5,7 +5,7 @@ import { useState } from "react";
 import {
   loadWorkflowGraphAtom,
   updateNodeDataAtom,
-} from "@/lib/workflow-graph-store";
+} from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 import { TemplateBadgeInput } from "./template-badge-input";
 import { TemplateBadgeTextarea } from "./template-badge-textarea";

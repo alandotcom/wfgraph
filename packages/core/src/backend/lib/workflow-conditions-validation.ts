@@ -1,4 +1,4 @@
-import { checkCelBooleanExpression } from "@/backend/lib/cel/environment";
+import { checkCelBooleanExpression } from "#src/backend/lib/cel/environment";
 import {
   compileConditionModel,
   parseConditionModel,

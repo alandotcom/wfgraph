@@ -2,16 +2,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Pencil, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { Button } from "#src/components/ui/button";
+import { Input } from "#src/components/ui/input";
+import { Label } from "#src/components/ui/label";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   announceTestResult,
   hasProvidedConfigValues,
-} from "@/lib/connection-credentials";
-import type { Integration } from "@/lib/rpc-client";
-import { orpcQuery, refreshIntegrations } from "@/lib/rpc-query";
+} from "#src/lib/connection-credentials";
+import type { Integration } from "#src/lib/rpc-client";
+import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
 import {
   getIntegration,
   getIntegrationLabels,

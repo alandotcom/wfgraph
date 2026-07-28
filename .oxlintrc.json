@@ -150,24 +150,11 @@
         "no-restricted-imports": [
           "error",
           {
-            // A `@/` alias resolves to a file, never to a manifest, so pnpm's
-            // isolated node_modules cannot see it. That is how packages/core
-            // came to inline five vendor SDKs. A specifier that leaves the
-            // package has to be a package name. `@/` still means this
-            // package's own src.
+            // `#src/` is a Node subpath import, so the resolver already refuses
+            // to let it leave the package: it is defined against the importing
+            // file's own manifest and nothing else. A relative path has no such
+            // definition, which is what the one group below still covers.
             "patterns": [
-              {
-                "group": [
-                  "@/shared/**",
-                  "@/plugins/registry",
-                  "@/plugins/ui-registry"
-                ],
-                "message": "Import @rova/shared by name: `@rova/shared/types/json`, not `@/shared/types/json`. An alias is invisible to the package linker."
-              },
-              {
-                "group": ["@/backend/**"],
-                "message": "Only @rova/core's own src may use @/backend. A plugin builds against @rova/core/plugin, which is the surface an outside integration package gets."
-              },
               {
                 "group": [
                   "../../shared/**",
@@ -186,7 +173,7 @@
                 // `ComponentProps`, and a type-only import cannot call
                 // anything, so it is not what this rule is aimed at.
                 "allowTypeImports": true,
-                "message": "Use a named hook from @/hooks/effects. If none of them fits, the work probably belongs in an event handler, in render, or in a query."
+                "message": "Use a named hook from #src/hooks/effects. If none of them fits, the work probably belongs in an event handler, in render, or in a query."
               }
             ]
           }
@@ -217,42 +204,18 @@
       }
     },
     {
-      // core owns @/backend, so only the shared-alias half of the rule above
-      // applies to it.
-      "files": ["packages/core/src/**/*.ts"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": [
-                  "@/shared/**",
-                  "@/plugins/registry",
-                  "@/plugins/ui-registry"
-                ],
-                "message": "Import @rova/shared by name: `@rova/shared/types/json`, not `@/shared/types/json`. An alias is invisible to the package linker."
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       // @rova/shared is the runtime-agnostic package: it declares its own npm
       // dependencies and nothing else, and both @rova/core and @rova/plugins
-      // compile against its source through path aliases. Nothing may point the
-      // other way.
+      // compile against its source. Nothing may point the other way.
       //
       // pnpm's isolated node_modules enforces that for npm specifiers, because a
-      // package only gets what it declared. It cannot see an import
-      // written as a tsconfig path alias: tsc and the bundler both resolve
-      // `@/backend/lib/logger` from packages/shared straight to
-      // packages/core/src/backend/lib/logger.ts with no manifest consulted, which
-      // hands shared the whole of core and every dependency core declares. That is
-      // what this rule covers. `@/*` resolves against packages/shared/src first,
-      // so the groups below name the directory prefixes that exist only in core:
-      // `backend` for the server, and the SPA's top-level folders.
+      // package only gets what it declared, and the root tsconfig's paths would
+      // otherwise hand tsc the source of core and plugins by name. The two
+      // spellings below are the ones that route around the manifest: a package
+      // name the root tsconfig aliases to source, and a relative path that
+      // climbs out of the package. `#src/` needs no entry, because a subpath
+      // import is defined against shared's own manifest and cannot name a file
+      // outside it.
       "files": ["packages/shared/src/**/*.ts", "packages/shared/src/**/*.tsx"],
       "rules": {
         "no-restricted-imports": [
@@ -261,12 +224,6 @@
             "patterns": [
               {
                 "group": [
-                  "@/backend",
-                  "@/backend/**",
-                  "@/components/**",
-                  "@/hooks/**",
-                  "@/lib/**",
-                  "@/routes/**",
                   "@rova/core",
                   "@rova/core/**",
                   "@rova/plugins",

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveAuthorize,
   UNAUTHORIZED_BODY,
-} from "@/backend/lib/http/authorize";
+} from "#src/backend/lib/http/authorize";
 
 const request = new Request("http://localhost/api/extensions");
 

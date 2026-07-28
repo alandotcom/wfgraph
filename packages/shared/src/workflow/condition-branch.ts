@@ -1,4 +1,4 @@
-import type { ConditionBranch, WorkflowNode } from "@/workflow/types";
+import type { ConditionBranch, WorkflowNode } from "#src/workflow/types";
 
 function asTrimmedString(value: unknown): string | null {
   if (typeof value !== "string") {

@@ -1,5 +1,5 @@
-import { db } from "@/backend/lib/db";
-import { workflowExecutionEvents } from "@/backend/lib/db/schema";
+import { db } from "#src/backend/lib/db/index";
+import { workflowExecutionEvents } from "#src/backend/lib/db/schema";
 
 export type WorkflowAuditEventType =
   | "trigger_received"

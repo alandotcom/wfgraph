@@ -122,11 +122,11 @@ export type MyServiceCredentials = {
 Step functions follow a two-layer pattern:
 
 ```typescript
-import { fetchCredentials } from "@/backend/lib/credential-fetcher";
 import {
+  fetchCredentials,
   type StepInput,
   withStepLogging,
-} from "@/backend/lib/steps/step-handler";
+} from "@rova/core/plugin";
 import type { MyServiceCredentials } from "../credentials";
 
 // Result type - use discriminated union
@@ -200,7 +200,7 @@ something calls it.
 
 ```typescript
 registerStepImporter("my-service/do-something", {
-  importer: () => import("@/my-service/steps/do-something"),
+  importer: () => import("#src/my-service/steps/do-something"),
   stepFunction: "doSomethingStep",
   label: "Do Something",
 });

@@ -2,11 +2,11 @@ import {
   failure,
   type ServiceResult,
   success,
-} from "@/backend/lib/service-result";
-import { validateWorkflowActionConfigs } from "@/backend/lib/workflow-action-validation";
-import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
-import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
-import { validateWorkflowIntegrations } from "@/backend/lib/workflow-integration-validation";
+} from "#src/backend/lib/service-result";
+import { validateWorkflowActionConfigs } from "#src/backend/lib/workflow-action-validation";
+import { validateWorkflowConditionConfigs } from "#src/backend/lib/workflow-conditions-validation";
+import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
+import { validateWorkflowIntegrations } from "#src/backend/lib/workflow-integration-validation";
 import type { ApiErrorPayload } from "@rova/shared/workflow/api-contracts";
 import {
   resolveWorkflowTriggerDefinition,

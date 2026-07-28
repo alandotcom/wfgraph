@@ -1,39 +1,39 @@
 import { parse as parseCel } from "@marcbachmann/cel-js";
 import type { StandardJSONSchemaV1 } from "@standard-schema/spec";
-import type { ActionConfigField } from "@/plugins/registry";
-import type { JsonObject } from "@/types/json";
-import { getValueByPath } from "@/utils/object-path";
-import type { InputSchema } from "@/workflow/action-registry";
+import type { ActionConfigField } from "#src/plugins/registry";
+import type { JsonObject } from "#src/types/json";
+import { getValueByPath } from "#src/utils/object-path";
+import type { InputSchema } from "#src/workflow/action-registry";
 import {
   flattenSchemaToReferenceFields,
   type ReferenceField,
   schemaFieldToReferenceField,
-} from "@/workflow/node-references";
+} from "#src/workflow/node-references";
 import {
   type ResolvedTriggerRouting,
   resolveTriggerRouting,
   type TriggerClassification,
-} from "@/workflow/routing-policy";
+} from "#src/workflow/routing-policy";
 import {
   configFieldsFromJsonSchema,
   jsonSchemaLibraryOptions,
   parseWorkflowSchemaFieldsOrJsonSchema,
   type WorkflowSchemaField,
-} from "@/workflow/schema-codec";
+} from "#src/workflow/schema-codec";
 import {
   createDefaultTriggerDefinition,
   createUnknownTriggerDefinition,
-} from "@/workflow/triggers/fallback-trigger";
-import { createScheduleTriggerDefinition } from "@/workflow/triggers/schedule-trigger";
-import { createWebhookTriggerDefinition } from "@/workflow/triggers/webhook-trigger";
-import { asNonEmptyString } from "@/workflow/webhook-routing";
+} from "#src/workflow/triggers/fallback-trigger";
+import { createScheduleTriggerDefinition } from "#src/workflow/triggers/schedule-trigger";
+import { createWebhookTriggerDefinition } from "#src/workflow/triggers/webhook-trigger";
+import { asNonEmptyString } from "#src/workflow/webhook-routing";
 
 export type TriggerExecutionType = "manual" | "webhook" | "event";
 
 // Classification is vocabulary, not policy: the shape lives with the policy
 // module that consumes it, and is re-exported here as part of the trigger
 // definition surface.
-export type { TriggerClassification } from "@/workflow/routing-policy";
+export type { TriggerClassification } from "#src/workflow/routing-policy";
 
 type TriggerSchemaSafeParseResult<TPayload> =
   | { success: true; data: TPayload }

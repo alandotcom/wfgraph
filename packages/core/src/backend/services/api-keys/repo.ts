@@ -1,7 +1,7 @@
 import { Context, Effect, Layer } from "effect";
 import { eq } from "drizzle-orm";
-import { apiKeys } from "@/backend/lib/db/schema";
-import { Database, type DatabaseError } from "@/backend/lib/effect/database";
+import { apiKeys } from "#src/backend/lib/db/schema";
+import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
 
 /** An API key as the management screens see it, without the hash. */
 export type ApiKeySummary = {

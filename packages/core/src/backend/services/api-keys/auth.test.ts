@@ -3,16 +3,19 @@
 import { assert, describe, layer } from "@effect/vitest";
 import { compare, hash } from "bcryptjs";
 import { Effect, Latch, Layer } from "effect";
-import { AppLogger, type EffectLogger } from "@/backend/lib/effect/app-logger";
-import { Unauthorized } from "@/backend/lib/effect/failures";
+import {
+  AppLogger,
+  type EffectLogger,
+} from "#src/backend/lib/effect/app-logger";
+import { Unauthorized } from "#src/backend/lib/effect/failures";
 import {
   createApiKeyRecord,
   validateApiKey,
-} from "@/backend/services/api-keys/auth";
+} from "#src/backend/services/api-keys/auth";
 import {
   type ApiKeyCandidate,
   ApiKeyRepo,
-} from "@/backend/services/api-keys/repo";
+} from "#src/backend/services/api-keys/repo";
 
 /**
  * A fake repository holding the keys one test stored, and a record of what it

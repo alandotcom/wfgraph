@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateWorkflowOutputAgainstSchema } from "@/workflow/schema-validation";
+import { validateWorkflowOutputAgainstSchema } from "#src/workflow/schema-validation";
 
 describe("validateWorkflowOutputAgainstSchema", () => {
   it("returns ok when schema is not configured", () => {

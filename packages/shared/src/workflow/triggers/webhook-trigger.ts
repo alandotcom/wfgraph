@@ -1,11 +1,11 @@
-import { type JsonObject, jsonObjectSchema } from "@/types/json";
-import type { WorkflowTriggerDefinition } from "@/workflow/trigger-registry";
+import { type JsonObject, jsonObjectSchema } from "#src/types/json";
+import type { WorkflowTriggerDefinition } from "#src/workflow/trigger-registry";
 import {
   asNonEmptyString,
   buildWebhookRoutingConfig,
   deriveWebhookEventContext,
   type WebhookRoutingConfig,
-} from "@/workflow/webhook-routing";
+} from "#src/workflow/webhook-routing";
 
 /**
  * Reads the mock request body a user typed into the trigger's editor, stored as

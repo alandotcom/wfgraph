@@ -1,7 +1,7 @@
 import { Effect } from "effect";
-import { AppLogger } from "@/backend/lib/effect/app-logger";
-import { internalFailure } from "@/backend/lib/effect/database";
-import { NotFound } from "@/backend/lib/effect/failures";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { internalFailure } from "#src/backend/lib/effect/database";
+import { NotFound } from "#src/backend/lib/effect/failures";
 import { ApiKeyRepo } from "./repo";
 
 /** The contract answers a delete with this and nothing else. */

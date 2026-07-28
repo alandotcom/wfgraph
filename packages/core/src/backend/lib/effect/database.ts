@@ -1,7 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import { getDb, type RovaDatabase } from "@/backend/lib/db";
-import type { EffectLogger } from "@/backend/lib/effect/app-logger";
-import { InternalFailure } from "@/backend/lib/effect/failures";
+import { getDb, type RovaDatabase } from "#src/backend/lib/db/index";
+import type { EffectLogger } from "#src/backend/lib/effect/app-logger";
+import { InternalFailure } from "#src/backend/lib/effect/failures";
 import { getErrorMessage } from "@rova/shared/utils";
 
 /**

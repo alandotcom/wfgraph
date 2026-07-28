@@ -28,14 +28,7 @@
     "paths": {
       "@rova/shared/*": ["./packages/shared/src/*"],
       "@rova/plugins": ["./packages/plugins/src/index.ts"],
-      "@rova/plugins/*": ["./packages/plugins/src/*"],
-      "@/backend/*": ["./packages/core/src/backend/*"],
-      "@/*": [
-        "./packages/shared/src/*",
-        "./packages/core/src/*",
-        "./packages/client/src/*",
-        "./packages/plugins/src/*"
-      ]
+      "@rova/plugins/*": ["./packages/plugins/src/*"]
     }
   },
   // The library sources plus the client package's tiny entry. The SPA itself is

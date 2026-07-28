@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { RuntimeTriggerDefinition } from "@/lib/runtime-extensions";
+import type { RuntimeTriggerDefinition } from "#src/lib/runtime-extensions";
 import {
   getUpstreamConditionFields,
   getUpstreamNodes,
-} from "@/lib/upstream-node-fields";
+} from "#src/lib/upstream-node-fields";
 import {
   clearRuntimeActions,
   registerRuntimeAction,
@@ -47,7 +47,7 @@ describe("upstream-node-fields", () => {
   // runtime-extensions module and its emptied registry over every later case.
   afterEach(() => {
     clearRuntimeActions();
-    vi.doUnmock("@/lib/runtime-extensions");
+    vi.doUnmock("#src/lib/runtime-extensions");
     vi.resetModules();
   });
 
@@ -231,7 +231,7 @@ describe("upstream-node-fields", () => {
     // every case in it. Resetting the registry first makes the re-import below
     // evaluate the subject afresh against the stub.
     vi.resetModules();
-    vi.doMock("@/lib/runtime-extensions", () => ({
+    vi.doMock("#src/lib/runtime-extensions", () => ({
       findRuntimeTrigger: (type: string) =>
         type === "DonorEligibility" ? mockTrigger : undefined,
       getRuntimeTriggers: () => [],
@@ -239,7 +239,7 @@ describe("upstream-node-fields", () => {
     }));
 
     const { getNodeOutputFields: getNodeOutputFieldsMocked } =
-      await import("@/lib/upstream-node-fields");
+      await import("#src/lib/upstream-node-fields");
 
     const triggerNode = createNode({
       id: "trigger-1",

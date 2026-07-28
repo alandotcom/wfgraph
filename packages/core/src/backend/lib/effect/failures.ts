@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import type { ServiceFailureKind } from "@/backend/lib/service-result";
+import type { ServiceFailureKind } from "#src/backend/lib/service-result";
 
 /**
  * Why a service call failed, as a tagged error the type system can see.

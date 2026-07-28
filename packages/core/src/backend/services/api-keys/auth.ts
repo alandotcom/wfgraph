@@ -1,9 +1,12 @@
 import { randomBytes } from "node:crypto";
 import { compare, hash } from "bcryptjs";
 import { Effect } from "effect";
-import { AppLogger } from "@/backend/lib/effect/app-logger";
-import { internalFailure } from "@/backend/lib/effect/database";
-import { InternalFailure, Unauthorized } from "@/backend/lib/effect/failures";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { internalFailure } from "#src/backend/lib/effect/database";
+import {
+  InternalFailure,
+  Unauthorized,
+} from "#src/backend/lib/effect/failures";
 import { ApiKeyRepo } from "./repo";
 
 const API_KEY_PREFIX = "wfb_";

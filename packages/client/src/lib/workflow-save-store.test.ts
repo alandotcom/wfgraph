@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore } from "jotai";
-import type { SavedWorkflow } from "@/lib/rpc-client";
+import type { SavedWorkflow } from "#src/lib/rpc-client";
 import {
   autosaveDelayAtom,
   createWorkflowAtom,
@@ -12,7 +12,7 @@ import {
   renameWorkflowAtom,
   saveWorkflowAtom,
   workflowApiAtom,
-} from "@/lib/workflow-save-store";
+} from "#src/lib/workflow-save-store";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 import { savedWorkflow } from "./workflow-save-test-support";
 

@@ -7,11 +7,11 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
-import { Button } from "@/components/ui/button";
+import { Button } from "#src/components/ui/button";
 import {
   OUTPUT_DISPLAY_CONFIGS,
   type OutputDisplayConfig,
-} from "@/lib/output-display-configs";
+} from "#src/lib/output-display-configs";
 import { findActionById } from "@rova/shared/plugins/registry";
 import { getActionOutputComponent } from "@rova/shared/plugins/ui-registry";
 

@@ -1,11 +1,14 @@
 import { implement } from "@orpc/server";
 import type { Effect } from "effect";
 import { z } from "zod";
-import type { ServiceFailure } from "@/backend/lib/effect/failures";
-import { getAppLogger } from "@/backend/lib/logger";
-import { type RovaServices, runToServiceResult } from "@/backend/runtime";
-import { deleteApiKey } from "@/backend/services/api-keys/api-key";
-import { getApiKeys, postApiKeys } from "@/backend/services/api-keys/api-keys";
+import type { ServiceFailure } from "#src/backend/lib/effect/failures";
+import { getAppLogger } from "#src/backend/lib/logger";
+import { type RovaServices, runToServiceResult } from "#src/backend/runtime";
+import { deleteApiKey } from "#src/backend/services/api-keys/api-key";
+import {
+  getApiKeys,
+  postApiKeys,
+} from "#src/backend/services/api-keys/api-keys";
 import {
   deleteIntegrationResult,
   getIntegrationResult,
@@ -14,31 +17,31 @@ import {
   postIntegrationsTestResult,
   postIntegrationTestResult,
   putIntegrationResult,
-} from "@/backend/services/integrations/integrations";
-import { postWorkflowExecuteResult } from "@/backend/services/workflow/workflow-execute";
-import { postExecutionCancelResult } from "@/backend/services/workflows/execution-cancel";
-import { getExecutionEventsResult } from "@/backend/services/workflows/execution-events";
-import { getExecutionLogsResult } from "@/backend/services/workflows/execution-logs";
-import { getExecutionStatusResult } from "@/backend/services/workflows/execution-status";
+} from "#src/backend/services/integrations/integrations";
+import { postWorkflowExecuteResult } from "#src/backend/services/workflow/workflow-execute";
+import { postExecutionCancelResult } from "#src/backend/services/workflows/execution-cancel";
+import { getExecutionEventsResult } from "#src/backend/services/workflows/execution-events";
+import { getExecutionLogsResult } from "#src/backend/services/workflows/execution-logs";
+import { getExecutionStatusResult } from "#src/backend/services/workflows/execution-status";
 import {
   deleteWorkflow,
   getWorkflow,
   patchWorkflow,
-} from "@/backend/services/workflows/workflow";
-import { postWorkflowDuplicate } from "@/backend/services/workflows/workflow-duplicate";
+} from "#src/backend/services/workflows/workflow";
+import { postWorkflowDuplicate } from "#src/backend/services/workflows/workflow-duplicate";
 import {
   deleteWorkflowExecutionsResult,
   getWorkflowExecutionsResult,
-} from "@/backend/services/workflows/workflow-executions";
-import { getWorkflowExecutionsGlobalResult } from "@/backend/services/workflows/workflow-executions-global";
-import { postWorkflowWebhookResult } from "@/backend/services/workflows/workflow-webhook";
-import { getWorkflows } from "@/backend/services/workflows/workflows";
-import { postWorkflowsBulkLifecycleResult } from "@/backend/services/workflows/workflows-bulk-lifecycle";
-import { postWorkflowsCreate } from "@/backend/services/workflows/workflows-create";
+} from "#src/backend/services/workflows/workflow-executions";
+import { getWorkflowExecutionsGlobalResult } from "#src/backend/services/workflows/workflow-executions-global";
+import { postWorkflowWebhookResult } from "#src/backend/services/workflows/workflow-webhook";
+import { getWorkflows } from "#src/backend/services/workflows/workflows";
+import { postWorkflowsBulkLifecycleResult } from "#src/backend/services/workflows/workflows-bulk-lifecycle";
+import { postWorkflowsCreate } from "#src/backend/services/workflows/workflows-create";
 import {
   getWorkflowsCurrent,
   postWorkflowsCurrent,
-} from "@/backend/services/workflows/workflows-current";
+} from "#src/backend/services/workflows/workflows-current";
 import { rpcContract } from "@rova/shared/rpc/contracts";
 import type { RpcContext } from "./context";
 import { type RpcCompatibleResult, toRpcData } from "./errors";

@@ -10,22 +10,22 @@ import {
   Zap,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "#src/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { IntegrationIcon } from "@/components/ui/integration-icon";
+} from "#src/components/ui/dropdown-menu";
+import { Input } from "#src/components/ui/input";
+import { IntegrationIcon } from "#src/components/ui/integration-icon";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { hasTouchSupport } from "@/hooks/use-touch";
+} from "#src/components/ui/tooltip";
+import { hasTouchSupport } from "#src/hooks/use-touch";
 import { getAllActions } from "@rova/shared/plugins/registry";
 import { cn } from "@rova/shared/utils";
 

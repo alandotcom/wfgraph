@@ -5,7 +5,7 @@ import {
 } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterContractClient } from "@orpc/contract";
-import { getBasePath } from "@/lib/base-path";
+import { getBasePath } from "#src/lib/base-path";
 import type { RpcContract } from "@rova/shared/rpc/contracts";
 import { getRpcErrorMessage } from "@rova/shared/rpc/error-message";
 import type { WorkflowApiPayload } from "@rova/shared/workflow/api-contracts";

@@ -2,20 +2,20 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
 import { toast } from "sonner";
-import { repairNodeIntegration } from "@/lib/node-integration";
+import { repairNodeIntegration } from "#src/lib/node-integration";
 import {
   integrationsQueryOptions,
   orpcQuery,
   refreshRunHistory,
-} from "@/lib/rpc-query";
-import { seedConditionModel } from "@/lib/seed-condition-model";
+} from "#src/lib/rpc-query";
+import { seedConditionModel } from "#src/lib/seed-condition-model";
 import {
   clearNodeStatusesAtom,
   edgesAtom,
   nodesAtom,
   selectedNodeAtom,
   updateNodeDataAtom,
-} from "@/lib/workflow-graph-store";
+} from "#src/lib/workflow-graph-store";
 import type { NodeConfigPatch } from "./node-config-patch";
 
 /**

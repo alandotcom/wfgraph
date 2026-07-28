@@ -1,5 +1,5 @@
 import { Inngest, type RegisterOptions } from "inngest";
-import { getAppLogger } from "@/backend/lib/logger";
+import { getAppLogger } from "#src/backend/lib/logger";
 
 function getInngestBaseUrl() {
   const candidates = [process.env.INNGEST_BASE_URL, process.env.INNGEST_DEV];

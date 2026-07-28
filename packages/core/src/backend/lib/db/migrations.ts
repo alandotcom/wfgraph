@@ -3,8 +3,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
-import { getMigrationClient } from "@/backend/lib/db/index";
-import { getAppLogger } from "@/backend/lib/logger";
+import { getMigrationClient } from "#src/backend/lib/db/index";
+import { getAppLogger } from "#src/backend/lib/logger";
 
 const logger = getAppLogger("migrations");
 

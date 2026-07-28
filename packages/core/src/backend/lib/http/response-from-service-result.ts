@@ -1,7 +1,7 @@
 import type {
   ServiceFailureKind,
   ServiceResult,
-} from "@/backend/lib/service-result";
+} from "#src/backend/lib/service-result";
 
 // The two endpoints that are still plain Hono handlers (webhook intake and wait-hook
 // resume) speak HTTP directly, so this is where a domain failure kind picks up a status.

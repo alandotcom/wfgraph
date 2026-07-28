@@ -9,13 +9,13 @@ import {
   Settings,
 } from "lucide-react";
 import { useCallback, useMemo } from "react";
-import { ConfigureConnectionOverlay } from "@/components/overlays/add-connection-overlay";
-import { EditConnectionOverlay } from "@/components/overlays/edit-connection-overlay";
-import { useOverlay } from "@/components/overlays/overlay-provider";
-import { Button } from "@/components/ui/button";
-import type { Integration } from "@/lib/rpc-client";
-import { integrationsQueryOptions } from "@/lib/rpc-query";
-import { repairIntegrationsAtom } from "@/lib/workflow-graph-store";
+import { ConfigureConnectionOverlay } from "#src/components/overlays/add-connection-overlay";
+import { EditConnectionOverlay } from "#src/components/overlays/edit-connection-overlay";
+import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { Button } from "#src/components/ui/button";
+import type { Integration } from "#src/lib/rpc-client";
+import { integrationsQueryOptions } from "#src/lib/rpc-query";
+import { repairIntegrationsAtom } from "#src/lib/workflow-graph-store";
 import { getIntegration } from "@rova/shared/plugins/registry";
 import type { IntegrationType } from "@rova/shared/types/integration";
 import { cn } from "@rova/shared/utils";

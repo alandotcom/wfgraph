@@ -13,7 +13,7 @@
 
 import { z } from "zod";
 import type { JsonObject } from "@rova/shared/types/json";
-import { parsePayload, requestVendor } from "@/vendor-http";
+import { parsePayload, requestVendor } from "#src/vendor-http";
 
 const RESEND_API_BASE = "https://api.resend.com";
 

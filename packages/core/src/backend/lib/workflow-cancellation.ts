@@ -1,10 +1,10 @@
 import { partition, uniq } from "es-toolkit";
-import { sendWorkflowCancelRequested } from "@/backend/lib/inngest/runtime-events";
-import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
+import { sendWorkflowCancelRequested } from "#src/backend/lib/inngest/runtime-events";
+import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
 import {
   markExecutionCancelled,
   markWaitingStatesCancelled,
-} from "@/backend/lib/workflow-wait-state";
+} from "#src/backend/lib/workflow-wait-state";
 
 type CancellationLogger = {
   error: (message: string, properties?: Record<string, unknown>) => void;

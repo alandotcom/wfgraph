@@ -6,10 +6,9 @@ import type { KnipConfig } from "knip";
  *
  * Two things shape this config, and both come from how the repo is built:
  *
- * 1. Every cross-package import goes through a tsconfig path alias (`@/shared/*`,
- *    `@/backend/*`, `@/*`), so the package specifiers `@rova/core` and
- *    `@rova/shared` almost never appear in source. knip reads those aliases from
- *    the root tsconfig.json and resolves them to real files, which is why the
+ * 1. A package reaches its own source through the `#src/*` subpath import its
+ *    package.json declares, and a sibling's through the `@rova/*` path aliases in
+ *    the root tsconfig.json. knip resolves both to real files, which is why the
  *    workspace entry lists below can stay small.
  * 2. `@rova/core` is the only workspace that builds. tsdown inlines the
  *    `@rova/shared` source it reaches into packages/core/dist, so some of core's
@@ -72,10 +71,10 @@ const config: KnipConfig = {
     },
 
     "packages/shared": {
-      // Nothing imports the `@rova/shared` package specifier. Core and plugins
-      // reach into this tree through the `@/shared/*` alias, so leaving entry
-      // empty lets those imports decide what is reachable and lets knip report
-      // the rest.
+      // Core and plugins reach into this tree by the `@rova/shared/*` specifier,
+      // which the root tsconfig maps to these sources, so leaving entry empty
+      // lets those imports decide what is reachable and lets knip report the
+      // rest.
       entry: [],
       project: ["src/**/*.{ts,tsx}"],
     },

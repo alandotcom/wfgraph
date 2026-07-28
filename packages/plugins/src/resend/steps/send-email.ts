@@ -6,8 +6,8 @@ import {
   type StepInput,
   withStepLogging,
 } from "@rova/core/plugin";
-import { describeResendFailure, sendResendEmail } from "@/resend/client";
-import type { ResendCredentials } from "@/resend/credentials";
+import { describeResendFailure, sendResendEmail } from "#src/resend/client";
+import type { ResendCredentials } from "#src/resend/credentials";
 import type { JsonObject } from "@rova/shared/types/json";
 
 type SendEmailResult =

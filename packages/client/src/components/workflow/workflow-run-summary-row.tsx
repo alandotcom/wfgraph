@@ -1,9 +1,9 @@
 import { ArrowLeft, Ban, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "#src/components/ui/button";
 import { cn } from "@rova/shared/utils";
 import { getRelativeTime } from "@rova/shared/utils/time";
-import { type WorkflowExecution } from "@/lib/execution-logs";
+import { type WorkflowExecution } from "#src/lib/execution-logs";
 import {
   formatDuration,
   getStatusBadgeClass,

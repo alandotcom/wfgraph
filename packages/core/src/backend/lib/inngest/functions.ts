@@ -1,6 +1,6 @@
 import type { InngestFunction } from "inngest";
-import { db } from "@/backend/lib/db";
-import { CURRENT_WORKFLOW_NAME } from "@/backend/lib/workflow-constants";
+import { db } from "#src/backend/lib/db/index";
+import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import {
   serializedWorkflowGraphSchema,
   type WorkflowTriggerConfigInput,

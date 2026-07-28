@@ -22,7 +22,7 @@ export type StepError = { message: string };
  * Inngest between steps and then stored as a node output that templates and CEL
  * conditions read back. A Date or a Map placed here loses its type before any
  * downstream node sees it, and timestamps cross through the codec in
- * `@/shared/types/timestamp` for that reason.
+ * `#src/types/timestamp` for that reason.
  *
  * `TData` stays unconstrained even so. Most step payloads are shaped by a
  * vendor SDK, and TypeScript gives an implicit index signature to a type alias

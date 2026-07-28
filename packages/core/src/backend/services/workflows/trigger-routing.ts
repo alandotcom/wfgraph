@@ -1,9 +1,9 @@
 import type { ResolvedTriggerRouting } from "@rova/shared/workflow/routing-policy";
-import { cancelInFlightRuns } from "@/backend/lib/workflow-cancellation";
+import { cancelInFlightRuns } from "#src/backend/lib/workflow-cancellation";
 import {
   listWorkflowInFlightExecutionsByCorrelation,
   listWorkflowWaitingStatesByCorrelation,
-} from "@/backend/lib/workflow-wait-state";
+} from "#src/backend/lib/workflow-wait-state";
 import {
   orchestrateTriggerExecution,
   type TriggerOrchestratorResult,

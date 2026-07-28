@@ -1,5 +1,5 @@
-import { parseTimeOfDayMinutes } from "@/utils/wait-allowed-hours";
-import type { WorkflowNode } from "@/workflow/types";
+import { parseTimeOfDayMinutes } from "#src/utils/wait-allowed-hours";
+import type { WorkflowNode } from "#src/workflow/types";
 
 export type MissingRequiredField = {
   fieldKey: string;

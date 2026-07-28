@@ -4,12 +4,12 @@
  */
 
 import { and, eq, inArray } from "drizzle-orm";
-import { db } from "@/backend/lib/db";
+import { db } from "#src/backend/lib/db/index";
 import {
   workflowExecutionLogs,
   workflowExecutions,
-} from "@/backend/lib/db/schema";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@/backend/lib/workflow-wait-state";
+} from "#src/backend/lib/db/schema";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "#src/backend/lib/workflow-wait-state";
 
 export type LogStepStartParams = {
   executionId: string;

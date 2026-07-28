@@ -3,7 +3,7 @@ import {
   extractRequiredIntegrationIds,
   type ResolveActionByType,
   validateWorkflowIntegrations,
-} from "@/backend/lib/workflow-integration-validation";
+} from "#src/backend/lib/workflow-integration-validation";
 import type { IntegrationType } from "@rova/shared/types/integration";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 

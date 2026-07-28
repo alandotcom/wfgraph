@@ -1,4 +1,4 @@
-import type { IntegrationType } from "@/types/integration";
+import type { IntegrationType } from "#src/types/integration";
 
 export const SYSTEM_ACTION_INTEGRATIONS: Readonly<
   Record<string, IntegrationType>

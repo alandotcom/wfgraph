@@ -1,4 +1,4 @@
-import { OverlayContainer } from "@/components/overlays/overlay-container";
+import { OverlayContainer } from "#src/components/overlays/overlay-container";
 
 /**
  * Global modals and overlays that need to be rendered once at app level

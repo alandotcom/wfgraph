@@ -1,8 +1,5 @@
 import { defineConfig } from "vitest/config";
-import {
-  packageScopedAlias,
-  workspaceSourceAliases,
-} from "./scripts/plugins/package-scoped-alias";
+import { workspaceSourceAliases } from "./scripts/plugins/workspace-source-aliases";
 
 /**
  * This file replaces vite.config.ts for the test runner rather than extending
@@ -19,7 +16,6 @@ const CLIENT_TESTS = "packages/client/src/**/*.test.{ts,tsx}";
 const ALWAYS_EXCLUDED = ["**/node_modules/**", "**/dist/**"];
 
 export default defineConfig({
-  plugins: [packageScopedAlias()],
   resolve: {
     alias: [...workspaceSourceAliases],
   },

@@ -1,5 +1,5 @@
 import { compact } from "es-toolkit/array";
-import type { JsonValue } from "@/types/json";
+import type { JsonValue } from "#src/types/json";
 
 /**
  * Reads a dot-separated path out of a value that arrived as JSON: a webhook

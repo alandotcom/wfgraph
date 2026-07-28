@@ -11,18 +11,18 @@ import {
 } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Canvas } from "@/components/flow-elements/canvas";
-import { Connection } from "@/components/flow-elements/connection";
-import { Controls } from "@/components/flow-elements/controls";
-import { WorkflowToolbar } from "@/components/workflow/workflow-toolbar";
+import { Canvas } from "#src/components/flow-elements/canvas";
+import { Connection } from "#src/components/flow-elements/connection";
+import { Controls } from "#src/components/flow-elements/controls";
+import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
 import "@xyflow/react/dist/style.css";
 
 import { PlayCircle, Zap } from "lucide-react";
 import { nanoid } from "nanoid";
-import { Edge } from "@/components/flow-elements/edge";
-import { Panel } from "@/components/flow-elements/panel";
-import { useAfterCommit, useAfterPaint, useDomEvent } from "@/hooks/effects";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { Edge } from "#src/components/flow-elements/edge";
+import { Panel } from "#src/components/flow-elements/panel";
+import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   addNodeAtom,
   applyNodeLayoutAtom,
@@ -37,15 +37,15 @@ import {
   selectOnlyNodeAtom,
   snapshotHistoryAtom,
   undoAtom,
-} from "@/lib/workflow-graph-store";
-import { currentWorkflowIdAtom } from "@/lib/workflow-save-store";
+} from "#src/lib/workflow-graph-store";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   isGeneratingAtom,
   isTransitioningFromHomepageAtom,
   propertiesPanelActiveTabAtom,
   rightPanelWidthAtom,
   showMinimapAtom,
-} from "@/lib/workflow-ui-store";
+} from "#src/lib/workflow-ui-store";
 import type {
   WorkflowNode,
   WorkflowNodeType,

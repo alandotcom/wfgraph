@@ -1,6 +1,6 @@
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import type { QueryClient } from "@tanstack/react-query";
-import { type Integration, rpc, toSavedWorkflows } from "@/lib/rpc-client";
+import { type Integration, rpc, toSavedWorkflows } from "#src/lib/rpc-client";
 
 /**
  * TanStack Query bindings for the RPC contract.

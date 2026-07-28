@@ -13,17 +13,17 @@ const {
   markWaitStateStatusMock: vi.fn(),
 }));
 
-vi.mock("@/backend/lib/inngest/runtime-events", () => ({
+vi.mock("#src/backend/lib/inngest/runtime-events", () => ({
   sendWorkflowWaitSignal: sendWorkflowWaitSignalMock,
   sendWorkflowRunRequested: vi.fn(),
   sendWorkflowCancelRequested: vi.fn(),
 }));
 
-vi.mock("@/backend/lib/workflow-audit", () => ({
+vi.mock("#src/backend/lib/workflow-audit", () => ({
   logWorkflowAuditEvent: logWorkflowAuditEventMock,
 }));
 
-vi.mock("@/backend/lib/workflow-wait-state", () => ({
+vi.mock("#src/backend/lib/workflow-wait-state", () => ({
   markExecutionRunning: markExecutionRunningMock,
   markWaitStateStatus: markWaitStateStatusMock,
   markExecutionCancelled: vi.fn(),

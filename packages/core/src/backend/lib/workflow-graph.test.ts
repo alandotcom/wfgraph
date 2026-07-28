@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateWorkflowGraph } from "@/backend/lib/workflow-graph";
+import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type {
   SerializedWorkflowGraph,

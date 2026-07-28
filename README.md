@@ -426,7 +426,7 @@ Base path: `/api`
 Reads and writes in the SPA both go through `orpcQuery`, which wraps the RPC contract for TanStack Query so a query key is derived from the contract path:
 
 ```ts
-import { orpcQuery } from "@/lib/rpc-query";
+import { orpcQuery } from "#src/lib/rpc-query";
 ```
 
 `packages/client/src/lib/rpc-client.ts` holds what sits underneath: the raw `rpc` client, `ApiError`, and the `toSavedWorkflow`/`toSavedWorkflows` codecs.

@@ -22,10 +22,21 @@ server through `tsx`, the client build through Vite, the suite through vitest. T
 for something undeclared fails to resolve. The dependency belongs on the package that
 imports it.
 
-**`@/` means this package's own `src`, never another's.** An alias resolves to a
-file, so the resolver never reads a manifest for it and an undeclared cross-package
-dependency stays invisible. Import a sibling by name: `@rova/shared/types/json`,
-`@rova/core/plugin`. Lint rejects the alias forms.
+**`#src/` means this package's own `src`, never another's.** Each package's
+`package.json` carries `"imports": { "#src/*": "./src/*.js" }`, which is a Node
+subpath import: the resolver defines a `#` specifier against the manifest of the
+file that wrote it, so `#src/lib/foo` in `packages/client` can only ever be
+`packages/client/src/lib/foo`. The scope is the resolver's own behaviour, which is
+why nothing in the repo restates it. Import a sibling by name instead:
+`@rova/shared/types/json`, `@rova/core/plugin`.
+
+The mapping's `.js` suffix is what Node's `imports` field needs to reach a `.ts` or
+`.tsx` file, and it stays in the manifest: a specifier is written extensionless.
+Two habits the old tsconfig alias allowed have to be unlearned, because ESM
+resolution has neither. A directory does not stand in for its `index`, so write
+`#src/backend/lib/db/index`. A stylesheet needs the separate `#src/*.css` entry
+`packages/client` declares, since the `.js` suffix would otherwise be appended to
+it.
 
 **Every pnpm setting lives in `pnpm-workspace.yaml`.** pnpm reads no `pnpm` field
 from `package.json` and reads only auth and registry settings from `.npmrc`, so the
@@ -159,7 +170,7 @@ runs nowhere.
 `vitest.config` before `vite.config` and stops at the first file it finds, so anything the
 tests need has to be declared in `vitest.config.ts` too. The `@rova/plugins` source aliases
 are shared between the two as `workspaceSourceAliases` from
-`scripts/plugins/package-scoped-alias.ts` for exactly that reason; without them a test
+`scripts/plugins/workspace-source-aliases.ts` for exactly that reason; without them a test
 importing `@rova/plugins` would resolve through the package's `exports` to a stale `dist`.
 
 **Development needs no client build.** `server.ts` creates Vite in middleware mode inside
@@ -216,12 +227,13 @@ SQL in `packages/core/drizzle/`.
 
 ## API client
 
-Reads and writes both go through `orpcQuery` from `@/lib/rpc-query`: a read is
+Reads and writes both go through `orpcQuery` from `#src/lib/rpc-query`: a read is
 `queryOptions`, a write is `useMutation(orpcQuery.<ns>.<proc>.mutationOptions())`.
-`@/lib/rpc-client` exports the raw `rpc` client, `ApiError`, the response codecs
+`#src/lib/rpc-client` exports the raw `rpc` client, `ApiError`, the response codecs
 `toSavedWorkflow`/`toSavedWorkflows`, and `workflowApi`, which reshapes graph payloads
 in both directions and exists only for the autosave queue in `workflow-save-store.ts`,
-because that runs outside React. There is no `api` object and no `@/lib/api-client`.
+because that runs outside React. There is no `api` object and no
+`#src/lib/api-client`.
 
 A query key is derived from the contract path, so it cannot drift from
 `packages/shared/src/rpc/contracts.ts`. One entry is

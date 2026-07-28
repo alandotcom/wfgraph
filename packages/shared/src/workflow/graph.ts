@@ -3,7 +3,7 @@ import {
   serializedWorkflowGraphSchema,
   workflowEdgeAttributesSchema,
   workflowNodeAttributesSchema,
-} from "@/workflow/schemas";
+} from "#src/workflow/schemas";
 import type {
   SerializedWorkflowEdge,
   SerializedWorkflowGraph,
@@ -11,7 +11,7 @@ import type {
   WorkflowEdge,
   WorkflowNode,
   WorkflowNodeType,
-} from "@/workflow/types";
+} from "#src/workflow/types";
 
 export const WORKFLOW_GRAPH_OPTIONS = {
   allowSelfLoops: false,

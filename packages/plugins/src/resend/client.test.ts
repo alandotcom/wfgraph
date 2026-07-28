@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { listResendDomains, sendResendEmail } from "@/resend/client";
+import { listResendDomains, sendResendEmail } from "#src/resend/client";
 
 /**
  * What goes on the wire, now that this plugin builds the request itself instead

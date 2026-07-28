@@ -11,7 +11,7 @@
  * know about database rows, and nothing there may know about replay.
  */
 
-import { getAppLogger } from "@/backend/lib/logger";
+import { getAppLogger } from "#src/backend/lib/logger";
 
 const runtimeLogger = getAppLogger("workflow", "runtime");
 

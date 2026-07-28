@@ -1,9 +1,9 @@
 import { oc } from "@orpc/contract";
 import { openapi } from "@orpc/openapi";
 import { z } from "zod";
-import { jsonObjectSchema } from "@/types/json";
-import { WORKFLOW_EXECUTION_IGNORED_REASONS } from "@/workflow/execution-contracts";
-import { serializedWorkflowGraphSchema } from "@/workflow/schemas";
+import { jsonObjectSchema } from "#src/types/json";
+import { WORKFLOW_EXECUTION_IGNORED_REASONS } from "#src/workflow/execution-contracts";
+import { serializedWorkflowGraphSchema } from "#src/workflow/schemas";
 
 /**
  * Declares a procedure's REST shape. Routing metadata moved off the contract

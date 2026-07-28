@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from "effect";
-import { getAppLogger } from "@/backend/lib/logger";
+import { getAppLogger } from "#src/backend/lib/logger";
 
 /** Structured fields attached to one log line, the same bag logtape takes. */
 export type LogProperties = Record<string, unknown>;

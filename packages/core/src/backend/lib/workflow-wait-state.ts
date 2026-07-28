@@ -1,9 +1,9 @@
 import { and, eq, getTableColumns, inArray } from "drizzle-orm";
-import { db } from "@/backend/lib/db";
+import { db } from "#src/backend/lib/db/index";
 import {
   workflowExecutions,
   workflowWaitStates,
-} from "@/backend/lib/db/schema";
+} from "#src/backend/lib/db/schema";
 
 type WaitStatus = "waiting" | "resumed" | "timed_out" | "cancelled";
 

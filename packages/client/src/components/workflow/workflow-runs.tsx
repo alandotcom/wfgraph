@@ -2,16 +2,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue } from "jotai";
 import { Play } from "lucide-react";
 import { useState } from "react";
-import { Spinner } from "@/components/ui/spinner";
+import { Spinner } from "#src/components/ui/spinner";
 import {
   isRunInProgress,
   toExecutionEvents,
   toExecutionLogs,
   toWorkflowExecutions,
-} from "@/lib/execution-logs";
-import { orpcQuery, refreshRunHistory } from "@/lib/rpc-query";
-import { currentWorkflowIdAtom } from "@/lib/workflow-save-store";
-import { selectedExecutionIdAtom } from "@/lib/workflow-ui-store";
+} from "#src/lib/execution-logs";
+import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import { WorkflowRunDetail } from "./workflow-run-detail";
 import { WorkflowRunsList } from "./workflow-runs-list";
 

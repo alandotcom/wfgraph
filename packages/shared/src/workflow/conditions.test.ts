@@ -7,7 +7,7 @@ import {
   parseConditionModel,
   reconcileModelWithFields,
   serializeConditionModel,
-} from "@/workflow/conditions";
+} from "#src/workflow/conditions";
 
 describe("conditions", () => {
   it("compiles grouped timestamp relative operators", () => {

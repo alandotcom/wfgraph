@@ -4,7 +4,7 @@ import { useState } from "react";
 import {
   SchemaBuilder,
   type SchemaField,
-} from "@/components/workflow/config/schema-builder";
+} from "#src/components/workflow/config/schema-builder";
 
 const FIELD_DETAILS_BUTTON_REGEX = /field details/i;
 const NOOP = () => undefined;

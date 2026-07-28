@@ -18,29 +18,29 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "#src/components/ui/alert-dialog";
+import { Button } from "#src/components/ui/button";
+import { Checkbox } from "#src/components/ui/checkbox";
+import { Input } from "#src/components/ui/input";
+import { Label } from "#src/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { CreateWorkflowDialog } from "@/components/workflow/create-workflow-dialog";
+} from "#src/components/ui/dropdown-menu";
+import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import {
   type SavedWorkflow,
   toSavedWorkflows,
   type WorkflowExecutionsGlobalResult,
-} from "@/lib/rpc-client";
+} from "#src/lib/rpc-client";
 import {
   orpcQuery,
   refreshRunHistory,
   refreshWorkflowList,
-} from "@/lib/rpc-query";
+} from "#src/lib/rpc-query";
 import { getRelativeTime } from "@rova/shared/utils/time";
 
 type WorkflowExecutionStatus =

@@ -1,14 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { HelpCircle, Plus, Settings, Zap } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
-import { ConfigureConnectionOverlay } from "@/components/overlays/add-connection-overlay";
-import { useOverlay } from "@/components/overlays/overlay-provider";
-import { Button } from "@/components/ui/button";
-import { CodeEditor } from "@/components/ui/code-editor";
-import { Input } from "@/components/ui/input";
-import { IntegrationIcon } from "@/components/ui/integration-icon";
-import { IntegrationSelector } from "@/components/ui/integration-selector";
-import { Label } from "@/components/ui/label";
+import { ConfigureConnectionOverlay } from "#src/components/overlays/add-connection-overlay";
+import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { Button } from "#src/components/ui/button";
+import { CodeEditor } from "#src/components/ui/code-editor";
+import { Input } from "#src/components/ui/input";
+import { IntegrationIcon } from "#src/components/ui/integration-icon";
+import { IntegrationSelector } from "#src/components/ui/integration-selector";
+import { Label } from "#src/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -16,16 +16,21 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TemplateBadgeInput } from "@/components/ui/template-badge-input";
-import { TimezoneSelect } from "@/components/ui/timezone-select";
+} from "#src/components/ui/select";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "#src/components/ui/tabs";
+import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
+import { TimezoneSelect } from "#src/components/ui/timezone-select";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "#src/components/ui/tooltip";
 import {
   findActionById,
   getActionsByCategory,
@@ -46,7 +51,7 @@ import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { SchemaBuilder } from "./schema-builder";
 import { WaitEventSelect } from "./wait-event-select";
-import { integrationsQueryOptions } from "@/lib/rpc-query";
+import { integrationsQueryOptions } from "#src/lib/rpc-query";
 
 type ActionConfigProps = {
   config: Record<string, unknown>;

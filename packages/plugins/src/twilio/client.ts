@@ -14,7 +14,7 @@
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { z } from "zod";
-import { parsePayload, requestVendor } from "@/vendor-http";
+import { parsePayload, requestVendor } from "#src/vendor-http";
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
 

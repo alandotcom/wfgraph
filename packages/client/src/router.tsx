@@ -7,21 +7,21 @@ import {
 } from "@tanstack/react-router";
 import { ReactFlowProvider } from "@xyflow/react";
 import { Provider } from "jotai";
-import { GlobalModals } from "@/components/global-modals";
-import { OverlayProvider } from "@/components/overlays/overlay-provider";
-import { ThemeProvider } from "@/components/theme-provider";
-import { Toaster } from "@/components/ui/sonner";
-import { PersistentCanvas } from "@/components/workflow/persistent-canvas";
-import { appStore } from "@/lib/app-store";
-import { getBasePath } from "@/lib/base-path";
-import { repairNodeIntegrations } from "@/lib/node-integration";
-import { queryClient } from "@/lib/query-client";
-import { toSavedWorkflow } from "@/lib/rpc-client";
-import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
-import { hydrateWorkflowAtom } from "@/lib/workflow-graph-store";
-import { workflowNotFoundAtom } from "@/lib/workflow-save-store";
-import WorkflowEditorPage from "@/routes/workflows/[workflowId]/page";
-import WorkflowsPage from "@/routes/workflows/page";
+import { GlobalModals } from "#src/components/global-modals";
+import { OverlayProvider } from "#src/components/overlays/overlay-provider";
+import { ThemeProvider } from "#src/components/theme-provider";
+import { Toaster } from "#src/components/ui/sonner";
+import { PersistentCanvas } from "#src/components/workflow/persistent-canvas";
+import { appStore } from "#src/lib/app-store";
+import { getBasePath } from "#src/lib/base-path";
+import { repairNodeIntegrations } from "#src/lib/node-integration";
+import { queryClient } from "#src/lib/query-client";
+import { toSavedWorkflow } from "#src/lib/rpc-client";
+import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
+import { hydrateWorkflowAtom } from "#src/lib/workflow-graph-store";
+import { workflowNotFoundAtom } from "#src/lib/workflow-save-store";
+import WorkflowEditorPage from "#src/routes/workflows/[workflowId]/page";
+import WorkflowsPage from "#src/routes/workflows/page";
 
 function LayoutContent() {
   return (

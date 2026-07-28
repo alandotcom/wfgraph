@@ -3,7 +3,7 @@ import {
   getConditionBranchDisplayLabel,
   isConditionActionType,
   normalizeConditionBranch,
-} from "@/workflow/condition-branch";
+} from "#src/workflow/condition-branch";
 
 describe("condition-branch helpers", () => {
   it("normalizes true/false branch handles", () => {

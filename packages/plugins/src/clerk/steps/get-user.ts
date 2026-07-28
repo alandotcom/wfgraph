@@ -7,9 +7,9 @@ import {
   createClerkBackendClient,
   getClerkApiErrorMessage,
   toClerkApiUser,
-} from "@/clerk/client";
-import type { ClerkCredentials } from "@/clerk/credentials";
-import { type ClerkUserResult, toClerkUserData } from "@/clerk/types";
+} from "#src/clerk/client";
+import type { ClerkCredentials } from "#src/clerk/credentials";
+import { type ClerkUserResult, toClerkUserData } from "#src/clerk/types";
 
 export type ClerkGetUserCoreInput = {
   userId: string;

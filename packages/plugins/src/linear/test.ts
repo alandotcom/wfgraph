@@ -1,5 +1,5 @@
 import { LinearClient, LinearErrorType } from "@linear/sdk";
-import { toLinearError } from "@/linear/errors";
+import { toLinearError } from "#src/linear/errors";
 
 export async function testLinear(credentials: Record<string, string>) {
   try {

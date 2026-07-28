@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getWorkflowExecutionsGlobalResult } from "@/backend/services/workflows/workflow-executions-global";
+import { getWorkflowExecutionsGlobalResult } from "#src/backend/services/workflows/workflow-executions-global";
 
 const mocks = vi.hoisted(() => {
   const limit = vi.fn();
@@ -28,13 +28,13 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/backend/lib/db", () => ({
+vi.mock("#src/backend/lib/db/index", () => ({
   db: {
     select: mocks.select,
   },
 }));
 
-vi.mock("@/backend/lib/logger", () => ({
+vi.mock("#src/backend/lib/logger", () => ({
   getAppLogger: () => mocks.logger,
 }));
 

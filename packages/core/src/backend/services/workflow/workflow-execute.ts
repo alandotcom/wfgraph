@@ -1,19 +1,19 @@
 import { eq } from "drizzle-orm";
-import { db } from "@/backend/lib/db";
-import { workflows } from "@/backend/lib/db/schema";
-import { getAppLogger } from "@/backend/lib/logger";
+import { db } from "#src/backend/lib/db/index";
+import { workflows } from "#src/backend/lib/db/schema";
+import { getAppLogger } from "#src/backend/lib/logger";
 import {
   failure,
   type ServiceResult,
   success,
-} from "@/backend/lib/service-result";
-import { orchestrateRoutedTrigger } from "@/backend/services/workflows/trigger-routing";
-import { runWorkflowExecutionPreflight } from "@/backend/services/workflows/workflow-execution-preflight";
+} from "#src/backend/lib/service-result";
+import { orchestrateRoutedTrigger } from "#src/backend/services/workflows/trigger-routing";
+import { runWorkflowExecutionPreflight } from "#src/backend/services/workflows/workflow-execution-preflight";
 import {
   buildIgnoredRunAuditMessage,
   recordTerminalWorkflowRun,
   startWorkflowRun,
-} from "@/backend/services/workflows/workflow-run-lifecycle";
+} from "#src/backend/services/workflows/workflow-run-lifecycle";
 import type { JsonObject } from "@rova/shared/types/json";
 import { getErrorMessage } from "@rova/shared/utils";
 import type { ApiErrorPayload } from "@rova/shared/workflow/api-contracts";

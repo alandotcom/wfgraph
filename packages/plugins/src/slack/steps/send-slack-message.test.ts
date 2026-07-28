@@ -17,7 +17,7 @@ vi.mock("@rova/core/plugin", () => ({
   withStepLogging: (_input: unknown, run: () => unknown) => run(),
 }));
 
-vi.mock("@/slack/client", () => ({
+vi.mock("#src/slack/client", () => ({
   callSlack: mocks.callSlack,
   describeSlackFailure: (failure: { message?: string }) =>
     failure.message ?? "slack failure",

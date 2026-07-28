@@ -8,8 +8,8 @@
 
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, posix } from "node:path";
-import { rewriteClientBaseHref } from "@/backend/lib/http/mount-path";
-import { getAppLogger } from "@/backend/lib/logger";
+import { rewriteClientBaseHref } from "#src/backend/lib/http/mount-path";
+import { getAppLogger } from "#src/backend/lib/logger";
 
 const clientLogger = getAppLogger("http", "client");
 

@@ -1,4 +1,4 @@
-import type { SavedWorkflow } from "@/lib/rpc-client";
+import type { SavedWorkflow } from "#src/lib/rpc-client";
 
 /** A server response with only the fields the save store and its callers read. */
 export function savedWorkflow(id: string): SavedWorkflow {

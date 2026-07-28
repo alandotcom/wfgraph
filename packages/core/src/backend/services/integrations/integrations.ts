@@ -7,14 +7,14 @@ import {
   getIntegration as getIntegrationById,
   getIntegrations as getIntegrationsAll,
   updateIntegration,
-} from "@/backend/lib/db/integrations";
-import { responseFromServiceResult } from "@/backend/lib/http/response-from-service-result";
-import { getAppLogger } from "@/backend/lib/logger";
+} from "#src/backend/lib/db/integrations";
+import { responseFromServiceResult } from "#src/backend/lib/http/response-from-service-result";
+import { getAppLogger } from "#src/backend/lib/logger";
 import {
   failure,
   type ServiceResult,
   success,
-} from "@/backend/lib/service-result";
+} from "#src/backend/lib/service-result";
 import {
   getCredentialMapping,
   getIntegrationTypes,

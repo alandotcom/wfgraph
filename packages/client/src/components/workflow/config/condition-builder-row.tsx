@@ -2,9 +2,9 @@ import { useAtomValue } from "jotai";
 import { Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "#src/components/ui/button";
+import { Input } from "#src/components/ui/input";
+import { Label } from "#src/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -13,14 +13,14 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { TemplateBadgeInput } from "@/components/ui/template-badge-input";
-import { getUpstreamConditionFields } from "@/lib/upstream-node-fields";
+} from "#src/components/ui/select";
+import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
+import { getUpstreamConditionFields } from "#src/lib/upstream-node-fields";
 import {
   edgesAtom,
   nodesAtom,
   selectedNodeAtom,
-} from "@/lib/workflow-graph-store";
+} from "#src/lib/workflow-graph-store";
 import {
   BOOLEAN_OPERATOR_OPTIONS,
   type ConditionFieldDefinition,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { callSlack, describeSlackFailure } from "@/slack/client";
+import { callSlack, describeSlackFailure } from "#src/slack/client";
 
 // auth.test is Slack's own "is this token any good" call: it takes no arguments
 // and answers with the workspace and bot the token belongs to.

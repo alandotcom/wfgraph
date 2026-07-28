@@ -2,13 +2,13 @@ import { useAtom } from "jotai";
 import { Check } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useAfterCommit, useDomEvent } from "@/hooks/effects";
+import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import {
   getNodeDisplayName,
   getNodeOutputFields,
   getUpstreamNodes,
-} from "@/lib/upstream-node-fields";
-import { edgesAtom, nodesAtom } from "@/lib/workflow-graph-store";
+} from "#src/lib/upstream-node-fields";
+import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import { cn } from "@rova/shared/utils";
 import {
   formatTemplateToken,

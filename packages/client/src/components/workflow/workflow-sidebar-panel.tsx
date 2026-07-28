@@ -1,13 +1,13 @@
 import { useAtom } from "jotai";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
-import { useDomEvent } from "@/hooks/effects";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { DeleteConfirmDialog } from "#src/components/delete-confirm-dialog";
+import { useDomEvent } from "#src/hooks/effects";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   isSidebarCollapsedAtom,
   sidebarWidthPercentAtom,
-} from "@/lib/workflow-ui-store";
+} from "#src/lib/workflow-ui-store";
 import {
   type ConfirmRequest,
   type NodeConfigFrame,

@@ -19,7 +19,7 @@ import {
 import { createInMemoryWorkflowRuntime } from "./runtime";
 
 // Keeps step-handler's own logging (used by the trigger step) off a database.
-vi.mock("@/backend/lib/workflow-logging", () => ({
+vi.mock("#src/backend/lib/workflow-logging", () => ({
   logStepStartDb: () =>
     Promise.resolve({ logId: "mock-log-id", startTime: Date.now() }),
   logStepCompleteDb: () => Promise.resolve(),

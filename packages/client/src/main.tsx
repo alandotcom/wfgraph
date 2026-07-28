@@ -9,9 +9,9 @@ import "@rova/plugins/ui";
 // variables in globals.css point at the families these register.
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
-import "@/routes/globals.css";
-import { queryClient } from "@/lib/query-client";
-import { hydrateRuntimeExtensionsFromApi } from "@/lib/runtime-extensions";
+import "#src/routes/globals.css";
+import { queryClient } from "#src/lib/query-client";
+import { hydrateRuntimeExtensionsFromApi } from "#src/lib/runtime-extensions";
 import { router } from "./router";
 
 declare global {

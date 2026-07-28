@@ -8,7 +8,7 @@
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres, { type Sql } from "postgres";
-import { fetchCredentials } from "@/backend/lib/credential-fetcher";
+import { fetchCredentials } from "#src/backend/lib/credential-fetcher";
 import { validateWorkflowOutputAgainstSchema } from "@rova/shared/workflow/schema-validation";
 import type { StepError } from "@rova/shared/workflow/step-result";
 import { type StepInput, withStepLogging } from "./step-handler";

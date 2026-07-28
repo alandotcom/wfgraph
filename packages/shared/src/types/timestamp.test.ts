@@ -4,7 +4,7 @@ import {
   decodeIsoTimestamp,
   encodeIsoTimestamp,
   isoTimestampToDate,
-} from "@/types/timestamp";
+} from "#src/types/timestamp";
 
 describe("isoTimestampToDate", () => {
   it("decodes an ISO string to the instant it names", () => {

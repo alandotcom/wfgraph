@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
-import { db } from "@/backend/lib/db";
-import { workflowExecutions } from "@/backend/lib/db/schema";
-import { sendWorkflowRunRequested } from "@/backend/lib/inngest/runtime-events";
+import { db } from "#src/backend/lib/db/index";
+import { workflowExecutions } from "#src/backend/lib/db/schema";
+import { sendWorkflowRunRequested } from "#src/backend/lib/inngest/runtime-events";
 import {
   logWorkflowAuditEvent,
   type WorkflowAuditEventType,
-} from "@/backend/lib/workflow-audit";
+} from "#src/backend/lib/workflow-audit";
 import type { JsonObject } from "@rova/shared/types/json";
 import type { WorkflowExecutionIgnoredReason } from "@rova/shared/workflow/execution-contracts";
 import type {

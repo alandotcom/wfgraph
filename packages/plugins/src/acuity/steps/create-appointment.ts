@@ -2,7 +2,7 @@ import type {
   Appointment,
   CreateAppointmentPayload,
 } from "@fountain-bio/acuity";
-import type { AcuityCredentials } from "@/acuity/credentials";
+import type { AcuityCredentials } from "#src/acuity/credentials";
 import {
   fetchCredentials,
   type StepInput,

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button } from "#src/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -9,11 +9,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ApiError } from "@/lib/rpc-client";
-import { orpcQuery, refreshWorkflowList } from "@/lib/rpc-query";
+} from "#src/components/ui/dialog";
+import { Input } from "#src/components/ui/input";
+import { Label } from "#src/components/ui/label";
+import { ApiError } from "#src/lib/rpc-client";
+import { orpcQuery, refreshWorkflowList } from "#src/lib/rpc-query";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 
 type CreateWorkflowDialogProps = {

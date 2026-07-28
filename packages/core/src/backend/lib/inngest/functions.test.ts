@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { CURRENT_WORKFLOW_NAME } from "@/backend/lib/workflow-constants";
+import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import {
   createTrigger,

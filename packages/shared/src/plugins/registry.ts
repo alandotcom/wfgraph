@@ -1,9 +1,12 @@
-import { type IntegrationType, isIntegrationType } from "@/types/integration";
+import {
+  type IntegrationType,
+  isIntegrationType,
+} from "#src/types/integration";
 import {
   getRuntimeActionRegistryVersion,
   getRuntimeActions,
-} from "@/workflow/action-registry";
-import type { ReferenceField } from "@/workflow/node-references";
+} from "#src/workflow/action-registry";
+import type { ReferenceField } from "#src/workflow/node-references";
 
 /**
  * Select Option

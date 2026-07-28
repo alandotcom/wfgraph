@@ -1,9 +1,9 @@
 import { Key, Moon, Plug, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
-import { ApiKeysOverlay } from "@/components/overlays/api-keys-overlay";
-import { IntegrationsOverlay } from "@/components/overlays/integrations-overlay";
-import { useOverlay } from "@/components/overlays/overlay-provider";
-import { Button } from "@/components/ui/button";
+import { ApiKeysOverlay } from "#src/components/overlays/api-keys-overlay";
+import { IntegrationsOverlay } from "#src/components/overlays/integrations-overlay";
+import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { Button } from "#src/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,7 +15,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "#src/components/ui/dropdown-menu";
 
 export const UserMenu = () => {
   const { theme, setTheme } = useTheme();

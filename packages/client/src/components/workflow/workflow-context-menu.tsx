@@ -3,17 +3,17 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { Link2Off, Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useRef } from "react";
-import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
-import { useOverlay } from "@/components/overlays/overlay-provider";
-import { useDomEvent } from "@/hooks/effects";
+import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
+import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { useDomEvent } from "#src/hooks/effects";
 import {
   addNodeAtom,
   deleteEdgeAtom,
   deleteNodeAtom,
   nodesAtom,
   selectedNodeAtom,
-} from "@/lib/workflow-graph-store";
-import { propertiesPanelActiveTabAtom } from "@/lib/workflow-ui-store";
+} from "#src/lib/workflow-graph-store";
+import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { type WorkflowNode } from "@rova/shared/workflow/types";
 import { cn } from "@rova/shared/utils";
 

@@ -20,10 +20,10 @@ import {
   Node,
   NodeDescription,
   NodeTitle,
-} from "@/components/flow-elements/node";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { readBase64ImageOutput } from "@/components/workflow/workflow-run-shared";
-import { selectedExecutionIdAtom } from "@/lib/workflow-ui-store";
+} from "#src/components/flow-elements/node";
+import { Dialog, DialogContent, DialogTitle } from "#src/components/ui/dialog";
+import { readBase64ImageOutput } from "#src/components/workflow/workflow-run-shared";
+import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import {
   type ExecutionLogEntry,
   type WorkflowNodeData,
@@ -36,12 +36,12 @@ import {
   resolveWaitUntil,
 } from "@rova/shared/utils/wait-time";
 import { isConditionActionType } from "@rova/shared/workflow/condition-branch";
-import { useAfterPaint, useNowMs } from "@/hooks/effects";
-import { useExecutionLogsByNode } from "@/hooks/use-execution-logs";
+import { useAfterPaint, useNowMs } from "#src/hooks/effects";
+import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
 import {
   integrationIdsQueryOptions,
   NO_INTEGRATION_IDS,
-} from "@/lib/rpc-query";
+} from "#src/lib/rpc-query";
 
 type WaitPreviewData = {
   countdown: string;

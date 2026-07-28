@@ -3,27 +3,27 @@ import { Link } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { WorkflowSidebarPanel } from "@/components/workflow/workflow-sidebar-panel";
-import { useAfterCommit, useDomEvent } from "@/hooks/effects";
-import { isRunInProgress } from "@/lib/execution-logs";
-import { orpcQuery } from "@/lib/rpc-query";
+import { Button } from "#src/components/ui/button";
+import { WorkflowSidebarPanel } from "#src/components/workflow/workflow-sidebar-panel";
+import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
+import { isRunInProgress } from "#src/lib/execution-logs";
+import { orpcQuery } from "#src/lib/rpc-query";
 import {
   edgesAtom,
   nodesAtom,
   setNodeStatusesAtom,
-} from "@/lib/workflow-graph-store";
+} from "#src/lib/workflow-graph-store";
 import {
   currentWorkflowIdAtom,
   lastSaveErrorAtom,
   saveWorkflowAtom,
   workflowNotFoundAtom,
-} from "@/lib/workflow-save-store";
+} from "#src/lib/workflow-save-store";
 import {
   isExecutingAtom,
   isGeneratingAtom,
   selectedExecutionIdAtom,
-} from "@/lib/workflow-ui-store";
+} from "#src/lib/workflow-ui-store";
 
 /** How often a run that is still going has its progress read back. */
 const RUN_STATUS_POLL_MS = 500;

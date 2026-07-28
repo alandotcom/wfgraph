@@ -1,7 +1,7 @@
 import { compact } from "es-toolkit/array";
 import { startCase } from "es-toolkit/string";
 import { z } from "zod";
-import type { ActionConfigFieldBase } from "@/plugins/registry";
+import type { ActionConfigFieldBase } from "#src/plugins/registry";
 
 /**
  * Library-specific options passed through StandardSchema's `libraryOptions`.

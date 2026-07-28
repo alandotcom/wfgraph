@@ -3,8 +3,8 @@ import {
   type StepInput,
   withStepLogging,
 } from "@rova/core/plugin";
-import { createTwilioMessage, describeTwilioFailure } from "@/twilio/client";
-import type { TwilioCredentials } from "@/twilio/credentials";
+import { createTwilioMessage, describeTwilioFailure } from "#src/twilio/client";
+import type { TwilioCredentials } from "#src/twilio/credentials";
 
 type SendSmsResult =
   | {

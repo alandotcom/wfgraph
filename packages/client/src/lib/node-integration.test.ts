@@ -3,7 +3,7 @@ import {
   repairNodeIntegration,
   repairNodeIntegrations,
   requiredIntegrationType,
-} from "@/lib/node-integration";
+} from "#src/lib/node-integration";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 function actionNode(

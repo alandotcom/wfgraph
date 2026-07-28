@@ -1,6 +1,6 @@
-import { getValueByPath } from "@/utils/object-path";
-import type { WorkflowTriggerDefinition } from "@/workflow/trigger-registry";
-import { asNonEmptyString } from "@/workflow/webhook-routing";
+import { getValueByPath } from "#src/utils/object-path";
+import type { WorkflowTriggerDefinition } from "#src/workflow/trigger-registry";
+import { asNonEmptyString } from "#src/workflow/webhook-routing";
 
 export function createScheduleTriggerDefinition(): WorkflowTriggerDefinition {
   return {

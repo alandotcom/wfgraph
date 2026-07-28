@@ -2,8 +2,8 @@ import { uniq } from "es-toolkit/array";
 import {
   getIntegrationTypesByIds as getIntegrationTypesByIdsInDb,
   validateIntegrationIds as validateIntegrationIdsInDb,
-} from "@/backend/lib/db/integrations";
-import { getAppLogger } from "@/backend/lib/logger";
+} from "#src/backend/lib/db/integrations";
+import { getAppLogger } from "#src/backend/lib/logger";
 import { findActionById } from "@rova/shared/plugins/registry";
 import {
   type IntegrationType,

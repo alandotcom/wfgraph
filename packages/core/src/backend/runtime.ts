@@ -1,7 +1,7 @@
 import { Effect, Layer, ManagedRuntime } from "effect";
-import { AppLogger, AppLoggerLayer } from "@/backend/lib/effect/app-logger";
-import { DatabaseLayer } from "@/backend/lib/effect/database";
-import type { ServiceFailure } from "@/backend/lib/effect/failures";
+import { AppLogger, AppLoggerLayer } from "#src/backend/lib/effect/app-logger";
+import { DatabaseLayer } from "#src/backend/lib/effect/database";
+import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import {
   failure,
   // The pre-Effect failure type of the same name. It and the rest of
@@ -10,8 +10,11 @@ import {
   type ServiceFailure as LegacyServiceFailure,
   type ServiceResult,
   success,
-} from "@/backend/lib/service-result";
-import { ApiKeyRepo, ApiKeyRepoLayer } from "@/backend/services/api-keys/repo";
+} from "#src/backend/lib/service-result";
+import {
+  ApiKeyRepo,
+  ApiKeyRepoLayer,
+} from "#src/backend/services/api-keys/repo";
 
 /**
  * Everything a migrated service may ask for.

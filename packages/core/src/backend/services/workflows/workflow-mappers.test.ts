@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Workflow } from "@/backend/lib/db/schema";
+import type { Workflow } from "#src/backend/lib/db/schema";
 import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { routingPolicySchema } from "@/workflow/routing-policy";
+import { routingPolicySchema } from "#src/workflow/routing-policy";
 
 export const webhookTriggerConfigSchema = z
   .object({

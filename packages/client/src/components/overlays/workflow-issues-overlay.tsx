@@ -1,7 +1,7 @@
 import { AlertTriangle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { IntegrationIcon } from "@/components/ui/integration-icon";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { Button } from "#src/components/ui/button";
+import { IntegrationIcon } from "#src/components/ui/integration-icon";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import type { IntegrationType } from "@rova/shared/types/integration";
 import { ConfigureConnectionOverlay } from "./add-connection-overlay";
 import { ConfigurationOverlay } from "./configuration-overlay";

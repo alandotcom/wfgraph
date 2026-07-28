@@ -18,30 +18,30 @@ import {
 import { nanoid } from "nanoid";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
-import { Panel } from "@/components/flow-elements/panel";
-import { useDeleteWorkflow } from "@/hooks/use-delete-workflow";
-import { useDomEvent } from "@/hooks/effects";
-import { ConfigurationOverlay } from "@/components/overlays/configuration-overlay";
-import { ConfirmOverlay } from "@/components/overlays/confirm-overlay";
-import { useOverlay } from "@/components/overlays/overlay-provider";
-import { WorkflowIssuesOverlay } from "@/components/overlays/workflow-issues-overlay";
-import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
+import { Panel } from "#src/components/flow-elements/panel";
+import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
+import { useDomEvent } from "#src/hooks/effects";
+import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
+import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
+import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { WorkflowIssuesOverlay } from "#src/components/overlays/workflow-issues-overlay";
+import { Button } from "#src/components/ui/button";
+import { ButtonGroup } from "#src/components/ui/button-group";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { WorkflowIcon } from "@/components/ui/workflow-icon";
-import { CreateWorkflowDialog } from "@/components/workflow/create-workflow-dialog";
+} from "#src/components/ui/dropdown-menu";
+import { WorkflowIcon } from "#src/components/ui/workflow-icon";
+import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
-} from "@/components/workflow/workflow-node-dimensions";
-import { UserMenu } from "@/components/workflows/user-menu";
-import type { WorkflowExecuteResult } from "@/lib/rpc-client";
+} from "#src/components/workflow/workflow-node-dimensions";
+import { UserMenu } from "#src/components/workflows/user-menu";
+import type { WorkflowExecuteResult } from "#src/lib/rpc-client";
 import type { WorkflowExecutionIgnoredReason } from "@rova/shared/workflow/execution-contracts";
 import {
   integrationsQueryOptions,
@@ -49,7 +49,7 @@ import {
   refreshRunHistory,
   refreshWorkflowList,
   workflowListQueryOptions,
-} from "@/lib/rpc-query";
+} from "#src/lib/rpc-query";
 import {
   addNodeAtom,
   canRedoAtom,
@@ -65,7 +65,7 @@ import {
   selectedNodeAtom,
   undoAtom,
   updateNodeDataAtom,
-} from "@/lib/workflow-graph-store";
+} from "#src/lib/workflow-graph-store";
 import {
   createWorkflowAtom,
   currentWorkflowIdAtom,
@@ -77,14 +77,14 @@ import {
   saveWorkflowAtom,
   setWorkflowModeAtom,
   workflowNameErrorAtom,
-} from "@/lib/workflow-save-store";
+} from "#src/lib/workflow-save-store";
 import {
   isExecutingAtom,
   isGeneratingAtom,
   isTransitioningFromHomepageAtom,
   propertiesPanelActiveTabAtom,
   selectedExecutionIdAtom,
-} from "@/lib/workflow-ui-store";
+} from "#src/lib/workflow-ui-store";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 import {
   findActionById,

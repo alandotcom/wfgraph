@@ -1,4 +1,4 @@
-import { listResendDomains } from "@/resend/client";
+import { listResendDomains } from "#src/resend/client";
 
 export async function testResend(credentials: Record<string, string>) {
   const apiKey = credentials.RESEND_API_KEY;

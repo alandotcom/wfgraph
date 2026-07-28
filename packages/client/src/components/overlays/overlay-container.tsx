@@ -7,9 +7,9 @@ import {
 } from "motion/react";
 import { useCallback, useRef } from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
-import { Dialog, DialogPortal } from "@/components/ui/dialog";
-import { useDomEvent, useMeasuredHeight } from "@/hooks/effects";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { Dialog, DialogPortal } from "#src/components/ui/dialog";
+import { useDomEvent, useMeasuredHeight } from "#src/hooks/effects";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import { cn } from "@rova/shared/utils";
 import { useOverlay } from "./overlay-provider";
 

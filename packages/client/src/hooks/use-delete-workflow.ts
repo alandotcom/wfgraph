@@ -5,7 +5,7 @@ import {
   orpcQuery,
   refreshRunHistory,
   refreshWorkflowList,
-} from "@/lib/rpc-query";
+} from "#src/lib/rpc-query";
 
 /**
  * Delete the workflow the editor is on, then leave for the dashboard.

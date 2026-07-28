@@ -5,25 +5,25 @@ import { z } from "zod";
 import {
   getInngestClient,
   getInngestServeConfig,
-} from "@/backend/lib/inngest/client";
-import { getInngestFunctions } from "@/backend/lib/inngest/functions";
-import { getAppLogger } from "@/backend/lib/logger";
+} from "#src/backend/lib/inngest/client";
+import { getInngestFunctions } from "#src/backend/lib/inngest/functions";
+import { getAppLogger } from "#src/backend/lib/logger";
 import {
   type Authorize,
   UNAUTHORIZED_BODY,
-} from "@/backend/lib/http/authorize";
-import type { RpcContext } from "@/backend/rpc/context";
-import type { RovaRuntime } from "@/backend/runtime";
+} from "#src/backend/lib/http/authorize";
+import type { RpcContext } from "#src/backend/rpc/context";
+import type { RovaRuntime } from "#src/backend/runtime";
 import {
   createOpenApiReferenceHandler,
   openApiRestHandler,
-} from "@/backend/rpc/openapi";
-import { rpcRouter } from "@/backend/rpc/router";
-import { postWorkflowResume } from "@/backend/services/workflows/workflow-resume";
+} from "#src/backend/rpc/openapi";
+import { rpcRouter } from "#src/backend/rpc/router";
+import { postWorkflowResume } from "#src/backend/services/workflows/workflow-resume";
 import {
   optionsWorkflowWebhook,
   postWorkflowWebhook,
-} from "@/backend/services/workflows/workflow-webhook";
+} from "#src/backend/services/workflows/workflow-webhook";
 import { jsonObjectSchema } from "@rova/shared/types/json";
 import { getErrorMessage } from "@rova/shared/utils";
 import { listRuntimeActions } from "@rova/shared/workflow/action-registry";

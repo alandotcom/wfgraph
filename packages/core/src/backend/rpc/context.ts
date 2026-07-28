@@ -1,4 +1,4 @@
-import type { RovaRuntime } from "@/backend/runtime";
+import type { RovaRuntime } from "#src/backend/runtime";
 
 export type RpcContext = {
   headers: Headers;

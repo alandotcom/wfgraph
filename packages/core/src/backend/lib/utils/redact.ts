@@ -3,7 +3,7 @@
  * before storage or display in observability tools
  */
 
-import { getAppLogger } from "@/backend/lib/logger";
+import { getAppLogger } from "#src/backend/lib/logger";
 import { getErrorMessage } from "@rova/shared/utils";
 
 const redactLogger = getAppLogger("utils", "redact");

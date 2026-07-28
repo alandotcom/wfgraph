@@ -5,18 +5,18 @@ import type {
 import type {
   ActionConfigField,
   ActionConfigFieldBase,
-} from "@/plugins/registry";
-import type { IntegrationType } from "@/types/integration";
+} from "#src/plugins/registry";
+import type { IntegrationType } from "#src/types/integration";
 import {
   type ReferenceField,
   schemaFieldToReferenceField,
-} from "@/workflow/node-references";
+} from "#src/workflow/node-references";
 import {
   configFieldsFromJsonSchema,
   jsonSchemaLibraryOptions,
   parseWorkflowSchemaFieldsOrJsonSchema,
-} from "@/workflow/schema-codec";
-import type { StepError, StepResult } from "@/workflow/step-result";
+} from "#src/workflow/schema-codec";
+import type { StepError, StepResult } from "#src/workflow/step-result";
 
 /**
  * A Standard Schema that supports both validation and JSON Schema generation.

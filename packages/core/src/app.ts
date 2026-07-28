@@ -1,42 +1,42 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Hono } from "hono";
-import { createApiApp } from "@/backend/api-app";
+import { createApiApp } from "#src/backend/api-app";
 import {
   configureDatabaseRuntime,
   type DatabaseRuntimeConfig,
-} from "@/backend/lib/db";
+} from "#src/backend/lib/db/index";
 import {
   configureEncryptionKey,
   type EncryptionRuntimeConfig,
   assertValidEncryptionKey,
-} from "@/backend/lib/db/integrations";
+} from "#src/backend/lib/db/integrations";
 import {
   type MigrationsRuntimeOptions,
   runMigrations,
-} from "@/backend/lib/db/migrations";
+} from "#src/backend/lib/db/migrations";
 import {
   type Authorize,
   resolveAuthorize,
   type RovaAuth,
   UNAUTHORIZED_BODY,
-} from "@/backend/lib/http/authorize";
-import { serveClientAsset } from "@/backend/lib/http/client-assets";
+} from "#src/backend/lib/http/authorize";
+import { serveClientAsset } from "#src/backend/lib/http/client-assets";
 import {
   normalizeBasePath,
   toMountRelativePath,
-} from "@/backend/lib/http/mount-path";
+} from "#src/backend/lib/http/mount-path";
 import {
   configureInngest,
   type RovaInngestConfig,
   reportInngestCallbackExposure,
-} from "@/backend/lib/inngest/client";
+} from "#src/backend/lib/inngest/client";
 import {
   configureAppLogging,
   configureAppLoggingWithBridge,
-} from "@/backend/lib/logger";
-import { initializeWorkflowTriggers } from "@/backend/lib/workflow-trigger-bootstrap";
-import { createRovaRuntime, type RovaRuntime } from "@/backend/runtime";
+} from "#src/backend/lib/logger";
+import { initializeWorkflowTriggers } from "#src/backend/lib/workflow-trigger-bootstrap";
+import { createRovaRuntime, type RovaRuntime } from "#src/backend/runtime";
 import { unregisterIntegration } from "@rova/shared/plugins/registry";
 import {
   type IntegrationType,
@@ -54,10 +54,10 @@ import {
   unregisterWorkflowTrigger,
 } from "@rova/shared/workflow/trigger-registry";
 
-export type { DatabaseRuntimeConfig } from "@/backend/lib/db";
-export type { EncryptionRuntimeConfig } from "@/backend/lib/db/integrations";
-export type { RovaInngestConfig } from "@/backend/lib/inngest/client";
-export type { RovaAuth } from "@/backend/lib/http/authorize";
+export type { DatabaseRuntimeConfig } from "#src/backend/lib/db/index";
+export type { EncryptionRuntimeConfig } from "#src/backend/lib/db/integrations";
+export type { RovaInngestConfig } from "#src/backend/lib/inngest/client";
+export type { RovaAuth } from "#src/backend/lib/http/authorize";
 export type { IntegrationType } from "@rova/shared/types/integration";
 export type { RovaLogger } from "@rova/shared/types/logger";
 export type { RuntimeExtensionActionDefinition } from "@rova/shared/workflow/action-registry";

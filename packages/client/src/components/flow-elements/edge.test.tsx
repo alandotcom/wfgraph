@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
-import { Edge } from "@/components/flow-elements/edge";
+import { Edge } from "#src/components/flow-elements/edge";
 
 const { sourceNode, targetNode } = vi.hoisted(() => ({
   sourceNode: {

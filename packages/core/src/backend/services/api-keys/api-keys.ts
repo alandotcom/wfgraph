@@ -1,6 +1,6 @@
 import { Effect } from "effect";
-import { AppLogger } from "@/backend/lib/effect/app-logger";
-import { internalFailure } from "@/backend/lib/effect/database";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { internalFailure } from "#src/backend/lib/effect/database";
 import { createApiKeyRecord } from "./auth";
 import { type ApiKeySummary, ApiKeyRepo } from "./repo";
 

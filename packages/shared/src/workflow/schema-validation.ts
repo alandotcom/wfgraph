@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   parseWorkflowSchemaFieldsOrJsonSchema,
   type WorkflowSchemaField,
-} from "@/workflow/schema-codec";
+} from "#src/workflow/schema-codec";
 
 type WorkflowSchemaParseResult =
   | { ok: true; schema: WorkflowSchemaField[]; configured: boolean }

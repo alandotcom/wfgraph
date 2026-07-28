@@ -1,7 +1,7 @@
 import { useAtomValue } from "jotai";
 import { useMemo } from "react";
-import { findRuntimeTrigger } from "@/lib/runtime-extensions";
-import { nodesAtom } from "@/lib/workflow-graph-store";
+import { findRuntimeTrigger } from "#src/lib/runtime-extensions";
+import { nodesAtom } from "#src/lib/workflow-graph-store";
 import {
   readRoutingPolicy,
   type RoutingPolicy,

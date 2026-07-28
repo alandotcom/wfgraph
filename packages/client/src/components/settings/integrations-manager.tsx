@@ -4,14 +4,14 @@ import { useMemo } from "react";
 import {
   DeleteConnectionOverlay,
   EditConnectionOverlay,
-} from "@/components/overlays/edit-connection-overlay";
-import { useOverlay } from "@/components/overlays/overlay-provider";
-import { Button } from "@/components/ui/button";
-import { IntegrationIcon } from "@/components/ui/integration-icon";
-import { Spinner } from "@/components/ui/spinner";
-import { announceTestResult } from "@/lib/connection-credentials";
-import type { Integration } from "@/lib/rpc-client";
-import { integrationsQueryOptions, orpcQuery } from "@/lib/rpc-query";
+} from "#src/components/overlays/edit-connection-overlay";
+import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { Button } from "#src/components/ui/button";
+import { IntegrationIcon } from "#src/components/ui/integration-icon";
+import { Spinner } from "#src/components/ui/spinner";
+import { announceTestResult } from "#src/lib/connection-credentials";
+import type { Integration } from "#src/lib/rpc-client";
+import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
 import { getIntegrationLabels } from "@rova/shared/plugins/registry";
 
 // System integrations that don't have plugins

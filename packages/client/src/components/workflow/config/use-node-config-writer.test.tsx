@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import type { NodeConfigPatch } from "@/components/workflow/config/node-config-patch";
-import { useNodeConfigWriter } from "@/components/workflow/config/use-node-config-writer";
-import type { Integration } from "@/lib/rpc-client";
-import { integrationsQueryOptions } from "@/lib/rpc-query";
+import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
+import { useNodeConfigWriter } from "#src/components/workflow/config/use-node-config-writer";
+import type { Integration } from "#src/lib/rpc-client";
+import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import {
   loadWorkflowGraphAtom,
   nodesAtom,
   selectedNodeAtom,
-} from "@/lib/workflow-graph-store";
+} from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 /**

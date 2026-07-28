@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getRpcErrorMessage } from "@/rpc/error-message";
+import { getRpcErrorMessage } from "#src/rpc/error-message";
 
 describe("getRpcErrorMessage", () => {
   it("returns the string payload as-is when provided", () => {

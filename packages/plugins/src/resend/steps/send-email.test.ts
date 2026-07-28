@@ -17,7 +17,7 @@ vi.mock("@rova/core/plugin", () => ({
   withStepLogging: (_input: unknown, run: () => unknown) => run(),
 }));
 
-vi.mock("@/resend/client", () => ({
+vi.mock("#src/resend/client", () => ({
   sendResendEmail: mocks.sendEmail,
   describeResendFailure: (failure: { message?: string }) =>
     failure.message ?? "resend failure",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateWorkflowConditionConfigs } from "@/backend/lib/workflow-conditions-validation";
+import { validateWorkflowConditionConfigs } from "#src/backend/lib/workflow-conditions-validation";
 import {
   createDefaultConditionModel,
   serializeConditionModel,

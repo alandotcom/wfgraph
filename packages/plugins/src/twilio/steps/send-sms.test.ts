@@ -17,7 +17,7 @@ vi.mock("@rova/core/plugin", () => ({
   withStepLogging: (_input: unknown, run: () => unknown) => run(),
 }));
 
-vi.mock("@/twilio/client", () => ({
+vi.mock("#src/twilio/client", () => ({
   createTwilioMessage: mocks.createMessage,
   describeTwilioFailure: (failure: { message?: string }) =>
     failure.message ?? "twilio failure",

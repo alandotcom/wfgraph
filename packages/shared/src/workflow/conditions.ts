@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { decodeIsoTimestamp } from "@/types/timestamp";
+import { decodeIsoTimestamp } from "#src/types/timestamp";
 
 /**
  * The single CEL root every condition field hangs off.

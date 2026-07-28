@@ -1,4 +1,4 @@
-import { getUpstreamConditionFields } from "@/lib/upstream-node-fields";
+import { getUpstreamConditionFields } from "#src/lib/upstream-node-fields";
 import {
   compileConditionModel,
   createDefaultConditionModel,

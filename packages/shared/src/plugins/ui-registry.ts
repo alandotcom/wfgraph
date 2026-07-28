@@ -1,5 +1,8 @@
-import { parseActionId } from "@/plugins/registry";
-import { type IntegrationType, isIntegrationType } from "@/types/integration";
+import { parseActionId } from "#src/plugins/registry";
+import {
+  type IntegrationType,
+  isIntegrationType,
+} from "#src/types/integration";
 
 /**
  * Integration UI Registry

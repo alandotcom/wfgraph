@@ -1,10 +1,10 @@
 import { useSetAtom } from "jotai";
 import { Plus, TriangleAlert, X } from "lucide-react";
 import { useId, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { selectedNodeAtom } from "@/lib/workflow-graph-store";
+import { Button } from "#src/components/ui/button";
+import { Input } from "#src/components/ui/input";
+import { Label } from "#src/components/ui/label";
+import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { cn } from "@rova/shared/utils";
 import type { RoutingAction } from "@rova/shared/workflow/routing-policy";
 import { readWaitForEvents } from "@rova/shared/workflow/wait-events";

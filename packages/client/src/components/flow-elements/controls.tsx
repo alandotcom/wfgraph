@@ -8,9 +8,9 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
-import { showMinimapAtom } from "@/lib/workflow-ui-store";
+import { Button } from "#src/components/ui/button";
+import { ButtonGroup } from "#src/components/ui/button-group";
+import { showMinimapAtom } from "#src/lib/workflow-ui-store";
 
 type ControlsProps = {
   onReflow?: () => void;

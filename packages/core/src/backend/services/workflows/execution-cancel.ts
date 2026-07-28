@@ -1,19 +1,19 @@
 import { eq } from "drizzle-orm";
-import { db } from "@/backend/lib/db";
-import { workflowExecutions } from "@/backend/lib/db/schema";
-import { sendWorkflowCancelRequested } from "@/backend/lib/inngest/runtime-events";
-import { getAppLogger } from "@/backend/lib/logger";
+import { db } from "#src/backend/lib/db/index";
+import { workflowExecutions } from "#src/backend/lib/db/schema";
+import { sendWorkflowCancelRequested } from "#src/backend/lib/inngest/runtime-events";
+import { getAppLogger } from "#src/backend/lib/logger";
 import {
   failure,
   type ServiceResult,
   success,
-} from "@/backend/lib/service-result";
-import { logWorkflowAuditEvent } from "@/backend/lib/workflow-audit";
+} from "#src/backend/lib/service-result";
+import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
 import {
   listExecutionWaitingStates,
   markExecutionCancelled,
   markWaitingStatesCancelled,
-} from "@/backend/lib/workflow-wait-state";
+} from "#src/backend/lib/workflow-wait-state";
 import { getErrorMessage } from "@rova/shared/utils";
 
 const executionCancelLogger = getAppLogger("workflow", "execution-cancel");

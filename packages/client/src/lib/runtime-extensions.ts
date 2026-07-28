@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getBasePath } from "@/lib/base-path";
+import { getBasePath } from "#src/lib/base-path";
 import type { ActionConfigField } from "@rova/shared/plugins/registry";
 import {
   clearRuntimeActions,

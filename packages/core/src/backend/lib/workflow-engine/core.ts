@@ -5,17 +5,17 @@
 
 import { isNil } from "es-toolkit/predicate";
 import { omitBy } from "es-toolkit/object";
-import { evaluateCelBooleanExpression } from "@/backend/lib/cel/environment";
-import { getAppLogger } from "@/backend/lib/logger";
+import { evaluateCelBooleanExpression } from "#src/backend/lib/cel/environment";
+import { getAppLogger } from "#src/backend/lib/logger";
 import {
   getActionLabel,
   getStepImporter,
   loadStepFunction,
   type ModuleStepImporter,
-} from "@/backend/lib/step-registry";
-import type { StepContext } from "@/backend/lib/steps/step-handler";
-import { triggerStep } from "@/backend/lib/steps/trigger";
-import { withSpan } from "@/backend/lib/telemetry";
+} from "#src/backend/lib/step-registry";
+import type { StepContext } from "#src/backend/lib/steps/step-handler";
+import { triggerStep } from "#src/backend/lib/steps/trigger";
+import { withSpan } from "#src/backend/lib/telemetry";
 import {
   decodeIsoTimestamp,
   encodeIsoTimestamp,
@@ -81,12 +81,12 @@ const WAIT_ACTION_TYPE = "Wait";
 const SYSTEM_ACTIONS: Record<string, ModuleStepImporter> = {
   "Database Query": {
     kind: "module",
-    importer: () => import("@/backend/lib/steps/database-query"),
+    importer: () => import("#src/backend/lib/steps/database-query"),
     stepFunction: "databaseQueryStep",
   },
   "HTTP Request": {
     kind: "module",
-    importer: () => import("@/backend/lib/steps/http-request"),
+    importer: () => import("#src/backend/lib/steps/http-request"),
     stepFunction: "httpRequestStep",
   },
 };
@@ -483,7 +483,7 @@ async function executeActionStepInner(input: {
   // and the boolean travels back beside that record for the traversal to route
   // on.
   if (actionType === "Condition") {
-    const { conditionStep } = await import("@/backend/lib/steps/condition");
+    const { conditionStep } = await import("#src/backend/lib/steps/condition");
     const originalExpression = stepInput.condition;
     const { result: evaluatedCondition } = evaluateConditionExpression(
       originalExpression,

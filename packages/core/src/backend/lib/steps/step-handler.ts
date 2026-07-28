@@ -3,14 +3,14 @@
  * Uses direct database calls for security (no HTTP endpoint)
  */
 
-import { getAppLogger } from "@/backend/lib/logger";
-import { redactSensitiveData } from "@/backend/lib/utils/redact";
+import { getAppLogger } from "#src/backend/lib/logger";
+import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import type { StepResult } from "@rova/shared/workflow/step-result";
 import {
   logStepCompleteDb,
   logStepStartDb,
   logWorkflowCompleteDb,
-} from "@/backend/lib/workflow-logging";
+} from "#src/backend/lib/workflow-logging";
 
 const stepHandlerLogger = getAppLogger("workflow", "step-handler");
 

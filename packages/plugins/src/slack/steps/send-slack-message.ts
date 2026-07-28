@@ -5,8 +5,8 @@ import {
 } from "@rova/core/plugin";
 import type { StepError } from "@rova/shared/workflow/step-result";
 import { z } from "zod";
-import { callSlack, describeSlackFailure } from "@/slack/client";
-import type { SlackCredentials } from "@/slack/credentials";
+import { callSlack, describeSlackFailure } from "#src/slack/client";
+import type { SlackCredentials } from "#src/slack/credentials";
 
 type SendSlackMessageResult =
   | { success: true; ts: string; channel: string; reasonCode?: string }

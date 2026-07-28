@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { postWorkflowsBulkLifecycleResult } from "@/backend/services/workflows/workflows-bulk-lifecycle";
+import { postWorkflowsBulkLifecycleResult } from "#src/backend/services/workflows/workflows-bulk-lifecycle";
 
 const mocks = vi.hoisted(() => {
   const findFirst = vi.fn();
@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/backend/lib/db", () => ({
+vi.mock("#src/backend/lib/db/index", () => ({
   db: {
     query: {
       workflows: {
@@ -37,11 +37,11 @@ vi.mock("@/backend/lib/db", () => ({
   },
 }));
 
-vi.mock("@/backend/lib/logger", () => ({
+vi.mock("#src/backend/lib/logger", () => ({
   getAppLogger: () => mocks.logger,
 }));
 
-vi.mock("@/backend/services/workflows/workflow", () => ({
+vi.mock("#src/backend/services/workflows/workflow", () => ({
   deleteWorkflow: mocks.deleteWorkflow,
 }));
 

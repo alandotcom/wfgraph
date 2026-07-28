@@ -1,17 +1,17 @@
 import { ChevronDown, Plus, X } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "#src/components/ui/button";
+import { Input } from "#src/components/ui/input";
+import { Label } from "#src/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { TemplateBadgeInput } from "@/components/ui/template-badge-input";
-import { TemplateBadgeTextarea } from "@/components/ui/template-badge-textarea";
+} from "#src/components/ui/select";
+import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
+import { TemplateBadgeTextarea } from "#src/components/ui/template-badge-textarea";
 import {
   type ActionConfigField,
   type ActionConfigFieldBase,

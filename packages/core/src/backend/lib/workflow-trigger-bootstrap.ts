@@ -1,4 +1,4 @@
-import { getAppLogger } from "@/backend/lib/logger";
+import { getAppLogger } from "#src/backend/lib/logger";
 
 const triggerBootstrapLogger = getAppLogger("workflow", "trigger-bootstrap");
 

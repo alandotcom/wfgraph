@@ -1,10 +1,10 @@
-import type { JsonObject } from "@/types/json";
-import { getValueByPath } from "@/utils/object-path";
+import type { JsonObject } from "#src/types/json";
+import { getValueByPath } from "#src/utils/object-path";
 import type {
   TriggerClassification,
   WorkflowTriggerDefinition,
-} from "@/workflow/trigger-registry";
-import { asNonEmptyString } from "@/workflow/webhook-routing";
+} from "#src/workflow/trigger-registry";
+import { asNonEmptyString } from "#src/workflow/webhook-routing";
 
 function classifyDefaultPayload(payload: JsonObject): TriggerClassification {
   return {

@@ -2,15 +2,15 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Input } from "@/components/ui/input";
-import { IntegrationIcon } from "@/components/ui/integration-icon";
-import { Label } from "@/components/ui/label";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { Input } from "#src/components/ui/input";
+import { IntegrationIcon } from "#src/components/ui/integration-icon";
+import { Label } from "#src/components/ui/label";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   announceTestResult,
   hasProvidedConfigValues,
-} from "@/lib/connection-credentials";
-import { orpcQuery, refreshIntegrations } from "@/lib/rpc-query";
+} from "#src/lib/connection-credentials";
+import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
 import {
   getIntegration,
   getIntegrationDescriptions,

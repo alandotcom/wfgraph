@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import type { NodeConfigPatch } from "@/components/workflow/config/node-config-patch";
-import { WaitEventSelect } from "@/components/workflow/config/wait-event-select";
-import { loadWorkflowGraphAtom } from "@/lib/workflow-graph-store";
+import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
+import { WaitEventSelect } from "#src/components/workflow/config/wait-event-select";
+import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 /**
