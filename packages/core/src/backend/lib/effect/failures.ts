@@ -10,11 +10,11 @@ import type { ServiceFailureKind } from "#src/backend/lib/service-result";
  * `failure(kind, payload)`, so a caller that forgets a failure case stops
  * compiling rather than reading `result.ok` and moving on.
  *
- * Each class carries the payload the caller receives, which today is the single
- * `error` message every service already answers with. A service that needs to
- * say more (the integration validation path sends a `code` and a list of ids)
- * adds those as optional fields on the class it fails with, and the payload
- * `runToServiceResult` builds grows to pass them through.
+ * Each class carries the payload the caller receives, which for most of them is
+ * the single `error` message every service already answers with. A failure that
+ * has more to say gets a class of its own carrying those fields, the way
+ * `IntegrationValidationFailed` carries the ids it refused, and answers a wider
+ * `payload` accordingly.
  *
  * The two adapters at the edges keep translating: `backend/rpc/errors.ts` turns
  * a kind into an oRPC code, `backend/lib/http/response-from-service-result.ts`
@@ -37,6 +37,26 @@ import type { ServiceFailureKind } from "#src/backend/lib/service-result";
  */
 type Kind<K extends ServiceFailureKind> = K;
 
+/**
+ * What a caller reads off a failure.
+ *
+ * `error` is the sentence, and the two integration fields are the exception the
+ * shape has to make room for: `getRpcErrorMessage` appends the ids to the
+ * message when it sees the code, and the editor reads them off the oRPC error's
+ * `data` to highlight the offending nodes.
+ *
+ * Each failure class answers one of these from its `payload` getter, so the
+ * shape a caller sees is decided beside the fields it is built from rather than
+ * in a switch at the promise seam. The keys stay absent rather than
+ * present-and-undefined, so a failure with nothing extra to say serializes to
+ * the `{ error }` body it always did.
+ */
+export type ServiceFailurePayload = {
+  error: string;
+  code?: string;
+  invalidIntegrationIds?: readonly string[];
+};
+
 /** The caller's input, or the resource it points at, does not pass validation. */
 export class InvalidInput extends Schema.TaggedErrorClass<InvalidInput>()(
   "InvalidInput",
@@ -45,6 +65,38 @@ export class InvalidInput extends Schema.TaggedErrorClass<InvalidInput>()(
   }
 ) {
   readonly kind: Kind<"invalid"> = "invalid";
+
+  get payload(): ServiceFailurePayload {
+    return { error: this.error };
+  }
+}
+
+/**
+ * A saved graph points at integrations this server cannot use: an id that no
+ * longer exists, or one whose type does not match what the action needs.
+ *
+ * Its kind is `invalid` like any other rejected input, and the reason it is a
+ * class of its own is the list: the editor highlights exactly the nodes it
+ * names, so the ids have to survive the trip to the client rather than being
+ * flattened into the sentence. Its payload is the `code`/`invalidIntegrationIds`
+ * body that `getRpcErrorMessage` reads.
+ */
+export class IntegrationValidationFailed extends Schema.TaggedErrorClass<IntegrationValidationFailed>()(
+  "IntegrationValidationFailed",
+  {
+    error: Schema.String,
+    invalidIntegrationIds: Schema.Array(Schema.String),
+  }
+) {
+  readonly kind: Kind<"invalid"> = "invalid";
+
+  get payload(): ServiceFailurePayload {
+    return {
+      error: this.error,
+      code: "integration_validation_failed",
+      invalidIntegrationIds: this.invalidIntegrationIds,
+    };
+  }
 }
 
 /** The caller's credentials did not authenticate. */
@@ -55,6 +107,10 @@ export class Unauthorized extends Schema.TaggedErrorClass<Unauthorized>()(
   }
 ) {
   readonly kind: Kind<"unauthorized"> = "unauthorized";
+
+  get payload(): ServiceFailurePayload {
+    return { error: this.error };
+  }
 }
 
 /** The addressed resource does not exist. */
@@ -62,6 +118,10 @@ export class NotFound extends Schema.TaggedErrorClass<NotFound>()("NotFound", {
   error: Schema.String,
 }) {
   readonly kind: Kind<"not_found"> = "not_found";
+
+  get payload(): ServiceFailurePayload {
+    return { error: this.error };
+  }
 }
 
 /** The request collides with existing state, such as a duplicate name. */
@@ -69,6 +129,10 @@ export class Conflict extends Schema.TaggedErrorClass<Conflict>()("Conflict", {
   error: Schema.String,
 }) {
   readonly kind: Kind<"conflict"> = "conflict";
+
+  get payload(): ServiceFailurePayload {
+    return { error: this.error };
+  }
 }
 
 /**
@@ -85,11 +149,17 @@ export class InternalFailure extends Schema.TaggedErrorClass<InternalFailure>()(
   }
 ) {
   readonly kind: Kind<"internal"> = "internal";
+
+  // `cause` is for the operator-facing log, so it stays out of the payload.
+  get payload(): ServiceFailurePayload {
+    return { error: this.error };
+  }
 }
 
 /** Every failure a migrated service may answer with. */
 export type ServiceFailure =
   | InvalidInput
+  | IntegrationValidationFailed
   | Unauthorized
   | NotFound
   | Conflict

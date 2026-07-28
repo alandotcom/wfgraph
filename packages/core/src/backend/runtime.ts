@@ -1,7 +1,10 @@
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { AppLogger, AppLoggerLayer } from "#src/backend/lib/effect/app-logger";
 import { DatabaseLayer } from "#src/backend/lib/effect/database";
-import type { ServiceFailure } from "#src/backend/lib/effect/failures";
+import type {
+  ServiceFailure,
+  ServiceFailurePayload,
+} from "#src/backend/lib/effect/failures";
 import {
   failure,
   // The pre-Effect failure type of the same name. It and the rest of
@@ -19,6 +22,12 @@ import {
   IntegrationRepo,
   IntegrationRepoLayer,
 } from "#src/backend/services/integrations/repo";
+import {
+  ExecutionRepo,
+  ExecutionRepoLayer,
+  WorkflowRepo,
+  WorkflowRepoLayer,
+} from "#src/backend/services/workflows/repo";
 
 /**
  * Everything a migrated service may ask for.
@@ -29,7 +38,12 @@ import {
  * which no longer matches the `R` this runtime satisfies, and the call to
  * `runToServiceResult` stops compiling.
  */
-export type RovaServices = AppLogger | ApiKeyRepo | IntegrationRepo;
+export type RovaServices =
+  | AppLogger
+  | ApiKeyRepo
+  | IntegrationRepo
+  | WorkflowRepo
+  | ExecutionRepo;
 
 // A repository that writes its own Drizzle is composed against the database
 // here, so the graph reads as a list of subsystems rather than one nested
@@ -41,10 +55,16 @@ export type RovaServices = AppLogger | ApiKeyRepo | IntegrationRepo;
 // this Layer.
 const ApiKeysLayer = Layer.provide(ApiKeyRepoLayer, DatabaseLayer);
 
+const WorkflowsLayer = Layer.provide(
+  Layer.mergeAll(WorkflowRepoLayer, ExecutionRepoLayer),
+  DatabaseLayer
+);
+
 const RovaLayer: Layer.Layer<RovaServices> = Layer.mergeAll(
   AppLoggerLayer,
   ApiKeysLayer,
-  IntegrationRepoLayer
+  IntegrationRepoLayer,
+  WorkflowsLayer
 );
 
 /**
@@ -85,15 +105,15 @@ export function createRovaRuntime(): RovaRuntime {
 export async function runToServiceResult<A, F extends ServiceFailure>(
   runtime: RovaRuntime,
   effect: Effect.Effect<A, F, RovaServices>
-): Promise<ServiceResult<A, F["kind"], { error: string }>> {
+): Promise<ServiceResult<A, F["kind"], ServiceFailurePayload>> {
   return await runtime.runPromise(
     effect.pipe(
       Effect.match({
         onSuccess: (data) => success(data),
         onFailure: (
           serviceFailure
-        ): LegacyServiceFailure<F["kind"], { error: string }> =>
-          failure(serviceFailure.kind, { error: serviceFailure.error }),
+        ): LegacyServiceFailure<F["kind"], ServiceFailurePayload> =>
+          failure(serviceFailure.kind, serviceFailure.payload),
       })
     )
   );

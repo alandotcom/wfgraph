@@ -1,110 +1,35 @@
-import { desc, eq } from "drizzle-orm";
-import { db } from "#src/backend/lib/db/index";
-import {
-  workflowExecutionLogs,
-  workflowExecutions,
-} from "#src/backend/lib/db/schema";
-import { getAppLogger } from "#src/backend/lib/logger";
-import {
-  failure,
-  type ServiceResult,
-  success,
-} from "#src/backend/lib/service-result";
+import { Effect } from "effect";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/database";
+import { NotFound } from "#src/backend/lib/effect/failures";
 import { redactSensitiveData } from "#src/backend/lib/utils/redact";
-import { getErrorMessage } from "@rova/shared/utils";
-
-const executionLogsLogger = getAppLogger("workflow", "execution-logs");
-
-type ExecutionSummary = {
-  id: string;
-  workflowId: string;
-  status: string;
-  input: unknown;
-  output: unknown;
-  error: string | null;
-  startedAt: string;
-  completedAt: string | null;
-  duration: string | null;
-};
-
-type ExecutionLogItem = {
-  id: string;
-  executionId: string;
-  nodeId: string;
-  nodeName: string;
-  nodeType: string;
-  status: "pending" | "running" | "success" | "error";
-  input: unknown;
-  output: unknown;
-  error: string | null;
-  startedAt: string;
-  completedAt: string | null;
-  duration: string | null;
-};
-
-type ExecutionLogsResult = {
-  execution: ExecutionSummary;
-  logs: ExecutionLogItem[];
-};
-
-type ExecutionLogsError = { error: string };
+import { ExecutionRepo } from "#src/backend/services/workflows/repo";
 
 function toIso(value: Date | null): string | null {
   return value?.toISOString() ?? null;
 }
 
-export async function getExecutionLogsResult(
-  executionId: string
-): Promise<
-  ServiceResult<
-    ExecutionLogsResult,
-    "not_found" | "internal",
-    ExecutionLogsError
-  >
-> {
-  const requestLogger = executionLogsLogger.with({ executionId });
-  try {
-    const execution = await db.query.workflowExecutions.findFirst({
-      where: eq(workflowExecutions.id, executionId),
-      columns: {
-        id: true,
-        workflowId: true,
-        status: true,
-        input: true,
-        output: true,
-        error: true,
-        startedAt: true,
-        completedAt: true,
-        duration: true,
-      },
-    });
+/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+const loggerFor = (executionId: string) =>
+  Effect.map(AppLogger, (appLogger) =>
+    appLogger.get("workflow", "execution-logs").with({ executionId })
+  );
+
+export const getExecutionLogs = Effect.fn("getExecutionLogs")(
+  function* (executionId: string) {
+    const repo = yield* ExecutionRepo;
+    const logger = yield* loggerFor(executionId);
+
+    const execution = yield* repo.findSummaryById(executionId);
 
     if (!execution) {
-      requestLogger.warn("Execution not found for logs");
-      return failure("not_found", { error: "Execution not found" });
+      yield* logger.warn("Execution not found for logs");
+      return yield* Effect.fail(new NotFound({ error: "Execution not found" }));
     }
 
-    const logs = await db.query.workflowExecutionLogs.findMany({
-      where: eq(workflowExecutionLogs.executionId, executionId),
-      orderBy: [desc(workflowExecutionLogs.timestamp)],
-    });
+    const logs = yield* repo.listLogs(executionId);
 
-    const redactedLogs = logs.map((log) => ({
-      id: log.id,
-      executionId: log.executionId,
-      nodeId: log.nodeId,
-      nodeName: log.nodeName,
-      nodeType: log.nodeType,
-      status: log.status,
-      input: redactSensitiveData(log.input),
-      output: redactSensitiveData(log.output),
-      error: log.error,
-      startedAt: log.startedAt.toISOString(),
-      completedAt: toIso(log.completedAt),
-      duration: log.duration,
-    }));
-
-    return success({
+    return {
       execution: {
         id: execution.id,
         workflowId: execution.workflowId,
@@ -116,16 +41,32 @@ export async function getExecutionLogsResult(
         completedAt: toIso(execution.completedAt),
         duration: execution.duration,
       },
-      logs: redactedLogs,
-    });
-  } catch (error) {
-    requestLogger.error(
-      `Failed to get execution logs: ${getErrorMessage(error)}`,
-      { error }
-    );
-    return failure("internal", {
-      error:
-        error instanceof Error ? error.message : "Failed to get execution logs",
-    });
-  }
-}
+      // Whatever a node was handed and answered with is shown here verbatim,
+      // which is why it passes through redaction on the way out.
+      logs: logs.map((log) => ({
+        id: log.id,
+        executionId: log.executionId,
+        nodeId: log.nodeId,
+        nodeName: log.nodeName,
+        nodeType: log.nodeType,
+        status: log.status,
+        input: redactSensitiveData(log.input),
+        output: redactSensitiveData(log.output),
+        error: log.error,
+        startedAt: log.startedAt.toISOString(),
+        completedAt: toIso(log.completedAt),
+        duration: log.duration,
+      })),
+    };
+  },
+  (effect, executionId) =>
+    effect.pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureRelayingCause(
+          loggerFor(executionId),
+          "Failed to get execution logs"
+        )
+      )
+    )
+);

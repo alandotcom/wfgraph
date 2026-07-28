@@ -1,24 +1,26 @@
-import { and, desc, eq, inArray, lt, or, type SQL } from "drizzle-orm";
+import { Effect } from "effect";
 import { uniq } from "es-toolkit/array";
-import { db } from "#src/backend/lib/db/index";
-import { workflowExecutions, workflows } from "#src/backend/lib/db/schema";
-import { getAppLogger } from "#src/backend/lib/logger";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/database";
+import { InvalidInput } from "#src/backend/lib/effect/failures";
 import {
-  failure,
-  type ServiceResult,
-  success,
-} from "#src/backend/lib/service-result";
-import { getErrorMessage } from "@rova/shared/utils";
-
-const workflowGlobalExecutionsLogger = getAppLogger(
-  "workflow",
-  "global-executions"
-);
+  ExecutionRepo,
+  type GlobalExecutionRow,
+} from "#src/backend/services/workflows/repo";
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 
-type ExecutionCursor = {
+/**
+ * Where a page resumes from, as it travels to the client and back: an ISO
+ * timestamp rather than the `Date` the query compares against.
+ *
+ * The repository's `ExecutionCursor` is the parsed form of this, and turning one
+ * into the other is the work this service does around the query: reading a
+ * cursor in means rejecting a timestamp that is not a date, and writing one out
+ * means the last row of the page.
+ */
+type ExecutionCursorPayload = {
   startedAt: string;
   id: string;
 };
@@ -44,20 +46,13 @@ type GlobalExecutionItem = {
   duration: string | null;
 };
 
-type WorkflowExecutionsGlobalResult = {
-  items: GlobalExecutionItem[];
-  nextCursor: ExecutionCursor | null;
-};
-
-type WorkflowExecutionsGlobalError = { error: string };
-
 type WorkflowExecutionsGlobalInput = {
   workflowIds?: string[];
   statuses?: Array<
     "pending" | "running" | "waiting" | "success" | "error" | "cancelled"
   >;
   limit?: number;
-  cursor?: ExecutionCursor;
+  cursor?: ExecutionCursorPayload;
 };
 
 function toIso(value: Date | null): string | null {
@@ -74,64 +69,7 @@ function resolveLimit(limit: number | undefined): number | null {
   return requestedLimit;
 }
 
-function buildFilters(input: {
-  workflowIds?: string[];
-  statuses?: WorkflowExecutionsGlobalInput["statuses"];
-  cursor?: ExecutionCursor;
-}) {
-  const filters: SQL[] = [];
-
-  if (input.workflowIds && input.workflowIds.length > 0) {
-    filters.push(inArray(workflowExecutions.workflowId, input.workflowIds));
-  }
-
-  if (input.statuses && input.statuses.length > 0) {
-    filters.push(inArray(workflowExecutions.status, input.statuses));
-  }
-
-  if (!input.cursor) {
-    return { filters };
-  }
-
-  const cursorDate = new Date(input.cursor.startedAt);
-  if (Number.isNaN(cursorDate.getTime())) {
-    return { filters, cursorError: "Invalid cursor.startedAt timestamp" };
-  }
-
-  const cursorFilter = or(
-    lt(workflowExecutions.startedAt, cursorDate),
-    and(
-      eq(workflowExecutions.startedAt, cursorDate),
-      lt(workflowExecutions.id, input.cursor.id)
-    )
-  );
-  if (cursorFilter) {
-    filters.push(cursorFilter);
-  }
-
-  return { filters };
-}
-
-function toGlobalExecutionItem(row: {
-  id: string;
-  workflowId: string;
-  workflowName: string;
-  workflowIsPaused: boolean;
-  status: "pending" | "running" | "waiting" | "success" | "error" | "cancelled";
-  triggerType: "manual" | "webhook" | "event" | null;
-  runMode: "live" | "test";
-  triggerEventType: string | null;
-  correlationKey: string | null;
-  workflowRunId: string | null;
-  input: unknown;
-  output: unknown;
-  error: string | null;
-  startedAt: Date;
-  waitingAt: Date | null;
-  cancelledAt: Date | null;
-  completedAt: Date | null;
-  duration: string | null;
-}): GlobalExecutionItem {
+function toGlobalExecutionItem(row: GlobalExecutionRow): GlobalExecutionItem {
   return {
     id: row.id,
     workflowId: row.workflowId,
@@ -157,7 +95,7 @@ function toGlobalExecutionItem(row: {
 function buildNextCursor(input: {
   hasMore: boolean;
   pageRows: Array<{ id: string; startedAt: Date }>;
-}): ExecutionCursor | null {
+}): ExecutionCursorPayload | null {
   const lastRow = input.pageRows.at(-1);
   if (!(input.hasMore && lastRow)) {
     return null;
@@ -169,86 +107,66 @@ function buildNextCursor(input: {
   };
 }
 
-export async function getWorkflowExecutionsGlobalResult(
-  input: WorkflowExecutionsGlobalInput
-): Promise<
-  ServiceResult<
-    WorkflowExecutionsGlobalResult,
-    "invalid" | "internal",
-    WorkflowExecutionsGlobalError
-  >
-> {
-  const requestLogger = workflowGlobalExecutionsLogger.with({
-    workflowFilterCount: input.workflowIds?.length ?? 0,
-    statusFilterCount: input.statuses?.length ?? 0,
-    hasCursor: input.cursor !== undefined,
-  });
+/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+const loggerFor = (input: WorkflowExecutionsGlobalInput) =>
+  Effect.map(AppLogger, (appLogger) =>
+    appLogger.get("workflow", "global-executions").with({
+      workflowFilterCount: input.workflowIds?.length ?? 0,
+      statusFilterCount: input.statuses?.length ?? 0,
+      hasCursor: input.cursor !== undefined,
+    })
+  );
 
-  try {
-    const workflowIds = input.workflowIds ? uniq(input.workflowIds) : undefined;
-    const statuses = input.statuses ? uniq(input.statuses) : undefined;
+export const getWorkflowExecutionsGlobal = Effect.fn(
+  "getWorkflowExecutionsGlobal"
+)(
+  function* (input: WorkflowExecutionsGlobalInput) {
+    const repo = yield* ExecutionRepo;
+
     const requestedLimit = resolveLimit(input.limit);
-
     if (!requestedLimit) {
-      return failure("invalid", {
-        error: `Limit must be between 1 and ${MAX_LIMIT}`,
-      });
+      return yield* Effect.fail(
+        new InvalidInput({ error: `Limit must be between 1 and ${MAX_LIMIT}` })
+      );
     }
 
-    const { filters, cursorError } = buildFilters({
-      workflowIds,
-      statuses,
-      cursor: input.cursor,
+    const cursorStartedAt = input.cursor
+      ? new Date(input.cursor.startedAt)
+      : undefined;
+    if (cursorStartedAt && Number.isNaN(cursorStartedAt.getTime())) {
+      return yield* Effect.fail(
+        new InvalidInput({ error: "Invalid cursor.startedAt timestamp" })
+      );
+    }
+
+    const rows = yield* repo.listPage({
+      workflowIds: input.workflowIds ? uniq(input.workflowIds) : undefined,
+      statuses: input.statuses ? uniq(input.statuses) : undefined,
+      cursor:
+        input.cursor && cursorStartedAt
+          ? { startedAt: cursorStartedAt, id: input.cursor.id }
+          : undefined,
+      // One row past the page, which is how the next cursor is decided without
+      // a second count query.
+      limit: requestedLimit + 1,
     });
-
-    if (cursorError) {
-      return failure("invalid", { error: cursorError });
-    }
-
-    const rows = await db
-      .select({
-        id: workflowExecutions.id,
-        workflowId: workflowExecutions.workflowId,
-        workflowName: workflows.name,
-        workflowIsPaused: workflows.isPaused,
-        status: workflowExecutions.status,
-        triggerType: workflowExecutions.triggerType,
-        runMode: workflowExecutions.runMode,
-        triggerEventType: workflowExecutions.triggerEventType,
-        correlationKey: workflowExecutions.correlationKey,
-        workflowRunId: workflowExecutions.workflowRunId,
-        input: workflowExecutions.input,
-        output: workflowExecutions.output,
-        error: workflowExecutions.error,
-        startedAt: workflowExecutions.startedAt,
-        waitingAt: workflowExecutions.waitingAt,
-        cancelledAt: workflowExecutions.cancelledAt,
-        completedAt: workflowExecutions.completedAt,
-        duration: workflowExecutions.duration,
-      })
-      .from(workflowExecutions)
-      .innerJoin(workflows, eq(workflowExecutions.workflowId, workflows.id))
-      .where(filters.length > 0 ? and(...filters) : undefined)
-      .orderBy(desc(workflowExecutions.startedAt), desc(workflowExecutions.id))
-      .limit(requestedLimit + 1);
 
     const hasMore = rows.length > requestedLimit;
     const pageRows = hasMore ? rows.slice(0, requestedLimit) : rows;
 
-    return success({
+    return {
       items: pageRows.map(toGlobalExecutionItem),
       nextCursor: buildNextCursor({ hasMore, pageRows }),
-    });
-  } catch (error) {
-    requestLogger.error(
-      `Failed to get global workflow executions: ${getErrorMessage(error)}`,
-      { error }
-    );
-    return failure("internal", {
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to get global workflow executions",
-    });
-  }
-}
+    };
+  },
+  (effect, input) =>
+    effect.pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureRelayingCause(
+          loggerFor(input),
+          "Failed to get global workflow executions"
+        )
+      )
+    )
+);

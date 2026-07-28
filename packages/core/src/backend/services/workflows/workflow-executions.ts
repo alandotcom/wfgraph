@@ -1,21 +1,11 @@
-import { desc, eq, inArray } from "drizzle-orm";
-import { db } from "#src/backend/lib/db/index";
+import { Effect } from "effect";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/database";
+import { NotFound } from "#src/backend/lib/effect/failures";
 import {
-  workflowExecutionEvents,
-  workflowExecutionLogs,
-  workflowExecutions,
-  workflows,
-  workflowWaitStates,
-} from "#src/backend/lib/db/schema";
-import { getAppLogger } from "#src/backend/lib/logger";
-import {
-  failure,
-  type ServiceResult,
-  success,
-} from "#src/backend/lib/service-result";
-import { getErrorMessage } from "@rova/shared/utils";
-
-const workflowExecutionsLogger = getAppLogger("workflow", "executions");
+  ExecutionRepo,
+  WorkflowRepo,
+} from "#src/backend/services/workflows/repo";
 
 type WorkflowExecutionItem = {
   id: string;
@@ -35,8 +25,6 @@ type WorkflowExecutionItem = {
   completedAt: string | null;
   duration: string | null;
 };
-
-type WorkflowExecutionsError = { error: string };
 
 function toIso(value: Date | null): string | null {
   return value?.toISOString() ?? null;
@@ -69,104 +57,70 @@ function toWorkflowExecutionItem(input: {
   };
 }
 
-export async function getWorkflowExecutionsResult(
-  workflowId: string
-): Promise<
-  ServiceResult<
-    WorkflowExecutionItem[],
-    "not_found" | "internal",
-    WorkflowExecutionsError
-  >
-> {
-  const requestLogger = workflowExecutionsLogger.with({ workflowId });
-  try {
-    const workflow = await db.query.workflows.findFirst({
-      where: eq(workflows.id, workflowId),
-      columns: { id: true },
-    });
+/** What the contract answers a run-history delete with. */
+type WorkflowExecutionsDeleted = { success: true; deletedCount: number };
 
-    if (!workflow) {
-      requestLogger.warn("Workflow not found for executions list");
-      return failure("not_found", { error: "Workflow not found" });
+/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+const loggerFor = (workflowId: string) =>
+  Effect.map(AppLogger, (appLogger) =>
+    appLogger.get("workflow", "executions").with({ workflowId })
+  );
+
+export const getWorkflowExecutions = Effect.fn("getWorkflowExecutions")(
+  function* (workflowId: string) {
+    const workflowRepo = yield* WorkflowRepo;
+    const executionRepo = yield* ExecutionRepo;
+    const logger = yield* loggerFor(workflowId);
+
+    const workflowExists = yield* workflowRepo.existsById(workflowId);
+
+    if (!workflowExists) {
+      yield* logger.warn("Workflow not found for executions list");
+      return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
     }
 
-    const executions = await db.query.workflowExecutions.findMany({
-      where: eq(workflowExecutions.workflowId, workflowId),
-      orderBy: [desc(workflowExecutions.startedAt)],
-      limit: 50,
-    });
+    const executions = yield* executionRepo.listByWorkflow(workflowId);
 
-    return success(executions.map(toWorkflowExecutionItem));
-  } catch (error) {
-    requestLogger.error(
-      `Failed to get workflow executions: ${getErrorMessage(error)}`,
-      { error }
-    );
-    return failure("internal", {
-      error:
-        error instanceof Error ? error.message : "Failed to get executions",
-    });
-  }
-}
+    return executions.map(toWorkflowExecutionItem);
+  },
+  (effect, workflowId) =>
+    effect.pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureRelayingCause(
+          loggerFor(workflowId),
+          "Failed to get workflow executions"
+        )
+      )
+    )
+);
 
-export async function deleteWorkflowExecutionsResult(
-  workflowId: string
-): Promise<
-  ServiceResult<
-    { success: true; deletedCount: number },
-    "not_found" | "internal",
-    WorkflowExecutionsError
-  >
-> {
-  const requestLogger = workflowExecutionsLogger.with({ workflowId });
-  try {
-    const workflow = await db.query.workflows.findFirst({
-      where: eq(workflows.id, workflowId),
-      columns: { id: true },
-    });
+export const deleteWorkflowExecutions = Effect.fn("deleteWorkflowExecutions")(
+  function* (workflowId: string) {
+    const workflowRepo = yield* WorkflowRepo;
+    const executionRepo = yield* ExecutionRepo;
+    const logger = yield* loggerFor(workflowId);
 
-    if (!workflow) {
-      requestLogger.warn("Workflow not found for executions delete");
-      return failure("not_found", { error: "Workflow not found" });
+    const workflowExists = yield* workflowRepo.existsById(workflowId);
+
+    if (!workflowExists) {
+      yield* logger.warn("Workflow not found for executions delete");
+      return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
     }
 
-    const executions = await db.query.workflowExecutions.findMany({
-      where: eq(workflowExecutions.workflowId, workflowId),
-      columns: { id: true },
-    });
+    const deletedCount = yield* executionRepo.deleteAllForWorkflow(workflowId);
 
-    const executionIds = executions.map((e) => e.id);
-
-    if (executionIds.length > 0) {
-      await db
-        .delete(workflowExecutionLogs)
-        .where(inArray(workflowExecutionLogs.executionId, executionIds));
-
-      await db
-        .delete(workflowWaitStates)
-        .where(inArray(workflowWaitStates.executionId, executionIds));
-
-      await db
-        .delete(workflowExecutionEvents)
-        .where(inArray(workflowExecutionEvents.executionId, executionIds));
-
-      await db
-        .delete(workflowExecutions)
-        .where(eq(workflowExecutions.workflowId, workflowId));
-    }
-
-    return success({
-      success: true,
-      deletedCount: executionIds.length,
-    });
-  } catch (error) {
-    requestLogger.error(
-      `Failed to delete workflow executions: ${getErrorMessage(error)}`,
-      { error }
-    );
-    return failure("internal", {
-      error:
-        error instanceof Error ? error.message : "Failed to delete executions",
-    });
-  }
-}
+    const result: WorkflowExecutionsDeleted = { success: true, deletedCount };
+    return result;
+  },
+  (effect, workflowId) =>
+    effect.pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureRelayingCause(
+          loggerFor(workflowId),
+          "Failed to delete workflow executions"
+        )
+      )
+    )
+);

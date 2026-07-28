@@ -1,59 +1,37 @@
-import { eq } from "drizzle-orm";
-import { db } from "#src/backend/lib/db/index";
-import {
-  workflowExecutionLogs,
-  workflowExecutions,
-} from "#src/backend/lib/db/schema";
-import { getAppLogger } from "#src/backend/lib/logger";
-import {
-  failure,
-  type ServiceResult,
-  success,
-} from "#src/backend/lib/service-result";
-import { getErrorMessage } from "@rova/shared/utils";
-
-const executionStatusLogger = getAppLogger("workflow", "execution-status");
+import { Effect } from "effect";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/database";
+import { NotFound } from "#src/backend/lib/effect/failures";
+import { ExecutionRepo } from "#src/backend/services/workflows/repo";
 
 type NodeStatus = {
   nodeId: string;
   status: "pending" | "running" | "success" | "error" | "cancelled";
 };
 
-type ExecutionStatusResult = {
-  status: string;
-  nodeStatuses: NodeStatus[];
-};
+/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+const loggerFor = (executionId: string) =>
+  Effect.map(AppLogger, (appLogger) =>
+    appLogger.get("workflow", "execution-status").with({ executionId })
+  );
 
-type ExecutionStatusError = { error: string };
+export const getExecutionStatus = Effect.fn("getExecutionStatus")(
+  function* (executionId: string) {
+    const repo = yield* ExecutionRepo;
+    const logger = yield* loggerFor(executionId);
 
-export async function getExecutionStatusResult(
-  executionId: string
-): Promise<
-  ServiceResult<
-    ExecutionStatusResult,
-    "not_found" | "internal",
-    ExecutionStatusError
-  >
-> {
-  const requestLogger = executionStatusLogger.with({ executionId });
-  try {
-    const execution = await db.query.workflowExecutions.findFirst({
-      where: eq(workflowExecutions.id, executionId),
-      columns: {
-        id: true,
-        status: true,
-      },
-    });
+    const execution = yield* repo.findStatusById(executionId);
 
     if (!execution) {
-      requestLogger.warn("Execution not found for status");
-      return failure("not_found", { error: "Execution not found" });
+      yield* logger.warn("Execution not found for status");
+      return yield* Effect.fail(new NotFound({ error: "Execution not found" }));
     }
 
-    const logs = await db.query.workflowExecutionLogs.findMany({
-      where: eq(workflowExecutionLogs.executionId, executionId),
-    });
+    const logs = yield* repo.listNodeStatuses(executionId);
 
+    // A cancelled run leaves its unfinished nodes recorded as pending or
+    // running, because nothing writes to them once the run stops. The editor
+    // draws them as cancelled, so that is what it is told.
     const nodeStatuses: NodeStatus[] = logs.map((log) => ({
       nodeId: log.nodeId,
       status:
@@ -63,20 +41,19 @@ export async function getExecutionStatusResult(
           : log.status,
     }));
 
-    return success({
+    return {
       status: execution.status,
       nodeStatuses,
-    });
-  } catch (error) {
-    requestLogger.error(
-      `Failed to get execution status: ${getErrorMessage(error)}`,
-      { error }
-    );
-    return failure("internal", {
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to get execution status",
-    });
-  }
-}
+    };
+  },
+  (effect, executionId) =>
+    effect.pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureRelayingCause(
+          loggerFor(executionId),
+          "Failed to get execution status"
+        )
+      )
+    )
+);

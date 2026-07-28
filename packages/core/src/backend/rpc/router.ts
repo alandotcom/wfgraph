@@ -20,9 +20,9 @@ import {
 } from "#src/backend/services/integrations/integrations";
 import { postWorkflowExecuteResult } from "#src/backend/services/workflow/workflow-execute";
 import { postExecutionCancelResult } from "#src/backend/services/workflows/execution-cancel";
-import { getExecutionEventsResult } from "#src/backend/services/workflows/execution-events";
-import { getExecutionLogsResult } from "#src/backend/services/workflows/execution-logs";
-import { getExecutionStatusResult } from "#src/backend/services/workflows/execution-status";
+import { getExecutionEvents } from "#src/backend/services/workflows/execution-events";
+import { getExecutionLogs } from "#src/backend/services/workflows/execution-logs";
+import { getExecutionStatus } from "#src/backend/services/workflows/execution-status";
 import {
   deleteWorkflow,
   getWorkflow,
@@ -30,10 +30,10 @@ import {
 } from "#src/backend/services/workflows/workflow";
 import { postWorkflowDuplicate } from "#src/backend/services/workflows/workflow-duplicate";
 import {
-  deleteWorkflowExecutionsResult,
-  getWorkflowExecutionsResult,
+  deleteWorkflowExecutions,
+  getWorkflowExecutions,
 } from "#src/backend/services/workflows/workflow-executions";
-import { getWorkflowExecutionsGlobalResult } from "#src/backend/services/workflows/workflow-executions-global";
+import { getWorkflowExecutionsGlobal } from "#src/backend/services/workflows/workflow-executions-global";
 import { postWorkflowWebhookResult } from "#src/backend/services/workflows/workflow-webhook";
 import { getWorkflows } from "#src/backend/services/workflows/workflows";
 import { postWorkflowsBulkLifecycleResult } from "#src/backend/services/workflows/workflows-bulk-lifecycle";
@@ -194,9 +194,9 @@ export const rpcRouter = rpc.router({
     ),
   },
   workflow: {
-    getAll: rpc.workflow.getAll.handler(rpcHandler(() => getWorkflows())),
+    getAll: rpc.workflow.getAll.handler(rpcEffectHandler(() => getWorkflows())),
     getById: rpc.workflow.getById.handler(
-      rpcHandler(({ input }) => getWorkflow(input.workflowId))
+      rpcEffectHandler(({ input }) => getWorkflow(input.workflowId))
     ),
     create: rpc.workflow.create.handler(
       rpcHandler(({ input }) =>
@@ -208,7 +208,7 @@ export const rpcRouter = rpc.router({
       )
     ),
     update: rpc.workflow.update.handler(
-      rpcHandler(({ input }) =>
+      rpcEffectHandler(({ input }) =>
         patchWorkflow(input.workflowId, {
           name: input.name,
           description: input.description,
@@ -218,16 +218,16 @@ export const rpcRouter = rpc.router({
       )
     ),
     delete: rpc.workflow.delete.handler(
-      rpcHandler(({ input }) => deleteWorkflow(input.workflowId))
+      rpcEffectHandler(({ input }) => deleteWorkflow(input.workflowId))
     ),
     duplicate: rpc.workflow.duplicate.handler(
       rpcHandler(({ input }) => postWorkflowDuplicate(input.workflowId))
     ),
     getCurrent: rpc.workflow.getCurrent.handler(
-      rpcHandler(() => getWorkflowsCurrent())
+      rpcEffectHandler(() => getWorkflowsCurrent())
     ),
     saveCurrent: rpc.workflow.saveCurrent.handler(
-      rpcHandler(({ input }) =>
+      rpcEffectHandler(({ input }) =>
         postWorkflowsCurrent({
           graph: input.graph,
         })
@@ -251,11 +251,11 @@ export const rpcRouter = rpc.router({
       })
     ),
     getExecutions: rpc.workflow.getExecutions.handler(
-      rpcHandler(({ input }) => getWorkflowExecutionsResult(input.workflowId))
+      rpcEffectHandler(({ input }) => getWorkflowExecutions(input.workflowId))
     ),
     getExecutionsGlobal: rpc.workflow.getExecutionsGlobal.handler(
-      rpcHandler(({ input }) =>
-        getWorkflowExecutionsGlobalResult({
+      rpcEffectHandler(({ input }) =>
+        getWorkflowExecutionsGlobal({
           workflowIds: input.workflowIds,
           statuses: input.statuses,
           limit: input.limit,
@@ -264,29 +264,31 @@ export const rpcRouter = rpc.router({
       )
     ),
     bulkLifecycle: rpc.workflow.bulkLifecycle.handler(
-      rpcHandler(({ input }) =>
+      rpcHandler(({ context, input }) =>
         postWorkflowsBulkLifecycleResult({
           workflowIds: input.workflowIds,
           action: input.action,
+          deleteOne: (workflowId) =>
+            runToServiceResult(context.runtime, deleteWorkflow(workflowId)),
         })
       )
     ),
     deleteExecutions: rpc.workflow.deleteExecutions.handler(
-      rpcHandler(({ input }) =>
-        deleteWorkflowExecutionsResult(input.workflowId)
+      rpcEffectHandler(({ input }) =>
+        deleteWorkflowExecutions(input.workflowId)
       )
     ),
     getExecutionLogs: rpc.workflow.getExecutionLogs.handler(
-      rpcHandler(({ input }) => getExecutionLogsResult(input.executionId))
+      rpcEffectHandler(({ input }) => getExecutionLogs(input.executionId))
     ),
     getExecutionEvents: rpc.workflow.getExecutionEvents.handler(
-      rpcHandler(({ input }) => getExecutionEventsResult(input.executionId))
+      rpcEffectHandler(({ input }) => getExecutionEvents(input.executionId))
     ),
     cancelExecution: rpc.workflow.cancelExecution.handler(
       rpcHandler(({ input }) => postExecutionCancelResult(input.executionId))
     ),
     getExecutionStatus: rpc.workflow.getExecutionStatus.handler(
-      rpcHandler(({ input }) => getExecutionStatusResult(input.executionId))
+      rpcEffectHandler(({ input }) => getExecutionStatus(input.executionId))
     ),
   },
 });

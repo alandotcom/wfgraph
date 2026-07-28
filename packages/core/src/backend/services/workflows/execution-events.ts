@@ -1,63 +1,30 @@
-import { desc, eq } from "drizzle-orm";
-import { db } from "#src/backend/lib/db/index";
-import {
-  workflowExecutionEvents,
-  workflowExecutions,
-} from "#src/backend/lib/db/schema";
-import { getAppLogger } from "#src/backend/lib/logger";
-import {
-  failure,
-  type ServiceResult,
-  success,
-} from "#src/backend/lib/service-result";
-import { getErrorMessage } from "@rova/shared/utils";
+import { Effect } from "effect";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/database";
+import { NotFound } from "#src/backend/lib/effect/failures";
+import { ExecutionRepo } from "#src/backend/services/workflows/repo";
 
-const executionEventsLogger = getAppLogger("workflow", "execution-events");
+/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+const loggerFor = (executionId: string) =>
+  Effect.map(AppLogger, (appLogger) =>
+    appLogger.get("workflow", "execution-events").with({ executionId })
+  );
 
-type ExecutionEvent = {
-  id: string;
-  workflowId: string;
-  executionId: string | null;
-  eventType: string;
-  message: string;
-  metadata: unknown;
-  createdAt: string;
-};
+export const getExecutionEvents = Effect.fn("getExecutionEvents")(
+  function* (executionId: string) {
+    const repo = yield* ExecutionRepo;
+    const logger = yield* loggerFor(executionId);
 
-type ExecutionEventsResult = {
-  events: ExecutionEvent[];
-};
+    const executionExists = yield* repo.existsById(executionId);
 
-type ExecutionEventsError = { error: string };
-
-export async function getExecutionEventsResult(
-  executionId: string
-): Promise<
-  ServiceResult<
-    ExecutionEventsResult,
-    "not_found" | "internal",
-    ExecutionEventsError
-  >
-> {
-  const requestLogger = executionEventsLogger.with({ executionId });
-  try {
-    const execution = await db.query.workflowExecutions.findFirst({
-      where: eq(workflowExecutions.id, executionId),
-      columns: { id: true },
-    });
-
-    if (!execution) {
-      requestLogger.warn("Execution not found for events");
-      return failure("not_found", { error: "Execution not found" });
+    if (!executionExists) {
+      yield* logger.warn("Execution not found for events");
+      return yield* Effect.fail(new NotFound({ error: "Execution not found" }));
     }
 
-    const events = await db.query.workflowExecutionEvents.findMany({
-      where: eq(workflowExecutionEvents.executionId, executionId),
-      orderBy: [desc(workflowExecutionEvents.createdAt)],
-      limit: 200,
-    });
+    const events = yield* repo.listEvents(executionId);
 
-    return success({
+    return {
       events: events.map((event) => ({
         id: event.id,
         workflowId: event.workflowId,
@@ -67,17 +34,16 @@ export async function getExecutionEventsResult(
         metadata: event.metadata,
         createdAt: event.createdAt.toISOString(),
       })),
-    });
-  } catch (error) {
-    requestLogger.error(
-      `Failed to get execution events: ${getErrorMessage(error)}`,
-      { error }
-    );
-    return failure("internal", {
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to get execution events",
-    });
-  }
-}
+    };
+  },
+  (effect, executionId) =>
+    effect.pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureRelayingCause(
+          loggerFor(executionId),
+          "Failed to get execution events"
+        )
+      )
+    )
+);

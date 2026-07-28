@@ -5,11 +5,11 @@ import { workflows } from "#src/backend/lib/db/schema";
 import { getAppLogger } from "#src/backend/lib/logger";
 import {
   failure,
+  type ServiceFailureKind,
   type ServiceResult,
   success,
 } from "#src/backend/lib/service-result";
 import { getErrorMessage } from "@rova/shared/utils";
-import { deleteWorkflow } from "./workflow";
 
 const workflowsBulkLifecycleLogger = getAppLogger("workflow", "bulk-lifecycle");
 
@@ -18,6 +18,16 @@ type WorkflowBulkAction = "pause" | "resume" | "delete";
 type WorkflowBulkLifecycleInput = {
   workflowIds: string[];
   action: WorkflowBulkAction;
+  /**
+   * How one workflow is deleted, handed in because deleting has moved to Effect
+   * while this service has not: the router runs `deleteWorkflow` on the app's
+   * runtime and passes the promise it produces. Batch 3 of stage 3b turns this
+   * function into an Effect of its own, at which point it calls `deleteWorkflow`
+   * directly and this field goes away.
+   */
+  deleteOne: (
+    workflowId: string
+  ) => Promise<ServiceResult<unknown, ServiceFailureKind, { error: string }>>;
 };
 
 type WorkflowBulkLifecycleResult = {
@@ -94,7 +104,7 @@ export async function postWorkflowsBulkLifecycleResult(
     const results: WorkflowBulkLifecycleResult["results"] = await Promise.all(
       workflowIds.map(async (workflowId) => {
         if (input.action === "delete") {
-          const deletion = await deleteWorkflow(workflowId);
+          const deletion = await input.deleteOne(workflowId);
 
           if (deletion.ok) {
             return {

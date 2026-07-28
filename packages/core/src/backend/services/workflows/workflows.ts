@@ -1,45 +1,26 @@
-import { desc } from "drizzle-orm";
-import { db } from "#src/backend/lib/db/index";
-import { workflows } from "#src/backend/lib/db/schema";
-import { getAppLogger } from "#src/backend/lib/logger";
-import {
-  failure,
-  type ServiceResult,
-  success,
-} from "#src/backend/lib/service-result";
+import { Effect } from "effect";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/database";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/workflow-mappers";
-import { getErrorMessage } from "@rova/shared/utils";
-import type {
-  ApiErrorPayload,
-  WorkflowApiPayload,
-} from "@rova/shared/workflow/api-contracts";
 
-const workflowsLogger = getAppLogger("workflow", "list");
+/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+const loggerFor = () =>
+  Effect.map(AppLogger, (appLogger) => appLogger.get("workflow", "list"));
 
-type GetWorkflowsResult = ServiceResult<
-  WorkflowApiPayload[],
-  "internal",
-  ApiErrorPayload
->;
+export const getWorkflows = Effect.fn("getWorkflows")(
+  function* () {
+    const repo = yield* WorkflowRepo;
 
-export async function getWorkflows(): Promise<GetWorkflowsResult> {
-  try {
-    const allWorkflows = await db
-      .select()
-      .from(workflows)
-      .orderBy(desc(workflows.updatedAt));
+    const allWorkflows = yield* repo.listNewestFirst();
 
-    const mappedWorkflows: WorkflowApiPayload[] =
-      allWorkflows.map(toWorkflowApiPayload);
-
-    return success(mappedWorkflows);
-  } catch (error) {
-    workflowsLogger.error(
-      `Failed to get workflows: ${getErrorMessage(error)}`,
-      { error }
-    );
-    return failure("internal", {
-      error: error instanceof Error ? error.message : "Failed to get workflows",
-    });
-  }
-}
+    return allWorkflows.map(toWorkflowApiPayload);
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureRelayingCause(loggerFor(), "Failed to get workflows")
+      )
+    )
+);

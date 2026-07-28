@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { failure, success } from "#src/backend/lib/service-result";
 import { postWorkflowsBulkLifecycleResult } from "#src/backend/services/workflows/workflows-bulk-lifecycle";
 
 const mocks = vi.hoisted(() => {
@@ -6,7 +7,6 @@ const mocks = vi.hoisted(() => {
   const where = vi.fn();
   const set = vi.fn(() => ({ where }));
   const update = vi.fn(() => ({ set }));
-  const deleteWorkflow = vi.fn();
   const logger = {
     warn: vi.fn(),
     error: vi.fn(),
@@ -21,7 +21,6 @@ const mocks = vi.hoisted(() => {
     where,
     set,
     update,
-    deleteWorkflow,
     logger,
   };
 });
@@ -41,11 +40,11 @@ vi.mock("#src/backend/lib/logger", () => ({
   getAppLogger: () => mocks.logger,
 }));
 
-vi.mock("#src/backend/services/workflows/workflow", () => ({
-  deleteWorkflow: mocks.deleteWorkflow,
-}));
-
 describe("postWorkflowsBulkLifecycleResult", () => {
+  // Deleting one workflow arrives as a callback, so these tests hand over a fake
+  // one and never reach the Effect runtime or a database.
+  const deleteOne = vi.fn();
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.logger.with.mockReturnValue(mocks.logger);
@@ -62,6 +61,7 @@ describe("postWorkflowsBulkLifecycleResult", () => {
     const result = await postWorkflowsBulkLifecycleResult({
       workflowIds: ["wf_1", "wf_missing"],
       action: "pause",
+      deleteOne,
     });
 
     expect(result.ok).toBe(true);
@@ -84,20 +84,20 @@ describe("postWorkflowsBulkLifecycleResult", () => {
       },
     ]);
     expect(mocks.update).toHaveBeenCalledTimes(1);
+    expect(deleteOne).not.toHaveBeenCalled();
   });
 
   it("deduplicates workflow ids and preserves delete failures", async () => {
-    mocks.deleteWorkflow
-      .mockResolvedValueOnce({ ok: true, data: { success: true } })
-      .mockResolvedValueOnce({
-        ok: false,
-        kind: "not_found",
-        error: { error: "Workflow not found" },
-      });
+    deleteOne
+      .mockResolvedValueOnce(success({ success: true }))
+      .mockResolvedValueOnce(
+        failure("not_found", { error: "Workflow not found" })
+      );
 
     const result = await postWorkflowsBulkLifecycleResult({
       workflowIds: ["wf_1", "wf_1", "wf_2"],
       action: "delete",
+      deleteOne,
     });
 
     expect(result.ok).toBe(true);
@@ -119,6 +119,6 @@ describe("postWorkflowsBulkLifecycleResult", () => {
         error: "Workflow not found",
       },
     ]);
-    expect(mocks.deleteWorkflow).toHaveBeenCalledTimes(2);
+    expect(deleteOne).toHaveBeenCalledTimes(2);
   });
 });

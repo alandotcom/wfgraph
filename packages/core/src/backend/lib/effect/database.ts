@@ -1,6 +1,9 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { getDb, type RovaDatabase } from "#src/backend/lib/db/index";
-import type { EffectLogger } from "#src/backend/lib/effect/app-logger";
+import {
+  AppLogger,
+  type EffectLogger,
+} from "#src/backend/lib/effect/app-logger";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
 import { getErrorMessage } from "@rova/shared/utils";
 
@@ -94,4 +97,44 @@ export const internalFailure =
         error: cause,
       });
       return yield* Effect.fail(new InternalFailure({ error: message, cause }));
+    });
+
+/**
+ * The same answer, except that the caller reads the message from underneath.
+ *
+ * Every service in the workflows domain words its failure this way: a thrown
+ * `Error` hands its own message to whoever called, and `message` is the fallback
+ * for something thrown that was not an `Error`. The log line is unchanged, so
+ * `message` is still what an operator greps for.
+ *
+ * Which of the two a service uses is not a style choice. The editor shows this
+ * text next to the graph the user was editing, and "duplicate key value violates
+ * unique constraint" is what tells them their save collided; the API key screens
+ * answer a fixed sentence because a caller there can do nothing with the detail.
+ *
+ * The logger arrives as the Effect that produces it rather than as a logger,
+ * because the workflows services state this policy once for a whole function, in
+ * an `Effect.fn` transform. A transform runs outside the generator body and so
+ * cannot `yield*` `AppLogger` itself; handing it the same `loggerFor(...)` the
+ * body yields is what lets one policy cover every query in the function. The
+ * `internalFailure` above still takes a logger, because its callers still catch
+ * inside the body; batch 3 of stage 3b brings them across.
+ */
+export const internalFailureRelayingCause =
+  (logger: Effect.Effect<EffectLogger, never, AppLogger>, message: string) =>
+  (
+    databaseError: DatabaseError
+  ): Effect.Effect<never, InternalFailure, AppLogger> =>
+    Effect.gen(function* () {
+      const { cause } = databaseError;
+      const serviceLogger = yield* logger;
+      yield* serviceLogger.error(`${message}: ${getErrorMessage(cause)}`, {
+        error: cause,
+      });
+      return yield* Effect.fail(
+        new InternalFailure({
+          error: cause instanceof Error ? cause.message : message,
+          cause,
+        })
+      );
     });

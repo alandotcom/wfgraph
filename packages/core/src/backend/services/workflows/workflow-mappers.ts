@@ -22,6 +22,14 @@ type WorkflowUpdateInput = {
   mode?: "live" | "test";
 };
 
+/**
+ * The columns an update writes: the fields the caller asked to change, plus the
+ * timestamp every write touches. Named so the repository can take one without
+ * restating the shape.
+ */
+export type WorkflowUpdateData = Pick<Workflow, "updatedAt"> &
+  Partial<Pick<Workflow, "name" | "description" | "graph" | "mode">>;
+
 export function toWorkflowApiPayload(
   workflow: WorkflowPayloadSource
 ): WorkflowApiPayload {
@@ -42,10 +50,8 @@ export function toWorkflowApiPayload(
 export function buildWorkflowUpdateData(
   body: WorkflowUpdateInput,
   updatedAt: Date = new Date()
-): Pick<Workflow, "updatedAt"> &
-  Partial<Pick<Workflow, "name" | "description" | "graph" | "mode">> {
-  const updateData: Pick<Workflow, "updatedAt"> &
-    Partial<Pick<Workflow, "name" | "description" | "graph" | "mode">> = {
+): WorkflowUpdateData {
+  const updateData: WorkflowUpdateData = {
     updatedAt,
   };
 

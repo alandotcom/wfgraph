@@ -1,42 +1,25 @@
-import { desc, eq } from "drizzle-orm";
+import { Effect } from "effect";
 import { nanoid } from "nanoid";
-import { db } from "#src/backend/lib/db/index";
-import { workflows } from "#src/backend/lib/db/schema";
-import { invalidateInngestFunctionsCache } from "#src/backend/lib/inngest/functions";
-import { getAppLogger } from "#src/backend/lib/logger";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/database";
 import {
-  failure,
-  type ServiceResult,
-  success,
-} from "#src/backend/lib/service-result";
+  InternalFailure,
+  InvalidInput,
+  NotFound,
+} from "#src/backend/lib/effect/failures";
+import { invalidateInngestFunctionsCache } from "#src/backend/lib/inngest/functions";
 import { validateWorkflowConditionConfigs } from "#src/backend/lib/workflow-conditions-validation";
-import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
-import { toWorkflowApiPayload } from "#src/backend/services/workflows/workflow-mappers";
-import { getErrorMessage } from "@rova/shared/utils";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import {
+  buildWorkflowUpdateData,
+  toWorkflowApiPayload,
+} from "#src/backend/services/workflows/workflow-mappers";
 import { generateId } from "@rova/shared/utils/id";
-import type {
-  ApiErrorPayload,
-  WorkflowApiPayload,
-} from "@rova/shared/workflow/api-contracts";
 import {
   createSerializedWorkflowGraph,
   isSerializedWorkflowGraph,
 } from "@rova/shared/workflow/graph";
-
-const workflowsCurrentLogger = getAppLogger("workflow", "current");
-
-type GetCurrentWorkflowResult = ServiceResult<
-  WorkflowApiPayload,
-  "internal" | "not_found",
-  ApiErrorPayload
->;
-
-type SaveCurrentWorkflowResult = ServiceResult<
-  WorkflowApiPayload,
-  "invalid" | "internal",
-  ApiErrorPayload
->;
 
 function createDefaultTriggerNode() {
   return {
@@ -53,56 +36,56 @@ function createDefaultTriggerNode() {
   };
 }
 
-export async function getWorkflowsCurrent(): Promise<GetCurrentWorkflowResult> {
-  try {
-    const [currentWorkflow] = await db
-      .select()
-      .from(workflows)
-      .where(eq(workflows.name, CURRENT_WORKFLOW_NAME))
-      .orderBy(desc(workflows.updatedAt))
-      .limit(1);
+/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+const loggerFor = () =>
+  Effect.map(AppLogger, (appLogger) => appLogger.get("workflow", "current"));
+
+export const getWorkflowsCurrent = Effect.fn("getWorkflowsCurrent")(
+  function* () {
+    const repo = yield* WorkflowRepo;
+    const logger = yield* loggerFor();
+
+    const currentWorkflow = yield* repo.findCurrent();
 
     if (!currentWorkflow) {
       // Answering with a bare empty graph would be a workflow payload missing
       // its name, mode, and timestamps, which is not a workflow.
-      return failure("not_found", { error: "No current workflow" });
+      return yield* Effect.fail(new NotFound({ error: "No current workflow" }));
     }
 
     const graphValidation = validateWorkflowGraph(currentWorkflow.graph);
     if (!graphValidation.valid) {
-      workflowsCurrentLogger.error(
-        "Stored current workflow has invalid graph",
-        {
-          error: graphValidation.error,
-        }
-      );
-      return failure("internal", {
-        error: "Stored current workflow graph is invalid",
+      yield* logger.error("Stored current workflow has invalid graph", {
+        error: graphValidation.error,
       });
+      return yield* Effect.fail(
+        new InternalFailure({
+          error: "Stored current workflow graph is invalid",
+        })
+      );
     }
 
     // Conditions are checked on save and again before a run, never on the way
     // out: refusing the read would leave the editor unable to open the graph
     // whose condition needs correcting.
-    return success(toWorkflowApiPayload(currentWorkflow));
-  } catch (error) {
-    workflowsCurrentLogger.error(
-      `Failed to get current workflow: ${getErrorMessage(error)}`,
-      { error }
-    );
-    return failure("internal", {
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to get current workflow",
-    });
-  }
-}
+    return toWorkflowApiPayload(currentWorkflow);
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureRelayingCause(
+          loggerFor(),
+          "Failed to get current workflow"
+        )
+      )
+    )
+);
 
-export async function postWorkflowsCurrent(body: {
-  graph: unknown;
-}): Promise<SaveCurrentWorkflowResult> {
-  try {
+export const postWorkflowsCurrent = Effect.fn("postWorkflowsCurrent")(
+  function* (body: { graph: unknown }) {
+    const repo = yield* WorkflowRepo;
+
     const graphToValidate =
       isSerializedWorkflowGraph(body.graph) && body.graph.nodes.length === 0
         ? createSerializedWorkflowGraph({
@@ -113,61 +96,64 @@ export async function postWorkflowsCurrent(body: {
 
     const graphValidation = validateWorkflowGraph(graphToValidate);
     if (!graphValidation.valid) {
-      return failure("invalid", { error: graphValidation.error });
+      return yield* Effect.fail(
+        new InvalidInput({ error: graphValidation.error })
+      );
     }
 
     const conditionValidation = validateWorkflowConditionConfigs(
       graphValidation.nodes
     );
     if (!conditionValidation.valid) {
-      return failure("invalid", { error: conditionValidation.error });
+      return yield* Effect.fail(
+        new InvalidInput({ error: conditionValidation.error })
+      );
     }
 
-    const [existingWorkflow] = await db
-      .select()
-      .from(workflows)
-      .where(eq(workflows.name, CURRENT_WORKFLOW_NAME))
-      .orderBy(desc(workflows.updatedAt))
-      .limit(1);
+    const existingWorkflow = yield* repo.findCurrent();
 
     if (existingWorkflow) {
-      const [updatedWorkflow] = await db
-        .update(workflows)
-        .set({
-          graph: graphValidation.graph,
-          updatedAt: new Date(),
-        })
-        .where(eq(workflows.id, existingWorkflow.id))
-        .returning();
+      const updatedWorkflow = yield* repo.update(
+        existingWorkflow.id,
+        buildWorkflowUpdateData({ graph: graphValidation.graph })
+      );
 
-      return success(toWorkflowApiPayload(updatedWorkflow));
+      if (!updatedWorkflow) {
+        // The row was read a moment ago, so losing it here means something
+        // deleted it mid-save; there is no newer graph to answer with.
+        return yield* Effect.fail(
+          new InternalFailure({ error: "Failed to save current workflow" })
+        );
+      }
+
+      return toWorkflowApiPayload(updatedWorkflow);
     }
 
-    const workflowId = generateId();
+    const savedWorkflow = yield* repo.insertCurrent({
+      id: generateId(),
+      graph: graphValidation.graph,
+    });
 
-    const [savedWorkflow] = await db
-      .insert(workflows)
-      .values({
-        id: workflowId,
-        name: CURRENT_WORKFLOW_NAME,
-        description: "Auto-saved current workflow",
-        graph: graphValidation.graph,
-      })
-      .returning();
+    if (!savedWorkflow) {
+      return yield* Effect.fail(
+        new InternalFailure({ error: "Failed to save current workflow" })
+      );
+    }
 
+    // Only the first save registers a function with Inngest; a later one writes
+    // over a graph the cache already holds a trigger for.
     invalidateInngestFunctionsCache();
 
-    return success(toWorkflowApiPayload(savedWorkflow));
-  } catch (error) {
-    workflowsCurrentLogger.error(
-      `Failed to save current workflow: ${getErrorMessage(error)}`,
-      { error }
-    );
-    return failure("internal", {
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to save current workflow",
-    });
-  }
-}
+    return toWorkflowApiPayload(savedWorkflow);
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureRelayingCause(
+          loggerFor(),
+          "Failed to save current workflow"
+        )
+      )
+    )
+);

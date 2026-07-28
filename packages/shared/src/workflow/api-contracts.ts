@@ -7,7 +7,7 @@ import type {
 export type ApiErrorPayload = {
   error: string;
   code?: string;
-  invalidIntegrationIds?: string[];
+  invalidIntegrationIds?: readonly string[];
   message?: string;
   details?: string;
 };
