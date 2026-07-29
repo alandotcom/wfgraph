@@ -2,10 +2,9 @@
  * The HTTP transport a step's effect runs with.
  *
  * `defineStep` provides this to every handler, which is what lets a plugin call
- * a vendor without saying where its HTTP client comes from. A plugin that is
- * still a Promise at its edges -- a connection test, a step stage 6b has yet to
- * migrate -- runs its own effect and provides this layer itself, which is why
- * `@rova/core/plugin` exports it.
+ * a vendor without saying where its HTTP client comes from. A connection test
+ * is still a Promise at its edge, so it runs its own effect and provides this
+ * layer itself, which is why `@rova/core/plugin` exports it.
  */
 
 import { Layer } from "effect";

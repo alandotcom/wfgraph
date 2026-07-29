@@ -1,120 +1,72 @@
-import type { Appointment } from "@fountain-bio/acuity";
+import {
+  defineStep,
+  StepFailure,
+  type StepRunContext,
+} from "@rova/core/plugin";
+import { Effect } from "effect";
 import type { AcuityCredentials } from "#src/acuity/credentials";
 import {
-  fetchCredentials,
-  type StepInput,
-  withStepLogging,
-} from "@rova/core/plugin";
-import { createAcuityClient, getAcuityErrorMessage } from "./client";
-import {
-  parseOptionalBoolean,
-  parseOptionalInteger,
-  parseRequiredInteger,
-} from "./shared";
+  rescheduleAppointmentInput,
+  rescheduleAppointmentOutput,
+} from "#src/acuity/schemas";
+import { callAcuity, createAcuityClient } from "./client";
+import { optionalBoolean, optionalInteger, requiredInteger } from "./shared";
 
-type RescheduleAppointmentResult =
-  | {
-      success: true;
-      data: {
-        appointment: Appointment;
-        id: number;
-        datetime?: string;
-      };
-    }
-  | { success: false; error: { message: string } };
+/**
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies.
+ */
+export const rescheduleAppointmentHandler = Effect.fn(function* (
+  input: typeof rescheduleAppointmentInput.Type,
+  context: StepRunContext
+) {
+  // The plugin's own credential vocabulary, so a key it never declares is a
+  // compile error here rather than an undefined at run time.
+  const credentials: AcuityCredentials = yield* context.credentials;
+  const acuity = yield* createAcuityClient(credentials);
 
-export type RescheduleAppointmentCoreInput = {
-  appointmentId: string;
-  datetime: string;
-  calendarId?: string;
-  admin?: string;
-  noEmail?: string;
-};
-
-export type RescheduleAppointmentInput = StepInput &
-  RescheduleAppointmentCoreInput & {
-    integrationId?: string;
-  };
-
-async function stepHandler(
-  input: RescheduleAppointmentCoreInput,
-  credentials: AcuityCredentials
-): Promise<RescheduleAppointmentResult> {
-  const clientResult = createAcuityClient(credentials);
-  if ("error" in clientResult) {
-    return { success: false, error: { message: clientResult.error } };
-  }
-
-  const appointmentId = parseRequiredInteger(
+  const appointmentId = yield* requiredInteger(
     input.appointmentId,
     "Appointment ID"
   );
-  if (!appointmentId.ok) {
-    return { success: false, error: { message: appointmentId.error } };
-  }
 
-  if (!input.datetime?.trim()) {
-    return {
-      success: false,
-      error: { message: "New Datetime is required (ISO 8601 format)." },
-    };
-  }
-
-  const calendarId = parseOptionalInteger(input.calendarId, "Calendar ID");
-  if (!calendarId.ok) {
-    return { success: false, error: { message: calendarId.error } };
-  }
-
-  const admin = parseOptionalBoolean(input.admin, "Run as Admin");
-  if (!admin.ok) {
-    return { success: false, error: { message: admin.error } };
-  }
-
-  const noEmail = parseOptionalBoolean(input.noEmail, "Suppress Acuity Emails");
-  if (!noEmail.ok) {
-    return { success: false, error: { message: noEmail.error } };
-  }
-
-  try {
-    const appointment = await clientResult.client.appointments.reschedule(
-      appointmentId.value,
-      {
-        datetime: input.datetime,
-        calendarID: calendarId.value,
-      },
-      {
-        admin: admin.value,
-        noEmail: noEmail.value,
-      }
+  if (!input.datetime.trim()) {
+    return yield* Effect.fail(
+      new StepFailure({
+        message: "New Datetime is required (ISO 8601 format).",
+      })
     );
-
-    return {
-      success: true,
-      data: {
-        appointment,
-        id: appointment.id,
-        datetime: appointment.datetime,
-      },
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: {
-        message: getAcuityErrorMessage(
-          error,
-          "Failed to reschedule appointment."
-        ),
-      },
-    };
   }
-}
 
-export async function rescheduleAppointmentStep(
-  input: RescheduleAppointmentInput
-): Promise<RescheduleAppointmentResult> {
-  const credentials = input.integrationId
-    ? ((await fetchCredentials(input.integrationId)) as AcuityCredentials)
-    : {};
+  const calendarID = yield* optionalInteger(input.calendarId, "Calendar ID");
+  const admin = yield* optionalBoolean(input.admin, "Run as Admin");
+  const noEmail = yield* optionalBoolean(
+    input.noEmail,
+    "Suppress Acuity Emails"
+  );
 
-  return withStepLogging(input, () => stepHandler(input, credentials));
-}
+  const appointment = yield* callAcuity(
+    "Failed to reschedule appointment.",
+    () =>
+      acuity.appointments.reschedule(
+        appointmentId,
+        { datetime: input.datetime, calendarID },
+        { admin, noEmail }
+      )
+  );
+
+  // The id and the datetime sit beside the appointment as well as inside it,
+  // because those two are what a downstream node reaches for most.
+  return {
+    appointment,
+    id: appointment.id,
+    datetime: appointment.datetime,
+  };
+});
+
+export const rescheduleAppointmentStep = defineStep({
+  id: "acuity/reschedule-appointment",
+  input: rescheduleAppointmentInput,
+  output: rescheduleAppointmentOutput,
+  handler: rescheduleAppointmentHandler,
+});

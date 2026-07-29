@@ -255,7 +255,9 @@ import "@rova/plugins/server"; // step implementations and connection tests, loa
 
 ### Writing your own integration package
 
-`@rova/plugins` is built against `@rova/core/plugin` and nothing else, so an outside package can be written the same way. It exports five names: `fetchCredentials`, `registerStepImporter`, `registerIntegrationTest`, `withStepLogging`, and the `StepInput` type.
+`@rova/plugins` is built against `@rova/core/plugin` and nothing else, so an outside package can be written the same way. That surface exports seven names: `defineStep`, `StepFailure`, `StepDefinition`, `StepRunContext`, `registerStep`, `registerIntegrationTest`, and `VendorTransport`.
+
+A step is a `defineStep` over an input schema, an output schema, and a handler that returns an `Effect`. `defineStep` owns the config decode, the credential fetch, the run log, and the `StepResult` envelope; the handler never writes that envelope and never touches a Promise. Register the step with `registerStep` under the id it declares, and register the connection test with `registerIntegrationTest`. `VendorTransport` is the HTTP layer a connection test provides when it runs its own effect outside `defineStep`. See `packages/plugins/src/AGENTS.md` for the worked example.
 
 ### Package exports
 

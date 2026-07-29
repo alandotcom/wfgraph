@@ -31,9 +31,8 @@ export function createOpenApiReferenceHandler(
   restBasePath: `/${string}`
 ): OpenAPIHandler<RpcContext> {
   // The reference plugin re-evaluates `spec` on every /openapi.json and /docs
-  // request, so a thunk here would re-run the full schema-to-JSON-Schema
-  // conversion per hit. Generating once and handing the plugin the pending
-  // document keeps the v1 plugin's once-per-handler cost.
+  // request, so handing it a thunk would re-run the full schema-to-JSON-Schema
+  // conversion per hit.
   const document = openApiGenerator.generate(rpcRouter, {
     base: {
       info: {

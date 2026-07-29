@@ -1,6 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Schema } from "effect";
-import { callSlack, describeSlackFailure } from "#src/slack/client";
+import { VendorTransport } from "@rova/core/plugin";
+import { describe, expect, it } from "@effect/vitest";
+import { Effect, Schema } from "effect";
+import { afterEach, beforeEach } from "vitest";
+import {
+  callSlack,
+  describeSlackFailure,
+  readSlackError,
+} from "#src/slack/client";
 
 /**
  * What goes on the wire, now that this plugin builds the request itself instead
@@ -25,6 +31,11 @@ function stubFetch(
   }) as typeof fetch;
 }
 
+/** A call that succeeds fails the flip, which is what makes the test say so. */
+const failure = Effect.flip;
+
+const withTransport = Effect.provide(VendorTransport);
+
 beforeEach(() => {
   requests = [];
 });
@@ -34,96 +45,128 @@ afterEach(() => {
 });
 
 describe("callSlack", () => {
-  it("posts JSON to the named method with a bearer token", async () => {
-    stubFetch(() => Response.json({ ok: true, ts: "1739.1", channel: "C1" }));
+  it.effect("posts JSON to the named method with a bearer token", () =>
+    Effect.gen(function* () {
+      stubFetch(() => Response.json({ ok: true, ts: "1739.1", channel: "C1" }));
 
-    const result = await callSlack(
-      "xoxb-token",
-      "chat.postMessage",
-      postMessageSchema,
-      { body: { channel: "#alerts", text: "hi" } }
-    );
+      const posted = yield* callSlack(
+        "xoxb-token",
+        "chat.postMessage",
+        postMessageSchema,
+        { body: { channel: "#alerts", text: "hi" } }
+      );
 
-    expect(result).toEqual({ ok: true, data: { ts: "1739.1", channel: "C1" } });
+      expect(posted).toEqual({ ts: "1739.1", channel: "C1" });
 
-    const request = requests[0];
-    expect(request?.url).toBe("https://slack.com/api/chat.postMessage");
-    expect(request?.method).toBe("POST");
-    expect(request?.headers.get("authorization")).toBe("Bearer xoxb-token");
-    expect(request?.headers.get("content-type")).toBe(
-      "application/json; charset=utf-8"
-    );
-    expect(await request?.text()).toBe(
-      JSON.stringify({ channel: "#alerts", text: "hi" })
-    );
-  });
+      const request = requests[0];
+      expect(request?.url).toBe("https://slack.com/api/chat.postMessage");
+      expect(request?.method).toBe("POST");
+      expect(request?.headers.get("authorization")).toBe("Bearer xoxb-token");
+      expect(request?.headers.get("content-type")).toBe(
+        "application/json; charset=utf-8"
+      );
+      expect(yield* readBody()).toBe(
+        JSON.stringify({ channel: "#alerts", text: "hi" })
+      );
+    }).pipe(withTransport)
+  );
 
-  it("sends an empty object for a call that takes no arguments", async () => {
-    stubFetch(() => Response.json({ ok: true }));
+  it.effect("sends an empty object for a call that takes no arguments", () =>
+    Effect.gen(function* () {
+      stubFetch(() => Response.json({ ok: true }));
 
-    await callSlack("xoxb-token", "auth.test", Schema.Struct({}));
+      yield* callSlack("xoxb-token", "auth.test", Schema.Struct({}));
 
-    expect(await requests[0]?.text()).toBe("{}");
-  });
+      expect(yield* readBody()).toBe("{}");
+    }).pipe(withTransport)
+  );
 
   // Slack answers 200 with ok:false for a rejected call, which is the case a
   // status-code check alone would read as success.
-  it("reports a rejected call that arrived as HTTP 200", async () => {
-    stubFetch(() => Response.json({ ok: false, error: "invalid_auth" }));
+  it.effect("reports a rejected call that arrived as HTTP 200", () =>
+    Effect.gen(function* () {
+      stubFetch(() => Response.json({ ok: false, error: "invalid_auth" }));
 
-    expect(await callSlack("xoxb-bad", "auth.test", Schema.Struct({}))).toEqual(
-      {
-        ok: false,
-        failure: { kind: "rejected", status: 200, slackError: "invalid_auth" },
-      }
+      const error = yield* failure(
+        callSlack("xoxb-bad", "auth.test", Schema.Struct({}))
+      );
+
+      expect(error._tag).toBe("VendorRejected");
+      expect(error._tag === "VendorRejected" ? error.status : undefined).toBe(
+        200
+      );
+      expect(describeSlackFailure(error)).toBe("invalid_auth");
+    }).pipe(withTransport)
+  );
+
+  it.effect("names the status when something other than Slack answered", () =>
+    Effect.gen(function* () {
+      stubFetch(() => new Response("nope", { status: 503 }));
+
+      const error = yield* failure(
+        callSlack("xoxb-token", "auth.test", Schema.Struct({}))
+      );
+
+      expect(error._tag).toBe("VendorRejected");
+      expect(error._tag === "VendorRejected" ? error.status : undefined).toBe(
+        503
+      );
+      expect(describeSlackFailure(error)).toBe("HTTP 503");
+    }).pipe(withTransport)
+  );
+
+  it.effect(
+    "refuses an ok:true body that is not the shape the caller asked for",
+    () =>
+      Effect.gen(function* () {
+        stubFetch(() => Response.json({ ok: true }));
+
+        const error = yield* failure(
+          callSlack("xoxb-token", "chat.postMessage", postMessageSchema)
+        );
+
+        expect(error._tag).toBe("VendorUnreadable");
+        expect(
+          error._tag === "VendorUnreadable" ? error.status : undefined
+        ).toBe(200);
+        expect(describeSlackFailure(error)).toBe("HTTP 200");
+      }).pipe(withTransport)
+  );
+
+  it.effect("reports an unreachable Slack rather than throwing", () =>
+    Effect.gen(function* () {
+      stubFetch(() => Promise.reject(new Error("getaddrinfo ENOTFOUND")));
+
+      const error = yield* failure(
+        callSlack("xoxb-token", "auth.test", Schema.Struct({}))
+      );
+
+      expect(error._tag).toBe("VendorUnreachable");
+      expect(describeSlackFailure(error)).toBe("getaddrinfo ENOTFOUND");
+    }).pipe(withTransport)
+  );
+});
+
+// The connection test words a Slack refusal and a refusal from something in
+// front of Slack differently, and this reading is what it decides on.
+describe("readSlackError", () => {
+  it("names Slack's own slug and nothing else", () => {
+    expect(readSlackError({ ok: false, error: "channel_not_found" })).toBe(
+      "channel_not_found"
     );
-  });
-
-  it("names the status when something other than Slack answered", async () => {
-    stubFetch(() => new Response("nope", { status: 503 }));
-
-    expect(
-      await callSlack("xoxb-token", "auth.test", Schema.Struct({}))
-    ).toEqual({
-      ok: false,
-      failure: { kind: "http", status: 503 },
-    });
-  });
-
-  it("refuses an ok:true body that is not the shape the caller asked for", async () => {
-    stubFetch(() => Response.json({ ok: true }));
-
-    expect(
-      await callSlack("xoxb-token", "chat.postMessage", postMessageSchema)
-    ).toEqual({ ok: false, failure: { kind: "http", status: 200 } });
-  });
-
-  it("reports an unreachable Slack rather than throwing", async () => {
-    stubFetch(() => Promise.reject(new Error("getaddrinfo ENOTFOUND")));
-
-    expect(
-      await callSlack("xoxb-token", "auth.test", Schema.Struct({}))
-    ).toEqual({
-      ok: false,
-      failure: { kind: "unreachable", message: "getaddrinfo ENOTFOUND" },
-    });
+    expect(readSlackError({ ok: false })).toBe("unknown_error");
+    expect(readSlackError({ ok: true })).toBeUndefined();
+    expect(readSlackError(undefined)).toBeUndefined();
   });
 });
 
-describe("describeSlackFailure", () => {
-  it("says what a user can act on for each kind of failure", () => {
-    expect(
-      describeSlackFailure({ kind: "unreachable", message: "ENOTFOUND" })
-    ).toBe("ENOTFOUND");
-    expect(
-      describeSlackFailure({
-        kind: "rejected",
-        status: 200,
-        slackError: "channel_not_found",
-      })
-    ).toBe("channel_not_found");
-    expect(describeSlackFailure({ kind: "http", status: 429 })).toBe(
-      "HTTP 429"
-    );
+/** The body of the request that was sent, as text. */
+function readBody(): Effect.Effect<string> {
+  return Effect.promise(() => {
+    const request = requests[0];
+    if (!request) {
+      throw new Error("no request was sent");
+    }
+    return request.text();
   });
-});
+}

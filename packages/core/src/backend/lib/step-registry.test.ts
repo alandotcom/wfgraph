@@ -41,6 +41,9 @@ describe("getActionLabel", () => {
           description: "Send an SMS via Twilio",
           category: "Twilio",
           configFields: [],
+          output: Schema.Struct({
+            sid: Schema.String.annotate({ description: "Message SID" }),
+          }),
         },
       ],
     });

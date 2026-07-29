@@ -1,106 +1,173 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { sendSlackMessageStep } from "./send-slack-message";
+import { describe, expect, it } from "@effect/vitest";
+import { Effect } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+import { beforeEach, vi } from "vitest";
+import { sendSlackMessageHandler } from "./send-slack-message";
 
-// The step's job is deciding whether and what to send, so the seam under it is
-// the Slack client. What that client puts on the wire is covered separately in
+// What this step decides is whether to post at all, so the seam under it is the
+// Slack client. What that client puts on the wire is covered separately in
 // slack/client.test.ts, against a stubbed fetch.
-const mocks = vi.hoisted(() => {
-  const fetchCredentials = vi.fn();
-  const callSlack = vi.fn();
-
-  return { fetchCredentials, callSlack };
-});
-
-// Both come from one module, so stubbing one means supplying the other.
-vi.mock("@rova/core/plugin", () => ({
-  fetchCredentials: mocks.fetchCredentials,
-  withStepLogging: (_input: unknown, run: () => unknown) => run(),
-}));
+const mocks = vi.hoisted(() => ({ callSlack: vi.fn() }));
 
 vi.mock("#src/slack/client", () => ({
   callSlack: mocks.callSlack,
-  describeSlackFailure: (failure: { message?: string }) =>
-    failure.message ?? "slack failure",
+  describeSlackFailure: (error: { message?: string }) =>
+    error.message ?? "slack failure",
 }));
 
-describe("sendSlackMessageStep", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.fetchCredentials.mockResolvedValue({
-      SLACK_API_KEY: "xoxb-test-token",
-    });
-    mocks.callSlack.mockResolvedValue({
-      ok: true,
-      data: { ts: "1739.123", channel: "C12345" },
-    });
-  });
+const SLACK_CREDENTIALS = { SLACK_API_KEY: "xoxb-test-token" };
 
-  it("logs only in test mode by default and skips external calls", async () => {
-    const result = await sendSlackMessageStep({
-      integrationId: "int_slack",
-      slackChannel: "#alerts",
-      slackMessage: "Hello world",
-      _context: {
-        nodeId: "n1",
-        nodeName: "Slack",
-        nodeType: "action",
-        runMode: "test",
-      },
-    });
+/**
+ * The credentials a run would have fetched, and a count of the times the step
+ * asked for them.
+ *
+ * `defineStep` hands the fetch over as an effect rather than a value, so a step
+ * that decides it has nothing to send never reads the integration's secrets.
+ * The count is what pins that.
+ */
+function credentialsRead(
+  values: Record<string, string | undefined> = SLACK_CREDENTIALS
+) {
+  const reads = { count: 0 };
 
-    expect(result).toEqual({
-      success: true,
-      ts: "",
-      channel: "#alerts",
-      reasonCode: "test_mode_log_only",
-    });
-    expect(mocks.fetchCredentials).toHaveBeenCalledTimes(0);
-    expect(mocks.callSlack).toHaveBeenCalledTimes(0);
-  });
+  return {
+    reads,
+    credentials: Effect.sync(() => {
+      reads.count += 1;
+      return values;
+    }),
+  };
+}
 
-  it("sends message in test mode when test behavior is send_message", async () => {
-    const result = await sendSlackMessageStep({
-      integrationId: "int_slack",
-      slackChannel: "#alerts",
-      slackMessage: "Hello world",
-      testBehavior: "send_message",
-      _context: {
-        nodeId: "n1",
-        nodeName: "Slack",
-        nodeType: "action",
-        runMode: "test",
-      },
-    });
+function contextFor(
+  runMode: "live" | "test",
+  credentials: Effect.Effect<Record<string, string | undefined>>
+) {
+  return {
+    runMode,
+    nodeId: "n1",
+    nodeName: "Slack",
+    nodeType: "action",
+    integrationId: "int_slack",
+    credentials,
+  };
+}
 
-    expect(mocks.fetchCredentials).toHaveBeenCalledWith("int_slack");
-    expect(mocks.callSlack).toHaveBeenCalledWith(
-      "xoxb-test-token",
-      "chat.postMessage",
-      expect.anything(),
-      { body: { channel: "#alerts", text: "Hello world" } }
-    );
-    expect(result).toEqual({
-      success: true,
-      ts: "1739.123",
-      channel: "C12345",
-    });
-  });
+/** A step that succeeds fails the flip, which is what makes the test say so. */
+const failure = Effect.flip;
 
-  it("does not suppress live mode even if test behavior is log_only", async () => {
-    await sendSlackMessageStep({
-      integrationId: "int_slack",
-      slackChannel: "#alerts",
-      slackMessage: "Hello world",
-      testBehavior: "log_only",
-      _context: {
-        nodeId: "n1",
-        nodeName: "Slack",
-        nodeType: "action",
-        runMode: "live",
-      },
-    });
+// Nothing here reaches the network, because the client is stubbed above. The
+// transport is provided all the same, since that is what a handler declares it
+// needs and the compiler holds the test to it.
+const withTransport = Effect.provide(FetchHttpClient.layer);
 
-    expect(mocks.fetchCredentials).toHaveBeenCalledWith("int_slack");
-    expect(mocks.callSlack).toHaveBeenCalledTimes(1);
-  });
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.callSlack.mockReturnValue(
+    Effect.succeed({ ts: "1739.123", channel: "C12345" })
+  );
+});
+
+describe("sendSlackMessageHandler", () => {
+  it.effect("logs only in test mode by default and skips external calls", () =>
+    Effect.gen(function* () {
+      const { reads, credentials } = credentialsRead();
+
+      const result = yield* sendSlackMessageHandler(
+        { slackChannel: "#alerts", slackMessage: "Hello world" },
+        contextFor("test", credentials)
+      );
+
+      expect(result).toEqual({
+        ts: "",
+        channel: "#alerts",
+        reasonCode: "test_mode_log_only",
+      });
+      expect(reads.count).toBe(0);
+      expect(mocks.callSlack).toHaveBeenCalledTimes(0);
+    }).pipe(withTransport)
+  );
+
+  it.effect(
+    "sends message in test mode when test behavior is send_message",
+    () =>
+      Effect.gen(function* () {
+        const { reads, credentials } = credentialsRead();
+
+        const result = yield* sendSlackMessageHandler(
+          {
+            slackChannel: "#alerts",
+            slackMessage: "Hello world",
+            testBehavior: "send_message",
+          },
+          contextFor("test", credentials)
+        );
+
+        expect(reads.count).toBe(1);
+        expect(mocks.callSlack).toHaveBeenCalledWith(
+          "xoxb-test-token",
+          "chat.postMessage",
+          expect.anything(),
+          { body: { channel: "#alerts", text: "Hello world" } }
+        );
+        expect(result).toEqual({ ts: "1739.123", channel: "C12345" });
+      }).pipe(withTransport)
+  );
+
+  it.effect(
+    "does not suppress live mode even if test behavior is log_only",
+    () =>
+      Effect.gen(function* () {
+        const { credentials } = credentialsRead();
+
+        yield* sendSlackMessageHandler(
+          {
+            slackChannel: "#alerts",
+            slackMessage: "Hello world",
+            testBehavior: "log_only",
+          },
+          contextFor("live", credentials)
+        );
+
+        expect(mocks.callSlack).toHaveBeenCalledTimes(1);
+      }).pipe(withTransport)
+  );
+
+  it.effect("fails with the message the vendor's refusal carries", () =>
+    Effect.gen(function* () {
+      mocks.callSlack.mockReturnValue(
+        Effect.fail({ message: "channel_not_found" })
+      );
+      const { credentials } = credentialsRead();
+
+      const error = yield* failure(
+        sendSlackMessageHandler(
+          { slackChannel: "#nope", slackMessage: "Hello world" },
+          contextFor("live", credentials)
+        )
+      );
+
+      expect(error.message).toBe(
+        "Failed to send Slack message: channel_not_found"
+      );
+    }).pipe(withTransport)
+  );
+
+  it.effect("says which credential is missing before reaching Slack", () =>
+    Effect.gen(function* () {
+      const { credentials } = credentialsRead({});
+
+      const error = yield* failure(
+        sendSlackMessageHandler(
+          { slackChannel: "#alerts", slackMessage: "Hello world" },
+          contextFor("live", credentials)
+        )
+      );
+
+      expect(error.message).toBe(
+        "SLACK_API_KEY is not configured. Please add it in Project Integrations."
+      );
+      expect(mocks.callSlack).toHaveBeenCalledTimes(0);
+    }).pipe(withTransport)
+  );
 });

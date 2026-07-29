@@ -1,5 +1,11 @@
 import type { IntegrationPlugin } from "@rova/shared/plugins/registry";
 import { registerIntegration } from "@rova/shared/plugins/registry";
+import {
+  createUserOutput,
+  deleteUserOutput,
+  getUserOutput,
+  updateUserOutput,
+} from "#src/clerk/schemas";
 
 const clerkPlugin: IntegrationPlugin = {
   type: "clerk",
@@ -28,12 +34,7 @@ const clerkPlugin: IntegrationPlugin = {
       label: "Get User",
       description: "Fetch a user by ID from Clerk",
       category: "Clerk",
-      outputFields: [
-        { path: "id", description: "User ID" },
-        { path: "firstName", description: "First name" },
-        { path: "lastName", description: "Last name" },
-        { path: "primaryEmailAddress", description: "Primary email address" },
-      ],
+      output: getUserOutput,
       configFields: [
         {
           key: "userId",
@@ -50,12 +51,7 @@ const clerkPlugin: IntegrationPlugin = {
       label: "Create User",
       description: "Create a new user in Clerk",
       category: "Clerk",
-      outputFields: [
-        { path: "id", description: "User ID" },
-        { path: "firstName", description: "First name" },
-        { path: "lastName", description: "Last name" },
-        { path: "primaryEmailAddress", description: "Primary email address" },
-      ],
+      output: createUserOutput,
       configFields: [
         {
           key: "emailAddress",
@@ -114,12 +110,7 @@ const clerkPlugin: IntegrationPlugin = {
       label: "Update User",
       description: "Update an existing user in Clerk",
       category: "Clerk",
-      outputFields: [
-        { path: "id", description: "User ID" },
-        { path: "firstName", description: "First name" },
-        { path: "lastName", description: "Last name" },
-        { path: "primaryEmailAddress", description: "Primary email address" },
-      ],
+      output: updateUserOutput,
       configFields: [
         {
           key: "userId",
@@ -169,7 +160,7 @@ const clerkPlugin: IntegrationPlugin = {
       label: "Delete User",
       description: "Delete a user from Clerk",
       category: "Clerk",
-      outputFields: [{ path: "deleted", description: "Deletion success" }],
+      output: deleteUserOutput,
       configFields: [
         {
           key: "userId",

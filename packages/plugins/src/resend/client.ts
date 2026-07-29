@@ -13,14 +13,11 @@
  * is asserted in resend/steps/send-email.test.ts.
  */
 
+import type { Effect } from "effect";
 import { Schema } from "effect";
-import type { JsonObject } from "@rova/shared/types/json";
-import {
-  callVendor,
-  parsePayload,
-  runVendorCall,
-  type VendorError,
-} from "#src/vendor-http";
+import type { HttpClient } from "effect/unstable/http";
+import type { JsonObject, JsonValue } from "@rova/shared/types/json";
+import { callVendor, parsePayload, type VendorError } from "#src/vendor-http";
 
 const RESEND_API_BASE = "https://api.resend.com";
 
@@ -33,53 +30,35 @@ const resendErrorSchema = Schema.Struct({
 
 const sentEmailSchema = Schema.Struct({ id: Schema.String });
 
-export type ResendFailure =
-  | { kind: "unreachable"; message: string }
-  | {
-      kind: "rejected";
-      status: number;
-      message: string;
-      /** Resend's own slug, such as "restricted_api_key". */
-      name?: string;
-    }
-  /** A 2xx whose body is not what Resend documents. */
-  | { kind: "unreadable"; status: number };
-
-export type ResendResult<TData> =
-  | { ok: true; data: TData }
-  | { ok: false; failure: ResendFailure };
-
-export function describeResendFailure(failure: ResendFailure): string {
-  if (failure.kind === "unreadable") {
-    return `Resend answered ${failure.status} with an unrecognized body`;
-  }
-  return failure.message;
+/**
+ * Resend's error body, for a caller that reports more than the message.
+ *
+ * The connection test is that caller: a send-only key answers
+ * `restricted_api_key` on the domains endpoint, which confirms the key works,
+ * and only the slug says so.
+ */
+export function readResendError(payload: JsonValue | undefined) {
+  return parsePayload(payload, resendErrorSchema);
 }
 
 /**
- * Resend's three failures in the vocabulary this plugin's steps already read.
- * Stage 6 of ADR-0002 makes a step handler an Effect over `VendorError` and
- * this translation goes away with the `ResendResult` shape it feeds.
+ * What Resend said, in one sentence a person reads.
  *
- * The status a caller sees is the one in the body when Resend put one there,
- * which is the number its own documentation quotes for a slug.
+ * A refusal carries Resend's own message when its error body is the documented
+ * shape and the bare status when it is not. A 2xx whose body is not the
+ * documented resource says so, because reporting success there would tell the
+ * run an email went out and leave nothing to look it up by.
  */
-function toResendFailure(error: VendorError): ResendFailure {
+export function describeResendFailure(error: VendorError): string {
   if (error._tag === "VendorUnreachable") {
-    return { kind: "unreachable", message: error.message };
+    return error.message;
   }
 
   if (error._tag === "VendorUnreadable") {
-    return { kind: "unreadable", status: error.status };
+    return `Resend answered ${error.status} with an unrecognized body`;
   }
 
-  const body = parsePayload(error.payload, resendErrorSchema);
-  return {
-    kind: "rejected",
-    status: body?.statusCode ?? error.status,
-    message: body?.message ?? `HTTP ${error.status}`,
-    name: body?.name,
-  };
+  return readResendError(error.payload)?.message ?? `HTTP ${error.status}`;
 }
 
 function requestResend<S extends Schema.ConstraintDecoder<unknown>>(
@@ -95,29 +74,26 @@ function requestResend<S extends Schema.ConstraintDecoder<unknown>>(
      */
     idempotencyKey?: string;
   }
-): Promise<ResendResult<S["Type"]>> {
-  return runVendorCall(
-    callVendor({
-      vendor: "Resend",
-      url: `${RESEND_API_BASE}${path}`,
-      method: init.method,
-      headers: { authorization: `Bearer ${apiKey}` },
-      body:
-        init.jsonBody === undefined
-          ? undefined
-          : { kind: "json", value: init.jsonBody },
-      idempotencyKey: init.idempotencyKey,
-      schema,
-    }),
-    toResendFailure
-  );
+): Effect.Effect<S["Type"], VendorError, HttpClient.HttpClient> {
+  return callVendor({
+    vendor: "Resend",
+    url: `${RESEND_API_BASE}${path}`,
+    method: init.method,
+    headers: { authorization: `Bearer ${apiKey}` },
+    body:
+      init.jsonBody === undefined
+        ? undefined
+        : { kind: "json", value: init.jsonBody },
+    idempotencyKey: init.idempotencyKey,
+    schema,
+  });
 }
 
 export function sendResendEmail(
   apiKey: string,
   payload: JsonObject,
   idempotencyKey?: string
-): Promise<ResendResult<{ id: string }>> {
+): Effect.Effect<{ id: string }, VendorError, HttpClient.HttpClient> {
   return requestResend(apiKey, "/emails", sentEmailSchema, {
     method: "POST",
     jsonBody: payload,
@@ -131,6 +107,6 @@ export function sendResendEmail(
  */
 export function listResendDomains(
   apiKey: string
-): Promise<ResendResult<unknown>> {
+): Effect.Effect<unknown, VendorError, HttpClient.HttpClient> {
   return requestResend(apiKey, "/domains", Schema.Unknown, { method: "GET" });
 }

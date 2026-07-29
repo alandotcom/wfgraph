@@ -60,13 +60,13 @@ const SYSTEM_ACTION_LABELS: Record<string, string> = {
 // are. They used to be registered from the engine, which made the engine's
 // import order load-bearing for whether its own actions existed. The loaders
 // stay lazy, so naming them here costs nothing at import time.
-registerStepFunction(
+registerBuiltInStep(
   "Database Query",
   async () =>
     (await import("#src/backend/lib/steps/database-query")).databaseQueryStep
 );
 
-registerStepFunction(
+registerBuiltInStep(
   "HTTP Request",
   async () =>
     (await import("#src/backend/lib/steps/http-request")).httpRequestStep
@@ -140,28 +140,30 @@ export function registerStep<Id extends string>(
 }
 
 /**
- * Register a step that is still a Promise function.
+ * Register one of the two built-in steps, which are still Promise functions.
  *
- * The un-migrated half of stage 6 of ADR-0002. A step written this way declares
- * the config fields it needs as its parameter type, while the engine builds the
- * open record it actually gets, and a function parameter narrows the wrong way
- * for that assignment to hold. So this is where the registration's promise --
- * that the step copes with the record the engine builds -- is taken at its
- * word, once, for every step still written this way. It used to be taken at its
- * word for all of them, in `loadStepFunction`, along with the claim that a
- * module exported a function under a name recorded as data.
+ * A step written this way declares the config fields it needs as its parameter
+ * type, while the engine builds the open record it actually gets, and a
+ * function parameter narrows the wrong way for that assignment to hold. So this
+ * is where the registration's promise -- that the step copes with the record
+ * the engine builds -- is taken at its word.
  *
- * Stage 6b takes the last of these to `defineStep`, where the schema makes the
- * same promise checkable, and this function goes with them.
+ * Stage 6b of ADR-0002 took every plugin step to `defineStep`, where the input
+ * schema makes the same promise checkable, and this stopped being exported from
+ * `@rova/core/plugin` with them: no integration can reach it, and the two call
+ * sites left are the ones above. Database Query and HTTP Request each answer a
+ * shape `StepResult` has no room for -- rows beside a count, a status beside
+ * the data -- so moving them is a decision about what a step may return rather
+ * than the mechanical conversion the plugins were.
  */
-export function registerStepFunction(
+function registerBuiltInStep(
   actionId: string,
   load: () => Promise<(input: never) => StepResult | Promise<StepResult>>
 ): void {
   STEP_LOADERS[actionId] = async () => {
     const step = await load();
     return (input) =>
-      // eslint-disable-next-line typescript/no-unsafe-type-assertion -- the un-migrated half of stage 6; see above
+      // eslint-disable-next-line typescript/no-unsafe-type-assertion -- the two built-in steps; see above
       step(input as never);
   };
 }

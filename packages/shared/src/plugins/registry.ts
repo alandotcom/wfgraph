@@ -138,17 +138,14 @@ export type PluginAction = {
    * template-autocomplete list is derived from it at registration; paths omit
    * the `data.` prefix, because the schema describes the payload rather than
    * the `StepResult` wrapper around it.
-   */
-  output?: OutputSchema<unknown>;
-
-  /**
-   * The same list, written by hand.
    *
-   * Every plugin action still carrying one is a step that has not moved to
-   * `defineStep` yet; stage 6b of ADR-0002 is where the last of them goes and
-   * this field with it. An action may declare one or the other, never both.
+   * Required, because the schema is the only thing tying what a step returns to
+   * what the editor offers. There used to be a hand-written `outputFields` list
+   * beside it for the actions whose steps had not moved to `defineStep`; every
+   * one of them has, so the list that could only disagree with the schema is
+   * gone.
    */
-  outputFields?: ReferenceField[];
+  output: OutputSchema<unknown>;
 
   // Output display configuration (how to render output in workflow runs panel)
   outputConfig?: OutputDisplayConfig;
@@ -162,7 +159,9 @@ export type PluginAction = {
  * this registry, and a schema object there is a dump of one library's internals
  * that no reader has a use for.
  */
-export type RegisteredPluginAction = Omit<PluginAction, "output">;
+export type RegisteredPluginAction = Omit<PluginAction, "output"> & {
+  outputFields: ReferenceField[];
+};
 
 /**
  * Integration Plugin Definition
@@ -283,21 +282,12 @@ function readPluginAction(
 ): RegisteredPluginAction {
   const { output, ...rest } = action;
 
-  if (!output) {
-    return rest;
-  }
-
-  const actionId = computeActionId(integrationType, action.slug);
-
-  if (rest.outputFields) {
-    throw new Error(
-      `Action "${actionId}" declares both an output schema and outputFields. The schema is the one the step is typed against, so the hand-written list can only disagree with it.`
-    );
-  }
-
   return {
     ...rest,
-    outputFields: requireOutputFieldsFromSchema(actionId, output),
+    outputFields: requireOutputFieldsFromSchema(
+      computeActionId(integrationType, action.slug),
+      output
+    ),
   };
 }
 
@@ -372,7 +362,7 @@ export function getAllActions(): ActionWithFullId[] {
       category: runtimeAction.category,
       logoUrl: runtimeAction.logoUrl,
       configFields: runtimeAction.configFields ?? [],
-      outputFields: runtimeAction.outputFields,
+      outputFields: runtimeAction.outputFields ?? [],
       id: runtimeAction.id,
       integration: runtimeAction.integration,
     });
@@ -412,7 +402,7 @@ export function getActionsByCategory(): Record<string, ActionWithFullId[]> {
       category: runtimeAction.category,
       logoUrl: runtimeAction.logoUrl,
       configFields: runtimeAction.configFields ?? [],
-      outputFields: runtimeAction.outputFields,
+      outputFields: runtimeAction.outputFields ?? [],
       id: runtimeAction.id,
       integration: runtimeAction.integration,
     });
@@ -484,7 +474,7 @@ export function findActionById(
         category: runtimeAction.category,
         logoUrl: runtimeAction.logoUrl,
         configFields: runtimeAction.configFields ?? [],
-        outputFields: runtimeAction.outputFields,
+        outputFields: runtimeAction.outputFields ?? [],
         id: runtimeAction.id,
         integration: runtimeAction.integration,
       };
@@ -544,7 +534,8 @@ export function getSortedIntegrationTypes(): IntegrationType[] {
  * Get credential mapping for a plugin (auto-generated from formFields)
  */
 export function getCredentialMapping(
-  plugin: IntegrationPlugin,
+  // A registered plugin is required because its actions carry derived outputFields.
+  plugin: RegisteredIntegrationPlugin,
   config: Record<string, unknown>
 ): Record<string, string> {
   const creds: Record<string, string> = {};

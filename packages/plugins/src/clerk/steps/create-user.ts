@@ -1,133 +1,87 @@
+import {
+  defineStep,
+  StepFailure,
+  type StepRunContext,
+} from "@rova/core/plugin";
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
-import { Schema } from "effect";
-import {
-  fetchCredentials,
-  type StepInput,
-  withStepLogging,
-} from "@rova/core/plugin";
+import { Effect } from "effect";
 import {
   createClerkBackendClient,
   getClerkApiErrorMessage,
   toClerkApiUser,
 } from "#src/clerk/client";
 import type { ClerkCredentials } from "#src/clerk/credentials";
-import { readAs } from "@rova/shared/types/schema";
-import { type ClerkUserResult, toClerkUserData } from "#src/clerk/types";
-
-export type ClerkCreateUserCoreInput = {
-  emailAddress: string;
-  firstName?: string;
-  lastName?: string;
-  password?: string;
-  publicMetadata?: string;
-  privateMetadata?: string;
-};
-
-export type ClerkCreateUserInput = StepInput &
-  ClerkCreateUserCoreInput & {
-    integrationId?: string;
-  };
-
-// Clerk stores any JSON object as user metadata, so a workflow author's pasted
-// text only has to be a JSON object to be usable here.
-const readClerkMetadata = readAs(Schema.Record(Schema.String, Schema.Unknown));
-
-function parseMetadataJson(value: string): Record<string, unknown> | undefined {
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    return undefined;
-  }
-
-  return readClerkMetadata(parsed);
-}
+import { parseClerkMetadata } from "#src/clerk/metadata";
+import { createUserInput, createUserOutput } from "#src/clerk/schemas";
+import { toClerkUserData } from "#src/clerk/types";
 
 /**
- * Core logic - portable between app and export
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies.
  */
-async function stepHandler(
-  input: ClerkCreateUserCoreInput,
-  credentials: ClerkCredentials
-): Promise<ClerkUserResult> {
+export const clerkCreateUserHandler = Effect.fn(function* (
+  input: typeof createUserInput.Type,
+  context: StepRunContext
+) {
+  // The plugin's own credential vocabulary, so a key it never declares is a
+  // compile error here rather than an undefined at run time.
+  const credentials: ClerkCredentials = yield* context.credentials;
   const secretKey = credentials.CLERK_SECRET_KEY;
 
   if (!secretKey) {
-    return {
-      success: false,
-      error: {
+    return yield* Effect.fail(
+      new StepFailure({
         message:
           "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-      },
-    };
+      })
+    );
   }
 
   if (!input.emailAddress) {
-    return {
-      success: false,
-      error: { message: "Email address is required." },
-    };
-  }
-
-  try {
-    let publicMetadata: Record<string, unknown> | undefined;
-    if (input.publicMetadata) {
-      publicMetadata = parseMetadataJson(input.publicMetadata);
-      if (!publicMetadata) {
-        return {
-          success: false,
-          error: { message: "Invalid JSON format for publicMetadata" },
-        };
-      }
-    }
-
-    let privateMetadata: Record<string, unknown> | undefined;
-    if (input.privateMetadata) {
-      privateMetadata = parseMetadataJson(input.privateMetadata);
-      if (!privateMetadata) {
-        return {
-          success: false,
-          error: { message: "Invalid JSON format for privateMetadata" },
-        };
-      }
-    }
-
-    const clerkClient = createClerkBackendClient(secretKey);
-    const createPayload = omitBy(
-      {
-        emailAddress: [input.emailAddress],
-        firstName: input.firstName,
-        lastName: input.lastName,
-        password: input.password,
-        publicMetadata,
-        privateMetadata,
-      },
-      isNil
+    return yield* Effect.fail(
+      new StepFailure({ message: "Email address is required." })
     );
-
-    const user = await clerkClient.users.createUser(createPayload);
-    return { success: true, data: toClerkUserData(toClerkApiUser(user)) };
-  } catch (err) {
-    return {
-      success: false,
-      error: {
-        message: `Failed to create user: ${getClerkApiErrorMessage(err)}`,
-      },
-    };
   }
-}
 
-/**
- * App entry point - fetches credentials and wraps with logging
- */
-export async function clerkCreateUserStep(
-  input: ClerkCreateUserInput
-): Promise<ClerkUserResult> {
-  const credentials = input.integrationId
-    ? await fetchCredentials(input.integrationId)
-    : {};
+  const publicMetadata = yield* parseClerkMetadata(
+    input.publicMetadata,
+    "publicMetadata"
+  );
+  const privateMetadata = yield* parseClerkMetadata(
+    input.privateMetadata,
+    "privateMetadata"
+  );
 
-  return withStepLogging(input, () => stepHandler(input, credentials));
-}
+  const clerk = createClerkBackendClient(secretKey);
+  // Clerk reads an absent field and a null one differently, so the fields the
+  // user left blank are dropped rather than sent empty.
+  const createPayload = omitBy(
+    {
+      emailAddress: [input.emailAddress],
+      firstName: input.firstName,
+      lastName: input.lastName,
+      password: input.password,
+      publicMetadata,
+      privateMetadata,
+    },
+    isNil
+  );
+
+  const user = yield* Effect.tryPromise({
+    try: () => clerk.users.createUser(createPayload),
+    catch: (error) =>
+      new StepFailure({
+        message: `Failed to create user: ${getClerkApiErrorMessage(error)}`,
+      }),
+  });
+
+  return toClerkUserData(toClerkApiUser(user));
+});
+
+export const clerkCreateUserStep = defineStep({
+  id: "clerk/create-user",
+  input: createUserInput,
+  output: createUserOutput,
+  handler: clerkCreateUserHandler,
+});

@@ -1,5 +1,15 @@
 import type { IntegrationPlugin } from "@rova/shared/plugins/registry";
 import { registerIntegration } from "@rova/shared/plugins/registry";
+import {
+  cancelAppointmentOutput,
+  createAppointmentOutput,
+  getAppointmentOutput,
+  getAvailabilityDatesOutput,
+  getAvailabilityTimesOutput,
+  listAppointmentsOutput,
+  listAppointmentTypesOutput,
+  rescheduleAppointmentOutput,
+} from "#src/acuity/schemas";
 
 const acuityPlugin: IntegrationPlugin = {
   type: "acuity",
@@ -33,13 +43,7 @@ const acuityPlugin: IntegrationPlugin = {
       label: "List Appointment Types",
       description: "Fetch appointment types configured in Acuity",
       category: "Acuity",
-      outputFields: [
-        {
-          path: "appointmentTypes",
-          description: "Array of appointment types",
-        },
-        { path: "count", description: "Number of appointment types returned" },
-      ],
+      output: listAppointmentTypesOutput,
       configFields: [],
     },
     {
@@ -47,10 +51,7 @@ const acuityPlugin: IntegrationPlugin = {
       label: "List Appointments",
       description: "List appointments with optional filters",
       category: "Acuity",
-      outputFields: [
-        { path: "appointments", description: "Array of appointments" },
-        { path: "count", description: "Number of appointments returned" },
-      ],
+      output: listAppointmentsOutput,
       configFields: [
         {
           key: "appointmentTypeId",
@@ -143,11 +144,7 @@ const acuityPlugin: IntegrationPlugin = {
       label: "Get Appointment",
       description: "Fetch one appointment by ID",
       category: "Acuity",
-      outputFields: [
-        { path: "appointment", description: "The appointment details" },
-        { path: "id", description: "Appointment ID" },
-        { path: "datetime", description: "Appointment datetime" },
-      ],
+      output: getAppointmentOutput,
       configFields: [
         {
           key: "appointmentId",
@@ -173,10 +170,7 @@ const acuityPlugin: IntegrationPlugin = {
       label: "Get Availability Dates",
       description: "List dates that still have available slots",
       category: "Acuity",
-      outputFields: [
-        { path: "dates", description: "Available dates" },
-        { path: "count", description: "Number of dates returned" },
-      ],
+      output: getAvailabilityDatesOutput,
       configFields: [
         {
           key: "month",
@@ -211,10 +205,7 @@ const acuityPlugin: IntegrationPlugin = {
       label: "Get Availability Times",
       description: "List available time slots for a date",
       category: "Acuity",
-      outputFields: [
-        { path: "slots", description: "Available time slots" },
-        { path: "count", description: "Number of slots returned" },
-      ],
+      output: getAvailabilityTimesOutput,
       configFields: [
         {
           key: "date",
@@ -255,11 +246,7 @@ const acuityPlugin: IntegrationPlugin = {
       label: "Create Appointment",
       description: "Book a new appointment in Acuity",
       category: "Acuity",
-      outputFields: [
-        { path: "appointment", description: "Created appointment payload" },
-        { path: "id", description: "Created appointment ID" },
-        { path: "datetime", description: "Created appointment datetime" },
-      ],
+      output: createAppointmentOutput,
       configFields: [
         {
           key: "datetime",
@@ -376,14 +363,7 @@ const acuityPlugin: IntegrationPlugin = {
       label: "Reschedule Appointment",
       description: "Move an appointment to a new datetime",
       category: "Acuity",
-      outputFields: [
-        {
-          path: "appointment",
-          description: "Rescheduled appointment payload",
-        },
-        { path: "id", description: "Appointment ID" },
-        { path: "datetime", description: "New appointment datetime" },
-      ],
+      output: rescheduleAppointmentOutput,
       configFields: [
         {
           key: "appointmentId",
@@ -440,11 +420,7 @@ const acuityPlugin: IntegrationPlugin = {
       label: "Cancel Appointment",
       description: "Cancel an appointment in Acuity",
       category: "Acuity",
-      outputFields: [
-        { path: "appointment", description: "Canceled appointment payload" },
-        { path: "id", description: "Canceled appointment ID" },
-        { path: "canceled", description: "Cancellation flag" },
-      ],
+      output: cancelAppointmentOutput,
       configFields: [
         {
           key: "appointmentId",

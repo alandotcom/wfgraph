@@ -1,119 +1,74 @@
-import type {
-  AvailabilityTimeSlot,
-  AvailabilityTimesParams,
-} from "@fountain-bio/acuity";
+import type { AvailabilityTimesParams } from "@fountain-bio/acuity";
+import {
+  defineStep,
+  StepFailure,
+  type StepRunContext,
+} from "@rova/core/plugin";
+import { Effect } from "effect";
 import type { AcuityCredentials } from "#src/acuity/credentials";
 import {
-  fetchCredentials,
-  type StepInput,
-  withStepLogging,
-} from "@rova/core/plugin";
-import { createAcuityClient, getAcuityErrorMessage } from "./client";
+  getAvailabilityTimesInput,
+  getAvailabilityTimesOutput,
+} from "#src/acuity/schemas";
+import { callAcuity, createAcuityClient } from "./client";
 import {
-  parseCommaSeparatedIntegerList,
-  parseOptionalInteger,
-  parseRequiredInteger,
+  optionalInteger,
+  optionalIntegerList,
+  requiredInteger,
 } from "./shared";
 
-type GetAvailabilityTimesResult =
-  | {
-      success: true;
-      data: {
-        slots: AvailabilityTimeSlot[];
-        count: number;
-      };
-    }
-  | { success: false; error: { message: string } };
+/**
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies.
+ */
+export const getAvailabilityTimesHandler = Effect.fn(function* (
+  input: typeof getAvailabilityTimesInput.Type,
+  context: StepRunContext
+) {
+  // The plugin's own credential vocabulary, so a key it never declares is a
+  // compile error here rather than an undefined at run time.
+  const credentials: AcuityCredentials = yield* context.credentials;
+  const acuity = yield* createAcuityClient(credentials);
 
-export type GetAvailabilityTimesCoreInput = {
-  date: string;
-  appointmentTypeId: string;
-  calendarId?: string;
-  timezone?: string;
-  ignoreAppointmentIds?: string;
-};
-
-export type GetAvailabilityTimesInput = StepInput &
-  GetAvailabilityTimesCoreInput & {
-    integrationId?: string;
-  };
-
-async function stepHandler(
-  input: GetAvailabilityTimesCoreInput,
-  credentials: AcuityCredentials
-): Promise<GetAvailabilityTimesResult> {
-  const clientResult = createAcuityClient(credentials);
-  if ("error" in clientResult) {
-    return { success: false, error: { message: clientResult.error } };
-  }
-
-  const appointmentTypeId = parseRequiredInteger(
+  const appointmentTypeID = yield* requiredInteger(
     input.appointmentTypeId,
     "Appointment Type ID"
   );
-  if (!appointmentTypeId.ok) {
-    return { success: false, error: { message: appointmentTypeId.error } };
-  }
-
-  const calendarId = parseOptionalInteger(input.calendarId, "Calendar ID");
-  if (!calendarId.ok) {
-    return { success: false, error: { message: calendarId.error } };
-  }
-
-  const ignoreAppointmentIds = parseCommaSeparatedIntegerList(
+  const calendarID = yield* optionalInteger(input.calendarId, "Calendar ID");
+  // Ignoring the appointment being moved is what lets its own slot show up
+  // again, which is why rescheduling passes an id here.
+  const ignoreAppointmentIDs = yield* optionalIntegerList(
     input.ignoreAppointmentIds,
     "Ignore Appointment IDs"
   );
-  if (!ignoreAppointmentIds.ok) {
-    return { success: false, error: { message: ignoreAppointmentIds.error } };
-  }
 
-  if (!input.date?.trim()) {
-    return {
-      success: false,
-      error: {
+  if (!input.date.trim()) {
+    return yield* Effect.fail(
+      new StepFailure({
         message: "Date is required and must use YYYY-MM-DD format.",
-      },
-    };
+      })
+    );
   }
 
+  // Acuity's own parameter names, so this reads like its documentation.
   const params: AvailabilityTimesParams = {
     date: input.date,
-    appointmentTypeID: appointmentTypeId.value,
-    calendarID: calendarId.value,
+    appointmentTypeID,
+    calendarID,
     timezone: input.timezone,
-    ignoreAppointmentIDs: ignoreAppointmentIds.value,
+    ignoreAppointmentIDs,
   };
 
-  try {
-    const slots = await clientResult.client.availability.times(params);
+  const slots = yield* callAcuity("Failed to fetch availability times.", () =>
+    acuity.availability.times(params)
+  );
 
-    return {
-      success: true,
-      data: {
-        slots,
-        count: slots.length,
-      },
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: {
-        message: getAcuityErrorMessage(
-          error,
-          "Failed to fetch availability times."
-        ),
-      },
-    };
-  }
-}
+  return { slots, count: slots.length };
+});
 
-export async function getAvailabilityTimesStep(
-  input: GetAvailabilityTimesInput
-): Promise<GetAvailabilityTimesResult> {
-  const credentials = input.integrationId
-    ? ((await fetchCredentials(input.integrationId)) as AcuityCredentials)
-    : {};
-
-  return withStepLogging(input, () => stepHandler(input, credentials));
-}
+export const getAvailabilityTimesStep = defineStep({
+  id: "acuity/get-availability-times",
+  input: getAvailabilityTimesInput,
+  output: getAvailabilityTimesOutput,
+  handler: getAvailabilityTimesHandler,
+});

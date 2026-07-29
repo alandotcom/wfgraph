@@ -1,48 +1,22 @@
+import {
+  defineStep,
+  StepFailure,
+  type StepRunContext,
+} from "@rova/core/plugin";
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
-import { Result, Schema } from "effect";
-import {
-  fetchCredentials,
-  type StepInput,
-  withStepLogging,
-} from "@rova/core/plugin";
+import { Effect, Result, Schema } from "effect";
 import { describeResendFailure, sendResendEmail } from "#src/resend/client";
 import type { ResendCredentials } from "#src/resend/credentials";
+import { sendEmailInput, sendEmailOutput } from "#src/resend/schemas";
 import type { JsonObject } from "@rova/shared/types/json";
-
-type SendEmailResult =
-  | { success: true; data: { id: string; reasonCode?: string } }
-  | { success: false; error: { message: string } };
-
-export type SendEmailCoreInput = {
-  emailFrom?: string;
-  emailTo: string;
-  emailSubject: string;
-  emailBody?: string;
-  emailHtml?: string;
-  emailContentMode?: "text" | "html" | "template";
-  emailTemplateId?: string;
-  emailTemplateVariables?: string;
-  emailCc?: string;
-  emailBcc?: string;
-  emailReplyTo?: string;
-  emailScheduledAt?: string;
-  emailTopicId?: string;
-  emailTags?: string;
-  idempotencyKey?: string;
-};
-
-export type SendEmailInput = StepInput &
-  SendEmailCoreInput & {
-    integrationId?: string;
-    testBehavior?: string;
-    testEmailTo?: string;
-  };
 
 type ResendTestBehavior = "log_only" | "send_to_test_email";
 const TEST_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function resolveResendTestBehavior(value: unknown): ResendTestBehavior {
+function resolveResendTestBehavior(
+  value: string | undefined
+): ResendTestBehavior {
   return value === "send_to_test_email" ? "send_to_test_email" : "log_only";
 }
 
@@ -126,48 +100,26 @@ function parseTemplateVariables(
 }
 
 /**
- * Core logic - portable between app and export
+ * The body Resend is sent, or the failure that says why one could not be built.
+ *
+ * The three content modes differ only in which fields they add to a common set,
+ * and each names the field it cannot do without, so the message tells an author
+ * which box to fill in.
  */
-async function stepHandler(
-  input: SendEmailCoreInput,
-  credentials: ResendCredentials
-): Promise<SendEmailResult> {
-  const apiKey = credentials.RESEND_API_KEY;
-  const fromEmail = credentials.RESEND_FROM_EMAIL;
-
-  if (!apiKey) {
-    return {
-      success: false,
-      error: {
-        message:
-          "RESEND_API_KEY is not configured. Please add it in Project Integrations.",
-      },
-    };
-  }
-
-  const senderEmail = input.emailFrom || fromEmail;
-
-  if (!senderEmail) {
-    return {
-      success: false,
-      error: {
-        message:
-          "No sender is configured. Please add it in the action or in Project Integrations.",
-      },
-    };
-  }
-
-  const contentMode = input.emailContentMode || "text";
-
+function buildEmailPayload(
+  input: typeof sendEmailInput.Type,
+  senderEmail: string,
+  recipients: { to: string; cc?: string; bcc?: string }
+): Effect.Effect<JsonObject, StepFailure> {
   // Resend's own field names, which are snake_case on the wire.
   const basePayload: JsonObject = {
     from: senderEmail,
-    to: input.emailTo,
+    to: recipients.to,
     subject: input.emailSubject,
     ...omitBy(
       {
-        cc: input.emailCc,
-        bcc: input.emailBcc,
+        cc: recipients.cc,
+        bcc: recipients.bcc,
         reply_to: input.emailReplyTo,
         scheduled_at: input.emailScheduledAt,
         topic_id: input.emailTopicId,
@@ -177,128 +129,146 @@ async function stepHandler(
     ),
   };
 
-  let payload: JsonObject;
+  const contentMode = input.emailContentMode || "text";
 
   if (contentMode === "template") {
-    if (!input.emailTemplateId) {
-      return {
-        success: false,
-        error: { message: "Template mode requires emailTemplateId." },
-      };
-    }
-
-    payload = {
-      ...basePayload,
-      template: {
-        id: input.emailTemplateId,
-        ...omitBy(
-          { variables: parseTemplateVariables(input.emailTemplateVariables) },
-          isNil
-        ),
-      },
-    };
-  } else if (contentMode === "html") {
-    if (!input.emailHtml) {
-      return {
-        success: false,
-        error: { message: "HTML mode requires emailHtml." },
-      };
-    }
-
-    payload = {
-      ...basePayload,
-      html: input.emailHtml,
-      ...omitBy({ text: input.emailBody }, isNil),
-    };
-  } else {
-    if (!input.emailBody) {
-      return {
-        success: false,
-        error: { message: "Text mode requires emailBody." },
-      };
-    }
-
-    payload = {
-      ...basePayload,
-      text: input.emailBody,
-      ...omitBy({ html: input.emailHtml }, isNil),
-    };
+    return input.emailTemplateId
+      ? Effect.succeed({
+          ...basePayload,
+          template: {
+            id: input.emailTemplateId,
+            ...omitBy(
+              {
+                variables: parseTemplateVariables(input.emailTemplateVariables),
+              },
+              isNil
+            ),
+          },
+        })
+      : Effect.fail(
+          new StepFailure({
+            message: "Template mode requires emailTemplateId.",
+          })
+        );
   }
 
-  const result = await sendResendEmail(apiKey, payload, input.idempotencyKey);
-
-  if (!result.ok) {
-    return {
-      success: false,
-      error: {
-        message: `Failed to send email: ${describeResendFailure(result.failure)}`,
-      },
-    };
+  if (contentMode === "html") {
+    return input.emailHtml
+      ? Effect.succeed({
+          ...basePayload,
+          html: input.emailHtml,
+          ...omitBy({ text: input.emailBody }, isNil),
+        })
+      : Effect.fail(
+          new StepFailure({ message: "HTML mode requires emailHtml." })
+        );
   }
 
-  return { success: true, data: { id: result.data.id } };
+  return input.emailBody
+    ? Effect.succeed({
+        ...basePayload,
+        text: input.emailBody,
+        ...omitBy({ html: input.emailHtml }, isNil),
+      })
+    : Effect.fail(
+        new StepFailure({ message: "Text mode requires emailBody." })
+      );
 }
 
 /**
- * App entry point - fetches credentials and wraps with logging
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies: what this step decides is whether and where to send, and every one
+ * of those decisions is here.
  */
-export async function sendEmailStep(
-  input: SendEmailInput
-): Promise<SendEmailResult> {
-  const runMode = input._context?.runMode ?? "live";
-  const idempotencyKey = input._context?.executionId;
+export const sendEmailHandler = Effect.fn(function* (
+  input: typeof sendEmailInput.Type,
+  context: StepRunContext
+) {
+  // The run's own id doubles as the idempotency key: a step Inngest re-runs
+  // sends the same key, and Resend replays its first answer rather than sending
+  // a second email.
+  const idempotencyKey = context.executionId;
   const syntheticIdSuffix = idempotencyKey ?? "no_execution";
   const testBehavior = resolveResendTestBehavior(input.testBehavior);
 
-  if (runMode === "test" && testBehavior === "log_only") {
-    return withStepLogging(input, async () => ({
-      success: true,
-      data: {
-        id: `resend:test-log-only:${syntheticIdSuffix}`,
-        reasonCode: "test_mode_log_only",
-      },
-    }));
+  // A test run either sends nothing at all or sends to one address the user
+  // nominated. Both answers are a success carrying the reason, so the run shows
+  // what happened rather than an error the user has to interpret.
+  if (context.runMode === "test" && testBehavior === "log_only") {
+    return {
+      id: `resend:test-log-only:${syntheticIdSuffix}`,
+      reasonCode: "test_mode_log_only",
+    };
   }
 
-  const testRecipientRaw =
-    typeof input.testEmailTo === "string" ? input.testEmailTo.trim() : "";
-  const shouldRouteToTestRecipient =
-    runMode === "test" && testBehavior === "send_to_test_email";
+  const testRecipient = input.testEmailTo?.trim() ?? "";
+  const routeToTestRecipient =
+    context.runMode === "test" && testBehavior === "send_to_test_email";
 
-  if (shouldRouteToTestRecipient && testRecipientRaw.length === 0) {
-    return withStepLogging(input, async () => ({
-      success: true,
-      data: {
-        id: `resend:test-log-fallback:${syntheticIdSuffix}`,
-        reasonCode: "test_mode_log_fallback_missing_test_email",
-      },
-    }));
+  if (routeToTestRecipient && testRecipient.length === 0) {
+    return {
+      id: `resend:test-log-fallback:${syntheticIdSuffix}`,
+      reasonCode: "test_mode_log_fallback_missing_test_email",
+    };
   }
 
-  if (
-    shouldRouteToTestRecipient &&
-    !isValidTestEmailAddress(testRecipientRaw)
-  ) {
-    return withStepLogging(input, async () => ({
-      success: true,
-      data: {
-        id: `resend:test-log-fallback:${syntheticIdSuffix}`,
-        reasonCode: "test_mode_log_fallback_invalid_test_email",
-      },
-    }));
+  if (routeToTestRecipient && !isValidTestEmailAddress(testRecipient)) {
+    return {
+      id: `resend:test-log-fallback:${syntheticIdSuffix}`,
+      reasonCode: "test_mode_log_fallback_invalid_test_email",
+    };
   }
 
-  const credentials = input.integrationId
-    ? await fetchCredentials(input.integrationId)
-    : {};
+  // The plugin's own credential vocabulary, so a key it never declares is a
+  // compile error here rather than an undefined at run time.
+  const credentials: ResendCredentials = yield* context.credentials;
+  const apiKey = credentials.RESEND_API_KEY;
 
-  const coreInput: SendEmailCoreInput = {
-    ...input,
-    emailTo: shouldRouteToTestRecipient ? testRecipientRaw : input.emailTo,
-    emailCc: shouldRouteToTestRecipient ? undefined : input.emailCc,
-    emailBcc: shouldRouteToTestRecipient ? undefined : input.emailBcc,
-    idempotencyKey,
-  };
+  if (!apiKey) {
+    return yield* Effect.fail(
+      new StepFailure({
+        message:
+          "RESEND_API_KEY is not configured. Please add it in Project Integrations.",
+      })
+    );
+  }
 
-  return withStepLogging(input, () => stepHandler(coreInput, credentials));
-}
+  const senderEmail = input.emailFrom || credentials.RESEND_FROM_EMAIL;
+
+  if (!senderEmail) {
+    return yield* Effect.fail(
+      new StepFailure({
+        message:
+          "No sender is configured. Please add it in the action or in Project Integrations.",
+      })
+    );
+  }
+
+  // A test send goes to the nominated address alone: carrying the real cc and
+  // bcc over would mail the people the run was meant to spare.
+  const payload = yield* buildEmailPayload(
+    input,
+    senderEmail,
+    routeToTestRecipient
+      ? { to: testRecipient }
+      : { to: input.emailTo, cc: input.emailCc, bcc: input.emailBcc }
+  );
+
+  const sent = yield* sendResendEmail(apiKey, payload, idempotencyKey).pipe(
+    Effect.mapError(
+      (error) =>
+        new StepFailure({
+          message: `Failed to send email: ${describeResendFailure(error)}`,
+        })
+    )
+  );
+
+  return { id: sent.id };
+});
+
+export const sendEmailStep = defineStep({
+  id: "resend/send-email",
+  input: sendEmailInput,
+  output: sendEmailOutput,
+  handler: sendEmailHandler,
+});

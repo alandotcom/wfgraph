@@ -1,108 +1,100 @@
 import { LinearClient } from "@linear/sdk";
 import {
-  fetchCredentials,
-  type StepInput,
-  withStepLogging,
+  defineStep,
+  StepFailure,
+  type StepRunContext,
 } from "@rova/core/plugin";
+import { Effect } from "effect";
 import type { LinearCredentials } from "#src/linear/credentials";
-import { toLinearError } from "#src/linear/errors";
-import { getErrorMessage } from "@rova/shared/utils";
-
-type CreateTicketResult =
-  | { success: true; data: { id: string; url: string; title: string } }
-  | { success: false; error: { message: string } };
-
-export type CreateTicketCoreInput = {
-  ticketTitle: string;
-  ticketDescription: string;
-};
-
-export type CreateTicketInput = StepInput &
-  CreateTicketCoreInput & {
-    integrationId?: string;
-  };
+import { describeLinearFailure } from "#src/linear/errors";
+import { createTicketInput, createTicketOutput } from "#src/linear/schemas";
 
 /**
- * Core logic - portable between app and export
+ * Everything the Linear SDK does is a Promise that throws, so every call goes
+ * through here: the throw becomes the `StepFailure` the run log shows, worded
+ * the way this action words its failures.
  */
-async function stepHandler(
-  input: CreateTicketCoreInput,
-  credentials: LinearCredentials
-): Promise<CreateTicketResult> {
+function callLinear<A>(
+  describe: string,
+  call: () => Promise<A>
+): Effect.Effect<A, StepFailure> {
+  return Effect.tryPromise({
+    try: call,
+    catch: (error) =>
+      new StepFailure({
+        message: `${describe}: ${describeLinearFailure(error)}`,
+      }),
+  });
+}
+
+/**
+ * The team a ticket goes to when the integration names none: Linear's first,
+ * which is the whole workspace for the single-team case this covers.
+ */
+function firstTeamId(linear: LinearClient): Effect.Effect<string, StepFailure> {
+  return Effect.gen(function* () {
+    const teams = yield* callLinear("Failed to create ticket", () =>
+      linear.teams({ first: 1 })
+    );
+    const firstTeam = teams.nodes[0];
+
+    return firstTeam
+      ? firstTeam.id
+      : yield* Effect.fail(
+          new StepFailure({ message: "No teams found in Linear workspace" })
+        );
+  });
+}
+
+/**
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies.
+ */
+export const createTicketHandler = Effect.fn(function* (
+  input: typeof createTicketInput.Type,
+  context: StepRunContext
+) {
+  // The plugin's own credential vocabulary, so a key it never declares is a
+  // compile error here rather than an undefined at run time.
+  const credentials: LinearCredentials = yield* context.credentials;
   const apiKey = credentials.LINEAR_API_KEY;
-  const teamId = credentials.LINEAR_TEAM_ID;
 
   if (!apiKey) {
-    return {
-      success: false,
-      error: {
+    return yield* Effect.fail(
+      new StepFailure({
         message:
           "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
-      },
-    };
+      })
+    );
   }
 
-  try {
-    const linearClient = new LinearClient({ apiKey });
-    let targetTeamId = teamId;
+  const linear = new LinearClient({ apiKey });
+  const teamId = credentials.LINEAR_TEAM_ID || (yield* firstTeamId(linear));
 
-    if (!targetTeamId) {
-      const teamsResult = await linearClient.teams({
-        first: 1,
-      });
-      const firstTeam = teamsResult.nodes[0];
-      if (!firstTeam) {
-        return {
-          success: false,
-          error: { message: "No teams found in Linear workspace" },
-        };
-      }
-      targetTeamId = firstTeam.id;
-    }
-
-    const createResult = await linearClient.createIssue({
+  // Linear answers a mutation with a payload holding a promise for the issue it
+  // made, so the issue is two awaits away from the call.
+  const issue = yield* callLinear("Failed to create ticket", async () => {
+    const created = await linear.createIssue({
       title: input.ticketTitle,
       description: input.ticketDescription,
-      teamId: targetTeamId,
+      teamId,
     });
 
-    const issue = createResult.issue ? await createResult.issue : undefined;
-    if (!issue) {
-      return {
-        success: false,
-        error: { message: "Failed to create issue" },
-      };
-    }
+    return created.issue ? await created.issue : undefined;
+  });
 
-    return {
-      success: true,
-      data: {
-        id: issue.id,
-        url: issue.url,
-        title: issue.title,
-      },
-    };
-  } catch (error) {
-    const linearError = toLinearError(error);
-
-    return {
-      success: false,
-      error: {
-        message: `Failed to create ticket: ${linearError.errors?.[0]?.message || linearError.message || getErrorMessage(error)}`,
-      },
-    };
+  if (!issue) {
+    return yield* Effect.fail(
+      new StepFailure({ message: "Failed to create issue" })
+    );
   }
-}
 
-/**
- * App entry point - fetches credentials and wraps with logging
- */
-export async function createTicketStep(
-  input: CreateTicketInput
-): Promise<CreateTicketResult> {
-  const credentials = input.integrationId
-    ? await fetchCredentials(input.integrationId)
-    : {};
+  return { id: issue.id, url: issue.url, title: issue.title };
+});
 
-  return withStepLogging(input, () => stepHandler(input, credentials));
-}
+export const createTicketStep = defineStep({
+  id: "linear/create-ticket",
+  input: createTicketInput,
+  output: createTicketOutput,
+  handler: createTicketHandler,
+});

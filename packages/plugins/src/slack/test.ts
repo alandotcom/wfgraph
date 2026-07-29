@@ -1,5 +1,10 @@
 import { Schema } from "effect";
-import { callSlack, describeSlackFailure } from "#src/slack/client";
+import {
+  callSlack,
+  describeSlackFailure,
+  readSlackError,
+} from "#src/slack/client";
+import { runVendorCall } from "#src/vendor-http";
 
 // auth.test is Slack's own "is this token any good" call: it takes no arguments
 // and answers with the workspace and bot the token belongs to.
@@ -19,28 +24,59 @@ export async function testSlack(credentials: Record<string, string>) {
 
   // auth.test reads a token back and changes nothing, so a rate-limited attempt
   // is worth repeating even though Slack spells the call as a POST.
-  const result = await callSlack(apiKey, "auth.test", authTestSchema, {
-    safeToRepeat: true,
-  });
+  //
+  // A connection test answers the credentials UI over a Promise, so this is
+  // where the effect is run and the transport provided. The step reaches Slack
+  // through the same client without any of that, because `defineStep` does it.
+  const result = await runVendorCall(
+    callSlack(apiKey, "auth.test", authTestSchema, { safeToRepeat: true }),
+    (error) => error
+  );
 
   if (result.ok) {
     return { success: true };
   }
 
   const { failure } = result;
-  const details = {
-    kind: failure.kind,
-    status: failure.kind === "unreachable" ? undefined : failure.status,
-    slackError: failure.kind === "rejected" ? failure.slackError : undefined,
-    message: describeSlackFailure(failure),
-  };
+
+  // A request that never arrived has no HTTP status to report, so the transport
+  // error is the whole story.
+  if (failure._tag === "VendorUnreachable") {
+    return {
+      success: false,
+      error: failure.message,
+      details: { kind: "unreachable", message: failure.message },
+    };
+  }
+
+  // Slack's own slug when Slack is what refused, and the bare status when
+  // something in front of it did. The two are worded differently because only
+  // the first names something a user can act on.
+  const slackError =
+    failure._tag === "VendorRejected"
+      ? readSlackError(failure.payload)
+      : undefined;
+
+  if (slackError === undefined) {
+    return {
+      success: false,
+      error: `API validation failed: HTTP ${failure.status}`,
+      details: {
+        kind: "http",
+        status: failure.status,
+        message: describeSlackFailure(failure),
+      },
+    };
+  }
 
   return {
     success: false,
-    error:
-      failure.kind === "http"
-        ? `API validation failed: HTTP ${failure.status}`
-        : describeSlackFailure(failure),
-    details,
+    error: slackError,
+    details: {
+      kind: "rejected",
+      status: failure.status,
+      slackError,
+      message: describeSlackFailure(failure),
+    },
   };
 }

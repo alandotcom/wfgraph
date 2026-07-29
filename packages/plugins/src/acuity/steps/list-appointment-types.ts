@@ -1,63 +1,36 @@
-import type { AppointmentType } from "@fountain-bio/acuity";
+import { defineStep, type StepRunContext } from "@rova/core/plugin";
+import { Effect } from "effect";
 import type { AcuityCredentials } from "#src/acuity/credentials";
 import {
-  fetchCredentials,
-  type StepInput,
-  withStepLogging,
-} from "@rova/core/plugin";
-import { createAcuityClient, getAcuityErrorMessage } from "./client";
+  listAppointmentTypesInput,
+  listAppointmentTypesOutput,
+} from "#src/acuity/schemas";
+import { callAcuity, createAcuityClient } from "./client";
 
-type ListAppointmentTypesResult =
-  | {
-      success: true;
-      data: {
-        appointmentTypes: AppointmentType[];
-        count: number;
-      };
-    }
-  | { success: false; error: { message: string } };
+/**
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies. The action takes no configuration, so the whole of it is the read.
+ */
+export const listAppointmentTypesHandler = Effect.fn(function* (
+  _input: typeof listAppointmentTypesInput.Type,
+  context: StepRunContext
+) {
+  // The plugin's own credential vocabulary, so a key it never declares is a
+  // compile error here rather than an undefined at run time.
+  const credentials: AcuityCredentials = yield* context.credentials;
+  const acuity = yield* createAcuityClient(credentials);
 
-export type ListAppointmentTypesInput = StepInput & {
-  integrationId?: string;
-};
+  const appointmentTypes = yield* callAcuity(
+    "Failed to list appointment types.",
+    () => acuity.appointments.types()
+  );
 
-async function stepHandler(
-  credentials: AcuityCredentials
-): Promise<ListAppointmentTypesResult> {
-  const clientResult = createAcuityClient(credentials);
-  if ("error" in clientResult) {
-    return { success: false, error: { message: clientResult.error } };
-  }
+  return { appointmentTypes, count: appointmentTypes.length };
+});
 
-  try {
-    const appointmentTypes = await clientResult.client.appointments.types();
-
-    return {
-      success: true,
-      data: {
-        appointmentTypes,
-        count: appointmentTypes.length,
-      },
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: {
-        message: getAcuityErrorMessage(
-          error,
-          "Failed to list appointment types."
-        ),
-      },
-    };
-  }
-}
-
-export async function listAppointmentTypesStep(
-  input: ListAppointmentTypesInput
-): Promise<ListAppointmentTypesResult> {
-  const credentials = input.integrationId
-    ? ((await fetchCredentials(input.integrationId)) as AcuityCredentials)
-    : {};
-
-  return withStepLogging(input, () => stepHandler(credentials));
-}
+export const listAppointmentTypesStep = defineStep({
+  id: "acuity/list-appointment-types",
+  input: listAppointmentTypesInput,
+  output: listAppointmentTypesOutput,
+  handler: listAppointmentTypesHandler,
+});

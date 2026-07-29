@@ -1,158 +1,100 @@
-import type {
-  Appointment,
-  CreateAppointmentPayload,
-} from "@fountain-bio/acuity";
+import type { CreateAppointmentPayload } from "@fountain-bio/acuity";
+import {
+  defineStep,
+  StepFailure,
+  type StepRunContext,
+} from "@rova/core/plugin";
+import { Effect } from "effect";
 import type { AcuityCredentials } from "#src/acuity/credentials";
 import {
-  fetchCredentials,
-  type StepInput,
-  withStepLogging,
-} from "@rova/core/plugin";
-import { createAcuityClient, getAcuityErrorMessage } from "./client";
+  createAppointmentInput,
+  createAppointmentOutput,
+} from "#src/acuity/schemas";
+import { callAcuity, createAcuityClient } from "./client";
 import {
-  parseCustomFieldsJson,
-  parseOptionalBoolean,
-  parseOptionalInteger,
-  parseRequiredInteger,
+  optionalBoolean,
+  optionalCustomFields,
+  optionalInteger,
+  requiredInteger,
 } from "./shared";
 
-type CreateAppointmentResult =
-  | {
-      success: true;
-      data: {
-        appointment: Appointment;
-        id: number;
-        datetime?: string;
-      };
-    }
-  | { success: false; error: { message: string } };
+/**
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies. What this step decides is what a booking looks like, and each
+ * field says for itself what is wrong with it.
+ */
+export const createAppointmentHandler = Effect.fn(function* (
+  input: typeof createAppointmentInput.Type,
+  context: StepRunContext
+) {
+  // The plugin's own credential vocabulary, so a key it never declares is a
+  // compile error here rather than an undefined at run time.
+  const credentials: AcuityCredentials = yield* context.credentials;
+  const acuity = yield* createAcuityClient(credentials);
 
-export type CreateAppointmentCoreInput = {
-  datetime: string;
-  appointmentTypeId: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  calendarId?: string;
-  notes?: string;
-  smsOptIn?: string;
-  customFieldsJson?: string;
-  admin?: string;
-  noEmail?: string;
-};
-
-export type CreateAppointmentInput = StepInput &
-  CreateAppointmentCoreInput & {
-    integrationId?: string;
-  };
-
-async function stepHandler(
-  input: CreateAppointmentCoreInput,
-  credentials: AcuityCredentials
-): Promise<CreateAppointmentResult> {
-  const clientResult = createAcuityClient(credentials);
-  if ("error" in clientResult) {
-    return { success: false, error: { message: clientResult.error } };
-  }
-
-  const appointmentTypeId = parseRequiredInteger(
+  const appointmentTypeID = yield* requiredInteger(
     input.appointmentTypeId,
     "Appointment Type ID"
   );
-  if (!appointmentTypeId.ok) {
-    return { success: false, error: { message: appointmentTypeId.error } };
+  const calendarID = yield* optionalInteger(input.calendarId, "Calendar ID");
+  const smsOptIn = yield* optionalBoolean(input.smsOptIn, "SMS Opt-In");
+  const admin = yield* optionalBoolean(input.admin, "Run as Admin");
+  const noEmail = yield* optionalBoolean(
+    input.noEmail,
+    "Suppress Acuity Emails"
+  );
+  const fields = yield* optionalCustomFields(input.customFieldsJson);
+
+  if (!input.datetime.trim()) {
+    return yield* Effect.fail(
+      new StepFailure({
+        message: "Datetime is required (ISO 8601 format).",
+      })
+    );
   }
 
-  const calendarId = parseOptionalInteger(input.calendarId, "Calendar ID");
-  if (!calendarId.ok) {
-    return { success: false, error: { message: calendarId.error } };
+  if (!(input.firstName.trim() && input.lastName.trim())) {
+    return yield* Effect.fail(
+      new StepFailure({ message: "First Name and Last Name are required." })
+    );
   }
 
-  const smsOptIn = parseOptionalBoolean(input.smsOptIn, "SMS Opt-In");
-  if (!smsOptIn.ok) {
-    return { success: false, error: { message: smsOptIn.error } };
+  if (!(input.email.trim() && input.phone.trim())) {
+    return yield* Effect.fail(
+      new StepFailure({ message: "Email and Phone are required." })
+    );
   }
 
-  const admin = parseOptionalBoolean(input.admin, "Run as Admin");
-  if (!admin.ok) {
-    return { success: false, error: { message: admin.error } };
-  }
-
-  const noEmail = parseOptionalBoolean(input.noEmail, "Suppress Acuity Emails");
-  if (!noEmail.ok) {
-    return { success: false, error: { message: noEmail.error } };
-  }
-
-  const customFields = parseCustomFieldsJson(input.customFieldsJson);
-  if (!customFields.ok) {
-    return { success: false, error: { message: customFields.error } };
-  }
-
-  if (!input.datetime?.trim()) {
-    return {
-      success: false,
-      error: { message: "Datetime is required (ISO 8601 format)." },
-    };
-  }
-
-  if (!(input.firstName?.trim() && input.lastName?.trim())) {
-    return {
-      success: false,
-      error: { message: "First Name and Last Name are required." },
-    };
-  }
-
-  if (!(input.email?.trim() && input.phone?.trim())) {
-    return {
-      success: false,
-      error: { message: "Email and Phone are required." },
-    };
-  }
-
+  // Acuity's own parameter names, so this reads like its documentation.
   const payload: CreateAppointmentPayload = {
     datetime: input.datetime,
-    appointmentTypeID: appointmentTypeId.value,
+    appointmentTypeID,
     firstName: input.firstName,
     lastName: input.lastName,
     email: input.email,
     phone: input.phone,
-    calendarID: calendarId.value,
+    calendarID,
     notes: input.notes,
-    smsOptIn: smsOptIn.value,
-    fields: customFields.value,
+    smsOptIn,
+    fields,
   };
 
-  try {
-    const appointment = await clientResult.client.appointments.create(payload, {
-      admin: admin.value,
-      noEmail: noEmail.value,
-    });
+  const appointment = yield* callAcuity("Failed to create appointment.", () =>
+    acuity.appointments.create(payload, { admin, noEmail })
+  );
 
-    return {
-      success: true,
-      data: {
-        appointment,
-        id: appointment.id,
-        datetime: appointment.datetime,
-      },
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: {
-        message: getAcuityErrorMessage(error, "Failed to create appointment."),
-      },
-    };
-  }
-}
+  // The id and the datetime sit beside the appointment as well as inside it,
+  // because those two are what a downstream node reaches for most.
+  return {
+    appointment,
+    id: appointment.id,
+    datetime: appointment.datetime,
+  };
+});
 
-export async function createAppointmentStep(
-  input: CreateAppointmentInput
-): Promise<CreateAppointmentResult> {
-  const credentials = input.integrationId
-    ? ((await fetchCredentials(input.integrationId)) as AcuityCredentials)
-    : {};
-
-  return withStepLogging(input, () => stepHandler(input, credentials));
-}
+export const createAppointmentStep = defineStep({
+  id: "acuity/create-appointment",
+  input: createAppointmentInput,
+  output: createAppointmentOutput,
+  handler: createAppointmentHandler,
+});

@@ -445,30 +445,6 @@ describe("registries bridge the schema they are given", () => {
     unregisterIntegration("twilio");
   });
 
-  it("refuses an action that declares its output twice", () => {
-    // One of the two is the schema the step is typed against and the other is a
-    // list a person maintains, so the only thing they can do is disagree.
-    expect(() =>
-      registerIntegration({
-        type: "twilio",
-        label: "Compat Twilio",
-        description: "Registration reads the output schema",
-        formFields: [],
-        actions: [
-          {
-            slug: "compat-both",
-            label: "Compat Both",
-            description: "Declares an output schema and a field list",
-            category: "Compat",
-            configFields: [],
-            output: Schema.Struct({ sid: Schema.String }),
-            outputFields: [{ path: "sid", description: "Message SID" }],
-          },
-        ],
-      })
-    ).toThrow(/declares both an output schema and outputFields/);
-  });
-
   // The two ways a schema can register an action while offering the editor
   // nothing usable. Both used to be silent: the derivation answered an empty
   // list for the first and a list of type names for the second, and an action

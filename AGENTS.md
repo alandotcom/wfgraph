@@ -138,18 +138,20 @@ takes an input schema, an output schema, and a handler returning an
 decode, the credential fetch, the run log rows, and the `StepResult` envelope
 (`{ success: true, data }` or `{ success: false, error: { message } }`, in
 `packages/shared/src/workflow/step-result.ts`) that the engine reads. A handler never
-writes that envelope and never touches a Promise. The steps still written as Promise
-functions are stage 6b's; they register through `registerStepFunction` rather than
-`registerStep`.
+writes that envelope and never touches a Promise. Every plugin step is one of these,
+registered with `registerStep` under the id it declares. `Database Query` and
+`HTTP Request`, the two the engine ships itself, are the exception: each answers a shape
+the envelope has no room for, so they stay Promise functions behind a registration that
+`step-registry.ts` keeps to itself.
 
 **An action's output fields come from its output schema.** A plugin action declares
 `output` in its `index.ts`, and `registerIntegration` derives the editor's
 template-autocomplete paths from it (`packages/shared/src/workflow/output-fields.ts`).
 Paths omit the `data.` prefix, because the schema describes the payload rather than the
 wrapper; template variables unwrap it automatically. The schema lives in the plugin's
-`schemas.ts` so that the step and the metadata are typed against the same constant. An
-action still carrying a hand-written `outputFields` has a step stage 6b has not migrated;
-declaring both is a registration error.
+`schemas.ts` so that the step and the metadata are typed against the same constant, and
+`output` is required: there is no hand-written list to declare instead, and a schema the
+derivation cannot read throws at registration naming the action.
 
 **Rova's own events are defined once, with a schema.**
 `packages/core/src/backend/lib/inngest/events.ts` holds the three

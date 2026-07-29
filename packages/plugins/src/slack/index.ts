@@ -1,5 +1,6 @@
 import type { IntegrationPlugin } from "@rova/shared/plugins/registry";
 import { registerIntegration } from "@rova/shared/plugins/registry";
+import { sendSlackMessageOutput } from "#src/slack/schemas";
 
 const slackPlugin: IntegrationPlugin = {
   type: "slack",
@@ -28,10 +29,7 @@ const slackPlugin: IntegrationPlugin = {
       label: "Send Slack Message",
       description: "Send a message to a Slack channel",
       category: "Slack",
-      outputFields: [
-        { path: "ts", description: "Message timestamp" },
-        { path: "channel", description: "Channel ID" },
-      ],
+      output: sendSlackMessageOutput,
       configFields: [
         {
           key: "slackChannel",

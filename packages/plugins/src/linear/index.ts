@@ -1,5 +1,6 @@
 import type { IntegrationPlugin } from "@rova/shared/plugins/registry";
 import { registerIntegration } from "@rova/shared/plugins/registry";
+import { createTicketOutput, findIssuesOutput } from "#src/linear/schemas";
 
 const linearPlugin: IntegrationPlugin = {
   type: "linear",
@@ -38,11 +39,7 @@ const linearPlugin: IntegrationPlugin = {
       label: "Create Ticket",
       description: "Create an issue in Linear",
       category: "Linear",
-      outputFields: [
-        { path: "id", description: "Ticket ID" },
-        { path: "url", description: "Ticket URL" },
-        { path: "title", description: "Ticket title" },
-      ],
+      output: createTicketOutput,
       configFields: [
         {
           key: "ticketTitle",
@@ -81,10 +78,7 @@ const linearPlugin: IntegrationPlugin = {
       label: "Find Issues",
       description: "Search for issues in Linear",
       category: "Linear",
-      outputFields: [
-        { path: "issues", description: "Array of issues found" },
-        { path: "count", description: "Number of issues" },
-      ],
+      output: findIssuesOutput,
       configFields: [
         {
           key: "linearAssigneeId",

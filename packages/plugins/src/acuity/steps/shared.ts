@@ -1,111 +1,113 @@
-import { Result, Schema } from "effect";
+/**
+ * Turning what a config field holds into what Acuity's API takes.
+ *
+ * Acuity wants whole numbers, real booleans and a list of form answers where
+ * the editor gives a step text, so each of these reads one field and says, in
+ * the words the run log shows, what is wrong with it. They answer an `Effect`,
+ * so a step names the field and moves on -- `yield*` is the whole of the
+ * handling, where a result object needed a check and an early return after
+ * every single one.
+ *
+ * The messages are the reason the reading stays here rather than moving into
+ * the input schemas: a decode that fails inside `defineStep` reports itself as
+ * an invalid configuration for the action, and what an author needs to read is
+ * which box holds what.
+ */
 
-export type ParseResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: string };
+import { StepFailure } from "@rova/core/plugin";
+import { Effect, Result, Schema } from "effect";
 
-function normalizeRawValue(value: unknown): string | undefined {
-  if (value === undefined || value === null) {
+/** A config value as text, or nothing when the field was left empty. */
+function normalizeRawValue(
+  value: string | number | undefined
+): string | undefined {
+  if (value === undefined) {
     return undefined;
   }
 
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  }
-
-  if (typeof value === "number" || typeof value === "boolean") {
+  if (typeof value === "number") {
     return String(value);
   }
 
-  return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
-export function parseRequiredInteger(
-  value: unknown,
+function positiveIntegerOr(
+  normalized: string,
   fieldLabel: string
-): ParseResult<number> {
-  const normalized = normalizeRawValue(value);
-
-  if (!normalized) {
-    return {
-      ok: false,
-      error: `${fieldLabel} is required.`,
-    };
-  }
-
+): Effect.Effect<number, StepFailure> {
   const parsed = Number(normalized);
 
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return {
-      ok: false,
-      error: `${fieldLabel} must be a positive integer.`,
-    };
-  }
-
-  return { ok: true, value: parsed };
+  return Number.isInteger(parsed) && parsed > 0
+    ? Effect.succeed(parsed)
+    : Effect.fail(
+        new StepFailure({
+          message: `${fieldLabel} must be a positive integer.`,
+        })
+      );
 }
 
-export function parseOptionalInteger(
-  value: unknown,
+export function requiredInteger(
+  value: string | number | undefined,
   fieldLabel: string
-): ParseResult<number | undefined> {
+): Effect.Effect<number, StepFailure> {
+  const normalized = normalizeRawValue(value);
+
+  return normalized
+    ? positiveIntegerOr(normalized, fieldLabel)
+    : Effect.fail(new StepFailure({ message: `${fieldLabel} is required.` }));
+}
+
+export function optionalInteger(
+  value: string | number | undefined,
+  fieldLabel: string
+): Effect.Effect<number | undefined, StepFailure> {
+  const normalized = normalizeRawValue(value);
+
+  return normalized
+    ? positiveIntegerOr(normalized, fieldLabel)
+    : Effect.succeed(undefined);
+}
+
+/**
+ * A select whose options are "", "true" and "false", read as the boolean Acuity
+ * takes. An empty choice is the absent one, which is how a step says "leave
+ * Acuity's own default alone".
+ */
+export function optionalBoolean(
+  value: string | undefined,
+  fieldLabel: string
+): Effect.Effect<boolean | undefined, StepFailure> {
+  if (value === undefined || value === "") {
+    return Effect.succeed(undefined);
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (normalized === "true") {
+    return Effect.succeed(true);
+  }
+
+  if (normalized === "false") {
+    return Effect.succeed(false);
+  }
+
+  return Effect.fail(
+    new StepFailure({
+      message: `${fieldLabel} must be true, false, or empty.`,
+    })
+  );
+}
+
+export function optionalIntegerList(
+  value: string | undefined,
+  fieldLabel: string
+): Effect.Effect<number[] | undefined, StepFailure> {
   const normalized = normalizeRawValue(value);
 
   if (!normalized) {
-    return { ok: true, value: undefined };
-  }
-
-  const parsed = Number(normalized);
-
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return {
-      ok: false,
-      error: `${fieldLabel} must be a positive integer.`,
-    };
-  }
-
-  return { ok: true, value: parsed };
-}
-
-export function parseOptionalBoolean(
-  value: unknown,
-  fieldLabel: string
-): ParseResult<boolean | undefined> {
-  if (value === undefined || value === null || value === "") {
-    return { ok: true, value: undefined };
-  }
-
-  if (typeof value === "boolean") {
-    return { ok: true, value };
-  }
-
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-
-    if (normalized === "true") {
-      return { ok: true, value: true };
-    }
-
-    if (normalized === "false") {
-      return { ok: true, value: false };
-    }
-  }
-
-  return {
-    ok: false,
-    error: `${fieldLabel} must be true, false, or empty.`,
-  };
-}
-
-export function parseCommaSeparatedIntegerList(
-  value: unknown,
-  fieldLabel: string
-): ParseResult<number[] | undefined> {
-  const normalized = normalizeRawValue(value);
-
-  if (!normalized) {
-    return { ok: true, value: undefined };
+    return Effect.succeed(undefined);
   }
 
   const entries = normalized
@@ -114,7 +116,7 @@ export function parseCommaSeparatedIntegerList(
     .filter((entry) => entry.length > 0);
 
   if (entries.length === 0) {
-    return { ok: true, value: undefined };
+    return Effect.succeed(undefined);
   }
 
   const parsed = entries.map((entry) => Number(entry));
@@ -122,14 +124,13 @@ export function parseCommaSeparatedIntegerList(
     (entry) => !Number.isInteger(entry) || entry <= 0
   );
 
-  if (invalid) {
-    return {
-      ok: false,
-      error: `${fieldLabel} must contain only positive integers (comma separated).`,
-    };
-  }
-
-  return { ok: true, value: parsed };
+  return invalid
+    ? Effect.fail(
+        new StepFailure({
+          message: `${fieldLabel} must contain only positive integers (comma separated).`,
+        })
+      )
+    : Effect.succeed(parsed);
 }
 
 /**
@@ -162,13 +163,13 @@ const decodeCustomFields = Schema.decodeUnknownResult(
 
 type AcuityCustomFields = typeof acuityCustomFieldsSchema.Type;
 
-export function parseCustomFieldsJson(
-  value: unknown
-): ParseResult<AcuityCustomFields | undefined> {
+export function optionalCustomFields(
+  value: string | undefined
+): Effect.Effect<AcuityCustomFields | undefined, StepFailure> {
   const normalized = normalizeRawValue(value);
 
   if (!normalized) {
-    return { ok: true, value: undefined };
+    return Effect.succeed(undefined);
   }
 
   let parsed: unknown;
@@ -176,21 +177,21 @@ export function parseCustomFieldsJson(
   try {
     parsed = JSON.parse(normalized);
   } catch {
-    return {
-      ok: false,
-      error:
-        'Custom Fields JSON must be valid JSON in the format [{"fieldID":1234,"value":"text"}].',
-    };
+    return Effect.fail(
+      new StepFailure({
+        message:
+          'Custom Fields JSON must be valid JSON in the format [{"fieldID":1234,"value":"text"}].',
+      })
+    );
   }
 
   const result = decodeCustomFields(parsed);
 
-  if (Result.isFailure(result)) {
-    return {
-      ok: false,
-      error: `Custom Fields JSON must be an array of objects with numeric fieldID and value (string or string[]). ${result.failure.message}`,
-    };
-  }
-
-  return { ok: true, value: result.success };
+  return Result.isFailure(result)
+    ? Effect.fail(
+        new StepFailure({
+          message: `Custom Fields JSON must be an array of objects with numeric fieldID and value (string or string[]). ${result.failure.message}`,
+        })
+      )
+    : Effect.succeed(result.success);
 }

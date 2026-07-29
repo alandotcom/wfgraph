@@ -1,5 +1,5 @@
-import { AcuityError } from "@fountain-bio/acuity";
-import { createAcuityClient, getAcuityErrorMessage } from "./steps/client";
+import { Acuity, AcuityError } from "@fountain-bio/acuity";
+import { getAcuityErrorMessage } from "./steps/client";
 
 export async function testAcuity(credentials: Record<string, string>) {
   try {
@@ -13,19 +13,13 @@ export async function testAcuity(credentials: Record<string, string>) {
       };
     }
 
-    const clientResult = createAcuityClient({
-      ACUITY_USER_ID: userId,
-      ACUITY_API_KEY: apiKey,
-    });
+    // The SDK is built here rather than through the steps' own constructor,
+    // which answers an effect: both credentials have already been checked, so
+    // there is nothing left for it to fail with.
+    const client = new Acuity({ userId, apiKey });
 
-    if ("error" in clientResult) {
-      return {
-        success: false,
-        error: "ACUITY_USER_ID and ACUITY_API_KEY are required",
-      };
-    }
-
-    await clientResult.client.appointments.types();
+    // Listing appointment types is the cheapest read any valid key can make.
+    await client.appointments.types();
     return { success: true };
   } catch (error) {
     const message = getAcuityErrorMessage(

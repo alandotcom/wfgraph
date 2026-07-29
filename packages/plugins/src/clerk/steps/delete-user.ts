@@ -1,77 +1,60 @@
 import {
-  fetchCredentials,
-  type StepInput,
-  withStepLogging,
+  defineStep,
+  StepFailure,
+  type StepRunContext,
 } from "@rova/core/plugin";
+import { Effect } from "effect";
 import {
   createClerkBackendClient,
   getClerkApiErrorMessage,
 } from "#src/clerk/client";
 import type { ClerkCredentials } from "#src/clerk/credentials";
-
-type DeleteUserResult =
-  | { success: true; data: { deleted: true } }
-  | { success: false; error: { message: string } };
-
-export type ClerkDeleteUserCoreInput = {
-  userId: string;
-};
-
-export type ClerkDeleteUserInput = StepInput &
-  ClerkDeleteUserCoreInput & {
-    integrationId?: string;
-  };
+import { deleteUserInput, deleteUserOutput } from "#src/clerk/schemas";
 
 /**
- * Core logic - portable between app and export
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies.
  */
-async function stepHandler(
-  input: ClerkDeleteUserCoreInput,
-  credentials: ClerkCredentials
-): Promise<DeleteUserResult> {
+export const clerkDeleteUserHandler = Effect.fn(function* (
+  input: typeof deleteUserInput.Type,
+  context: StepRunContext
+) {
+  // The plugin's own credential vocabulary, so a key it never declares is a
+  // compile error here rather than an undefined at run time.
+  const credentials: ClerkCredentials = yield* context.credentials;
   const secretKey = credentials.CLERK_SECRET_KEY;
 
   if (!secretKey) {
-    return {
-      success: false,
-      error: {
+    return yield* Effect.fail(
+      new StepFailure({
         message:
           "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-      },
-    };
+      })
+    );
   }
 
   if (!input.userId) {
-    return {
-      success: false,
-      error: { message: "User ID is required." },
-    };
+    return yield* Effect.fail(
+      new StepFailure({ message: "User ID is required." })
+    );
   }
 
-  try {
-    const clerkClient = createClerkBackendClient(secretKey);
-    await clerkClient.users.deleteUser(input.userId);
+  const clerk = createClerkBackendClient(secretKey);
 
-    return { success: true, data: { deleted: true } };
-  } catch (err) {
-    return {
-      success: false,
-      error: {
-        message: `Failed to delete user: ${getClerkApiErrorMessage(err)}`,
-      },
-    };
-  }
-}
+  yield* Effect.tryPromise({
+    try: () => clerk.users.deleteUser(input.userId),
+    catch: (error) =>
+      new StepFailure({
+        message: `Failed to delete user: ${getClerkApiErrorMessage(error)}`,
+      }),
+  });
 
-/**
- * App entry point - fetches credentials and wraps with logging
- */
-export async function clerkDeleteUserStep(
-  input: ClerkDeleteUserInput
-): Promise<DeleteUserResult> {
-  const credentials = input.integrationId
-    ? await fetchCredentials(input.integrationId)
-    : {};
+  return { deleted: true };
+});
 
-  return withStepLogging(input, () => stepHandler(input, credentials));
-}
+export const clerkDeleteUserStep = defineStep({
+  id: "clerk/delete-user",
+  input: deleteUserInput,
+  output: deleteUserOutput,
+  handler: clerkDeleteUserHandler,
+});

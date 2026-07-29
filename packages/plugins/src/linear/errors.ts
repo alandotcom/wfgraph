@@ -4,6 +4,7 @@ import {
   parseLinearError,
 } from "@linear/sdk";
 import { Option, Schema } from "effect";
+import { getErrorMessage } from "@rova/shared/utils";
 
 /**
  * The error payload Linear's `parseLinearError` reads: the GraphQL request that
@@ -93,4 +94,22 @@ export function toLinearError(error: unknown): LinearError {
   }
 
   return parseLinearError();
+}
+
+/**
+ * What Linear said, in the one sentence a step's failure carries.
+ *
+ * The GraphQL error is the specific one -- "Entity not found: Issue" -- and the
+ * wrapper's message is the general one, so the first that says anything wins.
+ * A throw Linear cannot classify at all falls through to whatever the thrown
+ * value had to say for itself.
+ */
+export function describeLinearFailure(error: unknown): string {
+  const linearError = toLinearError(error);
+
+  return (
+    linearError.errors?.[0]?.message ||
+    linearError.message ||
+    getErrorMessage(error)
+  );
 }

@@ -33,8 +33,12 @@ plugins/[plugin-name]/
 `schemas.ts` is a separate file because both ends need it and only one of them is
 server code: `index.ts` is metadata the editor loads into the browser and derives
 its autocomplete fields from, while `steps/[action].ts` is typed against the same
-two constants. A plugin whose steps have not moved to `defineStep` yet has no
-`schemas.ts`; twilio is the one to copy.
+two constants. Every plugin has one; twilio is the one to copy.
+
+Nothing in `schemas.ts` may import a vendor SDK, because the browser loads it. A
+plugin whose step hands an SDK object straight back describes that object here in
+Effect Schema instead, and the compiler checks the step's answer against the
+description. Acuity's is the worked example.
 
 **Call vendors through `vendor-http.ts`, not their SDK.** `callVendor` takes a
 request spec and answers an `Effect` holding the decoded body, over Effect's own
@@ -47,9 +51,14 @@ body is not the documented shape).
 A `client.ts` is the adapter above that: the auth header, the endpoints, the
 vendor's error-envelope schema, and a function saying what one of its three
 failures means in words a person reads. Its calls answer an `Effect`, which a
-step yields directly. `runVendorCall` is the Promise seam for the callers that
-are not effects: a connection test, which the credentials UI calls, and the steps
-stage 6b has still to migrate. Twilio's client is the one to copy.
+step yields directly. `runVendorCall` is the Promise seam for the one caller that
+is not an effect: a connection test, which the credentials UI calls. Twilio's
+client is the one to copy.
+
+A client's failure vocabulary is `VendorError` itself. The `XFailure`/`XResult`
+pairs each client used to translate into are gone: a step maps a `VendorError` to
+a `StepFailure` with `describeXFailure`, and a connection test, which reports more
+than a sentence, reads the vendor's error body with a `readXError` of its own.
 
 The retry policy is stated once, in the comment above `RETRY_ATTEMPTS`. Two
 retries with jittered exponential backoff from 500ms, a `Retry-After` up to ten
@@ -200,6 +209,18 @@ the strings `"Infinity"`, `"-Infinity"` and `"NaN"`, so a numeric field is
 from `registerIntegration`, naming the action, when the plugin's `index.ts` is
 imported.
 
+**A nested field that drops out does so in silence.** That count is taken at the
+root, so a leaf inside an object or a list can vanish and registration still
+succeeds. Two shapes vanish. One is a union the reader cannot name: a field a
+vendor sends as a string on some records and a number on others has no single
+type to offer, and leaving it out of the schema deliberately is the honest
+answer. The other is a nullable nested inside an optional, since
+`Schema.optional(Schema.NullOr(x))` puts an `anyOf` inside an `anyOf`; a field
+that may hold a value, hold `null`, or be absent is written
+`Schema.NullishOr(x)`, which flattens to the one union the reader uses. When a
+step hands back an SDK object, read the derived list against the SDK's own type
+before believing it.
+
 **What the output schema is checked against, and what it is not.** The handler's
 return type comes from it, so a payload that drops a field or renames one fails
 to compile. Optionality is not part of that check: this repo leaves
@@ -301,9 +322,11 @@ registerStep(
 );
 ```
 
-A step still written as a Promise function registers through
-`registerStepFunction` instead. Every one of those is stage 6b of ADR-0002's
-work; new steps use `defineStep`.
+`registerStep` is the only way in. `@rova/core/plugin` exports `defineStep`,
+`StepFailure`, `StepDefinition`, `StepRunContext`, `registerStep`,
+`registerIntegrationTest`, and `VendorTransport` for the connection test, and
+nothing else. A plugin that wants one more name is a conversation about what
+belongs in a step's environment, not an import to add.
 
 Test the handler, not the step: it is a function of `(input, context)` to an
 `Effect`, so a case supplies the context it wants and runs it. Twilio's
@@ -518,30 +541,29 @@ Each action needs its own step file in the `steps/` directory.
 
 ### Optional Credentials
 
-Some plugins may work without credentials (using defaults or public APIs):
+A node configured with no integration gets an empty credentials object rather
+than a failure, which is what lets an action work against a public API or a
+default from the environment:
 
-```typescript
-const credentials = input.integrationId
-  ? await fetchCredentials(input.integrationId)
-  : {}; // Empty object if no integrationId
-
-// Handle missing credentials gracefully
-const apiKey = credentials.API_KEY || process.env.DEFAULT_API_KEY;
+```text
+const credentials: MyServiceCredentials = yield* context.credentials;
+const apiKey = credentials.MY_SERVICE_API_KEY ?? process.env.DEFAULT_API_KEY;
 ```
 
 ### Error Handling
 
-Always return structured errors, never throw:
+A handler fails with `StepFailure` and never throws. An SDK that throws is
+wrapped where it is called, so the sentence the run log shows is written beside
+the call that produced it:
 
 ```typescript
-try {
-  // API call
-} catch (error) {
-  return {
-    success: false,
-    error: error instanceof Error ? error.message : String(error),
-  };
-}
+const item =
+  yield *
+  Effect.tryPromise({
+    try: () => sdk.items.create(payload),
+    catch: (error) =>
+      new StepFailure({ message: `Failed to create item: ${describe(error)}` }),
+  });
 ```
 
 ## Reference Plugins

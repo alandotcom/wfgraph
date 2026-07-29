@@ -1,105 +1,63 @@
-import type {
-  AvailabilityDate,
-  AvailabilityDatesParams,
-} from "@fountain-bio/acuity";
+import type { AvailabilityDatesParams } from "@fountain-bio/acuity";
+import {
+  defineStep,
+  StepFailure,
+  type StepRunContext,
+} from "@rova/core/plugin";
+import { Effect } from "effect";
 import type { AcuityCredentials } from "#src/acuity/credentials";
 import {
-  fetchCredentials,
-  type StepInput,
-  withStepLogging,
-} from "@rova/core/plugin";
-import { createAcuityClient, getAcuityErrorMessage } from "./client";
-import { parseOptionalInteger, parseRequiredInteger } from "./shared";
+  getAvailabilityDatesInput,
+  getAvailabilityDatesOutput,
+} from "#src/acuity/schemas";
+import { callAcuity, createAcuityClient } from "./client";
+import { optionalInteger, requiredInteger } from "./shared";
 
-type GetAvailabilityDatesResult =
-  | {
-      success: true;
-      data: {
-        dates: AvailabilityDate[];
-        count: number;
-      };
-    }
-  | { success: false; error: { message: string } };
+/**
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies.
+ */
+export const getAvailabilityDatesHandler = Effect.fn(function* (
+  input: typeof getAvailabilityDatesInput.Type,
+  context: StepRunContext
+) {
+  // The plugin's own credential vocabulary, so a key it never declares is a
+  // compile error here rather than an undefined at run time.
+  const credentials: AcuityCredentials = yield* context.credentials;
+  const acuity = yield* createAcuityClient(credentials);
 
-export type GetAvailabilityDatesCoreInput = {
-  month: string;
-  appointmentTypeId: string;
-  calendarId?: string;
-  timezone?: string;
-};
-
-export type GetAvailabilityDatesInput = StepInput &
-  GetAvailabilityDatesCoreInput & {
-    integrationId?: string;
-  };
-
-async function stepHandler(
-  input: GetAvailabilityDatesCoreInput,
-  credentials: AcuityCredentials
-): Promise<GetAvailabilityDatesResult> {
-  const clientResult = createAcuityClient(credentials);
-  if ("error" in clientResult) {
-    return { success: false, error: { message: clientResult.error } };
-  }
-
-  const appointmentTypeId = parseRequiredInteger(
+  const appointmentTypeID = yield* requiredInteger(
     input.appointmentTypeId,
     "Appointment Type ID"
   );
-  if (!appointmentTypeId.ok) {
-    return { success: false, error: { message: appointmentTypeId.error } };
-  }
+  const calendarID = yield* optionalInteger(input.calendarId, "Calendar ID");
 
-  const calendarId = parseOptionalInteger(input.calendarId, "Calendar ID");
-  if (!calendarId.ok) {
-    return { success: false, error: { message: calendarId.error } };
-  }
-
-  if (!input.month?.trim()) {
-    return {
-      success: false,
-      error: {
+  if (!input.month.trim()) {
+    return yield* Effect.fail(
+      new StepFailure({
         message: "Month is required and must use YYYY-MM format.",
-      },
-    };
+      })
+    );
   }
 
+  // Acuity's own parameter names, so this reads like its documentation.
   const params: AvailabilityDatesParams = {
     month: input.month,
-    appointmentTypeID: appointmentTypeId.value,
-    calendarID: calendarId.value,
+    appointmentTypeID,
+    calendarID,
     timezone: input.timezone,
   };
 
-  try {
-    const dates = await clientResult.client.availability.dates(params);
+  const dates = yield* callAcuity("Failed to fetch availability dates.", () =>
+    acuity.availability.dates(params)
+  );
 
-    return {
-      success: true,
-      data: {
-        dates,
-        count: dates.length,
-      },
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: {
-        message: getAcuityErrorMessage(
-          error,
-          "Failed to fetch availability dates."
-        ),
-      },
-    };
-  }
-}
+  return { dates, count: dates.length };
+});
 
-export async function getAvailabilityDatesStep(
-  input: GetAvailabilityDatesInput
-): Promise<GetAvailabilityDatesResult> {
-  const credentials = input.integrationId
-    ? ((await fetchCredentials(input.integrationId)) as AcuityCredentials)
-    : {};
-
-  return withStepLogging(input, () => stepHandler(input, credentials));
-}
+export const getAvailabilityDatesStep = defineStep({
+  id: "acuity/get-availability-dates",
+  input: getAvailabilityDatesInput,
+  output: getAvailabilityDatesOutput,
+  handler: getAvailabilityDatesHandler,
+});

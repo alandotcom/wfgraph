@@ -1,5 +1,6 @@
 import type { IntegrationPlugin } from "@rova/shared/plugins/registry";
 import { registerIntegration } from "@rova/shared/plugins/registry";
+import { sendEmailOutput } from "#src/resend/schemas";
 
 const resendPlugin: IntegrationPlugin = {
   type: "resend",
@@ -37,7 +38,7 @@ const resendPlugin: IntegrationPlugin = {
       label: "Send Email",
       description: "Send an email via Resend",
       category: "Resend",
-      outputFields: [{ path: "id", description: "Email ID" }],
+      output: sendEmailOutput,
       configFields: [
         {
           key: "emailFrom",

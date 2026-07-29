@@ -1,0 +1,615 @@
+import { describe, expect, it } from "@effect/vitest";
+import { AcuityError } from "@fountain-bio/acuity";
+import { Effect } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+import { beforeEach, vi } from "vitest";
+import { cancelAppointmentHandler } from "./cancel-appointment";
+import { createAppointmentHandler } from "./create-appointment";
+import { getAppointmentHandler } from "./get-appointment";
+import { getAvailabilityDatesHandler } from "./get-availability-dates";
+import { getAvailabilityTimesHandler } from "./get-availability-times";
+import { listAppointmentsHandler } from "./list-appointments";
+import { listAppointmentTypesHandler } from "./list-appointment-types";
+import { rescheduleAppointmentHandler } from "./reschedule-appointment";
+
+/**
+ * The eight Acuity steps in one file, because what they have to say is the
+ * same three things each: which config field it cannot read, which parameters
+ * Acuity is asked for, and what a thrown SDK error reads as. The seam under all
+ * of them is `@fountain-bio/acuity`, whose two resources are stubbed here.
+ *
+ * The text-to-number and text-to-boolean reading is shared, so each message is
+ * asserted once, on whichever step first offers the field.
+ */
+const mocks = vi.hoisted(() => ({
+  types: vi.fn(),
+  list: vi.fn(),
+  get: vi.fn(),
+  create: vi.fn(),
+  reschedule: vi.fn(),
+  cancel: vi.fn(),
+  dates: vi.fn(),
+  times: vi.fn(),
+}));
+
+vi.mock("@fountain-bio/acuity", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@fountain-bio/acuity")>()),
+  Acuity: class {
+    appointments = {
+      types: mocks.types,
+      list: mocks.list,
+      get: mocks.get,
+      create: mocks.create,
+      reschedule: mocks.reschedule,
+      cancel: mocks.cancel,
+    };
+    availability = { dates: mocks.dates, times: mocks.times };
+  },
+}));
+
+const ACUITY_CREDENTIALS = {
+  ACUITY_USER_ID: "12345678",
+  ACUITY_API_KEY: "acuity-key",
+};
+
+// What the SDK hands back, as much of it as the steps read.
+const APPOINTMENT = {
+  id: 987,
+  firstName: "Ada",
+  lastName: "Lovelace",
+  email: "ada@example.com",
+  date: "March 15, 2026",
+  time: "3:00pm",
+  duration: "30",
+  datetime: "2026-03-15T15:00:00-04:00",
+  type: "Consultation",
+  appointmentTypeID: 12_345,
+  calendar: "Main",
+  calendarID: 67_890,
+  calendarTimeZone: "America/New_York",
+  forms: [],
+  canceled: false,
+};
+
+/** The credentials a run would have fetched. */
+function credentialsRead(
+  values: Record<string, string | undefined> = ACUITY_CREDENTIALS
+) {
+  return Effect.sync(() => values);
+}
+
+function contextFor(
+  credentials: Effect.Effect<Record<string, string | undefined>>
+) {
+  return {
+    runMode: "live" as const,
+    nodeId: "n1",
+    nodeName: "Acuity",
+    nodeType: "action",
+    integrationId: "int_acuity",
+    credentials,
+  };
+}
+
+/** A step that succeeds fails the flip, which is what makes the test say so. */
+const failure = Effect.flip;
+
+const withTransport = Effect.provide(FetchHttpClient.layer);
+
+/** The credentials every case here runs with unless it says otherwise. */
+function withCredentials() {
+  return credentialsRead();
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.types.mockResolvedValue([{ id: 1, name: "Consultation" }]);
+  mocks.list.mockResolvedValue([APPOINTMENT]);
+  mocks.get.mockResolvedValue(APPOINTMENT);
+  mocks.create.mockResolvedValue(APPOINTMENT);
+  mocks.reschedule.mockResolvedValue(APPOINTMENT);
+  mocks.cancel.mockResolvedValue({ ...APPOINTMENT, canceled: true });
+  mocks.dates.mockResolvedValue([{ date: "2026-03-15" }]);
+  mocks.times.mockResolvedValue([{ time: "2026-03-15T15:00:00-04:00" }]);
+});
+
+describe("listAppointmentTypesHandler", () => {
+  it.effect("counts what Acuity listed", () =>
+    Effect.gen(function* () {
+      const result = yield* listAppointmentTypesHandler(
+        {},
+        contextFor(withCredentials())
+      );
+
+      expect(result).toEqual({
+        appointmentTypes: [{ id: 1, name: "Consultation" }],
+        count: 1,
+      });
+    }).pipe(withTransport)
+  );
+
+  // Every step builds its client the same way, so the message is asserted once.
+  it.effect("names both credentials before reaching Acuity", () =>
+    Effect.gen(function* () {
+      const credentials = credentialsRead({ ACUITY_USER_ID: "12345678" });
+
+      const error = yield* failure(
+        listAppointmentTypesHandler({}, contextFor(credentials))
+      );
+
+      expect(error.message).toBe(
+        "ACUITY_USER_ID and ACUITY_API_KEY are required. Add them in Project Integrations."
+      );
+      expect(mocks.types).toHaveBeenCalledTimes(0);
+    }).pipe(withTransport)
+  );
+
+  // An AcuityError carries the API's own words; anything else falls back to the
+  // sentence the step passed in.
+  it.effect(
+    "falls back to the step's own words for an unclassifiable throw",
+    () =>
+      Effect.gen(function* () {
+        mocks.types.mockRejectedValue({});
+
+        const error = yield* failure(
+          listAppointmentTypesHandler({}, contextFor(withCredentials()))
+        );
+
+        expect(error.message).toBe("Failed to list appointment types.");
+      }).pipe(withTransport)
+  );
+});
+
+describe("listAppointmentsHandler", () => {
+  it.effect("sends Acuity's own parameter names", () =>
+    Effect.gen(function* () {
+      const result = yield* listAppointmentsHandler(
+        {
+          appointmentTypeId: "12345",
+          calendarId: "67890",
+          minDate: "2026-03-01",
+          maxDate: "2026-03-31",
+          timezone: "America/New_York",
+          email: "ada@example.com",
+          phone: "+15551234567",
+          canceled: "true",
+          showAll: "false",
+          limit: "50",
+          page: 2,
+        },
+        contextFor(withCredentials())
+      );
+
+      expect(mocks.list).toHaveBeenCalledWith({
+        appointmentTypeID: 12_345,
+        calendarID: 67_890,
+        minDate: "2026-03-01",
+        maxDate: "2026-03-31",
+        timezone: "America/New_York",
+        email: "ada@example.com",
+        phone: "+15551234567",
+        canceled: true,
+        showall: false,
+        limit: 50,
+        page: 2,
+      });
+      expect(result).toEqual({ appointments: [APPOINTMENT], count: 1 });
+    }).pipe(withTransport)
+  );
+
+  // A blank filter is no filter, which is what the select's empty option means.
+  it.effect("leaves out the filters that were not filled in", () =>
+    Effect.gen(function* () {
+      yield* listAppointmentsHandler(
+        { canceled: "", showAll: "", calendarId: "" },
+        contextFor(withCredentials())
+      );
+
+      expect(mocks.list).toHaveBeenCalledWith({
+        appointmentTypeID: undefined,
+        calendarID: undefined,
+        minDate: undefined,
+        maxDate: undefined,
+        timezone: undefined,
+        email: undefined,
+        phone: undefined,
+        canceled: undefined,
+        showall: undefined,
+        limit: undefined,
+        page: undefined,
+      });
+    }).pipe(withTransport)
+  );
+
+  it.effect("names the field a non-integer was typed into", () =>
+    Effect.gen(function* () {
+      const error = yield* failure(
+        listAppointmentsHandler(
+          { calendarId: "not-a-number" },
+          contextFor(withCredentials())
+        )
+      );
+
+      expect(error.message).toBe("Calendar ID must be a positive integer.");
+      expect(mocks.list).toHaveBeenCalledTimes(0);
+    }).pipe(withTransport)
+  );
+
+  it.effect("names the field a non-boolean was typed into", () =>
+    Effect.gen(function* () {
+      const error = yield* failure(
+        listAppointmentsHandler(
+          { canceled: "maybe" },
+          contextFor(withCredentials())
+        )
+      );
+
+      expect(error.message).toBe(
+        "Only Canceled must be true, false, or empty."
+      );
+    }).pipe(withTransport)
+  );
+});
+
+describe("getAppointmentHandler", () => {
+  it.effect("offers the id and datetime beside the appointment", () =>
+    Effect.gen(function* () {
+      const result = yield* getAppointmentHandler(
+        { appointmentId: "987", pastFormAnswers: "true" },
+        contextFor(withCredentials())
+      );
+
+      expect(mocks.get).toHaveBeenCalledWith(987, { pastFormAnswers: true });
+      expect(result).toEqual({
+        appointment: APPOINTMENT,
+        id: 987,
+        datetime: "2026-03-15T15:00:00-04:00",
+      });
+    }).pipe(withTransport)
+  );
+
+  it.effect("asks for the appointment id it cannot do without", () =>
+    Effect.gen(function* () {
+      const error = yield* failure(
+        getAppointmentHandler(
+          { appointmentId: "  " },
+          contextFor(withCredentials())
+        )
+      );
+
+      expect(error.message).toBe("Appointment ID is required.");
+      expect(mocks.get).toHaveBeenCalledTimes(0);
+    }).pipe(withTransport)
+  );
+});
+
+describe("getAvailabilityDatesHandler", () => {
+  it.effect("sends the month and type Acuity asks for", () =>
+    Effect.gen(function* () {
+      const result = yield* getAvailabilityDatesHandler(
+        {
+          month: "2026-03",
+          appointmentTypeId: "12345",
+          calendarId: "67890",
+          timezone: "America/New_York",
+        },
+        contextFor(withCredentials())
+      );
+
+      expect(mocks.dates).toHaveBeenCalledWith({
+        month: "2026-03",
+        appointmentTypeID: 12_345,
+        calendarID: 67_890,
+        timezone: "America/New_York",
+      });
+      expect(result).toEqual({ dates: [{ date: "2026-03-15" }], count: 1 });
+    }).pipe(withTransport)
+  );
+
+  it.effect("says what a month has to look like", () =>
+    Effect.gen(function* () {
+      const error = yield* failure(
+        getAvailabilityDatesHandler(
+          { month: "  ", appointmentTypeId: "12345" },
+          contextFor(withCredentials())
+        )
+      );
+
+      expect(error.message).toBe(
+        "Month is required and must use YYYY-MM format."
+      );
+      expect(mocks.dates).toHaveBeenCalledTimes(0);
+    }).pipe(withTransport)
+  );
+});
+
+describe("getAvailabilityTimesHandler", () => {
+  // Ignoring the appointment being moved is what lets its own slot show up
+  // again, so the list has to reach Acuity as numbers.
+  it.effect("reads the ignore list as the numbers Acuity takes", () =>
+    Effect.gen(function* () {
+      const result = yield* getAvailabilityTimesHandler(
+        {
+          date: "2026-03-15",
+          appointmentTypeId: "12345",
+          ignoreAppointmentIds: " 111 , 222 ",
+        },
+        contextFor(withCredentials())
+      );
+
+      expect(mocks.times).toHaveBeenCalledWith({
+        date: "2026-03-15",
+        appointmentTypeID: 12_345,
+        calendarID: undefined,
+        timezone: undefined,
+        ignoreAppointmentIDs: [111, 222],
+      });
+      expect(result.count).toBe(1);
+    }).pipe(withTransport)
+  );
+
+  it.effect("names the ignore list when it holds something else", () =>
+    Effect.gen(function* () {
+      const error = yield* failure(
+        getAvailabilityTimesHandler(
+          {
+            date: "2026-03-15",
+            appointmentTypeId: "12345",
+            ignoreAppointmentIds: "111,abc",
+          },
+          contextFor(withCredentials())
+        )
+      );
+
+      expect(error.message).toBe(
+        "Ignore Appointment IDs must contain only positive integers (comma separated)."
+      );
+    }).pipe(withTransport)
+  );
+
+  it.effect("says what a date has to look like", () =>
+    Effect.gen(function* () {
+      const error = yield* failure(
+        getAvailabilityTimesHandler(
+          { date: "", appointmentTypeId: "12345" },
+          contextFor(withCredentials())
+        )
+      );
+
+      expect(error.message).toBe(
+        "Date is required and must use YYYY-MM-DD format."
+      );
+    }).pipe(withTransport)
+  );
+});
+
+describe("createAppointmentHandler", () => {
+  it.effect("sends the booking and the mutation flags separately", () =>
+    Effect.gen(function* () {
+      const result = yield* createAppointmentHandler(
+        {
+          datetime: "2026-03-15T15:00:00-04:00",
+          appointmentTypeId: "12345",
+          firstName: "Ada",
+          lastName: "Lovelace",
+          email: "ada@example.com",
+          phone: "+15551234567",
+          calendarId: "67890",
+          notes: "Bring records",
+          smsOptIn: "true",
+          customFieldsJson: '[{"fieldID":1234,"value":"Some answer"}]',
+          admin: "true",
+          noEmail: "false",
+        },
+        contextFor(withCredentials())
+      );
+
+      expect(mocks.create).toHaveBeenCalledWith(
+        {
+          datetime: "2026-03-15T15:00:00-04:00",
+          appointmentTypeID: 12_345,
+          firstName: "Ada",
+          lastName: "Lovelace",
+          email: "ada@example.com",
+          phone: "+15551234567",
+          calendarID: 67_890,
+          notes: "Bring records",
+          smsOptIn: true,
+          fields: [{ fieldID: 1234, value: "Some answer" }],
+        },
+        { admin: true, noEmail: false }
+      );
+      expect(result).toEqual({
+        appointment: APPOINTMENT,
+        id: 987,
+        datetime: "2026-03-15T15:00:00-04:00",
+      });
+    }).pipe(withTransport)
+  );
+
+  it.effect("says what the custom fields JSON has to look like", () =>
+    Effect.gen(function* () {
+      const error = yield* failure(
+        createAppointmentHandler(
+          {
+            datetime: "2026-03-15T15:00:00-04:00",
+            appointmentTypeId: "12345",
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: "ada@example.com",
+            phone: "+15551234567",
+            customFieldsJson: "not json",
+          },
+          contextFor(withCredentials())
+        )
+      );
+
+      expect(error.message).toBe(
+        'Custom Fields JSON must be valid JSON in the format [{"fieldID":1234,"value":"text"}].'
+      );
+      expect(mocks.create).toHaveBeenCalledTimes(0);
+    }).pipe(withTransport)
+  );
+
+  it.effect("asks for the client's name", () =>
+    Effect.gen(function* () {
+      const error = yield* failure(
+        createAppointmentHandler(
+          {
+            datetime: "2026-03-15T15:00:00-04:00",
+            appointmentTypeId: "12345",
+            firstName: "Ada",
+            lastName: "  ",
+            email: "ada@example.com",
+            phone: "+15551234567",
+          },
+          contextFor(withCredentials())
+        )
+      );
+
+      expect(error.message).toBe("First Name and Last Name are required.");
+    }).pipe(withTransport)
+  );
+
+  it.effect("asks for a way to reach the client", () =>
+    Effect.gen(function* () {
+      const error = yield* failure(
+        createAppointmentHandler(
+          {
+            datetime: "2026-03-15T15:00:00-04:00",
+            appointmentTypeId: "12345",
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: "ada@example.com",
+            phone: "",
+          },
+          contextFor(withCredentials())
+        )
+      );
+
+      expect(error.message).toBe("Email and Phone are required.");
+    }).pipe(withTransport)
+  );
+
+  it.effect("says what a datetime has to look like", () =>
+    Effect.gen(function* () {
+      const error = yield* failure(
+        createAppointmentHandler(
+          {
+            datetime: " ",
+            appointmentTypeId: "12345",
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: "ada@example.com",
+            phone: "+15551234567",
+          },
+          contextFor(withCredentials())
+        )
+      );
+
+      expect(error.message).toBe("Datetime is required (ISO 8601 format).");
+    }).pipe(withTransport)
+  );
+});
+
+describe("rescheduleAppointmentHandler", () => {
+  it.effect("sends the new datetime and the mutation flags", () =>
+    Effect.gen(function* () {
+      const result = yield* rescheduleAppointmentHandler(
+        {
+          appointmentId: "987",
+          datetime: "2026-03-16T10:00:00-04:00",
+          calendarId: "67890",
+          admin: "true",
+          noEmail: "true",
+        },
+        contextFor(withCredentials())
+      );
+
+      expect(mocks.reschedule).toHaveBeenCalledWith(
+        987,
+        { datetime: "2026-03-16T10:00:00-04:00", calendarID: 67_890 },
+        { admin: true, noEmail: true }
+      );
+      expect(result.id).toBe(987);
+    }).pipe(withTransport)
+  );
+
+  it.effect("says what a new datetime has to look like", () =>
+    Effect.gen(function* () {
+      const error = yield* failure(
+        rescheduleAppointmentHandler(
+          { appointmentId: "987", datetime: "" },
+          contextFor(withCredentials())
+        )
+      );
+
+      expect(error.message).toBe("New Datetime is required (ISO 8601 format).");
+      expect(mocks.reschedule).toHaveBeenCalledTimes(0);
+    }).pipe(withTransport)
+  );
+});
+
+describe("cancelAppointmentHandler", () => {
+  it.effect("sends the note and the flags Acuity takes", () =>
+    Effect.gen(function* () {
+      const result = yield* cancelAppointmentHandler(
+        {
+          appointmentId: "987",
+          cancelNote: "Client rescheduled by phone",
+          noShow: "false",
+          admin: "true",
+          noEmail: "true",
+        },
+        contextFor(withCredentials())
+      );
+
+      expect(mocks.cancel).toHaveBeenCalledWith(
+        987,
+        { cancelNote: "Client rescheduled by phone", noShow: false },
+        { admin: true, noEmail: true }
+      );
+      expect(result).toEqual({
+        appointment: { ...APPOINTMENT, canceled: true },
+        id: 987,
+        canceled: true,
+      });
+    }).pipe(withTransport)
+  );
+
+  it.effect("reports what a plain Error said", () =>
+    Effect.gen(function* () {
+      mocks.cancel.mockRejectedValue(new Error("Appointment already canceled"));
+
+      const error = yield* failure(
+        cancelAppointmentHandler(
+          { appointmentId: "987" },
+          contextFor(withCredentials())
+        )
+      );
+
+      expect(error.message).toBe("Appointment already canceled");
+    }).pipe(withTransport)
+  );
+
+  it.effect("reports what an AcuityError said", () =>
+    Effect.gen(function* () {
+      mocks.cancel.mockRejectedValue(
+        new AcuityError({
+          status: 400,
+          message: "Appointment already canceled",
+        })
+      );
+
+      const error = yield* failure(
+        cancelAppointmentHandler(
+          { appointmentId: "987" },
+          contextFor(withCredentials())
+        )
+      );
+
+      expect(error.message).toBe("Appointment already canceled");
+    }).pipe(withTransport)
+  );
+});

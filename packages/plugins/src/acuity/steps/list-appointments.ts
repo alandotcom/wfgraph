@@ -1,124 +1,66 @@
-import type { Appointment, ListAppointmentsParams } from "@fountain-bio/acuity";
+import type { ListAppointmentsParams } from "@fountain-bio/acuity";
+import { defineStep, type StepRunContext } from "@rova/core/plugin";
+import { Effect } from "effect";
 import type { AcuityCredentials } from "#src/acuity/credentials";
 import {
-  fetchCredentials,
-  type StepInput,
-  withStepLogging,
-} from "@rova/core/plugin";
-import { createAcuityClient, getAcuityErrorMessage } from "./client";
-import { parseOptionalBoolean, parseOptionalInteger } from "./shared";
+  listAppointmentsInput,
+  listAppointmentsOutput,
+} from "#src/acuity/schemas";
+import { callAcuity, createAcuityClient } from "./client";
+import { optionalBoolean, optionalInteger } from "./shared";
 
-type ListAppointmentsResult =
-  | {
-      success: true;
-      data: {
-        appointments: Appointment[];
-        count: number;
-      };
-    }
-  | { success: false; error: { message: string } };
+/**
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies. What this step decides is which filters the config asked for, and
+ * each field says for itself what is wrong with it.
+ */
+export const listAppointmentsHandler = Effect.fn(function* (
+  input: typeof listAppointmentsInput.Type,
+  context: StepRunContext
+) {
+  // The plugin's own credential vocabulary, so a key it never declares is a
+  // compile error here rather than an undefined at run time.
+  const credentials: AcuityCredentials = yield* context.credentials;
+  const acuity = yield* createAcuityClient(credentials);
 
-export type ListAppointmentsCoreInput = {
-  appointmentTypeId?: string;
-  calendarId?: string;
-  minDate?: string;
-  maxDate?: string;
-  timezone?: string;
-  email?: string;
-  phone?: string;
-  canceled?: string;
-  showAll?: string;
-  limit?: number;
-  page?: number;
-};
-
-export type ListAppointmentsInput = StepInput &
-  ListAppointmentsCoreInput & {
-    integrationId?: string;
-  };
-
-async function stepHandler(
-  input: ListAppointmentsCoreInput,
-  credentials: AcuityCredentials
-): Promise<ListAppointmentsResult> {
-  const clientResult = createAcuityClient(credentials);
-  if ("error" in clientResult) {
-    return { success: false, error: { message: clientResult.error } };
-  }
-
-  const appointmentTypeId = parseOptionalInteger(
+  // Read in the order the form lists them, so a config with two bad fields
+  // reports the one nearer the top of the panel.
+  const appointmentTypeID = yield* optionalInteger(
     input.appointmentTypeId,
     "Appointment Type ID"
   );
-  if (!appointmentTypeId.ok) {
-    return { success: false, error: { message: appointmentTypeId.error } };
-  }
+  const calendarID = yield* optionalInteger(input.calendarId, "Calendar ID");
+  const limit = yield* optionalInteger(input.limit, "Limit");
+  const page = yield* optionalInteger(input.page, "Page");
+  const canceled = yield* optionalBoolean(input.canceled, "Only Canceled");
+  const showall = yield* optionalBoolean(input.showAll, "Include Inactive");
 
-  const calendarId = parseOptionalInteger(input.calendarId, "Calendar ID");
-  if (!calendarId.ok) {
-    return { success: false, error: { message: calendarId.error } };
-  }
-
-  const limit = parseOptionalInteger(input.limit, "Limit");
-  if (!limit.ok) {
-    return { success: false, error: { message: limit.error } };
-  }
-
-  const page = parseOptionalInteger(input.page, "Page");
-  if (!page.ok) {
-    return { success: false, error: { message: page.error } };
-  }
-
-  const canceled = parseOptionalBoolean(input.canceled, "Only Canceled");
-  if (!canceled.ok) {
-    return { success: false, error: { message: canceled.error } };
-  }
-
-  const showAll = parseOptionalBoolean(input.showAll, "Include Inactive");
-  if (!showAll.ok) {
-    return { success: false, error: { message: showAll.error } };
-  }
-
+  // Acuity's own parameter names, so this reads like its documentation. The
+  // SDK drops the ones left undefined.
   const params: ListAppointmentsParams = {
-    appointmentTypeID: appointmentTypeId.value,
-    calendarID: calendarId.value,
+    appointmentTypeID,
+    calendarID,
     minDate: input.minDate,
     maxDate: input.maxDate,
     timezone: input.timezone,
     email: input.email,
     phone: input.phone,
-    canceled: canceled.value,
-    showall: showAll.value,
-    limit: limit.value,
-    page: page.value,
+    canceled,
+    showall,
+    limit,
+    page,
   };
 
-  try {
-    const appointments = await clientResult.client.appointments.list(params);
+  const appointments = yield* callAcuity("Failed to list appointments.", () =>
+    acuity.appointments.list(params)
+  );
 
-    return {
-      success: true,
-      data: {
-        appointments,
-        count: appointments.length,
-      },
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: {
-        message: getAcuityErrorMessage(error, "Failed to list appointments."),
-      },
-    };
-  }
-}
+  return { appointments, count: appointments.length };
+});
 
-export async function listAppointmentsStep(
-  input: ListAppointmentsInput
-): Promise<ListAppointmentsResult> {
-  const credentials = input.integrationId
-    ? ((await fetchCredentials(input.integrationId)) as AcuityCredentials)
-    : {};
-
-  return withStepLogging(input, () => stepHandler(input, credentials));
-}
+export const listAppointmentsStep = defineStep({
+  id: "acuity/list-appointments",
+  input: listAppointmentsInput,
+  output: listAppointmentsOutput,
+  handler: listAppointmentsHandler,
+});

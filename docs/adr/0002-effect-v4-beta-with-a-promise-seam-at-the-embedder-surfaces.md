@@ -185,14 +185,16 @@ and its undefined-on-mismatch failure are deleted, along with the engine's secon
 table: `Database Query` and `HTTP Request` register beside the built-in labels in
 `step-registry.ts`, the same way everything else does. The
 sixteen steps that have not migrated register through `registerStepFunction`, which holds
-the one remaining unsound call in the system and dies with them at 6b.
+the one remaining unsound call in the system. (6b took those sixteen to `defineStep` and
+took the function off the plugin surface; the two built-ins kept it, module-private. See
+the 2026-07-30 amendment.)
 
 Issue #8 landed for the plugin surface: an action declares `output` in its `index.ts` and
 `registerIntegration` derives the editor's field list from it. The derivation is shared
 with `createAction`'s in `packages/shared/src/workflow/output-fields.ts`. `outputFields`
 stays on the definition type for now, because deleting it in 6a would take the autocomplete
 away from sixteen actions whose steps have not moved; an action declaring both is a
-registration error, so the two cannot drift. The derivation is loud for a plugin action
+registration error, so the two cannot drift. (6b deleted both the field and that error.) The derivation is loud for a plugin action
 and quiet for `createAction`: a plugin whose output schema has a non-object root, loses a
 field on the way through the JSON Schema reader, or leaves a field without a description
 annotation throws at `registerIntegration`, because 6b writes sixteen of these schemas and
@@ -240,6 +242,52 @@ reaching a real phone.
   different claim: a pass-through Layer carries no structure of its own, and it does make
   the services above it injectable and testable now, which is the whole reason the runtime
   exists. See the 2026-07-28 amendment above.
+
+**Amendment, 2026-07-30 (stage 6b).** The other five plugins moved onto `defineStep` and
+the machinery that carried the un-migrated half is gone. Sixteen steps became sixteen
+handlers: acuity's eight, clerk's four, linear's two, resend's one and slack's one, each a
+schema pair in a `schemas.ts` beside the plugin's metadata and an `Effect.fn` handler
+under `steps/`.
+
+`registerStepFunction` came off `@rova/core/plugin`, and so did `fetchCredentials`,
+`withStepLogging` and `StepInput`, which existed for the steps that fetched and logged by
+hand. The published surface is now `defineStep`, `StepFailure`, `StepDefinition`,
+`StepRunContext`, `registerStep`, `registerIntegrationTest` and `VendorTransport`, which
+`pnpm pack` on `@rova/core` confirms. The unsound call did not die with the plugins,
+though, and this is the one place 6a's plan was wrong: `Database Query` and `HTTP Request`
+register through it too, and each answers a shape `StepResult` has no room for -- rows
+beside a count, a status beside the data. Moving them is a decision about what a step may
+return rather than the mechanical conversion the plugins were, so the registration stayed,
+renamed `registerBuiltInStep`, module-private in `step-registry.ts`, with the one
+suppression it has always carried and two call sites nothing outside that file can reach.
+
+`outputFields` came off `PluginAction` and `output` became required, so the either/or
+registration error had nothing left to guard and went with it. Every action's field list
+is derived, and the derived lists are supersets of the hand-written ones they replaced:
+every path and description carried over unchanged, and the payloads that used to be one
+opaque entry opened up. An Acuity appointment offers the fields inside where it offered
+one; a Linear issue offers six inside `issues[0]`; a Clerk user gained `createdAt` and
+`updatedAt`; resend, slack and twilio each gained the `reasonCode` a test run has always
+answered with. Slack's is not only autocomplete: its step used to answer
+`{ success: true, ts, channel }` at the root, which leaked `success` into the flat CEL
+condition namespace mergeConditionContextValue builds. `defineStep` wraps the payload, so
+that namespace sees only the fields the schema names.
+
+Two things the derivation does quietly, both learned here and written into
+`packages/plugins/src/AGENTS.md`. The count that guards a schema is taken at the root, so
+a leaf inside an object or a list can drop out and registration still succeeds; three
+Acuity fields did, and only reading the derived list against the SDK's type found them.
+The shape that dropped them was `Schema.optional(Schema.NullOr(x))`, an `anyOf` inside an
+`anyOf`, where `Schema.NullishOr(x)` flattens to the union the reader uses.
+
+`examples/app.ts` was the last hand-written `outputFields` in the tree. `createAction`
+takes an `outputSchema` and derives the same list, and the list it replaced had already
+fallen a field behind what `execute` answers with, which is the drift the derivation
+exists to make impossible.
+
+One acceptance narrowing went with the input schemas: a config value of `null` or a bare
+boolean, which the old helpers mapped to absent or themselves, now fails the decode, and
+that applies to all sixteen steps rather than Acuity alone.
 
 ## Consequences
 

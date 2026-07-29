@@ -26,12 +26,10 @@ export type ClerkUserData = {
 };
 
 /**
- * Standard step output format
+ * Clerk's user resource as the three user-returning steps answer with it: the
+ * primary address picked out of the address list, and the metadata objects left
+ * behind, since a downstream node has no shape to address them by.
  */
-export type ClerkUserResult =
-  | { success: true; data: ClerkUserData }
-  | { success: false; error: { message: string } };
-
 export function toClerkUserData(apiUser: ClerkApiUser): ClerkUserData {
   const primaryEmail = apiUser.email_addresses.find(
     (e) => e.id === apiUser.primary_email_address_id

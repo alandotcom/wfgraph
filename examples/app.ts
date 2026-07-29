@@ -101,11 +101,21 @@ const cancelAppointmentAction = createAction({
   label: "Cancel Appointment",
   description: "Cancels an appointment and records the cancellation reason.",
   category: "Appointments",
-  outputFields: [
-    { path: "appointmentId", description: "Cancelled appointment ID" },
-    { path: "status", description: "Cancellation status" },
-    { path: "cancelledAt", description: "ISO timestamp of cancellation" },
-  ],
+  // What the action returns, described the same way its input is. The editor's
+  // template picker is derived from this, so the list that used to be written
+  // out beside it -- and had already fallen a field behind what `execute`
+  // answers with -- is gone. Every field is annotated for the same reason the
+  // input's are: the annotation is what an operator reads beside the path.
+  outputSchema: Schema.Struct({
+    appointmentId: appointmentIdSchema.annotate({
+      description: "Cancelled appointment ID",
+    }),
+    status: Schema.String.annotate({ description: "Cancellation status" }),
+    reason: Schema.String.annotate({ description: "Cancellation reason" }),
+    cancelledAt: Schema.String.annotate({
+      description: "ISO timestamp of cancellation",
+    }),
+  }),
   schema: Schema.Struct({
     appointmentId: appointmentIdSchema,
     reason: Schema.String.annotate({

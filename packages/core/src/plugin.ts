@@ -5,10 +5,13 @@
  * integration package can be written the same way. Anything added here is a
  * promise; add it only when a plugin cannot be written without it.
  *
- * A step is written with `defineStep` and registered with `registerStep`. The
- * last three names are what a step that has not moved to `defineStep` yet still
- * needs; stage 6b of ADR-0002 is where the last of them goes, and they go with
- * it.
+ * What is below is the whole of it. A step is a `defineStep` over an input
+ * schema, an output schema and a handler; it fails with a `StepFailure`; it is
+ * registered with `registerStep` under the id it declares; and a connection
+ * test, which answers the credentials UI over a Promise rather than inside a
+ * handler, provides `VendorTransport` itself. The credential fetch and the run
+ * logging a plugin used to reach for are `defineStep`'s business now, so they
+ * are not here.
  */
 
 export {
@@ -28,10 +31,3 @@ export { registerIntegrationTest } from "#src/backend/services/integrations/inte
  * not the other.
  */
 export { VendorTransport } from "#src/backend/lib/steps/vendor-transport";
-
-export { registerStepFunction } from "#src/backend/lib/step-registry";
-export { fetchCredentials } from "#src/backend/lib/credential-fetcher";
-export {
-  type StepInput,
-  withStepLogging,
-} from "#src/backend/lib/steps/step-handler";

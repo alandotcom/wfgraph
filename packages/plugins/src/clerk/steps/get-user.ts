@@ -1,72 +1,61 @@
 import {
-  fetchCredentials,
-  type StepInput,
-  withStepLogging,
+  defineStep,
+  StepFailure,
+  type StepRunContext,
 } from "@rova/core/plugin";
+import { Effect } from "effect";
 import {
   createClerkBackendClient,
   getClerkApiErrorMessage,
   toClerkApiUser,
 } from "#src/clerk/client";
 import type { ClerkCredentials } from "#src/clerk/credentials";
-import { type ClerkUserResult, toClerkUserData } from "#src/clerk/types";
-
-export type ClerkGetUserCoreInput = {
-  userId: string;
-};
-
-export type ClerkGetUserInput = StepInput &
-  ClerkGetUserCoreInput & {
-    integrationId?: string;
-  };
+import { getUserInput, getUserOutput } from "#src/clerk/schemas";
+import { toClerkUserData } from "#src/clerk/types";
 
 /**
- * Core logic - portable between app and export
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies.
  */
-async function stepHandler(
-  input: ClerkGetUserCoreInput,
-  credentials: ClerkCredentials
-): Promise<ClerkUserResult> {
+export const clerkGetUserHandler = Effect.fn(function* (
+  input: typeof getUserInput.Type,
+  context: StepRunContext
+) {
+  // The plugin's own credential vocabulary, so a key it never declares is a
+  // compile error here rather than an undefined at run time.
+  const credentials: ClerkCredentials = yield* context.credentials;
   const secretKey = credentials.CLERK_SECRET_KEY;
 
   if (!secretKey) {
-    return {
-      success: false,
-      error: {
+    return yield* Effect.fail(
+      new StepFailure({
         message:
           "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-      },
-    };
+      })
+    );
   }
 
   if (!input.userId) {
-    return {
-      success: false,
-      error: { message: "User ID is required." },
-    };
+    return yield* Effect.fail(
+      new StepFailure({ message: "User ID is required." })
+    );
   }
 
-  try {
-    const clerkClient = createClerkBackendClient(secretKey);
-    const user = await clerkClient.users.getUser(input.userId);
-    return { success: true, data: toClerkUserData(toClerkApiUser(user)) };
-  } catch (err) {
-    return {
-      success: false,
-      error: { message: `Failed to get user: ${getClerkApiErrorMessage(err)}` },
-    };
-  }
-}
+  const clerk = createClerkBackendClient(secretKey);
+  const user = yield* Effect.tryPromise({
+    try: () => clerk.users.getUser(input.userId),
+    catch: (error) =>
+      new StepFailure({
+        message: `Failed to get user: ${getClerkApiErrorMessage(error)}`,
+      }),
+  });
 
-/**
- * App entry point - fetches credentials and wraps with logging
- */
-export async function clerkGetUserStep(
-  input: ClerkGetUserInput
-): Promise<ClerkUserResult> {
-  const credentials = input.integrationId
-    ? await fetchCredentials(input.integrationId)
-    : {};
+  return toClerkUserData(toClerkApiUser(user));
+});
 
-  return withStepLogging(input, () => stepHandler(input, credentials));
-}
+export const clerkGetUserStep = defineStep({
+  id: "clerk/get-user",
+  input: getUserInput,
+  output: getUserOutput,
+  handler: clerkGetUserHandler,
+});

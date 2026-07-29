@@ -61,6 +61,11 @@ export const internalFailure =
  * fallback were never the same sentence: the operator greps "Failed to start
  * workflow execution" and the caller is told "Failed to execute workflow". It
  * defaults to `message`, which is what most services want.
+ *
+ * A relayed cause reaches the API client, query text and bound parameters
+ * included. That is the trade this file takes deliberately: reach for
+ * `internalFailure` when a caller can do nothing with the cause, not because the
+ * cause looks sensitive.
  */
 export const internalFailureRelayingCause =
   (

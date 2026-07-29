@@ -1,4 +1,5 @@
-import { listResendDomains } from "#src/resend/client";
+import { listResendDomains, readResendError } from "#src/resend/client";
+import { runVendorCall } from "#src/vendor-http";
 
 export async function testResend(credentials: Record<string, string>) {
   const apiKey = credentials.RESEND_API_KEY;
@@ -10,7 +11,13 @@ export async function testResend(credentials: Record<string, string>) {
     };
   }
 
-  const result = await listResendDomains(apiKey);
+  // A connection test answers the credentials UI over a Promise, so this is
+  // where the effect is run and the transport provided. The step reaches Resend
+  // through the same client without any of that, because `defineStep` does it.
+  const result = await runVendorCall(
+    listResendDomains(apiKey),
+    (error) => error
+  );
 
   if (result.ok) {
     return { success: true };
@@ -19,7 +26,7 @@ export async function testResend(credentials: Record<string, string>) {
   const { failure } = result;
 
   // A request that never arrived has no HTTP status to report.
-  if (failure.kind === "unreachable") {
+  if (failure._tag === "VendorUnreachable") {
     return {
       success: false,
       error: failure.message,
@@ -27,20 +34,27 @@ export async function testResend(credentials: Record<string, string>) {
     };
   }
 
+  const body =
+    failure._tag === "VendorRejected"
+      ? readResendError(failure.payload)
+      : undefined;
+
   // A send-only key answers "restricted_api_key" on non-send endpoints. That
   // confirms the key is valid; it just cannot list domains, which is fine.
-  if (failure.kind === "rejected" && failure.name === "restricted_api_key") {
+  if (body?.name === "restricted_api_key") {
     return { success: true };
   }
 
+  // Resend quotes a status in its own error body, which is the number its
+  // documentation attaches to the slug. That one wins when it is there.
+  const status = body?.statusCode ?? failure.status;
   const details = {
-    statusCode: failure.status,
-    errorName: failure.kind === "rejected" ? failure.name : undefined,
-    errorMessage:
-      failure.kind === "rejected" ? failure.message : `HTTP ${failure.status}`,
+    statusCode: status,
+    errorName: body?.name,
+    errorMessage: body?.message ?? `HTTP ${failure.status}`,
   };
 
-  if (failure.status === 401 || failure.status === 403) {
+  if (status === 401 || status === 403) {
     return {
       success: false,
       error: "Invalid API key. Please check your Resend API key.",
@@ -50,7 +64,7 @@ export async function testResend(credentials: Record<string, string>) {
 
   return {
     success: false,
-    error: `API validation failed: HTTP ${failure.status}`,
+    error: `API validation failed: HTTP ${status}`,
     details,
   };
 }

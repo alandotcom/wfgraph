@@ -145,9 +145,9 @@ function splitRpcUrl(absoluteUrl: string): {
 }
 
 /**
- * oRPC no longer hands an HTTP status to the client; the error code is what
- * crosses the wire, and the status comes back from the same table the server
- * derived it from. `ApiError` is the last place in the client that speaks HTTP.
+ * oRPC sends an error code rather than an HTTP status, so the status comes back
+ * from the same table the server derived it from. `ApiError` is the last place in
+ * the client that speaks HTTP.
  *
  * The annotation widens the table's keys to `string`, because `error.code` is
  * a string rather than a union of known codes; an unmapped code indexes to
