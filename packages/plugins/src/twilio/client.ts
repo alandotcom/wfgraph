@@ -8,13 +8,20 @@
  *
  * The API takes form-encoded parameters, answers JSON, and authenticates with
  * HTTP basic auth where the account SID is the username and the auth token the
- * password.
+ * password. Everything after that request is described in `vendor-http.ts`, so
+ * what is left here is the auth header, the two endpoints, and how Twilio's
+ * error body reads.
  */
 
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { Schema } from "effect";
-import { parsePayload, requestVendor } from "#src/vendor-http";
+import {
+  callVendor,
+  parsePayload,
+  runVendorCall,
+  type VendorError,
+} from "#src/vendor-http";
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
 
@@ -70,55 +77,55 @@ function toBasicAuth(accountSid: string, authToken: string): string {
   return `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`;
 }
 
-async function requestTwilio<S extends Schema.ConstraintDecoder<unknown>>(
+/**
+ * Twilio's three failures in the vocabulary this plugin's steps already read.
+ * Stage 6 of ADR-0002 makes a step handler an Effect over `VendorError` and
+ * this translation goes away with the `TwilioResult` shape it feeds.
+ */
+function toTwilioFailure(error: VendorError): TwilioFailure {
+  if (error._tag === "VendorUnreachable") {
+    return { kind: "unreachable", message: error.message };
+  }
+
+  if (error._tag === "VendorUnreadable") {
+    return { kind: "unreadable", status: error.status };
+  }
+
+  const body = parsePayload(error.payload, twilioErrorSchema);
+  return {
+    kind: "rejected",
+    status: error.status,
+    message: body?.message ?? `HTTP ${error.status}`,
+    code: body?.code,
+    moreInfo: body?.more_info,
+  };
+}
+
+function requestTwilio<S extends Schema.ConstraintDecoder<unknown>>(
   credentials: TwilioCredentialPair,
   path: string,
   schema: S,
-  init: { method: string; body?: URLSearchParams }
+  init: { method: "GET" | "POST"; body?: URLSearchParams }
 ): Promise<TwilioResult<S["Type"]>> {
-  const headers: Record<string, string> = {
-    authorization: toBasicAuth(credentials.accountSid, credentials.authToken),
-  };
-  if (init.body) {
-    headers["content-type"] = "application/x-www-form-urlencoded";
-  }
-
-  const response = await requestVendor({
-    url: `${TWILIO_API_BASE}${path}`,
-    method: init.method,
-    headers,
-    body: init.body,
-  });
-
-  if (response.kind === "unreachable") {
-    return { ok: false, failure: response };
-  }
-
-  if (!response.ok) {
-    const error = parsePayload(response.payload, twilioErrorSchema);
-    return {
-      ok: false,
-      failure: {
-        kind: "rejected",
-        status: response.status,
-        message: error?.message ?? `HTTP ${response.status}`,
-        code: error?.code,
-        moreInfo: error?.more_info,
+  return runVendorCall(
+    callVendor({
+      vendor: "Twilio",
+      url: `${TWILIO_API_BASE}${path}`,
+      method: init.method,
+      headers: {
+        authorization: toBasicAuth(
+          credentials.accountSid,
+          credentials.authToken
+        ),
       },
-    };
-  }
-
-  const data = parsePayload(response.payload, schema);
-  if (data === undefined) {
-    // A 2xx Twilio did not shape the way it documents. Reporting success here
-    // would hand the run an empty message SID and call it sent.
-    return {
-      ok: false,
-      failure: { kind: "unreadable", status: response.status },
-    };
-  }
-
-  return { ok: true, data };
+      body:
+        init.body === undefined
+          ? undefined
+          : { kind: "form", value: init.body },
+      schema,
+    }),
+    toTwilioFailure
+  );
 }
 
 /**
@@ -134,6 +141,11 @@ export type TwilioMessageParameters = {
   MediaUrl?: string[];
 };
 
+/**
+ * Sending is the one call here that a repeat could do twice, and Twilio's
+ * Message resource takes no idempotency key, so it is not retried: a send that
+ * timed out on the way back stays sent once.
+ */
 export function createTwilioMessage(
   credentials: TwilioCredentialPair,
   parameters: TwilioMessageParameters

@@ -17,7 +17,11 @@ export async function testSlack(credentials: Record<string, string>) {
     };
   }
 
-  const result = await callSlack(apiKey, "auth.test", authTestSchema);
+  // auth.test reads a token back and changes nothing, so a rate-limited attempt
+  // is worth repeating even though Slack spells the call as a POST.
+  const result = await callSlack(apiKey, "auth.test", authTestSchema, {
+    safeToRepeat: true,
+  });
 
   if (result.ok) {
     return { success: true };

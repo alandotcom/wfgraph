@@ -77,7 +77,7 @@ describe("sendSlackMessageStep", () => {
       "xoxb-test-token",
       "chat.postMessage",
       expect.anything(),
-      { channel: "#alerts", text: "Hello world" }
+      { body: { channel: "#alerts", text: "Hello world" } }
     );
     expect(result).toEqual({
       success: true,

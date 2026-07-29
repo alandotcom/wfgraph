@@ -3,7 +3,9 @@
  *
  * One call is made against Resend in this plugin, `POST /emails`, plus a
  * credential check. The `resend` SDK was a thin wrapper over those, so the calls
- * are written out here instead.
+ * are written out here instead. Everything after the request is described in
+ * `vendor-http.ts`, so what is left here is the bearer token, the two endpoints,
+ * and how Resend's error body reads.
  *
  * The request body uses Resend's own field names, which are snake_case on the
  * wire (`reply_to`, `scheduled_at`, `topic_id`) where the SDK spelled them
@@ -13,7 +15,12 @@
 
 import { Schema } from "effect";
 import type { JsonObject } from "@rova/shared/types/json";
-import { parsePayload, requestVendor } from "#src/vendor-http";
+import {
+  callVendor,
+  parsePayload,
+  runVendorCall,
+  type VendorError,
+} from "#src/vendor-http";
 
 const RESEND_API_BASE = "https://api.resend.com";
 
@@ -49,12 +56,38 @@ export function describeResendFailure(failure: ResendFailure): string {
   return failure.message;
 }
 
-async function requestResend<S extends Schema.ConstraintDecoder<unknown>>(
+/**
+ * Resend's three failures in the vocabulary this plugin's steps already read.
+ * Stage 6 of ADR-0002 makes a step handler an Effect over `VendorError` and
+ * this translation goes away with the `ResendResult` shape it feeds.
+ *
+ * The status a caller sees is the one in the body when Resend put one there,
+ * which is the number its own documentation quotes for a slug.
+ */
+function toResendFailure(error: VendorError): ResendFailure {
+  if (error._tag === "VendorUnreachable") {
+    return { kind: "unreachable", message: error.message };
+  }
+
+  if (error._tag === "VendorUnreadable") {
+    return { kind: "unreadable", status: error.status };
+  }
+
+  const body = parsePayload(error.payload, resendErrorSchema);
+  return {
+    kind: "rejected",
+    status: body?.statusCode ?? error.status,
+    message: body?.message ?? `HTTP ${error.status}`,
+    name: body?.name,
+  };
+}
+
+function requestResend<S extends Schema.ConstraintDecoder<unknown>>(
   apiKey: string,
   path: string,
   schema: S,
   init: {
-    method: string;
+    method: "GET" | "POST";
     jsonBody?: JsonObject;
     /**
      * Resend replays the original response for a repeated key rather than
@@ -63,50 +96,21 @@ async function requestResend<S extends Schema.ConstraintDecoder<unknown>>(
     idempotencyKey?: string;
   }
 ): Promise<ResendResult<S["Type"]>> {
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${apiKey}`,
-  };
-  if (init.jsonBody !== undefined) {
-    headers["content-type"] = "application/json";
-  }
-  if (init.idempotencyKey) {
-    headers["idempotency-key"] = init.idempotencyKey;
-  }
-
-  const response = await requestVendor({
-    url: `${RESEND_API_BASE}${path}`,
-    method: init.method,
-    headers,
-    body:
-      init.jsonBody === undefined ? undefined : JSON.stringify(init.jsonBody),
-  });
-
-  if (response.kind === "unreachable") {
-    return { ok: false, failure: response };
-  }
-
-  if (!response.ok) {
-    const error = parsePayload(response.payload, resendErrorSchema);
-    return {
-      ok: false,
-      failure: {
-        kind: "rejected",
-        status: error?.statusCode ?? response.status,
-        message: error?.message ?? `HTTP ${response.status}`,
-        name: error?.name,
-      },
-    };
-  }
-
-  const data = parsePayload(response.payload, schema);
-  if (data === undefined) {
-    return {
-      ok: false,
-      failure: { kind: "unreadable", status: response.status },
-    };
-  }
-
-  return { ok: true, data };
+  return runVendorCall(
+    callVendor({
+      vendor: "Resend",
+      url: `${RESEND_API_BASE}${path}`,
+      method: init.method,
+      headers: { authorization: `Bearer ${apiKey}` },
+      body:
+        init.jsonBody === undefined
+          ? undefined
+          : { kind: "json", value: init.jsonBody },
+      idempotencyKey: init.idempotencyKey,
+      schema,
+    }),
+    toResendFailure
+  );
 }
 
 export function sendResendEmail(

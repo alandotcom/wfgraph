@@ -226,6 +226,14 @@ written and takes effect on the next dynamic import. `vi` itself has to be impor
 `vitest`; `@effect/vitest` re-exports the name, but the copy reaching a test that way
 cannot find the module registry and every `vi.mock` in the file throws at collection.
 
+**A `Context.Reference` caches its default value forever.** The first read of a
+reference with no explicit provider computes its `defaultValue` and stores it on the
+reference object itself, for the life of the process. `FetchHttpClient.Fetch` defaults to
+`globalThis.fetch`, so a suite that stubs the global per test would have every case after
+the first running against the first case's stub. `packages/plugins/src/vendor-http.ts`
+provides that reference explicitly, with a function that reads the global per call, which
+is both what the old code did and what makes fetch stubbing work at all.
+
 **Inngest shapes the workflow engine.** `step.*` inside `step.run()` is a runtime error,
 so Wait nodes stay outside the node-level step wrapper. Retries are function-level, each
 step carrying its own counter. Step results round-trip through JSON, so a node output has

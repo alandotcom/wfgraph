@@ -59,8 +59,10 @@ async function stepHandler(
     "chat.postMessage",
     postMessageSchema,
     {
-      channel: input.slackChannel,
-      text: input.slackMessage,
+      body: {
+        channel: input.slackChannel,
+        text: input.slackMessage,
+      },
     }
   );
 

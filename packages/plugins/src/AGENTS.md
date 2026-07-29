@@ -29,15 +29,36 @@ plugins/[plugin-name]/
     [action].ts     # Server-side step functions (one per action)
 ```
 
-**Call vendors with `fetch`, not their SDK.** `vendor-http.ts` holds the one
-request function every plugin's `client.ts` is built on: it survives a `fetch`
-that throws, reads a JSON body, and tells "never arrived" apart from "the vendor
-said no". A client adds the vendor's auth, its body encoding, and Effect Schemas
-for what it answers, so a step gets typed fields and an unexpected body fails
-where it happened. An SDK earns its place only when it carries protocol logic worth
-borrowing, which is why `@clerk/backend` (JWT verification) and `@linear/sdk` (a
-typed GraphQL client) stayed and `twilio`, `resend`, and `@slack/web-api` did
-not. The `dependencies` field on a plugin definition exists for that exception.
+**Call vendors through `vendor-http.ts`, not their SDK.** `callVendor` takes a
+request spec and answers an `Effect` holding the decoded body, over Effect's own
+`HttpClient`. It owns the ten-second per-attempt timeout, the retry schedule, the
+JSON read, the decode, and the three failures every vendor call can end in:
+`VendorUnreachable` (nothing answered), `VendorRejected` (it answered and said
+no, carrying its own error body), and `VendorUnreadable` (a success status whose
+body is not the documented shape).
+
+A `client.ts` is the adapter above that: the auth header, the endpoints, the
+vendor's error-envelope schema, and a function turning a `VendorError` into the
+`{ ok, failure }` shape its steps still read. `runVendorCall` is the Promise seam
+that runs the effect and provides the transport; it and the per-vendor result
+shapes go away at stage 6 of ADR-0002, when a step handler becomes an Effect.
+
+The retry policy is stated once, in the comment above `RETRY_ATTEMPTS`. Two
+retries with jittered exponential backoff from 500ms, a `Retry-After` up to ten
+seconds replacing that delay, and only for a request repeating cannot do twice: a
+GET or HEAD, a write carrying an idempotency key, or a spec that sets
+`safeToRepeat` because the vendor spells a read as a POST the way Slack does. Ten
+seconds of elapsed time is the loop's whole budget, so a chain of slow attempts
+stops rather than running on for the fifty seconds three timeouts and two waits
+at the ceiling would take. Inngest's function-level retry remains the outer
+policy for everything longer.
+
+An SDK earns its place only when it carries protocol logic worth borrowing, which
+is why `@clerk/backend` (JWT verification), `@linear/sdk` (a typed GraphQL
+client), and `@fountain-bio/acuity` stayed and `twilio`, `resend`, and
+`@slack/web-api` did not. Those three keep their own transport and their own
+error handling, so they do not go through `vendor-http.ts`. The `dependencies`
+field on a plugin definition exists for that exception.
 
 ## Creating a Plugin
 

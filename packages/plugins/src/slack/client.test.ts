@@ -41,7 +41,7 @@ describe("callSlack", () => {
       "xoxb-token",
       "chat.postMessage",
       postMessageSchema,
-      { channel: "#alerts", text: "hi" }
+      { body: { channel: "#alerts", text: "hi" } }
     );
 
     expect(result).toEqual({ ok: true, data: { ts: "1739.1", channel: "C1" } });

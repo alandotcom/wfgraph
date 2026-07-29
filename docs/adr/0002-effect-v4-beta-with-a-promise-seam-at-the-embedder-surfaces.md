@@ -128,6 +128,38 @@ Each stage lands green on `main` before the next one starts.
 Schema moves at stage 4 so that steps and vendor code arrive at stages 5 and 6 with
 Schema-typed inputs already in place, sparing a second pass over the same files.
 
+**Amendment, 2026-07-28.** Stage 5 landed as `packages/plugins/src/vendor-http.ts`, built
+on `HttpClient` from `effect/unstable/http`, with Twilio, Resend, and Slack reduced to
+adapters over it. Three things about it were decisions rather than transcription.
+
+The first is new behaviour, and the behaviour this stage set out to add: a
+per-attempt timeout and a retry policy, neither of which existed anywhere in the vendor
+path before. Ten seconds bounds an attempt, and a failure a repeat could plausibly fix
+(nothing answered, a 429, a 503, or another 5xx that named a `Retry-After`) is retried
+twice with jittered exponential backoff from 500ms, with a `Retry-After` of up to ten
+seconds replacing that delay. A request enters the loop only when repeating it cannot do
+the work twice: a GET or HEAD, a write carrying an idempotency key, or a spec that says so
+because the vendor spells a read as a POST, which Slack does for all of its API. Inngest's
+function-level retry stays the outer policy and everything longer than a hiccup is still
+its job.
+
+The second is a bug fix in Slack. The old `callSlack` read the `ok` envelope out of the
+body and never looked at the HTTP status at all, so a 500 whose body satisfied both that
+envelope and the caller's schema was reported to the run as a message sent. Status now
+decides first: anything outside 2xx is a refusal whatever the body says, and the envelope
+check only turns Slack's own 200-with-`ok: false` into that same refusal. Apart from these
+two, the wire, the failure vocabularies, and every user-visible message are what they were,
+verified against the pre-change build through `integration.testCredentials` for all three
+vendors.
+
+The third is a scope call. Linear, Clerk, and Acuity do not go through the module and are
+not scheduled to. Each reaches its vendor through an SDK that carries protocol logic worth
+borrowing rather than a REST call written out here, so there is no request pipeline to
+share: `@linear/sdk` is a typed GraphQL client, `@clerk/backend` verifies JWTs, and
+`@fountain-bio/acuity` is the Acuity client. Their retries and their error shapes come
+through those SDKs, which is where they should stay. `lib/steps/http-request.ts`, the
+user-facing HTTP node, is stage 7's.
+
 ## Considered Options
 
 - **`effect` 3.22 stable** rejected: adopting v3 guarantees a v3-to-v4 migration of the
