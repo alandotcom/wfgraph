@@ -3,8 +3,10 @@
  * Uses direct database calls for security (no HTTP endpoint)
  */
 
+import { Schema } from "effect";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { redactSensitiveData } from "#src/backend/lib/utils/redact";
+import { readAs } from "@rova/shared/types/schema";
 import type { StepResult } from "@rova/shared/workflow/step-result";
 import {
   logStepCompleteDb,
@@ -14,13 +16,33 @@ import {
 
 const stepHandlerLogger = getAppLogger("workflow", "step-handler");
 
-export type StepContext = {
-  executionId?: string;
-  nodeId: string;
-  nodeName: string;
-  nodeType: string;
-  runMode?: "live" | "test";
-};
+/**
+ * What the engine tells a step about the run it is part of.
+ *
+ * The engine hands this over inside the step's input record, under `_context`,
+ * so a step that narrows its own input has no compiler-checked path to it. The
+ * schema is that path: `readStepContext` below decodes the field, and
+ * `defineStep` hands what comes out to the handler.
+ *
+ * `optional`, not `optionalKey`, for the two fields the engine may leave empty.
+ * A decode that fails answers with no context at all rather than with a context
+ * missing one field, so a caller that spelled an empty value as a key holding
+ * `undefined` would lose the whole thing: the run log rows would stop being
+ * written, and `runMode` would fall back to `"live"`, which for a step that
+ * sends an SMS is a test run reaching a real phone.
+ */
+const stepContextSchema = Schema.Struct({
+  executionId: Schema.optional(Schema.String),
+  nodeId: Schema.String,
+  nodeName: Schema.String,
+  nodeType: Schema.String,
+  runMode: Schema.optional(Schema.Literals(["live", "test"])),
+});
+
+export type StepContext = typeof stepContextSchema.Type;
+
+/** The run context out of a step's input record, or undefined when it has none. */
+export const readStepContext = readAs(stepContextSchema);
 
 /**
  * Base input type that all steps should extend
@@ -169,30 +191,7 @@ export async function logWorkflowComplete(options: {
 }
 
 /**
- * Extended context that includes workflow completion info
- */
-export type StepContextWithWorkflow = StepContext & {
-  _workflowComplete?: {
-    status: "success" | "error" | "cancelled";
-    output?: unknown;
-    error?: string;
-    startTime: number;
-  };
-};
-
-function hasWorkflowCompleteContext(
-  context: StepContext | undefined
-): context is StepContextWithWorkflow {
-  return (
-    typeof context === "object" &&
-    context !== null &&
-    "_workflowComplete" in context
-  );
-}
-
-/**
  * Wrap step logic with logging
- * If _context._workflowComplete is set, also logs workflow completion
  *
  * @example
  * export async function myStep(input: MyInput & StepInput) {
@@ -225,18 +224,6 @@ export async function withStepLogging<TOutput extends StepResult>(
         result.error,
         result.error.message
       );
-    }
-
-    // If this step should also log workflow completion, do it now
-    if (
-      hasWorkflowCompleteContext(context) &&
-      context._workflowComplete &&
-      context.executionId
-    ) {
-      await logWorkflowComplete({
-        executionId: context.executionId,
-        ...context._workflowComplete,
-      });
     }
 
     return result;

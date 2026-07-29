@@ -1,6 +1,13 @@
 {
   "languages": {
+    "JavaScript": {
+      "language_servers": ["vtsls", "oxlint", "oxfmt"]
+    },
+    "TSX": {
+      "language_servers": ["vtsls", "oxlint", "oxfmt"]
+    },
     "TypeScript": {
+      "language_servers": ["vtsls", "oxlint", "oxfmt"],
       "tab_size": 2
     }
   },

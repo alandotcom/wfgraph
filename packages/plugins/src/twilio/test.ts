@@ -1,4 +1,9 @@
-import { describeTwilioFailure, fetchTwilioAccount } from "#src/twilio/client";
+import {
+  describeTwilioFailure,
+  fetchTwilioAccount,
+  readTwilioError,
+} from "#src/twilio/client";
+import { runVendorCall } from "#src/vendor-http";
 
 export async function testTwilio(credentials: Record<string, string>) {
   const accountSid = credentials.TWILIO_ACCOUNT_SID;
@@ -11,7 +16,13 @@ export async function testTwilio(credentials: Record<string, string>) {
     };
   }
 
-  const result = await fetchTwilioAccount({ accountSid, authToken });
+  // A connection test answers the credentials UI over a Promise, so this is
+  // where the effect is run and the transport provided. A step reaches Twilio
+  // through the same client without any of that, because `defineStep` does it.
+  const result = await runVendorCall(
+    fetchTwilioAccount({ accountSid, authToken }),
+    (error) => error
+  );
 
   if (result.ok) {
     return { success: true };
@@ -21,7 +32,7 @@ export async function testTwilio(credentials: Record<string, string>) {
 
   // A request that never arrived has no HTTP status to report, so the transport
   // error is the whole story.
-  if (failure.kind === "unreachable") {
+  if (failure._tag === "VendorUnreachable") {
     return {
       success: false,
       error: failure.message,
@@ -29,13 +40,18 @@ export async function testTwilio(credentials: Record<string, string>) {
     };
   }
 
+  const body =
+    failure._tag === "VendorRejected"
+      ? readTwilioError(failure.payload)
+      : undefined;
+
   return {
     success: false,
     error: `API validation failed: HTTP ${failure.status}`,
     details: {
       status: failure.status,
-      code: failure.kind === "rejected" ? failure.code : undefined,
-      moreInfo: failure.kind === "rejected" ? failure.moreInfo : undefined,
+      code: body?.code,
+      moreInfo: body?.more_info,
       message: describeTwilioFailure(failure),
     },
   };

@@ -18,9 +18,9 @@
  * rather than six pieces of bookkeeping in each client.
  */
 
-import { Duration, Effect, Layer, Option, Schedule, Schema } from "effect";
+import { VendorTransport } from "@rova/core/plugin";
+import { Duration, Effect, Option, Schedule, Schema } from "effect";
 import {
-  FetchHttpClient,
   Headers,
   HttpClient,
   type HttpClientError,
@@ -188,32 +188,12 @@ export function callVendor<S extends Schema.ConstraintDecoder<unknown>>(
 }
 
 /**
- * The transport, reading `globalThis.fetch` at the moment of each call.
- *
- * `FetchHttpClient.Fetch` is a `Context.Reference`, and a reference caches its
- * default value on itself the first time anything reads it. Left to that
- * default, the first `globalThis.fetch` the process ever sees would be the one
- * every later request used, which is invisible in production and wrong in a
- * test that stubs fetch per case. Handing the reference a function that looks
- * the global up per call puts that lookup back where it was.
- */
-export const VendorTransport: Layer.Layer<HttpClient.HttpClient> =
-  Layer.provide(
-    FetchHttpClient.layer,
-    Layer.succeed(
-      FetchHttpClient.Fetch,
-      (input: RequestInfo | URL, init?: RequestInit) =>
-        globalThis.fetch(input, init)
-    )
-  );
-
-/**
  * Run a vendor call for a caller that is still a Promise.
  *
- * Steps become Effects at stage 6 of ADR-0002 and this goes with them, along
- * with the `{ ok, data } | { ok, failure }` shape every client still answers
- * with. Until then this is where the runtime is entered and the fetch transport
- * is provided.
+ * A step written with `defineStep` runs its own effect and is given the
+ * transport, so this is for the callers that are not one yet: the steps stage
+ * 6b has still to migrate, and a connection test, which answers the credentials
+ * UI over its own Promise seam.
  *
  * Only a `VendorError` becomes a result object. A defect, a `refusedInBody` that
  * throws among them, rejects the returned Promise, which is what the old code

@@ -5,14 +5,14 @@ import type {
 } from "#src/plugins/registry";
 import type { IntegrationType } from "#src/types/integration";
 import { asStandardSchema, type StandardSchema } from "#src/types/schema";
+import type { ReferenceField } from "#src/workflow/node-references";
 import {
-  type ReferenceField,
-  schemaFieldToReferenceField,
-} from "#src/workflow/node-references";
+  type OutputSchema,
+  outputFieldsFromSchema,
+} from "#src/workflow/output-fields";
 import {
   configFieldsFromJsonSchema,
   jsonSchemaLibraryOptions,
-  parseWorkflowSchemaFieldsOrJsonSchema,
 } from "#src/workflow/schema-codec";
 import type { StepError, StepResult } from "#src/workflow/step-result";
 
@@ -140,17 +140,6 @@ export type CreateActionInput<TPayload extends Record<string, unknown>> = Omit<
 export type TypedActionResult<TOutput extends Record<string, unknown>> =
   | { success: true; data: TOutput }
   | { success: false; error: StepError };
-
-/**
- * What `outputSchema` accepts, in the same two forms as `InputSchema`.
- *
- * `createAction` uses it to infer `TOutput` at compile time and to call
- * `~standard.jsonSchema.output()` for `outputFields` at runtime. Only the
- * describing half is read, but the bridge hands over both regardless.
- */
-export type OutputSchema<TOutput> =
-  | StandardSchema<TOutput>
-  | Schema.ConstraintDecoder<TOutput>;
 
 export type CreateActionInputWithOutput<
   TPayload extends Record<string, unknown>,
@@ -311,32 +300,6 @@ function getActionErrorMessage(error: unknown): string {
   return "Action execution failed";
 }
 
-function outputFieldsFromStandardSchema(
-  schema: StandardSchema<Record<string, unknown>>
-): ReferenceField[] {
-  let jsonSchema: Record<string, unknown>;
-  try {
-    jsonSchema = schema["~standard"].jsonSchema.output({
-      target: "draft-2020-12",
-      libraryOptions: jsonSchemaLibraryOptions,
-    });
-  } catch {
-    try {
-      jsonSchema = schema["~standard"].jsonSchema.input({
-        target: "draft-2020-12",
-        libraryOptions: jsonSchemaLibraryOptions,
-      });
-    } catch {
-      return [];
-    }
-  }
-  const fields = parseWorkflowSchemaFieldsOrJsonSchema(jsonSchema);
-  if (fields) {
-    return fields.map((field) => schemaFieldToReferenceField(field));
-  }
-  return [];
-}
-
 function mergeOutputFields(
   derived: ReferenceField[],
   manual: ReferenceField[]
@@ -399,9 +362,7 @@ export function createAction<TPayload extends Record<string, unknown>>(
 
   let resolvedOutputFields = input.outputFields;
   if ("outputSchema" in input && input.outputSchema) {
-    const derived = outputFieldsFromStandardSchema(
-      asStandardSchema(input.outputSchema)
-    );
+    const derived = outputFieldsFromSchema(input.outputSchema);
     resolvedOutputFields = input.outputFields
       ? mergeOutputFields(derived, input.outputFields)
       : derived;

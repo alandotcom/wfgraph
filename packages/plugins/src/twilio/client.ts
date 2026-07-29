@@ -13,15 +13,13 @@
  * error body reads.
  */
 
+import type { Effect } from "effect";
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { Schema } from "effect";
-import {
-  callVendor,
-  parsePayload,
-  runVendorCall,
-  type VendorError,
-} from "#src/vendor-http";
+import type { HttpClient } from "effect/unstable/http";
+import type { JsonValue } from "@rova/shared/types/json";
+import { callVendor, parsePayload, type VendorError } from "#src/vendor-http";
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
 
@@ -45,27 +43,29 @@ const twilioMessageSchema = Schema.Struct({
 
 export type TwilioMessage = typeof twilioMessageSchema.Type;
 
-export type TwilioFailure =
-  | { kind: "unreachable"; message: string }
-  | {
-      kind: "rejected";
-      status: number;
-      message: string;
-      code?: number;
-      moreInfo?: string;
-    }
-  /** A 2xx whose body is not the resource Twilio documents. */
-  | { kind: "unreadable"; status: number };
-
-export type TwilioResult<TData> =
-  | { ok: true; data: TData }
-  | { ok: false; failure: TwilioFailure };
-
-export function describeTwilioFailure(failure: TwilioFailure): string {
-  if (failure.kind === "unreadable") {
-    return `Twilio answered ${failure.status} with an unrecognized body`;
+/**
+ * What Twilio said, in one sentence a person reads.
+ *
+ * A refusal carries Twilio's own message when its error body is the documented
+ * shape and the bare status when it is not, which is what something standing in
+ * front of the API answers with. A 2xx whose body is not the resource says so,
+ * because reporting success there would hand the run an empty message SID.
+ */
+export function describeTwilioFailure(error: VendorError): string {
+  if (error._tag === "VendorUnreachable") {
+    return error.message;
   }
-  return failure.message;
+
+  if (error._tag === "VendorUnreadable") {
+    return `Twilio answered ${error.status} with an unrecognized body`;
+  }
+
+  return readTwilioError(error.payload)?.message ?? `HTTP ${error.status}`;
+}
+
+/** Twilio's error body, for a caller that reports more than the message. */
+export function readTwilioError(payload: JsonValue | undefined) {
+  return parsePayload(payload, twilioErrorSchema);
 }
 
 export type TwilioCredentialPair = {
@@ -77,55 +77,23 @@ function toBasicAuth(accountSid: string, authToken: string): string {
   return `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`;
 }
 
-/**
- * Twilio's three failures in the vocabulary this plugin's steps already read.
- * Stage 6 of ADR-0002 makes a step handler an Effect over `VendorError` and
- * this translation goes away with the `TwilioResult` shape it feeds.
- */
-function toTwilioFailure(error: VendorError): TwilioFailure {
-  if (error._tag === "VendorUnreachable") {
-    return { kind: "unreachable", message: error.message };
-  }
-
-  if (error._tag === "VendorUnreadable") {
-    return { kind: "unreadable", status: error.status };
-  }
-
-  const body = parsePayload(error.payload, twilioErrorSchema);
-  return {
-    kind: "rejected",
-    status: error.status,
-    message: body?.message ?? `HTTP ${error.status}`,
-    code: body?.code,
-    moreInfo: body?.more_info,
-  };
-}
-
 function requestTwilio<S extends Schema.ConstraintDecoder<unknown>>(
   credentials: TwilioCredentialPair,
   path: string,
   schema: S,
   init: { method: "GET" | "POST"; body?: URLSearchParams }
-): Promise<TwilioResult<S["Type"]>> {
-  return runVendorCall(
-    callVendor({
-      vendor: "Twilio",
-      url: `${TWILIO_API_BASE}${path}`,
-      method: init.method,
-      headers: {
-        authorization: toBasicAuth(
-          credentials.accountSid,
-          credentials.authToken
-        ),
-      },
-      body:
-        init.body === undefined
-          ? undefined
-          : { kind: "form", value: init.body },
-      schema,
-    }),
-    toTwilioFailure
-  );
+): Effect.Effect<S["Type"], VendorError, HttpClient.HttpClient> {
+  return callVendor({
+    vendor: "Twilio",
+    url: `${TWILIO_API_BASE}${path}`,
+    method: init.method,
+    headers: {
+      authorization: toBasicAuth(credentials.accountSid, credentials.authToken),
+    },
+    body:
+      init.body === undefined ? undefined : { kind: "form", value: init.body },
+    schema,
+  });
 }
 
 /**
@@ -149,7 +117,7 @@ export type TwilioMessageParameters = {
 export function createTwilioMessage(
   credentials: TwilioCredentialPair,
   parameters: TwilioMessageParameters
-): Promise<TwilioResult<TwilioMessage>> {
+): Effect.Effect<TwilioMessage, VendorError, HttpClient.HttpClient> {
   const { MediaUrl, ...scalars } = parameters;
   const body = new URLSearchParams(omitBy(scalars, isNil));
   for (const mediaUrl of MediaUrl ?? []) {
@@ -167,7 +135,7 @@ export function createTwilioMessage(
 /** Reading the account back is Twilio's cheapest credential check. */
 export function fetchTwilioAccount(
   credentials: TwilioCredentialPair
-): Promise<TwilioResult<{ sid: string }>> {
+): Effect.Effect<{ sid: string }, VendorError, HttpClient.HttpClient> {
   return requestTwilio(
     credentials,
     `/Accounts/${encodeURIComponent(credentials.accountSid)}.json`,

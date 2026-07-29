@@ -2,13 +2,13 @@ import { assert, describe, expect, it } from "@effect/vitest";
 import { afterEach, beforeEach } from "vitest";
 import { Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
+import { VendorTransport } from "@rova/core/plugin";
 import {
   callVendor,
   parsePayload,
   type VendorError,
   VendorRejected,
   type VendorRequest,
-  VendorTransport,
   VendorUnreadable,
 } from "#src/vendor-http";
 

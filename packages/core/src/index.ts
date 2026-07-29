@@ -3,10 +3,10 @@ export {
   type CreateActionInputWithOutput,
   createAction,
   type InputSchema,
-  type OutputSchema,
   type RuntimeExtensionActionDefinition,
   type TypedActionResult,
 } from "@rova/shared/workflow/action-registry";
+export type { OutputSchema } from "@rova/shared/workflow/output-fields";
 export {
   type CreateTriggerInput,
   createTrigger,

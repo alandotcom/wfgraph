@@ -7,6 +7,10 @@ import {
   getRuntimeActions,
 } from "#src/workflow/action-registry";
 import type { ReferenceField } from "#src/workflow/node-references";
+import {
+  type OutputSchema,
+  requireOutputFieldsFromSchema,
+} from "#src/workflow/output-fields";
 
 /**
  * Select Option
@@ -126,12 +130,39 @@ export type PluginAction = {
   // Config fields for the action (declarative definition)
   configFields: ActionConfigField[];
 
-  // Output fields for template autocomplete (what this action returns)
+  /**
+   * What the action's step returns, as a schema.
+   *
+   * The step's handler is typed against this same schema, so a step whose
+   * output drifts from what the editor offers downstream stops compiling. The
+   * template-autocomplete list is derived from it at registration; paths omit
+   * the `data.` prefix, because the schema describes the payload rather than
+   * the `StepResult` wrapper around it.
+   */
+  output?: OutputSchema<unknown>;
+
+  /**
+   * The same list, written by hand.
+   *
+   * Every plugin action still carrying one is a step that has not moved to
+   * `defineStep` yet; stage 6b of ADR-0002 is where the last of them goes and
+   * this field with it. An action may declare one or the other, never both.
+   */
   outputFields?: ReferenceField[];
 
   // Output display configuration (how to render output in workflow runs panel)
   outputConfig?: OutputDisplayConfig;
 };
+
+/**
+ * An action as the registry holds it: the schema has been read and what it said
+ * is in `outputFields`.
+ *
+ * Nothing downstream of registration sees an `output` schema. The browser holds
+ * this registry, and a schema object there is a dump of one library's internals
+ * that no reader has a use for.
+ */
+export type RegisteredPluginAction = Omit<PluginAction, "output">;
 
 /**
  * Integration Plugin Definition
@@ -165,11 +196,16 @@ export type IntegrationPlugin = {
   actions: PluginAction[];
 };
 
+/** An integration as the registry holds it, with every action's schema read. */
+export type RegisteredIntegrationPlugin = Omit<IntegrationPlugin, "actions"> & {
+  actions: RegisteredPluginAction[];
+};
+
 /**
  * Action with full ID
  * Includes the computed full action ID (integration/slug)
  */
-export type ActionWithFullId = PluginAction & {
+export type ActionWithFullId = RegisteredPluginAction & {
   id: string; // Full action ID: {integration}/{slug}
   integration?: string;
   logoUrl?: string;
@@ -190,7 +226,7 @@ const _intKey = Symbol.for("@rova/integration-registry");
 const _cacheKey = Symbol.for("@rova/action-by-id-cache");
 
 if (!_g[_intKey]) {
-  _g[_intKey] = new Map<IntegrationType, IntegrationPlugin>();
+  _g[_intKey] = new Map<IntegrationType, RegisteredIntegrationPlugin>();
 }
 if (!_g[_cacheKey]) {
   _g[_cacheKey] = new Map<string, ActionWithFullId | undefined>();
@@ -199,7 +235,7 @@ if (!_g[_cacheKey]) {
 // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- initialized above
 const integrationRegistry = _g[_intKey] as Map<
   IntegrationType,
-  IntegrationPlugin
+  RegisteredIntegrationPlugin
 >;
 /**
  * Compute full action ID from integration type and action slug
@@ -229,10 +265,52 @@ export function parseActionId(actionId: string | undefined | null): {
 }
 
 /**
+ * Read an action's output schema once, at registration.
+ *
+ * This is the one moment a plugin's metadata is handled before anything reads
+ * it, which is where the schema bridge belongs: `requireOutputFieldsFromSchema`
+ * gives an Effect schema its Standard Schema halves, and doing that twice for
+ * the same schema is a decision about which crossing wins that no call site can
+ * see.
+ *
+ * A schema that yields no usable list throws here rather than registering an
+ * action whose autocomplete is empty or short. Registration runs on import, so
+ * the failure lands in the build and the tests of whoever wrote the schema.
+ */
+function readPluginAction(
+  integrationType: IntegrationType,
+  action: PluginAction
+): RegisteredPluginAction {
+  const { output, ...rest } = action;
+
+  if (!output) {
+    return rest;
+  }
+
+  const actionId = computeActionId(integrationType, action.slug);
+
+  if (rest.outputFields) {
+    throw new Error(
+      `Action "${actionId}" declares both an output schema and outputFields. The schema is the one the step is typed against, so the hand-written list can only disagree with it.`
+    );
+  }
+
+  return {
+    ...rest,
+    outputFields: requireOutputFieldsFromSchema(actionId, output),
+  };
+}
+
+/**
  * Register an integration plugin
  */
 export function registerIntegration(plugin: IntegrationPlugin): void {
-  integrationRegistry.set(plugin.type, plugin);
+  integrationRegistry.set(plugin.type, {
+    ...plugin,
+    actions: plugin.actions.map((action) =>
+      readPluginAction(plugin.type, action)
+    ),
+  });
   actionByIdCache.clear();
 }
 
@@ -247,7 +325,9 @@ export function unregisterIntegration(type: IntegrationType): void {
 /**
  * Get an integration plugin
  */
-export function getIntegration(type: string): IntegrationPlugin | undefined {
+export function getIntegration(
+  type: string
+): RegisteredIntegrationPlugin | undefined {
   if (!isIntegrationType(type)) {
     return undefined;
   }
@@ -257,7 +337,7 @@ export function getIntegration(type: string): IntegrationPlugin | undefined {
 /**
  * Get all registered integrations
  */
-export function getAllIntegrations(): IntegrationPlugin[] {
+export function getAllIntegrations(): RegisteredIntegrationPlugin[] {
   return Array.from(integrationRegistry.values());
 }
 

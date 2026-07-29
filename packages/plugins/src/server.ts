@@ -2,121 +2,122 @@
  * Server-side registrations for the built-in integrations.
  *
  * Everything registered here is loaded on demand, which is the point: a step
- * implementation and a connection test both pull vendor SDK code, and neither
+ * implementation and a connection test both pull vendor code, and neither
  * should enter the process until something calls it. Importing "@rova/plugins"
  * on its own gets the metadata the editor renders and nothing heavier, which is
  * what keeps the browser bundle free of server code.
  *
  * A host mounting Rova on a server imports this module once, beside
  * "@rova/plugins", and skips it if it wants only its own actions.
+ *
+ * `registerStep` takes a step written with `defineStep`; `registerStepFunction`
+ * takes one that has not moved yet. Stage 6b of ADR-0002 is where the last of
+ * the second kind becomes the first.
  */
 
 import {
   registerIntegrationTest,
-  registerStepImporter,
+  registerStep,
+  registerStepFunction,
 } from "@rova/core/plugin";
 
-registerStepImporter("acuity/list-appointment-types", {
-  importer: () => import("#src/acuity/steps/list-appointment-types"),
-  stepFunction: "listAppointmentTypesStep",
-  label: "List Appointment Types",
-});
+registerStep(
+  "twilio/send-sms",
+  async () => (await import("#src/twilio/steps/send-sms")).sendSmsStep
+);
 
-registerStepImporter("acuity/list-appointments", {
-  importer: () => import("#src/acuity/steps/list-appointments"),
-  stepFunction: "listAppointmentsStep",
-  label: "List Appointments",
-});
+registerStepFunction(
+  "acuity/list-appointment-types",
+  async () =>
+    (await import("#src/acuity/steps/list-appointment-types"))
+      .listAppointmentTypesStep
+);
 
-registerStepImporter("acuity/get-appointment", {
-  importer: () => import("#src/acuity/steps/get-appointment"),
-  stepFunction: "getAppointmentStep",
-  label: "Get Appointment",
-});
+registerStepFunction(
+  "acuity/list-appointments",
+  async () =>
+    (await import("#src/acuity/steps/list-appointments")).listAppointmentsStep
+);
 
-registerStepImporter("acuity/get-availability-dates", {
-  importer: () => import("#src/acuity/steps/get-availability-dates"),
-  stepFunction: "getAvailabilityDatesStep",
-  label: "Get Availability Dates",
-});
+registerStepFunction(
+  "acuity/get-appointment",
+  async () =>
+    (await import("#src/acuity/steps/get-appointment")).getAppointmentStep
+);
 
-registerStepImporter("acuity/get-availability-times", {
-  importer: () => import("#src/acuity/steps/get-availability-times"),
-  stepFunction: "getAvailabilityTimesStep",
-  label: "Get Availability Times",
-});
+registerStepFunction(
+  "acuity/get-availability-dates",
+  async () =>
+    (await import("#src/acuity/steps/get-availability-dates"))
+      .getAvailabilityDatesStep
+);
 
-registerStepImporter("acuity/create-appointment", {
-  importer: () => import("#src/acuity/steps/create-appointment"),
-  stepFunction: "createAppointmentStep",
-  label: "Create Appointment",
-});
+registerStepFunction(
+  "acuity/get-availability-times",
+  async () =>
+    (await import("#src/acuity/steps/get-availability-times"))
+      .getAvailabilityTimesStep
+);
 
-registerStepImporter("acuity/reschedule-appointment", {
-  importer: () => import("#src/acuity/steps/reschedule-appointment"),
-  stepFunction: "rescheduleAppointmentStep",
-  label: "Reschedule Appointment",
-});
+registerStepFunction(
+  "acuity/create-appointment",
+  async () =>
+    (await import("#src/acuity/steps/create-appointment")).createAppointmentStep
+);
 
-registerStepImporter("acuity/cancel-appointment", {
-  importer: () => import("#src/acuity/steps/cancel-appointment"),
-  stepFunction: "cancelAppointmentStep",
-  label: "Cancel Appointment",
-});
+registerStepFunction(
+  "acuity/reschedule-appointment",
+  async () =>
+    (await import("#src/acuity/steps/reschedule-appointment"))
+      .rescheduleAppointmentStep
+);
 
-registerStepImporter("clerk/get-user", {
-  importer: () => import("#src/clerk/steps/get-user"),
-  stepFunction: "clerkGetUserStep",
-  label: "Get User",
-});
+registerStepFunction(
+  "acuity/cancel-appointment",
+  async () =>
+    (await import("#src/acuity/steps/cancel-appointment")).cancelAppointmentStep
+);
 
-registerStepImporter("clerk/create-user", {
-  importer: () => import("#src/clerk/steps/create-user"),
-  stepFunction: "clerkCreateUserStep",
-  label: "Create User",
-});
+registerStepFunction(
+  "clerk/get-user",
+  async () => (await import("#src/clerk/steps/get-user")).clerkGetUserStep
+);
 
-registerStepImporter("clerk/update-user", {
-  importer: () => import("#src/clerk/steps/update-user"),
-  stepFunction: "clerkUpdateUserStep",
-  label: "Update User",
-});
+registerStepFunction(
+  "clerk/create-user",
+  async () => (await import("#src/clerk/steps/create-user")).clerkCreateUserStep
+);
 
-registerStepImporter("clerk/delete-user", {
-  importer: () => import("#src/clerk/steps/delete-user"),
-  stepFunction: "clerkDeleteUserStep",
-  label: "Delete User",
-});
+registerStepFunction(
+  "clerk/update-user",
+  async () => (await import("#src/clerk/steps/update-user")).clerkUpdateUserStep
+);
 
-registerStepImporter("linear/create-ticket", {
-  importer: () => import("#src/linear/steps/create-ticket"),
-  stepFunction: "createTicketStep",
-  label: "Create Ticket",
-});
+registerStepFunction(
+  "clerk/delete-user",
+  async () => (await import("#src/clerk/steps/delete-user")).clerkDeleteUserStep
+);
 
-registerStepImporter("linear/find-issues", {
-  importer: () => import("#src/linear/steps/find-issues"),
-  stepFunction: "findIssuesStep",
-  label: "Find Issues",
-});
+registerStepFunction(
+  "linear/create-ticket",
+  async () => (await import("#src/linear/steps/create-ticket")).createTicketStep
+);
 
-registerStepImporter("resend/send-email", {
-  importer: () => import("#src/resend/steps/send-email"),
-  stepFunction: "sendEmailStep",
-  label: "Send Email",
-});
+registerStepFunction(
+  "linear/find-issues",
+  async () => (await import("#src/linear/steps/find-issues")).findIssuesStep
+);
 
-registerStepImporter("slack/send-message", {
-  importer: () => import("#src/slack/steps/send-slack-message"),
-  stepFunction: "sendSlackMessageStep",
-  label: "Send Slack Message",
-});
+registerStepFunction(
+  "resend/send-email",
+  async () => (await import("#src/resend/steps/send-email")).sendEmailStep
+);
 
-registerStepImporter("twilio/send-sms", {
-  importer: () => import("#src/twilio/steps/send-sms"),
-  stepFunction: "sendSmsStep",
-  label: "Send SMS",
-});
+registerStepFunction(
+  "slack/send-message",
+  async () =>
+    (await import("#src/slack/steps/send-slack-message")).sendSlackMessageStep
+);
 
 // Connection tests for the credentials UI. Each one reaches a vendor API, so it
 // stays behind a dynamic import until someone presses "Test connection".

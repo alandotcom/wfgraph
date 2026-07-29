@@ -10,8 +10,7 @@ import { getAppLogger } from "#src/backend/lib/logger";
 import {
   getActionLabel,
   getStepImporter,
-  loadStepFunction,
-  type ModuleStepImporter,
+  getSystemActionTypes,
 } from "#src/backend/lib/step-registry";
 import type { StepContext } from "#src/backend/lib/steps/step-handler";
 import { triggerStep } from "#src/backend/lib/steps/trigger";
@@ -70,26 +69,6 @@ export type { WorkflowStore } from "./store";
  * or a wait inside a step).
  */
 const WAIT_ACTION_TYPE = "Wait";
-
-/**
- * Built-in actions dispatched by export name, the same way a plugin step is.
- *
- * Condition and Wait are built-in too but are absent here: the engine calls
- * both directly, because it evaluates the condition expression itself and the
- * wait suspends the run through the durable runtime.
- */
-const SYSTEM_ACTIONS: Record<string, ModuleStepImporter> = {
-  "Database Query": {
-    kind: "module",
-    importer: () => import("#src/backend/lib/steps/database-query"),
-    stepFunction: "databaseQueryStep",
-  },
-  "HTTP Request": {
-    kind: "module",
-    importer: () => import("#src/backend/lib/steps/http-request"),
-    stepFunction: "httpRequestStep",
-  },
-};
 
 type ExecutionResult = {
   success: boolean;
@@ -508,24 +487,8 @@ async function executeActionStepInner(input: {
     };
   }
 
-  // Check system actions first (Database Query, HTTP Request)
-  const systemAction = SYSTEM_ACTIONS[actionType];
-  if (systemAction) {
-    const stepFunction = await loadStepFunction(systemAction);
-    if (!stepFunction) {
-      return {
-        result: {
-          success: false,
-          error: {
-            message: `Step function "${systemAction.stepFunction}" not found for action "${actionType}".`,
-          },
-        },
-      };
-    }
-    return { result: await stepFunction(stepInput) };
-  }
-
-  // Look up plugin action from the generated step registry
+  // Look up the action's implementation: a built-in, a plugin step, or a
+  // runtime action a host registered.
   const stepImporter = getStepImporter(actionType);
   if (stepImporter) {
     if (stepImporter.kind === "runtime") {
@@ -549,19 +512,8 @@ async function executeActionStepInner(input: {
       };
     }
 
-    const stepFunction = await loadStepFunction(stepImporter);
-    if (stepFunction) {
-      return { result: await stepFunction(stepInput) };
-    }
-
-    return {
-      result: {
-        success: false,
-        error: {
-          message: `Step function "${stepImporter.stepFunction}" not found in module for action "${actionType}". Check that the plugin exports the correct function name.`,
-        },
-      },
-    };
+    const stepFunction = await stepImporter.load();
+    return { result: await stepFunction(stepInput) };
   }
 
   // Fallback for unknown action types
@@ -569,7 +521,7 @@ async function executeActionStepInner(input: {
     result: {
       success: false,
       error: {
-        message: `Unknown action type: "${actionType}". This action is not registered in the plugin system. Available system actions: ${Object.keys(SYSTEM_ACTIONS).join(", ")}.`,
+        message: `Unknown action type: "${actionType}". This action is not registered in the plugin system. Available system actions: ${getSystemActionTypes().join(", ")}.`,
       },
     },
   };

@@ -1,5 +1,6 @@
 import type { IntegrationPlugin } from "@rova/shared/plugins/registry";
 import { registerIntegration } from "@rova/shared/plugins/registry";
+import { sendSmsOutput } from "#src/twilio/schemas";
 
 const twilioPlugin: IntegrationPlugin = {
   type: "twilio",
@@ -51,11 +52,7 @@ const twilioPlugin: IntegrationPlugin = {
       label: "Send SMS",
       description: "Send an SMS via Twilio",
       category: "Twilio",
-      outputFields: [
-        { path: "sid", description: "Message SID" },
-        { path: "status", description: "Delivery status" },
-        { path: "to", description: "Recipient phone number" },
-      ],
+      output: sendSmsOutput,
       configFields: [
         {
           key: "smsTo",

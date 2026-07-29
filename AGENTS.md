@@ -132,11 +132,24 @@ names it. Do not reach for it in new code.
 one ISO-string-to-`Date` conversion, as a checked `Schema.decodeTo` pair. Do not hand-roll `new Date(x)` or
 `.toISOString()` for a value crossing the wire.
 
-**Steps return `StepResult`.** `{ success: true, data }` or
-`{ success: false, error: { message } }`, defined in
-`packages/shared/src/workflow/step-result.ts`. The type enforces it, so a step that
-answers any other shape fails to compile. `outputFields` in a plugin's `index.ts` omits
-the `data.` prefix; template variables unwrap the wrapper automatically.
+**A step is written with `defineStep`.** `packages/core/src/backend/lib/steps/define-step.ts`
+takes an input schema, an output schema, and a handler returning an
+`Effect<Output, StepFailure, HttpClient>`, and owns everything around it: the config
+decode, the credential fetch, the run log rows, and the `StepResult` envelope
+(`{ success: true, data }` or `{ success: false, error: { message } }`, in
+`packages/shared/src/workflow/step-result.ts`) that the engine reads. A handler never
+writes that envelope and never touches a Promise. The steps still written as Promise
+functions are stage 6b's; they register through `registerStepFunction` rather than
+`registerStep`.
+
+**An action's output fields come from its output schema.** A plugin action declares
+`output` in its `index.ts`, and `registerIntegration` derives the editor's
+template-autocomplete paths from it (`packages/shared/src/workflow/output-fields.ts`).
+Paths omit the `data.` prefix, because the schema describes the payload rather than the
+wrapper; template variables unwrap it automatically. The schema lives in the plugin's
+`schemas.ts` so that the step and the metadata are typed against the same constant. An
+action still carrying a hand-written `outputFields` has a step stage 6b has not migrated;
+declaring both is a registration error.
 
 **Rova's own events are defined once, with a schema.**
 `packages/core/src/backend/lib/inngest/events.ts` holds the three
@@ -275,8 +288,8 @@ development, because the option takes a built bundle and development has none. `
 start` is the other arrangement and one process: the built bundle goes to `createRovaApp` as
 `client`, and Rova serves the editor, the assets, and the API itself.
 
-**Four published surfaces.** `@rova/core` is the backend, `@rova/core/plugin` the five
-names an integration package may use, `@rova/client` the editor, `@rova/plugins` the
+**Four published surfaces.** `@rova/core` is the backend, `@rova/core/plugin` the names an
+integration package may use, `@rova/client` the editor, `@rova/plugins` the
 built-in integrations. `@rova/plugins` peer-depends on `@rova/core`, because a second
 copy would mean a second database handle. `@rova/shared` stays private and is inlined
 into whichever bundle needs it.

@@ -1,39 +1,28 @@
+import { findActionById } from "@rova/shared/plugins/registry";
 import {
   getRuntimeAction,
   type RuntimeActionExecuteInput,
   type RuntimeActionResult,
 } from "@rova/shared/workflow/action-registry";
-import type { StepFunction } from "@rova/shared/workflow/step-result";
-
-/**
- * A step module as the registry receives it: whatever a step file exports.
- *
- * Typing the exports as step functions would reject every registration. Each
- * step declares a narrow input type for the config fields it needs, while
- * `StepFunction` accepts the open record the engine builds, and a function
- * parameter narrows the wrong way for that assignment to hold. The module is
- * therefore read by the one name the registration records, and
- * `loadStepFunction` below is where the value becomes a typed step.
- */
-type StepModule = Record<string, unknown>;
+import type {
+  StepFunction,
+  StepResult,
+} from "@rova/shared/workflow/step-result";
+import type { StepDefinition } from "#src/backend/lib/steps/define-step";
 
 /**
  * How the engine reaches an action's implementation.
  *
- * A plugin step is a named export of a module loaded on demand. A runtime action
- * carries its function directly. These were one shape with optional fields,
- * which meant a runtime action wore a module importer's clothes: a fake export
- * name and an importer returning `{}`. An action registered as metadata alone,
- * which is what the browser holds, then reached the module path and reported
- * that a plugin was missing an export it never had.
+ * A plugin step is loaded on demand, because a step implementation pulls vendor
+ * code that should not enter the process until something calls it. A runtime
+ * action carries its function directly. These were one shape with optional
+ * fields, which meant a runtime action wore a module importer's clothes: a fake
+ * export name and an importer returning `{}`. An action registered as metadata
+ * alone, which is what the browser holds, then reached the module path and
+ * reported that a plugin was missing an export it never had.
  */
 export type StepImporter =
-  | {
-      kind: "module";
-      importer: () => Promise<StepModule>;
-      stepFunction: string;
-      label?: string;
-    }
+  | { kind: "step"; load: () => Promise<StepFunction> }
   | {
       kind: "runtime";
       execute: (
@@ -42,41 +31,24 @@ export type StepImporter =
       label?: string;
     };
 
-/** The module half, for the loader and the built-in actions. */
-export type ModuleStepImporter = Extract<StepImporter, { kind: "module" }>;
+/**
+ * The registered steps, held in module state.
+ *
+ * Stage 7 of ADR-0002 brings the run engine into the app's runtime, and this
+ * map becomes a service it reads from. Until then the engine dispatches from
+ * outside any runtime, so the registrations have to be reachable from outside
+ * one too.
+ */
+const STEP_LOADERS: Record<string, () => Promise<StepFunction>> = {};
 
 /**
- * Resolve a registration to the step function it names.
+ * The built-in actions, which are not any plugin's.
  *
- * This is the seam where a dynamically imported export becomes a callable step,
- * and the only place in the system that claims a value honours the step
- * contract. The export name is data (it comes from `registerStepImporter`), so
- * the compiler cannot check the lookup; stating the contract here once means
- * every caller downstream works with a typed `StepResult` and none of them has
- * to inspect the returned value to find out what it got.
- *
- * Returns undefined when the module has no such export, which is a plugin whose
- * registration and exported function name disagree.
+ * Every one of them is named here and nowhere else: the label a run log gives
+ * the node, and the list an unknown action type is told about. Condition and
+ * Wait have no step below, because the engine handles both itself; it evaluates
+ * the expression, and the wait suspends the run through the durable runtime.
  */
-export async function loadStepFunction(
-  importer: ModuleStepImporter
-): Promise<StepFunction | undefined> {
-  const module = await importer.importer();
-  const exported = module[importer.stepFunction];
-
-  if (typeof exported !== "function") {
-    return undefined;
-  }
-
-  // All the module tells us is that this export is callable. That it is a step,
-  // and that it copes with the config record the engine builds, is what the
-  // registration promises; calling it here is where that promise is taken at
-  // its word, once, for every step in the system.
-  return (input) => exported(input);
-}
-
-const STEP_IMPORTERS: Record<string, ModuleStepImporter> = {};
-
 const SYSTEM_ACTION_LABELS: Record<string, string> = {
   Condition: "Condition",
   "Database Query": "Database Query",
@@ -84,10 +56,30 @@ const SYSTEM_ACTION_LABELS: Record<string, string> = {
   Wait: "Wait",
 };
 
+// The two built-ins that do have a step, registered the way a plugin's steps
+// are. They used to be registered from the engine, which made the engine's
+// import order load-bearing for whether its own actions existed. The loaders
+// stay lazy, so naming them here costs nothing at import time.
+registerStepFunction(
+  "Database Query",
+  async () =>
+    (await import("#src/backend/lib/steps/database-query")).databaseQueryStep
+);
+
+registerStepFunction(
+  "HTTP Request",
+  async () =>
+    (await import("#src/backend/lib/steps/http-request")).httpRequestStep
+);
+
+/** The built-in action types, in the words the unknown-action message uses. */
+export function getSystemActionTypes(): string[] {
+  return Object.keys(SYSTEM_ACTION_LABELS);
+}
+
 export function getStepImporter(actionType: string): StepImporter | undefined {
-  const importer = STEP_IMPORTERS[actionType];
-  if (importer) {
-    return importer;
+  if (Object.hasOwn(STEP_LOADERS, actionType)) {
+    return { kind: "step", load: STEP_LOADERS[actionType] };
   }
 
   const runtimeAction = getRuntimeAction(actionType);
@@ -105,6 +97,14 @@ export function getStepImporter(actionType: string): StepImporter | undefined {
   };
 }
 
+/**
+ * The name a run log gives an action node that has no label of its own.
+ *
+ * A plugin's label lives in the action metadata the editor renders, which the
+ * server holds too, so that is where this reads it: a second copy beside the
+ * step registration could only disagree with the first, and nothing would
+ * notice which one a reader got.
+ */
 export function getActionLabel(actionType: string): string | undefined {
   if (SYSTEM_ACTION_LABELS[actionType]) {
     return SYSTEM_ACTION_LABELS[actionType];
@@ -115,12 +115,53 @@ export function getActionLabel(actionType: string): string | undefined {
     return runtimeAction.label;
   }
 
-  return STEP_IMPORTERS[actionType]?.label;
+  return findActionById(actionType)?.label;
 }
 
-export function registerStepImporter(
-  actionType: string,
-  importer: Omit<ModuleStepImporter, "kind">
+/**
+ * Register a step under the action id it implements.
+ *
+ * The id is checked against the one the step declares, so a registration and
+ * its step cannot name different actions. What the loader resolves to is a
+ * value rather than a name to look up, so a renamed export is a compile error
+ * rather than an action that reports itself missing at run time.
+ *
+ * `NoInfer` is what makes the first of those true. Without it `Id` is inferred
+ * from both arguments at once, so a mismatched pair widens to the union of the
+ * two ids and type-checks, which is the opposite of what this signature is for.
+ * The key is the only thing that names `Id`; the loader is then checked against
+ * it.
+ */
+export function registerStep<Id extends string>(
+  actionId: Id,
+  load: () => Promise<StepDefinition<NoInfer<Id>>>
 ): void {
-  STEP_IMPORTERS[actionType] = { kind: "module", ...importer };
+  STEP_LOADERS[actionId] = async () => (await load()).run;
+}
+
+/**
+ * Register a step that is still a Promise function.
+ *
+ * The un-migrated half of stage 6 of ADR-0002. A step written this way declares
+ * the config fields it needs as its parameter type, while the engine builds the
+ * open record it actually gets, and a function parameter narrows the wrong way
+ * for that assignment to hold. So this is where the registration's promise --
+ * that the step copes with the record the engine builds -- is taken at its
+ * word, once, for every step still written this way. It used to be taken at its
+ * word for all of them, in `loadStepFunction`, along with the claim that a
+ * module exported a function under a name recorded as data.
+ *
+ * Stage 6b takes the last of these to `defineStep`, where the schema makes the
+ * same promise checkable, and this function goes with them.
+ */
+export function registerStepFunction(
+  actionId: string,
+  load: () => Promise<(input: never) => StepResult | Promise<StepResult>>
+): void {
+  STEP_LOADERS[actionId] = async () => {
+    const step = await load();
+    return (input) =>
+      // eslint-disable-next-line typescript/no-unsafe-type-assertion -- the un-migrated half of stage 6; see above
+      step(input as never);
+  };
 }

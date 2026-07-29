@@ -1,50 +1,20 @@
 import {
-  fetchCredentials,
-  type StepInput,
-  withStepLogging,
+  defineStep,
+  StepFailure,
+  type StepRunContext,
 } from "@rova/core/plugin";
+import { Effect } from "effect";
 import { createTwilioMessage, describeTwilioFailure } from "#src/twilio/client";
 import type { TwilioCredentials } from "#src/twilio/credentials";
-
-type SendSmsResult =
-  | {
-      success: true;
-      data: {
-        sid: string;
-        status: string;
-        to: string;
-        from?: string;
-        messagingServiceSid?: string;
-        reasonCode?: string;
-      };
-    }
-  | { success: false; error: { message: string } };
-
-export type SendSmsCoreInput = {
-  smsTo: string;
-  smsBody: string;
-  smsFrom?: string;
-  smsMessagingServiceSid?: string;
-  smsStatusCallback?: string;
-  smsMediaUrls?: string;
-};
-
-export type SendSmsInput = StepInput &
-  SendSmsCoreInput & {
-    integrationId?: string;
-    testBehavior?: string;
-    testPhoneTo?: string;
-  };
+import { sendSmsInput, sendSmsOutput } from "#src/twilio/schemas";
 
 type TwilioTestBehavior = "log_only" | "send_to_test_phone";
 const E164_PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
 
-function resolveTwilioTestBehavior(value: unknown): TwilioTestBehavior {
+function resolveTwilioTestBehavior(
+  value: string | undefined
+): TwilioTestBehavior {
   return value === "send_to_test_phone" ? "send_to_test_phone" : "log_only";
-}
-
-function isValidTestPhoneNumber(value: string): boolean {
-  return E164_PHONE_PATTERN.test(value);
 }
 
 function parseMediaUrls(value: string | undefined): string[] {
@@ -58,32 +28,65 @@ function parseMediaUrls(value: string | undefined): string[] {
     .filter((entry) => entry.length > 0);
 }
 
-function validateSendSmsInput(input: SendSmsCoreInput): string | null {
-  if (!(input.smsTo && input.smsBody)) {
-    return "smsTo and smsBody are required";
+/**
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies: what this step decides is which of five things to send, and every
+ * one of those decisions is here.
+ */
+export const sendSmsHandler = Effect.fn(function* (
+  input: typeof sendSmsInput.Type,
+  context: StepRunContext
+) {
+  const executionId = context.executionId ?? "no_execution";
+  const testBehavior = resolveTwilioTestBehavior(input.testBehavior);
+
+  // A test run either sends nothing at all or sends to one number the user
+  // nominated. Both answers are a success carrying the reason, so the run
+  // shows what happened rather than an error the user has to interpret.
+  if (context.runMode === "test" && testBehavior === "log_only") {
+    return {
+      sid: `twilio:test-log-only:${executionId}`,
+      status: "queued",
+      to: input.smsTo,
+      reasonCode: "test_mode_log_only",
+    };
   }
 
-  return null;
-}
+  const testPhone = input.testPhoneTo?.trim() ?? "";
+  const routeToTestPhone =
+    context.runMode === "test" && testBehavior === "send_to_test_phone";
 
-/**
- * Core logic - portable between app and export
- */
-async function stepHandler(
-  input: SendSmsCoreInput,
-  credentials: TwilioCredentials
-): Promise<SendSmsResult> {
+  if (routeToTestPhone && testPhone.length === 0) {
+    return {
+      sid: `twilio:test-log-fallback:${executionId}`,
+      status: "queued",
+      to: input.smsTo,
+      reasonCode: "test_mode_log_fallback_missing_test_phone",
+    };
+  }
+
+  if (routeToTestPhone && !E164_PHONE_PATTERN.test(testPhone)) {
+    return {
+      sid: `twilio:test-log-fallback:${executionId}`,
+      status: "queued",
+      to: input.smsTo,
+      reasonCode: "test_mode_log_fallback_invalid_test_phone",
+    };
+  }
+
+  // The plugin's own credential vocabulary, so a key it never declares is a
+  // compile error here rather than an undefined at run time.
+  const credentials: TwilioCredentials = yield* context.credentials;
   const accountSid = credentials.TWILIO_ACCOUNT_SID;
   const authToken = credentials.TWILIO_AUTH_TOKEN;
 
   if (!(accountSid && authToken)) {
-    return {
-      success: false,
-      error: {
+    return yield* Effect.fail(
+      new StepFailure({
         message:
           "TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are required. Add them in Project Integrations.",
-      },
-    };
+      })
+    );
   }
 
   const senderFrom = input.smsFrom || credentials.TWILIO_FROM_NUMBER;
@@ -91,118 +94,55 @@ async function stepHandler(
     input.smsMessagingServiceSid || credentials.TWILIO_MESSAGING_SERVICE_SID;
 
   if (!(senderFrom || senderMessagingServiceSid)) {
-    return {
-      success: false,
-      error: {
+    return yield* Effect.fail(
+      new StepFailure({
         message:
           "Either From number or Messaging Service SID is required. Configure one in the action or integration settings.",
-      },
-    };
+      })
+    );
   }
 
-  const validationError = validateSendSmsInput(input);
-  if (validationError) {
-    return {
-      success: false,
-      error: {
-        message: validationError,
-      },
-    };
+  const recipient = routeToTestPhone ? testPhone : input.smsTo;
+
+  if (!(recipient && input.smsBody)) {
+    return yield* Effect.fail(
+      new StepFailure({ message: "smsTo and smsBody are required" })
+    );
   }
 
   const mediaUrls = parseMediaUrls(input.smsMediaUrls);
 
   // Twilio's own parameter names, so this reads like its documentation. The
-  // client drops the ones left undefined and expands MediaUrl into the repeated
-  // key the form encoding uses for a list.
-  const result = await createTwilioMessage(
+  // client drops the ones left undefined and expands MediaUrl into the
+  // repeated key the form encoding uses for a list.
+  const message = yield* createTwilioMessage(
     { accountSid, authToken },
     {
-      To: input.smsTo,
+      To: recipient,
       Body: input.smsBody,
       From: senderFrom || undefined,
       MessagingServiceSid: senderMessagingServiceSid || undefined,
       StatusCallback: input.smsStatusCallback || undefined,
       MediaUrl: mediaUrls.length > 0 ? mediaUrls : undefined,
     }
+  ).pipe(
+    Effect.mapError(
+      (error) => new StepFailure({ message: describeTwilioFailure(error) })
+    )
   );
 
-  if (!result.ok) {
-    return {
-      success: false,
-      error: { message: describeTwilioFailure(result.failure) },
-    };
-  }
-
   return {
-    success: true,
-    data: {
-      sid: result.data.sid,
-      status: result.data.status,
-      to: result.data.to,
-      from: result.data.from ?? undefined,
-      messagingServiceSid: result.data.messaging_service_sid ?? undefined,
-    },
+    sid: message.sid,
+    status: message.status,
+    to: message.to,
+    from: message.from ?? undefined,
+    messagingServiceSid: message.messaging_service_sid ?? undefined,
   };
-}
+});
 
-/**
- * App entry point - fetches credentials and wraps with logging
- */
-export async function sendSmsStep(input: SendSmsInput): Promise<SendSmsResult> {
-  const runMode = input._context?.runMode ?? "live";
-  const testBehavior = resolveTwilioTestBehavior(input.testBehavior);
-  const executionId = input._context?.executionId ?? "no_execution";
-
-  if (runMode === "test" && testBehavior === "log_only") {
-    return withStepLogging(input, async () => ({
-      success: true,
-      data: {
-        sid: `twilio:test-log-only:${executionId}`,
-        status: "queued",
-        to: input.smsTo,
-        reasonCode: "test_mode_log_only",
-      },
-    }));
-  }
-
-  const testPhoneRaw =
-    typeof input.testPhoneTo === "string" ? input.testPhoneTo.trim() : "";
-  const shouldRouteToTestPhone =
-    runMode === "test" && testBehavior === "send_to_test_phone";
-
-  if (shouldRouteToTestPhone && testPhoneRaw.length === 0) {
-    return withStepLogging(input, async () => ({
-      success: true,
-      data: {
-        sid: `twilio:test-log-fallback:${executionId}`,
-        status: "queued",
-        to: input.smsTo,
-        reasonCode: "test_mode_log_fallback_missing_test_phone",
-      },
-    }));
-  }
-
-  if (shouldRouteToTestPhone && !isValidTestPhoneNumber(testPhoneRaw)) {
-    return withStepLogging(input, async () => ({
-      success: true,
-      data: {
-        sid: `twilio:test-log-fallback:${executionId}`,
-        status: "queued",
-        to: input.smsTo,
-        reasonCode: "test_mode_log_fallback_invalid_test_phone",
-      },
-    }));
-  }
-
-  const credentials = input.integrationId
-    ? await fetchCredentials(input.integrationId)
-    : {};
-
-  const coreInput: SendSmsCoreInput = {
-    ...input,
-    smsTo: shouldRouteToTestPhone ? testPhoneRaw : input.smsTo,
-  };
-
-  return withStepLogging(input, () => stepHandler(coreInput, credentials));
-}
+export const sendSmsStep = defineStep({
+  id: "twilio/send-sms",
+  input: sendSmsInput,
+  output: sendSmsOutput,
+  handler: sendSmsHandler,
+});

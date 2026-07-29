@@ -1,5 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTwilioMessage, fetchTwilioAccount } from "#src/twilio/client";
+import { VendorTransport } from "@rova/core/plugin";
+import { describe, expect, it } from "@effect/vitest";
+import { Effect } from "effect";
+import { afterEach, beforeEach } from "vitest";
+import {
+  createTwilioMessage,
+  describeTwilioFailure,
+  fetchTwilioAccount,
+  readTwilioError,
+} from "#src/twilio/client";
 
 /**
  * What goes on the wire, now that this plugin builds the request itself instead
@@ -28,6 +36,11 @@ function stubFetch(
   }) as typeof fetch;
 }
 
+/** A call that succeeds fails the flip, which is what makes the test say so. */
+const failure = Effect.flip;
+
+const withTransport = Effect.provide(VendorTransport);
+
 beforeEach(() => {
   requests = [];
 });
@@ -37,147 +50,182 @@ afterEach(() => {
 });
 
 describe("createTwilioMessage", () => {
-  it("form-encodes the parameters and authenticates with basic auth", async () => {
-    stubFetch(() => Response.json(sentMessage));
+  it.effect(
+    "form-encodes the parameters and authenticates with basic auth",
+    () =>
+      Effect.gen(function* () {
+        stubFetch(() => Response.json(sentMessage));
 
-    const result = await createTwilioMessage(credentials, {
-      To: "+15550001111",
-      Body: "Hello",
-      From: "+15551234567",
-    });
+        const message = yield* createTwilioMessage(credentials, {
+          To: "+15550001111",
+          Body: "Hello",
+          From: "+15551234567",
+        });
 
-    expect(result).toEqual({ ok: true, data: sentMessage });
+        expect(message).toEqual(sentMessage);
 
-    const request = requests[0];
-    expect(request?.url).toBe(
-      "https://api.twilio.com/2010-04-01/Accounts/AC123/Messages.json"
-    );
-    expect(request?.method).toBe("POST");
-    expect(request?.headers.get("authorization")).toBe(
-      `Basic ${Buffer.from("AC123:auth-token").toString("base64")}`
-    );
-    expect(request?.headers.get("content-type")).toBe(
-      "application/x-www-form-urlencoded"
-    );
+        const request = requests[0];
+        expect(request?.url).toBe(
+          "https://api.twilio.com/2010-04-01/Accounts/AC123/Messages.json"
+        );
+        expect(request?.method).toBe("POST");
+        expect(request?.headers.get("authorization")).toBe(
+          `Basic ${Buffer.from("AC123:auth-token").toString("base64")}`
+        );
+        expect(request?.headers.get("content-type")).toBe(
+          "application/x-www-form-urlencoded"
+        );
 
-    const body = new URLSearchParams(await (request as Request).text());
-    expect(Object.fromEntries(body)).toEqual({
-      To: "+15550001111",
-      Body: "Hello",
-      From: "+15551234567",
-    });
-  });
+        const body = new URLSearchParams(yield* readBody());
+        expect(Object.fromEntries(body)).toEqual({
+          To: "+15550001111",
+          Body: "Hello",
+          From: "+15551234567",
+        });
+      }).pipe(withTransport)
+  );
 
-  it("leaves out the parameters the caller did not set", async () => {
-    stubFetch(() => Response.json(sentMessage));
+  it.effect("leaves out the parameters the caller did not set", () =>
+    Effect.gen(function* () {
+      stubFetch(() => Response.json(sentMessage));
 
-    await createTwilioMessage(credentials, {
-      To: "+15550001111",
-      Body: "Hello",
-      From: undefined,
-      MessagingServiceSid: "MG1",
-    });
+      yield* createTwilioMessage(credentials, {
+        To: "+15550001111",
+        Body: "Hello",
+        From: undefined,
+        MessagingServiceSid: "MG1",
+      });
 
-    const body = new URLSearchParams(await (requests[0] as Request).text());
-    expect(body.has("From")).toBe(false);
-    expect(body.get("MessagingServiceSid")).toBe("MG1");
-  });
+      const body = new URLSearchParams(yield* readBody());
+      expect(body.has("From")).toBe(false);
+      expect(body.get("MessagingServiceSid")).toBe("MG1");
+    }).pipe(withTransport)
+  );
 
   // The form encoding carries a list by repeating the key.
-  it("repeats MediaUrl once per URL", async () => {
-    stubFetch(() => Response.json(sentMessage));
+  it.effect("repeats MediaUrl once per URL", () =>
+    Effect.gen(function* () {
+      stubFetch(() => Response.json(sentMessage));
 
-    await createTwilioMessage(credentials, {
-      To: "+15550001111",
-      Body: "Hi",
-      MediaUrl: ["https://example.com/a.png", "https://example.com/b.png"],
-    });
+      yield* createTwilioMessage(credentials, {
+        To: "+15550001111",
+        Body: "Hi",
+        MediaUrl: ["https://example.com/a.png", "https://example.com/b.png"],
+      });
 
-    const body = new URLSearchParams(await (requests[0] as Request).text());
-    expect(body.getAll("MediaUrl")).toEqual([
-      "https://example.com/a.png",
-      "https://example.com/b.png",
-    ]);
-  });
+      const body = new URLSearchParams(yield* readBody());
+      expect(body.getAll("MediaUrl")).toEqual([
+        "https://example.com/a.png",
+        "https://example.com/b.png",
+      ]);
+    }).pipe(withTransport)
+  );
 
-  it("reads Twilio's error body back", async () => {
-    stubFetch(() =>
-      Response.json(
-        {
-          code: 21_211,
-          message: "Invalid parameter: To",
-          more_info: "https://www.twilio.com/docs/errors/21211",
-          status: 400,
-        },
-        { status: 400 }
-      )
-    );
+  it.effect("reads Twilio's error body back", () =>
+    Effect.gen(function* () {
+      stubFetch(() =>
+        Response.json(
+          {
+            code: 21_211,
+            message: "Invalid parameter: To",
+            more_info: "https://www.twilio.com/docs/errors/21211",
+            status: 400,
+          },
+          { status: 400 }
+        )
+      );
 
-    expect(
-      await createTwilioMessage(credentials, { To: "nope", Body: "Hi" })
-    ).toEqual({
-      ok: false,
-      failure: {
-        kind: "rejected",
-        status: 400,
+      const error = yield* failure(
+        createTwilioMessage(credentials, { To: "nope", Body: "Hi" })
+      );
+
+      expect(error._tag).toBe("VendorRejected");
+      expect(describeTwilioFailure(error)).toBe("Invalid parameter: To");
+
+      const body =
+        error._tag === "VendorRejected"
+          ? readTwilioError(error.payload)
+          : undefined;
+      expect(body).toEqual({
         code: 21_211,
         message: "Invalid parameter: To",
-        moreInfo: "https://www.twilio.com/docs/errors/21211",
-      },
-    });
-  });
+        more_info: "https://www.twilio.com/docs/errors/21211",
+      });
+    }).pipe(withTransport)
+  );
 
-  it("falls back to the HTTP status when the body is not Twilio's shape", async () => {
-    stubFetch(() => new Response("<html>gateway</html>", { status: 502 }));
+  it.effect(
+    "falls back to the HTTP status when the body is not Twilio's shape",
+    () =>
+      Effect.gen(function* () {
+        stubFetch(() => new Response("<html>gateway</html>", { status: 502 }));
 
-    expect(
-      await createTwilioMessage(credentials, { To: "+1555", Body: "Hi" })
-    ).toEqual({
-      ok: false,
-      failure: {
-        kind: "rejected",
-        status: 502,
-        message: "HTTP 502",
-        code: undefined,
-        moreInfo: undefined,
-      },
-    });
-  });
+        const error = yield* failure(
+          createTwilioMessage(credentials, { To: "+1555", Body: "Hi" })
+        );
+
+        expect(error._tag).toBe("VendorRejected");
+        expect(describeTwilioFailure(error)).toBe("HTTP 502");
+      }).pipe(withTransport)
+  );
 
   // Reporting success on a body we could not read would hand the run an empty
   // message SID and call it sent.
-  it("refuses a 2xx that is not a Message resource", async () => {
-    stubFetch(() => Response.json({ unexpected: true }));
+  it.effect("refuses a 2xx that is not a Message resource", () =>
+    Effect.gen(function* () {
+      stubFetch(() => Response.json({ unexpected: true }));
 
-    expect(
-      await createTwilioMessage(credentials, { To: "+1555", Body: "Hi" })
-    ).toEqual({
-      ok: false,
-      failure: { kind: "unreadable", status: 200 },
-    });
-  });
+      const error = yield* failure(
+        createTwilioMessage(credentials, { To: "+1555", Body: "Hi" })
+      );
+
+      expect(error._tag).toBe("VendorUnreadable");
+      expect(describeTwilioFailure(error)).toBe(
+        "Twilio answered 200 with an unrecognized body"
+      );
+    }).pipe(withTransport)
+  );
 });
 
 describe("fetchTwilioAccount", () => {
-  it("reads the account back without a body", async () => {
-    stubFetch(() => Response.json({ sid: "AC123", status: "active" }));
+  it.effect("reads the account back without a body", () =>
+    Effect.gen(function* () {
+      stubFetch(() => Response.json({ sid: "AC123", status: "active" }));
 
-    await fetchTwilioAccount(credentials);
+      yield* fetchTwilioAccount(credentials);
 
-    const request = requests[0];
-    expect(request?.url).toBe(
-      "https://api.twilio.com/2010-04-01/Accounts/AC123.json"
-    );
-    expect(request?.method).toBe("GET");
-    expect(request?.headers.get("content-type")).toBeNull();
-  });
+      const request = requests[0];
+      expect(request?.url).toBe(
+        "https://api.twilio.com/2010-04-01/Accounts/AC123.json"
+      );
+      expect(request?.method).toBe("GET");
+      expect(request?.headers.get("content-type")).toBeNull();
+    }).pipe(withTransport)
+  );
 
-  it("reports an unreachable Twilio with no status at all", async () => {
-    stubFetch(() => Promise.reject(new Error("socket hang up")));
+  // On the live clock, because reading the account is a GET and a GET that
+  // never arrives is retried: under the test clock the backoff between attempts
+  // would never elapse. What that schedule does is vendor-http.test.ts's
+  // subject; here it is just time the call takes.
+  it.live("reports an unreachable Twilio with no status at all", () =>
+    Effect.gen(function* () {
+      stubFetch(() => Promise.reject(new Error("socket hang up")));
 
-    expect(await fetchTwilioAccount(credentials)).toEqual({
-      ok: false,
-      failure: { kind: "unreachable", message: "socket hang up" },
-    });
-  });
+      const error = yield* failure(fetchTwilioAccount(credentials));
+
+      expect(error._tag).toBe("VendorUnreachable");
+      expect(describeTwilioFailure(error)).toBe("socket hang up");
+    }).pipe(withTransport)
+  );
 });
+
+/** The body of the request that was sent, as text. */
+function readBody(): Effect.Effect<string> {
+  return Effect.promise(() => {
+    const request = requests[0];
+    if (!request) {
+      throw new Error("no request was sent");
+    }
+    return request.text();
+  });
+}

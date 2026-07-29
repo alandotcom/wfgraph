@@ -10,7 +10,7 @@ When creating or modifying a plugin, update these files manually:
 
 1. `plugins/index.ts` - add/remove plugin import
 2. `shared/types/integration.ts` - update `IntegrationType` union
-3. `backend/lib/step-registry.ts` - add/remove action step importers and labels
+3. `plugins/server.ts` - add/remove the step and connection-test registrations
 4. `client/lib/output-display-configs.ts` - update if action has image/video/url output config
 
 ## Plugin Architecture
@@ -20,6 +20,7 @@ Each plugin lives in `plugins/[plugin-name]/` with this structure:
 ```
 plugins/[plugin-name]/
   index.ts          # Plugin definition (actions, form fields, metadata)
+  schemas.ts        # What each action takes and returns, as Effect schemas
   credentials.ts    # Credential type definition
   client.ts         # The vendor's HTTP API, over fetch
   client.test.ts    # What the client puts on the wire
@@ -28,6 +29,12 @@ plugins/[plugin-name]/
   steps/
     [action].ts     # Server-side step functions (one per action)
 ```
+
+`schemas.ts` is a separate file because both ends need it and only one of them is
+server code: `index.ts` is metadata the editor loads into the browser and derives
+its autocomplete fields from, while `steps/[action].ts` is typed against the same
+two constants. A plugin whose steps have not moved to `defineStep` yet has no
+`schemas.ts`; twilio is the one to copy.
 
 **Call vendors through `vendor-http.ts`, not their SDK.** `callVendor` takes a
 request spec and answers an `Effect` holding the decoded body, over Effect's own
@@ -38,10 +45,11 @@ no, carrying its own error body), and `VendorUnreadable` (a success status whose
 body is not the documented shape).
 
 A `client.ts` is the adapter above that: the auth header, the endpoints, the
-vendor's error-envelope schema, and a function turning a `VendorError` into the
-`{ ok, failure }` shape its steps still read. `runVendorCall` is the Promise seam
-that runs the effect and provides the transport; it and the per-vendor result
-shapes go away at stage 6 of ADR-0002, when a step handler becomes an Effect.
+vendor's error-envelope schema, and a function saying what one of its three
+failures means in words a person reads. Its calls answer an `Effect`, which a
+step yields directly. `runVendorCall` is the Promise seam for the callers that
+are not effects: a connection test, which the credentials UI calls, and the steps
+stage 6b has still to migrate. Twilio's client is the one to copy.
 
 The retry policy is stated once, in the comment above `RETRY_ATTEMPTS`. Two
 retries with jittered exponential backoff from 500ms, a `Retry-After` up to ten
@@ -109,6 +117,9 @@ const myServicePlugin: IntegrationPlugin = {
       label: "Do Something",
       description: "Description of what this action does",
       category: "My Service",
+      // What the step returns. The editor's template autocomplete is derived
+      // from it at registration, so there is no field list to keep in step.
+      output: doSomethingOutput,
       configFields: [
         {
           key: "inputField",
@@ -138,136 +149,201 @@ export type MyServiceCredentials = {
 };
 ```
 
-### 3. Step Function (steps/[action].ts)
+### 3. Schemas (schemas.ts)
 
-Step functions follow a two-layer pattern:
-
-```typescript
-import {
-  fetchCredentials,
-  type StepInput,
-  withStepLogging,
-} from "@rova/core/plugin";
-import type { MyServiceCredentials } from "../credentials";
-
-// Result type - use discriminated union
-type DoSomethingResult =
-  { success: true; id: string } | { success: false; error: string };
-
-// Core input - fields from configFields
-export type DoSomethingCoreInput = {
-  inputField: string;
-  optionalField?: string;
-};
-
-// Full input - includes integrationId and step context
-export type DoSomethingInput = StepInput &
-  DoSomethingCoreInput & {
-    integrationId?: string;
-  };
-
-/**
- * Core logic - receives credentials as parameter
- * This separation keeps integration handling outside the API call logic
- */
-async function stepHandler(
-  input: DoSomethingCoreInput,
-  credentials: MyServiceCredentials
-): Promise<DoSomethingResult> {
-  const apiKey = credentials.MY_SERVICE_API_KEY;
-
-  if (!apiKey) {
-    return {
-      success: false,
-      error:
-        "MY_SERVICE_API_KEY is not configured. Please add it in Project Integrations.",
-    };
-  }
-
-  // The HTTP call lives in the plugin's own client.ts, built on requestVendor.
-  // Steps stay about what to send and what the answer means.
-  const result = await createMyServiceItem(apiKey, { field: input.inputField });
-
-  if (!result.ok) {
-    return {
-      success: false,
-      error: `Failed: ${describeMyServiceFailure(result.failure)}`,
-    };
-  }
-
-  return { success: true, id: result.data.id };
-}
-
-/**
- * App entry point - fetches credentials and wraps with logging
- */
-export async function doSomethingStep(
-  input: DoSomethingInput
-): Promise<DoSomethingResult> {
-  const credentials = input.integrationId
-    ? await fetchCredentials(input.integrationId)
-    : {};
-
-  return withStepLogging(input, () => stepHandler(input, credentials));
-}
-```
-
-The step file exports the function and nothing else. What ties the action ID to
-that export lives in `packages/plugins/src/server.ts`, which the server imports
-for its side effects. That file also registers the connection test, and both
-registrations are lazy on purpose: a step implementation and a connection test
-each reach a vendor over the network, and neither should enter the process until
-something calls it.
+What the action takes and what it gives back. Both are plain Effect schemas, and
+both are imported twice: `index.ts` reads the output one for the editor's
+autocomplete, the step is typed against both.
 
 ```typescript
-registerStepImporter("my-service/do-something", {
-  importer: () => import("#src/my-service/steps/do-something"),
-  stepFunction: "doSomethingStep",
-  label: "Do Something",
+import { Schema } from "effect";
+
+export const doSomethingInput = Schema.Struct({
+  inputField: Schema.String,
+  // `optional`, not `optionalKey`. The engine resolves a node's templates into
+  // every config key the action declares, so a field the user left blank
+  // arrives as a key holding `undefined` rather than as no key at all, and
+  // exact-optional semantics would refuse the config a real run builds.
+  optionalField: Schema.optional(Schema.String),
+});
+
+export const doSomethingOutput = Schema.Struct({
+  // The annotation is the field's description in the editor's autocomplete. It
+  // goes on the base type before any `check`, or the check owns it and nests it
+  // where the field reader cannot see it.
+  id: Schema.String.annotate({ description: "Item ID" }),
+  // `optional` again, from the other side: a handler that answers
+  // `createdAt: undefined` on one of its paths is describing a key that is
+  // present and empty, which is what this says and `optionalKey` does not.
+  createdAt: Schema.optional(
+    Schema.String.annotate({ description: "When it was created" })
+  ),
 });
 ```
 
-### 4. Test Function (test.ts)
+The output schema describes JSON. A step result is memoized by Inngest between
+steps, so a `Date`, a `Map`, or a `Set` in it would not survive the round trip.
 
-Validates credentials when users click "Test Connection":
+**Registration reads the output schema and refuses one it cannot use.** The root
+is a `Schema.Struct`, since a downstream node addresses a payload by named path
+and an array or a union of objects has no path to offer. Every field carries a
+`description` annotation, because that annotation is what the editor shows beside
+the path and the type name it would otherwise fall back to says nothing. A field
+whose JSON Schema the reader cannot use drops out of the derived list, which the
+count catches: `Schema.Number` on its own describes itself as a number or one of
+the strings `"Infinity"`, `"-Infinity"` and `"NaN"`, so a numeric field is
+`Schema.Number.annotate({ ... }).check(Schema.isFinite())`. Each of these throws
+from `registerIntegration`, naming the action, when the plugin's `index.ts` is
+imported.
+
+**What the output schema is checked against, and what it is not.** The handler's
+return type comes from it, so a payload that drops a field or renames one fails
+to compile. Optionality is not part of that check: this repo leaves
+`exactOptionalPropertyTypes` off, so a handler answering `field: undefined`
+satisfies an `optionalKey` the same as an `optional`, and only the schema says
+which one is true. Nor is the schema enforced at run time. `defineStep` decodes
+the input and returns the handler's value as it stands, so a vendor field the
+schema calls a string and the handler passes through as a number reaches the run
+log unchallenged. The client is where a vendor's answer is decoded, and that is
+the check that catches it.
+
+### 4. Step Function (steps/[action].ts)
+
+A step is a `defineStep` over those two schemas and a handler that gets from one
+to the other. The handler is the whole file: `defineStep` owns the config decode,
+the credential fetch, the run log, and the result envelope.
+
+```typescript
+import {
+  defineStep,
+  StepFailure,
+  type StepRunContext,
+} from "@rova/core/plugin";
+import { Effect } from "effect";
+import {
+  createMyServiceItem,
+  describeMyServiceFailure,
+} from "#src/my-service/client";
+import type { MyServiceCredentials } from "#src/my-service/credentials";
+import { doSomethingInput, doSomethingOutput } from "#src/my-service/schemas";
+
+/**
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies. Inline it when there is nothing to decide.
+ */
+export const doSomethingHandler = Effect.fn(function* (
+  input: typeof doSomethingInput.Type,
+  context: StepRunContext
+) {
+  // Credentials arrive as an effect, so a step that decides it has nothing to
+  // do never reads the integration's secrets. Yielding it twice fetches once.
+  const credentials: MyServiceCredentials = yield* context.credentials;
+  const apiKey = credentials.MY_SERVICE_API_KEY;
+
+  if (!apiKey) {
+    return yield* Effect.fail(
+      new StepFailure({
+        message:
+          "MY_SERVICE_API_KEY is not configured. Please add it in Project Integrations.",
+      })
+    );
+  }
+
+  // The HTTP call lives in the plugin's own client.ts, built on callVendor.
+  // Steps stay about what to send and what the answer means.
+  const item = yield* createMyServiceItem(apiKey, {
+    field: input.inputField,
+  }).pipe(
+    Effect.mapError(
+      (error) =>
+        new StepFailure({
+          message: `Failed: ${describeMyServiceFailure(error)}`,
+        })
+    )
+  );
+
+  return { id: item.id };
+});
+
+export const doSomethingStep = defineStep({
+  id: "my-service/do-something",
+  input: doSomethingInput,
+  output: doSomethingOutput,
+  handler: doSomethingHandler,
+});
+```
+
+**A handler asks for `HttpClient.HttpClient` and nothing else.** `StepHandler`'s
+requirements channel names that one service, which is exactly what `defineStep`
+provides, so a handler that yields an effect wanting anything more fails to
+compile rather than failing at run time inside a workflow. That is the intended
+answer. A step that genuinely needs another service is a conversation about what
+belongs in a step's environment, held once and settled in `define-step.ts`, not a
+type parameter widened at the call site.
+
+What ties the action id to that step lives in `packages/plugins/src/server.ts`,
+which the server imports for its side effects. That file also registers the
+connection test, and both registrations are lazy on purpose: a step
+implementation and a connection test each reach a vendor over the network, and
+neither should enter the process until something calls it. The id is checked
+against the one the step declares, so the two cannot name different actions, and
+the label comes from the action metadata rather than being repeated here.
+
+```typescript
+registerStep(
+  "my-service/do-something",
+  async () =>
+    (await import("#src/my-service/steps/do-something")).doSomethingStep
+);
+```
+
+A step still written as a Promise function registers through
+`registerStepFunction` instead. Every one of those is stage 6b of ADR-0002's
+work; new steps use `defineStep`.
+
+Test the handler, not the step: it is a function of `(input, context)` to an
+`Effect`, so a case supplies the context it wants and runs it. Twilio's
+`steps/send-sms.test.ts` is the pattern -- the credentials are an
+`Effect.sync` that counts its reads, and the vendor client is the stubbed seam.
+What `defineStep` itself does around a handler is covered once, in
+`packages/core/src/backend/lib/steps/define-step.test.ts`.
+
+### 5. Test Function (test.ts)
+
+Validates credentials when users click "Test Connection". This one is a Promise
+all the way out, because that is the shape the credentials UI calls it with, so
+it is where `runVendorCall` enters the runtime and provides the transport.
 
 ```typescript
 export async function testMyService(credentials: Record<string, string>) {
-  try {
-    const apiKey = credentials.MY_SERVICE_API_KEY;
+  const apiKey = credentials.MY_SERVICE_API_KEY;
 
-    if (!apiKey) {
-      return { success: false, error: "MY_SERVICE_API_KEY is required" };
-    }
+  if (!apiKey) {
+    return { success: false, error: "MY_SERVICE_API_KEY is required" };
+  }
 
-    // Option 1: Format validation (if API keys have known format)
-    if (!apiKey.startsWith("sk_")) {
-      return {
-        success: false,
-        error: "Invalid API key format. Keys should start with 'sk_'",
-      };
-    }
-
-    // Option 2: Make a lightweight read-only call through the plugin's client
-    const result = await fetchMyServiceIdentity(apiKey);
-    if (!result.ok) {
-      return {
-        success: false,
-        error: describeMyServiceFailure(result.failure),
-      };
-    }
-
-    return { success: true };
-  } catch (error) {
+  // Format validation first, when the vendor's keys have a known shape: it
+  // costs no request and names the problem more precisely than a 401 does.
+  if (!apiKey.startsWith("sk_")) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: "Invalid API key format. Keys should start with 'sk_'",
     };
   }
+
+  // Then a lightweight read-only call through the plugin's client.
+  const result = await runVendorCall(
+    fetchMyServiceIdentity(apiKey),
+    (error) => error
+  );
+
+  return result.ok
+    ? { success: true }
+    : { success: false, error: describeMyServiceFailure(result.failure) };
 }
 ```
 
-### 5. Icon Component (icon.tsx)
+### 6. Icon Component (icon.tsx)
 
 Create an SVG icon component:
 
@@ -367,26 +443,21 @@ Available types for action `configFields`:
 - Icon component = `[PluginName]Icon` (PascalCase): `MyServiceIcon`
 - Env vars = `[PLUGIN_NAME]_[FIELD]` (SCREAMING_SNAKE_CASE): `MY_SERVICE_API_KEY`
 
-### Step Function Requirements
+### Step Requirements
 
-1. Core input type should match the configFields keys
-2. Full input type extends `StepInput` and includes `integrationId`
-
-### Result Types
-
-Use discriminated unions for result types:
-
-```typescript
-type ActionResult =
-  | { success: true; id: string; data?: SomeData }
-  | { success: false; error: string };
-```
+1. The input schema names the config fields the step reads, and every optional
+   one is a `Schema.optional` so that a blank field arriving as `undefined` does
+   not fail the decode.
+2. The output schema describes JSON, and its annotations are what the editor
+   shows beside each field.
+3. A handler fails with `StepFailure` carrying the message a person reads. There
+   is no result type to write: `defineStep` builds the envelope.
 
 ## Testing Your Plugin
 
 After creating a plugin:
 
-1. Update static registration files (`packages/plugins/src/index.ts`, the `IntegrationType` union in `packages/shared/src/types/integration.ts`, and `packages/plugins/src/server.ts`, which needs both a `registerStepImporter` line per step and a `registerIntegrationTest` line for the connection test)
+1. Update static registration files (`packages/plugins/src/index.ts`, the `IntegrationType` union in `packages/shared/src/types/integration.ts`, and `packages/plugins/src/server.ts`, which needs both a `registerStep` line per step and a `registerIntegrationTest` line for the connection test)
 2. Run `pnpm run type-check && pnpm run fix` to verify types and fix formatting/linting
 3. Run `pnpm run dev` to test in the UI
 4. Test the connection using the integration dialog

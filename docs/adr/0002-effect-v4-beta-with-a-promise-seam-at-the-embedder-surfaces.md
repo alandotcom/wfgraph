@@ -160,6 +160,66 @@ share: `@linear/sdk` is a typed GraphQL client, `@clerk/backend` verifies JWTs, 
 through those SDKs, which is where they should stay. `lib/steps/http-request.ts`, the
 user-facing HTTP node, is stage 7's.
 
+**Amendment, 2026-07-29 (stage 6a).** `defineStep` landed as
+`packages/core/src/backend/lib/steps/define-step.ts`, with twilio as the one plugin
+migrated onto it. Five decisions in it are worth writing down.
+
+The credentials reach a handler as an `Effect` rather than as a value. A step that
+decides it has nothing to send, which is what a test run in log-only mode does, must not
+read an integration's secrets to reach that conclusion, and the old twilio step took the
+same care by hand. `Effect.cached` makes the fetch happen at most once however often it
+is yielded, so the laziness costs an author one `yield*` and nothing else.
+
+The handler's failure channel is one tagged error, `StepFailure`, carrying the message
+the run log shows. A second tag would render to the same wire bytes and buy only a
+`catchTag` nobody has needed. A vendor failure becomes one of these in the plugin, which
+is the only place that can read the vendor's error body accurately: `describeTwilioFailure`
+now takes a `VendorError` and the `TwilioResult`/`TwilioFailure` pair is gone.
+
+Registration became a value under a checked key. `registerStep(id, load)` takes a loader
+resolving to a `StepDefinition<NoInfer<Id>>`, so an id that disagrees with the step's own
+id fails to compile, and the export name that used to be data is now a real import. The
+`NoInfer` is what makes the check bite: inferring `Id` from both arguments widens a
+mismatched pair to the union of the two ids, which type-checks. `loadStepFunction`
+and its undefined-on-mismatch failure are deleted, along with the engine's second dispatch
+table: `Database Query` and `HTTP Request` register beside the built-in labels in
+`step-registry.ts`, the same way everything else does. The
+sixteen steps that have not migrated register through `registerStepFunction`, which holds
+the one remaining unsound call in the system and dies with them at 6b.
+
+Issue #8 landed for the plugin surface: an action declares `output` in its `index.ts` and
+`registerIntegration` derives the editor's field list from it. The derivation is shared
+with `createAction`'s in `packages/shared/src/workflow/output-fields.ts`. `outputFields`
+stays on the definition type for now, because deleting it in 6a would take the autocomplete
+away from sixteen actions whose steps have not moved; an action declaring both is a
+registration error, so the two cannot drift. The derivation is loud for a plugin action
+and quiet for `createAction`: a plugin whose output schema has a non-object root, loses a
+field on the way through the JSON Schema reader, or leaves a field without a description
+annotation throws at `registerIntegration`, because 6b writes sixteen of these schemas and
+a rule that fails on import beats sixteen chances to ship an empty autocomplete. An
+embedder's runtime action keeps the empty list, since it may pass an `outputFields` list of
+its own alongside the schema. Twilio's derived list is a superset of the
+list it replaced: the three paths that were written by hand keep their exact descriptions,
+and `from`, `messagingServiceSid`, and `reasonCode` -- which the step has always returned
+and never offered -- are there now. That is the bug the issue was filed about.
+
+The Promise seam stays inside the constructor, which is stage 7's to remove: `withStepLogging`
+around the whole run, `fetchCredentials` behind the credentials effect, and `Effect.runPromise`
+at the end. An author sees none of them. `Effect.promise` behind the credential fetch is
+deliberate: a credential store that rejects is a defect, and a defect leaves by the throw
+path, where Inngest's function-level retry runs the step again, which is the right answer
+for a store that was briefly unreachable. The transport those Promise callers provide is
+the layer `defineStep` already gives a handler, exported as `VendorTransport` from
+`@rova/core/plugin` rather than copied into the plugins package. One dead branch went with
+the rewrite: nothing in the tree ever set `_context._workflowComplete`, so
+`withStepLogging` no longer looks for it.
+
+The step context is decoded with `Schema.optional` rather than `Schema.optionalKey` for
+the two fields the engine may leave empty. The decode is all-or-nothing, so a caller
+spelling an empty value as a key holding `undefined` lost the whole context: the run
+stopped logging and `runMode` fell back to `"live"`, which for twilio is a test run
+reaching a real phone.
+
 ## Considered Options
 
 - **`effect` 3.22 stable** rejected: adopting v3 guarantees a v3-to-v4 migration of the
