@@ -1,5 +1,4 @@
 import { Schema } from "effect";
-import { z } from "zod";
 import { readAs } from "#src/types/schema";
 
 /**
@@ -26,21 +25,12 @@ export type RoutingPolicy = Record<string, RoutingAction>;
  * valid. A policy the editor could not have written is malformed, not partly
  * usable, so the whole record has to fail.
  */
-const readPolicy = readAs(
-  Schema.Record(Schema.String, Schema.Literals(ROUTING_ACTIONS)).check(
-    Schema.isPropertyNames(Schema.String.check(Schema.isMinLength(1)))
-  )
-);
+export const routingPolicySchema = Schema.Record(
+  Schema.String,
+  Schema.Literals(ROUTING_ACTIONS)
+).check(Schema.isPropertyNames(Schema.String.check(Schema.isMinLength(1))));
 
-/**
- * The same shape in Zod, for `workflow/schemas.ts`, which embeds it in the
- * trigger config objects it still describes in Zod. Delete this in batch C,
- * when that module moves to Effect Schema.
- */
-export const routingPolicyZodSchema = z.record(
-  z.string().min(1),
-  z.enum(ROUTING_ACTIONS)
-);
+const readPolicy = readAs(routingPolicySchema);
 
 /**
  * What a trigger definition says about an incoming payload: vocabulary, not

@@ -1,6 +1,6 @@
 /**
- * The single source for ignore reasons: the RPC contract's zod enum and this
- * union both derive from it, so the two cannot drift.
+ * The single source for ignore reasons: the RPC contract's literal union and
+ * this type union both derive from it, so the two cannot drift.
  *
  * - `missing_event_type`: the payload classified to no Event Type.
  * - `invalid_payload`: the payload failed the trigger's schema.

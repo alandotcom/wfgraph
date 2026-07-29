@@ -1,9 +1,8 @@
+import { Option, Schema } from "effect";
 import type { JsonObject } from "#src/types/json";
+import { rejectUnknownKeys } from "#src/types/schema";
 import { getValueByPath } from "#src/utils/object-path";
-import {
-  type WebhookTriggerConfigInput,
-  webhookTriggerConfigSchema,
-} from "#src/workflow/schemas";
+import { webhookTriggerConfigSchema } from "#src/workflow/schemas";
 
 export const DEFAULT_WEBHOOK_EVENT_PATH = "event";
 export const DEFAULT_WEBHOOK_CORRELATION_PATH = "data.id";
@@ -32,21 +31,20 @@ export function asNonEmptyString(value: unknown): string | undefined {
   return trimmed;
 }
 
-function parseWebhookConfig(
-  value: unknown
-): WebhookTriggerConfigInput | undefined {
-  const parsed = webhookTriggerConfigSchema.safeParse(value);
-  if (!parsed.success) {
-    return undefined;
-  }
-
-  return parsed.data;
-}
+/**
+ * A config this schema does not recognise counts as no config: the defaults
+ * below are what a webhook trigger routes by when nobody said otherwise, and a
+ * half-read config would route by a mix of the two.
+ */
+const readWebhookConfig = Schema.decodeUnknownOption(
+  webhookTriggerConfigSchema,
+  rejectUnknownKeys
+);
 
 export function buildWebhookRoutingConfig(
   config: unknown
 ): WebhookRoutingConfig {
-  const webhookConfig = parseWebhookConfig(config);
+  const webhookConfig = Option.getOrUndefined(readWebhookConfig(config));
 
   return {
     eventTypePath:

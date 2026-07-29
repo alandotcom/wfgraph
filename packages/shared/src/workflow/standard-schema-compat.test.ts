@@ -1,9 +1,14 @@
+import type {
+  StandardJSONSchemaV1,
+  StandardSchemaV1,
+} from "@standard-schema/spec";
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { type } from "arktype";
 import { z } from "zod";
 import { toStandardSchema } from "#src/types/schema";
 import { createAction } from "./action-registry";
+import { createTrigger } from "./trigger-registry";
 import {
   jsonSchemaLibraryOptions,
   parseWorkflowSchemaFieldsOrJsonSchema,
@@ -115,10 +120,12 @@ describe("jsonSchemaLibraryOptions with Zod", () => {
 });
 
 /**
- * Effect splits Standard Schema across two functions, so the registries only
- * see a schema that has been through `toStandardSchema`. These cases are the
+ * Effect splits Standard Schema across two functions, so a registry only ever
+ * sees a schema that has been through `toStandardSchema`. These cases are the
  * proof that what comes out the far side is the same kind of object the Zod and
- * arktype arms above hand over.
+ * arktype arms above hand over. The registries call it themselves, at
+ * registration; the RPC contracts and the Inngest event types call it directly,
+ * because they need it to carry parse options.
  */
 describe("toStandardSchema with Effect Schema", () => {
   it("carries both halves of Standard Schema on one object", () => {
@@ -172,6 +179,28 @@ describe("toStandardSchema with Effect Schema", () => {
     });
   });
 
+  it("refuses a second crossing that carries parse options", () => {
+    // Effect's bridge is first-call-wins, so a second set of options is
+    // dropped in silence, and which crossing ran first is decided by module
+    // initialisation order. A schema that has to be strict cannot be left
+    // depending on that, so the second crossing is an error instead.
+    const schema = Schema.Struct({ triggerType: Schema.Literal("Webhook") });
+    toStandardSchema(schema, { onExcessProperty: "error" });
+
+    expect(() =>
+      toStandardSchema(schema, { onExcessProperty: "error" })
+    ).toThrow(/already carries a Standard Schema validate/);
+  });
+
+  it("lets a second crossing without options through, as Effect does", () => {
+    // No options means nothing to lose, and Effect already treats this as the
+    // no-op it is: the same object comes back, validate and all.
+    const schema = Schema.Struct({ text: Schema.String });
+    const first = toStandardSchema(schema);
+
+    expect(toStandardSchema(schema)).toBe(first);
+  });
+
   it("keeps an annotated description at the top of the derived JSON Schema", () => {
     // `annotate` before `check`, not after: a check applied last nests the
     // description inside `allOf`, where the field-label reader cannot see it.
@@ -193,23 +222,158 @@ describe("toStandardSchema with Effect Schema", () => {
   });
 });
 
+/**
+ * The seam itself: what an author hands a registry, and what the registry does
+ * with it before anything reads it.
+ */
+describe("registries bridge the schema they are given", () => {
+  it("gives a bare Effect schema both halves, at registration", () => {
+    const schema = Schema.Struct({ text: Schema.String });
+    expect("~standard" in schema).toBe(false);
+
+    createAction({
+      id: "effect/bridge-test",
+      label: "Effect Bridge",
+      description: "Tests that createAction bridges what it is handed",
+      schema,
+      execute({ payload }) {
+        return { success: true, data: { echo: payload.text } };
+      },
+    });
+
+    // The same object, now carrying what the registry needed from it. Effect's
+    // bridge assigns onto the schema rather than wrapping it, which is what
+    // makes "bridged once, at registration" observable from out here.
+    const bridged = schema as unknown as StandardSchemaV1<unknown, unknown> &
+      StandardJSONSchemaV1<unknown, unknown>;
+    expect(bridged["~standard"].vendor).toBe("effect");
+    expect(typeof bridged["~standard"].validate).toBe("function");
+    expect(typeof bridged["~standard"].jsonSchema.input).toBe("function");
+  });
+
+  it("takes a bare Effect schema through createTrigger", () => {
+    const trigger = createTrigger({
+      type: "EffectBridgeTrigger",
+      label: "Effect Bridge Trigger",
+      schema: Schema.Struct({
+        event: Schema.Literals(["order.created", "order.canceled"]),
+        order: Schema.Struct({ id: Schema.String }),
+      }),
+      correlationIdPath: "order.id",
+      eventTypePath: "event",
+    });
+
+    // Output fields and the closed Event Type vocabulary both come off the
+    // JSON Schema half, so their presence is the bridge having happened.
+    expect(trigger.ui.outputFields?.map((field) => field.path)).toEqual([
+      "event",
+      "order",
+    ]);
+    expect(trigger.ui.eventTypes).toEqual(["order.created", "order.canceled"]);
+
+    expect(
+      trigger.runtime.evaluate({
+        config: undefined,
+        payload: { event: "order.created", order: { id: "o-1" } },
+      })
+    ).toEqual({
+      ok: true,
+      eventType: "order.created",
+      correlationKey: "o-1",
+    });
+
+    expect(
+      trigger.runtime.evaluate({
+        config: undefined,
+        payload: { event: "order.created", order: "not-an-object" },
+      })
+    ).toEqual({ ok: false, reason: "invalid_payload" });
+  });
+
+  it("reads the field names of an open Effect payload schema", () => {
+    // A payload that admits keys it did not name is a `Schema.StructWithRest`,
+    // which carries neither Zod's `shape` nor `Schema.Struct`'s `fields`: the
+    // struct it wraps is under `schema`. Those names are what a `priority.run`
+    // expression is checked against, so reading them is the difference between
+    // a typo being caught at registration and being sent to Inngest.
+    const schema = Schema.StructWithRest(
+      Schema.Struct({ event: Schema.String, entityId: Schema.String }),
+      [Schema.Record(Schema.String, Schema.String)]
+    );
+
+    const trigger = createTrigger({
+      type: "EffectOpenPayloadTrigger",
+      label: "Effect Open Payload Trigger",
+      schema,
+      event: "app/open.payload",
+      correlationIdPath: "entityId",
+      eventTypePath: "event",
+      inngest: { priority: { run: "entityId == 'x' ? 100 : 0" } },
+    });
+
+    expect(
+      trigger.runtime.inngestEventTrigger?.functionOptions.priority
+    ).toEqual({ run: "event.data.entityId == 'x' ? 100 : 0" });
+
+    expect(() =>
+      createTrigger({
+        type: "EffectOpenPayloadTriggerTypo",
+        label: "Effect Open Payload Trigger Typo",
+        schema,
+        event: "app/open.payload",
+        correlationIdPath: "entityId",
+        eventTypePath: "event",
+        inngest: { priority: { run: "entityID == 'x' ? 100 : 0" } },
+      })
+    ).toThrow('Invalid identifier "entityID"');
+  });
+
+  it("leaves a Zod schema exactly as it arrived", () => {
+    // The library-agnostic arm, unchanged: nothing is wrapped, nothing is
+    // assigned onto it, and the registry reads the same `~standard` Zod built.
+    const schema = z.object({ text: z.string() });
+    const before = schema["~standard"];
+
+    const action = createAction({
+      id: "zod/bridge-test",
+      label: "Zod Bridge",
+      description: "Tests that createAction passes Zod through",
+      schema,
+      execute({ payload }) {
+        return { success: true, data: { echo: payload.text } };
+      },
+    });
+
+    expect(schema["~standard"]).toBe(before);
+    expect(schema["~standard"].vendor).toBe("zod");
+    expect(action.configFields).toEqual([
+      { key: "text", label: "Text", type: "template-input", required: true },
+    ]);
+  });
+});
+
+/**
+ * The registry takes an Effect schema bare and bridges it itself, so these
+ * cases are written the way an author writes one: `schema: Schema.Struct(...)`,
+ * no wrapper. The two at the end reach for `toStandardSchema` directly because
+ * what they assert is the JSON Schema Effect derives, not what the registry
+ * does with it.
+ */
 describe("createAction with Effect schemas", () => {
   it("derives configFields from an Effect input schema", () => {
     const action = createAction({
       id: "effect/input-test",
       label: "Effect Input Test",
       description: "Tests Effect input schema derivation",
-      schema: toStandardSchema(
-        Schema.Struct({
-          name: Schema.String.annotate({ description: "Full name" }),
-          // `Schema.Finite`, not `Schema.Number`: Effect renders an unbounded
-          // number as an `anyOf` that also admits "Infinity" and "NaN" strings,
-          // and the field reader sees no single type in that.
-          count: Schema.Finite,
-          tone: Schema.Literals(["warm", "cool"]),
-          note: Schema.optionalKey(Schema.String),
-        })
-      ),
+      schema: Schema.Struct({
+        name: Schema.String.annotate({ description: "Full name" }),
+        // `Schema.Finite`, not `Schema.Number`: Effect renders an unbounded
+        // number as an `anyOf` that also admits "Infinity" and "NaN" strings,
+        // and the field reader sees no single type in that.
+        count: Schema.Finite,
+        tone: Schema.Literals(["warm", "cool"]),
+        note: Schema.optionalKey(Schema.String),
+      }),
       execute({ payload }) {
         return { success: true, data: { echo: payload.name } };
       },
@@ -242,13 +406,11 @@ describe("createAction with Effect schemas", () => {
       id: "effect/output-test",
       label: "Effect Output Test",
       description: "Tests Effect output schema derivation",
-      schema: toStandardSchema(Schema.Struct({ id: Schema.String })),
-      outputSchema: toStandardSchema(
-        Schema.Struct({
-          name: Schema.String,
-          nickname: Schema.NullOr(Schema.String),
-        })
-      ),
+      schema: Schema.Struct({ id: Schema.String }),
+      outputSchema: Schema.Struct({
+        name: Schema.String,
+        nickname: Schema.NullOr(Schema.String),
+      }),
       execute() {
         return { success: true, data: { name: "Test", nickname: null } };
       },
@@ -265,9 +427,9 @@ describe("createAction with Effect schemas", () => {
       id: "effect/validate-test",
       label: "Effect Validate",
       description: "Tests Effect validation",
-      schema: toStandardSchema(
-        Schema.Struct({ text: Schema.String.check(Schema.isMinLength(1)) })
-      ),
+      schema: Schema.Struct({
+        text: Schema.String.check(Schema.isMinLength(1)),
+      }),
       execute({ payload }) {
         return { success: true, data: { echo: payload.text } };
       },

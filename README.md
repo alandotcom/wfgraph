@@ -121,7 +121,7 @@ Rova Workflow Builder mounts into a host app as a single fetch handler. Import `
 
 ```ts
 import { createServer } from "node:http";
-import { z } from "zod";
+import { Schema } from "effect";
 import { clientBundle } from "@rova/client";
 import { createAction, createTrigger } from "@rova/core";
 import { createRovaApp } from "@rova/core/app";
@@ -133,9 +133,13 @@ const action = createAction({
   description: "Sends a custom message",
   category: "Custom",
   logoUrl: "https://cdn.example.com/logos/custom-action.svg",
-  // The config form is derived from this schema; `.describe()` names each field.
-  schema: z.object({
-    text: z.string().trim().min(1).describe("Text"),
+  // The config form is derived from this schema, and a `description`
+  // annotation names each field. Annotate the base type before adding a
+  // check: a message on a checked schema lands on the check instead.
+  schema: Schema.Struct({
+    text: Schema.String.annotate({ description: "Text" }).check(
+      Schema.isMinLength(1)
+    ),
   }),
   async execute({ payload }) {
     return { success: true, data: { echoed: payload.text } };
@@ -151,9 +155,13 @@ const trigger = createTrigger({
   label: "Custom Webhook",
   description: "Classifies custom webhook events",
   logoUrl: "https://cdn.example.com/logos/custom-trigger.svg",
-  schema: z.object({
-    event: z.enum(["entity.created", "entity.updated", "entity.deleted"]),
-    entity: z.object({ id: z.string() }),
+  schema: Schema.Struct({
+    event: Schema.Literals([
+      "entity.created",
+      "entity.updated",
+      "entity.deleted",
+    ]),
+    entity: Schema.Struct({ id: Schema.String }),
   }),
   correlationIdPath: "entity.id",
   eventTypePath: "event",
@@ -303,12 +311,12 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
 - Mounting under a sub-path means passing `basePath`. Rova builds its API prefix, the SPA's `<base href>`, and every asset URL from it, so the host states the mount point once rather than Rova deducing it per request. A host that mounts at `/workflows` and omits `basePath` gets a client that requests its assets from the root.
 - `rova.fetch` answers API routes under `/api/*` and serves the SPA under `/*`. Hand it straight to `Bun.serve`, `Deno.serve`, or a Workers `export default`; on Node, pass it through `createRequestListener` from `@rova/core/node` first.
 - Action extensions are strict-schema actions via `createAction(...)`:
-  - `schema` validates resolved action input at runtime (Zod or Standard Schema-compatible validators).
+  - `schema` validates resolved action input at runtime. Write it in Effect Schema, Zod, or arktype and pass it as it is — `createAction` takes each in the form its library produces.
   - `execute({ payload, context })` receives typed payload validated by `schema`.
   - `id`, `label`, `description`, `category`, `logoUrl`, `configFields`, and `outputFields` define action metadata.
 - Trigger extensions are strict-schema triggers via `createTrigger(...)`:
   - `type` is the stable trigger ID and must be unique.
-  - `schema` validates inbound payloads at runtime (Zod or Standard Schema-compatible validators). A payload that fails is ignored as `invalid_payload`.
+  - `schema` validates inbound payloads at runtime, in whichever library you wrote it. A payload that fails is ignored as `invalid_payload`.
   - `correlationIdPath` is required and typed from the payload schema (`string` fields only). Runs sharing its value belong to the same entity: Replace and Cancel act on them, and Waits resume on them.
   - `eventTypePath` names where the event type lives in the payload. Pointing it at an enum gives the editor a closed list for the Routing Policy table and Wait node options. Required in webhook mode; optional in event mode, where omitting it makes the delivering Inngest event name the event type.
   - Routing lives in the workflow, not the trigger: each workflow maps event types to Start, Replace, Cancel, or Ignore in the editor. Unmapped event types are ignored, though they still resume matching Waits.

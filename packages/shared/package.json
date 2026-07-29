@@ -18,12 +18,12 @@
     "es-toolkit": "catalog:",
     "graphology": "catalog:",
     "nanoid": "catalog:",
-    "tailwind-merge": "^3.4.0",
-    "zod": "catalog:"
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "@standard-schema/spec": "catalog:",
     "@xyflow/react": "catalog:",
-    "arktype": "^2.1.29"
+    "arktype": "^2.1.29",
+    "zod": "catalog:"
   }
 }

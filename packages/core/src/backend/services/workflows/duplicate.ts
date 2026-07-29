@@ -20,11 +20,12 @@ import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
  * A copy points at no integration: connections are per-workflow, so the person
  * who copies one picks its credentials again.
  *
- * The key is removed rather than set to `undefined`. The trigger config schemas
- * are `.strict()`, so a `Webhook` config carrying an `integrationId` key falls
- * out of the webhook branch of the union into the custom-trigger branch, which
- * refuses that very type name. Present-and-undefined counts as carrying it. That
- * threw on every copy of a webhook-triggered workflow.
+ * The key is removed rather than set to `undefined`. The first-class trigger
+ * config schemas are closed objects read with `rejectUnknownKeys`, so a `Webhook`
+ * config carrying an `integrationId` key falls out of the webhook branch of the
+ * union into the custom-trigger branch, which refuses that very type name.
+ * Present-and-undefined counts as carrying it. That threw on every copy of a
+ * webhook-triggered workflow.
  */
 function stripIntegrationIds(nodes: WorkflowNode[]): WorkflowNode[] {
   return nodes.map((node) => {

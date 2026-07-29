@@ -77,10 +77,59 @@ that encodes the old permissiveness was asserting a bug; tighten it to the stric
 `JsonObject`. Anything that walks a value which arrived as JSON takes `JsonValue`, and
 narrowing is then plain language checks. Do not write a `value is Record<string, unknown>`
 predicate, and do not reach for es-toolkit's `isPlainObject`. Parse untrusted input at the
-boundary with Zod, so the interior holds typed values.
+boundary with Effect Schema, so the interior holds typed values.
+
+**Effect Schema is the only schema library.** `packages/shared/src/types/schema.ts` holds
+the three names most of this repo needs: `NonEmptyTrimmedString` for an identifier crossing
+the wire, `rejectUnknownKeys` for the decode options that make a closed object closed, and
+`toStandardSchema` for handing a schema to oRPC, Inngest, or the registries.
+
+Four rules, each of which cost something to learn:
+
+- **Strictness is a decode option, not a schema.** Effect has no `.strict()`. A
+  `Schema.Struct` is closed only because the decode was told to close it, so every decode
+  of a wire shape passes `rejectUnknownKeys`. A shape meant to stay open says so in its own
+  shape, with `Schema.StructWithRest` over a `Schema.Record` rest, and stays open under
+  those same options because an index signature skips the excess-property check.
+- **`toStandardSchema` is where those options are baked in**, because oRPC and Inngest call
+  `~standard.validate(payload)` with nothing else to say. Effect assigns `~standard` onto
+  the schema and returns early if a `validate` is already there, so a schema crosses that
+  bridge once and the first crossing decides its options. The RPC contracts and the Inngest
+  event types call it directly for that reason. The trigger and action registries call it
+  themselves, at registration, so `createTrigger` and `createAction` take a bare
+  `Schema.Struct` and an integration author writes no bridging ceremony; `Schema.isSchema`
+  is the discriminator, testing for the type id Effect brands its schemas with, so a Zod or
+  arktype schema is passed through untouched.
+- **`Schema.optionalKey` for a shape read from JSON, `Schema.optional` for one built in
+  process.** `optionalKey` accepts an absent key only; `optional` is
+  `optionalKey(UndefinedOr(...))`, so it also accepts a key holding `undefined` and keeps
+  it. A parsed JSON payload never carries `undefined`, and its JSON Schema renders clean;
+  an object literal TypeScript wrote says "no value" with `undefined`, and rejecting that
+  broke every run whose webhook carried no correlation key. A shape with both origins
+  takes `optional`, because the stricter spelling is the one that fails:
+  `packages/shared/src/workflow/schemas.ts` is the worked example, decoded from the JSONB
+  column, from an RPC payload, from an Inngest event, and from React Flow state on the
+  editor's autosave path, and it is `optional` throughout for the sake of the fourth.
+- **Annotate the base type before any check.** `.annotate()` on a schema that already
+  carries a check lands on the check, and a wrong-typed value never reaches a check.
+  `Schema.Finite.annotate({ message })` answers `"5"` with Effect's own text, not the
+  message. `packages/shared/src/workflow/conditions.ts` has the worked example.
+
+**A message never quotes the value it rejected.**
+`packages/shared/src/types/schema-message.ts` holds `formatSchemaFailure`, which renders a
+decode failure with objects named by kind and primitives cut short. Effect's own renderer
+prints the value in full, and the strings this project builds from a failure are persisted
+as run errors, written to the log, and answered over HTTP. Use it wherever a decode failure
+becomes text a person reads.
+
+**Zod is a test fixture, nothing more.** It is a devDependency of `packages/shared` alone,
+used by `trigger-registry.test.ts`, `action-registry.test.ts`, and
+`standard-schema-compat.test.ts` as the foreign Standard Schema library those registries
+claim to accept, beside arktype. Nothing at runtime imports it and no published manifest
+names it. Do not reach for it in new code.
 
 **Timestamps cross through a codec.** `packages/shared/src/types/timestamp.ts` owns the
-one ISO-string-to-`Date` conversion, as a `z.codec`. Do not hand-roll `new Date(x)` or
+one ISO-string-to-`Date` conversion, as a checked `Schema.decodeTo` pair. Do not hand-roll `new Date(x)` or
 `.toISOString()` for a value crossing the wire.
 
 **Steps return `StepResult`.** `{ success: true, data }` or
@@ -92,7 +141,7 @@ the `data.` prefix; template variables unwrap the wrapper automatically.
 **Rova's own events are defined once, with a schema.**
 `packages/core/src/backend/lib/inngest/events.ts` holds the three
 (`workflow/run.requested`, `workflow/run.cancel.requested`, `workflow/wait.signal`) as
-`eventType()` definitions carrying their Zod schemas. Senders build payloads with
+`eventType()` definitions carrying their Effect schemas. Senders build payloads with
 `.create(data, { id })`, where the id is Inngest's idempotency key, and functions declare
 the same object as their trigger. Inngest validates on send and again before calling a
 handler, so a handler receives a parsed payload and does no boundary parse of its own. A
@@ -281,10 +330,11 @@ exact-version dependencies with no peer ranges, so a mismatched pair installs fi
 and each brings its own nested copy. The failure is silent and lands at runtime,
 because two copies mean two `ORPCError` constructors and the client's
 `instanceof ORPCError` check quietly stops matching. The catalog in
-`pnpm-workspace.yaml` holds all six, including those a single workspace package
-imports, so one entry is the only place a version can change. Bumping the line is
+`pnpm-workspace.yaml` holds all six, `@orpc/experimental-effect` among them, including
+those a single workspace package imports, so one entry is the only place a version can
+change. Bumping the line is
 deliberate work: read the release notes first, and re-run the OpenAPI document
-against the previous one, since the Zod-to-JSON-Schema output moves between betas.
+against the previous one, since the schema-to-JSON-Schema output moves between betas.
 
 **A write says what it invalidates; the call site does not.** `packages/client/src/lib/rpc-query.ts`
 holds `refreshWorkflowList`, `refreshRunHistory`, and `refreshIntegrations`, and they are

@@ -47,6 +47,48 @@ oRPC moves to the 2.x beta together with `@orpc/experimental-effect`, which lets
 contract take Effect Schema directly, gives Effect-native handlers, and generates the
 OpenAPI document from Effect schemas.
 
+**Amendment, 2026-07-28.** Stage 4 landed as written, with one correction and one
+addition. The correction: a contract's schemas cross into oRPC through the repo's own
+`toStandardSchema` in `packages/shared/src/types/schema.ts`, not through the one
+`@orpc/experimental-effect` exports. Effect has no per-schema `.strict()`, so a closed
+object is closed only because the decode was told to close it, and oRPC calls
+`~standard.validate(payload)` with no options — leaving the parse options as the only
+place strictness can live, and oRPC's wrapper takes none. Both wrappers leave the schema
+being an Effect schema, which is all `EffectSchemaToJsonSchemaConverter` needs, and that
+converter did replace `ZodToJsonSchemaConverter` in
+`packages/core/src/backend/rpc/openapi.ts` as this section says. The bridge is not part of
+the plugin surface either: `createTrigger` and `createAction` take a bare Effect schema and
+bridge it themselves at registration, so an integration author writes
+`schema: Schema.Struct({ ... })` and no wrapper. The addition: Zod is
+still a devDependency of `packages/shared`, as the foreign Standard Schema library the
+registry tests are written against beside arktype. It is absent from every runtime path
+and from every published manifest.
+
+**Behaviour the migration changed on purpose.** Effect Schema is not Zod, and four places
+now answer differently from what the Zod version did. Each is chosen; each has a test
+pinning it, so a later change to any of them is a decision rather than a drift.
+
+- A node position holding `Infinity` or `NaN` is rejected. `Schema.Finite` is what the
+  position now decodes through, where `z.number()` admitted both. An infinite position was
+  already corruption, and the editor's save store treats a graph it cannot decode as
+  nothing to save, so the rejection is absorbed rather than surfaced.
+- Node data whose `type` is missing or is none of the three node kinds fails at `data`
+  rather than at `data.type`. Effect selects a union arm by the literal its `type` holds,
+  and an input matching no literal selects no arm at all, which leaves nothing to blame a
+  field for. The union carries a `message` annotation naming what a node type must be,
+  which is also what keeps the rejected node data out of the string: an unmatched union
+  prints the whole value it rejected, past the leaf hook `schema-message.ts` installs.
+- A trigger config failure mentions the custom-trigger arm beside the real problem. The
+  three-arm config union discriminates on `triggerType`, and the third arm takes any
+  trigger type a plugin registered, so it has no literal to select on and is tried against
+  every config. Its refusal ("Custom triggerType must not be...") rides along with the
+  message that names the actual bad field.
+- `toStandardSchema` throws when a schema that already carries a Standard Schema
+  `validate` is bridged again with parse options. Effect's bridge is first-call-wins, so
+  the second set of options would be dropped in silence, and which crossing ran first is
+  decided by module initialisation order. `contracts.ts` binds each shared shape's bridged
+  form once at module scope rather than bridging at each `.output()`.
+
 ## Dependency wiring
 
 `createRovaApp` builds a Layer graph and holds it in a `ManagedRuntime` owned by that app

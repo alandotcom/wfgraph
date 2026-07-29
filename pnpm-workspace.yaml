@@ -7,10 +7,10 @@ packages:
   - "packages/*"
 
 # One version per shared dependency, referenced from a package's own manifest as
-# `"zod": "catalog:"`. pnpm rewrites those specifiers to the real range during
+# `"effect": "catalog:"`. pnpm rewrites those specifiers to the real range during
 # `pnpm pack` and `pnpm publish`, the same way it rewrites `workspace:*`, so a
 # published package carries ordinary semver.
-# The six @orpc packages are pinned to one exact 2.x beta and all listed here,
+# The @orpc packages are pinned to one exact 2.x beta and all listed here,
 # including the ones only a single workspace package imports. They cross-depend on
 # each other at exact versions, so a mismatched pair does not resolve; keeping the
 # version in one place is what makes "they move together" a fact rather than a rule
@@ -22,10 +22,10 @@ catalog:
   "@marcbachmann/cel-js": ^7.5.1
   "@orpc/client": 2.0.0-beta.21
   "@orpc/contract": 2.0.0-beta.21
+  "@orpc/experimental-effect": 2.0.0-beta.21
   "@orpc/openapi": 2.0.0-beta.21
   "@orpc/server": 2.0.0-beta.21
   "@orpc/tanstack-query": 2.0.0-beta.21
-  "@orpc/zod": 2.0.0-beta.21
   "@standard-schema/spec": ^1.1.0
   "@testing-library/react": ^16.3.2
   "@types/react": ^19.2.14
@@ -38,6 +38,8 @@ catalog:
   react: 19.2.4
   react-dom: 19.2.4
   vite: ^8.1.5
+  # Test-only: the foreign Standard Schema library the registry tests are
+  # written against, beside arktype. Nothing at runtime imports it.
   zod: ^4.3.6
 
 # Pins one React copy through the whole graph, including transitive peers. The

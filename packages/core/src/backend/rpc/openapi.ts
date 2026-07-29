@@ -1,19 +1,21 @@
 import { OpenAPIGenerator } from "@orpc/openapi";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { OpenAPIReferenceHandlerPlugin } from "@orpc/openapi/plugins";
-import { ZodToJsonSchemaConverter } from "@orpc/zod";
+import { EffectSchemaToJsonSchemaConverter } from "@orpc/experimental-effect";
 import type { RpcContext } from "./context";
 import { rpcRouter } from "./router";
 
 export const openApiRestHandler = new OpenAPIHandler<RpcContext>(rpcRouter);
 
 /**
- * Turns the contract's Zod schemas into the JSON Schemas the document needs. The
+ * Turns the contract's Effect schemas into the JSON Schemas the document needs.
+ * The converter recognises a schema by its Standard Schema vendor, which is why
+ * the contracts hand oRPC the bridged schema rather than a plain validator. The
  * generator holds no request state, so one instance serves every handler built
  * below.
  */
 const openApiGenerator = new OpenAPIGenerator({
-  converters: [new ZodToJsonSchemaConverter()],
+  converters: [new EffectSchemaToJsonSchemaConverter()],
 });
 
 /**
@@ -29,7 +31,7 @@ export function createOpenApiReferenceHandler(
   restBasePath: `/${string}`
 ): OpenAPIHandler<RpcContext> {
   // The reference plugin re-evaluates `spec` on every /openapi.json and /docs
-  // request, so a thunk here would re-run the full Zod-to-JSON-Schema
+  // request, so a thunk here would re-run the full schema-to-JSON-Schema
   // conversion per hit. Generating once and handing the plugin the pending
   // document keeps the v1 plugin's once-per-handler cost.
   const document = openApiGenerator.generate(rpcRouter, {

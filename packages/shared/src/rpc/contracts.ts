@@ -1,15 +1,21 @@
 import { oc } from "@orpc/contract";
 import { openapi } from "@orpc/openapi";
-import { z } from "zod";
-import { jsonObjectZodSchema } from "#src/types/json";
+import { Schema } from "effect";
+import { jsonObjectSchema } from "#src/types/json";
+import {
+  listOf,
+  NonEmptyTrimmedString,
+  rejectUnknownKeys,
+  toStandardSchema,
+  unknownRest,
+} from "#src/types/schema";
 import { WORKFLOW_EXECUTION_IGNORED_REASONS } from "#src/workflow/execution-contracts";
 import { serializedWorkflowGraphSchema } from "#src/workflow/schemas";
 
 /**
  * Declares a procedure's REST shape. Routing metadata moved off the contract
  * builder in oRPC 2, and this helper is the single line coupling the contracts
- * to @orpc/openapi; when ADR-0002 stage 4 changes the construction again, the
- * edit lands here instead of at every procedure.
+ * to @orpc/openapi.
  */
 function route(
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
@@ -18,9 +24,56 @@ function route(
   return oc.meta(openapi({ method, path }));
 }
 
-const idSchema = z.string().trim().min(1);
+/**
+ * Hands a schema to oRPC as a Standard Schema, closed to keys it did not name.
+ *
+ * `@orpc/experimental-effect` exports a `toStandardSchema` of its own and this
+ * is not it. That one takes no parse options, and parse options are the only
+ * way an Effect schema can be strict about unknown keys: oRPC calls
+ * `~standard.validate(payload)` with nothing else to say, so anything the
+ * schema wants to be true of that call has to be closed over before it gets
+ * there. The two are otherwise interchangeable -- Effect assigns `~standard`
+ * onto the schema and hands the same object back, so the schema oRPC holds is
+ * still an Effect schema either way, which is what
+ * `EffectSchemaToJsonSchemaConverter` looks for when it builds the OpenAPI
+ * document. The one thing oRPC's version adds, carrying meta plugins across, is
+ * a copy onto the object it was read from.
+ *
+ * Effect's bridge is first-call-wins: a schema that already carries a
+ * `validate` keeps it, options and all. So every schema crosses here exactly
+ * once. A shape more than one procedure names is bridged once at module scope
+ * and the binding is what the procedures hand to oRPC -- `noInput`, `deleted`,
+ * and the three beside `workflowApiPayload` below. `toStandardSchema` throws on
+ * a second crossing that carries options rather than dropping them, so this is
+ * a rule the file cannot quietly break.
+ */
+function contractSchema<S extends Schema.ConstraintDecoder<unknown>>(
+  schema: S
+) {
+  return toStandardSchema(schema, rejectUnknownKeys);
+}
 
-const integrationTypeSchema = z.enum([
+/**
+ * A procedure that takes no arguments still declares the empty object.
+ *
+ * Open rather than closed, and not for taste: `Schema.Struct({})` describes
+ * TypeScript's `object`, so its JSON Schema is `anyOf: [object, array]` and
+ * oRPC refuses it for a GET, whose inputs are query parameters and must be an
+ * object. Naming the rest gives the plain `{"type":"object"}` the generator
+ * wants. It also lets a stray query parameter through instead of answering 400,
+ * which is what a GET taking no arguments should do with a cache-buster.
+ */
+const noInput = contractSchema(
+  Schema.StructWithRest(Schema.Struct({}), unknownRest)
+);
+
+const deleted = contractSchema(
+  Schema.Struct({ success: Schema.Literal(true) })
+);
+
+const idSchema = NonEmptyTrimmedString;
+
+const integrationTypeSchema = Schema.Literals([
   "acuity",
   "clerk",
   "database",
@@ -30,36 +83,38 @@ const integrationTypeSchema = z.enum([
   "twilio",
 ]);
 
-const integrationConfigSchema = z.record(z.string(), z.string().optional());
+const integrationConfigSchema = Schema.Record(
+  Schema.String,
+  Schema.UndefinedOr(Schema.String)
+);
 
-const apiKeySchema = z.object({
+const apiKeyFields = {
   id: idSchema,
-  name: z.string().nullable(),
-  keyPrefix: z.string(),
-  createdAt: z.string(),
-  lastUsedAt: z.string().nullable(),
-});
+  name: Schema.NullOr(Schema.String),
+  keyPrefix: Schema.String,
+  createdAt: Schema.String,
+  lastUsedAt: Schema.NullOr(Schema.String),
+};
 
-const apiKeyCreatedSchema = apiKeySchema.extend({
-  key: z.string(),
-});
-
-const integrationSchema = z.object({
+const integrationFields = {
   id: idSchema,
-  name: z.string(),
+  name: Schema.String,
   type: integrationTypeSchema,
-  isManaged: z.boolean().optional(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
+  isManaged: Schema.optionalKey(Schema.Boolean),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+};
 
-const integrationWithConfigSchema = integrationSchema.extend({
+const integrationSchema = Schema.Struct(integrationFields);
+
+const integrationWithConfigSchema = Schema.Struct({
+  ...integrationFields,
   config: integrationConfigSchema,
 });
 
-const integrationTestResultSchema = z.object({
-  status: z.enum(["success", "error"]),
-  message: z.string(),
+const integrationTestResultSchema = Schema.Struct({
+  status: Schema.Literals(["success", "error"]),
+  message: Schema.String,
 });
 
 // Everything here but `description` and `isOwner` comes from a non-null column
@@ -67,22 +122,36 @@ const integrationTestResultSchema = z.object({
 // invent a value. It used to be optional throughout, which pushed a `?? ""` into
 // every consumer — including two that fed the result straight to a router as a
 // workflow id, where the empty string resolves to a route that redirects away.
-const workflowApiPayloadSchema = z.object({
+const workflowApiPayloadSchema = Schema.Struct({
   id: idSchema,
-  name: z.string(),
-  description: z.string().optional(),
+  name: Schema.String,
+  description: Schema.optionalKey(Schema.String),
   graph: serializedWorkflowGraphSchema,
-  isPaused: z.boolean(),
-  mode: z.enum(["live", "test"]),
-  visibility: z.enum(["private", "public"]),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  isPaused: Schema.Boolean,
+  mode: Schema.Literals(["live", "test"]),
+  visibility: Schema.Literals(["private", "public"]),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
   /** Absent on a payload the viewer did not author. */
-  isOwner: z.boolean().optional(),
+  isOwner: Schema.optionalKey(Schema.Boolean),
 });
-const workflowRunModeSchema = z.enum(["live", "test"]);
 
-const workflowExecutionStatusSchema = z.enum([
+/**
+ * The three shapes more than one procedure answers with, bridged here rather
+ * than at each `.output()`.
+ *
+ * `toStandardSchema` refuses a second crossing that carries parse options, and
+ * these are the shapes that would otherwise ask for one. Binding the bridged
+ * form is also what the schema means: one object, one set of decode options,
+ * however many procedures hand it back.
+ */
+const integrationWithConfig = contractSchema(integrationWithConfigSchema);
+const integrationTestResult = contractSchema(integrationTestResultSchema);
+const workflowApiPayload = contractSchema(workflowApiPayloadSchema);
+
+const workflowRunModeSchema = Schema.Literals(["live", "test"]);
+
+const workflowExecutionStatusSchema = Schema.Literals([
   "pending",
   "running",
   "waiting",
@@ -91,123 +160,154 @@ const workflowExecutionStatusSchema = z.enum([
   "cancelled",
 ]);
 
-const workflowExecutionSchema = z.object({
+const workflowExecutionFields = {
   id: idSchema,
   workflowId: idSchema,
   status: workflowExecutionStatusSchema,
-  triggerType: z.enum(["manual", "webhook", "event"]).nullable(),
+  triggerType: Schema.NullOr(Schema.Literals(["manual", "webhook", "event"])),
   runMode: workflowRunModeSchema,
-  triggerEventType: z.string().nullable(),
-  correlationKey: z.string().nullable(),
-  workflowRunId: z.string().nullable(),
-  input: z.unknown(),
-  output: z.unknown(),
-  error: z.string().nullable(),
-  startedAt: z.string(),
-  waitingAt: z.string().nullable(),
-  cancelledAt: z.string().nullable(),
-  completedAt: z.string().nullable(),
-  duration: z.string().nullable(),
-});
+  triggerEventType: Schema.NullOr(Schema.String),
+  correlationKey: Schema.NullOr(Schema.String),
+  workflowRunId: Schema.NullOr(Schema.String),
+  input: Schema.Unknown,
+  output: Schema.Unknown,
+  error: Schema.NullOr(Schema.String),
+  startedAt: Schema.String,
+  waitingAt: Schema.NullOr(Schema.String),
+  cancelledAt: Schema.NullOr(Schema.String),
+  completedAt: Schema.NullOr(Schema.String),
+  duration: Schema.NullOr(Schema.String),
+};
 
-const executionLogSchema = z.object({
+const workflowExecutionSchema = Schema.Struct(workflowExecutionFields);
+
+const executionLogSchema = Schema.Struct({
   id: idSchema,
   executionId: idSchema,
-  nodeId: z.string(),
-  nodeName: z.string(),
-  nodeType: z.string(),
-  status: z.enum(["pending", "running", "success", "error"]),
-  input: z.unknown(),
-  output: z.unknown(),
-  error: z.string().nullable(),
-  startedAt: z.string(),
-  completedAt: z.string().nullable(),
-  duration: z.string().nullable(),
+  nodeId: Schema.String,
+  nodeName: Schema.String,
+  nodeType: Schema.String,
+  status: Schema.Literals(["pending", "running", "success", "error"]),
+  input: Schema.Unknown,
+  output: Schema.Unknown,
+  error: Schema.NullOr(Schema.String),
+  startedAt: Schema.String,
+  completedAt: Schema.NullOr(Schema.String),
+  duration: Schema.NullOr(Schema.String),
 });
 
-const executionSummarySchema = z.object({
+const executionSummarySchema = Schema.Struct({
   id: idSchema,
   workflowId: idSchema,
-  status: z.string(),
-  input: z.unknown(),
-  output: z.unknown(),
-  error: z.string().nullable(),
-  startedAt: z.string(),
-  completedAt: z.string().nullable(),
-  duration: z.string().nullable(),
+  status: Schema.String,
+  input: Schema.Unknown,
+  output: Schema.Unknown,
+  error: Schema.NullOr(Schema.String),
+  startedAt: Schema.String,
+  completedAt: Schema.NullOr(Schema.String),
+  duration: Schema.NullOr(Schema.String),
 });
 
-const executionEventSchema = z.object({
+const executionEventSchema = Schema.Struct({
   id: idSchema,
   workflowId: idSchema,
-  executionId: z.string().nullable(),
-  eventType: z.string(),
-  message: z.string(),
-  metadata: z.unknown(),
-  createdAt: z.string(),
+  executionId: Schema.NullOr(Schema.String),
+  eventType: Schema.String,
+  message: Schema.String,
+  metadata: Schema.Unknown,
+  createdAt: Schema.String,
 });
 
-const ignoredReasonSchema = z.enum(WORKFLOW_EXECUTION_IGNORED_REASONS);
+const ignoredReasonSchema = Schema.Literals(WORKFLOW_EXECUTION_IGNORED_REASONS);
 
-const workflowExecutionRunningSchema = z
-  .object({
-    status: z.literal("running"),
-    executionId: z.string(),
-    runId: z.string().optional(),
+/**
+ * The four shapes an execute or webhook call answers with.
+ *
+ * Each stays open, as the Zod originals did: the engine adds counters to a
+ * response as it learns them, and a client that has not been rebuilt should
+ * read the fields it knows rather than fail on the ones it does not.
+ */
+const workflowExecutionRunningSchema = Schema.StructWithRest(
+  Schema.Struct({
+    status: Schema.Literal("running"),
+    executionId: Schema.String,
+    runId: Schema.optionalKey(Schema.String),
     runMode: workflowRunModeSchema,
-    cancelledExecutions: z.number().optional(),
-    cancelledWaits: z.number().optional(),
-    failedExecutions: z.array(z.string()).optional(),
-  })
-  .loose();
+    cancelledExecutions: Schema.optionalKey(Schema.Finite),
+    cancelledWaits: Schema.optionalKey(Schema.Finite),
+    failedExecutions: Schema.optionalKey(listOf(Schema.String)),
+  }),
+  unknownRest
+);
 
-const workflowExecutionCancelledSchema = z
-  .object({
-    status: z.literal("cancelled"),
-    executionId: z.string().optional(),
+const workflowExecutionCancelledFields = {
+  status: Schema.Literal("cancelled"),
+  runMode: workflowRunModeSchema,
+  cancelledExecutions: Schema.Finite,
+  cancelledWaits: Schema.Finite,
+  failedExecutions: Schema.optionalKey(listOf(Schema.String)),
+};
+
+const workflowExecutionCancelledSchema = Schema.StructWithRest(
+  Schema.Struct({
+    ...workflowExecutionCancelledFields,
+    executionId: Schema.optionalKey(Schema.String),
+  }),
+  unknownRest
+);
+
+const workflowExecutionIgnoredFields = {
+  status: Schema.Literal("ignored"),
+  runMode: workflowRunModeSchema,
+  reason: ignoredReasonSchema,
+};
+
+const workflowExecutionIgnoredSchema = Schema.StructWithRest(
+  Schema.Struct({
+    ...workflowExecutionIgnoredFields,
+    executionId: Schema.optionalKey(Schema.String),
+  }),
+  unknownRest
+);
+
+const workflowExecutionResumedSchema = Schema.StructWithRest(
+  Schema.Struct({
+    status: Schema.Literal("resumed"),
+    resumedCount: Schema.Finite,
     runMode: workflowRunModeSchema,
-    cancelledExecutions: z.number(),
-    cancelledWaits: z.number(),
-    failedExecutions: z.array(z.string()).optional(),
-  })
-  .loose();
+  }),
+  unknownRest
+);
 
-const workflowExecutionIgnoredSchema = z
-  .object({
-    status: z.literal("ignored"),
-    executionId: z.string().optional(),
-    runMode: workflowRunModeSchema,
-    reason: ignoredReasonSchema,
-  })
-  .loose();
-
-const workflowExecutionResumedSchema = z
-  .object({
-    status: z.literal("resumed"),
-    resumedCount: z.number(),
-    runMode: workflowRunModeSchema,
-  })
-  .loose();
-
-const workflowExecuteResponseSchema = z.discriminatedUnion("status", [
+// An execute call has always started, cancelled or ignored a specific
+// execution, so the two arms that carry an optional id elsewhere require it
+// here.
+const workflowExecuteResponseSchema = Schema.Union([
   workflowExecutionRunningSchema,
-  workflowExecutionCancelledSchema.extend({
-    executionId: z.string(),
-  }),
-  workflowExecutionIgnoredSchema.extend({
-    executionId: z.string(),
-    runMode: workflowRunModeSchema,
-  }),
+  Schema.StructWithRest(
+    Schema.Struct({
+      ...workflowExecutionCancelledFields,
+      executionId: Schema.String,
+    }),
+    unknownRest
+  ),
+  Schema.StructWithRest(
+    Schema.Struct({
+      ...workflowExecutionIgnoredFields,
+      executionId: Schema.String,
+    }),
+    unknownRest
+  ),
 ]);
 
-const workflowWebhookResponseSchema = z.discriminatedUnion("status", [
+const workflowWebhookResponseSchema = Schema.Union([
   workflowExecutionRunningSchema,
   workflowExecutionCancelledSchema,
   workflowExecutionIgnoredSchema,
   workflowExecutionResumedSchema,
 ]);
 
-const workflowExecutionStatusFilterSchema = z.enum([
+const workflowExecutionStatusFilterSchema = Schema.Literals([
   "pending",
   "running",
   "waiting",
@@ -216,31 +316,32 @@ const workflowExecutionStatusFilterSchema = z.enum([
   "cancelled",
 ]);
 
-const workflowGlobalExecutionSchema = workflowExecutionSchema.extend({
-  workflowName: z.string(),
-  workflowIsPaused: z.boolean(),
+const workflowGlobalExecutionSchema = Schema.Struct({
+  ...workflowExecutionFields,
+  workflowName: Schema.String,
+  workflowIsPaused: Schema.Boolean,
 });
 
-const workflowGlobalExecutionsCursorSchema = z.object({
-  startedAt: z.string(),
+const workflowGlobalExecutionsCursorSchema = Schema.Struct({
+  startedAt: Schema.String,
   id: idSchema,
 });
 
-const workflowBulkActionSchema = z.enum(["pause", "resume", "delete"]);
+const workflowBulkActionSchema = Schema.Literals(["pause", "resume", "delete"]);
 
-const workflowBulkLifecycleResultSchema = z.object({
-  summary: z.object({
-    requested: z.number(),
-    succeeded: z.number(),
-    failed: z.number(),
+const workflowBulkLifecycleResultSchema = Schema.Struct({
+  summary: Schema.Struct({
+    requested: Schema.Finite,
+    succeeded: Schema.Finite,
+    failed: Schema.Finite,
   }),
-  results: z.array(
-    z.object({
+  results: listOf(
+    Schema.Struct({
       workflowId: idSchema,
       action: workflowBulkActionSchema,
-      ok: z.boolean(),
-      deleted: z.boolean().optional(),
-      error: z.string().optional(),
+      ok: Schema.Boolean,
+      deleted: Schema.optionalKey(Schema.Boolean),
+      error: Schema.optionalKey(Schema.String),
     })
   ),
 });
@@ -248,299 +349,245 @@ const workflowBulkLifecycleResultSchema = z.object({
 export const rpcContract = {
   apiKey: {
     getAll: route("GET", "/api-keys")
-      .input(z.object({}))
-      .output(z.array(apiKeySchema)),
+      .input(noInput)
+      .output(contractSchema(listOf(Schema.Struct(apiKeyFields)))),
     create: route("POST", "/api-keys")
       .input(
-        z.object({
-          name: z.string().nullable().optional(),
-        })
+        contractSchema(
+          Schema.Struct({
+            name: Schema.optionalKey(Schema.NullOr(Schema.String)),
+          })
+        )
       )
-      .output(apiKeyCreatedSchema),
+      .output(
+        contractSchema(Schema.Struct({ ...apiKeyFields, key: Schema.String }))
+      ),
     delete: route("DELETE", "/api-keys/{keyId}")
-      .input(
-        z.object({
-          keyId: idSchema,
-        })
-      )
-      .output(z.object({ success: z.literal(true) })),
+      .input(contractSchema(Schema.Struct({ keyId: idSchema })))
+      .output(deleted),
   },
   integration: {
     getAll: route("GET", "/integrations")
       .input(
-        z.object({
-          type: integrationTypeSchema.optional(),
-        })
+        contractSchema(
+          Schema.Struct({
+            type: Schema.optionalKey(integrationTypeSchema),
+          })
+        )
       )
-      .output(z.array(integrationSchema)),
+      .output(contractSchema(listOf(integrationSchema))),
     get: route("GET", "/integrations/{integrationId}")
-      .input(
-        z.object({
-          integrationId: idSchema,
-        })
-      )
-      .output(integrationWithConfigSchema),
+      .input(contractSchema(Schema.Struct({ integrationId: idSchema })))
+      .output(integrationWithConfig),
     create: route("POST", "/integrations")
       .input(
-        z.object({
-          name: z.string(),
-          type: integrationTypeSchema,
-          config: integrationConfigSchema,
-        })
+        contractSchema(
+          Schema.Struct({
+            name: Schema.String,
+            type: integrationTypeSchema,
+            config: integrationConfigSchema,
+          })
+        )
       )
-      .output(integrationSchema),
+      .output(contractSchema(integrationSchema)),
     update: route("PUT", "/integrations/{integrationId}")
       .input(
-        z.object({
-          integrationId: idSchema,
-          name: z.string().optional(),
-          config: integrationConfigSchema.optional(),
-        })
+        contractSchema(
+          Schema.Struct({
+            integrationId: idSchema,
+            name: Schema.optionalKey(Schema.String),
+            config: Schema.optionalKey(integrationConfigSchema),
+          })
+        )
       )
-      .output(integrationWithConfigSchema),
-    delete: oc
-      .meta(
-        openapi({ method: "DELETE", path: "/integrations/{integrationId}" })
-      )
-      .input(
-        z.object({
-          integrationId: idSchema,
-        })
-      )
-      .output(z.object({ success: z.literal(true) })),
-    testConnection: oc
-      .meta(
-        openapi({ method: "POST", path: "/integrations/{integrationId}/test" })
-      )
-      .input(
-        z.object({
-          integrationId: idSchema,
-        })
-      )
-      .output(integrationTestResultSchema),
+      .output(integrationWithConfig),
+    delete: route("DELETE", "/integrations/{integrationId}")
+      .input(contractSchema(Schema.Struct({ integrationId: idSchema })))
+      .output(deleted),
+    testConnection: route("POST", "/integrations/{integrationId}/test")
+      .input(contractSchema(Schema.Struct({ integrationId: idSchema })))
+      .output(integrationTestResult),
     testCredentials: route("POST", "/integrations/test")
       .input(
-        z.object({
-          type: integrationTypeSchema,
-          config: integrationConfigSchema,
-        })
+        contractSchema(
+          Schema.Struct({
+            type: integrationTypeSchema,
+            config: integrationConfigSchema,
+          })
+        )
       )
-      .output(integrationTestResultSchema),
+      .output(integrationTestResult),
   },
   workflow: {
     getAll: route("GET", "/workflows")
-      .input(z.object({}))
-      .output(z.array(workflowApiPayloadSchema)),
+      .input(noInput)
+      .output(contractSchema(listOf(workflowApiPayloadSchema))),
     getById: route("GET", "/workflows/{workflowId}")
-      .input(
-        z.object({
-          workflowId: idSchema,
-        })
-      )
-      .output(workflowApiPayloadSchema),
+      .input(contractSchema(Schema.Struct({ workflowId: idSchema })))
+      .output(workflowApiPayload),
     create: route("POST", "/workflows/create")
       .input(
-        z.object({
-          name: z.string(),
-          description: z.string().optional(),
-          graph: serializedWorkflowGraphSchema,
-        })
+        contractSchema(
+          Schema.Struct({
+            name: Schema.String,
+            description: Schema.optionalKey(Schema.String),
+            graph: serializedWorkflowGraphSchema,
+          })
+        )
       )
-      .output(workflowApiPayloadSchema),
+      .output(workflowApiPayload),
     update: route("PATCH", "/workflows/{workflowId}")
       .input(
-        z.object({
-          workflowId: idSchema,
-          name: z.string().optional(),
-          description: z.string().optional(),
-          graph: serializedWorkflowGraphSchema.optional(),
-          mode: workflowRunModeSchema.optional(),
-        })
+        contractSchema(
+          Schema.Struct({
+            workflowId: idSchema,
+            name: Schema.optionalKey(Schema.String),
+            description: Schema.optionalKey(Schema.String),
+            graph: Schema.optionalKey(serializedWorkflowGraphSchema),
+            mode: Schema.optionalKey(workflowRunModeSchema),
+          })
+        )
       )
-      .output(workflowApiPayloadSchema),
+      .output(workflowApiPayload),
     delete: route("DELETE", "/workflows/{workflowId}")
-      .input(
-        z.object({
-          workflowId: idSchema,
-        })
-      )
-      .output(z.object({ success: z.literal(true) })),
-    duplicate: oc
-      .meta(
-        openapi({ method: "POST", path: "/workflows/{workflowId}/duplicate" })
-      )
-      .input(
-        z.object({
-          workflowId: idSchema,
-        })
-      )
-      .output(workflowApiPayloadSchema),
+      .input(contractSchema(Schema.Struct({ workflowId: idSchema })))
+      .output(deleted),
+    duplicate: route("POST", "/workflows/{workflowId}/duplicate")
+      .input(contractSchema(Schema.Struct({ workflowId: idSchema })))
+      .output(workflowApiPayload),
     getCurrent: route("GET", "/workflows/current")
-      .input(z.object({}))
-      .output(workflowApiPayloadSchema),
+      .input(noInput)
+      .output(workflowApiPayload),
     saveCurrent: route("POST", "/workflows/current")
       .input(
-        z.object({
-          graph: serializedWorkflowGraphSchema,
-        })
+        contractSchema(Schema.Struct({ graph: serializedWorkflowGraphSchema }))
       )
-      .output(workflowApiPayloadSchema),
+      .output(workflowApiPayload),
     execute: route("POST", "/workflow/{workflowId}/execute")
       .input(
-        z.object({
-          workflowId: idSchema,
-          // The trigger payload arrives as a JSON request body and leaves again
-          // as JSON: Inngest stringifies it onto the event, and the engine
-          // stores it in the JSONB `workflow_executions.input` column. The
-          // schema names that, so everything downstream reads `JsonObject`.
-          input: jsonObjectZodSchema.optional(),
-        })
+        contractSchema(
+          Schema.Struct({
+            workflowId: idSchema,
+            // The trigger payload arrives as a JSON request body and leaves again
+            // as JSON: Inngest stringifies it onto the event, and the engine
+            // stores it in the JSONB `workflow_executions.input` column. The
+            // schema names that, so everything downstream reads `JsonObject`.
+            input: Schema.optionalKey(jsonObjectSchema),
+          })
+        )
       )
-      .output(workflowExecuteResponseSchema),
-    triggerWebhook: oc
-      .meta(
-        openapi({ method: "POST", path: "/workflows/{workflowId}/webhook" })
-      )
+      .output(contractSchema(workflowExecuteResponseSchema)),
+    triggerWebhook: route("POST", "/workflows/{workflowId}/webhook")
       .input(
-        z.object({
-          workflowId: idSchema,
-          input: jsonObjectZodSchema.optional(),
-        })
+        contractSchema(
+          Schema.Struct({
+            workflowId: idSchema,
+            input: Schema.optionalKey(jsonObjectSchema),
+          })
+        )
       )
-      .output(workflowWebhookResponseSchema),
-    getExecutions: oc
-      .meta(
-        openapi({ method: "GET", path: "/workflows/{workflowId}/executions" })
-      )
-      .input(
-        z.object({
-          workflowId: idSchema,
-        })
-      )
-      .output(z.array(workflowExecutionSchema)),
+      .output(contractSchema(workflowWebhookResponseSchema)),
+    getExecutions: route("GET", "/workflows/{workflowId}/executions")
+      .input(contractSchema(Schema.Struct({ workflowId: idSchema })))
+      .output(contractSchema(listOf(workflowExecutionSchema))),
     getExecutionsGlobal: route("GET", "/workflows/executions")
       .input(
-        z.object({
-          workflowIds: z.array(idSchema).optional(),
-          statuses: z.array(workflowExecutionStatusFilterSchema).optional(),
-          limit: z.number().int().min(1).max(500).optional(),
-          cursor: workflowGlobalExecutionsCursorSchema.optional(),
-        })
+        contractSchema(
+          Schema.Struct({
+            workflowIds: Schema.optionalKey(listOf(idSchema)),
+            statuses: Schema.optionalKey(
+              listOf(workflowExecutionStatusFilterSchema)
+            ),
+            limit: Schema.optionalKey(
+              Schema.Finite.check(
+                Schema.isInt(),
+                Schema.isBetween({ minimum: 1, maximum: 500 })
+              )
+            ),
+            cursor: Schema.optionalKey(workflowGlobalExecutionsCursorSchema),
+          })
+        )
       )
       .output(
-        z.object({
-          items: z.array(workflowGlobalExecutionSchema),
-          nextCursor: workflowGlobalExecutionsCursorSchema.nullable(),
-        })
+        contractSchema(
+          Schema.Struct({
+            items: listOf(workflowGlobalExecutionSchema),
+            nextCursor: Schema.NullOr(workflowGlobalExecutionsCursorSchema),
+          })
+        )
       ),
     bulkLifecycle: route("POST", "/workflows/bulk-lifecycle")
       .input(
-        z.object({
-          workflowIds: z.array(idSchema).min(1),
-          action: workflowBulkActionSchema,
-        })
+        contractSchema(
+          Schema.Struct({
+            workflowIds: listOf(idSchema).check(Schema.isMinLength(1)),
+            action: workflowBulkActionSchema,
+          })
+        )
       )
-      .output(workflowBulkLifecycleResultSchema),
-    deleteExecutions: oc
-      .meta(
-        openapi({
-          method: "DELETE",
-          path: "/workflows/{workflowId}/executions",
-        })
-      )
-      .input(
-        z.object({
-          workflowId: idSchema,
-        })
-      )
+      .output(contractSchema(workflowBulkLifecycleResultSchema)),
+    deleteExecutions: route("DELETE", "/workflows/{workflowId}/executions")
+      .input(contractSchema(Schema.Struct({ workflowId: idSchema })))
       .output(
-        z.object({
-          success: z.literal(true),
-          deletedCount: z.number(),
-        })
+        contractSchema(
+          Schema.Struct({
+            success: Schema.Literal(true),
+            deletedCount: Schema.Finite,
+          })
+        )
       ),
-    getExecutionLogs: oc
-      .meta(
-        openapi({
-          method: "GET",
-          path: "/workflows/executions/{executionId}/logs",
-        })
-      )
-      .input(
-        z.object({
-          executionId: idSchema,
-        })
-      )
+    getExecutionLogs: route("GET", "/workflows/executions/{executionId}/logs")
+      .input(contractSchema(Schema.Struct({ executionId: idSchema })))
       .output(
-        z.object({
-          execution: executionSummarySchema,
-          logs: z.array(executionLogSchema),
-        })
+        contractSchema(
+          Schema.Struct({
+            execution: executionSummarySchema,
+            logs: listOf(executionLogSchema),
+          })
+        )
       ),
-    getExecutionEvents: oc
-      .meta(
-        openapi({
-          method: "GET",
-          path: "/workflows/executions/{executionId}/events",
-        })
-      )
-      .input(
-        z.object({
-          executionId: idSchema,
-        })
-      )
+    getExecutionEvents: route(
+      "GET",
+      "/workflows/executions/{executionId}/events"
+    )
+      .input(contractSchema(Schema.Struct({ executionId: idSchema })))
       .output(
-        z.object({
-          events: z.array(executionEventSchema),
-        })
+        contractSchema(Schema.Struct({ events: listOf(executionEventSchema) }))
       ),
-    cancelExecution: oc
-      .meta(
-        openapi({
-          method: "POST",
-          path: "/workflows/executions/{executionId}/cancel",
-        })
-      )
-      .input(
-        z.object({
-          executionId: idSchema,
-        })
-      )
+    cancelExecution: route("POST", "/workflows/executions/{executionId}/cancel")
+      .input(contractSchema(Schema.Struct({ executionId: idSchema })))
       .output(
-        z.object({
-          success: z.literal(true),
-          status: z.literal("cancelled"),
-          cancelledWaitStates: z.number(),
-        })
+        contractSchema(
+          Schema.Struct({
+            success: Schema.Literal(true),
+            status: Schema.Literal("cancelled"),
+            cancelledWaitStates: Schema.Finite,
+          })
+        )
       ),
-    getExecutionStatus: oc
-      .meta(
-        openapi({
-          method: "GET",
-          path: "/workflows/executions/{executionId}/status",
-        })
-      )
-      .input(
-        z.object({
-          executionId: idSchema,
-        })
-      )
+    getExecutionStatus: route(
+      "GET",
+      "/workflows/executions/{executionId}/status"
+    )
+      .input(contractSchema(Schema.Struct({ executionId: idSchema })))
       .output(
-        z.object({
-          status: z.string(),
-          nodeStatuses: z.array(
-            z.object({
-              nodeId: z.string(),
-              status: z.enum([
-                "pending",
-                "running",
-                "success",
-                "error",
-                "cancelled",
-              ]),
-            })
-          ),
-        })
+        contractSchema(
+          Schema.Struct({
+            status: Schema.String,
+            nodeStatuses: listOf(
+              Schema.Struct({
+                nodeId: Schema.String,
+                status: Schema.Literals([
+                  "pending",
+                  "running",
+                  "success",
+                  "error",
+                  "cancelled",
+                ]),
+              })
+            ),
+          })
+        )
       ),
   },
 };

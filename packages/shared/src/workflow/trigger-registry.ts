@@ -1,7 +1,9 @@
 import { parse as parseCel } from "@marcbachmann/cel-js";
 import type { StandardJSONSchemaV1 } from "@standard-schema/spec";
+import { Schema } from "effect";
 import type { ActionConfigField } from "#src/plugins/registry";
 import type { JsonObject } from "#src/types/json";
+import { asStandardSchema } from "#src/types/schema";
 import { getValueByPath } from "#src/utils/object-path";
 import type { InputSchema } from "#src/workflow/action-registry";
 import {
@@ -76,9 +78,22 @@ type TriggerSchemaStandard<TPayload> = {
   };
 };
 
+/**
+ * The three forms a payload schema reaches this registry in.
+ *
+ * The first two are libraries that describe themselves: a `safeParse` method,
+ * or Standard Schema. The third is a bare Effect schema, which carries neither
+ * until it is asked to -- `createTrigger` asks, once, so an author writes
+ * `schema: Schema.Struct({ ... })` with nothing wrapped around it.
+ *
+ * What the registry does with a schema, it does through whichever of the first
+ * two shapes it finds, and that has not changed. Adding the third arm widened
+ * what an author may write; it did not narrow what the registry accepts.
+ */
 export type TriggerPayloadSchema<TPayload> =
   | TriggerSchemaSafeParse<TPayload>
-  | TriggerSchemaStandard<TPayload>;
+  | TriggerSchemaStandard<TPayload>
+  | Schema.ConstraintDecoder<TPayload>;
 
 type TriggerPathNonTraversable =
   | string
@@ -187,7 +202,8 @@ type CreateTriggerInputBase<TPayload extends JsonObject> = {
   label: string;
 
   /**
-   * Zod or Standard Schema that validates incoming payloads.
+   * The schema that validates incoming payloads. Write it in Effect Schema,
+   * Zod, or arktype -- whichever, it is passed as it is, with no wrapping.
    * Payloads that fail validation classify as `invalid_payload` and are ignored.
    * The schema's shape also drives `TriggerPayloadPath` autocomplete on path fields
    * like `correlationIdPath`, `eventTypePath`, `concurrency.key`, and `inngest.*.key`.
@@ -559,17 +575,57 @@ function collectCelIdentifiers(
   return results;
 }
 
+/**
+ * The top-level field names a payload schema declares, read off the object the
+ * schema library exposes rather than off its JSON Schema.
+ *
+ * None of the property names below is Standard Schema, which is why this
+ * answers `undefined` rather than throwing for a library that publishes none of
+ * them -- the callers treat that as "no names known" and leave a CEL expression
+ * or a reference list as they found it.
+ */
+function fieldNamesOf(declared: unknown): string[] | undefined {
+  return typeof declared === "object" && declared !== null
+    ? Object.keys(declared)
+    : undefined;
+}
+
+/**
+ * Three property names, because two libraries and two Effect shapes. Zod calls
+ * it `shape`; `Schema.Struct` calls it `fields`; `Schema.StructWithRest` -- the
+ * shape an open payload schema has -- carries neither, and exposes the struct it
+ * wraps as `schema`, whose own `fields` are the names wanted here.
+ *
+ * Each check falls through rather than answering, because a property being
+ * present says nothing about it holding an object of field names: a payload
+ * schema is free to declare a field literally called `shape`.
+ */
 function extractSchemaKeys(schema: unknown): string[] | undefined {
+  // An Effect schema is callable, so `typeof` answers "function" for every one
+  // of them. Testing for an object alone would put both Effect branches below
+  // out of reach; `isStandardSchema` above admits both for the same reason.
   if (
-    typeof schema === "object" &&
-    schema !== null &&
-    "shape" in schema &&
-    typeof schema.shape === "object" &&
-    schema.shape !== null
+    (typeof schema !== "object" && typeof schema !== "function") ||
+    schema === null
   ) {
-    return Object.keys(schema.shape);
+    return undefined;
   }
-  return undefined;
+
+  if ("shape" in schema) {
+    const names = fieldNamesOf(schema.shape);
+    if (names) {
+      return names;
+    }
+  }
+
+  if ("fields" in schema) {
+    const names = fieldNamesOf(schema.fields);
+    if (names) {
+      return names;
+    }
+  }
+
+  return "schema" in schema ? extractSchemaKeys(schema.schema) : undefined;
 }
 
 function rewriteCelExpression(
@@ -688,7 +744,8 @@ function outputFieldsFromSchemaFields<TPayload extends JsonObject>(
     return schemaFields.map((field) => schemaFieldToReferenceField(field));
   }
 
-  // Fallback: extract top-level field names from Zod .shape
+  // Fallback: the field names the schema object declares, when its JSON
+  // Schema gave nothing.
   const schemaKeys = extractSchemaKeys(schema);
   if (schemaKeys && schemaKeys.length > 0) {
     return schemaKeys.map((key) => ({
@@ -718,7 +775,8 @@ function enumValuesAtPath(
 }
 
 function buildInngestEventTriggerConfig<TPayload extends JsonObject>(
-  input: CreateTriggerInputEvent<TPayload>
+  input: CreateTriggerInputEvent<TPayload>,
+  schema: TriggerPayloadSchema<TPayload>
 ): InngestEventTriggerConfig {
   const rawEvents = Array.isArray(input.event) ? input.event : [input.event];
   const eventNames = rawEvents.map((e) => e.trim());
@@ -746,10 +804,7 @@ function buildInngestEventTriggerConfig<TPayload extends JsonObject>(
         "concurrency cannot be set on both the trigger and inngest options — use one or the other"
       );
     }
-    Object.assign(
-      functionOptions,
-      prefixInngestOptions(input.inngest, input.schema)
-    );
+    Object.assign(functionOptions, prefixInngestOptions(input.inngest, schema));
   }
 
   return { eventNames, functionOptions };
@@ -799,6 +854,12 @@ function buildInngestEventTriggerConfig<TPayload extends JsonObject>(
 export function createTrigger<TPayload extends JsonObject>(
   input: CreateTriggerInput<TPayload>
 ): RuntimeExtensionTriggerDefinition {
+  // The one place a payload schema is bridged. Everything below reads a
+  // library-agnostic shape and nothing below knows which library wrote it: what
+  // `asStandardSchema` hands back for the Effect arm satisfies the Standard
+  // Schema arm this union already had.
+  const schema = asStandardSchema(input.schema);
+
   const triggerType = input.type.trim();
   const label = input.label.trim();
   const correlationIdPath = input.correlationIdPath.trim();
@@ -818,7 +879,7 @@ export function createTrigger<TPayload extends JsonObject>(
 
   const inngestEventTrigger =
     input.event !== undefined
-      ? buildInngestEventTriggerConfig(input)
+      ? buildInngestEventTriggerConfig(input, schema)
       : undefined;
 
   const executionType: TriggerExecutionType = inngestEventTrigger
@@ -833,8 +894,9 @@ export function createTrigger<TPayload extends JsonObject>(
 
   let configFields: ActionConfigField[] | undefined;
   if (input.configSchema) {
+    const configSchema = asStandardSchema(input.configSchema);
     try {
-      const jsonSchema = input.configSchema["~standard"].jsonSchema.input({
+      const jsonSchema = configSchema["~standard"].jsonSchema.input({
         target: "draft-2020-12",
         libraryOptions: jsonSchemaLibraryOptions,
       });
@@ -844,8 +906,8 @@ export function createTrigger<TPayload extends JsonObject>(
     }
   }
 
-  const schemaFields = parseTriggerSchemaFields(input.schema);
-  const outputFields = outputFieldsFromSchemaFields(schemaFields, input.schema);
+  const schemaFields = parseTriggerSchemaFields(schema);
+  const outputFields = outputFieldsFromSchemaFields(schemaFields, schema);
 
   // The closed Event Type vocabulary the editor renders. An eventTypePath
   // pointing at a schema enum (at any depth) yields its values; an
@@ -870,7 +932,7 @@ export function createTrigger<TPayload extends JsonObject>(
       executionType,
       inngestEventTrigger,
       evaluate({ config: _config, payload, eventName }) {
-        const validatedPayload = validateTriggerPayload(input.schema, payload);
+        const validatedPayload = validateTriggerPayload(schema, payload);
         if (!validatedPayload) {
           return { ok: false, reason: "invalid_payload" };
         }

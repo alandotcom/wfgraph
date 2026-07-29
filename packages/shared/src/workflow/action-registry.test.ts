@@ -1,3 +1,11 @@
+/**
+ * The fixtures here are Zod, deliberately, and Zod is a devDependency of this
+ * package for no other reason. The registry takes any Standard Schema, and
+ * writing these against the library the repo itself uses would leave that claim
+ * untested: a schema built by Effect would only prove the registry works with
+ * the shape Effect produces. `standard-schema-compat.test.ts` makes the same
+ * point with arktype from the other side.
+ */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {

@@ -18,6 +18,9 @@ catalogs:
     '@orpc/contract':
       specifier: 2.0.0-beta.21
       version: 2.0.0-beta.21
+    '@orpc/experimental-effect':
+      specifier: 2.0.0-beta.21
+      version: 2.0.0-beta.21
     '@orpc/openapi':
       specifier: 2.0.0-beta.21
       version: 2.0.0-beta.21
@@ -25,9 +28,6 @@ catalogs:
       specifier: 2.0.0-beta.21
       version: 2.0.0-beta.21
     '@orpc/tanstack-query':
-      specifier: 2.0.0-beta.21
-      version: 2.0.0-beta.21
-    '@orpc/zod':
       specifier: 2.0.0-beta.21
       version: 2.0.0-beta.21
     '@standard-schema/spec':
@@ -81,9 +81,9 @@ importers:
       dotenv:
         specifier: ^17.3.1
         version: 17.4.2
-      zod:
+      effect:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.0.0-beta.102
     devDependencies:
       '@effect/vitest':
         specifier: 'catalog:'
@@ -296,15 +296,15 @@ importers:
       '@orpc/contract':
         specifier: 'catalog:'
         version: 2.0.0-beta.21(@opentelemetry/api@1.9.1)
+      '@orpc/experimental-effect':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.21(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.102)
       '@orpc/openapi':
         specifier: 'catalog:'
         version: 2.0.0-beta.21(@opentelemetry/api@1.9.1)
       '@orpc/server':
         specifier: 'catalog:'
         version: 2.0.0-beta.21(@opentelemetry/api@1.9.1)
-      '@orpc/zod':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.21(@opentelemetry/api@1.9.1)(zod@4.4.3)
       '@standard-schema/spec':
         specifier: 'catalog:'
         version: 1.1.0
@@ -338,9 +338,6 @@ importers:
       postgres:
         specifier: 'catalog:'
         version: 3.4.9
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
     devDependencies:
       '@fastify/middie':
         specifier: ^9.3.3
@@ -424,9 +421,6 @@ importers:
       tailwind-merge:
         specifier: ^3.4.0
         version: 3.6.0
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
     devDependencies:
       '@standard-schema/spec':
         specifier: 'catalog:'
@@ -437,6 +431,9 @@ importers:
       arktype:
         specifier: ^2.1.29
         version: 2.2.3
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
 
 packages:
 
@@ -1788,6 +1785,11 @@ packages:
   '@orpc/contract@2.0.0-beta.21':
     resolution: {integrity: sha512-WFcf6nKR6ti5DdhjWn6vr8WkbyRrka1NLTzJbTshu/kzwoBmZBfuHNMbr+akkdt76zy99wJfD6o4jmnXlDvxLw==}
 
+  '@orpc/experimental-effect@2.0.0-beta.21':
+    resolution: {integrity: sha512-AQ56YdPKyUiMdCzUWNyOWL5iyq4a6zmsyXI/mL+WLOaXBpXqCwcDwjyyRckx+GECXDltvK+9X0MIWnseg7NiSw==}
+    peerDependencies:
+      effect: '>=4.0.0-beta.90'
+
   '@orpc/json-schema@2.0.0-beta.21':
     resolution: {integrity: sha512-k2m+hdZJjIuqijafs2Dp+GUwdVVTS9lz7DTmtvWH9zoBSyFVFJi+yN/QiMMK6Pl9487NAwA7cFMQI3gpdhmFKg==}
 
@@ -1825,11 +1827,6 @@ packages:
     resolution: {integrity: sha512-HGJGggTxWVAEjtGyDUW11ZravBab0qBlb4w8IB7Wxj7gh15nyXh1M86Di0AQgy5YWw0wGv9Lq7uTA3RlaFWhFw==}
     peerDependencies:
       '@tanstack/query-core': '>=5.80.2'
-
-  '@orpc/zod@2.0.0-beta.21':
-    resolution: {integrity: sha512-E2EYiwHP7oxG3yYj7dCCLszU57gICukY5Y8zgopskAro8chmpN0k0DuhmDy5aocadbjDQRfdSQzM0lpcDnJx7A==}
-    peerDependencies:
-      zod: '>=4.3.5'
 
   '@oxc-parser/binding-android-arm-eabi@0.140.0':
     resolution: {integrity: sha512-ZfjDZ422mo7eo3b3VltqNsV9kmv1qt/sPEAMSl64iOSwhVfd0eIZ9LB79Mbs1xYXJnk7WSROwzBCKDIiVxPTvQ==}
@@ -7090,6 +7087,17 @@ snapshots:
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
+  '@orpc/experimental-effect@2.0.0-beta.21(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.102)':
+    dependencies:
+      '@orpc/contract': 2.0.0-beta.21(@opentelemetry/api@1.9.1)
+      '@orpc/json-schema': 2.0.0-beta.21(@opentelemetry/api@1.9.1)
+      '@orpc/server': 2.0.0-beta.21(@opentelemetry/api@1.9.1)
+      '@orpc/shared': 2.0.0-beta.21(@opentelemetry/api@1.9.1)
+      effect: 4.0.0-beta.102
+    transitivePeerDependencies:
+      - '@opentelemetry/api'
+      - crossws
+
   '@orpc/json-schema@2.0.0-beta.21(@opentelemetry/api@1.9.1)':
     dependencies:
       '@orpc/client': 2.0.0-beta.21(@opentelemetry/api@1.9.1)
@@ -7151,15 +7159,6 @@ snapshots:
       - '@types/swagger-ui'
       - crossws
       - swagger-ui
-
-  '@orpc/zod@2.0.0-beta.21(@opentelemetry/api@1.9.1)(zod@4.4.3)':
-    dependencies:
-      '@orpc/json-schema': 2.0.0-beta.21(@opentelemetry/api@1.9.1)
-      json-schema-typed: 8.0.2
-      zod: 4.4.3
-    transitivePeerDependencies:
-      - '@opentelemetry/api'
-      - crossws
 
   '@oxc-parser/binding-android-arm-eabi@0.140.0':
     optional: true

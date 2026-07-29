@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { z } from "zod";
+import { Schema } from "effect";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import {
@@ -105,9 +105,9 @@ describe("event trigger detection in function registry", () => {
       type: EVENT_TRIGGER_TYPE,
       label: "Test Event Trigger",
       event: "app/test.event",
-      schema: z.object({
-        event: z.string(),
-        entity: z.object({ id: z.string() }),
+      schema: Schema.Struct({
+        event: Schema.String,
+        entity: Schema.Struct({ id: Schema.String }),
       }),
       // Event mode with no eventTypePath: the delivering Inngest event name
       // is the Event Type.

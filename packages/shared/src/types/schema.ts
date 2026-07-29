@@ -1,10 +1,71 @@
 /**
- * The two Effect Schema helpers this project reaches for often enough that they
- * belong in one place: reading a field off a document nobody validated, and
- * handing a schema to the parts of the codebase that speak Standard Schema.
+ * The Effect Schema helpers this project reaches for often enough that they
+ * belong in one place: reading a field off a document nobody validated, the one
+ * string shape half the contracts are built from, the decode options the strict
+ * schemas are read with, the two object shapes every wire schema is built from,
+ * and handing a schema to the parts of the codebase that speak Standard Schema.
  */
 
-import { Option, Schema, type SchemaAST } from "effect";
+import type {
+  StandardJSONSchemaV1,
+  StandardSchemaV1,
+} from "@standard-schema/spec";
+import { Option, Schema, type SchemaAST, SchemaTransformation } from "effect";
+
+/**
+ * A string that carries something once its surrounding whitespace is gone.
+ *
+ * Every identifier crossing the wire is this: a workflow id, a node key, an
+ * integration id, the token on a resume URL. The trim is a decode step rather
+ * than a rejection, which is what Zod's `.trim().min(1)` did and what the JSON
+ * Schema now says out loud -- the encoded side accepts any string, the decoded
+ * side is the one with a length floor.
+ */
+export const NonEmptyTrimmedString = Schema.String.pipe(
+  Schema.decodeTo(Schema.String, SchemaTransformation.trim())
+).check(Schema.isMinLength(1));
+
+/**
+ * How every schema in this project reads a document that came from outside it.
+ *
+ * Effect has no per-schema equivalent of Zod's `.strict()`: a closed object is
+ * closed because the decode was told to close it, so an object schema read
+ * without this option silently accepts whatever else the payload carried. The
+ * options travel two ways -- handed to a decode call directly, or closed over by
+ * `toStandardSchema` for the consumers that call `~standard.validate` with
+ * nothing else to say.
+ *
+ * An object that is meant to stay open says so in its own shape, with
+ * `Schema.StructWithRest`. An index signature skips the excess-property check
+ * entirely, so such a schema stays open under these options.
+ */
+export const rejectUnknownKeys: SchemaAST.ParseOptions = {
+  onExcessProperty: "error",
+};
+
+/**
+ * Anything else the payload carried, kept as it arrived.
+ *
+ * The rest half of a `Schema.StructWithRest`, which is how a shape that is meant
+ * to stay open says so: an index signature skips the excess-property check, so
+ * such a schema stays open even when the decode carries `rejectUnknownKeys`.
+ */
+export const unknownRest = [
+  Schema.Record(Schema.String, Schema.Unknown),
+] as const;
+
+/**
+ * A list, in the form both ends of the wire already hold it.
+ *
+ * `Schema.Array` describes a `readonly T[]`, which is the right default for a
+ * schema and the wrong one for a payload: the server hands back an array it
+ * just built and the client sorts and filters what it receives, so a readonly
+ * element type would push a copy into every one of those call sites for a
+ * guarantee neither side wanted.
+ */
+export function listOf<S extends Schema.ConstraintDecoder<unknown>>(item: S) {
+  return Schema.mutable(Schema.Array(item));
+}
 
 /**
  * The member a schema must carry to be read by `readAs`, and which nothing
@@ -45,6 +106,27 @@ export function readAs<S extends Schema.ConstraintDecoder<unknown>>(
 }
 
 /**
+ * Whether a schema has already been across the bridge below.
+ *
+ * `~standard` alone is not the answer: Effect's two bridge functions write into
+ * the same object, so a schema can carry a `jsonSchema` and still be waiting for
+ * the `validate` that parse options ride on.
+ */
+function hasStandardValidate(schema: object): boolean {
+  if (!("~standard" in schema)) {
+    return false;
+  }
+
+  const standard: unknown = schema["~standard"];
+  return (
+    typeof standard === "object" &&
+    standard !== null &&
+    "validate" in standard &&
+    typeof standard.validate === "function"
+  );
+}
+
+/**
  * Gives a schema both halves of Standard Schema: `~standard.validate` and
  * `~standard.jsonSchema`.
  *
@@ -67,12 +149,71 @@ export function readAs<S extends Schema.ConstraintDecoder<unknown>>(
  * that comes back is the same object, now carrying `~standard`. That also means
  * the first call wins: a schema that already has a `validate` keeps it, options
  * and all, so a schema wanting these options has to cross this bridge once.
+ *
+ * A second crossing with options is therefore a silent loss, and which crossing
+ * came first is decided by module initialisation order -- nothing a reader of
+ * either call site can see. So the second crossing throws instead.
  */
 export function toStandardSchema<S extends Schema.ConstraintDecoder<unknown>>(
   schema: S,
   parseOptions?: SchemaAST.ParseOptions
 ) {
+  if (parseOptions && hasStandardValidate(schema)) {
+    throw new Error(
+      "This schema already carries a Standard Schema validate, so these parse options would be silently dropped. Which crossing ran first is decided by module initialisation order, which no call site can see, so a schema that needs parse options must cross this bridge exactly once."
+    );
+  }
+
   return Schema.toStandardJSONSchemaV1(
     Schema.toStandardSchemaV1(schema, { parseOptions })
   );
+}
+
+/**
+ * A schema that both validates and describes itself, which is what the trigger
+ * and action registries need from one object: the first checks a payload, the
+ * second is where the editor's form fields and reference paths come from.
+ *
+ * Zod and arktype hand over an object of this shape already.
+ */
+export type StandardSchema<T> = StandardSchemaV1<unknown, T> &
+  StandardJSONSchemaV1<unknown, T>;
+
+/**
+ * `Schema.isSchema` under a signature that keeps the payload type.
+ *
+ * The guard Effect exports answers `Top`, which loses the `T` the caller is
+ * holding, leaving the bridge below with a schema of no particular payload.
+ */
+function isEffectSchema<T>(
+  schema: unknown
+): schema is Schema.ConstraintDecoder<T> {
+  return Schema.isSchema(schema);
+}
+
+/**
+ * The registries' one-line rule for the schema a plugin author handed them:
+ * bridge it if it is an Effect schema, take it as it is otherwise.
+ *
+ * This exists so that writing a trigger or an action in Effect Schema reads the
+ * same as writing one in Zod -- `schema: Schema.Struct({ ... })`, no wrapper --
+ * while the library-agnostic seam stays exactly as wide as it was. Registration
+ * is where it is called, which is the one moment a schema is handled before
+ * anything reads it, so the bridge's first-call-wins rule is satisfied by there
+ * being only one call.
+ *
+ * `Other` is whatever the caller's own seam already accepted, handed back
+ * untouched. The action registry names one shape there, the trigger registry
+ * names two, and neither has to restate this bridge to say so.
+ *
+ * The discrimination is exact rather than structural: `Schema.isSchema` tests
+ * for the `"~effect/Schema/Schema"` type id Effect brands every schema with, so
+ * no amount of resemblance makes a Zod or arktype schema answer to it. The
+ * bridge is idempotent besides -- Effect returns a schema that already carries a
+ * `validate` untouched -- so an author who bridged by hand loses nothing here.
+ */
+export function asStandardSchema<T, Other>(
+  schema: Other | Schema.ConstraintDecoder<T>
+): Other | StandardSchema<T> {
+  return isEffectSchema<T>(schema) ? toStandardSchema(schema) : schema;
 }

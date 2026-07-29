@@ -40,9 +40,9 @@
     "@marcbachmann/cel-js": "catalog:",
     "@opentelemetry/api": "^1.9.0",
     "@orpc/contract": "catalog:",
+    "@orpc/experimental-effect": "catalog:",
     "@orpc/openapi": "catalog:",
     "@orpc/server": "catalog:",
-    "@orpc/zod": "catalog:",
     "@standard-schema/spec": "catalog:",
     "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.1",
@@ -53,8 +53,7 @@
     "hono": "^4.11.9",
     "inngest": "^4.13.0",
     "nanoid": "catalog:",
-    "postgres": "catalog:",
-    "zod": "catalog:"
+    "postgres": "catalog:"
   },
   "devDependencies": {
     "@fastify/middie": "^9.3.3",

@@ -5,6 +5,8 @@ import {
 } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterContractClient } from "@orpc/contract";
+import { isNil } from "es-toolkit/predicate";
+import { omitBy } from "es-toolkit/object";
 import { getBasePath } from "#src/lib/base-path";
 import type { RpcContract } from "@rova/shared/rpc/contracts";
 import { getRpcErrorMessage } from "@rova/shared/rpc/error-message";
@@ -249,8 +251,8 @@ export const workflowApi = {
     rpc.workflow
       .create({
         name: workflow.name,
-        description: workflow.description,
         graph: toGraphPayload(workflow),
+        ...omitBy({ description: workflow.description }, isNil),
       })
       .then(toSavedWorkflow),
 
@@ -269,13 +271,23 @@ export const workflowApi = {
         })
       : undefined;
 
+    // A patch says what changed by leaving the rest out. The contract's
+    // optional fields are `Schema.optionalKey`, which is an absent key and not
+    // a key holding `undefined`, so the payload is built by dropping the
+    // absent ones rather than by naming them all and hoping the serialiser
+    // strips what it does not need.
     return rpc.workflow
       .update({
         workflowId: id,
-        name: workflow.name,
-        description: workflow.description,
-        graph,
-        mode: workflow.mode,
+        ...omitBy(
+          {
+            name: workflow.name,
+            description: workflow.description,
+            graph,
+            mode: workflow.mode,
+          },
+          isNil
+        ),
       })
       .then(toSavedWorkflow);
   },

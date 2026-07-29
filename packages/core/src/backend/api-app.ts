@@ -1,8 +1,7 @@
 import { RPCHandler } from "@orpc/server/fetch";
-import { Effect } from "effect";
+import { Effect, Result, Schema, type SchemaAST } from "effect";
 import { Hono } from "hono";
 import { serve as serveInngest } from "inngest/hono";
-import { z } from "zod";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
 import {
   getInngestClient,
@@ -24,13 +23,32 @@ import { rpcRouter } from "#src/backend/rpc/router";
 import { postWorkflowResume } from "#src/backend/services/workflows/triggering/resume";
 import { postWorkflowWebhook } from "#src/backend/services/workflows/triggering/webhook";
 import { type JsonObject, readJsonObject } from "@rova/shared/types/json";
+import { formatSchemaFailure } from "@rova/shared/types/schema-message";
+import {
+  NonEmptyTrimmedString,
+  rejectUnknownKeys,
+} from "@rova/shared/types/schema";
 import { getErrorMessage } from "@rova/shared/utils";
 import { listRuntimeActions } from "@rova/shared/workflow/action-registry";
 import { listCustomWorkflowTriggers } from "@rova/shared/workflow/trigger-registry";
 
-const idSchema = z.string().trim().min(1);
-const workflowIdParamsSchema = z.object({ workflowId: idSchema });
-const tokenParamsSchema = z.object({ token: idSchema });
+// A path segment is whatever the sender typed, so the refusal names the field
+// and the rule rather than echoing the value back into the response body.
+// `errors: "all"` is what `formatSchemaFailure` is written against: it counts
+// the issues it did not spell out, and stopping at the first would make that
+// count always zero.
+const readParams = {
+  ...rejectUnknownKeys,
+  errors: "all",
+} as const satisfies SchemaAST.ParseOptions;
+const readWorkflowIdParams = Schema.decodeUnknownResult(
+  Schema.Struct({ workflowId: NonEmptyTrimmedString }),
+  readParams
+);
+const readTokenParams = Schema.decodeUnknownResult(
+  Schema.Struct({ token: NonEmptyTrimmedString }),
+  readParams
+);
 
 const httpLogger = getAppLogger("http", "hono");
 const rpcLogger = getAppLogger("rpc");
@@ -435,10 +453,10 @@ export function createApiApp(options: CreateApiAppOptions) {
       // Both refusals below carry the CORS headers for the same reason the
       // service's failures do: a browser-side sender reading an opaque response
       // cannot tell a malformed request from an outage.
-      const params = workflowIdParamsSchema.safeParse(c.req.param());
-      if (!params.success) {
+      const params = readWorkflowIdParams(c.req.param());
+      if (Result.isFailure(params)) {
         return c.json(
-          { error: z.prettifyError(params.error) },
+          { error: formatSchemaFailure(params.failure.issue) },
           400,
           webhookCorsHeaders
         );
@@ -451,7 +469,7 @@ export function createApiApp(options: CreateApiAppOptions) {
 
       return await runtime.runPromise(
         postWorkflowWebhook({
-          workflowId: params.data.workflowId,
+          workflowId: params.success.workflowId,
           authHeader: c.req.header("Authorization") ?? null,
           body: body.data,
         }).pipe(
@@ -467,9 +485,12 @@ export function createApiApp(options: CreateApiAppOptions) {
       );
     })
     .post("/workflows/hooks/:token/resume", async (c) => {
-      const params = tokenParamsSchema.safeParse(c.req.param());
-      if (!params.success) {
-        return c.json({ error: z.prettifyError(params.error) }, 400);
+      const params = readTokenParams(c.req.param());
+      if (Result.isFailure(params)) {
+        return c.json(
+          { error: formatSchemaFailure(params.failure.issue) },
+          400
+        );
       }
 
       const body = await parseJsonObjectBody(c.req.raw);
@@ -479,7 +500,7 @@ export function createApiApp(options: CreateApiAppOptions) {
 
       return await runtime.runPromise(
         postWorkflowResume({
-          token: params.data.token,
+          token: params.success.token,
           body: body.data,
           authHeader: c.req.header("Authorization") ?? null,
         }).pipe(

@@ -108,7 +108,13 @@ describe("validateWorkflowGraph", () => {
 
     expect(result.valid).toBe(false);
     if (!result.valid) {
-      expect(result.error).toContain("data.type");
+      // No `type` means no arm of the node data union is selected, so the
+      // failure lands on `data` and names what a node data type has to be.
+      // The node's own fields stay out of the message: the editor put them
+      // there, and this string is persisted as a run error.
+      expect(result.error).toBe(
+        'nodes[0].attributes.data: Node data needs a type of "trigger", "action", or "add"'
+      );
     }
   });
 

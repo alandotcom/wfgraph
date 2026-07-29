@@ -1,7 +1,9 @@
+import { Option, Schema } from "effect";
 import type { InngestFunction } from "inngest";
 import { db } from "#src/backend/lib/db/index";
 import type { RovaRuntime } from "#src/backend/runtime";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
+import { rejectUnknownKeys } from "@rova/shared/types/schema";
 import {
   serializedWorkflowGraphSchema,
   type WorkflowTriggerConfigInput,
@@ -11,6 +13,12 @@ import { resolveWorkflowTriggerDefinition } from "@rova/shared/workflow/trigger-
 import { createWorkflowRunRequestedFunction } from "./workflow-function";
 
 const REGISTRY_CACHE_TTL_MS = 5000;
+
+/** The graph column is untyped JSON, and a row that fails is skipped, not thrown. */
+const readGraph = Schema.decodeUnknownOption(
+  serializedWorkflowGraphSchema,
+  rejectUnknownKeys
+);
 
 /**
  * The registry holds both kinds of function side by side: run handlers, whose
@@ -56,12 +64,12 @@ function toEventListenerFunctionId(workflowId: string): string {
 function findTriggerNodeConfig(
   graph: unknown
 ): WorkflowTriggerConfigInput | undefined {
-  const parsedGraph = serializedWorkflowGraphSchema.safeParse(graph);
-  if (!parsedGraph.success) {
+  const parsedGraph = readGraph(graph);
+  if (Option.isNone(parsedGraph)) {
     return undefined;
   }
 
-  for (const node of parsedGraph.data.nodes) {
+  for (const node of parsedGraph.value.nodes) {
     const nodeData = node.attributes.data;
     if (nodeData.type === "trigger" && nodeData.config) {
       return nodeData.config;

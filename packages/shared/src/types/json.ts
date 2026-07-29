@@ -10,7 +10,6 @@
  */
 
 import { Schema } from "effect";
-import { z } from "zod";
 import { readAs } from "#src/types/schema";
 
 export type JsonValue =
@@ -68,17 +67,22 @@ export function readJsonObject(value: unknown): JsonObject | null {
 }
 
 /**
- * The same shape in Zod, for the schemas that have not moved yet: the oRPC
- * contracts in `rpc/contracts.ts` and the Inngest event types in
- * `backend/lib/inngest/events.ts` both embed it inside a Zod object. Delete
- * this in batch C, when those two move to Effect Schema.
+ * The same shape as a schema, for the payloads that are described rather than
+ * read: the `input` an RPC procedure takes, the `triggerInput` an Inngest event
+ * carries. Those two embed it inside an object schema of their own, so it is a
+ * schema here rather than a reader.
  *
- * Both embedders move together in that batch rather than one per batch, because
- * `contracts.ts` and `events.ts` also share `serializedWorkflowGraphSchema`:
- * Zod cannot hold a foreign Standard Schema inside a `z.object`, so the graph
- * cannot move while either embedder is still described in Zod.
+ * `MutableJson` for the value, matching `JsonValue` above, and `Schema.Record`
+ * for the root, which is the `JsonObject` narrowing stated as a schema.
+ *
+ * The annotation is the compiler proving that, and it is why the two
+ * definitions cannot drift: widen either one and this line stops compiling.
+ * What it checks is that a decoded value is assignable to `JsonObject`, which
+ * is the direction every consumer reads in. It does not check the reverse:
+ * `Schema.Record` describes an index signature, and `JsonObject`'s own index
+ * signature is mutable, so the two are assignable one way only.
  */
-export const jsonObjectZodSchema: z.ZodType<JsonObject, JsonObject> = z.record(
-  z.string(),
-  z.json()
-);
+export const jsonObjectSchema = Schema.Record(
+  Schema.String,
+  Schema.MutableJson
+) satisfies Schema.Codec<JsonObject>;

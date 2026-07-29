@@ -1,4 +1,7 @@
+import { Result, Schema } from "effect";
 import { DirectedGraph } from "graphology";
+import { formatSchemaFailure } from "#src/types/schema-message";
+import { rejectUnknownKeys } from "#src/types/schema";
 import {
   serializedWorkflowGraphSchema,
   workflowEdgeAttributesSchema,
@@ -19,12 +22,42 @@ export const WORKFLOW_GRAPH_OPTIONS = {
   type: "directed",
 } as const;
 
+/**
+ * The five ways this module reads a graph shape, bound once here.
+ *
+ * `rejectUnknownKeys` is what makes the closed schemas closed, so every decode
+ * below has to carry it; binding the decoders at module scope is what keeps
+ * that from being a thing each call site remembers. The `Result` variants
+ * answer with a failure value rather than throwing, for the two callers that
+ * ask whether a graph is valid instead of insisting it is.
+ */
+const decodeGraph = Schema.decodeUnknownSync(
+  serializedWorkflowGraphSchema,
+  rejectUnknownKeys
+);
+const readGraph = Schema.decodeUnknownResult(serializedWorkflowGraphSchema, {
+  ...rejectUnknownKeys,
+  errors: "all",
+});
+const decodeNodeAttributes = Schema.decodeUnknownSync(
+  workflowNodeAttributesSchema,
+  rejectUnknownKeys
+);
+const readNodeAttributes = Schema.decodeUnknownResult(
+  workflowNodeAttributesSchema,
+  rejectUnknownKeys
+);
+const decodeEdgeAttributes = Schema.decodeUnknownSync(
+  workflowEdgeAttributesSchema,
+  rejectUnknownKeys
+);
+
 function isWorkflowNodeType(value: unknown): value is WorkflowNodeType {
   return value === "trigger" || value === "action" || value === "add";
 }
 
 function parseNodeAttributes(attributes: unknown): WorkflowNode {
-  const parsed = workflowNodeAttributesSchema.parse(attributes);
+  const parsed = decodeNodeAttributes(attributes);
 
   return {
     ...parsed,
@@ -33,7 +66,7 @@ function parseNodeAttributes(attributes: unknown): WorkflowNode {
 }
 
 function parseEdgeAttributes(attributes: unknown): WorkflowEdge {
-  return workflowEdgeAttributesSchema.parse(attributes);
+  return decodeEdgeAttributes(attributes);
 }
 
 function toNodeFromSerialized(
@@ -101,7 +134,7 @@ export function createSerializedWorkflowGraph(input: {
 export function parseSerializedWorkflowGraph(
   value: unknown
 ): SerializedWorkflowGraph {
-  return serializedWorkflowGraphSchema.parse(value);
+  return decodeGraph(value);
 }
 
 export function createGraphFromSerialized(
@@ -134,18 +167,18 @@ export function toWorkflowGraphData(serializedGraph: SerializedWorkflowGraph): {
 export function isSerializedWorkflowGraph(
   value: unknown
 ): value is SerializedWorkflowGraph {
-  return serializedWorkflowGraphSchema.safeParse(value).success;
+  return Result.isSuccess(readGraph(value));
 }
 
 export function getNodeTypeFromSerializedNode(
   node: SerializedWorkflowNode
 ): WorkflowNodeType | undefined {
-  const parsed = workflowNodeAttributesSchema.safeParse(node.attributes);
-  if (!parsed.success) {
+  const parsed = readNodeAttributes(node.attributes);
+  if (Result.isFailure(parsed)) {
     return undefined;
   }
 
-  const dataType = parsed.data.data.type;
+  const dataType = parsed.success.data.type;
   if (isWorkflowNodeType(dataType)) {
     return dataType;
   }
@@ -154,20 +187,9 @@ export function getNodeTypeFromSerializedNode(
 }
 
 export function getSerializedWorkflowGraphError(graph: unknown): string {
-  const parsed = serializedWorkflowGraphSchema.safeParse(graph);
-  if (parsed.success) {
-    return "";
-  }
+  const parsed = readGraph(graph);
 
-  const firstIssue = parsed.error.issues[0];
-  if (!firstIssue) {
-    return "Invalid graph payload";
-  }
-
-  const path = firstIssue.path.join(".");
-  if (!path) {
-    return firstIssue.message;
-  }
-
-  return `${path}: ${firstIssue.message}`;
+  return Result.isSuccess(parsed)
+    ? ""
+    : formatSchemaFailure(parsed.failure.issue);
 }

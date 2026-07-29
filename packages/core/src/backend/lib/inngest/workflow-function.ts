@@ -1,5 +1,4 @@
 import type { InngestFunction } from "inngest";
-import type { z } from "zod";
 import {
   executeWorkflow,
   type WorkflowExecutionInput,
@@ -40,7 +39,7 @@ async function workflowRunRequestedHandler({
   event,
   step,
 }: {
-  event: { data: z.infer<typeof workflowExecutionInputSchema> };
+  event: { data: typeof workflowExecutionInputSchema.Type };
   step: {
     sleep: (id: string, durationMs: number) => Promise<void>;
     waitForEvent: (

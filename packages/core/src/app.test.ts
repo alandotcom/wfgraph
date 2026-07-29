@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { z } from "zod";
+import { Schema } from "effect";
 import { createTrigger } from "#src/index";
 import { createRovaApp, type RovaApp } from "#src/app";
 import { createApiApp, MACHINE_ROUTES } from "#src/backend/api-app";
@@ -383,7 +383,7 @@ describe("createRovaApp configuration", () => {
       type: "DisposeProbe",
       label: "Dispose Probe",
       description: "Registered twice, on purpose",
-      schema: z.object({ id: z.string(), event: z.string() }),
+      schema: Schema.Struct({ id: Schema.String, event: Schema.String }),
       correlationIdPath: "id",
       eventTypePath: "event",
     });

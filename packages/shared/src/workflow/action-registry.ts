@@ -1,12 +1,10 @@
-import type {
-  StandardJSONSchemaV1,
-  StandardSchemaV1,
-} from "@standard-schema/spec";
+import type { Schema } from "effect";
 import type {
   ActionConfigField,
   ActionConfigFieldBase,
 } from "#src/plugins/registry";
 import type { IntegrationType } from "#src/types/integration";
+import { asStandardSchema, type StandardSchema } from "#src/types/schema";
 import {
   type ReferenceField,
   schemaFieldToReferenceField,
@@ -19,18 +17,21 @@ import {
 import type { StepError, StepResult } from "#src/workflow/step-result";
 
 /**
- * A Standard Schema that supports both validation and JSON Schema generation.
- * Zod v4 and arktype satisfy this interface.
+ * What `schema` in `createAction` accepts, in either of the two forms a schema
+ * reaches this registry in.
  *
- * Used for `schema` in `createAction` so the framework can:
- * 1. Validate resolved config values at runtime (`~standard.validate`)
- * 2. Derive `configFields` from `~standard.jsonSchema.input()` at registration
+ * The framework needs both halves of Standard Schema from one object: it
+ * validates resolved config values with `~standard.validate` and derives
+ * `configFields` from `~standard.jsonSchema.input()` at registration. Zod v4
+ * and arktype hand over an object carrying both, and that is the first arm.
+ *
+ * The second arm is a bare Effect schema, which carries neither until it is
+ * asked to. `createAction` asks, once, so an author writes
+ * `schema: Schema.Struct({ ... })` and nothing else.
  */
-export type InputSchema<TPayload> = {
-  readonly "~standard": StandardSchemaV1.Props<unknown, TPayload> & {
-    readonly jsonSchema: StandardJSONSchemaV1.Converter;
-  };
-};
+export type InputSchema<TPayload> =
+  | StandardSchema<TPayload>
+  | Schema.ConstraintDecoder<TPayload>;
 
 export type RuntimeActionExecutionContext = {
   executionId?: string;
@@ -108,13 +109,13 @@ export type CreateActionInput<TPayload extends Record<string, unknown>> = Omit<
   "execute" | "configFields"
 > & {
   /**
-   * Standard Schema that validates the resolved config values before they
-   * reach your `execute` function. Must support both `~standard.validate`
-   * (runtime validation) and `~standard.jsonSchema` (configFields derivation).
-   * Zod v4 satisfies this interface.
+   * The schema that validates the resolved config values before they reach
+   * your `execute` function. Write it in Effect Schema, Zod, or arktype --
+   * whichever, it is passed as it is, with no wrapping.
    *
-   * `configFields` are auto-derived from the schema's JSON Schema representation.
-   * Use `.describe()` on schema fields to set human-readable labels.
+   * `configFields` are auto-derived from the schema's JSON Schema
+   * representation. A field's human-readable label comes from its
+   * `description`: an annotation in Effect Schema, `.describe()` in Zod.
    */
   schema: InputSchema<TPayload>;
 
@@ -141,14 +142,15 @@ export type TypedActionResult<TOutput extends Record<string, unknown>> =
   | { success: false; error: StepError };
 
 /**
- * A Standard Schema that also implements the JSON Schema interface
- * (`StandardJSONSchemaV1`). Both arktype and Zod v4 satisfy this.
+ * What `outputSchema` accepts, in the same two forms as `InputSchema`.
  *
- * Used for `outputSchema` so `createAction` can:
- * 1. Infer `TOutput` from the schema's output type (compile-time)
- * 2. Call `~standard.jsonSchema.output()` to derive `outputFields` (runtime)
+ * `createAction` uses it to infer `TOutput` at compile time and to call
+ * `~standard.jsonSchema.output()` for `outputFields` at runtime. Only the
+ * describing half is read, but the bridge hands over both regardless.
  */
-export type OutputSchema<TOutput> = StandardJSONSchemaV1<unknown, TOutput>;
+export type OutputSchema<TOutput> =
+  | StandardSchema<TOutput>
+  | Schema.ConstraintDecoder<TOutput>;
 
 export type CreateActionInputWithOutput<
   TPayload extends Record<string, unknown>,
@@ -159,8 +161,8 @@ export type CreateActionInputWithOutput<
 > & {
   schema: InputSchema<TPayload>;
   /**
-   * Standard Schema with JSON Schema support. Auto-derives `outputFields`
-   * via `~standard.jsonSchema.output()` and types the `execute` return.
+   * The schema describing what `execute` resolves to. Auto-derives
+   * `outputFields` via `~standard.jsonSchema.output()` and types the return.
    */
   outputSchema: OutputSchema<TOutput>;
   /** Manual overrides merged on top of auto-derived output fields. */
@@ -231,7 +233,7 @@ function isPromiseLike<T>(value: unknown): value is Promise<T> {
 }
 
 function validateActionPayload<TPayload extends Record<string, unknown>>(
-  schema: InputSchema<TPayload>,
+  schema: StandardSchema<TPayload>,
   payload: Record<string, unknown>
 ): TPayload | undefined {
   const parsed = schema["~standard"].validate(payload);
@@ -258,7 +260,7 @@ function validateActionPayload<TPayload extends Record<string, unknown>>(
 }
 
 function configFieldsFromInputSchema(
-  schema: InputSchema<Record<string, unknown>>
+  schema: StandardSchema<Record<string, unknown>>
 ): ActionConfigFieldBase[] {
   try {
     const jsonSchema = schema["~standard"].jsonSchema.input({
@@ -310,7 +312,7 @@ function getActionErrorMessage(error: unknown): string {
 }
 
 function outputFieldsFromStandardSchema(
-  schema: OutputSchema<Record<string, unknown>>
+  schema: StandardSchema<Record<string, unknown>>
 ): ReferenceField[] {
   let jsonSchema: Record<string, unknown>;
   try {
@@ -364,9 +366,11 @@ function mergeOutputFields(
  *   label: "Cancel Appointment",
  *   description: "Cancels an appointment and records the reason.",
  *   category: "Appointments",
- *   schema: z.object({
- *     appointmentId: z.string().describe("Appointment ID"),
- *     reason: z.string().min(1).describe("Cancellation reason"),
+ *   schema: Schema.Struct({
+ *     appointmentId: Schema.String.annotate({ description: "Appointment ID" }),
+ *     reason: Schema.String.annotate({
+ *       description: "Cancellation reason",
+ *     }).check(Schema.isMinLength(1)),
  *   }),
  *   execute({ payload }) {
  *     return { success: true, data: { appointmentId: payload.appointmentId, status: "cancelled" } };
@@ -388,18 +392,23 @@ export function createAction<TPayload extends Record<string, unknown>>(
     | CreateActionInput<TPayload>
     | CreateActionInputWithOutput<TPayload, Record<string, unknown>>
 ): RuntimeExtensionActionDefinition {
-  const derivedConfigFields = configFieldsFromInputSchema(input.schema);
+  // The one place a schema is bridged. Everything below reads Standard Schema
+  // and nothing below knows which library wrote what it is reading.
+  const schema = asStandardSchema(input.schema);
+  const derivedConfigFields = configFieldsFromInputSchema(schema);
 
   let resolvedOutputFields = input.outputFields;
   if ("outputSchema" in input && input.outputSchema) {
-    const derived = outputFieldsFromStandardSchema(input.outputSchema);
+    const derived = outputFieldsFromStandardSchema(
+      asStandardSchema(input.outputSchema)
+    );
     resolvedOutputFields = input.outputFields
       ? mergeOutputFields(derived, input.outputFields)
       : derived;
   }
 
   const execute: RuntimeActionExecute = async ({ payload, context }) => {
-    const validatedPayload = validateActionPayload(input.schema, payload);
+    const validatedPayload = validateActionPayload(schema, payload);
     if (!validatedPayload) {
       const payloadKeys = Object.keys(payload);
       return {
@@ -422,8 +431,17 @@ export function createAction<TPayload extends Record<string, unknown>>(
     }
   };
 
+  // Named rather than spread, so the schemas stay behind. Everything they had
+  // to say has been said, into `configFields`, `outputFields` and the `execute`
+  // above, and `RuntimeActionMetadata` is what /api/extensions serializes to the
+  // browser -- where a schema object is a dump of one library's internals or
+  // nothing at all, depending on who wrote it.
   const normalized = normalizeRuntimeActionMetadata({
-    ...input,
+    id: input.id,
+    label: input.label,
+    description: input.description,
+    category: input.category,
+    logoUrl: input.logoUrl,
     configFields: derivedConfigFields,
     outputFields: resolvedOutputFields,
   });

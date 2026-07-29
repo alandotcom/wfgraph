@@ -28,7 +28,7 @@ import { createRequestListener } from "@rova/core/node";
 // renders, then the step implementations and connection tests.
 import "@rova/plugins";
 import "@rova/plugins/server";
-import { z } from "zod";
+import { Schema } from "effect";
 
 const APPOINTMENT_TRIGGER_TYPE = "AppointmentLifecycle";
 const DEFAULT_PORT = 4017;
@@ -37,11 +37,19 @@ const DEFAULT_DATABASE_URL =
 
 const isProduction = process.env.NODE_ENV === "production";
 
-const appointmentSchema = z.object({
-  id: z.string(),
-  startsAt: z.string(),
-  patientName: z.string(),
-  status: z.string(),
+// An annotation is what a field's label comes from: the editor renders
+// `description` off the JSON Schema, so the same annotation that documents a
+// field here is what an operator reads beside the input. It goes on the base
+// type before any check, because a check would otherwise own it.
+const appointmentIdSchema = Schema.String.annotate({
+  description: "Appointment ID",
+});
+
+const appointmentSchema = Schema.Struct({
+  id: appointmentIdSchema,
+  startsAt: Schema.String,
+  patientName: Schema.String,
+  status: Schema.String,
 });
 
 // When `event` is set, workflows using this trigger listen for the named
@@ -67,13 +75,13 @@ const appointmentTrigger = createTrigger({
   concurrency: { limit: 1, key: "appointment.id" },
   description:
     "Classifies appointment.created, appointment.rescheduled, and appointment.canceled events for the routing policy.",
-  schema: z.object({
-    event: z.enum([
+  schema: Schema.Struct({
+    event: Schema.Literals([
       "appointment.created",
       "appointment.rescheduled",
       "appointment.canceled",
     ]),
-    timestamp: z.string(),
+    timestamp: Schema.String,
     appointment: appointmentSchema,
   }),
   correlationIdPath: "appointment.id",
@@ -90,9 +98,11 @@ const cancelAppointmentAction = createAction({
     { path: "status", description: "Cancellation status" },
     { path: "cancelledAt", description: "ISO timestamp of cancellation" },
   ],
-  schema: z.object({
-    appointmentId: appointmentSchema.shape.id.describe("Appointment ID"),
-    reason: z.string().trim().min(1).describe("Cancellation reason"),
+  schema: Schema.Struct({
+    appointmentId: appointmentIdSchema,
+    reason: Schema.String.annotate({
+      description: "Cancellation reason",
+    }).check(Schema.isMinLength(1)),
   }),
   execute({ payload }) {
     return {
