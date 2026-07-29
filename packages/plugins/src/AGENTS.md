@@ -188,7 +188,11 @@ steps, so a `Date`, a `Map`, or a `Set` in it would not survive the round trip.
 is a `Schema.Struct`, since a downstream node addresses a payload by named path
 and an array or a union of objects has no path to offer. Every field carries a
 `description` annotation, because that annotation is what the editor shows beside
-the path and the type name it would otherwise fall back to says nothing. A field
+the path and the type name it would otherwise fall back to says nothing. That
+applies to a nested field too: the derivation descends into an object and offers
+`message.sid` beside `message`, so the inner fields and the object holding them
+each need an annotation of their own, and the picker lists three segments at
+most. A field
 whose JSON Schema the reader cannot use drops out of the derived list, which the
 count catches: `Schema.Number` on its own describes itself as a number or one of
 the strings `"Infinity"`, `"-Infinity"` and `"NaN"`, so a numeric field is

@@ -45,12 +45,18 @@ const appointmentIdSchema = Schema.String.annotate({
   description: "Appointment ID",
 });
 
+// Every field is annotated, nested ones included: the editor lists
+// `AppointmentLifecycle.appointment.startsAt` as its own entry in the template
+// picker and shows this text beside it, so a field left bare reads as the word
+// "string" to whoever is building the workflow.
 const appointmentSchema = Schema.Struct({
   id: appointmentIdSchema,
-  startsAt: Schema.String,
-  patientName: Schema.String,
-  status: Schema.String,
-});
+  startsAt: Schema.String.annotate({
+    description: "When the appointment starts, ISO 8601",
+  }),
+  patientName: Schema.String.annotate({ description: "Patient name" }),
+  status: Schema.String.annotate({ description: "Appointment status" }),
+}).annotate({ description: "The appointment this event is about" });
 
 // When `event` is set, workflows using this trigger listen for the named
 // Inngest event instead of requiring webhook HTTP calls. Send events from
@@ -80,8 +86,10 @@ const appointmentTrigger = createTrigger({
       "appointment.created",
       "appointment.rescheduled",
       "appointment.canceled",
-    ]),
-    timestamp: Schema.String,
+    ]).annotate({ description: "What happened to the appointment" }),
+    timestamp: Schema.String.annotate({
+      description: "When the event was raised, ISO 8601",
+    }),
     appointment: appointmentSchema,
   }),
   correlationIdPath: "appointment.id",

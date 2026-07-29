@@ -59,15 +59,10 @@ function describeSchemaField(field: WorkflowSchemaField): string {
     : field.type;
 }
 
-/**
- * Turn one schema-tree node into the flat reference field that addresses it.
- *
- * The path defaults to the field's own name, which is what a caller wants when
- * it is converting a top-level schema without descending into children.
- */
-export function schemaFieldToReferenceField(
+/** Turn one schema-tree node into the flat reference field that addresses it. */
+function schemaFieldToReferenceField(
   field: WorkflowSchemaField,
-  path: string = field.name
+  path: string
 ): ReferenceField {
   return {
     path,
@@ -80,18 +75,64 @@ export function schemaFieldToReferenceField(
 }
 
 /**
- * Turn a schema tree into the flat list of paths a user can pick from.
+ * How many dotted segments below a node's output the walk will name.
  *
- * Container fields are emitted alongside their children, so a user can reference
- * a whole object as well as any leaf inside it. Arrays of objects contribute
- * `name[0].child` paths; arrays of primitives contribute only the array itself,
- * since there is no child to name.
+ * A schema describes a whole object graph, and the graph a library derives can
+ * be deeper than anything a person would want to scroll: every level multiplies
+ * the entries the picker lists. Three segments reaches
+ * `appointment.patient.name`, which is past the depth any payload in this repo
+ * nests, and stops there.
+ *
+ * The cap is also what makes the walk terminate. A schema tree assembled by
+ * hand can point back at itself, and a bounded descent cannot go round it more
+ * than three times, so no separate cycle check is needed. The trees that arrive
+ * from `schema-codec` are already acyclic: a recursive schema describes itself
+ * with a `$ref`, which that reader drops rather than following.
  */
-export function flattenSchemaToReferenceFields(
+const MAX_REFERENCE_FIELD_DEPTH = 3;
+
+/** A field of a schema tree, together with the dotted path that addresses it. */
+export type SchemaFieldPath = { path: string; field: WorkflowSchemaField };
+
+/** How far down a walk goes, when the caller wants something other than the cap. */
+export type SchemaWalkOptions = { maxDepth?: number };
+
+/**
+ * Every field of a schema tree, each with the path a template would name it by.
+ *
+ * Container fields are emitted alongside their children, so a caller sees both
+ * the whole object and every leaf inside it. Arrays of objects contribute
+ * `name[0].child` paths; arrays of primitives contribute only the array itself,
+ * since there is no child to name. An object with no named properties -- an open
+ * record, or one whose properties the reader could not use -- has no children to
+ * emit and stays a single entry.
+ *
+ * `walkSchemaFields` hands back the schema fields themselves rather than the
+ * reference fields below, because a caller checking what an author annotated
+ * has to see an absent description as absent, and a reference field has already
+ * substituted the type name for it.
+ */
+export function walkSchemaFields(
   schema: WorkflowSchemaField[],
-  prefix = ""
-): ReferenceField[] {
-  const fields: ReferenceField[] = [];
+  options: SchemaWalkOptions = {}
+): SchemaFieldPath[] {
+  return collectSchemaFieldPaths(
+    schema,
+    "",
+    options.maxDepth ?? MAX_REFERENCE_FIELD_DEPTH
+  );
+}
+
+function collectSchemaFieldPaths(
+  schema: WorkflowSchemaField[],
+  prefix: string,
+  remainingDepth: number
+): SchemaFieldPath[] {
+  if (remainingDepth <= 0) {
+    return [];
+  }
+
+  const paths: SchemaFieldPath[] = [];
 
   for (const field of schema) {
     const name = field.name.trim();
@@ -100,7 +141,7 @@ export function flattenSchemaToReferenceFields(
     }
 
     const path = prefix ? `${prefix}.${name}` : name;
-    fields.push(schemaFieldToReferenceField(field, path));
+    paths.push({ path, field });
 
     const children = field.fields ?? [];
     if (children.length === 0) {
@@ -108,16 +149,34 @@ export function flattenSchemaToReferenceFields(
     }
 
     if (field.type === "object") {
-      fields.push(...flattenSchemaToReferenceFields(children, path));
+      paths.push(
+        ...collectSchemaFieldPaths(children, path, remainingDepth - 1)
+      );
       continue;
     }
 
     if (field.type === "array" && field.itemType === "object") {
-      fields.push(...flattenSchemaToReferenceFields(children, `${path}[0]`));
+      paths.push(
+        ...collectSchemaFieldPaths(children, `${path}[0]`, remainingDepth - 1)
+      );
     }
   }
 
-  return fields;
+  return paths;
+}
+
+/**
+ * Turn a schema tree into the flat list of paths a user can pick from.
+ *
+ * The paths are `walkSchemaFields`'s, each read as the leaf a template names.
+ */
+export function flattenSchemaToReferenceFields(
+  schema: WorkflowSchemaField[],
+  options: SchemaWalkOptions = {}
+): ReferenceField[] {
+  return walkSchemaFields(schema, options).map(({ field, path }) =>
+    schemaFieldToReferenceField(field, path)
+  );
 }
 
 /**

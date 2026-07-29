@@ -8,11 +8,11 @@
  * produced a template variable resolving to nothing at run time. Reading it off
  * the schema the handler is typed against removes the gap by construction.
  *
- * Only the top level is walked. A nested object contributes its own path and
- * not its children's, which is what the hand-written lists said too; the
- * schema-tree flattener in `node-references.ts` is the one that descends, and it
- * serves the user-authored schemas (a webhook payload, an HTTP node's output)
- * rather than these.
+ * The walk descends. A nested object contributes its own path and every leaf
+ * beneath it, so a field asking for an id is offered `appointment.id` and not
+ * only the `appointment` object it sits in. `node-references.ts` owns the
+ * descent and its depth cap, so a derived schema and a user-authored one (a
+ * webhook payload, an HTTP node's output) flatten by the same rules.
  */
 
 import { Schema } from "effect";
@@ -22,8 +22,9 @@ import {
   type StandardSchema,
 } from "#src/types/schema";
 import {
+  flattenSchemaToReferenceFields,
   type ReferenceField,
-  schemaFieldToReferenceField,
+  walkSchemaFields,
 } from "#src/workflow/node-references";
 import {
   jsonSchemaLibraryOptions,
@@ -85,9 +86,7 @@ export function outputFieldsFromSchema(
     ? parseWorkflowSchemaFieldsOrJsonSchema(jsonSchema)
     : null;
 
-  return fields
-    ? fields.map((field) => schemaFieldToReferenceField(field))
-    : [];
+  return fields ? flattenSchemaToReferenceFields(fields) : [];
 }
 
 /**
@@ -115,7 +114,7 @@ export function requireOutputFieldsFromSchema(
     );
   }
 
-  return (fields ?? []).map((field) => schemaFieldToReferenceField(field));
+  return flattenSchemaToReferenceFields(fields ?? []);
 }
 
 /**
@@ -148,9 +147,13 @@ function findDerivationProblem(
     return `${dropped.join(", ")} did not survive the derivation, so the editor would offer a shorter list than the step returns.`;
   }
 
-  const unannotated = fields
-    .filter((field) => !field.description?.trim())
-    .map((field) => field.name);
+  // Every path the editor offers, nested ones included, since each one is a
+  // separate line in the picker and each one needs to say what it is. A nested
+  // object is offered alongside its leaves -- a template can name the whole
+  // object -- so the object's own annotation is required too.
+  const unannotated = walkSchemaFields(fields)
+    .filter(({ field }) => !field.description?.trim())
+    .map(({ path }) => path);
   if (unannotated.length > 0) {
     return `${unannotated.join(", ")} carry no description annotation. The editor shows the annotation beside the path, and the type name it falls back to tells a user nothing.`;
   }

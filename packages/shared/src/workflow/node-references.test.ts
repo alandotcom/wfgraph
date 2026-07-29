@@ -7,6 +7,7 @@ import {
   parseTemplate,
   resolveOutputPath,
 } from "./node-references";
+import type { WorkflowSchemaField } from "./schema-codec";
 
 describe("flattenSchemaToReferenceFields", () => {
   it("gives every primitive its own reference path", () => {
@@ -108,6 +109,83 @@ describe("flattenSchemaToReferenceFields", () => {
     ]);
 
     expect(fields.map((field) => field.path)).toEqual(["kept"]);
+  });
+
+  it("leaves an object with no named properties as a single entry", () => {
+    // An open record, and also what a property the reader could not use leaves
+    // behind. Either way there is no child to name.
+    const fields = flattenSchemaToReferenceFields([
+      { name: "metadata", type: "object", fields: [] },
+    ]);
+
+    expect(fields).toEqual([
+      { path: "metadata", description: "object", type: "object" },
+    ]);
+  });
+
+  it("stops descending three segments down", () => {
+    const fields = flattenSchemaToReferenceFields([
+      {
+        name: "a",
+        type: "object",
+        fields: [
+          {
+            name: "b",
+            type: "object",
+            fields: [
+              {
+                name: "c",
+                type: "object",
+                fields: [{ name: "d", type: "string" }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    expect(fields.map((field) => field.path)).toEqual(["a", "a.b", "a.b.c"]);
+  });
+
+  it("goes deeper when a caller looking for one path asks it to", () => {
+    const fields = flattenSchemaToReferenceFields(
+      [
+        {
+          name: "a",
+          type: "object",
+          fields: [
+            {
+              name: "b",
+              type: "object",
+              fields: [
+                {
+                  name: "c",
+                  type: "object",
+                  fields: [{ name: "d", type: "string" }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      { maxDepth: 4 }
+    );
+
+    expect(fields.map((field) => field.path)).toContain("a.b.c.d");
+  });
+
+  it("terminates on a schema tree that points back at itself", () => {
+    // Nothing this project parses builds one: a recursive schema describes
+    // itself with a `$ref`, which the JSON Schema reader drops. A tree
+    // assembled by hand can still loop, and the depth cap is what ends it.
+    const node: WorkflowSchemaField = { name: "node", type: "object" };
+    node.fields = [node];
+
+    expect(flattenSchemaToReferenceFields([node]).map((f) => f.path)).toEqual([
+      "node",
+      "node.node",
+      "node.node.node",
+    ]);
   });
 });
 
@@ -244,6 +322,17 @@ describe("resolveOutputPath", () => {
     const output = { success: true, data: { id: "cus_1" } };
 
     expect(resolveOutputPath(output, "id")).toBe("cus_1");
+  });
+
+  it("walks a nested path through a step wrapper", () => {
+    // The path the picker offers for a nested payload, against the shape a step
+    // actually files: the wrapper is stepped over and the rest is walked.
+    const output = {
+      success: true,
+      data: { appointment: { id: "appt_1" } },
+    };
+
+    expect(resolveOutputPath(output, "appointment.id")).toBe("appt_1");
   });
 
   it("reads the wrapper itself when the path names one of its own keys", () => {

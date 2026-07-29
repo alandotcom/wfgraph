@@ -9,7 +9,6 @@ import type { InputSchema } from "#src/workflow/action-registry";
 import {
   flattenSchemaToReferenceFields,
   type ReferenceField,
-  schemaFieldToReferenceField,
 } from "#src/workflow/node-references";
 import {
   type ResolvedTriggerRouting,
@@ -741,7 +740,10 @@ function outputFieldsFromSchemaFields<TPayload extends JsonObject>(
   schema: TriggerPayloadSchema<TPayload>
 ): ReferenceField[] {
   if (schemaFields) {
-    return schemaFields.map((field) => schemaFieldToReferenceField(field));
+    // A payload nests -- an appointment event carries the appointment -- so the
+    // list a trigger offers descends into it. A downstream field asking for an
+    // id wants `appointment.id`, and the object alone is no use to it.
+    return flattenSchemaToReferenceFields(schemaFields);
   }
 
   // Fallback: the field names the schema object declares, when its JSON
@@ -761,6 +763,9 @@ function outputFieldsFromSchemaFields<TPayload extends JsonObject>(
  * The enum values at a (possibly nested) dot-path into the payload schema.
  * `eventTypePath` accepts any depth, so the lookup flattens the field tree
  * rather than checking top-level names only.
+ *
+ * This is a lookup rather than a list, so the depth the picker stops at does not
+ * apply: the walk goes exactly as deep as the path being looked for.
  */
 function enumValuesAtPath(
   schemaFields: WorkflowSchemaField[] | undefined,
@@ -769,9 +774,9 @@ function enumValuesAtPath(
   if (!schemaFields) {
     return undefined;
   }
-  return flattenSchemaToReferenceFields(schemaFields).find(
-    (field) => field.path === path
-  )?.enumValues;
+  return flattenSchemaToReferenceFields(schemaFields, {
+    maxDepth: path.split(".").length,
+  }).find((field) => field.path === path)?.enumValues;
 }
 
 function buildInngestEventTriggerConfig<TPayload extends JsonObject>(

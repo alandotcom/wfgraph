@@ -270,9 +270,12 @@ describe("registries bridge the schema they are given", () => {
 
     // Output fields and the closed Event Type vocabulary both come off the
     // JSON Schema half, so their presence is the bridge having happened.
+    // `order.id` is there because the list descends: the correlation path names
+    // that leaf, and a config field asking for an order id has to be able to.
     expect(trigger.ui.outputFields?.map((field) => field.path)).toEqual([
       "event",
       "order",
+      "order.id",
     ]);
     expect(trigger.ui.eventTypes).toEqual(["order.created", "order.canceled"]);
 
@@ -380,6 +383,68 @@ describe("registries bridge the schema they are given", () => {
     unregisterIntegration("twilio");
   });
 
+  it("reads a nested output schema down to its leaves", () => {
+    // What a step returns is rarely flat, and a config field asking for an id
+    // needs the leaf that holds one. The object keeps its own entry beside the
+    // leaves, because a template can name a whole object and the engine renders
+    // it as JSON.
+    registerIntegration({
+      type: "twilio",
+      label: "Compat Twilio",
+      description: "Registration reads the output schema",
+      formFields: [],
+      actions: [
+        {
+          slug: "compat-nested",
+          label: "Compat Nested",
+          description: "Returns an object inside an object",
+          category: "Compat",
+          configFields: [],
+          output: Schema.Struct({
+            message: Schema.Struct({
+              sid: Schema.String.annotate({ description: "Message SID" }),
+              to: Schema.Struct({
+                number: Schema.String.annotate({
+                  description: "Recipient number",
+                }),
+              }).annotate({ description: "Who it went to" }),
+            }).annotate({ description: "The message that was sent" }),
+            // No named properties, so there is no leaf under it to offer.
+            metadata: Schema.Record(Schema.String, Schema.String).annotate({
+              description: "Whatever the account attaches",
+            }),
+          }),
+        },
+      ],
+    });
+
+    expect(findActionById("twilio/compat-nested")?.outputFields).toEqual([
+      {
+        path: "message",
+        description: "The message that was sent",
+        type: "object",
+      },
+      { path: "message.sid", description: "Message SID", type: "string" },
+      {
+        path: "message.to",
+        description: "Who it went to",
+        type: "object",
+      },
+      {
+        path: "message.to.number",
+        description: "Recipient number",
+        type: "string",
+      },
+      {
+        path: "metadata",
+        description: "Whatever the account attaches",
+        type: "object",
+      },
+    ]);
+
+    unregisterIntegration("twilio");
+  });
+
   it("refuses an action that declares its output twice", () => {
     // One of the two is the schema the step is typed against and the other is a
     // list a person maintains, so the only thing they can do is disagree.
@@ -454,6 +519,35 @@ describe("registries bridge the schema they are given", () => {
         ],
       })
     ).toThrow(/"twilio\/compat-bare".+status carry no description/);
+  });
+
+  it("refuses a nested output field that carries no description", () => {
+    // The rule reaches every path the editor lists, so a leaf two levels down
+    // is named by its dotted path rather than by the object it sits in.
+    expect(() =>
+      registerIntegration({
+        type: "twilio",
+        label: "Compat Twilio",
+        description: "Registration reads the output schema",
+        formFields: [],
+        actions: [
+          {
+            slug: "compat-bare-nested",
+            label: "Compat Bare Nested",
+            description: "Leaves a nested field unannotated",
+            category: "Compat",
+            configFields: [],
+            output: Schema.Struct({
+              message: Schema.Struct({
+                sid: Schema.String,
+              }).annotate({ description: "The message that was sent" }),
+            }),
+          },
+        ],
+      })
+    ).toThrow(
+      /"twilio\/compat-bare-nested".+message\.sid carry no description/
+    );
   });
 
   // A field whose JSON Schema this reader cannot use disappears from the list

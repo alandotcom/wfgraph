@@ -1,11 +1,14 @@
+import { Schema } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeTriggerDefinition } from "#src/lib/runtime-extensions";
 import {
   getUpstreamConditionFields,
+  getUpstreamFields,
   getUpstreamNodes,
 } from "#src/lib/upstream-node-fields";
 import {
   clearRuntimeActions,
+  createAction,
   registerRuntimeAction,
 } from "@rova/shared/workflow/action-registry";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
@@ -212,6 +215,68 @@ describe("upstream-node-fields", () => {
     const statusField = fields.find((f) => f.path === "status");
     expect(statusField).toBeDefined();
     expect(statusField?.type).toBe("string");
+  });
+
+  it("prefixes a nested action field with the node that produces it", () => {
+    // The whole chain in one case: an output schema that nests, the derivation
+    // that descends into it, and the node label the editor puts in front of the
+    // path. What the picker inserts is `{{@node:Label.appointment.id}}`, so the
+    // leaf has to arrive here as `appointment.id` rather than as `appointment`.
+    registerRuntimeAction(
+      createAction({
+        id: "custom/nested-action",
+        label: "Nested Action",
+        description: "Returns an appointment object",
+        category: "Custom",
+        schema: Schema.Struct({ appointmentId: Schema.String }),
+        outputSchema: Schema.Struct({
+          appointment: Schema.Struct({
+            id: Schema.String.annotate({ description: "Appointment ID" }),
+          }).annotate({ description: "The appointment" }),
+        }),
+        execute() {
+          return { success: true, data: { appointment: { id: "appt-1" } } };
+        },
+      })
+    );
+
+    const nodes: WorkflowNode[] = [
+      createNode({
+        id: "action-1",
+        type: "action",
+        label: "Load Appointment",
+        config: { actionType: "custom/nested-action" },
+      }),
+      createNode({
+        id: "action-2",
+        type: "action",
+        label: "Cancel Appointment",
+        config: { actionType: "HTTP Request" },
+      }),
+    ];
+
+    const fields = getUpstreamFields({
+      currentNodeId: "action-2",
+      nodes,
+      edges: [createEdge({ id: "e1", source: "action-1", target: "action-2" })],
+    });
+
+    expect(fields).toEqual([
+      {
+        path: "appointment",
+        description: "The appointment",
+        type: "object",
+        sourceNodeId: "action-1",
+        sourceNodeName: "Load Appointment",
+      },
+      {
+        path: "appointment.id",
+        description: "Appointment ID",
+        type: "string",
+        sourceNodeId: "action-1",
+        sourceNodeName: "Load Appointment",
+      },
+    ]);
   });
 
   it("surfaces custom trigger schema fields via runtime trigger outputFields", async () => {
