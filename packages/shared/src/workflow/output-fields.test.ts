@@ -12,7 +12,9 @@ describe("outputFieldsFromSchema", () => {
       at: Schema.String.annotate({
         description: "When it happened",
         format: "date-time",
-      }).pipe(Schema.decodeTo(Schema.Date, SchemaTransformation.dateFromString)),
+      }).pipe(
+        Schema.decodeTo(Schema.Date, SchemaTransformation.dateFromString)
+      ),
       name: Schema.String.annotate({ description: "Plain string" }),
     });
 

@@ -1,7 +1,7 @@
 # The extension surface: explicit assembly, registration by value
 
-Status: approved by the product owner as the design of record. Supersedes nothing in the
-repo yet; no code has been written against it.
+Status: approved by the product owner as the design of record. B1 has landed and B2 is in
+flight; every later batch is unstarted. Section 10 says which is which.
 
 Vocabulary authority: `CONTEXT.md` and `docs/adr/0007-lifecycle-rules-replace-the-routing-policy.md`.
 This document uses Event, Correlation Path, Entity Value, Lifecycle Rules, Lifecycle Node,
@@ -12,6 +12,14 @@ restate them. Read both before implementing any part of this.
 Also required reading: `AGENTS.md` for the conventions every code sample here obeys, and
 `docs/adr/0002-effect-v4-beta-with-a-promise-seam-at-the-embedder-surfaces.md` for the
 stage numbering used in the batch plan.
+
+Section 2.3 is the schema contract, and it is the one section whose claims are all
+citations. Before changing anything it describes, read
+`.repos/effect/packages/effect/SCHEMA.md`, which is the authoritative v4 Schema guide, at
+least its "Serialization" and "Schema Generation and Tooling" chapters. Every API claim in
+2.3 cites that file or `.repos/effect/packages/effect/src/Schema.ts` by line, and each was
+also run against the installed `effect@4.0.0-beta.102`. Do not take any of it from memory,
+and do not take a replacement from memory either.
 
 ---
 
@@ -66,6 +74,13 @@ These are settled. Do not relitigate them during implementation.
 5. **The event-wait timeout is required,** with an editor default of 7 days.
 6. **The Canceled outlet lands inside the stage 7 batch,** not before. Until it lands the
    Lifecycle panel refuses Cancel Events with an explanatory message. Section 9 says why.
+7. **A schema with a transform runs as a codec at Rova's seams.** An author passes one and
+   gets the decoded type in a handler and the encoded form on every wire. Section 2.3 has
+   the contract, the call sites, and the one API that makes it work.
+8. **An Event payload decodes open.** Declared fields are validated and unknown keys are
+   ignored rather than refused. This is a deliberate exception to the repo-wide
+   `rejectUnknownKeys` convention, which stands everywhere else. Section 2.3 has the
+   reasoning and the consequence.
 
 ---
 
@@ -379,7 +394,12 @@ an adopter would write it.
 // First, so the rest of the graph loads with .env already applied.
 import "../load-env";
 import { createServer } from "node:http";
-import { defineAction, defineEvent, timestampField } from "@rova/core";
+import {
+  dateField,
+  defineAction,
+  defineEvent,
+  timestampField,
+} from "@rova/core";
 import { createRovaApp } from "@rova/core/app";
 import { createRequestListener } from "@rova/core/node";
 // The built-in integrations, as values. Nothing registers on import, so this
@@ -504,7 +524,10 @@ const cancelAppointment = defineAction({
     }),
     status: Schema.String.annotate({ description: "Cancellation status" }),
     reason: Schema.String.annotate({ description: "Cancellation reason" }),
-    cancelledAt: timestampField("When the cancellation happened"),
+    // `dateField`, so `execute` hands back a `Date` and Rova encodes it to an
+    // ISO string before the result is stored. The editor still reads the field
+    // as a timestamp, because the annotations sit on the encoded side. See 2.3.
+    cancelledAt: dateField("When the cancellation happened"),
   }),
   execute({ payload }) {
     return {
@@ -513,7 +536,7 @@ const cancelAppointment = defineAction({
         appointmentId: payload.appointmentId,
         status: "cancelled",
         reason: payload.reason,
-        cancelledAt: new Date().toISOString(),
+        cancelledAt: new Date(),
       },
     };
   },
@@ -597,6 +620,272 @@ Three things left this file and are worth noticing. `import "@rova/plugins"` and
 `createTrigger` is gone, because an Event carries the Correlation Path and the builder owns
 the lifecycle. And the `triggers` option is gone from `RovaAppOptions`.
 
+### 2.3 How Rova runs an author's schemas
+
+An author may write a schema with a transform and expect the right types on both sides. In
+the guide's words, decoding turns unknown external data into typed validated values, and
+encoding turns typed values back into a serializable format
+(`.repos/effect/packages/effect/SCHEMA.md:7-8`). Rova runs both directions at its seams.
+
+Every claim in this subsection carries a citation to the vendored guide or to
+`packages/effect/src/Schema.ts` under `.repos/effect`, and each was also run against
+`effect@4.0.0-beta.102`. Verify against those files rather than against memory.
+
+#### The canonical JSON codec is the seam
+
+Encoding through the author's schema is **not** enough, and this is the one thing most
+likely to be got wrong. `Schema.Date` is a declaration rather than a codec
+(`Schema.ts:11841`), so encoding through the plain schema leaves a live `Date` in the
+value. The guide lists the types this applies to: `Date`, `Uint8Array`, `ReadonlyMap`,
+`ReadonlySet`, `Symbol`, `BigInt`, custom classes, and Effect data types such as `Option`
+(`SCHEMA.md:4773-4778`), with the worked contrast at `SCHEMA.md:3646-3663`.
+
+A live `Date` in a step output is worse than it looks. It survives JSONB and Inngest's own
+serialization by accident, because `JSON.stringify` calls `Date.prototype.toJSON`, and it
+comes back a `string` on replay. The same memoized step then hands template resolution and
+CEL a `Date` on the first attempt and a `string` on the second.
+
+So both directions go through `Schema.toCodecJson`, which is the guide's own pattern for a
+JSON boundary (`SCHEMA.md:4763-4952`, and the Elysia integration at `SCHEMA.md:7322-7332`):
+
+```ts
+// packages/core/src/backend/lib/steps/define-step.ts
+//
+// Both sides of a step boundary are JSON, so what Rova runs is the schema's
+// canonical JSON codec rather than the schema itself. A `Date`, an `Option`, a
+// `Map`, or a class in one of these schemas is JSON only through this.
+//
+// Built once, at definition: `toCodecJson` walks the AST and builds a new
+// schema (SCHEMA.md:4910-4917), so it is startup cost, never per-invocation.
+const inputCodec = Schema.toCodecJson(definition.input);
+const outputCodec = Schema.toCodecJson(definition.output);
+
+const decodeInput = Schema.decodeUnknownEffect(inputCodec, { errors: "all" });
+const encodeOutput = Schema.encodeUnknownEffect(outputCodec, { errors: "all" });
+```
+
+`Schema.decodeUnknownEffect` is at `Schema.ts:1471` and `Schema.encodeUnknownEffect` at
+`Schema.ts:1940`. `Schema.flip` is the alternative spelling for the encode direction, since
+encoding with a schema is decoding with its flipped version (`SCHEMA.md:3462-3514`,
+`:5511`).
+
+Three properties make this safe to apply unconditionally, all verified:
+
+- On a schema with no transform, `toCodecJson` changes nothing. For
+  `Schema.Struct({ a: Schema.String, b: Schema.optional(Schema.String) })` the decoded
+  value and the generated JSON Schema are identical with and without it. So there is no
+  branch on "does this schema have a transform".
+- `onExcessProperty: "error"`, which is what `rejectUnknownKeys` holds, still rejects an
+  excess key through a `toCodecJson` codec.
+- The field derivation already agrees with it. `Schema.toJsonSchemaDocument` "first derives
+  the schema's canonical JSON codec, then compiles its encoded representation"
+  (`SCHEMA.md:6418-6419`). So the paths the editor offers and the bytes Rova writes come
+  from the same annotations and describe the same shape by construction
+  (`SCHEMA.md:4906`).
+
+#### Every call site
+
+| Call                               | Where                                                           | Options         |
+| ---------------------------------- | --------------------------------------------------------------- | --------------- |
+| decode a step's or action's input  | `steps/define-step.ts` `runStep`; `extensions/define-action.ts` | `errors: "all"` |
+| encode a step's or action's output | the same two, before the `StepResult` envelope                  | `errors: "all"` |
+| decode an Event payload, as a gate | `services/workflows/lifecycle/deliver-event.ts`                 | open; see below |
+
+Nowhere else. There is no encode at the JSONB boundary, none in template resolution, and
+none in the catalog serializer, because everything reaching those is already encoded.
+
+The input decode is not new behaviour, only newly correct: `define-step.ts:140` already
+decodes, and a handler's parameter type has always been the decoded type. What the codec
+adds is that an author may now write a transform there and have it work. A step's encoded
+input is all strings, because the engine resolves templates into text, so a transform is how
+a string becomes the value a handler wants. Twilio's `parseMediaUrls` helper is a
+comma-splitting function that belongs in the input schema instead.
+
+#### Encode failure is a step failure
+
+```ts
+return (
+  yield *
+  encodeOutput(data).pipe(
+    Effect.mapError(
+      (error) =>
+        new StepFailure({
+          message: `Step "${definition.id}" returned a value its output schema cannot encode: ${formatSchemaFailure(error.issue)}`,
+        })
+    )
+  )
+);
+```
+
+A handler that returned an unencodable value returns it again on every attempt, so a retry
+spends the budget on a certainty. `StepFailure` fails the node once, with a message naming
+the field path, in the run log and the step log row. That is the same reasoning
+`define-step.ts` already applies in the other direction when it picks `Effect.promise` over
+`tryPromise` for the credential fetch.
+
+The path is narrow. A handler's return type is the decoded type, so a mismatch is normally a
+compile error, and this is reachable only through an `as`, an `any`, or a widened vendor
+type. Narrow and real is the accurate description.
+
+#### An Event payload: the gate is open, and the raw JSON travels
+
+```ts
+// packages/core/src/backend/services/workflows/lifecycle/deliver-event.ts
+//
+// The gate. It validates the fields the Event declares and ignores the rest.
+// What the payload decodes to is discarded; what travels is the JSON the sender
+// sent.
+yield * event.decodePayload(input.payload);
+```
+
+**Open, not closed.** Senders evolve and vendors add fields routinely, and an additive
+change must not break intake. So the gate validates declared fields and ignores extras. The
+raw payload travels either way, so an unknown key is invisible to the pickers rather than an
+error. This is a deliberate per-boundary exception: the repo-wide rule that every wire decode
+carries `rejectUnknownKeys` stands for the RPC contracts, the graph column, the Inngest
+envelope events, and the step config decode above.
+
+The consequence, stated rather than discovered: drift on a **declared** field still fails
+loudly, and drift by **addition** is silent by choice. An Event Author who wants a new field
+validated declares it.
+
+**The decoded value is deliberately thrown away.** Three reasons, the third decisive.
+Nothing downstream of an Event consumes a typed value, because ADR-0007 dissolved the
+trigger and its `evaluate`: the lifecycle reads a string at the Correlation Path, CEL match
+evaluation reads JSON and `decodeIsoTimestamp` parses ISO at evaluation, template resolution
+reads strings, and JSONB holds JSON. It works identically for an Effect schema and a foreign
+one, so intake has one path. And re-encoding would rewrite values: verified, a payload
+carrying `"2026-03-01T10:00:00Z"` comes back `"2026-03-01T10:00:00.000Z"` after a `Date`
+round trip, which would silently break a wait match comparing a literal captured at park
+time.
+
+So a transform in an Event schema buys validation precision and derivation, and buys no
+typing, because there is no consumer to type. That asymmetry is named here rather than left
+for an Event Author to discover. If an event-handler extension point ever exists, it gets
+the decoded value and this decision is revisited there.
+
+#### A timestamp, and why `Schema.Date` is refused
+
+A codec's own annotations never reach its JSON Schema:
+
+> When a schema includes a transformation, the generated JSON Schema corresponds to the
+> encoded side. Calling `.annotate(...)` on a transformation annotates the decoded side, so
+> the annotations won't appear in the JSON Schema output. To annotate the encoded side, use
+> `Schema.annotateEncoded`.
+> — `SCHEMA.md:5243-5245`
+
+`Schema.annotateEncoded` is the sanctioned one-liner, and the alternative the guide gives
+beside it (`SCHEMA.md:5273-5295`) is to annotate the source schema and then `decodeTo`. Both
+work. But `annotateEncoded` cannot rescue `Schema.Date`, because a declaration has no
+encoding chain to attach to. Verified:
+
+```
+Schema.Date.pipe(annotateEncoded({ description, format }))           → { "type": "string" }
+Schema.DateFromString.pipe(annotateEncoded({ description, format }))
+  → { "type": "string", "description": "when", "format": "date-time" }
+```
+
+Neither `Schema.Date` (`Schema.ts:11841`), `Schema.DateFromString` (`:11918`), nor
+`Schema.DateTimeUtcFromString` (`:13539`) carries a `format` of its own, because the
+unexported `DateString` they build on is a bare annotated string (`:11811`). A `format`
+annotation is copied onto the JSON Schema when it is there
+(`internal/schema/toJsonSchemaDocument.ts:45-46`), and `normalizeSchemaFormat` in
+`schema-codec.ts:256` already maps `date-time` to the `timestamp` field type. So two helpers
+in `packages/shared/src/types/timestamp.ts` are the whole mapping:
+
+```ts
+/**
+ * An ISO 8601 timestamp on the wire and in a handler.
+ *
+ * Both annotations sit on the base type, before the check, because `.annotate()`
+ * on a checked schema lands on the check. The description is a parameter for
+ * that same reason.
+ */
+export function timestampField(description: string) {
+  return Schema.String.annotate({ description, format: "date-time" }).check(
+    Schema.isPattern(ISO_TIMESTAMP_PATTERN)
+  );
+}
+
+/**
+ * An ISO 8601 timestamp on the wire, a `Date` in a handler.
+ *
+ * The annotations sit on the encoded side because that is the only side a JSON
+ * Schema converter reads. This composition is why the editor can call the field
+ * a timestamp while a handler still receives a `Date`.
+ */
+export function dateField(description: string) {
+  return timestampField(description).pipe(
+    Schema.decodeTo(Schema.Date, SchemaTransformation.dateFromString)
+  );
+}
+```
+
+Verified end to end for a struct using both, `Schema.optional(dateField(...))` included:
+the JSON Schema carries `type: "string"` with the description and `format: "date-time"` on
+every one; decode gives a real `Date` for `dateField` and a `string` for `timestampField`;
+encode gives an ISO string; and `"nope"` is rejected by the pattern. An optional field
+renders as `anyOf: [T, null]` (`SCHEMA.md:5330-5366`), so confirm `schema-codec.ts` carries
+`format` through that unwrap; optional non-date fields read correctly today, so the unwrap
+itself works.
+
+What an author may write:
+
+| Written                                                                      | JSON Schema                              | Handler receives | Verdict                        |
+| ---------------------------------------------------------------------------- | ---------------------------------------- | ---------------- | ------------------------------ |
+| `timestampField("when")`                                                     | `string`, described, `format: date-time` | `string`         | fine                           |
+| `dateField("when")`                                                          | same                                     | `Date`           | fine, the default to reach for |
+| `DateFromString.pipe(annotateEncoded({ description, format: "date-time" }))` | same                                     | `Date`           | fine, equivalent               |
+| `Schema.Date`                                                                | bare `string`, undescribable             | `Date`           | refused at registration        |
+| `Schema.Date.annotate({ description })`                                      | bare `string`                            | `Date`           | refused                        |
+
+`requireOutputFieldsFromSchema` keeps refusing a field with no description, and that refusal
+is what pushes an author off `Schema.Date`. Its message gains the codec case, because an
+author who annotated a codec and is told the field carries no annotation will read it as a
+bug in Rova:
+
+> A codec's own annotations do not reach its JSON Schema (see SCHEMA.md, "Annotating the
+> Encoded Side of a Transformation"). Annotate the encoded side with
+> `Schema.annotateEncoded`, or use `timestampField` / `dateField`. `Schema.Date` cannot be
+> described at all; use `dateField` instead.
+
+`isIsoDatePattern` in `schema-codec.ts` still goes: the keyword route needs no
+pattern-sniffing fallback.
+
+#### The Standard Schema bridge validates, and that is all
+
+`Schema.toStandardSchemaV1(schema, { parseOptions })` (`Schema.ts:1240-1307`, wrapped as
+`toStandardSchema` in `packages/shared/src/types/schema.ts:158`) attaches a `validate`, and
+`~standard` carries `validate` and `jsonSchema` and nothing else
+(`SCHEMA.md:6462-6477`). There is no encode through Standard Schema, and the parse options
+freeze at the first crossing because Effect returns early when `validate` is already present.
+
+So the bridge stays right for the oRPC contracts, the Inngest envelope events, and the
+foreign-schema path, each of which calls `~standard.validate(payload)` with nothing else to
+say. It is wrong for the intake gate, which needs Rova's own parse options. `defineEvent`
+therefore keeps the original Effect schema and builds its own `decodePayload` (section 3.1),
+and `defineStep` needs no bridge at all because its schemas are Effect schemas already.
+
+#### Foreign schemas: the type draws the line
+
+The bridge can validate, so a foreign schema may describe what comes **in**. Only a codec
+can encode, so what goes **out** is written in Effect Schema.
+
+- Event payload schemas: Zod and arktype accepted. Only the gate needs them.
+- Action config schemas: accepted, for the same reason.
+- Action and step output schemas: **Effect only.** `defineAction`'s `output` narrows to
+  `Schema.ConstraintDecoder`, matching `defineStep`, which is already Effect-only.
+
+Enforced by the signature. No runtime check, no assembly refusal, and no JSON-safety walk
+over the returned value. A foreign output schema stops compiling. The registry tests that use
+Zod and arktype as the foreign library stay, pointed at the input paths.
+
+#### The envelope-event exemption
+
+`packages/core/src/backend/lib/inngest/events.ts` keeps the no-transform rule for Rova's
+three envelope events, because the Inngest SDK rejects a schema whose input and output types
+differ. Said once, here.
+
 ---
 
 ## 3. The events model
@@ -612,7 +901,23 @@ export type EventDefinition<TPayload extends JsonObject> = {
   readonly name: string;
   readonly label: string;
   readonly description?: string;
+  /** The bridged object, kept for the JSON Schema half and the CEL key extraction. */
   readonly schema: StandardSchema<TPayload>;
+  /**
+   * The intake gate.
+   *
+   * Built from the Effect schema with Rova's own parse options when there is
+   * one, and from `~standard.validate` when the author wrote the payload in Zod
+   * or arktype, so intake has one thing to call and one failure to catch. It
+   * validates declared fields and ignores unknown keys (section 2.3), and what
+   * it decodes to is discarded: the raw JSON is what travels.
+   *
+   * It exists because the bridge's parse options freeze at the first crossing,
+   * so the options this boundary needs cannot be set on `schema` above.
+   */
+  readonly decodePayload: (
+    payload: unknown
+  ) => Effect.Effect<void, PayloadRejected>;
   /**
    * Where this payload carries its Entity Value.
    *
@@ -651,8 +956,16 @@ export function defineEvent<TPayload extends JsonObject>(input: {
 ```
 
 `defineEvent` bridges the schema through `asStandardSchema` once, derives `payloadFields`
-with `requireOutputFieldsFromSchema`, and throws when the schema cannot describe itself.
-`label` defaults to the name. `source` defaults to `{ event: name }`.
+with `requireOutputFieldsFromSchema`, builds `decodePayload`, and throws when the schema
+cannot describe itself. `label` defaults to the name. `source` defaults to
+`{ event: name }`.
+
+`PayloadRejected` is one tagged error carrying the sentence a person reads, rendered with
+`formatSchemaFailure` on the Effect path and from the joined `issues` on the foreign path.
+One type at the seam, so the HTTP route turns it into a 400 and the Inngest listener logs it
+and answers non-retryably: a malformed payload does not improve on a second attempt.
+`isEffectSchema` in `packages/shared/src/types/schema.ts` is the discriminator that picks
+the path.
 
 `EventStringPath<TPayload>` is today's `TriggerStringPath`
 (`packages/shared/src/workflow/trigger-registry.ts:134-141`), moved here and renamed. It
@@ -1010,11 +1323,13 @@ needed yet.
 
 ### 5.2 HTTP
 
-One app-level route, `POST /api/events/:eventName`. It decodes the body against that Event's
-schema, answers 400 with `formatSchemaFailure` output when the body does not fit, 404 when
-the name is not in the catalog, and calls `deliverEvent`. It authenticates with the API key,
-the way `postWorkflowResume` does (`services/workflows/triggering/resume.ts:38-49`,
-credentials checked before the lookup so a caller holding a stale name learns nothing).
+One app-level route, `POST /api/events/:eventName`. It answers 404 when the name is not in
+the catalog, calls `deliverEvent`, and turns a `PayloadRejected` from the gate into a 400
+carrying the rendered sentence. The gate itself lives in `deliverEvent` (section 6) rather
+than in this handler, so both intake channels validate identically. It authenticates with the
+API key, the way `postWorkflowResume` does
+(`services/workflows/triggering/resume.ts:38-49`, credentials checked before the lookup so a
+caller holding a stale name learns nothing).
 
 The per-workflow webhook URL retires. An Event is global, declared in code, and every
 workflow subscribing to it should see it; a per-workflow URL means an event posted for one
@@ -1049,6 +1364,11 @@ export const deliverEvent = Effect.fn("deliverEvent")(function* (input: {
   payload: JsonObject;
 }) {
   const event = yield* resolveEvent(input.eventName);
+
+  // The gate: declared fields validated, unknown keys ignored (section 2.3).
+  // What it decodes to is discarded, so the raw JSON is what travels on.
+  yield* event.decodePayload(input.payload);
+
   const entityValue = readEntityValue(event, input.payload);
 
   for (const workflow of yield* subscribedWorkflows(input.eventName)) {
@@ -1407,6 +1727,13 @@ error at the app that names it. The barrel is side-effect free, so a host import
 **The Wait node has a schema,** so the engine stops narrowing `"hook" | "event"` by hand in
 two places and stops reading six fields out of an open bag with ad-hoc string checks.
 
+**What comes in may be foreign; what goes out is a codec.** An Event payload schema and an
+action config schema may be written in Zod or arktype, because validating is all the Standard
+Schema bridge can do. A step's or action's output schema is `Schema.ConstraintDecoder`, so it
+is an Effect schema, because only a codec can encode. The signature is the whole enforcement:
+a foreign output schema stops compiling, with no runtime check and no JSON-safety walk over
+the returned value. Section 2.3 has the reasoning.
+
 What the compiler stops proving: Start Events and Cancel Events are Event names in
 builder-authored JSONB, so there is no trigger-to-event agreement left to type. The six
 save-time rules in section 4.2 replace it. That is the correct trade, because the pairing is
@@ -1539,35 +1866,21 @@ ran does not already say, `input` resolved to nothing, and `timestamp` was alrea
 overwritten by any payload carrying that key while the picker labelled it "Trigger timestamp"
 and typed it `timestamp` in both cases.
 
-A timestamp becomes declarable. `timestampField(description)` lands in
+A timestamp becomes declarable. `timestampField` and `dateField` land in
 `packages/shared/src/types/timestamp.ts`, beside the codec that already owns which strings
-count:
+count. Section 2.3 has both bodies, the reason the annotations have to sit on the encoded
+side, and the table of what an author may write. In short: `timestampField` gives a string on
+both sides, `dateField` gives a string on the wire and a `Date` in a handler, and
+`Schema.Date` is refused at registration because it cannot be described at all.
 
-```ts
-/**
- * A payload field holding an ISO 8601 timestamp.
- *
- * The `format` annotation is what the editor reads: Effect copies a string
- * `format` annotation straight onto the JSON Schema, and `schema-codec.ts` maps
- * `date-time` to the `timestamp` field type. Both annotations go on the base
- * type, before the check, because `.annotate()` on a checked schema lands on the
- * check. The description is a parameter for that same reason.
- */
-export function timestampField(description: string) {
-  return Schema.String.annotate({ description, format: "date-time" }).check(
-    Schema.isPattern(ISO_TIMESTAMP_PATTERN)
-  );
-}
-```
+Both are exported from `@rova/core` for hosts and `@rova/core/plugin` for plugin authors,
+because `@rova/shared` is private. The pattern-prefix heuristic `isIsoDatePattern` is
+deleted, since the `format` keyword route needs no fallback. `requireOutputFieldsFromSchema`
+gains the codec-aware refusal message from section 2.3.
 
-Verified against the vendored source:
-`.repos/effect/packages/effect/src/internal/schema/toJsonSchemaDocument.ts:45-46` copies a
-string `format` annotation onto the JSON Schema, and `normalizeSchemaFormat` in
-`schema-codec.ts:256` already maps `date-time` to `timestamp`. The pattern-prefix heuristic
-`isIsoDatePattern` is deleted. `timestampField` is exported from `@rova/core` for hosts and
-`@rova/core/plugin` for plugin authors, because `@rova/shared` is private. One deliberate
-consequence: a payload declaring a timestamp field and carrying `"tomorrow"` fails its Event
-schema and is refused at intake.
+One deliberate consequence: a payload declaring a timestamp field and carrying `"tomorrow"`
+fails its Event schema and is refused at intake. That is drift on a declared field, which
+stays loud; an undeclared field a sender adds is ignored instead.
 
 The picker ranks rather than filters. `isFieldCompatible`
 (`packages/client/src/components/ui/template-autocomplete.tsx:28-48`) puts compatible fields
@@ -1615,6 +1928,18 @@ migrations regenerate once. B2, B6, and B7 each carry migrations.
 and keep registering. Nothing else changes. This batch alone gives the browser one channel and
 gives every later batch its registry.
 
+**Landed, with two follow-ups.** The first is done: `describeSchema` in
+`packages/shared/src/workflow/output-fields.ts` called `jsonSchema.output()` first, which is
+the decoded side (`Schema.ts:1338-1352` shows `output` calls `toType(self)`). For a transform
+that is the wrong side, and the failure was quiet: a decoded side with no JSON form emits `{}`
+for that property, the field reader drops it, and because the drop is nested it slipped past
+the root-level count check in `findDerivationProblem`. Fixed in `bed99f5`, reading `input()`
+only, with a regression test deriving a `decodeTo` codec field from the encoded side.
+
+The second follow-up is open: `defineEvent` gains `decodePayload` (section 3.1) and stops
+relying on the bridge for validation, whose parse options freeze at the first crossing. B2
+needs it, and the interface note is the only point of contact.
+
 ### B2. Events replace triggers, and the Lifecycle Node. Migration. Two gates.
 
 Per-Event Inngest listeners; the `/api/events/:eventName` route; `lifecycleRulesSchema` with
@@ -1640,6 +1965,12 @@ The definition shape, `defineStep` gaining metadata and losing its id, twilio po
 one commit. That dual path is the pattern stage 6a used and it exists for one commit only.
 Independent of B2, so it can run in parallel under a different reviewer.
 
+The codec work from section 2.3 lands here: one `Schema.toCodecJson` per schema, built at
+definition, feeding a `decodeUnknownEffect` on the way in and an `encodeUnknownEffect` on the
+way out, with encode failure mapped to a `StepFailure`. `defineAction`'s `output` narrows to
+`Schema.ConstraintDecoder`. Twilio is where a transform first earns its place: its
+`parseMediaUrls` helper becomes a comma-splitting transform on the input schema.
+
 ### B4. The integration sweep. No migration. Gate.
 
 The five remaining plugins, then every deletion in section 9.2 under Plugins and the registry
@@ -1650,8 +1981,16 @@ action, an integration.
 
 ### B5. Entry-node fields and timestamps. No migration. Gate.
 
-`timestampField`; the synthetic-field and engine-key deletions; the branch-derived entry-node
-fields from section 9.4; the ranking picker; the placeholder fix.
+`timestampField` and `dateField`; the codec-aware refusal message in
+`requireOutputFieldsFromSchema`; the `isIsoDatePattern` deletion; the synthetic-field and
+engine-key deletions; the branch-derived entry-node fields from section 9.4; the ranking
+picker; the placeholder fix.
+
+One thing to verify rather than assume, because section 2.3 could not settle it by reading:
+`Schema.optional(dateField(...))` renders as `anyOf: [{ type: "string", format: "date-time",
+… }, { type: "null" }]`, so confirm `schema-codec.ts` carries `format` through that unwrap.
+Optional non-date fields read correctly today, so the unwrap itself works; whether it copies
+`format` off the member is what needs a test.
 
 ### B6. Wait subscriptions and the mode collapse. Migration. Gate.
 
@@ -1698,6 +2037,45 @@ integration cannot ship an icon component unless the host writes its own ui modu
 it. This is the weakest point of the design. It removes registration-by-import everywhere the
 data is data and leaves it exactly where the value is a component. `logoUrl` is the escape
 hatch for a host that only wants an image.
+
+**The JSON-safety enforcement point moves, and does not move everywhere.** It was a runtime
+walk over any step output, `findNonJsonSafeValue`, which issue #12 exists to retire. Encoding
+through the canonical JSON codec (section 2.3) replaces it for every schema-described output,
+and by construction rather than by inspection. It does not replace it for `Database Query` and
+`HTTP Request`, which are Promise functions with no output schema, so the walk stays until
+stage 7 item 5 gives them one. Close #12 against schema-described outputs and say in the issue
+what is left. For one release there are two mechanisms, and the reason is written down rather
+than left to be rediscovered.
+
+**A `Date` in a step output was a near-miss worth recording.** An earlier draft of this design
+encoded through the author's output schema rather than through its JSON codec. That leaves a
+live `Date` in the value, which survives JSONB and Inngest by accident through
+`Date.prototype.toJSON` and comes back a `string` on replay. A value whose type differs
+between the first attempt and the replay of the same memoized step is the worst failure mode
+this engine has. It was caught by reading the Effect guide, not by a test, so the plan owes one:
+a replay assertion on a `Date`-bearing output, in `core-replay.test.ts`.
+
+**A new runtime failure: a handler returns a value its output schema cannot encode.** It
+surfaces as a `StepFailure`, so the node fails once with a message naming the field path, in
+the run log and the step log row. Reachable only through an `as`, an `any`, or a widened vendor
+type, because the handler's return type is the decoded type.
+
+**`Schema.Date` is a trap with a good error message.** An author reaching for the obvious name
+gets a registration refusal, because a declaration cannot carry a description or a `format`
+and nothing can make it describable. The refusal message carries the reason and the two
+working spellings, and that is the whole mitigation.
+
+**An Event payload decoding open means additive drift is silent.** A sender that adds a field
+is ignored rather than refused, which is the point. The cost is that a field an Event Author
+meant to rely on but forgot to declare will never be validated and will never appear in a
+picker, and nothing says so. Drift on a declared field still fails loudly.
+
+**Two decode paths hide behind one `decodePayload`,** one Effect and one foreign. The
+complexity is real and it is in one place.
+
+**Foreign output schemas stop compiling** for host actions, so an adopter with a Zod output
+schema converts it. The blast radius in this repo is nil, because `examples/app.ts` writes
+Effect already.
 
 **One-file plugins need the vendor SDK behind a dynamic import.** Clerk, linear, and acuity
 keep an SDK, and with the handler inline, importing `builtInIntegrations` would pull all three
@@ -1785,8 +2163,12 @@ New:
 - `packages/shared/src/extensions/catalog.test.ts`
 - `packages/shared/src/workflow/lifecycle-rules.test.ts`
 - `packages/shared/src/workflow/wait-subscription.test.ts`
+- `packages/shared/src/workflow/output-fields.test.ts` (landed in `bed99f5`: derivation reads
+  the encoded side, so a `decodeTo` codec field survives)
 - `packages/core/src/backend/lib/extensions/define-event.test.ts` (absorbs the path-typing,
-  CEL-rewriting, and Inngest-option cases from `trigger-registry.test.ts`)
+  CEL-rewriting, and Inngest-option cases from `trigger-registry.test.ts`, and adds
+  `decodePayload`: a declared field validated, an unknown key ignored, a foreign schema taking
+  the same path)
 - `packages/core/src/backend/lib/extensions/define-integration.test.ts`
 - `packages/core/src/backend/lib/extensions/extension-set.test.ts` (the five assembly checks)
 - `packages/core/src/backend/services/workflows/lifecycle/deliver-event.test.ts` (Precedence)
@@ -1802,13 +2184,22 @@ Rewritten, because the contract changes:
   bridge claims to accept.
 - `packages/shared/src/workflow/standard-schema-compat.test.ts`, same reason, retargeted at
   `asStandardSchema` in its new callers.
+- `packages/core/src/backend/lib/workflow-engine/core-replay.test.ts`: the status rename, plus
+  the assertion the near-miss in section 11 owes. A node whose output schema holds a
+  `dateField` keeps the same type across a replay, because the value crossed the boundary
+  encoded.
 - `packages/shared/src/workflow/schema-codec.test.ts`: the `format: "date-time"` route in,
   `isIsoDatePattern` out.
-- `packages/shared/src/types/timestamp.test.ts`: `timestampField` cases.
+- `packages/shared/src/types/timestamp.test.ts`: `timestampField` and `dateField` cases,
+  including that `dateField` decodes to a `Date`, encodes to an ISO string, and keeps its
+  description and `format` on the encoded side under `Schema.optional`.
 - `packages/shared/src/workflow/schemas.test.ts`: the entry node's config and the second
   `sourceHandle`.
 - `packages/shared/src/workflow/node-references.test.ts`: entry-node field derivation.
-- `packages/core/src/backend/lib/steps/define-step.test.ts`: the action-shaped `defineStep`.
+- `packages/core/src/backend/lib/steps/define-step.test.ts`: the action-shaped `defineStep`,
+  plus the codec cases from section 2.3. A transform on the input reaching the handler as its
+  decoded type; a `Date` in the output leaving as an ISO string; and a handler that lies to the
+  compiler failing as a `StepFailure` naming the field path.
 - `packages/core/src/backend/lib/inngest/functions.test.ts`: per-Event listeners, and the
   removal of the per-workflow graph walk.
 - `packages/core/src/backend/lib/inngest/event-listener-function.test.ts`: the per-Event
@@ -1844,7 +2235,6 @@ Touched for a status rename or a registry seam, otherwise unchanged in intent:
 - `packages/core/src/backend/lib/workflow-conditions-validation.test.ts`
 - `packages/core/src/backend/lib/workflow-engine/core.test.ts`
 - `packages/core/src/backend/lib/workflow-engine/core-branching.test.ts`
-- `packages/core/src/backend/lib/workflow-engine/core-replay.test.ts`
 - `packages/core/src/backend/lib/inngest/workflow-function.test.ts`
 - `packages/core/src/backend/services/integrations/integrations.test.ts`
 - `packages/core/src/backend/services/integrations/integration-config-masking.test.ts`
