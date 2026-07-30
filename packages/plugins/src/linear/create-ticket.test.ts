@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { beforeEach, vi } from "vitest";
-import { createTicketHandler } from "./create-ticket";
+import { createTicketHandler } from "#src/linear/index";
 
 // This step's seam is the Linear SDK, which it constructs itself, so the
 // constructor is what the test replaces. What the SDK puts on the wire is

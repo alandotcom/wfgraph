@@ -2,10 +2,12 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { beforeEach, vi } from "vitest";
-import { clerkCreateUserHandler } from "./create-user";
-import { clerkDeleteUserHandler } from "./delete-user";
-import { clerkGetUserHandler } from "./get-user";
-import { clerkUpdateUserHandler } from "./update-user";
+import {
+  clerkCreateUserHandler,
+  clerkDeleteUserHandler,
+  clerkGetUserHandler,
+  clerkUpdateUserHandler,
+} from "#src/clerk/index";
 
 /**
  * The four Clerk steps in one file, because what they have to say is the same

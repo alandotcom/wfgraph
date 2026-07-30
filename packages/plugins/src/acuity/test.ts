@@ -1,5 +1,5 @@
 import { Acuity, AcuityError } from "@fountain-bio/acuity";
-import { getAcuityErrorMessage } from "./steps/client";
+import { getAcuityErrorMessage } from "#src/acuity/client";
 
 export async function testAcuity(credentials: Record<string, string>) {
   try {

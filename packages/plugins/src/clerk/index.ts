@@ -2,13 +2,11 @@
  * The Clerk integration: its credentials, its four actions, and what each takes
  * and gives back.
  *
- * The handlers are not here. Clerk's SDK is a runtime import of `client.ts`, so
- * `load` is what keeps it out of a process that never runs a Clerk action: a
- * handler's module is imported the first time its action runs. The schemas are
- * exported for those modules to type themselves against.
- *
- * Only the server imports this. The editor gets the metadata below as JSON over
- * `/api/extensions`, and the icon stays in `ui.ts`.
+ * One file, because only the server imports it. The editor gets this plugin's
+ * metadata as JSON over `/api/extensions`, so nothing here reaches a browser
+ * bundle and `@clerk/backend`, which `client.ts` pulls in, costs the browser
+ * nothing. The icon is the exception, since a React component cannot be
+ * serialized: it stays in `ui.ts`, which only the browser imports.
  */
 
 import {
@@ -16,8 +14,19 @@ import {
   type CredentialsOf,
   defineIntegration,
   defineStep,
+  StepFailure,
+  type StepRunContext,
 } from "@rova/core/plugin";
-import { Schema } from "effect";
+import { omitBy } from "es-toolkit/object";
+import { isNil } from "es-toolkit/predicate";
+import { Effect, Schema } from "effect";
+import {
+  createClerkBackendClient,
+  getClerkApiErrorMessage,
+  toClerkApiUser,
+} from "#src/clerk/client";
+import { parseClerkMetadata } from "#src/clerk/metadata";
+import { toClerkUserData } from "#src/clerk/types";
 
 const clerkCredentialFields = credentialFields([
   {
@@ -71,14 +80,14 @@ const clerkUserOutput = {
   }).check(Schema.isFinite()),
 };
 
-export const getUserInput = Schema.Struct({
+const getUserInput = Schema.Struct({
   userId: Schema.String,
 });
 
 const getUserOutput = Schema.Struct(clerkUserOutput);
 
 /** `optionalKey` for a field a builder may leave blank: it reaches a step absent. */
-export const createUserInput = Schema.Struct({
+const createUserInput = Schema.Struct({
   emailAddress: Schema.String,
   firstName: Schema.optionalKey(Schema.String),
   lastName: Schema.optionalKey(Schema.String),
@@ -90,7 +99,7 @@ export const createUserInput = Schema.Struct({
 
 const createUserOutput = Schema.Struct(clerkUserOutput);
 
-export const updateUserInput = Schema.Struct({
+const updateUserInput = Schema.Struct({
   userId: Schema.String,
   firstName: Schema.optionalKey(Schema.String),
   lastName: Schema.optionalKey(Schema.String),
@@ -100,12 +109,197 @@ export const updateUserInput = Schema.Struct({
 
 const updateUserOutput = Schema.Struct(clerkUserOutput);
 
-export const deleteUserInput = Schema.Struct({
+const deleteUserInput = Schema.Struct({
   userId: Schema.String,
 });
 
 const deleteUserOutput = Schema.Struct({
   deleted: Schema.Boolean.annotate({ description: "Deletion success" }),
+});
+
+/**
+ * Each handler is named rather than written inline, so a test can run it with a
+ * context it supplies.
+ */
+export const clerkGetUserHandler = Effect.fn(function* (
+  input: typeof getUserInput.Type,
+  context: StepRunContext<ClerkCredentials>
+) {
+  const credentials = yield* context.credentials;
+  const secretKey = credentials.CLERK_SECRET_KEY;
+
+  if (!secretKey) {
+    return yield* Effect.fail(
+      new StepFailure({
+        message:
+          "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+      })
+    );
+  }
+
+  if (!input.userId) {
+    return yield* Effect.fail(
+      new StepFailure({ message: "User ID is required." })
+    );
+  }
+
+  const clerk = createClerkBackendClient(secretKey);
+  const user = yield* Effect.tryPromise({
+    try: () => clerk.users.getUser(input.userId),
+    catch: (error) =>
+      new StepFailure({
+        message: `Failed to get user: ${getClerkApiErrorMessage(error)}`,
+      }),
+  });
+
+  return toClerkUserData(toClerkApiUser(user));
+});
+
+export const clerkCreateUserHandler = Effect.fn(function* (
+  input: typeof createUserInput.Type,
+  context: StepRunContext<ClerkCredentials>
+) {
+  const credentials = yield* context.credentials;
+  const secretKey = credentials.CLERK_SECRET_KEY;
+
+  if (!secretKey) {
+    return yield* Effect.fail(
+      new StepFailure({
+        message:
+          "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+      })
+    );
+  }
+
+  if (!input.emailAddress) {
+    return yield* Effect.fail(
+      new StepFailure({ message: "Email address is required." })
+    );
+  }
+
+  const publicMetadata = yield* parseClerkMetadata(
+    input.publicMetadata,
+    "publicMetadata"
+  );
+  const privateMetadata = yield* parseClerkMetadata(
+    input.privateMetadata,
+    "privateMetadata"
+  );
+
+  const clerk = createClerkBackendClient(secretKey);
+  // Clerk reads an absent field and a null one differently, so the fields the
+  // user left blank are dropped rather than sent empty.
+  const createPayload = omitBy(
+    {
+      emailAddress: [input.emailAddress],
+      firstName: input.firstName,
+      lastName: input.lastName,
+      password: input.password,
+      publicMetadata,
+      privateMetadata,
+    },
+    isNil
+  );
+
+  const user = yield* Effect.tryPromise({
+    try: () => clerk.users.createUser(createPayload),
+    catch: (error) =>
+      new StepFailure({
+        message: `Failed to create user: ${getClerkApiErrorMessage(error)}`,
+      }),
+  });
+
+  return toClerkUserData(toClerkApiUser(user));
+});
+
+export const clerkUpdateUserHandler = Effect.fn(function* (
+  input: typeof updateUserInput.Type,
+  context: StepRunContext<ClerkCredentials>
+) {
+  const credentials = yield* context.credentials;
+  const secretKey = credentials.CLERK_SECRET_KEY;
+
+  if (!secretKey) {
+    return yield* Effect.fail(
+      new StepFailure({
+        message:
+          "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+      })
+    );
+  }
+
+  if (!input.userId) {
+    return yield* Effect.fail(
+      new StepFailure({ message: "User ID is required." })
+    );
+  }
+
+  const publicMetadata = yield* parseClerkMetadata(
+    input.publicMetadata,
+    "publicMetadata"
+  );
+  const privateMetadata = yield* parseClerkMetadata(
+    input.privateMetadata,
+    "privateMetadata"
+  );
+
+  const clerk = createClerkBackendClient(secretKey);
+  // An update sends only the fields the user filled in, so a blank box leaves
+  // what Clerk already holds alone rather than clearing it.
+  const updatePayload = omitBy(
+    {
+      firstName: input.firstName,
+      lastName: input.lastName,
+      publicMetadata,
+      privateMetadata,
+    },
+    isNil
+  );
+
+  const user = yield* Effect.tryPromise({
+    try: () => clerk.users.updateUser(input.userId, updatePayload),
+    catch: (error) =>
+      new StepFailure({
+        message: `Failed to update user: ${getClerkApiErrorMessage(error)}`,
+      }),
+  });
+
+  return toClerkUserData(toClerkApiUser(user));
+});
+
+export const clerkDeleteUserHandler = Effect.fn(function* (
+  input: typeof deleteUserInput.Type,
+  context: StepRunContext<ClerkCredentials>
+) {
+  const credentials = yield* context.credentials;
+  const secretKey = credentials.CLERK_SECRET_KEY;
+
+  if (!secretKey) {
+    return yield* Effect.fail(
+      new StepFailure({
+        message:
+          "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+      })
+    );
+  }
+
+  if (!input.userId) {
+    return yield* Effect.fail(
+      new StepFailure({ message: "User ID is required." })
+    );
+  }
+
+  const clerk = createClerkBackendClient(secretKey);
+
+  yield* Effect.tryPromise({
+    try: () => clerk.users.deleteUser(input.userId),
+    catch: (error) =>
+      new StepFailure({
+        message: `Failed to delete user: ${getClerkApiErrorMessage(error)}`,
+      }),
+  });
+
+  return { deleted: true };
 });
 
 export const clerk = defineIntegration({
@@ -133,8 +327,7 @@ export const clerk = defineIntegration({
           required: true,
         },
       ],
-      load: async () =>
-        (await import("#src/clerk/steps/get-user")).clerkGetUserHandler,
+      handler: clerkGetUserHandler,
     }),
 
     "create-user": defineStep({
@@ -195,8 +388,7 @@ export const clerk = defineIntegration({
           ],
         },
       ],
-      load: async () =>
-        (await import("#src/clerk/steps/create-user")).clerkCreateUserHandler,
+      handler: clerkCreateUserHandler,
     }),
 
     "update-user": defineStep({
@@ -248,8 +440,7 @@ export const clerk = defineIntegration({
           ],
         },
       ],
-      load: async () =>
-        (await import("#src/clerk/steps/update-user")).clerkUpdateUserHandler,
+      handler: clerkUpdateUserHandler,
     }),
 
     "delete-user": defineStep({
@@ -268,8 +459,7 @@ export const clerk = defineIntegration({
           required: true,
         },
       ],
-      load: async () =>
-        (await import("#src/clerk/steps/delete-user")).clerkDeleteUserHandler,
+      handler: clerkDeleteUserHandler,
     }),
   },
 });

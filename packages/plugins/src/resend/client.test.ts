@@ -15,7 +15,7 @@ import {
  * what Resend's send-email reference says the call looks like.
  *
  * The payload's field names are the step's business, not this module's, so the
- * snake_case mapping is asserted in steps/send-email.test.ts where it happens.
+ * snake_case mapping is asserted in send-email.test.ts where it happens.
  */
 
 const realFetch = globalThis.fetch;

@@ -182,42 +182,21 @@ type StepSchemas<TInput, TOutput> = {
   readonly output: Schema.ConstraintCodec<TOutput, unknown>;
 };
 
-/**
- * Where the work is, in one of two spellings.
- *
- * `NoInfer` on both is what keeps the schemas the source of truth: without it a
- * handler's own return type is an inference site too, so a step handing back a
- * vendor object would make the output schema answer to the vendor's type instead
- * of the other way round.
- *
- * `handler` is the default and reads best: the whole action is one value. `load`
- * is for a handler long enough to want its own module, and for an integration with
- * enough actions that one file would stop being readable -- acuity's eight. It is
- * a loader rather than an import so that a process holding the integration pays
- * nothing for an action it never runs.
- *
- * The two are the arms of a union, so exactly one is written: `never` on the other
- * side of each arm is what makes a value carrying both fail to compile.
- */
-type StepWork<TInput, TOutput> =
-  | {
-      readonly handler: StepHandler<NoInfer<TInput>, NoInfer<TOutput>>;
-      readonly load?: never;
-    }
-  | {
-      readonly load: () => Promise<
-        StepHandler<NoInfer<TInput>, NoInfer<TOutput>>
-      >;
-      readonly handler?: never;
-    };
-
-type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> &
-  StepWork<TInput, TOutput> & {
-    readonly label: string;
-    readonly description: string;
-    readonly category: string;
-    readonly configFields: readonly ActionConfigFieldFor<TInput>[];
-  };
+type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> & {
+  readonly label: string;
+  readonly description: string;
+  readonly category: string;
+  readonly configFields: readonly ActionConfigFieldFor<TInput>[];
+  /**
+   * Where the work is.
+   *
+   * `NoInfer` is what keeps the schemas the source of truth: without it the
+   * handler's own return type is an inference site too, so a step handing back
+   * a vendor object would make the output schema answer to the vendor's type
+   * instead of the other way round.
+   */
+  readonly handler: StepHandler<NoInfer<TInput>, NoInfer<TOutput>>;
+};
 
 /**
  * Everything a step does around its handler, as a function of the action id.
@@ -229,10 +208,11 @@ type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> &
  * `toCodecJson` walks the AST and builds a new schema.
  */
 function buildStep<TInput, TOutput>(
-  definition: StepSchemas<TInput, TOutput> & StepWork<TInput, TOutput>
+  definition: Pick<
+    ActionStepInput<TInput, TOutput>,
+    "handler" | "input" | "output"
+  >
 ): (actionId: string) => StepFunction {
-  const handlerOnce = readHandler<TInput, TOutput>(definition);
-
   // `errors: "all"` is what `formatSchemaFailure` is written against: it counts
   // the issues it does not spell out, and stopping at the first would make that
   // count always zero.
@@ -263,9 +243,7 @@ function buildStep<TInput, TOutput>(
         )
       );
 
-      const handler = yield* handlerOnce;
-
-      const data = yield* handler(input, {
+      const data = yield* definition.handler(input, {
         runMode: context?.runMode ?? "live",
         executionId: context?.executionId,
         nodeId: context?.nodeId,
@@ -351,40 +329,6 @@ export function defineStep<TInput, TOutput>(
     output: definition.output,
     implement: buildStep(definition),
   };
-}
-
-/**
- * The handler, as an effect that resolves it at most once.
- *
- * `Effect.promise` rather than `tryPromise` for a `load`, for the reason the
- * credential fetch below gives: a module that fails to import is a defect, and a
- * defect leaves by the throw path where Inngest's function-level retry picks it
- * up. A step error would end the run on what is almost always a deployment
- * problem.
- */
-function readHandler<TInput, TOutput>(
-  definition: StepWork<TInput, TOutput>
-): Effect.Effect<StepHandler<TInput, TOutput>> {
-  const { handler, load } = definition;
-
-  if (handler) {
-    return Effect.succeed(handler);
-  }
-
-  let loading: Promise<StepHandler<TInput, TOutput>> | undefined;
-
-  return Effect.promise(() => {
-    // A rejected import is forgotten rather than remembered, so the retry the
-    // paragraph above promises actually re-attempts it. A held rejected promise
-    // would answer every later attempt with the first failure, which in a
-    // long-lived process means one bad moment disables the action until a restart.
-    loading ??= load().catch((cause: unknown) => {
-      loading = undefined;
-      throw cause;
-    });
-
-    return loading;
-  });
 }
 
 function readIntegrationId(value: unknown): string | undefined {

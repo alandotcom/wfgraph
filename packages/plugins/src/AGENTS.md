@@ -14,20 +14,36 @@ React component cannot be serialized.
 
 ## The files
 
+The minimum, which `slack/` and `twilio/` are:
+
 ```
 plugins/[name]/
-  index.ts          the integration: credentials, schemas, actions, metadata
-  client.ts         the vendor's HTTP API, over fetch
-  client.test.ts    what the client puts on the wire
-  test.ts           the connection test the credentials UI runs
-  icon.tsx          the SVG icon component
-  ui.ts             registers the icon, and any output renderer
-  steps/[action].ts a handler long enough to want its own module
+  index.ts           the integration: credentials, schemas, actions, metadata
+  index.test.ts      what the definition contributes: slugs, credentials, fields
+  [subject].test.ts  the handlers, each run with a context the case supplies
+  client.ts          the vendor's HTTP API, over fetch
+  client.test.ts     what the client puts on the wire
+  test.ts            the connection test the credentials UI runs
+  icon.tsx           the SVG icon component
+  ui.ts              registers the icon, and any output renderer
 ```
 
-`slack/` and `twilio/` are the shape to copy: one `index.ts` with the handler inline.
-`acuity/`, `clerk/`, `linear/` and `resend/` keep their handlers under `steps/` and
-reach them with `load`, for the two reasons below.
+A larger integration adds modules beside those rather than growing `index.ts`
+without limit: `acuity/` has `payloads.ts` for the vendor's wire shapes and
+`shared.ts` for the config parsers its eight actions share, `clerk/` has `types.ts`,
+`metadata.ts` and a `components/` directory for its output renderer, `linear/` an
+`errors.ts`. What stays in `index.ts` either way is the integration itself: the
+credential form, each action's two schemas, its config fields, and its handler, all
+in the file a reader opens to learn what the integration does. `acuity/` is the
+largest at eight actions, and it lays them out one after another -- schemas,
+handler, step -- so the `actions` record at the foot reads as a contents list.
+
+A vendor SDK is a plain import of that file, and `src/index.ts` imports all six
+integrations as values, so the three SDKs that survived (`@clerk/backend`,
+`@linear/sdk`, `@fountain-bio/acuity`) are hard dependencies of `@rova/plugins` and
+load with the package whatever a host goes on to list. What the static import buys
+is the timing of a failure: an SDK that is missing fails at boot rather than inside
+a run.
 
 ## index.ts
 
@@ -200,57 +216,13 @@ one level above where they live, so every appointment action failed its encode o
 appointment with a form. Model what a recorded response contains, keep the fields a
 handler cannot work without required, and make everything else tolerant. Then pin it
 with a fixture built from that response and an assertion that runs the encode --
-`acuity/steps/acuity-steps.test.ts` is the pattern, and a field-derivation test alone
+`acuity/appointments.test.ts` is the pattern, and a field-derivation test alone
 would not have caught any of it.
 
 **A handler asks for `HttpClient.HttpClient` and nothing else.** A handler that
 yields an effect wanting more fails to compile rather than failing inside a workflow.
 A step that genuinely needs another service is a conversation about what belongs in a
 step's environment, settled in `define-step.ts`, not a type parameter widened here.
-
-## `load`, for a handler that wants its own module
-
-```ts
-"do-something": defineStep({
-  label: "Do Something",
-  // ... the same metadata and the same two schemas. The input schema is exported
-  // from index.ts, because the handler's module types its parameter against it; the
-  // output schema is read here and nowhere else.
-  load: async () =>
-    (await import("#src/my-service/steps/do-something")).doSomethingHandler,
-}),
-```
-
-The handler's module reads that schema as a type and never as a value, so it takes
-it with `import type`. A value import would make the module's own import of
-`index.ts` a real edge in the graph, and the cycle it closes with the `load` above
-is broken only by that `load` being lazy:
-
-```ts
-// packages/plugins/src/my-service/steps/do-something.ts
-import type { StepRunContext } from "@rova/core/plugin";
-import type {
-  doSomethingInput,
-  MyServiceCredentials,
-} from "#src/my-service/index";
-
-export const doSomethingHandler = Effect.fn(function* (
-  input: typeof doSomethingInput.Type,
-  context: StepRunContext<MyServiceCredentials>
-) {
-  // ...
-});
-```
-
-Exactly one of `handler` and `load` is written; a value carrying both fails to
-compile. Reach for `load` when either is true:
-
-- **The module pulls an SDK.** `@clerk/backend`, `@linear/sdk` and
-  `@fountain-bio/acuity` are runtime imports of the modules their handlers use, and
-  `load` is what keeps all three out of a process that never runs one of their
-  actions. An eager import would pull every SDK at startup for every adopter.
-- **The handler is long, or there are many.** Acuity has eight actions; resend's one
-  handler is 250 lines. One file holding all of that is a file nobody reads.
 
 ## The output schema, and what the editor derives from it
 
@@ -395,9 +367,9 @@ one import the browser makes.
 5. `pnpm run dev`, then add a connection, build a workflow on the action, and run it.
 
 Naming: the folder is the integration `type` in kebab-case; a handler is
-`[action]Handler`; a step module is the action slug; the credential type is
-`[Name]Credentials`; the connection test is `test[Name]`; the icon is `[Name]Icon`;
-environment variables are `[NAME]_[FIELD]`.
+`[action]Handler`; the credential type is `[Name]Credentials`; the connection test
+is `test[Name]`; the icon is `[Name]Icon`; environment variables are
+`[NAME]_[FIELD]`.
 
 ## Testing
 

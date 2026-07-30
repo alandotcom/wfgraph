@@ -11,11 +11,26 @@
  * The messages are the reason the reading stays here rather than moving into
  * the input schemas: a decode that fails inside `defineStep` reports itself as
  * an invalid configuration for the action, and what an author needs to read is
- * which box holds what.
+ * which box holds what. The two schema declarations at the top are the other
+ * half of the same boundary -- what an input schema says a config field may
+ * hold, before one of these parsers reads it.
  */
 
 import { StepFailure } from "@rova/core/plugin";
 import { Effect, Result, Schema } from "effect";
+
+/** Every config field arrives as text, so this is what most of them look like. */
+export const optionalText = Schema.optionalKey(Schema.String);
+
+/**
+ * A number a config field carries.
+ *
+ * A `number` config field may be stored as a number and a template resolves to
+ * text, so both arrive and the step parses whichever it got.
+ */
+export const optionalNumeric = Schema.optionalKey(
+  Schema.Union([Schema.String, Schema.Finite])
+);
 
 /** A config value as text, or nothing when the field was left empty. */
 function normalizeRawValue(

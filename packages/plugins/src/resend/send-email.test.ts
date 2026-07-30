@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { beforeEach, vi } from "vitest";
-import { sendEmailHandler } from "./send-email";
+import { sendEmailHandler } from "#src/resend/index";
 
 // What this step decides is whether and where to send, so the seam under it is
 // the Resend client. What that client puts on the wire is covered separately in

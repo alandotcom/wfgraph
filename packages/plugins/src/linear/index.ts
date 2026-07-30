@@ -2,25 +2,24 @@
  * The Linear integration: its credentials, its actions, and what each action
  * takes and gives back.
  *
- * The handlers are not here, and that is the one thing worth knowing about this
- * file. Linear's SDK is a runtime import of both `steps/` and `errors.ts`, so
- * `load` is what keeps it out of a process that never runs a Linear action: a
- * handler's module is imported the first time its action runs, and this file holds
- * only what the editor needs. Each input schema is exported for the handler module
- * to type its parameter against; an output schema is read here and nowhere else,
- * because a handler's return type is inferred from it.
- *
- * Only the server imports this. The editor gets the metadata below as JSON over
- * `/api/extensions`, and the icon stays in `ui.ts`.
+ * One file, because only the server imports it. The editor gets this plugin's
+ * metadata as JSON over `/api/extensions`, so nothing here reaches a browser
+ * bundle and the SDK below costs the browser nothing. The icon is the
+ * exception, since a React component cannot be serialized: it stays in `ui.ts`,
+ * which only the browser imports.
  */
 
+import { LinearClient, type LinearDocument } from "@linear/sdk";
 import {
   credentialFields,
   type CredentialsOf,
   defineIntegration,
   defineStep,
+  StepFailure,
+  type StepRunContext,
 } from "@rova/core/plugin";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
+import { describeLinearFailure } from "#src/linear/errors";
 
 const linearCredentialFields = credentialFields([
   {
@@ -55,7 +54,7 @@ export type LinearCredentials = CredentialsOf<typeof linearCredentialFields>;
  * node's templates into the keys the node holds and drops an empty one, so a
  * blank field reaches a step as an absent key.
  */
-export const createTicketInput = Schema.Struct({
+const createTicketInput = Schema.Struct({
   ticketTitle: Schema.String,
   ticketDescription: Schema.optionalKey(Schema.String),
 });
@@ -66,7 +65,7 @@ const createTicketOutput = Schema.Struct({
   title: Schema.String.annotate({ description: "Ticket title" }),
 });
 
-export const findIssuesInput = Schema.Struct({
+const findIssuesInput = Schema.Struct({
   linearAssigneeId: Schema.optionalKey(Schema.String),
   linearTeamId: Schema.optionalKey(Schema.String),
   linearStatus: Schema.optionalKey(Schema.String),
@@ -105,6 +104,167 @@ const findIssuesOutput = Schema.Struct({
   ),
 });
 
+/**
+ * Everything the Linear SDK does is a Promise that throws, so every call goes
+ * through here: the throw becomes the `StepFailure` the run log shows, worded
+ * the way the calling action words its failures.
+ */
+function callLinear<A>(
+  describe: string,
+  call: () => Promise<A>
+): Effect.Effect<A, StepFailure> {
+  return Effect.tryPromise({
+    try: call,
+    catch: (error) =>
+      new StepFailure({
+        message: `${describe}: ${describeLinearFailure(error)}`,
+      }),
+  });
+}
+
+/**
+ * The team a ticket goes to when the integration names none: Linear's first,
+ * which is the whole workspace for the single-team case this covers.
+ */
+function firstTeamId(client: LinearClient): Effect.Effect<string, StepFailure> {
+  return Effect.gen(function* () {
+    const teams = yield* callLinear("Failed to create ticket", () =>
+      client.teams({ first: 1 })
+    );
+    const firstTeam = teams.nodes[0];
+
+    return firstTeam
+      ? firstTeam.id
+      : yield* Effect.fail(
+          new StepFailure({ message: "No teams found in Linear workspace" })
+        );
+  });
+}
+
+/**
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies.
+ */
+export const createTicketHandler = Effect.fn(function* (
+  input: typeof createTicketInput.Type,
+  context: StepRunContext<LinearCredentials>
+) {
+  const credentials = yield* context.credentials;
+  const apiKey = credentials.LINEAR_API_KEY;
+
+  if (!apiKey) {
+    return yield* Effect.fail(
+      new StepFailure({
+        message:
+          "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
+      })
+    );
+  }
+
+  const client = new LinearClient({ apiKey });
+  const teamId = credentials.LINEAR_TEAM_ID || (yield* firstTeamId(client));
+
+  // Linear answers a mutation with a payload holding a promise for the issue it
+  // made, so the issue is two awaits away from the call.
+  const issue = yield* callLinear("Failed to create ticket", async () => {
+    const created = await client.createIssue({
+      title: input.ticketTitle,
+      description: input.ticketDescription,
+      teamId,
+    });
+
+    return created.issue ? await created.issue : undefined;
+  });
+
+  if (!issue) {
+    return yield* Effect.fail(
+      new StepFailure({ message: "Failed to create issue" })
+    );
+  }
+
+  return { id: issue.id, url: issue.url, title: issue.title };
+});
+
+/**
+ * The filter Linear's GraphQL API takes, built from the fields the user filled
+ * in. A blank field contributes nothing, and "any" is how the status select
+ * spells "do not filter on status".
+ */
+function buildIssueFilter(
+  input: typeof findIssuesInput.Type
+): LinearDocument.IssueFilter | undefined {
+  const filter: LinearDocument.IssueFilter = {};
+
+  if (input.linearAssigneeId) {
+    filter.assignee = { id: { eq: input.linearAssigneeId } };
+  }
+
+  if (input.linearTeamId) {
+    filter.team = { id: { eq: input.linearTeamId } };
+  }
+
+  if (input.linearStatus && input.linearStatus !== "any") {
+    filter.state = { name: { eqIgnoreCase: input.linearStatus } };
+  }
+
+  if (input.linearLabel) {
+    filter.labels = { name: { eqIgnoreCase: input.linearLabel } };
+  }
+
+  return Object.keys(filter).length > 0 ? filter : undefined;
+}
+
+/**
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies.
+ */
+export const findIssuesHandler = Effect.fn(function* (
+  input: typeof findIssuesInput.Type,
+  context: StepRunContext<LinearCredentials>
+) {
+  const credentials = yield* context.credentials;
+  const apiKey = credentials.LINEAR_API_KEY;
+
+  if (!apiKey) {
+    return yield* Effect.fail(
+      new StepFailure({
+        message:
+          "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
+      })
+    );
+  }
+
+  const client = new LinearClient({ apiKey });
+
+  // Everything the Linear SDK does is a Promise that throws, and an issue's
+  // state is a second request behind the issue, so the whole read is one call.
+  const issues = yield* Effect.tryPromise({
+    try: async () => {
+      const found = await client.issues({ filter: buildIssueFilter(input) });
+
+      return await Promise.all(
+        found.nodes.map(async (issue) => {
+          const state = issue.state ? await issue.state : undefined;
+          return {
+            id: issue.id,
+            title: issue.title,
+            url: issue.url,
+            state: state?.name || "Unknown",
+            priority: issue.priority,
+            assigneeId: issue.assigneeId ?? null,
+          };
+        })
+      );
+    },
+    catch: (error) =>
+      new StepFailure({
+        message: `Failed to find issues: ${describeLinearFailure(error)}`,
+      }),
+  });
+
+  return { issues, count: issues.length };
+});
+
 export const linear = defineIntegration({
   type: "linear",
   label: "Linear",
@@ -139,8 +299,7 @@ export const linear = defineIntegration({
           example: "Users are unable to click the login button on mobile.",
         },
       ],
-      load: async () =>
-        (await import("#src/linear/steps/create-ticket")).createTicketHandler,
+      handler: createTicketHandler,
     }),
 
     "find-issues": defineStep({
@@ -184,8 +343,7 @@ export const linear = defineIntegration({
           placeholder: "bug, feature, etc. or {{NodeName.label}}",
         },
       ],
-      load: async () =>
-        (await import("#src/linear/steps/find-issues")).findIssuesHandler,
+      handler: findIssuesHandler,
     }),
   },
 });

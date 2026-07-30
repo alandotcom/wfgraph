@@ -598,19 +598,12 @@ sends an absent key for a field a builder left blank and never sends a null. A
 vendor-derived output field takes `optionalKey(NullOr(X))`, the one spelling that
 survives both a key the vendor omitted and a null it sent.
 
-**A handler either sits inline or arrives through `load`.** Exactly one of `handler`
-and `load` is written, and a value carrying both fails to compile. `load` is a loader
-for the handler's own module, and it earns its place two ways: a module importing a
-vendor SDK stays out of a process that never runs one of its actions, and an
-integration with eight actions is not a file anybody reads.
-
-```ts
-"do-something": defineStep({
-  // ... the same metadata and the same two schemas
-  load: async () =>
-    (await import("#src/my-service/steps/do-something")).doSomethingHandler,
-}),
-```
+**A handler sits inline, and that is the only spelling.** An integration is the one
+file, however many actions it declares, and its vendor SDK is a plain import of that
+file. `@rova/plugins` imports all six built-ins as values, so their SDKs are hard
+dependencies of the package and load with it whatever a host goes on to list. What
+the static import buys is the timing of a failure: an SDK that is missing is a crash
+at boot rather than one run failing.
 
 **`checkIntegration` is the assembly check, exported for your own suite.** Assembly
 calls it for every integration a host passes, so a bad definition fails the app that

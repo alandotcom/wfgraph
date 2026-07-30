@@ -17,7 +17,7 @@ function outputFieldsOf(slug: keyof typeof acuity.actions) {
  * a thirty-line list per action over a vendor's payload is a list nobody reads and
  * everybody re-pastes. An exact list stays where the payload is this repo's own,
  * the way `twilio/index.test.ts` writes one. The wire shape itself is pinned in
- * `acuity-steps.test.ts`, against a fixture built from a recorded response.
+ * `appointments.test.ts`, against a fixture built from a recorded response.
  */
 describe("the acuity integration", () => {
   const appointmentActions = [

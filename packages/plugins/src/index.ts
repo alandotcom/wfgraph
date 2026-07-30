@@ -7,8 +7,10 @@
  * server-only -- a vendor client, a connection test, a step handler -- and the
  * editor learns about all of it as JSON over `/api/extensions` instead.
  *
- * Each is also exported by name, so a host that wants two of the six imports two
- * and has the rest tree-shaken out.
+ * Each is also exported by name, for a host that lists some of the six rather than
+ * all of them. That narrows what reaches `createRovaApp` and not what the process
+ * loads: this module imports every integration as a value, so the vendor SDKs three
+ * of them carry load with the package either way.
  */
 
 export { acuity } from "#src/acuity/index";

@@ -3,15 +3,17 @@ import { AcuityError } from "@fountain-bio/acuity";
 import { Effect, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { beforeEach, vi } from "vitest";
-import { cancelAppointmentHandler } from "./cancel-appointment";
-import { createAppointmentHandler } from "./create-appointment";
-import { getAppointmentHandler } from "./get-appointment";
-import { getAvailabilityDatesHandler } from "./get-availability-dates";
-import { getAvailabilityTimesHandler } from "./get-availability-times";
-import { listAppointmentsHandler } from "./list-appointments";
-import { listAppointmentTypesHandler } from "./list-appointment-types";
-import { acuity } from "#src/acuity/index";
-import { rescheduleAppointmentHandler } from "./reschedule-appointment";
+import {
+  acuity,
+  cancelAppointmentHandler,
+  createAppointmentHandler,
+  getAppointmentHandler,
+  getAvailabilityDatesHandler,
+  getAvailabilityTimesHandler,
+  listAppointmentsHandler,
+  listAppointmentTypesHandler,
+  rescheduleAppointmentHandler,
+} from "#src/acuity/index";
 
 /**
  * The eight Acuity steps in one file, because what they have to say is the

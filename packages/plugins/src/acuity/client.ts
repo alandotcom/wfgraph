@@ -1,30 +1,33 @@
 import { Acuity, AcuityError } from "@fountain-bio/acuity";
-import { StepFailure } from "@rova/core/plugin";
+import { StepFailure, type StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
 import type { AcuityCredentials } from "#src/acuity/index";
 import { getErrorMessage } from "@rova/shared/utils";
 
 /**
- * The Acuity SDK, built from the integration's credentials, or the failure that
+ * The Acuity SDK, built from the step's own credentials, or the failure that
  * says which of them is missing.
  *
- * Every step starts here, so the credentials check is written once and every
- * step reports it the same way.
+ * It takes the whole context rather than the credentials, so fetching them is
+ * part of the one line every handler opens with. Every step starts here, which
+ * is what makes the check on them written once and reported the same way.
  */
 export function createAcuityClient(
-  credentials: AcuityCredentials
+  context: StepRunContext<AcuityCredentials>
 ): Effect.Effect<Acuity, StepFailure> {
-  const userId = credentials.ACUITY_USER_ID?.trim();
-  const apiKey = credentials.ACUITY_API_KEY?.trim();
+  return Effect.flatMap(context.credentials, (credentials) => {
+    const userId = credentials.ACUITY_USER_ID?.trim();
+    const apiKey = credentials.ACUITY_API_KEY?.trim();
 
-  return userId && apiKey
-    ? Effect.succeed(new Acuity({ userId, apiKey }))
-    : Effect.fail(
-        new StepFailure({
-          message:
-            "ACUITY_USER_ID and ACUITY_API_KEY are required. Add them in Project Integrations.",
-        })
-      );
+    return userId && apiKey
+      ? Effect.succeed(new Acuity({ userId, apiKey }))
+      : Effect.fail(
+          new StepFailure({
+            message:
+              "ACUITY_USER_ID and ACUITY_API_KEY are required. Add them in Project Integrations.",
+          })
+        );
+  });
 }
 
 /**

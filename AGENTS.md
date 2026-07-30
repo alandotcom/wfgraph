@@ -187,14 +187,17 @@ context-sensitive argument cannot be inferred before that argument is typed, so 
 the credential vocabulary there would cost an inline handler both parameter types and
 leave the whole handler unchecked.
 
-**A handler either sits inline or arrives through `load`.** Exactly one of `handler` and
-`load` is written, and a value carrying both fails to compile. `load` is a loader for the
-handler's own module, and it exists for two reasons that the built-ins show: a module that
-imports a vendor SDK (`@clerk/backend`, `@linear/sdk`, `@fountain-bio/acuity`) stays out of
-a process that never runs one of its actions, and an integration with eight actions is not
-a file anybody reads. The schemas stay in the definition, exported for the handler's module
-to type itself against, which is why those four plugins export theirs and slack and twilio
-do not.
+**A handler sits inline, and an integration is one file.** `handler` is the only
+spelling: an action's two schemas, its config fields and the `Effect` between them are
+read in one place, and no plugin exports a schema for a handler's module to type itself
+against, because there is no such module. A vendor SDK (`@clerk/backend`, `@linear/sdk`,
+`@fountain-bio/acuity`) is a plain import of that file, and `@rova/plugins` imports all
+six integrations as values, so those three SDKs are hard dependencies of that package and
+load with it whatever a host goes on to list. What the static import buys is the timing of
+a failure: a missing SDK is a crash at boot rather than one run failing.
+The deleted alternative was a `load` loader, whose reason was keeping a plugin
+file out of a browser bundle; the catalog became the browser's only channel, so no
+plugin file can reach one.
 
 **Both directions of a step cross through the schema's canonical JSON codec.** A step
 boundary is JSON on both sides, so what `defineStep` runs is `Schema.toCodecJson(schema)`
@@ -306,6 +309,16 @@ Concurrency on the Lifecycle Node owns that question and can write a status. The
 and the CEL rewrite are `packages/shared/src/workflow/inngest-event-data.ts`, which every
 Event translates through, and `extractSchemaKeys` in `types/schema.ts` is
 where the field names a CEL identifier is checked against come from.
+
+**Every CEL string literal is `celStringLiteral`**
+(`packages/shared/src/workflow/cel-string-literal.ts`), which is `JSON.stringify`: the
+double-quoted form, backslashes doubled, a control character written as an escape. Three
+places assemble a CEL expression by hand -- the source filter beside it, the wait
+subscription's `if` in `workflow-engine/core.ts`, and the run function's trigger filter in
+`inngest/workflow-function.ts` -- and they sit on both sides of the runtime port, which is
+why the helper is in `@rova/shared`. Hand-rolling the escape is how a value carrying a
+newline gets past a test and fails at Inngest, where the expression is evaluated and the
+failure is a run that never triggers.
 Which Events start a run and which cancel it is the Workflow Builder's per-workflow
 declaration, never the Event's (ADR-0007).
 
@@ -505,12 +518,40 @@ a query the test never accounted for kills it rather than reading a fake empty r
 module is test support and ships nowhere: `packages/core` publishes `dist` and `drizzle`,
 and no entry reaches it.
 
-The run engine has not moved yet. The `db` proxy, `getDb`, and the process-global Inngest
-client survive because the workflow function's step store, the step logger, the credential
-fetcher, and the function registry all read them from outside any runtime; stage 7 owns
-their deletion. `callDbModule` and `callInngestModule` are the seams a service crosses to
-reach a `backend/lib` module that still speaks Promises, each giving it the tagged error
-channel its own queries have.
+**Nothing reaches Inngest through module state, and one value holds all of it.**
+`createInngestSurface` (`backend/lib/inngest/client.ts`) builds the client, the function
+registry over it, and the `/inngest` serve handler together, because the three have to
+agree: functions registered on one client and served through another are invisible to
+Inngest. `createRovaApp` builds one `InngestSurface` and hands the same value to
+`createRovaRuntime` and to `createApiApp`, so a divergent pair is inexpressible rather than
+merely avoided. The runtime reads `client` for `makeInngestClientLayer`, which is the four
+sends a service makes, and `invalidate` for `makeInngestFunctionsLayer`; `api-app.ts` names
+Inngest nowhere except that one route. The registry belonging to the app is what keeps its
+cached functions from outliving the runtime their event listeners close over, and a service
+that changes which workflows exist drops the list through the `InngestFunctions` service --
+`invalidateInngestFunctions` is that whole call, so no service body yields the service to
+reach one member of it. The two `backend/lib` helpers that mix a send with wait-state
+bookkeeping, `cancelInFlightRuns` and `resumeWaitsMatchingEvent`, take the one send each
+needs as a parameter, which their caller wraps with `asPromisePort` from the `InngestClient`
+service it already holds. That wrapper is the one deliberate `Effect.runPromise` outside an
+edge, and it goes when the run engine comes onto Effect.
+
+The run engine has not moved yet. The `db` proxy and `getDb` survive because the workflow
+function's step store, the step logger, the credential fetcher, and the function registry
+all read them from outside any runtime; stage 7's second half owns their deletion, along
+with `extensions/current.ts` and the Promise seam inside `defineStep`. `callDbModule` and
+`callInngestModule` are the seams a service crosses to reach a `backend/lib` module that
+still speaks Promises, each giving it the tagged error channel its own queries have.
+
+**The database config is checked apart from being recorded.** `db/config.ts` holds
+`DatabaseRuntimeConfig` and `normalizeDatabaseConfig`, a pure function that refuses a
+config naming no database, a URL carrying its own `search_path`, and a schema name Postgres
+would not read back as written. `db/index.ts` owns the pools and takes an already
+normalized config, which is what lets `createRovaApp` refuse a bad one before it has
+changed anything about the process. Nothing falls back to the environment: reaching a pool
+without configuring one throws, and where the dev database is belongs to
+`scripts/migrate.ts`. `closeDatabaseRuntime` gives both pools back, on the app's dispose
+path and in a test's teardown.
 
 **Third-party libraries.** Check official usage with Context7 or Exa before writing
 against a library, and never take a version from memory. Prefer latest stable, and verify
@@ -633,14 +674,15 @@ not an unquoted lowercase identifier of at most 63 characters is refused, becaus
 `search_path` would fold it to lowercase or Postgres would truncate it and quietly mean
 something else. A `database.url` carrying a `search_path` of its own is refused too: a URL
 query parameter reaches the startup packet and outranks the option, so the two would
-disagree about where the tables are. Every config source, the `DATABASE_URL` and
-`DATABASE_SCHEMA` fallbacks included, goes through `normalizeRuntimeConfig`, which is where
-all of that is enforced once.
+disagree about where the tables are. A host's config reaches a pool one way only, through
+`normalizeDatabaseConfig` in `db/config.ts`, which is where all of that is enforced once.
 
-The invariant has three guards in the suite, and they are the reason this arrangement can be
+The invariant has four guards in the suite, and they are the reason this arrangement can be
 trusted: `db/schema.test.ts` reads the tables off the module and holds every one to naming no
 schema, `db/migrations-sql.test.ts` holds every committed statement to qualifying nothing but
-Rova's own table names, and `db/index.test.ts` covers the option and the environment path.
+Rova's own table names, `db/config.test.ts` covers the checks and the defaults the option
+goes through, and `db/index.test.ts` covers what the pools are opened with and the rebinding
+guard.
 
 **Only a connection that keeps the search_path startup parameter works.** `runMigrations`
 reads `current_schema()` back before applying anything and fails naming both schemas, because

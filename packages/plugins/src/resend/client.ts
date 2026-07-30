@@ -10,7 +10,7 @@
  * The request body uses Resend's own field names, which are snake_case on the
  * wire (`reply_to`, `scheduled_at`, `topic_id`) where the SDK spelled them
  * camelCase. Getting that backwards drops those fields silently, so the mapping
- * is asserted in resend/steps/send-email.test.ts.
+ * is asserted in resend/send-email.test.ts.
  */
 
 import type { Effect } from "effect";
