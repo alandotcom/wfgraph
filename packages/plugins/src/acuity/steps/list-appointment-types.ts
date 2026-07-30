@@ -1,4 +1,4 @@
-import { defineStep, type StepRunContext } from "@rova/core/plugin";
+import { defineLegacyStep, type StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
 import type { AcuityCredentials } from "#src/acuity/credentials";
 import {
@@ -28,7 +28,7 @@ export const listAppointmentTypesHandler = Effect.fn(function* (
   return { appointmentTypes, count: appointmentTypes.length };
 });
 
-export const listAppointmentTypesStep = defineStep({
+export const listAppointmentTypesStep = defineLegacyStep({
   id: "acuity/list-appointment-types",
   input: listAppointmentTypesInput,
   output: listAppointmentTypesOutput,

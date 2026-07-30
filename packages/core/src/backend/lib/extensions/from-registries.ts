@@ -51,7 +51,6 @@ function toCredentialFields(
   formFields: ReturnType<typeof getAllIntegrations>[number]["formFields"]
 ): readonly CredentialFieldMetadata[] {
   return formFields.map((field) => ({
-    id: field.id,
     label: field.label,
     type: field.type,
     ...(field.placeholder ? { placeholder: field.placeholder } : {}),

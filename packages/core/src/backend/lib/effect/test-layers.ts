@@ -121,8 +121,10 @@ export function configureTestExtensions(
 ): void {
   configureExtensions({
     catalog: { ...emptyExtensionCatalog, ...catalog },
-    // A catalog entry is metadata, and `eventByName` answers a definition; a test
-    // that needs the definition builds the surface itself.
+    // A catalog entry is metadata, and the three lookups beside it answer with
+    // what a definition carries; a test that needs one builds the surface itself.
+    stepFor: () => undefined,
+    connectionTestFor: () => undefined,
     eventByName: () => undefined,
     events: [],
   });

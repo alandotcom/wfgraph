@@ -1,8 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { beforeEach, vi } from "vitest";
-import { sendSmsHandler } from "./send-sms";
+import { sendSmsHandler, twilio } from "#src/twilio/index";
 
 // What this step decides is whether and what to send, so the seam under it is
 // the Twilio client. What that client puts on the wire is covered separately in
@@ -156,8 +156,12 @@ describe("sendSmsHandler", () => {
             smsBody: "Hello",
             smsMessagingServiceSid: "MG999",
             smsStatusCallback: "https://example.com/status",
-            smsMediaUrls:
-              "https://example.com/a.png, https://example.com/b.png",
+            // The comma-splitting is a transform on the input schema, so what a
+            // handler receives is the list rather than the text a builder typed.
+            smsMediaUrls: [
+              "https://example.com/a.png",
+              "https://example.com/b.png",
+            ],
           },
           contextFor("live", credentials)
         );
@@ -267,4 +271,68 @@ describe("sendSmsHandler", () => {
       expect(mocks.createMessage).toHaveBeenCalledTimes(0);
     }).pipe(withTransport)
   );
+});
+
+/**
+ * The step as `assembleExtensions` binds it, which is the whole path a run takes:
+ * the config decode, the handler, and the envelope. The credential fetch is the
+ * one thing not exercised here, because a test run in log-only mode decides it has
+ * nothing to send before asking for a secret.
+ *
+ * The default test run is the case that matters. It is what pressing "Test" on a
+ * freshly configured Send SMS node does, with the behaviour left at its default and
+ * no test phone typed in, and the config the engine builds for it carries only the
+ * keys the node holds a value for.
+ */
+describe("the send-sms step as an integration binds it", () => {
+  const run = twilio.actions["send-sms"].implement("twilio/send-sms");
+
+  it("answers the log-only success a default test run expects", async () => {
+    const result = await run({
+      actionType: "twilio/send-sms",
+      smsTo: "+15550001111",
+      smsBody: "Hello",
+      testBehavior: "log_only",
+      _context: {
+        executionId: "exec_1",
+        nodeId: "n1",
+        nodeName: "SMS",
+        nodeType: "twilio/send-sms",
+        runMode: "test",
+      },
+    });
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        sid: "twilio:test-log-only:exec_1",
+        status: "queued",
+        to: "+15550001111",
+        reasonCode: "test_mode_log_only",
+      },
+    });
+    expect(mocks.createMessage).not.toHaveBeenCalled();
+  });
+
+  // Read through the step's own input schema, which is the object its config
+  // decode runs: one text field carries the list, and the handler receives the
+  // list rather than the text a builder typed.
+  it("splits the Media URLs field a builder typed as one line", () => {
+    const decodeConfig = Schema.decodeUnknownSync(
+      Schema.toCodecJson(twilio.actions["send-sms"].input)
+    );
+
+    expect(
+      decodeConfig({
+        smsTo: "+15550001111",
+        smsBody: "Hello",
+        smsMediaUrls:
+          " https://example.com/a.png , ,https://example.com/b.png ",
+      })
+    ).toEqual({
+      smsTo: "+15550001111",
+      smsBody: "Hello",
+      smsMediaUrls: ["https://example.com/a.png", "https://example.com/b.png"],
+    });
+  });
 });

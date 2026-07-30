@@ -12,11 +12,11 @@ import {
   InvalidInput,
   NotFound,
 } from "#src/backend/lib/effect/failures";
+import { getExtensions } from "#src/backend/lib/extensions/current";
 import {
-  getCredentialMapping,
-  getIntegrationTypes,
-  getIntegration as getPluginFromRegistry,
-} from "@rova/shared/plugins/registry";
+  credentialsFromConfig,
+  findIntegration,
+} from "@rova/shared/extensions/catalog";
 import type {
   IntegrationConfig,
   IntegrationType,
@@ -207,13 +207,14 @@ const runConnectionTest = Effect.fn("runConnectionTest")(function* (
     return yield* attempt(() => testDatabaseConnection(config.url));
   }
 
-  // The plugin registry is module-level state that stage 6 of ADR-0002 owns,
+  // The assembled surface is module-level state that stage 7 of ADR-0002 owns,
   // so it stays a plain function call rather than becoming a service here.
-  const plugin = getPluginFromRegistry(type);
+  const catalog = getExtensions().catalog;
+  const integration = findIntegration(catalog, type);
 
-  if (!plugin) {
+  if (!integration) {
     yield* logger.warn("Invalid integration type for test", {
-      availableTypes: getIntegrationTypes(),
+      availableTypes: catalog.integrations.map((entry) => entry.type),
     });
     return yield* Effect.fail(
       new InvalidInput({ error: "Invalid integration type" })
@@ -228,9 +229,7 @@ const runConnectionTest = Effect.fn("runConnectionTest")(function* (
     );
   }
 
-  const credentials = yield* attempt(() =>
-    getCredentialMapping(plugin, config)
-  );
+  const credentials = credentialsFromConfig(integration, config);
   yield* logger.info("Testing integration credentials", {
     credentialKeys: Object.keys(credentials),
     // Which credentials arrived and which came through empty, without the
@@ -475,14 +474,17 @@ export const postIntegrations = Effect.fn("postIntegrations")(function* (body: {
     .get("integrations")
     .with({ type: body.type });
 
-  // The editor bundled with @rova/core lists every built-in integration, while
-  // the server only knows the ones something registered. Refusing here is what
-  // keeps that gap from turning into credentials stored for an integration this
-  // process cannot run, which would then be neither testable nor maskable.
-  if (body.type !== "database" && !getPluginFromRegistry(body.type)) {
+  // An editor served by a different build than this process lists integrations
+  // this server may not hold. Refusing here is what keeps that gap from turning
+  // into credentials stored for an integration this process cannot run, which
+  // would then be neither testable nor maskable.
+  if (
+    body.type !== "database" &&
+    !findIntegration(getExtensions().catalog, body.type)
+  ) {
     return yield* Effect.fail(
       new InvalidInput({
-        error: `Integration "${body.type}" is not available on this server. Import "@rova/plugins" to enable the built-in integrations.`,
+        error: `Integration "${body.type}" is not available on this server. Pass it to createRovaApp under extensions.integrations, or import "@rova/plugins" for the built-in ones.`,
       })
     );
   }

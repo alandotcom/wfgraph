@@ -6,7 +6,8 @@
  * and the editor is the masking below.
  */
 
-import { getIntegration as getPluginFromRegistry } from "@rova/shared/plugins/registry";
+import { getExtensions } from "#src/backend/lib/extensions/current";
+import { findIntegration } from "@rova/shared/extensions/catalog";
 import type {
   IntegrationConfig,
   IntegrationType,
@@ -17,13 +18,13 @@ export const SECRET_MASK = "********";
 /**
  * Which config keys hold a secret, for an integration type.
  *
- * A plugin declares its secrets by marking form fields as passwords, so an
- * integration whose plugin is not registered has no declaration to read. That
- * happens whenever a host mounted Rova without `@rova/plugins`, or disabled a
- * plugin, and it used to answer "no secrets at all", which served a stored API
- * token to the browser in the clear. Not knowing which keys are secret is a
- * reason to treat every key as secret, so this answers a predicate and defaults
- * to true.
+ * An integration declares its secrets by marking credential fields as passwords,
+ * so an integration the assembled catalog does not hold has no declaration to
+ * read. That happens whenever a host mounted Rova without the integration a
+ * stored row names, and it used to answer "no secrets at all", which served a
+ * stored API token to the browser in the clear. Not knowing which keys are secret
+ * is a reason to treat every key as secret, so this answers a predicate and
+ * defaults to true.
  */
 export function createSecretConfigKeyTest(
   type: IntegrationType
@@ -32,13 +33,13 @@ export function createSecretConfigKeyTest(
     return (key) => key === "url";
   }
 
-  const plugin = getPluginFromRegistry(type);
-  if (!plugin) {
+  const integration = findIntegration(getExtensions().catalog, type);
+  if (!integration) {
     return () => true;
   }
 
   const secretKeys = new Set(
-    plugin.formFields
+    integration.credentialFields
       .filter((field) => field.type === "password")
       .map((field) => field.configKey)
   );

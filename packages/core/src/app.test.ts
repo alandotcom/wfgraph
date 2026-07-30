@@ -2,8 +2,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { createTrigger, defineEvent } from "#src/index";
+import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
+import { defineStep } from "#src/backend/lib/steps/define-step";
 import { createRovaApp, type RovaApp } from "#src/app";
 import { createApiApp, MACHINE_ROUTES } from "#src/backend/api-app";
 import { getInngestFunctions } from "#src/backend/lib/inngest/functions";
@@ -72,6 +74,79 @@ describe("createRovaApp mounted at the root", () => {
           integrations: expect.any(Array),
         },
       });
+    } finally {
+      await app.dispose();
+    }
+  });
+
+  it("serves the integrations the host passed, actions and all", async () => {
+    const app = await createRovaApp({
+      ...BASE_OPTIONS,
+      extensions: {
+        integrations: [
+          defineIntegration({
+            type: "twilio",
+            label: "Twilio",
+            description: "Send SMS messages",
+            credentials: [
+              {
+                label: "Auth Token",
+                type: "password",
+                configKey: "authToken",
+                envVar: "TWILIO_AUTH_TOKEN",
+              },
+            ],
+            actions: {
+              "send-sms": defineStep({
+                label: "Send SMS",
+                description: "Sends a message",
+                category: "Twilio",
+                input: Schema.Struct({ smsTo: Schema.String }),
+                output: Schema.Struct({
+                  sid: Schema.String.annotate({ description: "Message SID" }),
+                }),
+                configFields: [
+                  {
+                    key: "smsTo",
+                    label: "To",
+                    type: "template-input",
+                    required: true,
+                  },
+                ],
+                handler: Effect.fn(function* () {
+                  return yield* Effect.succeed({ sid: "SM1" });
+                }),
+              }),
+            },
+          }),
+        ],
+      },
+    });
+
+    try {
+      const payload = (await (await get(app, "/api/extensions")).json()) as {
+        catalog: {
+          actions: Array<{ id: string; outputFields: unknown }>;
+          integrations: Array<{ type: string; hasTest: boolean }>;
+        };
+      };
+
+      expect(payload.catalog.integrations).toEqual([
+        expect.objectContaining({ type: "twilio", hasTest: false }),
+      ]);
+      // The id is computed from the type and the record key, and the field list
+      // is derived from the output schema, so neither is written by the host.
+      expect(
+        payload.catalog.actions.find(
+          (action) => action.id === "twilio/send-sms"
+        )
+      ).toEqual(
+        expect.objectContaining({
+          outputFields: [
+            { path: "sid", description: "Message SID", type: "string" },
+          ],
+        })
+      );
     } finally {
       await app.dispose();
     }

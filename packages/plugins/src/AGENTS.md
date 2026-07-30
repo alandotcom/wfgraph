@@ -2,6 +2,30 @@
 
 This document guides AI agents through creating and modifying workflow builder plugins.
 
+## Two shapes exist right now, and twilio is the one to copy
+
+`twilio/` is one file. `index.ts` holds its credential fields, its actions and their
+handlers as a single `defineIntegration` value, which `@rova/plugins/server` exports as
+`builtInIntegrations` and a host passes to `createRovaApp`. Nothing registers on import,
+there is no `schemas.ts` and no `credentials.ts`, and the browser never imports the file:
+the editor reads the plugin's metadata off `GET /api/extensions`. Only `client.ts`,
+`test.ts`, `icon.tsx` and `ui.ts` sit beside it.
+
+The other five still work the older way described below: a registry entry in `index.ts`,
+schemas and credentials in their own files, steps under `steps/` written with
+`defineLegacyStep` and wired up in `server.ts`. B4 ports them and rewrites everything after
+this section. Until then, read the rest of this file as the account of that older shape,
+and write a new plugin the way twilio is written.
+
+One difference between the two is worth knowing before porting anything. A `defineStep`
+runs both directions through the schema's canonical JSON codec: the config is decoded
+through it, and what the handler answers is **encoded** through it before the run sees it.
+The encode is also a trim, so a field the output schema does not declare does not survive.
+`defineLegacyStep` does neither, which is why the steps below may hand back a vendor object
+whole and describe only the fields the editor offers. Porting one of those means reading its
+output schema against what its handler returns, and saying `Schema.StructWithRest` over a
+`Schema.Record` rest where passing the rest through is the intent.
+
 ## Quick Start
 
 Plugins are now registered via manual static files (no scaffold/discovery scripts).
@@ -169,10 +193,10 @@ import { Schema } from "effect";
 
 export const doSomethingInput = Schema.Struct({
   inputField: Schema.String,
-  // `optional`, not `optionalKey`. The engine resolves a node's templates into
-  // every config key the action declares, so a field the user left blank
-  // arrives as a key holding `undefined` rather than as no key at all, and
-  // exact-optional semantics would refuse the config a real run builds.
+  // A field left blank reaches a step as an absent key: the engine drops an
+  // undefined-valued one on its way out of template resolution. Either spelling
+  // takes that. `optional` additionally takes an explicit null, which is what it
+  // decodes to under a step's canonical JSON codec.
   optionalField: Schema.optional(Schema.String),
 });
 

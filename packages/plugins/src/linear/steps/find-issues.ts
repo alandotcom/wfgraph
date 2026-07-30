@@ -1,6 +1,6 @@
 import { LinearClient, type LinearDocument } from "@linear/sdk";
 import {
-  defineStep,
+  defineLegacyStep,
   StepFailure,
   type StepRunContext,
 } from "@rova/core/plugin";
@@ -91,7 +91,7 @@ export const findIssuesHandler = Effect.fn(function* (
   return { issues, count: issues.length };
 });
 
-export const findIssuesStep = defineStep({
+export const findIssuesStep = defineLegacyStep({
   id: "linear/find-issues",
   input: findIssuesInput,
   output: findIssuesOutput,

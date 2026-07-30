@@ -50,9 +50,13 @@ export type ActionMetadata = {
   readonly outputFields: readonly ReferenceField[];
 };
 
-/** One credential the integrations dialog asks an operator for. */
+/**
+ * One credential the integrations dialog asks an operator for.
+ *
+ * `configKey` is the field's one name: it is where the value is stored and what
+ * the form keys its input by, so there is no second identifier to keep in step.
+ */
 export type CredentialFieldMetadata = {
-  readonly id: string;
   readonly label: string;
   readonly type: "text" | "password" | "url";
   readonly placeholder?: string;
@@ -113,24 +117,29 @@ export function findIntegration(
 }
 
 /**
- * The actions grouped for the selector, each group in catalog order.
+ * A stored integration config as the environment-variable names a handler reads
+ * it by.
  *
- * The record is mutable and its lists are copies, because the editor sorts and
- * filters what it is given.
+ * Every mapping an integration has is in its credential fields: each one names a
+ * config key and the variable that key's value arrives as. An integration the
+ * catalog has never heard of contributes nothing, which is what happens when a
+ * stored row outlives the integration a host passed to `createRovaApp`.
+ *
+ * A blank value is left out rather than mapped to an empty string, so a handler
+ * asking whether a credential is configured reads an absent key.
  */
-export function actionsByCategory(
-  catalog: ExtensionCatalog
-): Record<string, ActionMetadata[]> {
-  const grouped: Record<string, ActionMetadata[]> = {};
+export function credentialsFromConfig(
+  integration: IntegrationMetadata | undefined,
+  config: Readonly<Record<string, string | undefined>>
+): Record<string, string> {
+  const credentials: Record<string, string> = {};
 
-  for (const action of catalog.actions) {
-    const group = grouped[action.category];
-    if (group) {
-      group.push(action);
-    } else {
-      grouped[action.category] = [action];
+  for (const field of integration?.credentialFields ?? []) {
+    const value = config[field.configKey];
+    if (field.envVar && value) {
+      credentials[field.envVar] = value;
     }
   }
 
-  return grouped;
+  return credentials;
 }

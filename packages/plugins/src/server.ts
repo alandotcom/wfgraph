@@ -15,11 +15,18 @@
  */
 
 import { registerIntegrationTest, registerStep } from "@rova/core/plugin";
+import { twilio } from "#src/twilio/index";
 
-registerStep(
-  "twilio/send-sms",
-  async () => (await import("#src/twilio/steps/send-sms")).sendSmsStep
-);
+/**
+ * The integrations a host turns on by passing them to `createRovaApp`.
+ *
+ * Each one carries its actions, its steps and its connection test, so this array
+ * is the whole of what a host hands over. The plugins B4 has not ported are still
+ * turned on by importing this module, which is why the registrations below sit
+ * beside it; B4 moves this export to the package's root barrel, once the browser
+ * has stopped importing that.
+ */
+export const builtInIntegrations = [twilio];
 
 registerStep(
   "acuity/list-appointment-types",
@@ -135,8 +142,4 @@ registerIntegrationTest(
 registerIntegrationTest(
   "slack",
   async () => (await import("#src/slack/test")).testSlack
-);
-registerIntegrationTest(
-  "twilio",
-  async () => (await import("#src/twilio/test")).testTwilio
 );

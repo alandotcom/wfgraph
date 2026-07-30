@@ -1,8 +1,10 @@
 /**
- * Plugins Index
+ * The plugins that still register themselves on import.
  *
- * Manually maintained static imports for enabled plugins.
- * Importing this module triggers plugin registration (side effects).
+ * Importing this module is what turns them on, and the browser imports it too:
+ * their metadata is what the editor draws them with. A plugin B4 has ported is
+ * not here, because a definition reaches the server as a value and the browser
+ * reads it off the catalog instead. This module goes when the last one moves.
  */
 
 import acuityPlugin from "./acuity";
@@ -10,7 +12,6 @@ import clerkPlugin from "./clerk";
 import linearPlugin from "./linear";
 import resendPlugin from "./resend";
 import slackPlugin from "./slack";
-import twilioPlugin from "./twilio";
 
 export const REGISTERED_PLUGINS = [
   acuityPlugin,
@@ -18,7 +19,6 @@ export const REGISTERED_PLUGINS = [
   linearPlugin,
   resendPlugin,
   slackPlugin,
-  twilioPlugin,
 ] as const;
 
 export type {
@@ -47,10 +47,8 @@ export {
   getActionsByCategory,
   getAllActions,
   getAllIntegrations,
-  getCredentialMapping,
   getIntegration,
   getIntegrationLabels,
-  getIntegrationTypes,
   getSortedIntegrationTypes,
   isFieldGroup,
   parseActionId,

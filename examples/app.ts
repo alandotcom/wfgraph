@@ -24,10 +24,12 @@ import { createServer } from "node:http";
 import { createAction, defineEvent } from "@rova/core";
 import { createRovaApp } from "@rova/core/app";
 import { createRequestListener } from "@rova/core/node";
-// The built-in integrations, turned on by importing them: metadata the editor
-// renders, then the step implementations and connection tests.
+// The built-in integrations. The ported ones are values, passed to
+// `createRovaApp` below, so that line is what turns them on; the rest still
+// register themselves on import, metadata first and then their step
+// implementations and connection tests.
 import "@rova/plugins";
-import "@rova/plugins/server";
+import { builtInIntegrations } from "@rova/plugins/server";
 import { Schema } from "effect";
 
 const DEFAULT_PORT = 4017;
@@ -215,9 +217,10 @@ const rova = await createRovaApp({
     servePath: process.env.INNGEST_SERVE_PATH,
   },
   actions: [cancelAppointmentAction],
-  // The Events this app declares, which is what the editor lists and what the
-  // per-Event Inngest listeners are built from.
+  // The whole extension surface, assembled in one place. The Events are what the
+  // editor lists and what the per-Event Inngest listeners are built from.
   extensions: {
+    integrations: builtInIntegrations,
     events: [
       appointmentCreated,
       appointmentRescheduled,

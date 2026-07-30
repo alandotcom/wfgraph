@@ -1,5 +1,5 @@
 import {
-  defineStep,
+  defineLegacyStep,
   StepFailure,
   type StepRunContext,
 } from "@rova/core/plugin";
@@ -83,7 +83,7 @@ export const sendSlackMessageHandler = Effect.fn(function* (
   return { ts: posted.ts, channel: posted.channel };
 });
 
-export const sendSlackMessageStep = defineStep({
+export const sendSlackMessageStep = defineLegacyStep({
   id: "slack/send-message",
   input: sendSlackMessageInput,
   output: sendSlackMessageOutput,

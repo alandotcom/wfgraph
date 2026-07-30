@@ -1,4 +1,4 @@
-import { findActionById } from "@rova/shared/plugins/registry";
+import { findAction } from "@rova/shared/extensions/catalog";
 import {
   getRuntimeAction,
   type RuntimeActionExecuteInput,
@@ -8,6 +8,8 @@ import type {
   StepFunction,
   StepResult,
 } from "@rova/shared/workflow/step-result";
+import { builtInActions } from "#src/backend/lib/extensions/built-ins";
+import { getExtensions } from "#src/backend/lib/extensions/current";
 import type { StepDefinition } from "#src/backend/lib/steps/define-step";
 
 /**
@@ -41,21 +43,6 @@ export type StepImporter =
  */
 const STEP_LOADERS: Record<string, () => Promise<StepFunction>> = {};
 
-/**
- * The built-in actions, which are not any plugin's.
- *
- * Every one of them is named here and nowhere else: the label a run log gives
- * the node, and the list an unknown action type is told about. Condition and
- * Wait have no step below, because the engine handles both itself; it evaluates
- * the expression, and the wait suspends the run through the durable runtime.
- */
-const SYSTEM_ACTION_LABELS: Record<string, string> = {
-  Condition: "Condition",
-  "Database Query": "Database Query",
-  "HTTP Request": "HTTP Request",
-  Wait: "Wait",
-};
-
 // The two built-ins that do have a step, registered the way a plugin's steps
 // are. They used to be registered from the engine, which made the engine's
 // import order load-bearing for whether its own actions existed. The loaders
@@ -74,10 +61,18 @@ registerBuiltInStep(
 
 /** The built-in action types, in the words the unknown-action message uses. */
 export function getSystemActionTypes(): string[] {
-  return Object.keys(SYSTEM_ACTION_LABELS);
+  return builtInActions.map((action) => action.id);
 }
 
 export function getStepImporter(actionType: string): StepImporter | undefined {
+  // An integration passed to `createRovaApp` carries its steps, so the assembled
+  // surface is asked first. The map below holds the two built-in steps and the
+  // plugins B4 has not ported, which still register on import.
+  const step = getExtensions().stepFor(actionType);
+  if (step) {
+    return { kind: "step", load: () => Promise.resolve(step) };
+  }
+
   if (Object.hasOwn(STEP_LOADERS, actionType)) {
     return { kind: "step", load: STEP_LOADERS[actionType] };
   }
@@ -100,22 +95,12 @@ export function getStepImporter(actionType: string): StepImporter | undefined {
 /**
  * The name a run log gives an action node that has no label of its own.
  *
- * A plugin's label lives in the action metadata the editor renders, which the
- * server holds too, so that is where this reads it: a second copy beside the
- * step registration could only disagree with the first, and nothing would
- * notice which one a reader got.
+ * Every label comes from the assembled catalog, the built-in four and a host's
+ * own actions included, so a second copy beside the step registration cannot
+ * disagree with it.
  */
 export function getActionLabel(actionType: string): string | undefined {
-  if (SYSTEM_ACTION_LABELS[actionType]) {
-    return SYSTEM_ACTION_LABELS[actionType];
-  }
-
-  const runtimeAction = getRuntimeAction(actionType);
-  if (runtimeAction) {
-    return runtimeAction.label;
-  }
-
-  return findActionById(actionType)?.label;
+  return findAction(getExtensions().catalog, actionType)?.label;
 }
 
 /**

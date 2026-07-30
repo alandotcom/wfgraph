@@ -113,6 +113,17 @@ Four rules, each of which cost something to learn:
   `packages/shared/src/workflow/schemas.ts` is the worked example, decoded from the JSONB
   column, from an RPC payload, from an Inngest event, and from React Flow state on the
   editor's autosave path, and it is `optional` throughout for the sake of the fourth.
+
+  **Under a canonical JSON codec the two swap places.** `Schema.toCodecJson` rewrites
+  `optional(X)` to `optionalKey(NullOr(X))`, so a step's config decode accepts an absent
+  key or a null and refuses a key that is present and holds `undefined`. Nothing writes
+  that third shape: the engine's `processTemplates` drops an undefined-valued key, and the
+  two test-destination overrides beside it are written only where the node has one. So
+  `optionalKey` is the spelling to prefer in a step's schemas, since its JSON Schema
+  renders clean and the engine never sends what it refuses; `optional` is what twilio
+  keeps, because under the codec it also tolerates an explicit null.
+  `packages/core/src/backend/lib/steps/define-step.test.ts` holds all three cases.
+
 - **Annotate the base type before any check.** `.annotate()` on a schema that already
   carries a check lands on the check, and a wrong-typed value never reaches a check.
   `Schema.Finite.annotate({ message })` answers `"5"` with Effect's own text, not the
@@ -135,26 +146,69 @@ names it. Do not reach for it in new code.
 one ISO-string-to-`Date` conversion, as a checked `Schema.decodeTo` pair. Do not hand-roll `new Date(x)` or
 `.toISOString()` for a value crossing the wire.
 
+**An integration is one `defineIntegration` value.**
+`packages/core/src/backend/lib/extensions/define-integration.ts` takes a type, a label, a
+credential form, an optional connection-test loader, and a record of actions keyed by
+slug. Nothing registers on import: a host passes the value to `createRovaApp` under
+`extensions.integrations`, so the line that turns an integration on is a line in the
+host's code. The action id is `${type}/${slug}`, computed at assembly, so the slug exists
+only as that record key. `credentialFields` is a `const`-type-parameter identity function
+whose only job is keeping each `envVar` a literal type, because `CredentialsOf<typeof
+fields>` is the vocabulary a handler reads its credentials by; a misspelled key fails to
+compile. `packages/plugins/src/twilio/index.ts` is the worked example, and the whole
+plugin is that one file beside `client.ts`, `test.ts`, `icon.tsx` and `ui.ts`.
+
 **A step is written with `defineStep`.** `packages/core/src/backend/lib/steps/define-step.ts`
-takes an input schema, an output schema, and a handler returning an
-`Effect<Output, StepFailure, HttpClient>`, and owns everything around it: the config
-decode, the credential fetch, the run log rows, and the `StepResult` envelope
+takes an input schema, an output schema, the metadata the editor draws the action with
+(`label`, `description`, `category`, `configFields`), and a handler returning an
+`Effect<Output, StepFailure, HttpClient>`. It owns everything around that handler: the
+config decode, the credential fetch, the run log rows, and the `StepResult` envelope
 (`{ success: true, data }` or `{ success: false, error: { message } }`, in
 `packages/shared/src/workflow/step-result.ts`) that the engine reads. A handler never
-writes that envelope and never touches a Promise. Every plugin step is one of these,
-registered with `registerStep` under the id it declares. `Database Query` and
-`HTTP Request`, the two the engine ships itself, are the exception: each answers a shape
-the envelope has no room for, so they stay Promise functions behind a registration that
-`step-registry.ts` keeps to itself.
+writes that envelope and never touches a Promise. Each `configFields[].key` is
+`Extract<keyof TInput, string>`, so a field the step cannot read fails to compile.
+
+The handler's `context` parameter is typed with the open credential record unless an
+author annotates it, and that is deliberate: a type parameter appearing only inside a
+context-sensitive argument cannot be inferred before that argument is typed, so inferring
+the credential vocabulary there would cost an inline handler both parameter types and
+leave the whole handler unchecked.
+
+`defineLegacyStep` beside it takes an `id` and no metadata, which is the shape the five
+plugins B4 has not ported need, and it goes with them and with `registerStep`. It is a
+function of its own rather than a second arm of `defineStep` for two reasons: the two
+answer different types, so a caller of either would have to narrow what came back, and a
+transitional shape with a name of its own is one grep away from every call site that has to
+go. It also keeps the codec off those plugins, which is the point below.
+
+**Both directions of a step cross through the schema's canonical JSON codec.** A step
+boundary is JSON on both sides, so what `defineStep` runs is `Schema.toCodecJson(schema)`
+rather than the schema itself, built once at definition. That is what lets an author write
+a transform: twilio's comma-separated Media URLs field decodes to a list on the way in,
+and a `Date` in an output encodes to an ISO string on the way out. Encoding through the
+plain schema is not enough, because `Schema.Date` is a declaration rather than a codec: a
+live `Date` then survives JSONB and Inngest by accident through `Date.prototype.toJSON`
+and comes back a string on replay, so one memoized step hands template resolution two
+different types. `core-replay.test.ts` holds that to a template resolving the same string
+on the attempt that ran the step and on the replay after, against a runtime that models
+Inngest's own asymmetry. A handler answering with something its output schema cannot
+encode fails the node once as a `StepFailure` naming the field path, since a retry would
+spend the budget on a certainty; reaching it takes an `as`, an `any`, or a widened vendor
+type.
+
+`Database Query` and `HTTP Request`, the two the engine ships itself, are the exception to
+all of this: each answers a shape the envelope has no room for, so they stay Promise
+functions behind a registration that `step-registry.ts` keeps to itself.
 
 **An action's output fields come from its output schema.** A plugin action declares
-`output` in its `index.ts`, and `registerIntegration` derives the editor's
-template-autocomplete paths from it (`packages/shared/src/workflow/output-fields.ts`).
+`output` on its `defineStep`, and assembly derives the editor's template-autocomplete
+paths from it (`packages/shared/src/workflow/output-fields.ts`); an action still read out
+of the old registry has them derived by `registerIntegration` instead, until B4.
 Paths omit the `data.` prefix, because the schema describes the payload rather than the
-wrapper; template variables unwrap it automatically. The schema lives in the plugin's
-`schemas.ts` so that the step and the metadata are typed against the same constant, and
-`output` is required: there is no hand-written list to declare instead, and a schema the
-derivation cannot read throws naming the offender. `requireOutputFieldsFromSchema` takes
+wrapper; template variables unwrap it automatically. The schema sits beside the handler it
+types, and `output` is required: there is no hand-written list to declare instead, and a
+schema the derivation cannot read throws naming the offender.
+`requireOutputFieldsFromSchema` takes
 that name as a phrase rather than an id, because an Event's payload schema comes through
 it too and the message has to say which kind of thing is at fault.
 
@@ -168,20 +222,43 @@ catalog is read all-or-nothing, and the two legacy registry lists beside it go t
 `hydrateRuntimeExtensions`, which reads them entry at a time. The client holds the catalog
 as a module value rather than a query-cache entry: the surface is fixed for the life of the
 server process, and the pure functions that read it run during render. Every lookup over it
-(`findAction`, `findEvent`, `findIntegration`, `actionsByCategory`) is a pure function in
-that shared module, so the server and the browser run one implementation. That one channel
-is what will let a plugin hold everything it needs in one file: the browser never imports
-that file. An icon and a custom output renderer are React components and cannot be
-serialized, so those stay an explicit browser import in `plugins/ui-registry.ts`.
+(`findAction`, `findEvent`, `findIntegration`, `credentialsFromConfig`) is a pure function
+in that shared module, so the server and the browser run one implementation, and a lookup
+nothing reads yet is not written. That one channel is what lets a plugin hold everything it
+needs in one file: the browser never imports that file. An icon and a custom output
+renderer are React components and cannot be serialized, so those stay an explicit browser
+import in `plugins/ui-registry.ts`.
 
 `createRovaApp` assembles the catalog with `assembleExtensions`
 (`packages/core/src/backend/lib/extensions/extension-set.ts`) and hands it to
 `configureExtensions`, whose module state stage 7 replaces with a service. Assembly is
 where a definition mistake is caught, naming the offender: each of an Event's name, an
-action's id and an integration's type is held to one owner. The four actions the engine
-ships itself are catalog entries in `built-ins.ts`. Actions and integrations are still
-read out of the old registries by `from-registries.ts`, which is the seam that lets the
-catalog exist before `defineIntegration` does, and which goes with them.
+action's id and an integration's type is held to one owner, an output schema the
+derivation cannot read is refused naming the action, and so is a required config key with
+no field for a builder to fill in. It is also where an integration definition's actions
+get their ids and their derived field lists, and where `stepFor` and `connectionTestFor`
+come from, since a definition carries both. The four actions the engine ships itself are
+catalog entries in `built-ins.ts`. The plugins B4 has not ported are still read out of the
+old registries by `from-registries.ts` and arrive as the `registries` member, which is the
+seam that lets both halves exist at once, and which goes with them.
+
+The server reads that catalog wherever it used to ask the plugin registry: the credential
+mapping in `credential-fetcher.ts`, the secret-key test in
+`integration-config-masking.ts`, the action labels and step dispatch in
+`step-registry.ts`, and both workflow validators. Each asks `getExtensions()`, which
+throws, because every one of them sits inside an app and a surface that was never
+assembled is a mistake rather than an empty answer: a lenient lookup would have a run
+dispatch nothing, a save pass every check, and a config serve its secrets unmasked. A test
+of one of those stands a surface up, which `configureTestExtensions` in
+`backend/lib/effect/test-layers.ts` does in a line, and an empty assembly still carries the
+built-in four.
+
+The browser reads the catalog for its Events and the plugin registry for everything else,
+and `hydrateIntegrationsFromCatalog` in `packages/client/src/lib/runtime-extensions.ts`
+fills that registry from the catalog. It is the browser's only producer of integration
+metadata: nothing in the editor imports a plugin any more, so `@rova/plugins` is gone from
+`main.tsx` and only `@rova/plugins/ui` remains, for the icons a wire cannot carry. B4
+points the editor's readers at the catalog and deletes the bridge with them.
 
 **An Event is a `defineEvent` value, and carries no lifecycle role.**
 `packages/core/src/backend/lib/extensions/define-event.ts` takes a name, a payload schema,

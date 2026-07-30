@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  actionsByCategory,
+  credentialsFromConfig,
   emptyExtensionCatalog,
   type ExtensionCatalog,
   findAction,
@@ -70,7 +70,6 @@ const catalog: ExtensionCatalog = {
       description: "Send SMS messages with Twilio",
       credentialFields: [
         {
-          id: "accountSid",
           label: "Account SID",
           type: "text",
           configKey: "accountSid",
@@ -103,20 +102,6 @@ describe("catalog lookups", () => {
     expect(findEvent(catalog, "app/nothing.happened")).toBeUndefined();
     expect(findAction(catalog, "twilio/send-mms")).toBeUndefined();
     expect(findIntegration(catalog, "postmark")).toBeUndefined();
-  });
-
-  it("groups actions by category, keeping catalog order within a group", () => {
-    const grouped = actionsByCategory(catalog);
-
-    expect(Object.keys(grouped).toSorted()).toEqual(["System", "Twilio"]);
-    expect(grouped.System.map((action) => action.id)).toEqual([
-      "HTTP Request",
-      "Condition",
-    ]);
-  });
-
-  it("groups nothing from the empty catalog", () => {
-    expect(actionsByCategory(emptyExtensionCatalog)).toEqual({});
   });
 });
 
@@ -182,5 +167,68 @@ describe("the catalog wire schema", () => {
 
   it("refuses a document missing a list", () => {
     expect(readExtensionCatalog({ events: [], actions: [] })).toBeUndefined();
+  });
+});
+
+/**
+ * The mapping from a stored config to the environment-variable names a handler
+ * reads it by. Every mapping an integration has is in its credential fields, so
+ * this is the whole of it.
+ */
+describe("credentialsFromConfig", () => {
+  const twilio = {
+    type: "twilio",
+    label: "Twilio",
+    description: "Send SMS messages",
+    hasTest: true,
+    credentialFields: [
+      {
+        label: "Auth Token",
+        type: "password" as const,
+        configKey: "authToken",
+        envVar: "TWILIO_AUTH_TOKEN",
+      },
+      {
+        label: "From Number",
+        type: "text" as const,
+        configKey: "fromNumber",
+        envVar: "TWILIO_FROM_NUMBER",
+      },
+      // A field an operator fills in that no handler reads as a variable: the
+      // integration stores it and nothing maps it.
+      { label: "Label", type: "text" as const, configKey: "label" },
+    ],
+  };
+
+  it("maps each configured key to the variable its field names", () => {
+    expect(
+      credentialsFromConfig(twilio, {
+        authToken: "secret",
+        fromNumber: "+15551234567",
+      })
+    ).toEqual({
+      TWILIO_AUTH_TOKEN: "secret",
+      TWILIO_FROM_NUMBER: "+15551234567",
+    });
+  });
+
+  // A blank value is left out rather than mapped to an empty string, so a handler
+  // asking whether a credential is configured reads an absent key.
+  it("leaves out a field with no value and one with no variable", () => {
+    expect(
+      credentialsFromConfig(twilio, {
+        authToken: "secret",
+        fromNumber: "",
+        label: "Main line",
+      })
+    ).toEqual({ TWILIO_AUTH_TOKEN: "secret" });
+  });
+
+  // Which is what a stored row naming an integration the host stopped passing to
+  // `createRovaApp` gets: no credentials, rather than a wrong guess at them.
+  it("answers nothing for an integration the catalog does not hold", () => {
+    expect(credentialsFromConfig(undefined, { authToken: "secret" })).toEqual(
+      {}
+    );
   });
 });

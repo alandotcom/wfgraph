@@ -1,6 +1,6 @@
 import type { AvailabilityTimesParams } from "@fountain-bio/acuity";
 import {
-  defineStep,
+  defineLegacyStep,
   StepFailure,
   type StepRunContext,
 } from "@rova/core/plugin";
@@ -66,7 +66,7 @@ export const getAvailabilityTimesHandler = Effect.fn(function* (
   return { slots, count: slots.length };
 });
 
-export const getAvailabilityTimesStep = defineStep({
+export const getAvailabilityTimesStep = defineLegacyStep({
   id: "acuity/get-availability-times",
   input: getAvailabilityTimesInput,
   output: getAvailabilityTimesOutput,

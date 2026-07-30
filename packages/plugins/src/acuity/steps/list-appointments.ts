@@ -1,5 +1,5 @@
 import type { ListAppointmentsParams } from "@fountain-bio/acuity";
-import { defineStep, type StepRunContext } from "@rova/core/plugin";
+import { defineLegacyStep, type StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
 import type { AcuityCredentials } from "#src/acuity/credentials";
 import {
@@ -58,7 +58,7 @@ export const listAppointmentsHandler = Effect.fn(function* (
   return { appointments, count: appointments.length };
 });
 
-export const listAppointmentsStep = defineStep({
+export const listAppointmentsStep = defineLegacyStep({
   id: "acuity/list-appointments",
   input: listAppointmentsInput,
   output: listAppointmentsOutput,

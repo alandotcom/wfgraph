@@ -1,6 +1,6 @@
 import { LinearClient } from "@linear/sdk";
 import {
-  defineStep,
+  defineLegacyStep,
   StepFailure,
   type StepRunContext,
 } from "@rova/core/plugin";
@@ -92,7 +92,7 @@ export const createTicketHandler = Effect.fn(function* (
   return { id: issue.id, url: issue.url, title: issue.title };
 });
 
-export const createTicketStep = defineStep({
+export const createTicketStep = defineLegacyStep({
   id: "linear/create-ticket",
   input: createTicketInput,
   output: createTicketOutput,

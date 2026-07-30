@@ -1,6 +1,6 @@
 import type { AvailabilityDatesParams } from "@fountain-bio/acuity";
 import {
-  defineStep,
+  defineLegacyStep,
   StepFailure,
   type StepRunContext,
 } from "@rova/core/plugin";
@@ -55,7 +55,7 @@ export const getAvailabilityDatesHandler = Effect.fn(function* (
   return { dates, count: dates.length };
 });
 
-export const getAvailabilityDatesStep = defineStep({
+export const getAvailabilityDatesStep = defineLegacyStep({
   id: "acuity/get-availability-dates",
   input: getAvailabilityDatesInput,
   output: getAvailabilityDatesOutput,

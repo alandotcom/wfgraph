@@ -13,23 +13,12 @@
  * a host-defined integration offer a connection test, and that arrives with the
  * rest of the host-integration surface.
  */
+import { getExtensions } from "#src/backend/lib/extensions/current";
+import type {
+  IntegrationTestFunction,
+  IntegrationTestLoader,
+} from "#src/backend/lib/extensions/integration-test";
 import type { IntegrationType } from "@rova/shared/types/integration";
-
-export type IntegrationTestResult = {
-  success: boolean;
-  error?: string;
-  details?: Record<string, unknown>;
-};
-
-export type IntegrationTestFunction = (
-  credentials: Record<string, string>
-) => Promise<IntegrationTestResult>;
-
-/**
- * Loading is deferred, so registering a test costs nothing until someone runs
- * it and the vendor SDK behind it stays out of the process until then.
- */
-export type IntegrationTestLoader = () => Promise<IntegrationTestFunction>;
 
 const integrationTestLoaders = new Map<string, IntegrationTestLoader>();
 
@@ -55,6 +44,10 @@ export function unregisterIntegrationTest(type: IntegrationType): void {
  * Whether "Test connection" has anything to call, which is what the catalog says
  * about an integration. Asking without loading, since the answer is drawn in the
  * credentials dialog and running the test is a separate press.
+ *
+ * This answers for the map alone. An integration passed to `createRovaApp`
+ * carries its own test, and `assembleExtensions` reads `hasTest` off the
+ * definition rather than asking here.
  */
 export function hasIntegrationTest(type: string): boolean {
   return integrationTestLoaders.has(type);
@@ -63,7 +56,11 @@ export function hasIntegrationTest(type: string): boolean {
 export async function getIntegrationTestFunction(
   type: IntegrationType
 ): Promise<IntegrationTestFunction | null> {
-  const loader = integrationTestLoaders.get(type);
+  // An integration passed to `createRovaApp` carries its test, so the assembled
+  // surface is asked first. The map holds the plugins B4 has not ported, which
+  // still register on import.
+  const loader =
+    getExtensions().connectionTestFor(type) ?? integrationTestLoaders.get(type);
   if (!loader) {
     return null;
   }

@@ -15,13 +15,14 @@
  */
 
 import {
-  getCredentialMapping,
-  getIntegration,
-} from "@rova/shared/plugins/registry";
+  credentialsFromConfig,
+  findIntegration,
+} from "@rova/shared/extensions/catalog";
 import type {
   IntegrationConfig,
   IntegrationType,
 } from "@rova/shared/types/integration";
+import { getExtensions } from "./extensions/current";
 import { getIntegrationById } from "./db/integrations";
 import { getAppLogger } from "./logger";
 
@@ -45,8 +46,11 @@ const SYSTEM_CREDENTIAL_MAPPERS: Record<
 };
 
 /**
- * Map integration config to WorkflowCredentials format
- * Uses plugin registry for plugin integrations, hardcoded mappers for system integrations
+ * The stored config as the environment-variable names a handler reads it by.
+ *
+ * A plugin integration's mapping is its credential fields, which the assembled
+ * catalog carries, so that is where this reads it. A database integration has no
+ * plugin and no fields, which is what the mappers above are for.
  */
 function mapIntegrationConfig(
   integrationType: IntegrationType,
@@ -58,14 +62,10 @@ function mapIntegrationConfig(
     return systemMapper(config);
   }
 
-  // Look up plugin from registry and auto-generate credential mapping
-  const plugin = getIntegration(integrationType);
-  if (plugin) {
-    return getCredentialMapping(plugin, config);
-  }
-
-  // Fallback for unknown integrations
-  return {};
+  return credentialsFromConfig(
+    findIntegration(getExtensions().catalog, integrationType),
+    config
+  );
 }
 
 /**

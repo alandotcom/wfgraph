@@ -1,5 +1,5 @@
 import {
-  defineStep,
+  defineLegacyStep,
   StepFailure,
   type StepRunContext,
 } from "@rova/core/plugin";
@@ -52,7 +52,7 @@ export const clerkDeleteUserHandler = Effect.fn(function* (
   return { deleted: true };
 });
 
-export const clerkDeleteUserStep = defineStep({
+export const clerkDeleteUserStep = defineLegacyStep({
   id: "clerk/delete-user",
   input: deleteUserInput,
   output: deleteUserOutput,

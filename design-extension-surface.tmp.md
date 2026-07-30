@@ -671,12 +671,16 @@ encoding with a schema is decoding with its flipped version (`SCHEMA.md:3462-351
 
 Three properties make this safe to apply unconditionally, all verified:
 
-- On a schema with no transform, `toCodecJson` changes nothing. For
-  `Schema.Struct({ a: Schema.String, b: Schema.optional(Schema.String) })` the decoded
-  value and the generated JSON Schema are identical with and without it. So there is no
-  branch on "does this schema have a transform".
+- `toCodecJson` is safe to apply to a schema with no transform, but it does not leave every
+  such schema alone. It rewrites `optional(X)` to `optionalKey(NullOr(X))`, so an optional
+  field accepts an absent key or a null and refuses a key present and holding `undefined`,
+  and it gives a bare `Schema.Number` the string spellings of its non-finite values. So
+  there is no branch on "does this schema have a transform", and the engine has to write
+  no undefined-valued config keys -- which is a change in `core.ts`, made in B3.
 - `onExcessProperty: "error"`, which is what `rejectUnknownKeys` holds, still rejects an
-  excess key through a `toCodecJson` codec.
+  excess key through a `toCodecJson` codec. A step's config decode does not pass those
+  options and cannot: the engine hands a step `integrationId`, `_context`, and every other
+  key the node holds. `errors: "all"` alone is what it passes.
 - The field derivation already agrees with it. `Schema.toJsonSchemaDocument` "first derives
   the schema's canonical JSON codec, then compiles its encoded representation"
   (`SCHEMA.md:6418-6419`). So the paths the editor offers and the bytes Rova writes come
@@ -742,8 +746,9 @@ yield * event.decodePayload(input.payload);
 change must not break intake. So the gate validates declared fields and ignores extras. The
 raw payload travels either way, so an unknown key is invisible to the pickers rather than an
 error. This is a deliberate per-boundary exception: the repo-wide rule that every wire decode
-carries `rejectUnknownKeys` stands for the RPC contracts, the graph column, the Inngest
-envelope events, and the step config decode above.
+carries `rejectUnknownKeys` stands for the RPC contracts, the graph column, and the Inngest
+envelope events. A step's config decode is the other exception, and for a duller reason:
+the record the engine builds carries keys that belong to the engine rather than to the step.
 
 The consequence, stated rather than discovered: drift on a **declared** field still fails
 loudly, and drift by **addition** is silent by choice. An Event Author who wants a new field

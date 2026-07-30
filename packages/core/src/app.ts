@@ -34,6 +34,7 @@ import {
   configureExtensions,
 } from "#src/backend/lib/extensions/current";
 import type { AnyEventDefinition } from "#src/backend/lib/extensions/define-event";
+import type { IntegrationDefinition } from "#src/backend/lib/extensions/define-integration";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import {
   catalogActionsFromRegistries,
@@ -87,12 +88,15 @@ export type PluginConfig = {
 /**
  * The extension surface, assembled in one place.
  *
- * Events only. A plugin turns itself on by being imported and a host action
- * arrives through `actions` below, so those two halves are read out of the
- * registries at startup; they join this option with `defineIntegration`.
+ * An integration listed here brings its actions, its steps and its connection
+ * test with it, so this line is what turns it on and dropping it is what turns it
+ * off. A host action still arrives through `actions` below and the plugins B4 has
+ * not ported still turn themselves on by being imported, so those two halves are
+ * read out of the registries at startup and join this option in the catalog.
  */
 export type RovaExtensionOptions = {
   readonly events?: readonly AnyEventDefinition[];
+  readonly integrations?: readonly IntegrationDefinition[];
 };
 
 /**
@@ -262,8 +266,11 @@ async function buildRovaApp(
   // loop above.
   const extensions = assembleExtensions({
     events: options.extensions?.events,
-    actions: catalogActionsFromRegistries(),
-    integrations: catalogIntegrationsFromRegistries(),
+    integrations: options.extensions?.integrations,
+    registries: {
+      actions: catalogActionsFromRegistries(),
+      integrations: catalogIntegrationsFromRegistries(),
+    },
   });
   configureExtensions(extensions);
 

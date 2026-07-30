@@ -1,4 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  clearExtensions,
+  configureExtensions,
+} from "#src/backend/lib/extensions/current";
+import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import {
   extractRequiredIntegrationIds,
   type ResolveActionByType,
@@ -6,6 +11,18 @@ import {
 } from "#src/backend/lib/workflow-integration-validation";
 import type { IntegrationType } from "@rova/shared/types/integration";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
+
+// Every reader of the surface sits inside an app, and `getExtensions` says so by
+// throwing. The default resolver each function below falls back to is one of those
+// readers, so a case that does not pass its own resolver needs a surface; the
+// built-in four ride in on an empty assembly, which is what those cases resolve.
+beforeAll(() => {
+  configureExtensions(assembleExtensions({}));
+});
+
+afterAll(() => {
+  clearExtensions();
+});
 
 function createActionNode(config: Record<string, unknown>): WorkflowNode {
   return {
@@ -149,6 +166,45 @@ describe("validateWorkflowIntegrations", () => {
     );
 
     expect(result).toEqual({ valid: false, invalidIds: ["db_1"] });
+  });
+
+  // The default resolver is the assembled catalog, which is what a save uses. An
+  // action it holds carries the integration its nodes must name, and a row of a
+  // different type is refused by id.
+  it("reads an action's required integration off the assembled catalog", async () => {
+    configureExtensions(
+      assembleExtensions({
+        registries: {
+          actions: [
+            {
+              id: "twilio/send-sms",
+              label: "Send SMS",
+              description: "Sends a message",
+              category: "Twilio",
+              integration: "twilio",
+              configFields: [],
+              outputFields: [],
+            },
+          ],
+          integrations: [],
+        },
+      })
+    );
+
+    const result = await validateWorkflowIntegrations(
+      [
+        createActionNode({
+          actionType: "twilio/send-sms",
+          integrationId: "slack_1",
+        }),
+      ],
+      { getIntegrationTypesByIds: () => Promise.resolve({ slack_1: "slack" }) }
+    );
+
+    expect(result).toEqual({ valid: false, invalidIds: ["slack_1"] });
+
+    // Back to the empty surface the rest of the file assembled.
+    configureExtensions(assembleExtensions({}));
   });
 
   it("rejects integrations with mismatched types", async () => {

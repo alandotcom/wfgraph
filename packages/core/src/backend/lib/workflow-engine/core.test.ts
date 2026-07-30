@@ -1,4 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import {
+  clearExtensions,
+  configureExtensions,
+} from "#src/backend/lib/extensions/current";
+import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import {
   type RuntimeActionResult,
   registerRuntimeAction,
@@ -136,6 +150,18 @@ describe("runtime action execution", () => {
     expect(result.results.action_1?.success).toBe(false);
     expect(result.results.action_1?.error).toBe("Donor not found");
   });
+});
+
+// The engine reads the assembled surface for an action's step and its label, and
+// `getExtensions` throws outside an app rather than answering nothing. An empty
+// assembly is what these cases want: their actions are runtime actions, and the
+// built-in four ride in on it.
+beforeAll(() => {
+  configureExtensions(assembleExtensions({}));
+});
+
+afterAll(() => {
+  clearExtensions();
 });
 
 describe("run persistence through the store port", () => {

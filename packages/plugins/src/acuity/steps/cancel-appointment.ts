@@ -1,4 +1,4 @@
-import { defineStep, type StepRunContext } from "@rova/core/plugin";
+import { defineLegacyStep, type StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
 import type { AcuityCredentials } from "#src/acuity/credentials";
 import {
@@ -49,7 +49,7 @@ export const cancelAppointmentHandler = Effect.fn(function* (
   };
 });
 
-export const cancelAppointmentStep = defineStep({
+export const cancelAppointmentStep = defineLegacyStep({
   id: "acuity/cancel-appointment",
   input: cancelAppointmentInput,
   output: cancelAppointmentOutput,

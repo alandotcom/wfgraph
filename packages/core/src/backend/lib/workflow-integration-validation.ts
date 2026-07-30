@@ -1,7 +1,8 @@
 import { uniq } from "es-toolkit/array";
 import { getIntegrationTypesByIds as getIntegrationTypesByIdsInDb } from "#src/backend/lib/db/integrations";
 import { getAppLogger } from "#src/backend/lib/logger";
-import { findActionById } from "@rova/shared/plugins/registry";
+import { getExtensions } from "#src/backend/lib/extensions/current";
+import { findAction } from "@rova/shared/extensions/catalog";
 import {
   type IntegrationType,
   isIntegrationType,
@@ -74,7 +75,7 @@ function getRequiredIntegrationType(
 function extractRequiredIntegrationRequirements(
   nodes: WorkflowNode[],
   resolveActionByType: ResolveActionByType = (actionType) =>
-    findActionById(actionType)
+    findAction(getExtensions().catalog, actionType)
 ): IntegrationRequirement[] {
   const requirements: IntegrationRequirement[] = [];
 
@@ -108,7 +109,7 @@ function extractRequiredIntegrationRequirements(
 export function extractRequiredIntegrationIds(
   nodes: WorkflowNode[],
   resolveActionByType: ResolveActionByType = (actionType) =>
-    findActionById(actionType)
+    findAction(getExtensions().catalog, actionType)
 ): string[] {
   return uniq(
     extractRequiredIntegrationRequirements(nodes, resolveActionByType).map(
@@ -167,7 +168,8 @@ export async function validateWorkflowIntegrations(
   } = {}
 ): Promise<ValidationResult> {
   const resolveActionByType =
-    options.resolveActionByType ?? ((actionType) => findActionById(actionType));
+    options.resolveActionByType ??
+    ((actionType: string) => findAction(getExtensions().catalog, actionType));
   const getIntegrationTypesByIds =
     options.getIntegrationTypesByIds ?? getIntegrationTypesByIdsInDb;
   const strictValidationEnabled = shouldEnforceStrictValidation(

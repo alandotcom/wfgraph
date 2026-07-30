@@ -1,11 +1,17 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import type {
   ActionMetadata,
   IntegrationMetadata,
 } from "@rova/shared/extensions/catalog";
+import type { IntegrationType } from "@rova/shared/types/integration";
 import { defineEvent } from "#src/backend/lib/extensions/define-event";
+import {
+  defineIntegration,
+  type IntegrationDefinition,
+} from "#src/backend/lib/extensions/define-integration";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { defineStep } from "#src/backend/lib/steps/define-step";
 
 const appointmentPayload = Schema.Struct({
   appointment: Schema.Struct({
@@ -37,7 +43,7 @@ function anAction(id: string, category = "Appointments"): ActionMetadata {
   };
 }
 
-function anIntegration(type: string): IntegrationMetadata {
+function anIntegration(type: IntegrationType): IntegrationMetadata {
   return {
     type,
     label: type,
@@ -45,6 +51,45 @@ function anIntegration(type: string): IntegrationMetadata {
     credentialFields: [],
     hasTest: false,
   };
+}
+
+const sendSmsHandler = Effect.fn(function* () {
+  return yield* Effect.succeed({ sid: "SM1" });
+});
+
+/**
+ * A step whose schemas and config form agree, which is what the two checks over
+ * an action's schemas are satisfied by. A case exercising one of them writes its
+ * own `defineStep` with the schemas that break it.
+ */
+function aStep() {
+  return defineStep({
+    label: "Send SMS",
+    description: "Sends a message",
+    category: "Twilio",
+    input: Schema.Struct({ to: Schema.String }),
+    output: Schema.Struct({
+      sid: Schema.String.annotate({ description: "Message SID" }),
+    }),
+    configFields: [
+      { key: "to", label: "To", type: "template-input", required: true },
+    ],
+    handler: sendSmsHandler,
+  });
+}
+
+function aDefinition(
+  type: IntegrationType,
+  overrides: Partial<IntegrationDefinition> = {}
+): IntegrationDefinition {
+  return defineIntegration({
+    type,
+    label: type,
+    description: `The ${type} integration`,
+    credentials: [],
+    actions: { "send-sms": aStep() },
+    ...overrides,
+  });
 }
 
 describe("assembleExtensions", () => {
@@ -67,14 +112,16 @@ describe("assembleExtensions", () => {
     ]);
   });
 
-  it("lists a host's actions and integrations after the built-ins", () => {
+  it("lists what the registries hold after the built-ins", () => {
     const { catalog } = assembleExtensions({
-      actions: [anAction("appointments/cancel")],
-      integrations: [anIntegration("twilio")],
+      registries: {
+        actions: [anAction("appointments/cancel")],
+        integrations: [anIntegration("acuity")],
+      },
     });
 
     expect(catalog.actions.at(-1)?.id).toBe("appointments/cancel");
-    expect(catalog.integrations.map((one) => one.type)).toEqual(["twilio"]);
+    expect(catalog.integrations.map((one) => one.type)).toEqual(["acuity"]);
   });
 
   it("carries an Event's label, Correlation Path and payload fields into the catalog", () => {
@@ -185,24 +232,49 @@ describe("assembleExtensions checks", () => {
   it("refuses two actions sharing an id", () => {
     expect(() =>
       assembleExtensions({
-        actions: [
-          anAction("appointments/cancel"),
-          anAction("appointments/cancel"),
-        ],
+        registries: {
+          actions: [
+            anAction("appointments/cancel"),
+            anAction("appointments/cancel"),
+          ],
+          integrations: [],
+        },
       })
     ).toThrow('Two actions are defined with the id "appointments/cancel"');
   });
 
   it("refuses a host action that collides with a built-in", () => {
     expect(() =>
-      assembleExtensions({ actions: [anAction("Condition", "System")] })
+      assembleExtensions({
+        registries: {
+          actions: [anAction("Condition", "System")],
+          integrations: [],
+        },
+      })
     ).toThrow('Two actions are defined with the id "Condition"');
   });
 
   it("refuses two integrations sharing a type", () => {
     expect(() =>
       assembleExtensions({
-        integrations: [anIntegration("twilio"), anIntegration("twilio")],
+        integrations: [
+          aDefinition("twilio"),
+          // A second definition of one type collides on its actions too, so this
+          // one declares a different action and leaves the type as the only clash.
+          aDefinition("twilio", { actions: { "lookup-number": aStep() } }),
+        ],
+      })
+    ).toThrow('Two integrations are defined with the type "twilio"');
+  });
+
+  // An integration ported to a definition and still registering itself would
+  // reach assembly twice, once from each half, which is the collision this
+  // catches while both halves exist.
+  it("refuses an integration that arrives as a definition and from a registry", () => {
+    expect(() =>
+      assembleExtensions({
+        integrations: [aDefinition("twilio")],
+        registries: { actions: [], integrations: [anIntegration("twilio")] },
       })
     ).toThrow('Two integrations are defined with the type "twilio"');
   });
@@ -249,5 +321,209 @@ describe("assembleExtensions checks", () => {
         ],
       })
     ).toThrow("both name the Inngest function");
+  });
+});
+
+/**
+ * What an integration definition contributes, and the two checks that read the
+ * schemas only a definition carries.
+ */
+describe("assembleExtensions and an integration definition", () => {
+  it("computes each action id from the type and the record key", () => {
+    const { catalog } = assembleExtensions({
+      integrations: [aDefinition("twilio")],
+    });
+
+    expect(catalog.actions.at(-1)).toEqual({
+      id: "twilio/send-sms",
+      label: "Send SMS",
+      description: "Sends a message",
+      category: "Twilio",
+      integration: "twilio",
+      configFields: [
+        { key: "to", label: "To", type: "template-input", required: true },
+      ],
+      outputFields: [
+        { path: "sid", description: "Message SID", type: "string" },
+      ],
+    });
+  });
+
+  it("answers the step for an action id, and nothing for one it does not hold", async () => {
+    const set = assembleExtensions({ integrations: [aDefinition("twilio")] });
+
+    expect(
+      await set.stepFor("twilio/send-sms")?.({ to: "+15550001111" })
+    ).toEqual({
+      success: true,
+      data: { sid: "SM1" },
+    });
+    expect(set.stepFor("twilio/lookup-number")).toBeUndefined();
+  });
+
+  it("says an integration has a test when it carries a loader, and answers it", async () => {
+    const testTwilio = () => Promise.resolve({ success: true });
+    const set = assembleExtensions({
+      integrations: [
+        aDefinition("twilio", { test: () => Promise.resolve(testTwilio) }),
+      ],
+    });
+
+    expect(set.catalog.integrations[0].hasTest).toBe(true);
+    expect(await set.connectionTestFor("twilio")?.()).toBe(testTwilio);
+  });
+
+  it("says an integration has no test when it carries no loader", () => {
+    const set = assembleExtensions({ integrations: [aDefinition("twilio")] });
+
+    expect(set.catalog.integrations[0].hasTest).toBe(false);
+    expect(set.connectionTestFor("twilio")).toBeUndefined();
+  });
+
+  it("carries the credential form into the catalog", () => {
+    const { catalog } = assembleExtensions({
+      integrations: [
+        aDefinition("twilio", {
+          credentials: [
+            {
+              label: "Auth Token",
+              type: "password",
+              configKey: "authToken",
+              envVar: "TWILIO_AUTH_TOKEN",
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(catalog.integrations[0].credentialFields).toEqual([
+      {
+        label: "Auth Token",
+        type: "password",
+        configKey: "authToken",
+        envVar: "TWILIO_AUTH_TOKEN",
+      },
+    ]);
+  });
+
+  // Check 4. The message names the action, because a schema the derivation cannot
+  // read is a mistake in the definition and the id is the only thing that says
+  // which definition.
+  it("refuses an action whose output schema it cannot derive fields from", () => {
+    expect(() =>
+      assembleExtensions({
+        integrations: [
+          aDefinition("twilio", {
+            actions: {
+              "send-sms": defineStep({
+                label: "Send SMS",
+                description: "Sends a message",
+                category: "Twilio",
+                input: Schema.Struct({ to: Schema.String }),
+                // No description on the field, so the editor would list a path
+                // with nothing to say about it.
+                output: Schema.Struct({ sid: Schema.String }),
+                configFields: [
+                  {
+                    key: "to",
+                    label: "To",
+                    type: "template-input",
+                    required: true,
+                  },
+                ],
+                handler: sendSmsHandler,
+              }),
+            },
+          }),
+        ],
+      })
+    ).toThrow(
+      'Action "twilio/send-sms" cannot derive the fields the editor offers'
+    );
+  });
+
+  // Check 5. The compiler holds every declared field to a key the schema names;
+  // this is the half that catches a field nobody wrote, which would be a node
+  // whose config decode fails on every run.
+  it("refuses an action with a required config key no field fills in", () => {
+    expect(() =>
+      assembleExtensions({
+        integrations: [
+          aDefinition("twilio", {
+            actions: {
+              "send-sms": defineStep({
+                label: "Send SMS",
+                description: "Sends a message",
+                category: "Twilio",
+                input: Schema.Struct({
+                  to: Schema.String,
+                  body: Schema.String,
+                }),
+                output: Schema.Struct({
+                  sid: Schema.String.annotate({ description: "Message SID" }),
+                }),
+                configFields: [
+                  {
+                    key: "to",
+                    label: "To",
+                    type: "template-input",
+                    required: true,
+                  },
+                ],
+                handler: sendSmsHandler,
+              }),
+            },
+          }),
+        ],
+      })
+    ).toThrow(
+      'Action "twilio/send-sms" cannot run without the config keys body'
+    );
+  });
+
+  it("counts a field inside a group as filling its key", () => {
+    expect(() =>
+      assembleExtensions({
+        integrations: [
+          aDefinition("twilio", {
+            actions: {
+              "send-sms": defineStep({
+                label: "Send SMS",
+                description: "Sends a message",
+                category: "Twilio",
+                input: Schema.Struct({
+                  to: Schema.String,
+                  body: Schema.String,
+                }),
+                output: Schema.Struct({
+                  sid: Schema.String.annotate({ description: "Message SID" }),
+                }),
+                configFields: [
+                  {
+                    key: "to",
+                    label: "To",
+                    type: "template-input",
+                    required: true,
+                  },
+                  {
+                    type: "group",
+                    label: "Message",
+                    fields: [
+                      {
+                        key: "body",
+                        label: "Body",
+                        type: "text",
+                        required: true,
+                      },
+                    ],
+                  },
+                ],
+                handler: sendSmsHandler,
+              }),
+            },
+          }),
+        ],
+      })
+    ).not.toThrow();
   });
 });

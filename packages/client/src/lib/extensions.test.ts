@@ -8,6 +8,11 @@ import {
   hydrateExtensionsFromApi,
 } from "#src/lib/extensions";
 import { getRuntimeTriggers } from "#src/lib/runtime-extensions";
+import {
+  findActionById,
+  getIntegration,
+  unregisterIntegration,
+} from "@rova/shared/plugins/registry";
 
 const served: ExtensionCatalog = {
   events: [
@@ -42,7 +47,14 @@ const served: ExtensionCatalog = {
       type: "twilio",
       label: "Twilio",
       description: "Send SMS messages with Twilio",
-      credentialFields: [],
+      credentialFields: [
+        {
+          label: "Auth Token",
+          type: "password",
+          configKey: "authToken",
+          envVar: "TWILIO_AUTH_TOKEN",
+        },
+      ],
       hasTest: true,
     },
   ],
@@ -67,6 +79,7 @@ function respondWith(body: unknown, status = 200): void {
 }
 
 afterEach(() => {
+  unregisterIntegration("twilio");
   vi.unstubAllGlobals();
   // The catalog is module state, so a case that wants an unhydrated one imports
   // the module again rather than reading the one above.
@@ -174,5 +187,64 @@ describe("hydrateExtensionsFromApi", () => {
     );
 
     await expect(hydrateExtensionsFromApi()).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * The catalog is the browser's one producer of integration metadata, and every
+ * reader in the editor still asks the plugin registry, so hydration fills it. B4
+ * points those readers at the catalog and deletes both halves of this.
+ */
+describe("the plugin registry the catalog fills", () => {
+  it("gives the integrations dialog its credential form", async () => {
+    respondWith({ catalog: served });
+
+    await hydrateExtensionsFromApi();
+
+    expect(getIntegration("twilio")).toEqual(
+      expect.objectContaining({
+        type: "twilio",
+        label: "Twilio",
+        formFields: [
+          {
+            // The registry keys its input by an id and the catalog carries none,
+            // because a credential field has one name and it is the config key.
+            id: "authToken",
+            label: "Auth Token",
+            type: "password",
+            configKey: "authToken",
+            envVar: "TWILIO_AUTH_TOKEN",
+          },
+        ],
+      })
+    );
+  });
+
+  // The slug is read back off the action id rather than sliced by length, and the
+  // grouping is by the integration each action names.
+  it("gives the action selector its actions, keyed by id", async () => {
+    respondWith({ catalog: served });
+
+    await hydrateExtensionsFromApi();
+
+    expect(findActionById("twilio/send-sms")).toEqual(
+      expect.objectContaining({
+        id: "twilio/send-sms",
+        slug: "send-sms",
+        label: "Send SMS",
+        integration: "twilio",
+        outputFields: [
+          { path: "sid", description: "Message SID", type: "string" },
+        ],
+      })
+    );
+  });
+
+  it("leaves an integration nothing declared out of the registry", async () => {
+    respondWith({ catalog: served });
+
+    await hydrateExtensionsFromApi();
+
+    expect(getIntegration("resend")).toBeUndefined();
   });
 });

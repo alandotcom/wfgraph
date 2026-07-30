@@ -579,6 +579,11 @@ function resolveTemplateToken(
  * Both the grammar and the path walking come from `node-references`, the module
  * the editor's autocomplete builds its suggestions with, so a path it offers
  * (`items[0].name`, say) resolves to the same value here at run time.
+ *
+ * A key holding `undefined` is dropped rather than carried, because a step decodes
+ * its config through its schema's canonical JSON codec, where an optional field
+ * takes an absent key or a null and refuses one present and empty. A builder left
+ * the field blank either way.
  */
 function processTemplates(
   config: Record<string, unknown>,
@@ -587,6 +592,10 @@ function processTemplates(
   const processed: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(config)) {
+    if (value === undefined) {
+      continue;
+    }
+
     if (typeof value !== "string") {
       processed[key] = value;
       continue;
@@ -1730,10 +1739,11 @@ async function executeWorkflowInner(
         };
       }
 
-      // Process templates in config, but keep conditions unprocessed for special handling
-      const configWithoutCondition = { ...config };
-      const originalCondition = config.condition;
-      configWithoutCondition.condition = undefined;
+      // Process templates in config, but keep conditions unprocessed for special
+      // handling. The key is deleted rather than emptied, because a config key
+      // present and holding `undefined` fails a step's config decode.
+      const { condition: originalCondition, ...configWithoutCondition } =
+        config;
 
       const processedConfig = processTemplates(configWithoutCondition, outputs);
 
@@ -1742,15 +1752,23 @@ async function executeWorkflowInner(
         processedConfig.condition = originalCondition;
       }
 
-      // In test mode, keep test destination overrides as authored literals.
-      // This prevents trigger/runtime payload templates from steering where
-      // test-recipient messages are sent.
+      // In test mode, keep test destination overrides as authored literals. This
+      // prevents trigger/runtime payload templates from steering where
+      // test-recipient messages are sent. Each is written only where the node has
+      // one, since assigning an absent field would put a key holding `undefined`
+      // into the config, which a step's config decode refuses.
       if (runMode === "test") {
-        if (actionType === "resend/send-email") {
+        if (
+          actionType === "resend/send-email" &&
+          config.testEmailTo !== undefined
+        ) {
           processedConfig.testEmailTo = config.testEmailTo;
         }
 
-        if (actionType === "twilio/send-sms") {
+        if (
+          actionType === "twilio/send-sms" &&
+          config.testPhoneTo !== undefined
+        ) {
           processedConfig.testPhoneTo = config.testPhoneTo;
         }
       }

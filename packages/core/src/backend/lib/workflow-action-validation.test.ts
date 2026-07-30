@@ -1,7 +1,27 @@
-import { describe, expect, it } from "vitest";
+import { Effect, Schema } from "effect";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
+import { defineStep } from "#src/backend/lib/steps/define-step";
+import {
+  clearExtensions,
+  configureExtensions,
+} from "#src/backend/lib/extensions/current";
+import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import { validateWorkflowActionConfigs } from "#src/backend/lib/workflow-action-validation";
 import type { ResolveActionByType } from "@rova/shared/workflow/action-config-validation";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
+
+// Every reader of the surface sits inside an app, and `getExtensions` says so by
+// throwing. The default resolver each function below falls back to is one of those
+// readers, so a case that does not pass its own resolver needs a surface; the
+// built-in four ride in on an empty assembly, which is what those cases resolve.
+beforeAll(() => {
+  configureExtensions(assembleExtensions({}));
+});
+
+afterAll(() => {
+  clearExtensions();
+});
 
 function createTriggerNode(): WorkflowNode {
   return {
@@ -135,6 +155,61 @@ describe("validateWorkflowActionConfigs", () => {
     if (!result.valid) {
       expect(result.error).toContain("Wait for these events");
     }
+  });
+
+  // The default resolver is the assembled catalog, which is where an integration's
+  // actions and their config fields come from once a host has passed it. A node
+  // naming an action the surface does not hold has no fields to be missing, so the
+  // only refusal left is the one for a node with no action at all.
+  it("reads an action's required fields off the assembled catalog", () => {
+    configureExtensions(
+      assembleExtensions({
+        integrations: [
+          defineIntegration({
+            type: "twilio",
+            label: "Twilio",
+            description: "Send SMS messages",
+            credentials: [],
+            actions: {
+              "send-sms": defineStep({
+                label: "Send SMS",
+                description: "Sends a message",
+                category: "Twilio",
+                input: Schema.Struct({ smsTo: Schema.String }),
+                output: Schema.Struct({
+                  sid: Schema.String.annotate({ description: "Message SID" }),
+                }),
+                configFields: [
+                  {
+                    key: "smsTo",
+                    label: "To",
+                    type: "template-input",
+                    required: true,
+                  },
+                ],
+                handler: Effect.fn(function* () {
+                  return yield* Effect.succeed({ sid: "SM1" });
+                }),
+              }),
+            },
+          }),
+        ],
+      })
+    );
+
+    const result = validateWorkflowActionConfigs([
+      createTriggerNode(),
+      createActionNode({ actionType: "twilio/send-sms" }),
+    ]);
+
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.error).toContain("missing required fields");
+      expect(result.error).toContain("To");
+    }
+
+    // Back to the empty surface the rest of the file assembled.
+    configureExtensions(assembleExtensions({}));
   });
 
   it("rejects plugin actions with missing required fields", () => {

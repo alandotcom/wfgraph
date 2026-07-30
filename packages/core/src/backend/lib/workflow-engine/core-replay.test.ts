@@ -9,6 +9,7 @@
  * replay, and nodes that already ran must not run again.
  */
 
+import { Effect, Schema, SchemaTransformation } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type RuntimeActionResult,
@@ -17,12 +18,27 @@ import {
 } from "@rova/shared/workflow/action-registry";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
+import {
+  clearExtensions,
+  configureExtensions,
+} from "#src/backend/lib/extensions/current";
+import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
+import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { defineStep } from "#src/backend/lib/steps/define-step";
 import { executeWorkflow } from "./core";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
 } from "./recording-store";
 import { createInMemoryWorkflowRuntime } from "./runtime";
+
+// Keeps the step wrapper's own run logging off a database.
+vi.mock("#src/backend/lib/workflow-logging", () => ({
+  logStepStartDb: () =>
+    Promise.resolve({ logId: "mock-log-id", startTime: Date.now() }),
+  logStepCompleteDb: () => Promise.resolve(),
+  logWorkflowCompleteDb: () => Promise.resolve(),
+}));
 
 const EMAIL_ACTION_ID = "test/replay-email";
 const FOLLOWUP_ACTION_ID = "test/replay-followup";
@@ -100,6 +116,10 @@ describe("workflow engine replay safety", () => {
   let store: RecordingWorkflowStore;
 
   beforeEach(() => {
+    // The engine reads the assembled surface for an action's step and its label,
+    // and `getExtensions` throws outside an app. These cases run runtime actions,
+    // so an empty assembly is all they need.
+    configureExtensions(assembleExtensions({}));
     store = createRecordingWorkflowStore();
     registerRuntimeAction({
       id: EMAIL_ACTION_ID,
@@ -126,6 +146,7 @@ describe("workflow engine replay safety", () => {
   });
 
   afterEach(() => {
+    clearExtensions();
     unregisterRuntimeAction(EMAIL_ACTION_ID);
     unregisterRuntimeAction(FOLLOWUP_ACTION_ID);
     unregisterRuntimeAction(BRANCH_ACTION_ID);
@@ -246,5 +267,147 @@ describe("workflow engine replay safety", () => {
     await executeWorkflow(fanOutInput, createReplayRuntime(memo), store);
 
     expect(branchAction).toHaveBeenCalledTimes(3);
+  });
+});
+
+/**
+ * A node output holding a `Date` is the worst thing this engine can carry: it
+ * survives JSONB and Inngest's own serialization by accident, through
+ * `Date.prototype.toJSON`, and comes back a string on replay. The same memoized
+ * step would then hand template resolution and CEL a `Date` on the attempt that
+ * ran it and a string on every attempt after.
+ *
+ * `defineStep` encodes a handler's answer through the schema's canonical JSON
+ * codec before the envelope, so what leaves a step is already the string. This
+ * case reads the value back the way a workflow does, through a template in a
+ * downstream node's config: once on the attempt that ran the step, and once on the
+ * replay that read it out of the memo. The runtime's own asymmetry is what makes
+ * the two passes different -- see `createInMemoryWorkflowRuntime`.
+ */
+describe("a Date-bearing step output across a replay", () => {
+  // Any declared integration type will do: what this exercises is the output
+  // schema, not the vendor.
+  const CLOCK_ACTION_ID = "acuity/read-clock";
+  const ECHO_ACTION_ID = "acuity/echo-clock";
+  const AT_TOKEN = "{{@clock_1:Read Clock.at}}";
+
+  /** What each Echo node resolved the template to, in the order they ran. */
+  let echoed: string[] = [];
+
+  const clock = defineIntegration({
+    type: "acuity",
+    label: "Clock",
+    description: "Answers with a timestamp",
+    credentials: [],
+    actions: {
+      "read-clock": defineStep({
+        label: "Read Clock",
+        description: "Answers with the time it read",
+        category: "Clock",
+        input: Schema.Struct({}),
+        output: Schema.Struct({
+          at: Schema.String.annotate({
+            description: "When it was read",
+            format: "date-time",
+          }).pipe(
+            Schema.decodeTo(Schema.Date, SchemaTransformation.dateFromString)
+          ),
+        }),
+        configFields: [],
+        handler: Effect.fn(function* () {
+          return yield* Effect.succeed({
+            at: new Date("2026-03-01T10:00:00Z"),
+          });
+        }),
+      }),
+      "echo-clock": defineStep({
+        label: "Echo",
+        description: "Records what the template resolved to",
+        category: "Clock",
+        input: Schema.Struct({ seen: Schema.String }),
+        output: Schema.Struct({
+          seen: Schema.String.annotate({ description: "What it was handed" }),
+        }),
+        configFields: [
+          {
+            key: "seen",
+            label: "Seen",
+            type: "template-input",
+            required: true,
+          },
+        ],
+        handler: Effect.fn(function* (config) {
+          echoed.push(config.seen);
+          return yield* Effect.succeed({ seen: config.seen });
+        }),
+      }),
+    },
+  });
+
+  // Echo reads the timestamp on the attempt that ran the clock; Echo Again reads
+  // it out of the memo after the wait. Both must see the same string.
+  const clockGraphInput = {
+    graph: createSerializedWorkflowGraph({
+      nodes: [
+        createTriggerNode("trigger_1"),
+        createActionNode("clock_1", CLOCK_ACTION_ID, "Read Clock"),
+        createEchoNode("echo_1", "Echo"),
+        createDelayWaitNode("wait_1"),
+        createEchoNode("echo_2", "Echo Again"),
+      ],
+      edges: [
+        { id: "edge_1", source: "trigger_1", target: "clock_1" },
+        { id: "edge_2", source: "clock_1", target: "echo_1" },
+        { id: "edge_3", source: "echo_1", target: "wait_1" },
+        { id: "edge_4", source: "wait_1", target: "echo_2" },
+      ],
+    }),
+    executionId: "exec_clock",
+    workflowId: "workflow_clock",
+  };
+
+  function createEchoNode(id: string, label: string): WorkflowNode {
+    return {
+      id,
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label,
+        type: "action",
+        config: { actionType: ECHO_ACTION_ID, seen: AT_TOKEN },
+      },
+    };
+  }
+
+  beforeEach(() => {
+    echoed = [];
+    configureExtensions(assembleExtensions({ integrations: [clock] }));
+  });
+
+  afterEach(() => {
+    clearExtensions();
+  });
+
+  it("resolves the same ISO string before and after the replay", async () => {
+    const memo = new Map<string, unknown>();
+    const store = createRecordingWorkflowStore();
+
+    const first = await executeWorkflow(
+      clockGraphInput,
+      createReplayRuntime(memo),
+      store
+    );
+    const second = await executeWorkflow(
+      clockGraphInput,
+      createReplayRuntime(memo),
+      store
+    );
+
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
+    expect(echoed).toEqual([
+      "2026-03-01T10:00:00.000Z",
+      "2026-03-01T10:00:00.000Z",
+    ]);
   });
 });

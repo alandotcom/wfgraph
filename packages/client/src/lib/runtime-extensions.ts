@@ -6,8 +6,14 @@ import {
   actionConfigFieldWireSchema,
   referenceFieldWireSchema,
 } from "@rova/shared/extensions/catalog-wire";
-import type { ActionConfigField } from "@rova/shared/plugins/registry";
+import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
+import {
+  type ActionConfigField,
+  parseActionId,
+  registerReadIntegration,
+} from "@rova/shared/plugins/registry";
 import { readAs } from "@rova/shared/types/schema";
+import type { IntegrationType } from "@rova/shared/types/integration";
 import {
   clearRuntimeActions,
   registerRuntimeAction,
@@ -95,6 +101,54 @@ function keepValidEntries<T>(
  */
 export function getRuntimeTriggers(): RuntimeTriggerDefinition[] {
   return Array.from(runtimeTriggerRegistry.values());
+}
+
+/**
+ * Fill the plugin registry from the catalog.
+ *
+ * The catalog is the browser's one producer of integration metadata: nothing here
+ * imports a plugin, so a ported integration's definition and a registered one's
+ * entry both arrive the same way, over the wire. Every reader in the editor still
+ * asks the registry, so this is where the two meet, and B4 points those readers at
+ * the catalog and deletes this.
+ *
+ * Two fields of the registry's own shape have no wire form and are left unset:
+ * an action's `outputConfig` and an integration's `dependencies`, neither of which
+ * anything declares today.
+ */
+export function hydrateIntegrationsFromCatalog(
+  catalog: ExtensionCatalog
+): void {
+  for (const integration of catalog.integrations) {
+    registerReadIntegration({
+      // The registry is keyed by the closed `IntegrationType` union and the wire
+      // carries a string. Every producer of a catalog entry is typed against that
+      // same union -- `defineIntegration` and the plugin registry both -- so a
+      // type outside it cannot reach here, and narrowing by dropping the entry
+      // instead would hide an integration rather than fail. The cast and the union
+      // go together in B4.
+      // eslint-disable-next-line typescript/no-unsafe-type-assertion -- see above
+      type: integration.type as IntegrationType,
+      label: integration.label,
+      description: integration.description,
+      formFields: integration.credentialFields.map((field) => ({
+        ...field,
+        // The registry's shape carries a form id; the catalog's does not, because
+        // a field has one name and it is the config key.
+        id: field.configKey,
+      })),
+      actions: catalog.actions
+        .filter((action) => action.integration === integration.type)
+        .map((action) => ({
+          slug: parseActionId(action.id)?.slug ?? action.id,
+          label: action.label,
+          description: action.description,
+          category: action.category,
+          configFields: [...action.configFields],
+          outputFields: [...action.outputFields],
+        })),
+    });
+  }
 }
 
 /**

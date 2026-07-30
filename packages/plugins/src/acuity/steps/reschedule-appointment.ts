@@ -1,5 +1,5 @@
 import {
-  defineStep,
+  defineLegacyStep,
   StepFailure,
   type StepRunContext,
 } from "@rova/core/plugin";
@@ -64,7 +64,7 @@ export const rescheduleAppointmentHandler = Effect.fn(function* (
   };
 });
 
-export const rescheduleAppointmentStep = defineStep({
+export const rescheduleAppointmentStep = defineLegacyStep({
   id: "acuity/reschedule-appointment",
   input: rescheduleAppointmentInput,
   output: rescheduleAppointmentOutput,

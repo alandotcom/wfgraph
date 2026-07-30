@@ -12,7 +12,10 @@
  */
 
 import { getBasePath } from "#src/lib/base-path";
-import { hydrateRuntimeExtensions } from "#src/lib/runtime-extensions";
+import {
+  hydrateIntegrationsFromCatalog,
+  hydrateRuntimeExtensions,
+} from "#src/lib/runtime-extensions";
 import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
@@ -33,8 +36,8 @@ export function getExtensionCatalog(): ExtensionCatalog {
  *
  * The endpoint answers the catalog beside what the registries send, so this owns
  * the one request: the envelope is decoded once here and each member handed to
- * the reader that owns it. The `hydrateRuntimeExtensions` call goes when those
- * registries do.
+ * the reader that owns it. Both hydration calls go when the registries do: the
+ * editor's own readers move onto the catalog in B4.
  *
  * Calling this twice re-reads the surface, which is why nothing memoizes: a
  * memoized promise would answer the second caller with the first call's document.
@@ -72,6 +75,7 @@ export async function hydrateExtensionsFromApi(): Promise<void> {
   const decoded = readExtensionCatalog(envelope?.catalog);
   if (decoded) {
     catalog = decoded;
+    hydrateIntegrationsFromCatalog(decoded);
   } else {
     console.warn(
       "The extension catalog from /api/extensions did not fit the wire schema in @rova/shared/extensions/catalog-wire, so the editor is drawing from the catalog it had. The server serving it is most likely a different build of Rova."

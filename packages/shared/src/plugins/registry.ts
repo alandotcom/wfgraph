@@ -305,6 +305,22 @@ export function registerIntegration(plugin: IntegrationPlugin): void {
 }
 
 /**
+ * Register an integration whose action output fields have already been derived.
+ *
+ * A ported integration is one server-only value, so the browser learns about it
+ * from the extension catalog rather than by importing it, and what arrives over
+ * the wire has no output schema left to read. This is the door that data comes
+ * in by, and it exists for exactly as long as the editor reads this registry:
+ * B4 moves those readers onto the catalog and takes the whole module with them.
+ */
+export function registerReadIntegration(
+  plugin: RegisteredIntegrationPlugin
+): void {
+  integrationRegistry.set(plugin.type, plugin);
+  actionByIdCache.clear();
+}
+
+/**
  * Unregister an integration plugin by type
  */
 export function unregisterIntegration(type: IntegrationType): void {
@@ -329,13 +345,6 @@ export function getIntegration(
  */
 export function getAllIntegrations(): RegisteredIntegrationPlugin[] {
   return Array.from(integrationRegistry.values());
-}
-
-/**
- * Get all integration types
- */
-export function getIntegrationTypes(): IntegrationType[] {
-  return Array.from(integrationRegistry.keys());
 }
 
 /**
@@ -531,25 +540,6 @@ export function getSortedIntegrationTypes(): IntegrationType[] {
 }
 
 /**
- * Get credential mapping for a plugin (auto-generated from formFields)
- */
-export function getCredentialMapping(
-  // A registered plugin is required because its actions carry derived outputFields.
-  plugin: RegisteredIntegrationPlugin,
-  config: Record<string, unknown>
-): Record<string, string> {
-  const creds: Record<string, string> = {};
-
-  for (const field of plugin.formFields) {
-    if (field.envVar && config[field.configKey]) {
-      creds[field.envVar] = String(config[field.configKey]);
-    }
-  }
-
-  return creds;
-}
-
-/**
  * Type guard to check if a field is a group
  */
 export function isFieldGroup(
@@ -563,7 +553,7 @@ export function isFieldGroup(
  * Useful for validation and AI prompt generation
  */
 export function flattenConfigFields(
-  fields: ActionConfigField[]
+  fields: readonly ActionConfigField[]
 ): ActionConfigFieldBase[] {
   const result: ActionConfigFieldBase[] = [];
 

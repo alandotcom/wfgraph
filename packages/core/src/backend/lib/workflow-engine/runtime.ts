@@ -153,6 +153,13 @@ export type InMemoryWorkflowRuntime = WorkflowExecutionRuntime & {
  * Stored values round-trip through JSON exactly like a durable runtime persists
  * them, so a step returning something unserializable behaves here the way it
  * would in production rather than quietly working in tests only.
+ *
+ * The attempt that ran a step gets the value the step returned, and every replay
+ * after it gets the JSON that was stored. That asymmetry is Inngest's, and copying
+ * it is what makes a value whose type differs between the two visible here: a live
+ * `Date` read back as a string on the replay alone is the failure mode the engine
+ * is least able to survive, and a runtime that round-tripped eagerly would hand
+ * both passes the string and hide it.
  */
 export function createInMemoryWorkflowRuntime(
   options: InMemoryRuntimeOptions = {}
@@ -191,10 +198,9 @@ export function createInMemoryWorkflowRuntime(
       const value = await fn();
       warnIfStepResultIsNotJsonSafe(stepId, value);
 
-      // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- modelling the durable runtime's own JSON round-trip
-      const stored = JSON.parse(JSON.stringify(value ?? null)) as T;
-      memo.set(stepId, stored);
-      return stored;
+      memo.set(stepId, JSON.parse(JSON.stringify(value ?? null)));
+
+      return value;
     },
   };
 }

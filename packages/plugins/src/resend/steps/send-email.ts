@@ -1,5 +1,5 @@
 import {
-  defineStep,
+  defineLegacyStep,
   StepFailure,
   type StepRunContext,
 } from "@rova/core/plugin";
@@ -266,7 +266,7 @@ export const sendEmailHandler = Effect.fn(function* (
   return { id: sent.id };
 });
 
-export const sendEmailStep = defineStep({
+export const sendEmailStep = defineLegacyStep({
   id: "resend/send-email",
   input: sendEmailInput,
   output: sendEmailOutput,

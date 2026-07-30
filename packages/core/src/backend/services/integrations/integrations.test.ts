@@ -5,6 +5,13 @@ import { Effect } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
 import {
+  clearExtensions,
+  configureExtensions,
+} from "#src/backend/lib/extensions/current";
+import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
+import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import {
+  configureTestExtensions,
   SilentAppLoggerLayer,
   stubIntegrationRepo,
 } from "#src/backend/lib/effect/test-layers";
@@ -17,34 +24,29 @@ import {
   postIntegrationTest,
   putIntegration,
 } from "#src/backend/services/integrations/integrations";
-import {
-  type IntegrationPlugin,
-  registerIntegration,
-  unregisterIntegration,
-} from "@rova/shared/plugins/registry";
+import type { IntegrationMetadata } from "@rova/shared/extensions/catalog";
 import type { IntegrationConfig } from "@rova/shared/types/integration";
 
 /**
- * Which config keys count as secrets is read from a registered plugin, so these
- * tests register a real one rather than stubbing the registry module. The
- * registry is process-wide state that stage 6 of ADR-0002 owns; until then,
- * registering and unregistering around each test is what keeps it from leaking
- * into another file's run.
+ * Which config keys count as secrets is read from the assembled catalog, so these
+ * tests assemble one holding a real integration rather than stubbing the module
+ * that answers for it. The surface is process-wide state that stage 7 of ADR-0002
+ * owns; until then, clearing it after each test is what keeps it from leaking into
+ * another file's run.
  */
-const slackLike: IntegrationPlugin = {
+const slackLike: IntegrationMetadata = {
   type: "slack",
   label: "Slack",
   description: "test double",
-  formFields: [
+  hasTest: false,
+  credentialFields: [
     {
-      id: "apiKey",
       label: "API Key",
       type: "password",
       configKey: "apiKey",
     },
-    { id: "teamId", label: "Team ID", type: "text", configKey: "teamId" },
+    { label: "Team ID", type: "text", configKey: "teamId" },
   ],
-  actions: [],
 };
 
 type StoredIntegration = {
@@ -111,13 +113,13 @@ function makeIntegrationRepo(stored: StoredIntegration) {
 
 describe("integration service secret handling", () => {
   afterEach(() => {
-    unregisterIntegration("slack");
+    clearExtensions();
   });
 
   layer(SilentAppLoggerLayer)((it) => {
     it.effect("masks secret fields in the integration it returns", () =>
       Effect.gen(function* () {
-        registerIntegration(slackLike);
+        configureTestExtensions({ integrations: [slackLike] });
         const repo = makeIntegrationRepo(storedSlackIntegration);
 
         const integration = yield* getIntegration("int_1").pipe(
@@ -133,7 +135,7 @@ describe("integration service secret handling", () => {
       "preserves masked secrets and merges partial config updates",
       () =>
         Effect.gen(function* () {
-          registerIntegration(slackLike);
+          configureTestExtensions({ integrations: [slackLike] });
           const repo = makeIntegrationRepo(storedSlackIntegration);
 
           const integration = yield* putIntegration("int_1", {
@@ -164,7 +166,7 @@ describe("integration service secret handling", () => {
 
     it.effect("replaces the secret when a new value is provided", () =>
       Effect.gen(function* () {
-        registerIntegration(slackLike);
+        configureTestExtensions({ integrations: [slackLike] });
         const repo = makeIntegrationRepo(storedSlackIntegration);
 
         yield* putIntegration("int_1", {
@@ -209,14 +211,14 @@ const unreadableIntegrationRepo = stubIntegrationRepo({
  */
 describe("integration connection test failures", () => {
   afterEach(() => {
-    unregisterIntegration("slack");
+    clearExtensions();
     unregisterIntegrationTest("slack");
   });
 
   layer(SilentAppLoggerLayer)((it) => {
     it.effect("answers with what the vendor's test function threw", () =>
       Effect.gen(function* () {
-        registerIntegration(slackLike);
+        configureTestExtensions({ integrations: [slackLike] });
         // A vendor SDK that throws instead of answering, which is the case the
         // registry lookup and the vendor call are wrapped for.
         registerIntegrationTest("slack", () =>
@@ -233,6 +235,48 @@ describe("integration connection test failures", () => {
 
         assert.instanceOf(failure, InternalFailure);
         assert.strictEqual(failure.error, "vendor said no");
+      })
+    );
+
+    // Two sources answer for a connection test while both halves of the surface
+    // exist: an integration passed to `createRovaApp` carries its own, and the map
+    // holds the plugins B4 has not ported. The definition's is the one that runs,
+    // so a ported integration is not shadowed by a registration left behind.
+    it.effect("prefers the test an assembled integration carries", () =>
+      Effect.gen(function* () {
+        configureExtensions(
+          assembleExtensions({
+            integrations: [
+              defineIntegration({
+                type: "slack",
+                label: "Slack",
+                description: "test double",
+                credentials: slackLike.credentialFields,
+                test: () =>
+                  Promise.resolve(() =>
+                    Promise.resolve({
+                      success: false,
+                      error: "from the definition",
+                    })
+                  ),
+                actions: {},
+              }),
+            ],
+          })
+        );
+        registerIntegrationTest("slack", () =>
+          Promise.resolve(() =>
+            Promise.resolve({ success: false, error: "from the registration" })
+          )
+        );
+        const repo = makeIntegrationRepo(storedSlackIntegration);
+
+        const answer = yield* postIntegrationTest("int_1").pipe(
+          Effect.provide(repo.layer)
+        );
+
+        assert.strictEqual(answer.status, "error");
+        assert.strictEqual(answer.message, "from the definition");
       })
     );
 

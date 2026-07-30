@@ -27,7 +27,7 @@ type ActionConfigFieldBaseLike = {
 
 type ActionConfigFieldGroupLike = {
   type: "group";
-  fields: ActionConfigFieldBaseLike[];
+  fields: readonly ActionConfigFieldBaseLike[];
 };
 
 type ActionConfigFieldLike =
@@ -36,7 +36,7 @@ type ActionConfigFieldLike =
 
 type ResolvedAction = {
   label?: string;
-  configFields?: ActionConfigFieldLike[];
+  configFields?: readonly ActionConfigFieldLike[];
 };
 
 export type ResolveActionByType = (
@@ -64,7 +64,7 @@ function isFieldEmpty(value: unknown): boolean {
 }
 
 function flattenConfigFields(
-  fields: ActionConfigFieldLike[]
+  fields: readonly ActionConfigFieldLike[]
 ): ActionConfigFieldBaseLike[] {
   const flattened: ActionConfigFieldBaseLike[] = [];
 
@@ -93,7 +93,7 @@ function shouldShowField(
 
 function getPluginMissingRequiredFields(input: {
   config: Record<string, unknown>;
-  configFields: ActionConfigFieldLike[];
+  configFields: readonly ActionConfigFieldLike[];
 }): MissingRequiredField[] {
   const { config, configFields } = input;
   const flatFields = flattenConfigFields(configFields);

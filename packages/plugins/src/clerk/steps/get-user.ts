@@ -1,5 +1,5 @@
 import {
-  defineStep,
+  defineLegacyStep,
   StepFailure,
   type StepRunContext,
 } from "@rova/core/plugin";
@@ -53,7 +53,7 @@ export const clerkGetUserHandler = Effect.fn(function* (
   return toClerkUserData(toClerkApiUser(user));
 });
 
-export const clerkGetUserStep = defineStep({
+export const clerkGetUserStep = defineLegacyStep({
   id: "clerk/get-user",
   input: getUserInput,
   output: getUserOutput,

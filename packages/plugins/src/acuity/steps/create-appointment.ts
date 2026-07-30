@@ -1,6 +1,6 @@
 import type { CreateAppointmentPayload } from "@fountain-bio/acuity";
 import {
-  defineStep,
+  defineLegacyStep,
   StepFailure,
   type StepRunContext,
 } from "@rova/core/plugin";
@@ -92,7 +92,7 @@ export const createAppointmentHandler = Effect.fn(function* (
   };
 });
 
-export const createAppointmentStep = defineStep({
+export const createAppointmentStep = defineLegacyStep({
   id: "acuity/create-appointment",
   input: createAppointmentInput,
   output: createAppointmentOutput,

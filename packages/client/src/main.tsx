@@ -1,9 +1,10 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { createRoot } from "react-dom/client";
-// Plugin metadata, then the plugins' React components. The two halves are
-// separate imports so that server bundles can take the metadata alone.
-import "@rova/plugins";
+// The editor's React components for the built-in integrations: their icons and
+// their custom output renderers. A component cannot be serialized, so this stays
+// an import; everything else about an integration arrives over the wire, as the
+// one catalog `hydrateExtensionsFromApi` below decodes.
 import "@rova/plugins/ui";
 // Self-hosted variable fonts. The theme's --font-geist-sans/--font-geist-mono
 // variables in globals.css point at the families these register.

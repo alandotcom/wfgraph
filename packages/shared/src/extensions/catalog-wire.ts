@@ -111,7 +111,6 @@ const actionMetadataSchema = Schema.Struct({
 });
 
 const credentialFieldMetadataSchema = Schema.Struct({
-  id: Schema.String,
   label: Schema.String,
   type: Schema.Literals(["text", "password", "url"]),
   placeholder: Schema.optionalKey(Schema.String),
