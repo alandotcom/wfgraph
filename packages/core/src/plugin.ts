@@ -41,3 +41,10 @@ export {
  * not the other.
  */
 export { VendorTransport } from "#src/backend/lib/steps/vendor-transport";
+/**
+ * How a step's schema says a field is a moment in time: an ISO string on the wire
+ * either way, and `dateField` hands the handler a `Date`. A bare `Schema.Date` is
+ * refused at registration, because its annotations never reach the JSON Schema
+ * the editor reads.
+ */
+export { dateField, timestampField } from "@rova/shared/types/timestamp";

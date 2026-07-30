@@ -85,7 +85,7 @@ describe("readWaitEventNames", () => {
   it("names the Events every Wait node parks on", () => {
     expect(
       readWaitEventNames([
-        node({ webhookSchema: "[]" }),
+        node({ someOtherKey: "[]" }),
         node({
           actionType: "Wait",
           waitForEvents: ["billing/payment.settled"],

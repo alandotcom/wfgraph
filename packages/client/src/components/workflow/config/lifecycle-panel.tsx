@@ -229,6 +229,17 @@ export function LifecyclePanel({
             The Run button and the execute route. With this off, only a Start
             Event starts a run.
           </p>
+          {/* The editor derives what downstream nodes may reference from the
+              Start Events' payloads, and a manual run carries whatever its caller
+              posted. Saying so is what keeps the picker's silence from reading as
+              a missing feature. */}
+          {rules.startEvents.length === 0 ? (
+            <p className="text-muted-foreground text-xs">
+              A manual run's payload is described by nothing, so downstream
+              nodes are offered no fields to reference. Add a Start Event to
+              give them its payload.
+            </p>
+          ) : null}
         </div>
       </div>
 

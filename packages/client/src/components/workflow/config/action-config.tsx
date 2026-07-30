@@ -491,7 +491,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
               fieldType="timestamp"
               id="waitUntil"
               onChange={(value) => onUpdateConfig({ waitUntil: value })}
-              placeholder="2026-03-10T09:00:00-05:00 or {{Trigger.data.startsAt}}"
+              placeholder="2026-03-10T09:00:00-05:00 or {{@trigger_1:Trigger.appointment.startsAt}}"
               value={configuredWaitUntil}
             />
             <p className="text-muted-foreground text-xs">

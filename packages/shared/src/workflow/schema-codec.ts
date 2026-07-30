@@ -61,7 +61,6 @@ type JsonSchemaType = WorkflowSchemaFieldType | WorkflowSchemaItemType;
 interface JsonSchemaNode {
   type?: string | string[];
   format?: string;
-  pattern?: string;
   description?: string;
   enum?: unknown[];
   const?: unknown;
@@ -153,7 +152,6 @@ function readJsonSchemaNode(value: unknown): JsonSchemaNode | undefined {
   return {
     type: readTypeName(node.type),
     format: readString(node.format),
-    pattern: readString(node.pattern),
     description: readString(node.description),
     enum: readUnknownArray(node.enum),
     // `const` is the one keyword whose presence matters apart from its value:
@@ -268,31 +266,22 @@ function normalizeSchemaFormat(
   return undefined;
 }
 
-function isIsoDatePattern(value: string | undefined): boolean {
-  if (!value) {
-    return false;
-  }
-  return value.startsWith("^([+-]?\\d{4}") && value.includes("0[1-9]|1[0-2]");
-}
-
 /**
  * Whether a string property names a moment in time.
  *
- * The keywords that say so sit flat on the property in a document Zod or
- * arktype derived, but Effect hangs everything a `.check(...)` contributed off
- * `allOf`, so `Schema.String.check(Schema.isPattern(...))` puts the pattern one
- * level down. Looking through `allOf` is what lets an Effect-derived schema
- * describe a timestamp field the same way the other two do.
+ * A `format` keyword is the whole of the evidence. It sits flat on the property
+ * in a document Zod or arktype derived, and Effect hangs everything a
+ * `.check(...)` contributed off `allOf`, so the walk looks one level down as
+ * well: an author who annotated inside a check still gets the field read as a
+ * timestamp.
  *
- * `Schema.DateFromString` still arrives as a bare `{ type: "string" }`: Effect
- * derives no `format` and no `pattern` for it, so there is nothing here to find.
- * A schema that wants its dates recognised has to carry the keyword.
+ * A schema that wants its dates recognised has to carry the keyword, and
+ * `timestampField` / `dateField` in `#src/types/timestamp` are how an author
+ * writes one. `Schema.Date` and `Schema.DateFromString` each arrive as a bare
+ * `{ type: "string" }`, because Effect derives no `format` for either.
  */
 function isTimestampString(prop: JsonSchemaNode): boolean {
-  if (
-    normalizeSchemaFormat(prop.format) === "timestamp" ||
-    isIsoDatePattern(prop.pattern)
-  ) {
+  if (normalizeSchemaFormat(prop.format) === "timestamp") {
     return true;
   }
 

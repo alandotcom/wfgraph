@@ -33,7 +33,7 @@ describe("a graph built in process", () => {
     expect(parsed.nodes).toHaveLength(1);
   });
 
-  it("accepts a webhook trigger config whose optional field holds undefined", () => {
+  it("accepts an entry node config whose optional field holds undefined", () => {
     const parsed = parseSerializedWorkflowGraph(
       graphWithNode({
         id: "n1",
@@ -41,7 +41,7 @@ describe("a graph built in process", () => {
         data: {
           label: "Webhook",
           type: "trigger",
-          config: { webhookSchema: undefined },
+          config: { lifecycleRules: undefined },
         },
       })
     );
@@ -87,12 +87,12 @@ describe("node data failure messages", () => {
     const message = messageFor({
       label: "Webhook",
       type: "trigger",
-      config: { webhookSchema: 42 },
+      config: { lifecycleRules: 42 },
     });
 
     expect(message).not.toContain('"action"');
     expect(message).toBe(
-      "config.webhookSchema: Expected string | undefined, got 42"
+      "config.lifecycleRules: Expected object | undefined, got 42"
     );
   });
 

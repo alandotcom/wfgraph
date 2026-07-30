@@ -145,6 +145,20 @@ imports it and no published manifest names it. Do not reach for it in new code.
 one ISO-string-to-`Date` conversion, as a checked `Schema.decodeTo` pair. Do not hand-roll `new Date(x)` or
 `.toISOString()` for a value crossing the wire.
 
+The same module holds the two spellings a schema author writes for a datetime field, both
+re-exported from `@rova/core` and `@rova/core/plugin`: `timestampField(description)` is an
+ISO string on both sides, and `dateField(description)` is that string on the wire with a
+`Date` in a handler. Either one carries `format: "date-time"` on the encoded side, which is
+the whole of how the editor learns a field is a moment in time -- it is what gives the field
+before/after operators in the condition builder, and what ranks it to the top of the menu at
+a field asking for a date. `Schema.Date` is refused at registration: a declaration has no
+encoding chain to annotate, so its description never reaches the JSON Schema the derivation
+reads.
+
+The keyword is the only route, and a foreign library takes it too: arktype writes it as
+`type("string.date.iso").configure({ format: "date-time" })`, and Zod's `z.iso.datetime()`
+emits it already. A pattern alone says nothing, whatever the regex looks like.
+
 **An integration is one `defineIntegration` value.**
 `packages/core/src/backend/lib/extensions/define-integration.ts` takes a type, a label, a
 credential form, an optional connection-test loader, and a record of actions keyed by

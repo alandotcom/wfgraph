@@ -1,6 +1,10 @@
 import { Schema, SchemaTransformation } from "effect";
 import { describe, expect, it } from "vitest";
-import { outputFieldsFromSchema } from "#src/workflow/output-fields";
+import { dateField } from "#src/types/timestamp";
+import {
+  outputFieldsFromSchema,
+  requireOutputFieldsFromSchema,
+} from "#src/workflow/output-fields";
 
 describe("outputFieldsFromSchema", () => {
   it("derives a codec field from the encoded side", () => {
@@ -26,5 +30,53 @@ describe("outputFieldsFromSchema", () => {
     const at = fields.find((field) => field.path === "at");
     expect(at?.type).toBe("timestamp");
     expect(at?.description).toBe("When it happened");
+  });
+});
+
+describe("requireOutputFieldsFromSchema and the codec hint", () => {
+  // The refusal an author meets when a field carries no description the derivation
+  // can read. Both shapes below are annotated as far as their author is concerned,
+  // which is why the message has to name the reason rather than repeat the demand.
+  const CODEC_HINT = "A codec's own annotations do not reach its JSON Schema";
+
+  it("refuses a bare Schema.Date and names the spelling that works", () => {
+    expect(() =>
+      requireOutputFieldsFromSchema(
+        'Action "test/dated"',
+        Schema.Struct({ at: Schema.Date })
+      )
+    ).toThrow(/use `dateField` instead/);
+  });
+
+  it("refuses an annotated codec with the same hint", () => {
+    // The case the hint was written for: `.annotate()` on a transformation lands
+    // on its decoded side, and the derivation compiles the encoded one, so the
+    // description never arrives and the author is told they wrote none.
+    expect(() =>
+      requireOutputFieldsFromSchema(
+        'Action "test/dated"',
+        Schema.Struct({
+          at: Schema.String.pipe(
+            Schema.decodeTo(Schema.Date, SchemaTransformation.dateFromString)
+          ).annotate({ description: "When it happened" }),
+        })
+      )
+    ).toThrow(CODEC_HINT);
+  });
+
+  it("accepts the same field written with dateField", () => {
+    expect(
+      requireOutputFieldsFromSchema(
+        'Action "test/dated"',
+        Schema.Struct({ at: dateField("When it happened") })
+      )
+    ).toEqual([
+      {
+        path: "at",
+        description: "When it happened",
+        type: "timestamp",
+        format: "timestamp",
+      },
+    ]);
   });
 });

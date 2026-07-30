@@ -18,3 +18,8 @@ export {
   type TypedActionResult,
 } from "@rova/shared/workflow/action-registry";
 export type { OutputSchema } from "@rova/shared/workflow/output-fields";
+/**
+ * How a schema says a field is a moment in time. `@rova/shared` is private, so a
+ * host reaches them here and a plugin author through `@rova/core/plugin`.
+ */
+export { dateField, timestampField } from "@rova/shared/types/timestamp";

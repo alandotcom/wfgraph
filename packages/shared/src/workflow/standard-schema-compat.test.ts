@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { type } from "arktype";
 import { z } from "zod";
 import { extractSchemaKeys, toStandardSchema } from "#src/types/schema";
+import { timestampField } from "#src/types/timestamp";
 import { requireOutputFieldsFromSchema } from "#src/workflow/output-fields";
 import { createAction } from "./action-registry";
 import { rewriteCelExpression } from "./inngest-event-data";
@@ -540,24 +541,47 @@ describe("createAction with Effect schemas", () => {
     ).toBe(false);
   });
 
-  it("surfaces an Effect pattern field as a timestamp through allOf", () => {
-    // Effect hangs every check-derived keyword off `allOf`, so the `pattern`
-    // that names a timestamp sits one level below where arktype and Zod write
-    // it. `parseWorkflowSchemaFieldsOrJsonSchema` looks through `allOf`, which
-    // is what puts this arm level with the other two.
+  it("surfaces a timestampField as a described timestamp", () => {
+    // What an Effect author writes for a datetime field. The annotations sit on
+    // the base type and the check's pattern lands under `allOf`, so the keyword
+    // the derivation reads is flat on the property where every library writes it.
     const schema = toStandardSchema(
-      Schema.Struct({
-        createdAt: Schema.String.check(
-          Schema.isPattern(new RegExp(ISO_DATE_PATTERN))
-        ),
-      })
+      Schema.Struct({ createdAt: timestampField("When it was created") })
     );
     const jsonSchema = schema["~standard"].jsonSchema.output({
       target: "draft-2020-12",
     });
 
     expect(parseWorkflowSchemaFieldsOrJsonSchema(jsonSchema)).toEqual([
-      { name: "createdAt", type: "timestamp", description: undefined },
+      {
+        name: "createdAt",
+        type: "timestamp",
+        description: "When it was created",
+      },
+    ]);
+  });
+
+  it("looks through allOf for the keyword a check contributed", () => {
+    // A schema library is free to hang the keyword one level down, and Effect
+    // hangs everything a `.check(...)` contributed there. The walk into `allOf`
+    // is what keeps such a document readable.
+    expect(
+      parseWorkflowSchemaFieldsOrJsonSchema({
+        type: "object",
+        properties: {
+          createdAt: {
+            type: "string",
+            description: "When it was created",
+            allOf: [{ format: "date-time" }],
+          },
+        },
+      })
+    ).toEqual([
+      {
+        name: "createdAt",
+        type: "timestamp",
+        description: "When it was created",
+      },
     ]);
   });
 
@@ -611,8 +635,11 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema with date formats", () => {
 const ISO_DATE_PATTERN =
   "^([+-]?\\d{4}(?!\\d{2}\\b))((-?)((0[1-9]|1[0-2])(\\3([12]\\d|0[1-9]|3[01]))?|W([0-4]\\d|5[0-3])(-?[1-7])?|(00[1-9]|0[1-9]\\d|[12]\\d{2}|3([0-5]\\d|6[1-6])))(T((([01]\\d|2[0-3])((:?)[0-5]\\d)?|24:?00)([,.]\\d+(?!:))?)?(\\17[0-5]\\d([,.]\\d+)?)?([Zz]|([+-])([01]\\d|2[0-3]):?([0-5]\\d)?)?)?)?$";
 
-describe("parseWorkflowSchemaFieldsOrJsonSchema with ISO date patterns", () => {
-  it("recognizes ISO date pattern as timestamp", () => {
+describe("parseWorkflowSchemaFieldsOrJsonSchema and the format keyword", () => {
+  it("reads a string carrying only an ISO pattern as text", () => {
+    // A `format` keyword is the only evidence a field names a moment in time.
+    // Recognising a regex instead meant recognising one library's spelling of it
+    // by its opening characters, and an author had no way to ask for the type.
     const fields = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
       properties: {
@@ -621,17 +648,20 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema with ISO date patterns", () => {
     });
 
     expect(fields).toEqual([
-      { name: "nextEligibleDate", type: "timestamp", description: undefined },
+      { name: "nextEligibleDate", type: "string", description: undefined },
     ]);
   });
 
-  it("recognizes nullable ISO date pattern as nullable timestamp", () => {
+  it("carries format through the nullable unwrap", () => {
+    // What an optional field renders as: `anyOf: [T, null]`. The keyword sits on
+    // the member rather than on the property, so reading the member is what makes
+    // an optional timestamp field a timestamp.
     const fields = parseWorkflowSchemaFieldsOrJsonSchema({
       type: "object",
       properties: {
         dateOfBirth: {
           anyOf: [
-            { type: "string", pattern: ISO_DATE_PATTERN },
+            { type: "string", format: "date-time", description: "Born" },
             { type: "null" },
           ],
         },
@@ -642,7 +672,7 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema with ISO date patterns", () => {
       {
         name: "dateOfBirth",
         type: "timestamp",
-        description: undefined,
+        description: "Born",
         nullable: true,
       },
     ]);
@@ -790,7 +820,11 @@ describe("createAction with Arktype schemas", () => {
     ).toBe("number");
   });
 
-  it("derives outputFields from Arktype output schema with date morphs", () => {
+  it("derives outputFields from an Arktype date the schema gave a format", () => {
+    // The derivation compiles the encoded side, and the encoded side of an Arktype
+    // date morph is its ISO string, which carries a pattern and no keyword.
+    // `.configure({ format })` is how an Arktype author says the string is a
+    // moment in time, the same one keyword `timestampField` writes in Effect.
     const action = createAction({
       id: "arktype/output-date-test",
       label: "Arktype Output Date Test",
@@ -798,7 +832,9 @@ describe("createAction with Arktype schemas", () => {
       schema: type({ id: "string" }),
       outputSchema: type({
         name: "string",
-        createdAt: "string.date.iso.parse",
+        createdAt: type("string.date.iso.parse").configure({
+          format: "date-time",
+        }),
       }),
       execute() {
         return {
@@ -857,10 +893,12 @@ describe("createAction with Arktype schemas", () => {
         "middleInitial?": "string | null",
         email: "string",
         "phone?": "string | null",
-        dateOfBirth: "string.date.iso | null",
+        dateOfBirth: type("string.date.iso")
+          .configure({ format: "date-time" })
+          .or("null"),
         bloodType: "'A' | 'B' | 'AB' | 'O' | null",
         hasPermanentDeferral: "boolean",
-        createdAt: "string.date.iso",
+        createdAt: type("string.date.iso").configure({ format: "date-time" }),
       }),
       execute() {
         return { success: true, data: {} as Record<string, unknown> };
@@ -881,7 +919,7 @@ describe("createAction with Arktype schemas", () => {
     expect(fieldNames).toContain("createdAt");
     expect(fields).toHaveLength(9);
 
-    // string.date.iso fields should be detected as timestamps via pattern
+    // A date field carrying the keyword is a timestamp on either side of a null.
     expect(fields.find((f) => f.path === "dateOfBirth")?.type).toBe(
       "timestamp"
     );

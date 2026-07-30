@@ -21,7 +21,7 @@
 // First, so the rest of the graph loads with .env already applied.
 import "../load-env";
 import { createServer } from "node:http";
-import { createAction, defineEvent } from "@rova/core";
+import { createAction, defineEvent, timestampField } from "@rova/core";
 import { createRovaApp } from "@rova/core/app";
 import { createRequestListener } from "@rova/core/node";
 // The built-in integrations, as values. Nothing registers on import, so the line
@@ -45,14 +45,18 @@ const appointmentIdSchema = Schema.String.annotate({
 });
 
 // Every field is annotated, nested ones included: the editor lists
-// `AppointmentLifecycle.appointment.startsAt` as its own entry in the template
-// picker and shows this text beside it, so a field left bare reads as the word
-// "string" to whoever is building the workflow.
+// `appointment.startsAt` as its own entry in the template picker and shows this
+// text beside it, so a field left bare reads as the word "string" to whoever is
+// building the workflow.
+//
+// A datetime field says so with `timestampField`, which annotates it as a
+// date-time. That is what gets the field before/after operators in the condition
+// builder and admits it to the Wait node's date field. `dateField` is the same
+// wire form with a `Date` in a handler, which an Event has no use for: an Event's
+// decoded payload is discarded, and what travels is the JSON the sender sent.
 const appointmentSchema = Schema.Struct({
   id: appointmentIdSchema,
-  startsAt: Schema.String.annotate({
-    description: "When the appointment starts, ISO 8601",
-  }),
+  startsAt: timestampField("When the appointment starts, ISO 8601"),
   patientName: Schema.String.annotate({ description: "Patient name" }),
   status: Schema.String.annotate({ description: "Appointment status" }),
 }).annotate({ description: "The appointment this event is about" });
@@ -71,9 +75,7 @@ const appointmentSchema = Schema.Struct({
  *
  *   POST /api/events/app%2Fappointment.created
  */
-const occurredAt = Schema.String.annotate({
-  description: "When the event was raised, ISO 8601",
-});
+const occurredAt = timestampField("When the event was raised, ISO 8601");
 
 const appointmentCreated = defineEvent({
   name: "app/appointment.created",
@@ -90,9 +92,7 @@ const appointmentRescheduled = defineEvent({
   schema: Schema.Struct({
     appointment: appointmentSchema,
     occurredAt,
-    previousStartsAt: Schema.String.annotate({
-      description: "The time it was moved from, ISO 8601",
-    }),
+    previousStartsAt: timestampField("The time it was moved from, ISO 8601"),
   }),
   correlationPath: "appointment.id",
 });
@@ -128,9 +128,7 @@ const paymentSettled = defineEvent({
     amountCents: Schema.Number.annotate({
       description: "Amount settled, in cents",
     }).check(Schema.isFinite()),
-    settledAt: Schema.String.annotate({
-      description: "When the payment settled, ISO 8601",
-    }),
+    settledAt: timestampField("When the payment settled, ISO 8601"),
   }),
   correlationPath: "appointmentId",
 });
@@ -151,9 +149,7 @@ const cancelAppointmentAction = createAction({
     }),
     status: Schema.String.annotate({ description: "Cancellation status" }),
     reason: Schema.String.annotate({ description: "Cancellation reason" }),
-    cancelledAt: Schema.String.annotate({
-      description: "ISO timestamp of cancellation",
-    }),
+    cancelledAt: timestampField("ISO timestamp of cancellation"),
   }),
   schema: Schema.Struct({
     appointmentId: appointmentIdSchema,

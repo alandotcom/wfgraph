@@ -116,7 +116,7 @@ describe("readLifecycleRules", () => {
   });
 
   it("answers undefined for a config carrying none", () => {
-    expect(readLifecycleRules({ webhookSchema: "[]" })).toBeUndefined();
+    expect(readLifecycleRules({ someOtherKey: "[]" })).toBeUndefined();
     expect(readLifecycleRules(undefined)).toBeUndefined();
   });
 

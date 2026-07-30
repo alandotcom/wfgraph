@@ -37,11 +37,8 @@ import {
   type TemplateToken,
   unwrapStepOutput,
 } from "@rova/shared/workflow/node-references";
-import { validateWorkflowOutputAgainstSchema } from "@rova/shared/workflow/schema-validation";
 import type { StepResult } from "@rova/shared/workflow/step-result";
-import { entryNodeLabel } from "@rova/shared/workflow/entry-node-label";
 import { readWaitForEvents } from "@rova/shared/workflow/wait-events";
-import { parseWebhookMockInput } from "@rova/shared/workflow/triggers/webhook-trigger";
 import type {
   ConditionBranch,
   SerializedWorkflowGraph,
@@ -241,6 +238,9 @@ function readContextPath(
  * A path that is missing, already a `Date`, or holding text that is not a
  * timestamp is left as found, and the expression then fails the way it would
  * have anyway, naming the field in its error.
+ *
+ * The context handed here has to be private to this evaluation, since the write
+ * lands inside whatever object holds the path.
  */
 function decodeConditionTimestamps(
   context: Record<string, unknown>,
@@ -307,10 +307,18 @@ function evaluateConditionExpression(
     return { result: false };
   }
 
-  const payload: Record<string, unknown> = {};
+  const merged: Record<string, unknown> = {};
   for (const output of Object.values(outputs)) {
-    mergeConditionContextValue(payload, output.data);
+    mergeConditionContextValue(merged, output.data);
   }
+
+  // A condition evaluates over its own copy. The merge above lifts keys by
+  // reference, so a nested object in it is the same object a node's stored output
+  // holds, and the timestamp decode below writes `Date`s into whatever object
+  // holds the path. Sharing that write would hand a downstream template a `Date`
+  // where the payload has an ISO string, which renders as a quoted UTC instant no
+  // timestamp parser accepts. Node outputs are JSON, so one clone is enough.
+  const payload = structuredClone(merged);
   decodeConditionTimestamps(
     payload,
     readConditionTimestampPaths(conditionModel)
@@ -1403,7 +1411,7 @@ async function executeWorkflowInner(
       return "Action";
     }
     if (node.data.type === "trigger") {
-      return entryNodeLabel(node.data.config);
+      return "Trigger";
     }
     return node.data.type;
   }
@@ -1524,69 +1532,30 @@ async function executeWorkflowInner(
     if (node.data.type === "trigger") {
       namedNodeLogger.debug("Executing trigger node");
 
-      const configRecord = node.data.config ?? {};
-      // The entry node's own sample payload, which stands in when a run was
-      // started with nothing: a test run from the canvas, before any Event.
-      const mockInput = parseWebhookMockInput(configRecord);
-      let triggerData: JsonObject = {
-        triggered: true,
-        timestamp: Date.now(),
+      // The entry node's output is the payload and nothing else. The Event's own
+      // schema validated it at intake, which is the only gate it passes through,
+      // and a key the engine added here would shadow a payload field of the same
+      // name.
+      const triggerData: JsonObject = triggerInput ?? {};
+
+      const triggerContext: StepContext = {
+        executionId,
+        nodeId: node.id,
+        nodeName,
+        nodeType: node.data.type,
       };
 
-      if (
-        mockInput &&
-        (!triggerInput || Object.keys(triggerInput).length === 0)
-      ) {
-        triggerData = { ...triggerData, ...mockInput };
-        namedNodeLogger.debug("Using trigger mock request payload", {
-          mockData: mockInput,
-        });
-      } else if (triggerInput && Object.keys(triggerInput).length > 0) {
-        // Use provided trigger input
-        triggerData = { ...triggerData, ...triggerInput };
-      }
-
-      let shouldExecuteTriggerStep = true;
-
-      // The output contract is the entry node's narrowing of its payload, so it
-      // is checked for every run rather than for one trigger type.
-      const schemaValidation = validateWorkflowOutputAgainstSchema({
-        schemaValue: configRecord.webhookOutputSchema,
-        output: triggerData,
-        contextLabel: "Webhook trigger",
+      // The step logs its own run rows, which is why the payload passes through
+      // one rather than being written straight into the outputs.
+      const triggerResult = await triggerStep({
+        triggerData,
+        _context: triggerContext,
       });
 
-      if (!schemaValidation.ok) {
-        result = {
-          success: false,
-          error: schemaValidation.error,
-        };
-        shouldExecuteTriggerStep = false;
-        namedNodeLogger.error("Webhook output schema validation failed", {
-          error: schemaValidation.error,
-        });
-      }
-
-      if (shouldExecuteTriggerStep) {
-        // Build context for logging
-        const triggerContext: StepContext = {
-          executionId,
-          nodeId: node.id,
-          nodeName,
-          nodeType: node.data.type,
-        };
-
-        // Execute trigger step (handles logging internally)
-        const triggerResult = await triggerStep({
-          triggerData,
-          _context: triggerContext,
-        });
-
-        result = {
-          success: triggerResult.success,
-          data: triggerResult.data,
-        };
-      }
+      result = {
+        success: triggerResult.success,
+        data: triggerResult.data,
+      };
     } else if (node.data.type === "action") {
       const config = node.data.config || {};
       const actionType = readConfigString(config, "actionType");

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { getDefaultStore } from "jotai";
 import { useState } from "react";
@@ -6,15 +6,50 @@ import {
   loadWorkflowGraphAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
+import {
+  emptyExtensionCatalog,
+  type EventMetadata,
+} from "@rova/shared/extensions/catalog";
+import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/workflow/lifecycle-outlets";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 import { TemplateBadgeInput } from "./template-badge-input";
 import { TemplateBadgeTextarea } from "./template-badge-textarea";
 
-const TRIGGER_TEMPLATE = "{{@trigger_1:Webhook.timestamp}}";
+// The entry node offers the payload fields of the Events its rules start on, so a
+// case that wants a field from it says what the app declares. `vi.hoisted` is what
+// lets the mock factory below read this.
+const surface = vi.hoisted(() => ({ events: [] as EventMetadata[] }));
+
+vi.mock("#src/lib/extensions", () => ({
+  getExtensionCatalog: () => ({
+    ...emptyExtensionCatalog,
+    events: surface.events,
+  }),
+}));
+
+const APPOINTMENT_CREATED: EventMetadata = {
+  name: "app/appointment.created",
+  label: "Appointment created",
+  // Declared in an order no target wants, so a case asserting the menu's order is
+  // asserting the ranking rather than the schema.
+  payloadFields: [
+    { path: "patientName", description: "Patient name", type: "string" },
+    {
+      path: "occurredAt",
+      description: "When it happened",
+      type: "timestamp",
+      format: "timestamp",
+    },
+    { path: "amountCents", description: "Amount in cents", type: "number" },
+  ],
+};
+
+const TRIGGER_TEMPLATE = "{{@trigger_1:Webhook.occurredAt}}";
 const HTTP_STATUS_TEMPLATE = "{{@http_1:HTTP Request.status}}";
 
 function seedTemplateContext(selectedNodeId = "wait_1") {
   const store = getDefaultStore();
+  surface.events = [APPOINTMENT_CREATED];
   const nodes: WorkflowNode[] = [
     {
       id: "trigger_1",
@@ -22,6 +57,13 @@ function seedTemplateContext(selectedNodeId = "wait_1") {
       data: {
         label: "Webhook",
         type: "trigger",
+        config: {
+          lifecycleRules: {
+            startEvents: [APPOINTMENT_CREATED.name],
+            cancelEvents: [],
+            concurrency: "unlimited",
+          },
+        },
       },
     },
     {
@@ -36,12 +78,21 @@ function seedTemplateContext(selectedNodeId = "wait_1") {
     },
   ];
   const edges: WorkflowEdge[] = [
-    { id: "edge_1", source: "trigger_1", target: "wait_1" },
+    {
+      id: "edge_1",
+      source: "trigger_1",
+      sourceHandle: LIFECYCLE_STARTED_HANDLE,
+      target: "wait_1",
+    },
   ];
 
   store.set(loadWorkflowGraphAtom, { nodes, edges });
 }
 
+/**
+ * The first row of the menu, which for a timestamp-typed field is the payload's
+ * timestamp: ranking puts it ahead of the plain string beside it.
+ */
 function findTimestampOption(): HTMLElement {
   const option = document.body.querySelector(".cursor-pointer");
 
@@ -50,6 +101,13 @@ function findTimestampOption(): HTMLElement {
   }
 
   return option;
+}
+
+/** The menu as it reads, top to bottom. */
+function menuRows(): string[] {
+  return Array.from(document.body.querySelectorAll(".cursor-pointer")).map(
+    (option) => option.textContent ?? ""
+  );
 }
 
 function findAutocompleteOptionByText(text: string): HTMLElement {
@@ -88,6 +146,10 @@ function ControlledTemplateBadgeInput({
       value={value}
     />
   );
+}
+
+function DurationTemplateBadgeInput() {
+  return <TemplateBadgeInput fieldType="duration" onChange={() => {}} value="" />;
 }
 
 function ControlledTemplateBadgeInputWithNodeContext({
@@ -178,7 +240,7 @@ describe("Template badge autocomplete", () => {
       expect(latestValue).toBe(TRIGGER_TEMPLATE);
       const badge = textbox.querySelector("[data-template]");
       expect(badge).toBeTruthy();
-      expect(badge?.textContent).toBe("Webhook.timestamp");
+      expect(badge?.textContent).toBe("Webhook.occurredAt");
     });
 
     expect(document.activeElement).toBe(textbox);
@@ -204,7 +266,7 @@ describe("Template badge autocomplete", () => {
       expect(latestValue).toBe(TRIGGER_TEMPLATE);
       const badge = textbox.querySelector("[data-template]");
       expect(badge).toBeTruthy();
-      expect(badge?.textContent).toBe("Webhook.timestamp");
+      expect(badge?.textContent).toBe("Webhook.occurredAt");
     });
   });
 
@@ -228,10 +290,45 @@ describe("Template badge autocomplete", () => {
       expect(latestValue).toBe(TRIGGER_TEMPLATE);
       const badge = textbox.querySelector("[data-template]");
       expect(badge).toBeTruthy();
-      expect(badge?.textContent).toBe("Webhook.timestamp");
+      expect(badge?.textContent).toBe("Webhook.occurredAt");
     });
 
     expect(document.activeElement).toBe(textbox);
+  });
+
+  it("puts the number first for a duration field and keeps the rest", async () => {
+    // A duration field admitted numbers alone, so a payload of strings and
+    // timestamps rendered nothing at all. Every field is offered now, ordered by
+    // what the target parses: the number, then text, then the instant a duration
+    // has no use for.
+    const view = render(<DurationTemplateBadgeInput />);
+    typeAtSymbol(view.getByRole("textbox"));
+
+    await waitFor(() => {
+      expect(menuRows()).toEqual([
+        "Webhook.amountCentsAmount in cents",
+        "Webhook.patientNamePatient name",
+        "Webhook.occurredAtWhen it happened",
+      ]);
+    });
+  });
+
+  it("puts the timestamp first for a date field, the epoch level with the text", async () => {
+    // A unix epoch is one of the two forms `parseTimestampWithTimezone` reads, so
+    // the number sits with the string rather than below it, and declaration order
+    // then decides between them.
+    const view = render(
+      <ControlledTemplateBadgeInput onValueChange={() => {}} />
+    );
+    typeAtSymbol(view.getByRole("textbox"));
+
+    await waitFor(() => {
+      expect(menuRows()).toEqual([
+        "Webhook.occurredAtWhen it happened",
+        "Webhook.patientNamePatient name",
+        "Webhook.amountCentsAmount in cents",
+      ]);
+    });
   });
 
   it("uses currentNodeId for autocomplete when no node is selected in the canvas", async () => {
@@ -315,7 +412,7 @@ describe("Template badge rendering", () => {
     const textbox = view.getByRole("textbox");
     await waitFor(() => {
       expect(textbox.querySelector("[data-template]")?.textContent).toBe(
-        "Webhook.timestamp"
+        "Webhook.occurredAt"
       );
     });
 
@@ -326,7 +423,7 @@ describe("Template badge rendering", () => {
 
     await waitFor(() => {
       expect(textbox.querySelector("[data-template]")?.textContent).toBe(
-        "Incoming Hook.timestamp"
+        "Incoming Hook.occurredAt"
       );
     });
   });
@@ -339,7 +436,7 @@ describe("Template badge rendering", () => {
 
     await waitFor(() => {
       expect(textbox.querySelector("[data-template]")?.textContent).toBe(
-        "Webhook.timestamp"
+        "Webhook.occurredAt"
       );
     });
   });

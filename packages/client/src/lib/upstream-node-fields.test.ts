@@ -8,21 +8,31 @@ import {
 import {
   type ActionMetadata,
   emptyExtensionCatalog,
+  type EventMetadata,
 } from "@rova/shared/extensions/catalog";
+import { dateField, timestampField } from "@rova/shared/types/timestamp";
+import {
+  LIFECYCLE_CANCELED_HANDLE,
+  LIFECYCLE_STARTED_HANDLE,
+} from "@rova/shared/workflow/lifecycle-outlets";
+import type { LifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
 import { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fields";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 
-// What a node offers downstream comes off the action's entry in the catalog, which
-// the editor fetches once before render. A case says what the surface holds by
-// writing this, and `vi.hoisted` is what lets the factory below read it.
+// What a node offers downstream comes off the catalog the editor fetches once
+// before render: an action's own entry, and for the entry node the Events its rules
+// name. A case says what the surface holds by writing this, and `vi.hoisted` is
+// what lets the factory below read it.
 const surface = vi.hoisted(() => ({
   actions: [] as ActionMetadata[],
+  events: [] as EventMetadata[],
 }));
 
 vi.mock("#src/lib/extensions", () => ({
   getExtensionCatalog: () => ({
     ...emptyExtensionCatalog,
     actions: surface.actions,
+    events: surface.events,
   }),
 }));
 
@@ -62,35 +72,80 @@ function createEdge(input: {
   id: string;
   source: string;
   target: string;
+  sourceHandle?: string;
 }): WorkflowEdge {
   return {
     id: input.id,
     source: input.source,
     target: input.target,
+    ...(input.sourceHandle ? { sourceHandle: input.sourceHandle } : {}),
   };
+}
+
+/** One Event, its payload fields derived the way `defineEvent` derives them. */
+function anEvent(input: {
+  name: string;
+  schema: Parameters<typeof requireOutputFieldsFromSchema>[1];
+}): EventMetadata {
+  return {
+    name: input.name,
+    label: input.name,
+    payloadFields: requireOutputFieldsFromSchema(
+      `Event "${input.name}"`,
+      input.schema
+    ),
+  };
+}
+
+/** The edge a run leaves the Started outlet by, drawn to one node. */
+function startedEdge(target: string): WorkflowEdge {
+  return createEdge({
+    id: `e-${target}`,
+    source: "trigger-1",
+    sourceHandle: LIFECYCLE_STARTED_HANDLE,
+    target,
+  });
+}
+
+/** An entry node whose rules start on these Events and cancel on those. */
+function anEntryNode(input: {
+  startEvents?: string[];
+  cancelEvents?: string[];
+}): WorkflowNode {
+  const lifecycleRules: LifecycleRules = {
+    startEvents: input.startEvents ?? [],
+    cancelEvents: input.cancelEvents ?? [],
+    concurrency: "unlimited",
+  };
+
+  return createNode({
+    id: "trigger-1",
+    type: "trigger",
+    label: "Trigger",
+    config: { lifecycleRules },
+  });
 }
 
 describe("upstream-node-fields", () => {
   afterEach(() => {
     surface.actions = [];
+    surface.events = [];
   });
 
   it("discovers transitive upstream nodes and condition fields", () => {
-    const nodes: WorkflowNode[] = [
-      createNode({
-        id: "trigger-1",
-        type: "trigger",
-        label: "Webhook",
-        config: {
-          webhookOutputSchema: JSON.stringify([
-            {
-              name: "data",
-              type: "object",
-              fields: [{ name: "id", type: "string" }],
-            },
-          ]),
-        },
+    surface.events = [
+      anEvent({
+        name: "app/appointment.created",
+        schema: Schema.Struct({
+          data: Schema.Struct({
+            id: Schema.String.annotate({ description: "Appointment ID" }),
+          }).annotate({ description: "The appointment" }),
+        }),
       }),
+    ];
+
+    const nodes: WorkflowNode[] = [
+      anEntryNode({ startEvents: ["app/appointment.created"] }),
       createNode({
         id: "http-1",
         type: "action",
@@ -121,7 +176,12 @@ describe("upstream-node-fields", () => {
     ];
 
     const edges: WorkflowEdge[] = [
-      createEdge({ id: "e1", source: "trigger-1", target: "http-1" }),
+      createEdge({
+        id: "e1",
+        source: "trigger-1",
+        sourceHandle: LIFECYCLE_STARTED_HANDLE,
+        target: "http-1",
+      }),
       createEdge({ id: "e2", source: "http-1", target: "wait-1" }),
       createEdge({ id: "e3", source: "wait-1", target: "condition-1" }),
     ];
@@ -148,38 +208,310 @@ describe("upstream-node-fields", () => {
     expect(fields.some((field) => field.path === "status")).toBe(true);
   });
 
-  it("maps fallback trigger timestamp and boolean fields", () => {
-    const nodes: WorkflowNode[] = [
-      createNode({
-        id: "trigger-1",
-        type: "trigger",
-        label: "Webhook",
-        config: {},
+  it("offers a Start Event's datetime fields as timestamps", () => {
+    // The acceptance case for the condition builder: a field an Event declared
+    // with `dateField` or `timestampField` arrives typed `timestamp`, which is
+    // what gets it the before/after operators rather than string ones.
+    surface.events = [
+      anEvent({
+        name: "app/appointment.created",
+        schema: Schema.Struct({
+          startsAt: dateField("When the appointment starts"),
+          occurredAt: timestampField("When the event was raised"),
+          patientName: Schema.String.annotate({ description: "Patient name" }),
+        }),
       }),
-      createNode({
-        id: "condition-1",
-        type: "action",
-        label: "Condition",
-        config: { actionType: "Condition" },
-      }),
-    ];
-
-    const edges: WorkflowEdge[] = [
-      createEdge({ id: "e1", source: "trigger-1", target: "condition-1" }),
     ];
 
     const fields = getUpstreamConditionFields({
       currentNodeId: "condition-1",
-      nodes,
-      edges,
+      nodes: [
+        anEntryNode({ startEvents: ["app/appointment.created"] }),
+        createNode({
+          id: "condition-1",
+          type: "action",
+          label: "Condition",
+          config: { actionType: "Condition" },
+        }),
+      ],
+      edges: [
+        createEdge({
+          id: "e1",
+          source: "trigger-1",
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+          target: "condition-1",
+        }),
+      ],
     });
 
-    expect(fields).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ path: "triggered", type: "boolean" }),
-        expect.objectContaining({ path: "timestamp", type: "timestamp" }),
-      ])
-    );
+    expect(fields).toEqual([
+      expect.objectContaining({
+        path: "occurredAt",
+        type: "timestamp",
+        description: "When the event was raised",
+      }),
+      expect.objectContaining({ path: "patientName", type: "string" }),
+      expect.objectContaining({
+        path: "startsAt",
+        type: "timestamp",
+        description: "When the appointment starts",
+      }),
+    ]);
+  });
+
+  it("offers the fields every Start Event carries and no others", () => {
+    // Two Start Events mean the intersection. A field only one of them declares
+    // would resolve to nothing on the runs that arrived as the other.
+    surface.events = [
+      anEvent({
+        name: "app/appointment.created",
+        schema: Schema.Struct({
+          occurredAt: timestampField("When the event was raised"),
+          patientName: Schema.String.annotate({ description: "Patient name" }),
+        }),
+      }),
+      anEvent({
+        name: "app/appointment.rescheduled",
+        schema: Schema.Struct({
+          occurredAt: timestampField("When the event was raised"),
+          previousStartsAt: timestampField("The time it moved from"),
+        }),
+      }),
+    ];
+
+    const fields = getUpstreamFields({
+      currentNodeId: "action-1",
+      nodes: [
+        anEntryNode({
+          startEvents: [
+            "app/appointment.created",
+            "app/appointment.rescheduled",
+          ],
+        }),
+        createNode({
+          id: "action-1",
+          type: "action",
+          label: "Send SMS",
+          config: { actionType: "HTTP Request" },
+        }),
+      ],
+      edges: [
+        createEdge({
+          id: "e1",
+          source: "trigger-1",
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+          target: "action-1",
+        }),
+      ],
+    });
+
+    expect(fields.map((field) => field.path)).toEqual(["occurredAt"]);
+  });
+
+  it("offers a node behind the Canceled outlet the Cancel Events' fields", () => {
+    surface.events = [
+      anEvent({
+        name: "app/appointment.created",
+        schema: Schema.Struct({
+          occurredAt: timestampField("When the event was raised"),
+          bookedBy: Schema.String.annotate({ description: "Who booked it" }),
+        }),
+      }),
+      anEvent({
+        name: "app/appointment.canceled",
+        schema: Schema.Struct({
+          occurredAt: timestampField("When the event was raised"),
+          reason: Schema.String.annotate({
+            description: "Why it was called off",
+          }),
+        }),
+      }),
+    ];
+
+    const nodes: WorkflowNode[] = [
+      anEntryNode({
+        startEvents: ["app/appointment.created"],
+        cancelEvents: ["app/appointment.canceled"],
+      }),
+      createNode({
+        id: "on-cancel",
+        type: "action",
+        label: "Apologise",
+        config: { actionType: "HTTP Request" },
+      }),
+      createNode({
+        id: "either-way",
+        type: "action",
+        label: "Log it",
+        config: { actionType: "HTTP Request" },
+      }),
+    ];
+
+    const edges: WorkflowEdge[] = [
+      createEdge({
+        id: "e1",
+        source: "trigger-1",
+        sourceHandle: LIFECYCLE_CANCELED_HANDLE,
+        target: "on-cancel",
+      }),
+      createEdge({
+        id: "e2",
+        source: "trigger-1",
+        sourceHandle: LIFECYCLE_STARTED_HANDLE,
+        target: "either-way",
+      }),
+      createEdge({ id: "e3", source: "on-cancel", target: "either-way" }),
+    ];
+
+    // Behind Canceled: the Cancel Event's own fields, including the one the Start
+    // Event never declares.
+    expect(
+      getUpstreamFields({ currentNodeId: "on-cancel", nodes, edges }).map(
+        (field) => field.path
+      )
+    ).toEqual(["occurredAt", "reason"]);
+
+    // Both outlets reach this one, so it is offered what both payloads carry and
+    // neither side's own field: `reason` arrives only on a cancel, `bookedBy` only
+    // on a start.
+    expect(
+      getUpstreamFields({ currentNodeId: "either-way", nodes, edges })
+        .filter((field) => field.sourceNodeId === "trigger-1")
+        .map((field) => field.path)
+    ).toEqual(["occurredAt"]);
+  });
+
+  it("offers a known Event's fields whole beside an Event it cannot name", () => {
+    // A rules declaration naming an Event this build never heard of is refused at
+    // save, so it describes a graph that cannot run. The picker still names what it
+    // can rather than going quiet on the Event it does know.
+    surface.events = [
+      anEvent({
+        name: "app/appointment.created",
+        schema: Schema.Struct({
+          occurredAt: timestampField("When the event was raised"),
+          patientName: Schema.String.annotate({ description: "Patient name" }),
+        }),
+      }),
+    ];
+
+    expect(
+      getUpstreamFields({
+        currentNodeId: "action-1",
+        nodes: [
+          anEntryNode({
+            startEvents: ["app/appointment.created", "app/never.declared"],
+          }),
+          createNode({
+            id: "action-1",
+            type: "action",
+            label: "Send SMS",
+            config: { actionType: "custom/unknown" },
+          }),
+        ],
+        edges: [startedEdge("action-1")],
+      }).map((field) => field.path)
+    ).toEqual(["occurredAt", "patientName"]);
+  });
+
+  it("offers nothing when it can name none of the Start Events", () => {
+    surface.events = [];
+
+    expect(
+      getUpstreamFields({
+        currentNodeId: "action-1",
+        nodes: [
+          anEntryNode({ startEvents: ["app/never.declared"] }),
+          createNode({
+            id: "action-1",
+            type: "action",
+            label: "Send SMS",
+            config: { actionType: "custom/unknown" },
+          }),
+        ],
+        edges: [startedEdge("action-1")],
+      })
+    ).toEqual([]);
+  });
+
+  it("offers a path its Events type differently as plain text", () => {
+    // Both Events carry `occurredAt`, and they disagree about what it is. The type
+    // decides a condition row's operators, so the picker keeps the path and
+    // describes it as the text a template renders it to.
+    surface.events = [
+      anEvent({
+        name: "app/appointment.created",
+        schema: Schema.Struct({
+          occurredAt: timestampField("When the event was raised"),
+        }),
+      }),
+      anEvent({
+        name: "app/appointment.rescheduled",
+        schema: Schema.Struct({
+          occurredAt: Schema.String.annotate({ description: "When, roughly" }),
+        }),
+      }),
+    ];
+
+    expect(
+      getUpstreamFields({
+        currentNodeId: "action-1",
+        nodes: [
+          anEntryNode({
+            startEvents: [
+              "app/appointment.created",
+              "app/appointment.rescheduled",
+            ],
+          }),
+          createNode({
+            id: "action-1",
+            type: "action",
+            label: "Send SMS",
+            config: { actionType: "custom/unknown" },
+          }),
+        ],
+        edges: [startedEdge("action-1")],
+      })
+    ).toEqual([
+      {
+        path: "occurredAt",
+        description: "When the event was raised",
+        type: "string",
+        sourceNodeId: "trigger-1",
+        sourceNodeName: "Trigger",
+      },
+    ]);
+  });
+
+  it("offers nothing from an entry node no outlet connects it to", () => {
+    // The save refuses an entry-node edge that names no outlet, so a graph
+    // carrying one cannot run and there is no payload to promise.
+    surface.events = [
+      anEvent({
+        name: "app/appointment.created",
+        schema: Schema.Struct({
+          occurredAt: timestampField("When the event was raised"),
+        }),
+      }),
+    ];
+
+    const fields = getUpstreamFields({
+      currentNodeId: "action-1",
+      nodes: [
+        anEntryNode({ startEvents: ["app/appointment.created"] }),
+        createNode({
+          id: "action-1",
+          type: "action",
+          label: "Send SMS",
+          config: { actionType: "custom/unknown" },
+        }),
+      ],
+      edges: [
+        createEdge({ id: "e1", source: "trigger-1", target: "action-1" }),
+      ],
+    });
+
+    expect(fields).toEqual([]);
   });
 
   it("surfaces an action field with no declared type as a string", () => {

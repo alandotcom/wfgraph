@@ -190,6 +190,36 @@ describe("LifecyclePanel", () => {
       expect(rulesOf(latest).startEvents).toEqual([]);
     });
   });
+
+  it("says a manual run's payload is described by nothing", async () => {
+    // What the editor can offer downstream comes off the Start Events, so a
+    // workflow with none leaves the picker empty. The panel says so rather than
+    // leaving that silence to be read as a missing feature.
+    let latest: Record<string, unknown> = {
+      lifecycleRules: {
+        startEvents: ["app/appointment.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        allowManualStart: true,
+      },
+    };
+    const view = render(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    expect(view.queryByText(/described by nothing/)).toBeNull();
+
+    fireEvent.click(view.getByRole("button", { name: "Appointment created" }));
+
+    await waitFor(() => {
+      expect(view.getByText(/described by nothing/)).toBeTruthy();
+    });
+  });
 });
 
 describe("LifecyclePanel Correlation Paths", () => {

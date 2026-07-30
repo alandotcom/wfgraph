@@ -1,9 +1,20 @@
+import { compact } from "es-toolkit/array";
 import { getExtensionCatalog } from "#src/lib/extensions";
-import { findAction } from "@rova/shared/extensions/catalog";
+import {
+  type ExtensionCatalog,
+  findAction,
+  findEvent,
+} from "@rova/shared/extensions/catalog";
 import type {
   ConditionFieldDefinition,
   ConditionFieldType,
 } from "@rova/shared/workflow/conditions";
+import {
+  entryOutletsReaching,
+  LIFECYCLE_CANCELED_HANDLE,
+  LIFECYCLE_STARTED_HANDLE,
+} from "@rova/shared/workflow/lifecycle-outlets";
+import { readLifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
 import {
   flattenSchemaToReferenceFields,
   type ReferenceField,
@@ -11,6 +22,7 @@ import {
 } from "@rova/shared/workflow/node-references";
 import { parseWorkflowSchemaFieldsString } from "@rova/shared/workflow/schema-codec";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
+import { upstreamNodeIds } from "@rova/shared/workflow/upstream-nodes";
 
 /** First declaration of a path wins, so defaults stay ahead of schema extras. */
 function dedupeByPath(fields: ReferenceField[]): ReferenceField[] {
@@ -43,20 +55,6 @@ const DEFAULT_DATABASE_OUTPUT_FIELDS: ReferenceField[] = [
   },
 ];
 
-const DEFAULT_TRIGGER_OUTPUT_FIELDS: ReferenceField[] = [
-  {
-    path: "triggered",
-    description: "Trigger status",
-    type: "boolean",
-  },
-  {
-    path: "timestamp",
-    description: "Trigger timestamp",
-    type: "timestamp",
-  },
-  { path: "input", description: "Input data", type: "object" },
-];
-
 export type ConditionSelectableField = ConditionFieldDefinition & {
   description: string;
   sourceNodeId: string;
@@ -72,13 +70,6 @@ function readConfigString(
 ): string | undefined {
   const value = config?.[key];
   return typeof value === "string" ? value : undefined;
-}
-
-function readOutputSchemaString(
-  config: Record<string, unknown> | undefined,
-  outputSchemaKey: string
-): string | undefined {
-  return readConfigString(config, outputSchemaKey);
 }
 
 function readSchemaFields(schemaString: string | undefined): ReferenceField[] {
@@ -98,7 +89,7 @@ function getHttpRequestOutputFields(
   config: Record<string, unknown> | undefined
 ): ReferenceField[] {
   const outputSchemaFields = readSchemaFields(
-    readOutputSchemaString(config, "httpOutputSchema")
+    readConfigString(config, "httpOutputSchema")
   );
 
   if (outputSchemaFields.length === 0) {
@@ -112,7 +103,7 @@ function getDatabaseQueryOutputFields(
   config: Record<string, unknown> | undefined
 ): ReferenceField[] {
   const outputSchemaFields = readSchemaFields(
-    readOutputSchemaString(config, "dbOutputSchema")
+    readConfigString(config, "dbOutputSchema")
   );
 
   if (outputSchemaFields.length > 0) {
@@ -123,20 +114,104 @@ function getDatabaseQueryOutputFields(
 }
 
 /**
- * What the entry node offers downstream nodes.
+ * The fields every one of these Events carries, by path.
  *
- * The narrowed output contract the builder wrote, over the fields every run
- * carries. There is no per-trigger-type arm: an entry node has one payload shape
- * now, and B5 replaces the hand-written one with the Start Events' own fields.
+ * Only the common paths qualify: a field some of the Events leave out resolves to
+ * nothing on the runs that arrived as one of those, so offering it would be a
+ * promise the payload does not keep.
+ *
+ * A common path keeps its declared type only where every Event agrees on it, the
+ * `format` included, because the type is what decides a condition row's operators
+ * and a rule built against one Event would be unanswerable on a run that arrived
+ * as another. Disagreement leaves the path offered as text, which is what a
+ * template renders it to in any case, and gives the condition builder the string
+ * operators every payload can answer.
+ *
+ * An Event the catalog has never heard of is skipped. Saving refuses a rules
+ * declaration naming one, so it belongs to a graph that cannot run, and the
+ * picker's job is to offer what it can name.
  */
-function getTriggerOutputFields(node: WorkflowNode): ReferenceField[] {
-  const outputSchemaFields = readSchemaFields(
-    readOutputSchemaString(node.data.config, "webhookOutputSchema")
+function commonPayloadFields(
+  eventNames: readonly string[],
+  catalog: ExtensionCatalog
+): ReferenceField[] {
+  const perEvent = compact(
+    eventNames.map((name) => findEvent(catalog, name)?.payloadFields)
   );
 
-  return outputSchemaFields.length === 0
-    ? DEFAULT_TRIGGER_OUTPUT_FIELDS
-    : dedupeByPath([...DEFAULT_TRIGGER_OUTPUT_FIELDS, ...outputSchemaFields]);
+  const [first, ...rest] = perEvent;
+  if (!first) {
+    return [];
+  }
+
+  return compact(
+    first.map((field) => {
+      const declarations = rest.map((fields) =>
+        fields.find((other) => other.path === field.path)
+      );
+      if (declarations.some((other) => other === undefined)) {
+        return undefined;
+      }
+
+      const agreed = declarations.every(
+        (other) => other?.type === field.type && other?.format === field.format
+      );
+      // Null on any of them is null on the field, which is what puts the
+      // is-set operators on its condition row.
+      const nullable =
+        field.nullable || declarations.some((other) => other?.nullable);
+
+      return {
+        ...(agreed
+          ? field
+          : {
+              path: field.path,
+              description: field.description,
+              type: "string" as const,
+            }),
+        ...(nullable ? { nullable: true } : {}),
+      };
+    })
+  );
+}
+
+/**
+ * What the entry node offers a particular node downstream of it.
+ *
+ * The entry node's output is the payload of the Event that started or canceled
+ * the run, and which of those a node receives depends on the outlet it sits
+ * behind: the Start Events' fields behind Started, the Cancel Events' behind
+ * Canceled, and the fields common to both where a branch rejoins. Every Event a
+ * run could have arrived as goes into one intersection, which is the same rule
+ * whether the multiplicity comes from several Start Events or from two outlets.
+ *
+ * A node the entry node cannot reach through a named outlet is offered nothing.
+ * The save refuses an entry-node edge that names no outlet, so an unnamed one
+ * describes a graph that cannot run.
+ */
+function getEntryNodeOutputFields(input: {
+  entryNode: WorkflowNode;
+  targetNodeId: string;
+  edges: WorkflowEdge[];
+}): ReferenceField[] {
+  const rules = readLifecycleRules(input.entryNode.data.config);
+  if (!rules) {
+    return [];
+  }
+
+  const outlets = entryOutletsReaching({
+    entryNodeId: input.entryNode.id,
+    targetNodeId: input.targetNodeId,
+    edges: input.edges,
+  });
+
+  return commonPayloadFields(
+    [
+      ...(outlets.has(LIFECYCLE_STARTED_HANDLE) ? rules.startEvents : []),
+      ...(outlets.has(LIFECYCLE_CANCELED_HANDLE) ? rules.cancelEvents : []),
+    ],
+    getExtensionCatalog()
+  );
 }
 
 function getPluginActionOutputFields(actionType: string): ReferenceField[] {
@@ -169,7 +244,22 @@ export function getNodeDisplayName(node: WorkflowNode): string {
   return "Node";
 }
 
-export function getNodeOutputFields(node: WorkflowNode): ReferenceField[] {
+/**
+ * Where in the graph the fields are being asked for.
+ *
+ * The entry node is the reason this exists: what it offers depends on the node
+ * asking, because the outlet between the two decides which Events' payloads can
+ * arrive. Every other node answers from its own config or its catalog entry.
+ */
+export type FieldRequest = {
+  targetNodeId: string;
+  edges: WorkflowEdge[];
+};
+
+export function getNodeOutputFields(
+  node: WorkflowNode,
+  request: FieldRequest
+): ReferenceField[] {
   const actionType = readConfigString(node.data.config, "actionType");
 
   if (actionType === "HTTP Request") {
@@ -188,12 +278,17 @@ export function getNodeOutputFields(node: WorkflowNode): ReferenceField[] {
   }
 
   if (node.data.type === "trigger") {
-    return getTriggerOutputFields(node);
+    return getEntryNodeOutputFields({
+      entryNode: node,
+      targetNodeId: request.targetNodeId,
+      edges: request.edges,
+    });
   }
 
   return [{ path: "data", description: "Output data" }];
 }
 
+/** The nodes a run passed through before this one, in canvas order. */
 export function getUpstreamNodes(input: {
   currentNodeId?: string;
   nodes: WorkflowNode[];
@@ -204,40 +299,7 @@ export function getUpstreamNodes(input: {
     return [];
   }
 
-  const incomingByTarget = new Map<string, string[]>();
-  for (const edge of edges) {
-    const incoming = incomingByTarget.get(edge.target);
-    if (incoming) {
-      incoming.push(edge.source);
-    } else {
-      incomingByTarget.set(edge.target, [edge.source]);
-    }
-  }
-
-  const visited = new Set<string>();
-  const upstreamIds = new Set<string>();
-  const stack = [currentNodeId];
-
-  while (stack.length > 0) {
-    const nodeId = stack.pop();
-    if (!nodeId || visited.has(nodeId)) {
-      continue;
-    }
-    visited.add(nodeId);
-
-    const incoming = incomingByTarget.get(nodeId);
-    if (!incoming) {
-      continue;
-    }
-
-    for (const sourceNodeId of incoming) {
-      upstreamIds.add(sourceNodeId);
-      if (!visited.has(sourceNodeId)) {
-        stack.push(sourceNodeId);
-      }
-    }
-  }
-
+  const upstreamIds = upstreamNodeIds(currentNodeId, edges);
   return nodes.filter((node) => upstreamIds.has(node.id));
 }
 
@@ -246,12 +308,20 @@ export function getUpstreamFields(input: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
 }): UpstreamField[] {
-  const upstreamNodes = getUpstreamNodes(input);
+  // The one narrowing: an entry node's answer names the node asking, so the id has
+  // to be a string by the time the fields are read.
+  const { currentNodeId, edges } = input;
+  if (!currentNodeId) {
+    return [];
+  }
 
-  return upstreamNodes.flatMap((node) => {
+  return getUpstreamNodes(input).flatMap((node) => {
     const sourceNodeName = getNodeDisplayName(node);
 
-    return getNodeOutputFields(node).map((field) => ({
+    return getNodeOutputFields(node, {
+      targetNodeId: currentNodeId,
+      edges,
+    }).map((field) => ({
       ...field,
       sourceNodeId: node.id,
       sourceNodeName,

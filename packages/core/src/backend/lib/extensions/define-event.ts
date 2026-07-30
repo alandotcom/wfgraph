@@ -40,10 +40,33 @@ import { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fiel
  * checks an arriving payload; the JSON Schema half is where `payloadFields`
  * comes from, so a library that describes only how to validate cannot define an
  * Event. Zod and arktype each publish both.
+ *
+ * `TPayload` is an Effect schema's **encoded** side, which is the payload as it
+ * arrives and the shape every path in an Event definition addresses. A schema may
+ * therefore carry a transform: `dateField` decodes to a `Date` and still declares
+ * a JSON payload, and the Correlation Path still names the string on the wire.
+ * Nothing consumes the decoded value -- the gate discards it and the raw JSON
+ * travels -- so a transform buys validation precision and derivation, and the
+ * decoded type it produces has no reader to serve. `OutputSchema` in
+ * `@rova/shared/workflow/output-fields` is the deliberate opposite: an action's
+ * handler produces the decoded value, so that one constrains the decoded side.
+ *
+ * The foreign arm names the other side, and Standard Schema leaves no way to say
+ * otherwise: it publishes one output type, so a Zod or arktype schema's
+ * `TPayload` is what that library validates *to*. It agrees with the wire for the
+ * schemas anyone writes here, and diverges for a JSON-to-JSON morph -- an arktype
+ * pipe renaming a key, say -- whose paths would then address a shape no sender
+ * ever posts. An Event wanting a transform is written in Effect Schema.
  */
 export type PayloadSchema<TPayload> =
+  // The positions are `<Type, Encoded, DecodingServices, EncodingServices>`.
+  // `never` in the decoding-services slot is what keeps this assignable to the
+  // decode-side APIs that `Schema.ConstraintDecoder<unknown>` names, which is how
+  // `asStandardSchema` and the gate's direct decode still accept it.
+  // `Schema.ConstraintEncoder<TPayload>` names the encoded side too and is not a
+  // substitute: it fills that slot with `unknown`, and no decode would take it.
   | StandardSchema<TPayload>
-  | Schema.ConstraintDecoder<TPayload>;
+  | Schema.ConstraintCodec<unknown, TPayload, never, unknown>;
 
 /** How an Event arrives, when the transport differs from the Event's identity. */
 export type EventSource = {
@@ -57,8 +80,6 @@ export type EventDefinition<TPayload extends JsonObject> = {
   readonly name: string;
   readonly label: string;
   readonly description?: string;
-  /** The bridged object, kept for the JSON Schema half and the CEL key extraction. */
-  readonly schema: StandardSchema<TPayload>;
   /**
    * The intake gate: whether an arriving payload is this Event at all.
    *
@@ -85,7 +106,14 @@ export type EventDefinition<TPayload extends JsonObject> = {
   readonly inngestFunctionOptions?: Record<string, unknown>;
   /** Derived once, at definition. What the editor lists. */
   readonly payloadFields: readonly ReferenceField[];
-  /** Phantom, so the payload type stays inferable at a call site. */
+  /**
+   * Phantom, and the only occurrence of `TPayload` left on this type.
+   *
+   * The type parameter earns its keep at the `defineEvent` call site rather than
+   * here: it is what types `correlationPath`, `source.when.path`, and the Inngest
+   * options against the payload's own shape. Without this field TypeScript would
+   * have no occurrence to infer from and every definition would widen.
+   */
   readonly _payload?: TPayload;
 };
 
@@ -129,8 +157,8 @@ export class PayloadRejected extends Schema.TaggedErrorClass<PayloadRejected>()(
  */
 function buildPayloadGate(
   eventName: string,
-  authored: PayloadSchema<JsonObject>,
-  bridged: StandardSchema<JsonObject>
+  authored: PayloadSchema<unknown>,
+  bridged: StandardSchema<unknown>
 ): (payload: unknown) => Effect.Effect<void, PayloadRejected> {
   const reject = (error: string) =>
     Effect.fail(new PayloadRejected({ eventName, error }));
@@ -140,7 +168,7 @@ function buildPayloadGate(
   // hands back its own rendered strings, and Effect's renderer prints the value it
   // rejected. A direct decode keeps the Effect issue, which this project renders
   // itself.
-  if (isEffectSchema<JsonObject>(authored)) {
+  if (isEffectSchema(authored)) {
     const decode = Schema.decodeUnknownEffect(authored, { errors: "all" });
     return (payload) =>
       decode(payload).pipe(
@@ -257,7 +285,6 @@ export function defineEvent<TPayload extends JsonObject>(
     name,
     label,
     description: input.description,
-    schema,
     decodePayload: buildPayloadGate(name, input.schema, schema),
     correlationPath: input.correlationPath?.trim() || undefined,
     source: when ? { event: sourceEvent, when } : { event: sourceEvent },

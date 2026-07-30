@@ -25,27 +25,57 @@ type TemplateAutocompleteProps = {
   fieldType?: "duration" | "timestamp";
 };
 
-function isFieldCompatible(
+/**
+ * Where a field sits in the menu for a typed target: the lower the rank, the
+ * higher it appears.
+ *
+ * A rank rather than a verdict, because what a target accepts is wider than its
+ * own type. A template renders to text and the parsers behind these fields read
+ * more than one form: `parseTimestampWithTimezone` takes an ISO string or a unix
+ * epoch, and a duration is written `24h` or `P1D`. Ranking is what keeps an
+ * exactly-typed field at the top of the menu while leaving the rest reachable,
+ * which matters most for a duration field, whose payload usually holds no number
+ * at all.
+ *
+ * A field of no declared type ranks with the exact matches, because nothing is
+ * known against it.
+ */
+function fieldRank(
   field: ReferenceField,
   targetType: "duration" | "timestamp" | undefined
-): boolean {
-  if (!targetType) {
-    return true;
-  }
-  if (!field.type) {
-    return true;
+): number {
+  if (!(targetType && field.type)) {
+    return 0;
   }
 
   if (targetType === "duration") {
-    return field.type === "number";
+    // A duration is a length. A timestamp names an instant, so it ranks with the
+    // shapes that carry no length at all rather than with plain text.
+    if (field.type === "number") {
+      return 0;
+    }
+    return field.type === "string" ? 1 : 2;
   }
 
-  if (targetType === "timestamp") {
-    return field.type === "timestamp" || field.format === "timestamp";
+  if (field.type === "timestamp" || field.format === "timestamp") {
+    return 0;
   }
 
-  return true;
+  // A number is a unix epoch to the timestamp parser, which is one of the two
+  // forms it reads, so it sits level with a string rather than below it.
+  return field.type === "string" || field.type === "number" ? 1 : 2;
 }
+
+/** One row of the menu: a whole node's output, or one path inside it. */
+type TemplateOption = {
+  type: "node" | "field";
+  rank: number;
+  nodeId: string;
+  nodeName: string;
+  field?: string;
+  description?: string;
+  template: string;
+};
 
 export function TemplateAutocomplete({
   isOpen,
@@ -69,24 +99,15 @@ export function TemplateAutocomplete({
     });
   }, [currentNodeId, edges, nodes]);
 
-  const options = useMemo<
-    Array<{
-      type: "node" | "field";
-      nodeId: string;
-      nodeName: string;
-      field?: string;
-      description?: string;
-      template: string;
-    }>
-  >(() => {
-    const nextOptions: Array<{
-      type: "node" | "field";
-      nodeId: string;
-      nodeName: string;
-      field?: string;
-      description?: string;
-      template: string;
-    }> = [];
+  const options = useMemo<TemplateOption[]>(() => {
+    // Nothing is upstream of nowhere: `getUpstreamNodes` already answers with an
+    // empty list, and this is where the id becomes a string for the entry node's
+    // answer, which names the node asking.
+    if (!currentNodeId) {
+      return [];
+    }
+
+    const nextOptions: TemplateOption[] = [];
 
     for (const node of upstreamNodes) {
       const nodeName = getNodeDisplayName(node);
@@ -94,6 +115,7 @@ export function TemplateAutocomplete({
       if (!fieldType && node.data.type !== "trigger") {
         nextOptions.push({
           type: "node",
+          rank: 0,
           nodeId: node.id,
           nodeName,
           template: formatTemplateToken({
@@ -103,12 +125,13 @@ export function TemplateAutocomplete({
         });
       }
 
-      for (const field of getNodeOutputFields(node)) {
-        if (!isFieldCompatible(field, fieldType)) {
-          continue;
-        }
+      for (const field of getNodeOutputFields(node, {
+        targetNodeId: currentNodeId,
+        edges,
+      })) {
         nextOptions.push({
           type: "field",
+          rank: fieldRank(field, fieldType),
           nodeId: node.id,
           nodeName,
           field: field.path,
@@ -122,8 +145,10 @@ export function TemplateAutocomplete({
       }
     }
 
-    return nextOptions;
-  }, [upstreamNodes, fieldType]);
+    // A stable sort, so the fields a typed target actually wants come first while
+    // each node's own fields stay in schema order behind them.
+    return nextOptions.toSorted((a, b) => a.rank - b.rank);
+  }, [upstreamNodes, fieldType, currentNodeId, edges]);
 
   const filteredOptions = useMemo(() => {
     const trimmedFilter = filter.trim().toLowerCase();

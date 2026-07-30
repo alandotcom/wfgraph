@@ -36,17 +36,12 @@ import { lifecycleRulesSchema } from "#src/workflow/lifecycle-rules";
  * per-type arm, because an entry node no longer has a kind -- what reaches it is
  * an Event, named in the rules.
  *
- * The three schema fields describe the payload a run receives: the shape, the
- * narrowing of it downstream nodes read, and a sample to try a run against. B5
- * replaces them with the Start Events' own `payloadFields`, which is where that
- * shape belongs, and this closed struct is what makes the swap a compile error
- * rather than a field nobody removed.
+ * The payload a run receives belongs to the Event that started or canceled it, so
+ * the Events name its shape and the editor derives the fields it offers from
+ * them. The rules are the whole of what this node stores.
  */
 const workflowTriggerConfigSchema = Schema.Struct({
   lifecycleRules: Schema.optional(lifecycleRulesSchema),
-  webhookSchema: Schema.optional(Schema.String),
-  webhookOutputSchema: Schema.optional(Schema.String),
-  webhookMockRequest: Schema.optional(Schema.String),
 }).annotate({
   message: "Trigger config must be an object",
 });

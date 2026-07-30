@@ -93,3 +93,41 @@ export function decodeIsoTimestampOrThrow(value: string): Date {
 export function encodeIsoTimestamp(value: Date): string {
   return encodeTimestamp(value);
 }
+
+/**
+ * An ISO 8601 timestamp on the wire and in a handler, for a field an author
+ * declares.
+ *
+ * Both annotations sit on the base type, before the check, because `.annotate()`
+ * on a checked schema lands on the check instead. The description is a parameter
+ * for that same reason: there is no second place to put it later.
+ *
+ * `format: "date-time"` is what the editor reads. A field derivation compiles the
+ * encoded side of a schema, and `format` is the one keyword that survives into it
+ * and says "this string is a moment in time", which is what gets the field
+ * timestamp operators in the condition builder rather than string ones.
+ */
+export function timestampField(description: string) {
+  return Schema.String.annotate({ description, format: "date-time" }).check(
+    Schema.isPattern(ISO_TIMESTAMP_PATTERN)
+  );
+}
+
+/**
+ * An ISO 8601 timestamp on the wire, a `Date` in a handler.
+ *
+ * The annotations sit on the encoded side because that is the only side a JSON
+ * Schema converter reads: annotating a codec annotates its decoded side, where
+ * nothing looks. This composition is what lets the editor call the field a
+ * timestamp while a handler still receives a `Date`.
+ *
+ * This is the spelling to reach for. `Schema.Date` describes the same pair of
+ * forms and is refused at registration: a declaration has no encoding chain to
+ * annotate, so it derives as a bare string that `requireOutputFieldsFromSchema`
+ * turns away for carrying no description.
+ */
+export function dateField(description: string) {
+  return timestampField(description).pipe(
+    Schema.decodeTo(Schema.Date, SchemaTransformation.dateFromString)
+  );
+}

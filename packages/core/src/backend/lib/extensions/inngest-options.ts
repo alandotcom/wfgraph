@@ -124,7 +124,10 @@ function assertNoRetiredInngestOptions(
 export function rewriteInngestOptions<TPayload extends JsonObject>(
   eventName: string,
   inngest: InngestEventOptions<TPayload>,
-  schema: StandardSchema<TPayload>
+  // Untyped: `extractSchemaKeys` reads field names off the schema object itself,
+  // its `shape` or `fields` container, and a CEL identifier is checked against
+  // those. No type is read, and no JSON Schema is derived here.
+  schema: StandardSchema<unknown>
 ): Record<string, unknown> {
   assertNoRetiredInngestOptions(eventName, inngest);
 
