@@ -6,11 +6,39 @@ import {
   getUpstreamNodes,
 } from "#src/lib/upstream-node-fields";
 import {
-  clearRuntimeActions,
-  createAction,
-  registerRuntimeAction,
-} from "@rova/shared/workflow/action-registry";
+  type ActionMetadata,
+  emptyExtensionCatalog,
+} from "@rova/shared/extensions/catalog";
+import { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fields";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
+
+// What a node offers downstream comes off the action's entry in the catalog, which
+// the editor fetches once before render. A case says what the surface holds by
+// writing this, and `vi.hoisted` is what lets the factory below read it.
+const surface = vi.hoisted(() => ({
+  actions: [] as ActionMetadata[],
+}));
+
+vi.mock("#src/lib/extensions", () => ({
+  getExtensionCatalog: () => ({
+    ...emptyExtensionCatalog,
+    actions: surface.actions,
+  }),
+}));
+
+/** One catalog action, with the fields a case cares about and defaults elsewhere. */
+function anAction(
+  action: Partial<ActionMetadata> & { id: string }
+): ActionMetadata {
+  return {
+    label: action.id,
+    description: "",
+    category: "Custom",
+    configFields: [],
+    outputFields: [],
+    ...action,
+  };
+}
 
 function createNode(input: {
   id: string;
@@ -43,14 +71,8 @@ function createEdge(input: {
 }
 
 describe("upstream-node-fields", () => {
-  // The runtime action registry is module-level state, so a case that registers
-  // an action has to hand it back before the next one runs. The doMock below is
-  // the same problem one level up: left installed, it would hold the stubbed
-  // runtime-extensions module and its emptied registry over every later case.
   afterEach(() => {
-    clearRuntimeActions();
-    vi.doUnmock("#src/lib/runtime-extensions");
-    vi.resetModules();
+    surface.actions = [];
   });
 
   it("discovers transitive upstream nodes and condition fields", () => {
@@ -161,16 +183,16 @@ describe("upstream-node-fields", () => {
   });
 
   it("surfaces runtime action fields without explicit type as string", () => {
-    registerRuntimeAction({
-      id: "custom/test-action",
-      label: "Test Action",
-      description: "Action with typeless output fields",
-      category: "Custom",
-      outputFields: [
-        { path: "appointmentId", description: "Appointment ID" },
-        { path: "status", description: "Status" },
-      ],
-    });
+    surface.actions = [
+      anAction({
+        id: "custom/test-action",
+        label: "Test Action",
+        outputFields: [
+          { path: "appointmentId", description: "Appointment ID" },
+          { path: "status", description: "Status" },
+        ],
+      }),
+    ];
 
     const nodes: WorkflowNode[] = [
       createNode({
@@ -218,23 +240,20 @@ describe("upstream-node-fields", () => {
     // that descends into it, and the node label the editor puts in front of the
     // path. What the picker inserts is `{{@node:Label.appointment.id}}`, so the
     // leaf has to arrive here as `appointment.id` rather than as `appointment`.
-    registerRuntimeAction(
-      createAction({
+    surface.actions = [
+      anAction({
         id: "custom/nested-action",
         label: "Nested Action",
-        description: "Returns an appointment object",
-        category: "Custom",
-        schema: Schema.Struct({ appointmentId: Schema.String }),
-        outputSchema: Schema.Struct({
-          appointment: Schema.Struct({
-            id: Schema.String.annotate({ description: "Appointment ID" }),
-          }).annotate({ description: "The appointment" }),
-        }),
-        execute() {
-          return { success: true, data: { appointment: { id: "appt-1" } } };
-        },
-      })
-    );
+        outputFields: requireOutputFieldsFromSchema(
+          'Action "custom/nested-action"',
+          Schema.Struct({
+            appointment: Schema.Struct({
+              id: Schema.String.annotate({ description: "Appointment ID" }),
+            }).annotate({ description: "The appointment" }),
+          })
+        ),
+      }),
+    ];
 
     const nodes: WorkflowNode[] = [
       createNode({

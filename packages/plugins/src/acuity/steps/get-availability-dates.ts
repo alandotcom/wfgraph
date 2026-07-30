@@ -1,15 +1,10 @@
 import type { AvailabilityDatesParams } from "@fountain-bio/acuity";
-import {
-  defineLegacyStep,
-  StepFailure,
-  type StepRunContext,
-} from "@rova/core/plugin";
+import { StepFailure, type StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
-import type { AcuityCredentials } from "#src/acuity/credentials";
 import {
   getAvailabilityDatesInput,
-  getAvailabilityDatesOutput,
-} from "#src/acuity/schemas";
+  type AcuityCredentials,
+} from "#src/acuity/index";
 import { callAcuity, createAcuityClient } from "./client";
 import { optionalInteger, requiredInteger } from "./shared";
 
@@ -19,11 +14,9 @@ import { optionalInteger, requiredInteger } from "./shared";
  */
 export const getAvailabilityDatesHandler = Effect.fn(function* (
   input: typeof getAvailabilityDatesInput.Type,
-  context: StepRunContext
+  context: StepRunContext<AcuityCredentials>
 ) {
-  // The plugin's own credential vocabulary, so a key it never declares is a
-  // compile error here rather than an undefined at run time.
-  const credentials: AcuityCredentials = yield* context.credentials;
+  const credentials = yield* context.credentials;
   const acuity = yield* createAcuityClient(credentials);
 
   const appointmentTypeID = yield* requiredInteger(
@@ -53,11 +46,4 @@ export const getAvailabilityDatesHandler = Effect.fn(function* (
   );
 
   return { dates, count: dates.length };
-});
-
-export const getAvailabilityDatesStep = defineLegacyStep({
-  id: "acuity/get-availability-dates",
-  input: getAvailabilityDatesInput,
-  output: getAvailabilityDatesOutput,
-  handler: getAvailabilityDatesHandler,
 });

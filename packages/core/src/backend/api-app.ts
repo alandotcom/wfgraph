@@ -31,12 +31,10 @@ import {
   rejectUnknownKeys,
 } from "@rova/shared/types/schema";
 import { getErrorMessage } from "@rova/shared/utils";
-import { listRuntimeActions } from "@rova/shared/workflow/action-registry";
 // One app-level route for every Event: an Event is global, so a sender integrates
 // once and every workflow subscribing to it sees what arrives. The editor builds
 // its copyable URL from the same module.
 import { EVENT_INTAKE_ROUTE } from "@rova/shared/workflow/event-intake-url";
-import { listCustomWorkflowTriggers } from "@rova/shared/workflow/trigger-registry";
 
 // A path segment is whatever the sender typed, so the refusal names the field
 // and the rule rather than echoing the value back into the response body.
@@ -454,16 +452,10 @@ export function createApiApp(options: CreateApiAppOptions) {
 
       return c.newResponse(response.body, response);
     })
-    .get("/extensions", (c) =>
-      c.json({
-        actions: listRuntimeActions(),
-        triggers: listCustomWorkflowTriggers(),
-        // The catalog is the whole surface in one document and the only channel
-        // the editor learns it through. The two members above it are the
-        // registries' own, and they go when those do.
-        catalog: getExtensions().catalog,
-      })
-    )
+    // The catalog is the whole surface in one document, and the only channel the
+    // editor learns it through: an Event, an action and an integration all reach it
+    // here, the four built-ins and a host's own actions included.
+    .get("/extensions", (c) => c.json({ catalog: getExtensions().catalog }))
     .all("/auth", (c) => c.json({ error: "Not found" }, 404))
     .all("/auth/*", (c) => c.json({ error: "Not found" }, 404))
     .all("/og", (c) => c.json({ error: "Not found" }, 404))

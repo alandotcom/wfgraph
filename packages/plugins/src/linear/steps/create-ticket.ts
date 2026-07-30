@@ -1,13 +1,8 @@
 import { LinearClient } from "@linear/sdk";
-import {
-  defineLegacyStep,
-  StepFailure,
-  type StepRunContext,
-} from "@rova/core/plugin";
+import { StepFailure, type StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
-import type { LinearCredentials } from "#src/linear/credentials";
 import { describeLinearFailure } from "#src/linear/errors";
-import { createTicketInput, createTicketOutput } from "#src/linear/schemas";
+import { createTicketInput, type LinearCredentials } from "#src/linear/index";
 
 /**
  * Everything the Linear SDK does is a Promise that throws, so every call goes
@@ -52,11 +47,9 @@ function firstTeamId(linear: LinearClient): Effect.Effect<string, StepFailure> {
  */
 export const createTicketHandler = Effect.fn(function* (
   input: typeof createTicketInput.Type,
-  context: StepRunContext
+  context: StepRunContext<LinearCredentials>
 ) {
-  // The plugin's own credential vocabulary, so a key it never declares is a
-  // compile error here rather than an undefined at run time.
-  const credentials: LinearCredentials = yield* context.credentials;
+  const credentials = yield* context.credentials;
   const apiKey = credentials.LINEAR_API_KEY;
 
   if (!apiKey) {
@@ -90,11 +83,4 @@ export const createTicketHandler = Effect.fn(function* (
   }
 
   return { id: issue.id, url: issue.url, title: issue.title };
-});
-
-export const createTicketStep = defineLegacyStep({
-  id: "linear/create-ticket",
-  input: createTicketInput,
-  output: createTicketOutput,
-  handler: createTicketHandler,
 });

@@ -12,18 +12,19 @@ import {
 } from "#src/lib/connection-credentials";
 import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
 import {
-  getIntegration,
-  getIntegrationDescriptions,
-  getIntegrationLabels,
-  getSortedIntegrationTypes,
-} from "@rova/shared/plugins/registry";
-import type { IntegrationType } from "@rova/shared/types/integration";
+  getExtensionCatalog,
+  integrationDescriptions,
+  integrationLabels,
+  integrationTypes as catalogIntegrationTypes,
+} from "#src/lib/extensions";
+import { findIntegration } from "@rova/shared/extensions/catalog";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
 
-// System integrations that don't have plugins
-const SYSTEM_INTEGRATION_TYPES: IntegrationType[] = ["database"];
+// The database connection is not an integration: the engine's own Database Query
+// action names it, so it is spelled here rather than in the catalog.
+const SYSTEM_INTEGRATION_TYPES = ["database"];
 const SYSTEM_INTEGRATION_LABELS: Record<string, string> = {
   database: "Database",
 };
@@ -31,19 +32,19 @@ const SYSTEM_INTEGRATION_DESCRIPTIONS: Record<string, string> = {
   database: "Connect to PostgreSQL databases",
 };
 
-// Get all integration types (plugins + system)
-const getIntegrationTypes = (): IntegrationType[] => [
-  ...getSortedIntegrationTypes(),
+// Get all integration types (catalog + system)
+const getIntegrationTypes = (): string[] => [
+  ...catalogIntegrationTypes(),
   ...SYSTEM_INTEGRATION_TYPES,
 ];
 
 // Get label for any integration type
-const getLabel = (type: IntegrationType): string =>
-  getIntegrationLabels()[type] || SYSTEM_INTEGRATION_LABELS[type] || type;
+const getLabel = (type: string): string =>
+  integrationLabels()[type] || SYSTEM_INTEGRATION_LABELS[type] || type;
 
 // Get description for any integration type
-const getDescription = (type: IntegrationType): string =>
-  getIntegrationDescriptions()[type] ||
+const getDescription = (type: string): string =>
+  integrationDescriptions()[type] ||
   SYSTEM_INTEGRATION_DESCRIPTIONS[type] ||
   "";
 
@@ -75,7 +76,7 @@ export function AddConnectionOverlay({
     );
   }, [integrationTypes, searchQuery]);
 
-  const handleSelectType = (type: IntegrationType) => {
+  const handleSelectType = (type: string) => {
     // Push to configure overlay
     push(ConfigureConnectionOverlay, { type, onSuccess });
   };
@@ -137,7 +138,7 @@ export function AddConnectionOverlay({
 
 type ConfigureConnectionOverlayProps = {
   overlayId: string;
-  type: IntegrationType;
+  type: string;
   onSuccess?: (integrationId: string) => void;
 };
 
@@ -288,9 +289,10 @@ export function ConfigureConnectionOverlay({
     testNewCredentials.mutate({ type, config });
   };
 
-  // Get plugin form fields
-  const plugin = getIntegration(type);
-  const formFields = plugin?.formFields;
+  const formFields = findIntegration(
+    getExtensionCatalog(),
+    type
+  )?.credentialFields;
 
   // Render config fields
   const renderConfigFields = () => {
@@ -317,10 +319,10 @@ export function ConfigureConnectionOverlay({
         return (
           <SecretField
             configKey={field.configKey}
-            fieldId={field.id}
+            fieldId={field.configKey}
             helpLink={field.helpLink}
             helpText={field.helpText}
-            key={field.id}
+            key={field.configKey}
             label={field.label}
             onChange={updateConfig}
             placeholder={field.placeholder}
@@ -330,10 +332,10 @@ export function ConfigureConnectionOverlay({
       }
 
       return (
-        <div className="space-y-2" key={field.id}>
-          <Label htmlFor={field.id}>{field.label}</Label>
+        <div className="space-y-2" key={field.configKey}>
+          <Label htmlFor={field.configKey}>{field.label}</Label>
           <Input
-            id={field.id}
+            id={field.configKey}
             onChange={(e) => updateConfig(field.configKey, e.target.value)}
             placeholder={field.placeholder}
             type={field.type}

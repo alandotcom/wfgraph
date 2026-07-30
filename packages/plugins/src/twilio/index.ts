@@ -111,23 +111,30 @@ const sendSmsInput = Schema.Struct({
 /**
  * What a sent message leaves for the nodes downstream of it.
  *
- * `optional` here for the same reason, from the other direction: the handler
- * answers `from: undefined` on the path where Twilio sent no number, and
- * `optionalKey` would describe a payload that omits the key entirely.
+ * `optionalKey(NullOr(...))` throughout, which is the one spelling that survives
+ * everything: a key the handler leaves out on the test-mode paths, and a null it
+ * writes where Twilio sent no number. The encode refuses a key that is present and
+ * holds `undefined`, which is why the handler writes the null.
  */
 const sendSmsOutput = Schema.Struct({
   sid: Schema.String.annotate({ description: "Message SID" }),
   status: Schema.String.annotate({ description: "Delivery status" }),
   to: Schema.String.annotate({ description: "Recipient phone number" }),
-  from: Schema.optional(
-    Schema.String.annotate({ description: "Sender phone number" })
+  from: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.String.annotate({ description: "Sender phone number" })
+    )
   ),
-  messagingServiceSid: Schema.optional(
-    Schema.String.annotate({ description: "Messaging Service SID" })
+  messagingServiceSid: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.String.annotate({ description: "Messaging Service SID" })
+    )
   ),
   /** Absent on a real send: this is why a test run did not make one. */
-  reasonCode: Schema.optional(
-    Schema.String.annotate({ description: "Why a test run did not send" })
+  reasonCode: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.String.annotate({ description: "Why a test run did not send" })
+    )
   ),
 });
 
@@ -244,8 +251,8 @@ export const sendSmsHandler = Effect.fn(function* (
     sid: message.sid,
     status: message.status,
     to: message.to,
-    from: message.from ?? undefined,
-    messagingServiceSid: message.messaging_service_sid ?? undefined,
+    from: message.from ?? null,
+    messagingServiceSid: message.messaging_service_sid ?? null,
   };
 });
 

@@ -174,12 +174,14 @@ context-sensitive argument cannot be inferred before that argument is typed, so 
 the credential vocabulary there would cost an inline handler both parameter types and
 leave the whole handler unchecked.
 
-`defineLegacyStep` beside it takes an `id` and no metadata, which is the shape the five
-plugins B4 has not ported need, and it goes with them and with `registerStep`. It is a
-function of its own rather than a second arm of `defineStep` for two reasons: the two
-answer different types, so a caller of either would have to narrow what came back, and a
-transitional shape with a name of its own is one grep away from every call site that has to
-go. It also keeps the codec off those plugins, which is the point below.
+**A handler either sits inline or arrives through `load`.** Exactly one of `handler` and
+`load` is written, and a value carrying both fails to compile. `load` is a loader for the
+handler's own module, and it exists for two reasons that the built-ins show: a module that
+imports a vendor SDK (`@clerk/backend`, `@linear/sdk`, `@fountain-bio/acuity`) stays out of
+a process that never runs one of its actions, and an integration with eight actions is not
+a file anybody reads. The schemas stay in the definition, exported for the handler's module
+to type itself against, which is why those four plugins export theirs and slack and twilio
+do not.
 
 **Both directions of a step cross through the schema's canonical JSON codec.** A step
 boundary is JSON on both sides, so what `defineStep` runs is `Schema.toCodecJson(schema)`
@@ -200,10 +202,9 @@ type.
 all of this: each answers a shape the envelope has no room for, so they stay Promise
 functions behind a registration that `step-registry.ts` keeps to itself.
 
-**An action's output fields come from its output schema.** A plugin action declares
-`output` on its `defineStep`, and assembly derives the editor's template-autocomplete
-paths from it (`packages/shared/src/workflow/output-fields.ts`); an action still read out
-of the old registry has them derived by `registerIntegration` instead, until B4.
+**An action's output fields come from its output schema.** An action declares `output` on
+its `defineStep`, and assembly derives the editor's template-autocomplete paths from it
+(`packages/shared/src/workflow/output-fields.ts`).
 Paths omit the `data.` prefix, because the schema describes the payload rather than the
 wrapper; template variables unwrap it automatically. The schema sits beside the handler it
 types, and `output` is required: there is no hand-written list to declare instead, and a
@@ -238,9 +239,9 @@ derivation cannot read is refused naming the action, and so is a required config
 no field for a builder to fill in. It is also where an integration definition's actions
 get their ids and their derived field lists, and where `stepFor` and `connectionTestFor`
 come from, since a definition carries both. The four actions the engine ships itself are
-catalog entries in `built-ins.ts`. The plugins B4 has not ported are still read out of the
-old registries by `from-registries.ts` and arrive as the `registries` member, which is the
-seam that lets both halves exist at once, and which goes with them.
+catalog entries in `built-ins.ts`, and a host's own actions arrive as `actions`, which is
+metadata because their implementations stay in the runtime action registry the engine
+dispatches from.
 
 The server reads that catalog wherever it used to ask the plugin registry: the credential
 mapping in `credential-fetcher.ts`, the secret-key test in
@@ -253,12 +254,17 @@ of one of those stands a surface up, which `configureTestExtensions` in
 `backend/lib/effect/test-layers.ts` does in a line, and an empty assembly still carries the
 built-in four.
 
-The browser reads the catalog for its Events and the plugin registry for everything else,
-and `hydrateIntegrationsFromCatalog` in `packages/client/src/lib/runtime-extensions.ts`
-fills that registry from the catalog. It is the browser's only producer of integration
-metadata: nothing in the editor imports a plugin any more, so `@rova/plugins` is gone from
-`main.tsx` and only `@rova/plugins/ui` remains, for the icons a wire cannot carry. B4
-points the editor's readers at the catalog and deletes the bridge with them.
+The browser reads the same catalog and nothing else. `main.tsx` imports
+`@rova/plugins/ui` for the icons a wire cannot carry and nothing from `@rova/plugins`
+itself, so no integration metadata reaches a bundle: the action selector, the config panel,
+the node badges, the template picker and the connections dialog all read
+`getExtensionCatalog()` and the pure lookups beside it. That is what lets an integration
+hold its vendor client, its SDK and its secrets in the same file as its metadata.
+
+`packages/shared/src/plugins/action-fields.ts` is what is left of the registry that used to
+carry all of this: the config-field types both ends share, `parseActionId`, and two helpers
+over a field list. The runtime action registry survives as server-side module state, a plain
+map now that no second bundle holds a copy.
 
 **An Event is a `defineEvent` value, and carries no lifecycle role.**
 `packages/core/src/backend/lib/extensions/define-event.ts` takes a name, a payload schema,
@@ -508,9 +514,10 @@ development, because the option takes a built bundle and development has none. `
 start` is the other arrangement and one process: the built bundle goes to `createRovaApp` as
 `client`, and Rova serves the editor, the assets, and the API itself.
 
-**Five published surfaces.** `@rova/core` is the backend, `@rova/core/plugin` the names an
+**Six published surfaces.** `@rova/core` is the backend, `@rova/core/plugin` the names an
 integration package may use, `@rova/core/migrate` applies the migrations without building an
-app, `@rova/client` the editor, `@rova/plugins` the built-in integrations. `@rova/plugins`
+app, `@rova/client` the editor, `@rova/plugins` the built-in integrations as values, and
+`@rova/plugins/ui` their icons for the browser. `@rova/plugins`
 peer-depends on `@rova/core`, because a second copy would mean a second database handle.
 `@rova/shared` stays private and is inlined into whichever bundle needs it.
 

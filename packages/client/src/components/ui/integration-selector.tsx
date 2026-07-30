@@ -16,12 +16,12 @@ import { Button } from "#src/components/ui/button";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { repairIntegrationsAtom } from "#src/lib/workflow-graph-store";
-import { getIntegration } from "@rova/shared/plugins/registry";
-import type { IntegrationType } from "@rova/shared/types/integration";
+import { getExtensionCatalog } from "#src/lib/extensions";
+import { findIntegration } from "@rova/shared/extensions/catalog";
 import { cn } from "@rova/shared/utils";
 
 type IntegrationSelectorProps = {
-  integrationType: IntegrationType;
+  integrationType: string;
   value?: string;
   onChange: (integrationId: string) => void;
   onOpenSettings?: () => void;
@@ -112,8 +112,8 @@ export function IntegrationSelector({
     );
   }
 
-  const plugin = getIntegration(integrationType);
-  const integrationLabel = plugin?.label || integrationType;
+  const catalogEntry = findIntegration(getExtensionCatalog(), integrationType);
+  const integrationLabel = catalogEntry?.label || integrationType;
 
   // Separate managed and manual integrations for AI Gateway
   const managedIntegrations = integrations.filter((i) => i.isManaged);

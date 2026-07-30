@@ -12,12 +12,8 @@ import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import {
   getActionLabel,
   getStepImporter,
-  registerStep,
 } from "#src/backend/lib/step-registry";
-import {
-  defineLegacyStep,
-  defineStep,
-} from "#src/backend/lib/steps/define-step";
+import { defineStep } from "#src/backend/lib/steps/define-step";
 
 const sendSms = defineStep({
   label: "Send SMS",
@@ -41,16 +37,6 @@ const twilio: IntegrationDefinition = defineIntegration({
   description: "Send SMS messages with Twilio Programmable Messaging",
   credentials: [],
   actions: { "send-sms": sendSms },
-});
-
-/** A step that names its own id, which is a plugin B4 has not ported. */
-const legacyStep = defineLegacyStep({
-  id: "acuity/list-appointments",
-  input: Schema.Struct({ acuityMax: Schema.String }),
-  output: Schema.Struct({ count: Schema.Finite }),
-  handler: Effect.fn(function* () {
-    return yield* Effect.succeed({ count: 0 });
-  }),
 });
 
 // Every reader of the surface sits inside an app, and `getExtensions` says so by
@@ -98,40 +84,14 @@ describe("getStepImporter", () => {
     });
   });
 
-  // The registration used to be a pair of strings: an action id and the name of
-  // an export to go looking for. Neither half was checked, so a renamed export
-  // became an action reporting itself missing at run time. What is registered
-  // now is the step itself, loaded on demand.
-  it("dispatches to a step registered under its own id", async () => {
-    registerStep("acuity/list-appointments", () => Promise.resolve(legacyStep));
-
-    const importer = getStepImporter("acuity/list-appointments");
-    expect(importer?.kind).toBe("step");
-
-    const run = importer?.kind === "step" ? await importer.load() : undefined;
-    expect(await run?.({ acuityMax: "5" })).toEqual({
-      success: true,
-      data: { count: 0 },
-    });
-  });
-
   it("has no importer for an action nothing registered", () => {
     expect(getStepImporter("nobody/knows")).toBeUndefined();
   });
 
-  // The guarantee the signature makes is a compile-time one, so the type check
-  // is where it is asserted: `@ts-expect-error` fails the build if this call
-  // ever stops erroring, which is what would happen if the key and the loader
-  // were free to name different actions again.
-  it("refuses a step registered under an id it does not answer to", () => {
-    registerStep(
-      "acuity/lookup-appointment",
-      // @ts-expect-error the step loaded here declares "acuity/list-appointments"
-      () => Promise.resolve(legacyStep)
-    );
-
-    // The call still runs, which is what keeps the directive above attached to
-    // a real registration rather than to a line the compiler skipped.
-    expect(getStepImporter("acuity/lookup-appointment")?.kind).toBe("step");
+  // The two the engine ships itself are Promise functions behind an import, which
+  // is the one arm of the lookup an integration definition does not fill.
+  it("dispatches to a built-in step the engine ships", () => {
+    expect(getStepImporter("HTTP Request")?.kind).toBe("step");
+    expect(getStepImporter("Database Query")?.kind).toBe("step");
   });
 });

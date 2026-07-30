@@ -28,7 +28,8 @@ import {
   type ExecutionLogEntry,
   type WorkflowNodeData,
 } from "@rova/shared/workflow/types";
-import { findActionById, getIntegration } from "@rova/shared/plugins/registry";
+import { getExtensionCatalog } from "#src/lib/extensions";
+import { findAction, findIntegration } from "@rova/shared/extensions/catalog";
 import { getIntegrationUi } from "@rova/shared/plugins/ui-registry";
 import { readAs } from "@rova/shared/types/schema";
 import { cn } from "@rova/shared/utils";
@@ -332,12 +333,10 @@ const getIntegrationFromActionType = (actionType: string): string => {
     return SYSTEM_ACTION_LABELS[actionType];
   }
 
-  // Look up in plugin registry
-  const action = findActionById(actionType);
-  const integrationType = action?.integration;
-  if (typeof integrationType === "string") {
-    const plugin = getIntegration(integrationType);
-    return plugin?.label || "System";
+  const catalog = getExtensionCatalog();
+  const integrationType = findAction(catalog, actionType)?.integration;
+  if (integrationType) {
+    return findIntegration(catalog, integrationType)?.label || "System";
   }
 
   return "System";
@@ -352,7 +351,7 @@ const requiresIntegration = (actionType: string): boolean => {
   }
 
   // Plugin actions always require integration
-  const action = findActionById(actionType);
+  const action = findAction(getExtensionCatalog(), actionType);
   return Boolean(action?.integration);
 };
 
@@ -378,7 +377,7 @@ const getProviderLogo = (actionType: string) => {
   }
 
   // Look up action in plugin registry and get the integration icon
-  const action = findActionById(actionType);
+  const action = findAction(getExtensionCatalog(), actionType);
   const integrationType = action?.integration;
   if (typeof integrationType === "string") {
     const ui = getIntegrationUi(integrationType);
@@ -539,7 +538,7 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   }
 
   // Get human-readable label from registry if no custom label is set
-  const actionInfo = findActionById(actionType);
+  const actionInfo = findAction(getExtensionCatalog(), actionType);
   const displayTitle = data.label || actionInfo?.label || actionType;
   const displayDescription =
     data.description || getIntegrationFromActionType(actionType);

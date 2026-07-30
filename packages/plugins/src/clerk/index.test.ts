@@ -1,6 +1,13 @@
-import { findActionById } from "@rova/shared/plugins/registry";
+import { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fields";
 import { describe, expect, it } from "vitest";
-import "#src/clerk/index";
+import { clerk } from "#src/clerk/index";
+
+function outputFieldsOf(slug: keyof typeof clerk.actions) {
+  return requireOutputFieldsFromSchema(
+    `Action "clerk/${slug}"`,
+    clerk.actions[slug].output
+  );
+}
 
 /**
  * What a node downstream of a Clerk node can reference.
@@ -41,20 +48,30 @@ const USER_FIELDS = [
   },
 ];
 
-describe("clerk output fields", () => {
-  it.each(["get-user", "create-user", "update-user"])(
+describe("the clerk integration", () => {
+  it("declares its credentials and its actions as one value", () => {
+    expect(clerk.type).toBe("clerk");
+    expect(clerk.test).toBeDefined();
+    expect(clerk.credentials.map((field) => field.envVar)).toEqual([
+      "CLERK_SECRET_KEY",
+    ]);
+    expect(Object.keys(clerk.actions)).toEqual([
+      "get-user",
+      "create-user",
+      "update-user",
+      "delete-user",
+    ]);
+  });
+
+  it.each(["get-user", "create-user", "update-user"] as const)(
     "offers the whole user for %s",
     (slug) => {
-      const action = findActionById(`clerk/${slug}`);
-
-      expect(action?.outputFields).toEqual(USER_FIELDS);
+      expect(outputFieldsOf(slug)).toEqual(USER_FIELDS);
     }
   );
 
   it("offers the deletion flag for delete-user", () => {
-    const action = findActionById("clerk/delete-user");
-
-    expect(action?.outputFields).toEqual([
+    expect(outputFieldsOf("delete-user")).toEqual([
       { path: "deleted", description: "Deletion success", type: "boolean" },
     ]);
   });

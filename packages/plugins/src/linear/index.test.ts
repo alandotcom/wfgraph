@@ -1,6 +1,13 @@
-import { findActionById } from "@rova/shared/plugins/registry";
+import { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fields";
 import { describe, expect, it } from "vitest";
-import "#src/linear/index";
+import { linear } from "#src/linear/index";
+
+function outputFieldsOf(slug: keyof typeof linear.actions) {
+  return requireOutputFieldsFromSchema(
+    `Action "linear/${slug}"`,
+    linear.actions[slug].output
+  );
+}
 
 /**
  * What a node downstream of a Linear node can reference.
@@ -11,11 +18,22 @@ import "#src/linear/index";
  * then had nothing to do with, and the six fields of an issue are addressable
  * now.
  */
-describe("linear output fields", () => {
-  it("offers what create-ticket returns", () => {
-    const action = findActionById("linear/create-ticket");
+describe("the linear integration", () => {
+  it("declares its credentials and its actions as one value", () => {
+    expect(linear.type).toBe("linear");
+    expect(linear.test).toBeDefined();
+    expect(linear.credentials.map((field) => field.envVar)).toEqual([
+      "LINEAR_API_KEY",
+      "LINEAR_TEAM_ID",
+    ]);
+    expect(Object.keys(linear.actions)).toEqual([
+      "create-ticket",
+      "find-issues",
+    ]);
+  });
 
-    expect(action?.outputFields).toEqual([
+  it("offers what create-ticket returns", () => {
+    expect(outputFieldsOf("create-ticket")).toEqual([
       { path: "id", description: "Ticket ID", type: "string" },
       { path: "url", description: "Ticket URL", type: "string" },
       { path: "title", description: "Ticket title", type: "string" },
@@ -23,9 +41,7 @@ describe("linear output fields", () => {
   });
 
   it("offers the fields inside find-issues' list", () => {
-    const action = findActionById("linear/find-issues");
-
-    expect(action?.outputFields).toEqual([
+    expect(outputFieldsOf("find-issues")).toEqual([
       { path: "issues", description: "Array of issues found", type: "array" },
       { path: "issues[0].id", description: "Issue ID", type: "string" },
       { path: "issues[0].title", description: "Issue title", type: "string" },

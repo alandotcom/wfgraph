@@ -14,10 +14,7 @@ import {
   callDbModule,
   type DatabaseError,
 } from "#src/backend/lib/effect/database";
-import type {
-  IntegrationConfig,
-  IntegrationType,
-} from "@rova/shared/types/integration";
+import type { IntegrationConfig } from "@rova/shared/types/integration";
 
 /**
  * Every database question the integration services ask.
@@ -32,14 +29,14 @@ export class IntegrationRepo extends Context.Service<
   {
     /** Every integration, or only those of one type. */
     readonly listByType: (
-      type?: IntegrationType
+      type?: string
     ) => Effect.Effect<DecryptedIntegration[], DatabaseError>;
     readonly findById: (
       integrationId: string
     ) => Effect.Effect<DecryptedIntegration | null, DatabaseError>;
     readonly insert: (input: {
       name: string;
-      type: IntegrationType;
+      type: string;
       config: IntegrationConfig;
     }) => Effect.Effect<DecryptedIntegration, DatabaseError>;
     /** Null when the row was gone by the time the update ran. */

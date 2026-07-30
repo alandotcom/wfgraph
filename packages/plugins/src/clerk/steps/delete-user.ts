@@ -1,15 +1,10 @@
-import {
-  defineLegacyStep,
-  StepFailure,
-  type StepRunContext,
-} from "@rova/core/plugin";
+import { StepFailure, type StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
 import {
   createClerkBackendClient,
   getClerkApiErrorMessage,
 } from "#src/clerk/client";
-import type { ClerkCredentials } from "#src/clerk/credentials";
-import { deleteUserInput, deleteUserOutput } from "#src/clerk/schemas";
+import { deleteUserInput, type ClerkCredentials } from "#src/clerk/index";
 
 /**
  * Named rather than written inline, so a test can run it with a context it
@@ -17,11 +12,11 @@ import { deleteUserInput, deleteUserOutput } from "#src/clerk/schemas";
  */
 export const clerkDeleteUserHandler = Effect.fn(function* (
   input: typeof deleteUserInput.Type,
-  context: StepRunContext
+  context: StepRunContext<ClerkCredentials>
 ) {
   // The plugin's own credential vocabulary, so a key it never declares is a
   // compile error here rather than an undefined at run time.
-  const credentials: ClerkCredentials = yield* context.credentials;
+  const credentials = yield* context.credentials;
   const secretKey = credentials.CLERK_SECRET_KEY;
 
   if (!secretKey) {
@@ -50,11 +45,4 @@ export const clerkDeleteUserHandler = Effect.fn(function* (
   });
 
   return { deleted: true };
-});
-
-export const clerkDeleteUserStep = defineLegacyStep({
-  id: "clerk/delete-user",
-  input: deleteUserInput,
-  output: deleteUserOutput,
-  handler: clerkDeleteUserHandler,
 });

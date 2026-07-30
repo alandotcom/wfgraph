@@ -26,61 +26,19 @@ import {
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
 import { hasTouchSupport } from "#src/hooks/use-touch";
-import { getAllActions } from "@rova/shared/plugins/registry";
+import { getExtensionCatalog } from "#src/lib/extensions";
+import type { ActionMetadata } from "@rova/shared/extensions/catalog";
 import { cn } from "@rova/shared/utils";
 
-type ActionType = {
-  id: string;
-  label: string;
-  description: string;
-  category: string;
-  integration?: string;
-};
-
-// System actions that don't have plugins
-const SYSTEM_ACTIONS: ActionType[] = [
-  {
-    id: "HTTP Request",
-    label: "HTTP Request",
-    description: "Make an HTTP request to any API",
-    category: "System",
-  },
-  {
-    id: "Database Query",
-    label: "Database Query",
-    description: "Query your database",
-    category: "System",
-  },
-  {
-    id: "Condition",
-    label: "Condition",
-    description: "Branch based on a condition",
-    category: "System",
-  },
-  {
-    id: "Wait",
-    label: "Wait",
-    description: "Delay execution or wait for a hook event",
-    category: "System",
-  },
-];
-
-// Combine System actions with plugin actions
-function useAllActions(): ActionType[] {
-  return useMemo(() => {
-    const pluginActions = getAllActions();
-
-    // Map plugin actions to ActionType format
-    const mappedPluginActions: ActionType[] = pluginActions.map((action) => ({
-      id: action.id,
-      label: action.label,
-      description: action.description,
-      category: action.category,
-      integration: action.integration,
-    }));
-
-    return [...SYSTEM_ACTIONS, ...mappedPluginActions];
-  }, []);
+/**
+ * Every action the server can run, which is the whole of what this grid offers.
+ *
+ * The four the engine ships itself are catalog entries like any other, so there is
+ * no local list to keep in step: an editor served by a different build than its
+ * server draws what that server says it has.
+ */
+function useAllActions(): readonly ActionMetadata[] {
+  return useMemo(() => getExtensionCatalog().actions, []);
 }
 
 type ActionGridProps = {
@@ -92,7 +50,7 @@ type ActionGridProps = {
 function GroupIcon({
   group,
 }: {
-  group: { category: string; actions: ActionType[] };
+  group: { category: string; actions: readonly ActionMetadata[] };
 }) {
   // For plugin categories, use the integration icon from the first action
   const firstAction = group.actions[0];
@@ -115,7 +73,7 @@ function ActionIcon({
   action,
   className,
 }: {
-  action: ActionType;
+  action: ActionMetadata;
   className?: string;
 }) {
   if (action.integration) {
@@ -218,7 +176,7 @@ export function ActionGrid({
 
   // Group actions by category
   const groupedActions = useMemo(() => {
-    const groups: Record<string, ActionType[]> = {};
+    const groups: Record<string, ActionMetadata[]> = {};
 
     for (const action of filteredActions) {
       const category = action.category;

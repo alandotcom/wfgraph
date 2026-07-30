@@ -9,7 +9,6 @@ import {
   type ResolveActionByType,
   validateWorkflowIntegrations,
 } from "#src/backend/lib/workflow-integration-validation";
-import type { IntegrationType } from "@rova/shared/types/integration";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 // Every reader of the surface sits inside an app, and `getExtensions` says so by
@@ -114,7 +113,7 @@ describe("extractRequiredIntegrationIds", () => {
 describe("validateWorkflowIntegrations", () => {
   it("deduplicates integration ids before the one read it makes", async () => {
     const getIntegrationTypesByIds = vi.fn(
-      (): Promise<Record<string, IntegrationType>> =>
+      (): Promise<Record<string, string>> =>
         Promise.resolve({ shared_integration: "database" })
     );
 
@@ -174,20 +173,17 @@ describe("validateWorkflowIntegrations", () => {
   it("reads an action's required integration off the assembled catalog", async () => {
     configureExtensions(
       assembleExtensions({
-        registries: {
-          actions: [
-            {
-              id: "twilio/send-sms",
-              label: "Send SMS",
-              description: "Sends a message",
-              category: "Twilio",
-              integration: "twilio",
-              configFields: [],
-              outputFields: [],
-            },
-          ],
-          integrations: [],
-        },
+        actions: [
+          {
+            id: "twilio/send-sms",
+            label: "Send SMS",
+            description: "Sends a message",
+            category: "Twilio",
+            integration: "twilio",
+            configFields: [],
+            outputFields: [],
+          },
+        ],
       })
     );
 
@@ -249,7 +245,7 @@ describe("validateWorkflowIntegrations", () => {
 
   it("passes a graph naming no integration at all", async () => {
     const getIntegrationTypesByIds = vi.fn(
-      (): Promise<Record<string, IntegrationType>> => Promise.resolve({})
+      (): Promise<Record<string, string>> => Promise.resolve({})
     );
 
     const result = await validateWorkflowIntegrations(

@@ -16,7 +16,7 @@ import {
   type ActionConfigField,
   type ActionConfigFieldBase,
   isFieldGroup,
-} from "@rova/shared/plugins/registry";
+} from "@rova/shared/plugins/action-fields";
 import {
   parseWorkflowSchemaFieldsOrJsonSchema,
   parseWorkflowSchemaFieldsString,

@@ -20,7 +20,7 @@ This is a pnpm workspace monorepo with four packages:
 
 ```
 packages/
-  shared/    @rova/shared   Runtime-agnostic types, schemas, registries
+  shared/    @rova/shared   Runtime-agnostic types, schemas, contracts
   core/      @rova/core     Library entrypoints and backend
   client/    @rova/client   The workflow editor SPA
   plugins/   @rova/plugins  Integration plugins (Acuity, Clerk, Linear, Resend, Slack, Twilio)
@@ -288,22 +288,26 @@ Passing it is the switch. Leave it out and Rova answers 404 outside `/api`, whic
 
 ### Built-in integrations
 
-`@rova/core` carries no vendor SDKs. The built-in integrations (Acuity, Clerk, Linear, Resend, Slack, Twilio) live in `@rova/plugins`, which registers them through two side-effect imports:
+`@rova/core` carries no vendor SDKs. The built-in integrations (Acuity, Clerk, Linear, Resend, Slack, Twilio) live in `@rova/plugins` as values, and passing them is what turns them on:
 
 ```ts
-import "@rova/plugins"; // integration metadata the editor renders
-import "@rova/plugins/server"; // step implementations and connection tests, loaded on demand
+import { builtInIntegrations } from "@rova/plugins";
+
+const rova = await createRovaApp({
+  // ...
+  extensions: { integrations: builtInIntegrations },
+});
 ```
 
-`examples/app.ts` in this repo does exactly that. `@rova/plugins` peer-depends on `@rova/core`: a second copy would mean a second database handle, which is what one-Rova-per-process exists to prevent.
+Import two of the six by name instead, and the rest are tree-shaken out. `examples/app.ts` in this repo passes the array. `@rova/plugins` peer-depends on `@rova/core`: a second copy would mean a second database handle, which is what one-Rova-per-process exists to prevent.
 
-`@rova/client` lists all six built-ins in its palette regardless. On a server that has not registered them, creating one of those connections is refused rather than storing credentials the process cannot use.
+The editor lists whatever the server assembled, so an integration a host did not pass does not appear and cannot have a connection stored for it. Its SDK never enters the process either, since each handler's module is imported the first time its action runs.
 
 ### Writing your own integration package
 
-`@rova/plugins` is built against `@rova/core/plugin` and nothing else, so an outside package can be written the same way. That surface exports seven names: `defineStep`, `StepFailure`, `StepDefinition`, `StepRunContext`, `registerStep`, `registerIntegrationTest`, and `VendorTransport`.
+`@rova/plugins` is built against `@rova/core/plugin` and nothing else, so an outside package can be written the same way. That surface exports what an integration is written with: `defineIntegration`, `credentialFields`, `CredentialsOf`, `defineStep`, `StepFailure`, `StepRunContext`, `IntegrationTestResult`, and `VendorTransport`.
 
-A step is a `defineStep` over an input schema, an output schema, and a handler that returns an `Effect`. `defineStep` owns the config decode, the credential fetch, the run log, and the `StepResult` envelope; the handler never writes that envelope and never touches a Promise. Register the step with `registerStep` under the id it declares, and register the connection test with `registerIntegrationTest`. `VendorTransport` is the HTTP layer a connection test provides when it runs its own effect outside `defineStep`. See `packages/plugins/src/AGENTS.md` for the worked example.
+An integration is one `defineIntegration` value: its credential form, a `defineStep` per action, and a loader for its connection test. A step is an input schema, an output schema, the metadata the editor draws the action with, and a handler that returns an `Effect`; `defineStep` owns the config decode, the credential fetch, the run log, and the `StepResult` envelope, so the handler never writes that envelope and never touches a Promise. Nothing registers on import: a host passes the values to `createRovaApp`. `VendorTransport` is the HTTP layer a connection test provides when it runs its own effect outside `defineStep`. See `packages/plugins/src/AGENTS.md` for the worked example.
 
 ### Package exports
 
@@ -313,7 +317,7 @@ A step is a `defineStep` over an input schema, an output schema, and a handler t
 - `@rova/core/plugin` -- what an integration package builds against.
 - `@rova/core/migrate` -- `migrateRovaDatabase`, for applying migrations without building an app.
 - `@rova/client` -- `clientBundle`, the built editor, passed to `createRovaApp` as `client`.
-- `@rova/plugins` -- the built-in integrations, and `@rova/plugins/server` for their step and connection-test registrations.
+- `@rova/plugins` -- the built-in integrations as values, and `@rova/plugins/ui` for their icons, which only the browser imports.
 
 The first two run on any runtime with `Request` and `Response`. There is no published server wrapper: once `createRovaApp` returns a fetch handler, a wrapper saves a consumer two lines and charges an options type that reaccumulates every parameter the host's own server takes. This repo has no server of its own; `examples/app.ts` is an app written the way an adopter writes one, and running it is how the mount above stays exercised.
 

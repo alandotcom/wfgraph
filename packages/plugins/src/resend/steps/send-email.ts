@@ -1,14 +1,9 @@
-import {
-  defineLegacyStep,
-  StepFailure,
-  type StepRunContext,
-} from "@rova/core/plugin";
+import { StepFailure, type StepRunContext } from "@rova/core/plugin";
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema } from "effect";
 import { describeResendFailure, sendResendEmail } from "#src/resend/client";
-import type { ResendCredentials } from "#src/resend/credentials";
-import { sendEmailInput, sendEmailOutput } from "#src/resend/schemas";
+import { type ResendCredentials, sendEmailInput } from "#src/resend/index";
 import type { JsonObject } from "@rova/shared/types/json";
 
 type ResendTestBehavior = "log_only" | "send_to_test_email";
@@ -182,7 +177,7 @@ function buildEmailPayload(
  */
 export const sendEmailHandler = Effect.fn(function* (
   input: typeof sendEmailInput.Type,
-  context: StepRunContext
+  context: StepRunContext<ResendCredentials>
 ) {
   // The run's own id doubles as the idempotency key: a step Inngest re-runs
   // sends the same key, and Resend replays its first answer rather than sending
@@ -221,7 +216,7 @@ export const sendEmailHandler = Effect.fn(function* (
 
   // The plugin's own credential vocabulary, so a key it never declares is a
   // compile error here rather than an undefined at run time.
-  const credentials: ResendCredentials = yield* context.credentials;
+  const credentials = yield* context.credentials;
   const apiKey = credentials.RESEND_API_KEY;
 
   if (!apiKey) {
@@ -264,11 +259,4 @@ export const sendEmailHandler = Effect.fn(function* (
   );
 
   return { id: sent.id };
-});
-
-export const sendEmailStep = defineLegacyStep({
-  id: "resend/send-email",
-  input: sendEmailInput,
-  output: sendEmailOutput,
-  handler: sendEmailHandler,
 });

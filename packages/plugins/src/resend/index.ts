@@ -1,43 +1,111 @@
-import type { IntegrationPlugin } from "@rova/shared/plugins/registry";
-import { registerIntegration } from "@rova/shared/plugins/registry";
-import { sendEmailOutput } from "#src/resend/schemas";
+/**
+ * The Resend integration: its credentials, its one action, and what that action
+ * takes and gives back.
+ *
+ * The handler lives in `steps/send-email.ts` and arrives through `load`, because
+ * what it does -- three content modes, two JSON fields a builder typed, a test
+ * mode with its own destination -- is long enough to want a file of its own. The
+ * schemas are exported for that module to type itself against.
+ *
+ * Only the server imports this. The editor gets the metadata below as JSON over
+ * `/api/extensions`, and the icon stays in `ui.ts`.
+ */
 
-const resendPlugin: IntegrationPlugin = {
+import {
+  credentialFields,
+  type CredentialsOf,
+  defineIntegration,
+  defineStep,
+} from "@rova/core/plugin";
+import { Schema } from "effect";
+
+const resendCredentialFields = credentialFields([
+  {
+    label: "API Key",
+    type: "password",
+    placeholder: "re_...",
+    configKey: "apiKey",
+    envVar: "RESEND_API_KEY",
+    helpText: "Get your API key from ",
+    helpLink: {
+      text: "resend.com/api-keys",
+      url: "https://resend.com/api-keys",
+    },
+  },
+  {
+    label: "Default Sender",
+    type: "text",
+    placeholder: "Your Name <noreply@yourdomain.com>",
+    configKey: "fromEmail",
+    envVar: "RESEND_FROM_EMAIL",
+    helpText: "The name and email that will appear as the sender",
+  },
+]);
+
+/** The credential keys a Resend handler may read, derived from the fields above. */
+export type ResendCredentials = CredentialsOf<typeof resendCredentialFields>;
+
+/**
+ * The Send Email config, as the step reads it.
+ *
+ * Every field is a string because that is what a resolved config field is: the
+ * editor writes text, and a template variable resolves to text. Which of them a
+ * builder has to fill in is stated in `configFields`; what this schema says is
+ * what the step may read. `optionalKey` for a field left blank, which reaches a
+ * step as an absent key.
+ */
+export const sendEmailInput = Schema.Struct({
+  emailTo: Schema.String,
+  emailSubject: Schema.String,
+  emailFrom: Schema.optionalKey(Schema.String),
+  emailBody: Schema.optionalKey(Schema.String),
+  emailHtml: Schema.optionalKey(Schema.String),
+  emailContentMode: Schema.optionalKey(Schema.String),
+  emailTemplateId: Schema.optionalKey(Schema.String),
+  /** JSON the workflow author typed, parsed by the step. */
+  emailTemplateVariables: Schema.optionalKey(Schema.String),
+  emailCc: Schema.optionalKey(Schema.String),
+  emailBcc: Schema.optionalKey(Schema.String),
+  emailReplyTo: Schema.optionalKey(Schema.String),
+  emailScheduledAt: Schema.optionalKey(Schema.String),
+  emailTopicId: Schema.optionalKey(Schema.String),
+  /** JSON the workflow author typed, parsed by the step. */
+  emailTags: Schema.optionalKey(Schema.String),
+  testBehavior: Schema.optionalKey(Schema.String),
+  testEmailTo: Schema.optionalKey(Schema.String),
+});
+
+/**
+ * What a sent email leaves for the nodes downstream of it.
+ *
+ * `optionalKey(NullOr(...))` on the way out, which is the one spelling that survives
+ * both a key the handler leaves out and a null it writes where the vendor sent
+ * nothing.
+ */
+export const sendEmailOutput = Schema.Struct({
+  id: Schema.String.annotate({ description: "Email ID" }),
+  /** Absent on a real send: this is why a test run did not make one. */
+  reasonCode: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.String.annotate({ description: "Why a test run did not send" })
+    )
+  ),
+});
+
+export const resend = defineIntegration({
   type: "resend",
   label: "Resend",
   description: "Send transactional emails",
+  credentials: resendCredentialFields,
 
-  formFields: [
-    {
-      id: "apiKey",
-      label: "API Key",
-      type: "password",
-      placeholder: "re_...",
-      configKey: "apiKey",
-      envVar: "RESEND_API_KEY",
-      helpText: "Get your API key from ",
-      helpLink: {
-        text: "resend.com/api-keys",
-        url: "https://resend.com/api-keys",
-      },
-    },
-    {
-      id: "fromEmail",
-      label: "Default Sender",
-      type: "text",
-      placeholder: "Your Name <noreply@yourdomain.com>",
-      configKey: "fromEmail",
-      envVar: "RESEND_FROM_EMAIL",
-      helpText: "The name and email that will appear as the sender",
-    },
-  ],
+  test: async () => (await import("#src/resend/test")).testResend,
 
-  actions: [
-    {
-      slug: "send-email",
+  actions: {
+    "send-email": defineStep({
       label: "Send Email",
       description: "Send an email via Resend",
       category: "Resend",
+      input: sendEmailInput,
       output: sendEmailOutput,
       configFields: [
         {
@@ -198,11 +266,8 @@ const resendPlugin: IntegrationPlugin = {
           ],
         },
       ],
-    },
-  ],
-};
-
-// Auto-register on import
-registerIntegration(resendPlugin);
-
-export default resendPlugin;
+      load: async () =>
+        (await import("#src/resend/steps/send-email")).sendEmailHandler,
+    }),
+  },
+});

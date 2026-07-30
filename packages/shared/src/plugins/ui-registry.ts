@@ -1,19 +1,15 @@
-import { parseActionId } from "#src/plugins/registry";
-import {
-  type IntegrationType,
-  isIntegrationType,
-} from "#src/types/integration";
+import { parseActionId } from "#src/plugins/action-fields";
 
 /**
- * Integration UI Registry
+ * The React half of an integration: its icon, and any custom renderer for a
+ * step's output.
  *
- * The React half of a plugin: the integration's icon and any custom renderer
- * for a step's output. The other half is the plugin metadata in `registry.ts`,
- * which the backend imports to validate actions and to map credentials. Keeping
- * the two in separate modules means a plugin's `index.ts` holds plain data, so
- * the server graph terminates there and the published server bundle contains
- * server code alone. The browser bundle imports "@rova/plugins/ui", which fills
- * this registry in.
+ * Everything else about an integration reaches the editor as JSON over
+ * `/api/extensions`. A component cannot be serialized, so this is the one thing
+ * that stays an import: the browser bundle imports "@rova/plugins/ui", which
+ * fills the map below, and a host defining its own integration writes its own
+ * such module or settles for `logoUrl`. It is also why an integration's
+ * definition never mentions its icon.
  */
 
 /**
@@ -36,29 +32,17 @@ export type IntegrationUi = {
   outputComponents?: Record<string, React.ComponentType<ResultComponentProps>>;
 };
 
-// Keyed on globalThis with Symbol.for for the same reason as the plugin
-// metadata registry: the module can be duplicated across bundles, and the
-// registry has to stay a single shared Map when it is.
-// eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- cross-bundle singleton via Symbol.for
-const _g = globalThis as Record<symbol, unknown>;
-
-const _uiKey = Symbol.for("@rova/integration-ui-registry");
-
-if (!_g[_uiKey]) {
-  _g[_uiKey] = new Map<IntegrationType, IntegrationUi>();
-}
-
-// eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- initialized above
-const integrationUiRegistry = _g[_uiKey] as Map<IntegrationType, IntegrationUi>;
+// A plain module map: one bundle holds it, because the only writer is the browser
+// import above and the only readers are the components beside it. It was keyed on
+// `globalThis` with a `Symbol.for` while the server held a copy of the same
+// registry too.
+const integrationUiRegistry = new Map<string, IntegrationUi>();
 
 /**
  * Register a plugin's UI components. Called from the plugin's `ui.ts`, which
  * only the browser bundle imports.
  */
-export function registerIntegrationUi(
-  type: IntegrationType,
-  ui: IntegrationUi
-): void {
+export function registerIntegrationUi(type: string, ui: IntegrationUi): void {
   integrationUiRegistry.set(type, ui);
 }
 
@@ -68,9 +52,6 @@ export function registerIntegrationUi(
  * the normal state on the server).
  */
 export function getIntegrationUi(type: string): IntegrationUi | undefined {
-  if (!isIntegrationType(type)) {
-    return undefined;
-  }
   return integrationUiRegistry.get(type);
 }
 
@@ -83,10 +64,10 @@ export function getActionOutputComponent(
   actionId: string | undefined | null
 ): React.ComponentType<ResultComponentProps> | undefined {
   const parsed = parseActionId(actionId);
-  if (!parsed || !isIntegrationType(parsed.integration)) {
-    return undefined;
-  }
-  return integrationUiRegistry.get(parsed.integration)?.outputComponents?.[
-    parsed.slug
-  ];
+
+  return parsed
+    ? integrationUiRegistry.get(parsed.integration)?.outputComponents?.[
+        parsed.slug
+      ]
+    : undefined;
 }

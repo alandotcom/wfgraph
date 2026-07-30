@@ -1,6 +1,6 @@
-import { findActionById } from "@rova/shared/plugins/registry";
+import { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fields";
 import { describe, expect, it } from "vitest";
-import "#src/resend/index";
+import { resend } from "#src/resend/index";
 
 /**
  * What a node downstream of a Send Email node can reference.
@@ -9,11 +9,24 @@ import "#src/resend/index";
  * `reasonCode` -- which a test run has always answered with and never offered
  * -- is here too.
  */
-describe("resend/send-email output fields", () => {
-  it("offers every field the step returns, described by the schema", () => {
-    const action = findActionById("resend/send-email");
+describe("the resend integration", () => {
+  it("declares its credentials and its actions as one value", () => {
+    expect(resend.type).toBe("resend");
+    expect(resend.test).toBeDefined();
+    expect(resend.credentials.map((field) => field.envVar)).toEqual([
+      "RESEND_API_KEY",
+      "RESEND_FROM_EMAIL",
+    ]);
+    expect(Object.keys(resend.actions)).toEqual(["send-email"]);
+  });
 
-    expect(action?.outputFields).toEqual([
+  it("offers every field the step returns, described by the schema", () => {
+    expect(
+      requireOutputFieldsFromSchema(
+        'Action "resend/send-email"',
+        resend.actions["send-email"].output
+      )
+    ).toEqual([
       { path: "id", description: "Email ID", type: "string" },
       {
         path: "reasonCode",

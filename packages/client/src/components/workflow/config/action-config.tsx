@@ -31,15 +31,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
-import {
-  findActionById,
-  getActionsByCategory,
-  getAllIntegrations,
-} from "@rova/shared/plugins/registry";
-import {
-  type IntegrationType,
-  isIntegrationType,
-} from "@rova/shared/types/integration";
+import { getExtensionCatalog } from "#src/lib/extensions";
+import { actionsByCategory, findAction } from "@rova/shared/extensions/catalog";
 import {
   parseWorkflowSchemaFieldsOrJsonSchema,
   parseWorkflowSchemaFieldsString,
@@ -828,70 +821,46 @@ function SystemActionFields({
   }
 }
 
-// System actions that don't have plugins
-const SYSTEM_ACTIONS: CategoryActionOption[] = [
-  { id: "HTTP Request", label: "HTTP Request" },
-  { id: "Database Query", label: "Database Query" },
-  { id: "Condition", label: "Condition" },
-  { id: "Wait", label: "Wait" },
-];
-
-const SYSTEM_ACTION_ID_SET = new Set(SYSTEM_ACTIONS.map((action) => action.id));
-
-// Build category mapping dynamically from plugins + System
+/**
+ * Every category the selector offers, and the actions in each.
+ *
+ * The built-in four are catalog entries in the "System" category like any other
+ * action, so this reads one list: an editor served by a different build than its
+ * server offers what that server can run.
+ */
 function useCategoryData(): Record<string, CategoryActionOption[]> {
   return useMemo(() => {
-    const pluginCategories = getActionsByCategory();
+    const grouped = actionsByCategory(getExtensionCatalog());
 
-    // Build category map including System with both id and label
-    const allCategories: Record<string, CategoryActionOption[]> = {
-      System: SYSTEM_ACTIONS,
-    };
-
-    for (const [category, actions] of Object.entries(pluginCategories)) {
-      allCategories[category] = actions.map((a) => ({
-        id: a.id,
-        label: a.label,
-        logoUrl: a.logoUrl,
-        integration:
-          typeof a.integration === "string" ? a.integration : undefined,
-      }));
-    }
-
-    return allCategories;
+    return Object.fromEntries(
+      Object.entries(grouped).map(([category, actions]) => [
+        category,
+        actions.map((action) => ({
+          id: action.id,
+          label: action.label,
+          logoUrl: action.logoUrl,
+          integration: action.integration,
+        })),
+      ])
+    );
   }, []);
 }
 
 // Get category for an action type (supports both new IDs, labels, and legacy labels)
 function getCategoryForAction(actionType: string): string | null {
-  // Check system actions first
-  if (SYSTEM_ACTION_ID_SET.has(actionType)) {
-    return "System";
-  }
-
-  // Use findActionById which handles legacy labels from plugin registry
-  const action = findActionById(actionType);
-  if (action?.category) {
-    return action.category;
-  }
-
-  return null;
+  return findAction(getExtensionCatalog(), actionType)?.category ?? null;
 }
 
-// Normalize action type to new ID format (handles legacy labels via findActionById)
+/**
+ * The id the catalog knows this action by.
+ *
+ * A saved node holds whatever was written when it was configured, and a built-in's
+ * id is its label, so the answer is usually the argument. It stays a lookup because
+ * a node naming an action the surface no longer has must keep its stored value:
+ * blanking it would turn a missing integration into a missing action.
+ */
 function normalizeActionType(actionType: string): string {
-  // Check system actions first - they use their label as ID
-  if (SYSTEM_ACTION_ID_SET.has(actionType)) {
-    return actionType;
-  }
-
-  // Use findActionById which handles legacy labels and returns the proper ID
-  const action = findActionById(actionType);
-  if (action) {
-    return action.id;
-  }
-
-  return actionType;
+  return findAction(getExtensionCatalog(), actionType)?.id ?? actionType;
 }
 
 export function ActionConfig({
@@ -902,7 +871,7 @@ export function ActionConfig({
 }: ActionConfigProps) {
   const actionType = readConfigString(config, "actionType");
   const categories = useCategoryData();
-  const integrations = useMemo(() => getAllIntegrations(), []);
+  const integrations = useMemo(() => getExtensionCatalog().integrations, []);
   const integrationByLabel = useMemo(
     () =>
       new Map(
@@ -937,10 +906,12 @@ export function ActionConfig({
   };
 
   // Get dynamic config fields for plugin actions
-  const pluginAction = actionType ? findActionById(actionType) : null;
+  const catalogAction = actionType
+    ? findAction(getExtensionCatalog(), actionType)
+    : undefined;
 
   // Determine the integration type for the current action
-  const integrationType: IntegrationType | undefined = useMemo(() => {
+  const integrationType: string | undefined = useMemo(() => {
     if (!actionType) {
       return undefined;
     }
@@ -950,11 +921,8 @@ export function ActionConfig({
       return SYSTEM_ACTION_INTEGRATIONS[actionType];
     }
 
-    // Check plugin actions
-    const action = findActionById(actionType);
-    return isIntegrationType(action?.integration)
-      ? action.integration
-      : undefined;
+    return findAction(getExtensionCatalog(), actionType)?.integration;
+    // eslint-disable-next-line react-hooks-js/preserve-manual-memoization -- the catalog is fixed for the process; only actionType can change the answer
   }, [actionType]);
 
   // Check if there are existing connections for this integration type
@@ -1146,12 +1114,13 @@ export function ActionConfig({
         onUpdateConfig={onUpdateConfig}
       />
 
-      {/* Plugin actions - declarative config fields */}
-      {pluginAction && !SYSTEM_ACTION_ID_SET.has(actionType) && (
+      {/* Declarative config fields. The built-in four declare none: each is drawn
+          by a panel of its own above, written against the shape it has. */}
+      {catalogAction && catalogAction.configFields.length > 0 && (
         <ActionConfigRenderer
           config={config}
           disabled={disabled}
-          fields={pluginAction.configFields}
+          fields={[...catalogAction.configFields]}
           onUpdateConfig={onUpdateConfig}
         />
       )}

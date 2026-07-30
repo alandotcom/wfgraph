@@ -1,10 +1,6 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import type {
-  ActionMetadata,
-  IntegrationMetadata,
-} from "@rova/shared/extensions/catalog";
-import type { IntegrationType } from "@rova/shared/types/integration";
+import type { ActionMetadata } from "@rova/shared/extensions/catalog";
 import { defineEvent } from "#src/backend/lib/extensions/define-event";
 import {
   defineIntegration,
@@ -43,16 +39,6 @@ function anAction(id: string, category = "Appointments"): ActionMetadata {
   };
 }
 
-function anIntegration(type: IntegrationType): IntegrationMetadata {
-  return {
-    type,
-    label: type,
-    description: `The ${type} integration`,
-    credentialFields: [],
-    hasTest: false,
-  };
-}
-
 const sendSmsHandler = Effect.fn(function* () {
   return yield* Effect.succeed({ sid: "SM1" });
 });
@@ -79,7 +65,7 @@ function aStep() {
 }
 
 function aDefinition(
-  type: IntegrationType,
+  type: string,
   overrides: Partial<IntegrationDefinition> = {}
 ): IntegrationDefinition {
   return defineIntegration({
@@ -112,16 +98,12 @@ describe("assembleExtensions", () => {
     ]);
   });
 
-  it("lists what the registries hold after the built-ins", () => {
+  it("lists a host's own actions after the built-ins", () => {
     const { catalog } = assembleExtensions({
-      registries: {
-        actions: [anAction("appointments/cancel")],
-        integrations: [anIntegration("acuity")],
-      },
+      actions: [anAction("appointments/cancel")],
     });
 
     expect(catalog.actions.at(-1)?.id).toBe("appointments/cancel");
-    expect(catalog.integrations.map((one) => one.type)).toEqual(["acuity"]);
   });
 
   it("carries an Event's label, Correlation Path and payload fields into the catalog", () => {
@@ -232,13 +214,10 @@ describe("assembleExtensions checks", () => {
   it("refuses two actions sharing an id", () => {
     expect(() =>
       assembleExtensions({
-        registries: {
-          actions: [
-            anAction("appointments/cancel"),
-            anAction("appointments/cancel"),
-          ],
-          integrations: [],
-        },
+        actions: [
+          anAction("appointments/cancel"),
+          anAction("appointments/cancel"),
+        ],
       })
     ).toThrow('Two actions are defined with the id "appointments/cancel"');
   });
@@ -246,10 +225,7 @@ describe("assembleExtensions checks", () => {
   it("refuses a host action that collides with a built-in", () => {
     expect(() =>
       assembleExtensions({
-        registries: {
-          actions: [anAction("Condition", "System")],
-          integrations: [],
-        },
+        actions: [anAction("Condition", "System")],
       })
     ).toThrow('Two actions are defined with the id "Condition"');
   });
@@ -263,18 +239,6 @@ describe("assembleExtensions checks", () => {
           // one declares a different action and leaves the type as the only clash.
           aDefinition("twilio", { actions: { "lookup-number": aStep() } }),
         ],
-      })
-    ).toThrow('Two integrations are defined with the type "twilio"');
-  });
-
-  // An integration ported to a definition and still registering itself would
-  // reach assembly twice, once from each half, which is the collision this
-  // catches while both halves exist.
-  it("refuses an integration that arrives as a definition and from a registry", () => {
-    expect(() =>
-      assembleExtensions({
-        integrations: [aDefinition("twilio")],
-        registries: { actions: [], integrations: [anIntegration("twilio")] },
       })
     ).toThrow('Two integrations are defined with the type "twilio"');
   });

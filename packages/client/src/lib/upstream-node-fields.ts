@@ -1,4 +1,5 @@
-import { findActionById } from "@rova/shared/plugins/registry";
+import { getExtensionCatalog } from "#src/lib/extensions";
+import { findAction } from "@rova/shared/extensions/catalog";
 import type {
   ConditionFieldDefinition,
   ConditionFieldType,
@@ -139,12 +140,9 @@ function getTriggerOutputFields(node: WorkflowNode): ReferenceField[] {
 }
 
 function getPluginActionOutputFields(actionType: string): ReferenceField[] {
-  const action = findActionById(actionType);
-  if (!(action?.outputFields && action.outputFields.length > 0)) {
-    return [];
-  }
+  const action = findAction(getExtensionCatalog(), actionType);
 
-  return action.outputFields;
+  return action ? [...action.outputFields] : [];
 }
 
 export function getNodeDisplayName(node: WorkflowNode): string {
@@ -155,7 +153,7 @@ export function getNodeDisplayName(node: WorkflowNode): string {
   if (node.data.type === "action") {
     const actionType = readConfigString(node.data.config, "actionType");
     if (actionType) {
-      const action = findActionById(actionType);
+      const action = findAction(getExtensionCatalog(), actionType);
       if (action?.label) {
         return action.label;
       }

@@ -1,59 +1,35 @@
 /**
- * The plugins that still register themselves on import.
+ * The built-in integrations, as values.
  *
- * Importing this module is what turns them on, and the browser imports it too:
- * their metadata is what the editor draws them with. A plugin B4 has ported is
- * not here, because a definition reaches the server as a value and the browser
- * reads it off the catalog instead. This module goes when the last one moves.
+ * Nothing registers on import: this array is what a host hands to `createRovaApp`
+ * under `extensions.integrations`, so the line that turns the built-ins on is a
+ * line in the host's code and dropping it is what turns them off. Each entry is
+ * server-only -- a vendor client, a connection test, a step handler -- and the
+ * editor learns about all of it as JSON over `/api/extensions` instead.
+ *
+ * Each is also exported by name, so a host that wants two of the six imports two
+ * and has the rest tree-shaken out.
  */
 
-import acuityPlugin from "./acuity";
-import clerkPlugin from "./clerk";
-import linearPlugin from "./linear";
-import resendPlugin from "./resend";
-import slackPlugin from "./slack";
+export { acuity } from "#src/acuity/index";
+export { clerk } from "#src/clerk/index";
+export { linear } from "#src/linear/index";
+export { resend } from "#src/resend/index";
+export { slack } from "#src/slack/index";
+export { twilio } from "#src/twilio/index";
 
-export const REGISTERED_PLUGINS = [
-  acuityPlugin,
-  clerkPlugin,
-  linearPlugin,
-  resendPlugin,
-  slackPlugin,
-] as const;
+import { acuity } from "#src/acuity/index";
+import { clerk } from "#src/clerk/index";
+import { linear } from "#src/linear/index";
+import { resend } from "#src/resend/index";
+import { slack } from "#src/slack/index";
+import { twilio } from "#src/twilio/index";
 
-export type {
-  ActionConfigField,
-  ActionConfigFieldBase,
-  ActionConfigFieldGroup,
-  ActionWithFullId,
-  IntegrationPlugin,
-  PluginAction,
-} from "@rova/shared/plugins/registry";
-export type {
-  RegisteredRuntimeAction,
-  RuntimeActionMetadata,
-} from "@rova/shared/workflow/action-registry";
-
-// Export the registry utilities
-export {
-  clearRuntimeActions,
-  getRuntimeActions,
-  registerRuntimeAction,
-} from "@rova/shared/workflow/action-registry";
-export {
-  computeActionId,
-  findActionById,
-  flattenConfigFields,
-  getActionsByCategory,
-  getAllActions,
-  getAllIntegrations,
-  getIntegration,
-  getIntegrationLabels,
-  getSortedIntegrationTypes,
-  isFieldGroup,
-  parseActionId,
-  registerIntegration,
-} from "@rova/shared/plugins/registry";
-
-// The flat field shape an action or trigger declares in `outputFields`.
-export type { ReferenceField } from "@rova/shared/workflow/node-references";
+export const builtInIntegrations = [
+  acuity,
+  clerk,
+  linear,
+  resend,
+  slack,
+  twilio,
+];

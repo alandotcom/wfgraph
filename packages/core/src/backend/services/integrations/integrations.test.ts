@@ -3,22 +3,22 @@
 import { afterEach, assert, describe, layer } from "@effect/vitest";
 import { Effect } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
-import { InternalFailure } from "#src/backend/lib/effect/failures";
+import {
+  InternalFailure,
+  InvalidInput,
+} from "#src/backend/lib/effect/failures";
 import {
   clearExtensions,
   configureExtensions,
 } from "#src/backend/lib/extensions/current";
 import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
+import type { IntegrationTestLoader } from "#src/backend/lib/extensions/integration-test";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import {
   configureTestExtensions,
   SilentAppLoggerLayer,
   stubIntegrationRepo,
 } from "#src/backend/lib/effect/test-layers";
-import {
-  registerIntegrationTest,
-  unregisterIntegrationTest,
-} from "#src/backend/services/integrations/integration-test-loaders";
 import {
   getIntegration,
   postIntegrationTest,
@@ -48,6 +48,21 @@ const slackLike: IntegrationMetadata = {
     { label: "Team ID", type: "text", configKey: "teamId" },
   ],
 };
+
+/**
+ * The same integration as a definition, which is what carries a connection test.
+ * `slackLike` above is the metadata half, for the cases that only mask a config.
+ */
+function slackDefinition(test?: IntegrationTestLoader) {
+  return defineIntegration({
+    type: "slack",
+    label: "Slack",
+    description: "test double",
+    credentials: slackLike.credentialFields,
+    ...(test ? { test } : {}),
+    actions: {},
+  });
+}
 
 type StoredIntegration = {
   id: string;
@@ -212,18 +227,22 @@ const unreadableIntegrationRepo = stubIntegrationRepo({
 describe("integration connection test failures", () => {
   afterEach(() => {
     clearExtensions();
-    unregisterIntegrationTest("slack");
   });
 
   layer(SilentAppLoggerLayer)((it) => {
     it.effect("answers with what the vendor's test function threw", () =>
       Effect.gen(function* () {
-        configureTestExtensions({ integrations: [slackLike] });
         // A vendor SDK that throws instead of answering, which is the case the
-        // registry lookup and the vendor call are wrapped for.
-        registerIntegrationTest("slack", () =>
-          Promise.resolve(() => {
-            throw new Error("vendor said no");
+        // loader and the vendor call are both wrapped for.
+        configureExtensions(
+          assembleExtensions({
+            integrations: [
+              slackDefinition(() =>
+                Promise.resolve(() => {
+                  throw new Error("vendor said no");
+                })
+              ),
+            ],
           })
         );
         const repo = makeIntegrationRepo(storedSlackIntegration);
@@ -238,45 +257,22 @@ describe("integration connection test failures", () => {
       })
     );
 
-    // Two sources answer for a connection test while both halves of the surface
-    // exist: an integration passed to `createRovaApp` carries its own, and the map
-    // holds the plugins B4 has not ported. The definition's is the one that runs,
-    // so a ported integration is not shadowed by a registration left behind.
-    it.effect("prefers the test an assembled integration carries", () =>
+    // The credentials dialog draws the button off `hasTest`, so a request for a
+    // test an integration does not declare arrives only when the two disagree.
+    it.effect("refuses a test an integration does not declare", () =>
       Effect.gen(function* () {
         configureExtensions(
-          assembleExtensions({
-            integrations: [
-              defineIntegration({
-                type: "slack",
-                label: "Slack",
-                description: "test double",
-                credentials: slackLike.credentialFields,
-                test: () =>
-                  Promise.resolve(() =>
-                    Promise.resolve({
-                      success: false,
-                      error: "from the definition",
-                    })
-                  ),
-                actions: {},
-              }),
-            ],
-          })
-        );
-        registerIntegrationTest("slack", () =>
-          Promise.resolve(() =>
-            Promise.resolve({ success: false, error: "from the registration" })
-          )
+          assembleExtensions({ integrations: [slackDefinition()] })
         );
         const repo = makeIntegrationRepo(storedSlackIntegration);
 
-        const answer = yield* postIntegrationTest("int_1").pipe(
-          Effect.provide(repo.layer)
+        const failure = yield* postIntegrationTest("int_1").pipe(
+          Effect.provide(repo.layer),
+          Effect.flip
         );
 
-        assert.strictEqual(answer.status, "error");
-        assert.strictEqual(answer.message, "from the definition");
+        assert.instanceOf(failure, InvalidInput);
+        assert.include(failure.error, "declares no test");
       })
     );
 

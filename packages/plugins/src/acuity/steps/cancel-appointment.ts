@@ -1,10 +1,9 @@
-import { defineLegacyStep, type StepRunContext } from "@rova/core/plugin";
+import type { StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
-import type { AcuityCredentials } from "#src/acuity/credentials";
 import {
   cancelAppointmentInput,
-  cancelAppointmentOutput,
-} from "#src/acuity/schemas";
+  type AcuityCredentials,
+} from "#src/acuity/index";
 import { callAcuity, createAcuityClient } from "./client";
 import { optionalBoolean, requiredInteger } from "./shared";
 
@@ -14,11 +13,9 @@ import { optionalBoolean, requiredInteger } from "./shared";
  */
 export const cancelAppointmentHandler = Effect.fn(function* (
   input: typeof cancelAppointmentInput.Type,
-  context: StepRunContext
+  context: StepRunContext<AcuityCredentials>
 ) {
-  // The plugin's own credential vocabulary, so a key it never declares is a
-  // compile error here rather than an undefined at run time.
-  const credentials: AcuityCredentials = yield* context.credentials;
+  const credentials = yield* context.credentials;
   const acuity = yield* createAcuityClient(credentials);
 
   const appointmentId = yield* requiredInteger(
@@ -47,11 +44,4 @@ export const cancelAppointmentHandler = Effect.fn(function* (
     id: appointment.id,
     canceled: appointment.canceled,
   };
-});
-
-export const cancelAppointmentStep = defineLegacyStep({
-  id: "acuity/cancel-appointment",
-  input: cancelAppointmentInput,
-  output: cancelAppointmentOutput,
-  handler: cancelAppointmentHandler,
 });

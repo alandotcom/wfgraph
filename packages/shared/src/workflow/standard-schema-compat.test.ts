@@ -6,12 +6,8 @@ import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { type } from "arktype";
 import { z } from "zod";
-import {
-  findActionById,
-  registerIntegration,
-  unregisterIntegration,
-} from "#src/plugins/registry";
 import { extractSchemaKeys, toStandardSchema } from "#src/types/schema";
+import { requireOutputFieldsFromSchema } from "#src/workflow/output-fields";
 import { createAction } from "./action-registry";
 import { rewriteCelExpression } from "./inngest-event-data";
 import { createTrigger } from "./trigger-registry";
@@ -323,40 +319,27 @@ describe("registries bridge the schema they are given", () => {
     ).toThrow('Invalid identifier "entitId"');
   });
 
-  it("reads a plugin action's output schema at registration", () => {
-    // The plugin half of the same seam. A plugin's metadata is what the browser
-    // holds, so the schema is read once, where it is registered, and what comes
-    // out is the flat list the editor's autocomplete offers. The description an
-    // annotation carries is the field's description; `annotate` goes before
-    // `check`, or the check owns it and nests it out of the reader's sight.
-    registerIntegration({
-      type: "twilio",
-      label: "Compat Twilio",
-      description: "Registration reads the output schema",
-      formFields: [],
-      actions: [
-        {
-          slug: "compat-send",
-          label: "Compat Send",
-          description: "Tests plugin output schema derivation",
-          category: "Compat",
-          configFields: [],
-          output: Schema.Struct({
-            sid: Schema.String.annotate({ description: "Message SID" }).check(
-              Schema.isMinLength(1)
-            ),
-            attempts: Schema.Number.annotate({
-              description: "Send attempts",
-            }).check(Schema.isFinite()),
-            failedAt: Schema.NullOr(
-              Schema.String.annotate({ description: "When the send failed" })
-            ),
-          }),
-        },
-      ],
+  it("reads an action's output schema down to the picker's list", () => {
+    // The other half of the same seam. An integration's action declares its output
+    // as a schema and assembly derives what the editor's autocomplete offers, so
+    // this is that derivation over the shapes a schema library gives it. The
+    // description an annotation carries is the field's description; `annotate` goes
+    // before `check`, or the check owns it and nests it out of the reader's sight.
+    const output = Schema.Struct({
+      sid: Schema.String.annotate({ description: "Message SID" }).check(
+        Schema.isMinLength(1)
+      ),
+      attempts: Schema.Number.annotate({
+        description: "Send attempts",
+      }).check(Schema.isFinite()),
+      failedAt: Schema.NullOr(
+        Schema.String.annotate({ description: "When the send failed" })
+      ),
     });
 
-    expect(findActionById("twilio/compat-send")?.outputFields).toEqual([
+    expect(
+      requireOutputFieldsFromSchema('Action "twilio/compat-send"', output)
+    ).toEqual([
       { path: "sid", description: "Message SID", type: "string" },
       { path: "attempts", description: "Send attempts", type: "number" },
       {
@@ -366,8 +349,6 @@ describe("registries bridge the schema they are given", () => {
         nullable: true,
       },
     ]);
-
-    unregisterIntegration("twilio");
   });
 
   it("reads a nested output schema down to its leaves", () => {
@@ -375,37 +356,24 @@ describe("registries bridge the schema they are given", () => {
     // needs the leaf that holds one. The object keeps its own entry beside the
     // leaves, because a template can name a whole object and the engine renders
     // it as JSON.
-    registerIntegration({
-      type: "twilio",
-      label: "Compat Twilio",
-      description: "Registration reads the output schema",
-      formFields: [],
-      actions: [
-        {
-          slug: "compat-nested",
-          label: "Compat Nested",
-          description: "Returns an object inside an object",
-          category: "Compat",
-          configFields: [],
-          output: Schema.Struct({
-            message: Schema.Struct({
-              sid: Schema.String.annotate({ description: "Message SID" }),
-              to: Schema.Struct({
-                number: Schema.String.annotate({
-                  description: "Recipient number",
-                }),
-              }).annotate({ description: "Who it went to" }),
-            }).annotate({ description: "The message that was sent" }),
-            // No named properties, so there is no leaf under it to offer.
-            metadata: Schema.Record(Schema.String, Schema.String).annotate({
-              description: "Whatever the account attaches",
-            }),
+    const output = Schema.Struct({
+      message: Schema.Struct({
+        sid: Schema.String.annotate({ description: "Message SID" }),
+        to: Schema.Struct({
+          number: Schema.String.annotate({
+            description: "Recipient number",
           }),
-        },
-      ],
+        }).annotate({ description: "Who it went to" }),
+      }).annotate({ description: "The message that was sent" }),
+      // No named properties, so there is no leaf under it to offer.
+      metadata: Schema.Record(Schema.String, Schema.String).annotate({
+        description: "Whatever the account attaches",
+      }),
     });
 
-    expect(findActionById("twilio/compat-nested")?.outputFields).toEqual([
+    expect(
+      requireOutputFieldsFromSchema('Action "twilio/compat-nested"', output)
+    ).toEqual([
       {
         path: "message",
         description: "The message that was sent",
@@ -428,59 +396,31 @@ describe("registries bridge the schema they are given", () => {
         type: "object",
       },
     ]);
-
-    unregisterIntegration("twilio");
   });
 
-  // The two ways a schema can register an action while offering the editor
+  // The two ways a schema can describe an action while offering the editor
   // nothing usable. Both used to be silent: the derivation answered an empty
   // list for the first and a list of type names for the second, and an action
   // with no autocomplete looks the same to a user as one whose fields have not
   // loaded yet.
   it("refuses an output schema the editor cannot address by path", () => {
     expect(() =>
-      registerIntegration({
-        type: "twilio",
-        label: "Compat Twilio",
-        description: "Registration reads the output schema",
-        formFields: [],
-        actions: [
-          {
-            slug: "compat-array",
-            label: "Compat Array",
-            description: "Returns a bare array",
-            category: "Compat",
-            configFields: [],
-            output: Schema.Array(
-              Schema.String.annotate({ description: "Message SID" })
-            ),
-          },
-        ],
-      })
+      requireOutputFieldsFromSchema(
+        'Action "twilio/compat-array"',
+        Schema.Array(Schema.String.annotate({ description: "Message SID" }))
+      )
     ).toThrow(/"twilio\/compat-array".+root is not an object/);
   });
 
   it("refuses an output field that carries no description", () => {
     expect(() =>
-      registerIntegration({
-        type: "twilio",
-        label: "Compat Twilio",
-        description: "Registration reads the output schema",
-        formFields: [],
-        actions: [
-          {
-            slug: "compat-bare",
-            label: "Compat Bare",
-            description: "Leaves a field unannotated",
-            category: "Compat",
-            configFields: [],
-            output: Schema.Struct({
-              sid: Schema.String.annotate({ description: "Message SID" }),
-              status: Schema.String,
-            }),
-          },
-        ],
-      })
+      requireOutputFieldsFromSchema(
+        'Action "twilio/compat-bare"',
+        Schema.Struct({
+          sid: Schema.String.annotate({ description: "Message SID" }),
+          status: Schema.String,
+        })
+      )
     ).toThrow(/"twilio\/compat-bare".+status carry no description/);
   });
 
@@ -488,26 +428,14 @@ describe("registries bridge the schema they are given", () => {
     // The rule reaches every path the editor lists, so a leaf two levels down
     // is named by its dotted path rather than by the object it sits in.
     expect(() =>
-      registerIntegration({
-        type: "twilio",
-        label: "Compat Twilio",
-        description: "Registration reads the output schema",
-        formFields: [],
-        actions: [
-          {
-            slug: "compat-bare-nested",
-            label: "Compat Bare Nested",
-            description: "Leaves a nested field unannotated",
-            category: "Compat",
-            configFields: [],
-            output: Schema.Struct({
-              message: Schema.Struct({
-                sid: Schema.String,
-              }).annotate({ description: "The message that was sent" }),
-            }),
-          },
-        ],
-      })
+      requireOutputFieldsFromSchema(
+        'Action "twilio/compat-bare-nested"',
+        Schema.Struct({
+          message: Schema.Struct({
+            sid: Schema.String,
+          }).annotate({ description: "The message that was sent" }),
+        })
+      )
     ).toThrow(
       /"twilio\/compat-bare-nested".+message\.sid carry no description/
     );
@@ -520,27 +448,15 @@ describe("registries bridge the schema they are given", () => {
   // check is what makes it the plain number the editor can offer.
   it("refuses an output schema whose fields do not all survive the read", () => {
     expect(() =>
-      registerIntegration({
-        type: "twilio",
-        label: "Compat Twilio",
-        description: "Registration reads the output schema",
-        formFields: [],
-        actions: [
-          {
-            slug: "compat-dropped",
-            label: "Compat Dropped",
-            description: "Declares a field the reader cannot use",
-            category: "Compat",
-            configFields: [],
-            output: Schema.Struct({
-              sid: Schema.String.annotate({ description: "Message SID" }),
-              attempts: Schema.Number.annotate({
-                description: "Send attempts",
-              }),
-            }),
-          },
-        ],
-      })
+      requireOutputFieldsFromSchema(
+        'Action "twilio/compat-dropped"',
+        Schema.Struct({
+          sid: Schema.String.annotate({ description: "Message SID" }),
+          attempts: Schema.Number.annotate({
+            description: "Send attempts",
+          }),
+        })
+      )
     ).toThrow(/"twilio\/compat-dropped".+attempts did not survive/);
   });
 

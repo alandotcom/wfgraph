@@ -1,3 +1,20 @@
+/**
+ * How the engine reaches an action's implementation.
+ *
+ * Three kinds of action exist and the lookup below is where they meet. An
+ * integration's action carries its step in the definition a host passed to
+ * `createRovaApp`, so the assembled surface answers for it. A host's own action
+ * carries a function it wrote. The two the engine ships itself -- Database Query
+ * and HTTP Request -- are Promise functions loaded on demand, because each
+ * answers a shape the `StepResult` envelope has no room for and moving them is a
+ * decision about what a step may return rather than a mechanical port.
+ *
+ * The kinds are separate arms rather than one shape with optional fields, which
+ * is what they used to be: a runtime action then wore a module importer's
+ * clothes, and an action registered as metadata alone reached the module path and
+ * reported that a plugin was missing an export it never had.
+ */
+
 import { findAction } from "@rova/shared/extensions/catalog";
 import {
   getRuntimeAction,
@@ -10,19 +27,7 @@ import type {
 } from "@rova/shared/workflow/step-result";
 import { builtInActions } from "#src/backend/lib/extensions/built-ins";
 import { getExtensions } from "#src/backend/lib/extensions/current";
-import type { StepDefinition } from "#src/backend/lib/steps/define-step";
 
-/**
- * How the engine reaches an action's implementation.
- *
- * A plugin step is loaded on demand, because a step implementation pulls vendor
- * code that should not enter the process until something calls it. A runtime
- * action carries its function directly. These were one shape with optional
- * fields, which meant a runtime action wore a module importer's clothes: a fake
- * export name and an importer returning `{}`. An action registered as metadata
- * alone, which is what the browser holds, then reached the module path and
- * reported that a plugin was missing an export it never had.
- */
 export type StepImporter =
   | { kind: "step"; load: () => Promise<StepFunction> }
   | {
@@ -34,30 +39,24 @@ export type StepImporter =
     };
 
 /**
- * The registered steps, held in module state.
+ * The two built-in steps, behind their imports.
  *
- * Stage 7 of ADR-0002 brings the run engine into the app's runtime, and this
- * map becomes a service it reads from. Until then the engine dispatches from
- * outside any runtime, so the registrations have to be reachable from outside
- * one too.
+ * A step written this way declares the config fields it needs as its parameter
+ * type, while the engine builds the open record it actually gets, and a function
+ * parameter narrows the wrong way for that assignment to hold. So this map is
+ * where the promise -- that each copes with the record the engine builds -- is
+ * taken at its word, and the cast below is the whole of it. An integration's step
+ * needs none of this: its input schema makes the same promise checkable.
  */
-const STEP_LOADERS: Record<string, () => Promise<StepFunction>> = {};
-
-// The two built-ins that do have a step, registered the way a plugin's steps
-// are. They used to be registered from the engine, which made the engine's
-// import order load-bearing for whether its own actions existed. The loaders
-// stay lazy, so naming them here costs nothing at import time.
-registerBuiltInStep(
-  "Database Query",
-  async () =>
-    (await import("#src/backend/lib/steps/database-query")).databaseQueryStep
-);
-
-registerBuiltInStep(
-  "HTTP Request",
-  async () =>
-    (await import("#src/backend/lib/steps/http-request")).httpRequestStep
-);
+const BUILT_IN_STEPS: Record<
+  string,
+  () => Promise<(input: never) => StepResult | Promise<StepResult>>
+> = {
+  "Database Query": async () =>
+    (await import("#src/backend/lib/steps/database-query")).databaseQueryStep,
+  "HTTP Request": async () =>
+    (await import("#src/backend/lib/steps/http-request")).httpRequestStep,
+};
 
 /** The built-in action types, in the words the unknown-action message uses. */
 export function getSystemActionTypes(): string[] {
@@ -65,16 +64,23 @@ export function getSystemActionTypes(): string[] {
 }
 
 export function getStepImporter(actionType: string): StepImporter | undefined {
-  // An integration passed to `createRovaApp` carries its steps, so the assembled
-  // surface is asked first. The map below holds the two built-in steps and the
-  // plugins B4 has not ported, which still register on import.
   const step = getExtensions().stepFor(actionType);
   if (step) {
     return { kind: "step", load: () => Promise.resolve(step) };
   }
 
-  if (Object.hasOwn(STEP_LOADERS, actionType)) {
-    return { kind: "step", load: STEP_LOADERS[actionType] };
+  if (Object.hasOwn(BUILT_IN_STEPS, actionType)) {
+    const load = BUILT_IN_STEPS[actionType];
+
+    return {
+      kind: "step",
+      load: async () => {
+        const builtIn = await load();
+
+        // eslint-disable-next-line typescript/no-unsafe-type-assertion -- the two built-in steps; see above
+        return (input) => builtIn(input as never);
+      },
+    };
   }
 
   const runtimeAction = getRuntimeAction(actionType);
@@ -101,54 +107,4 @@ export function getStepImporter(actionType: string): StepImporter | undefined {
  */
 export function getActionLabel(actionType: string): string | undefined {
   return findAction(getExtensions().catalog, actionType)?.label;
-}
-
-/**
- * Register a step under the action id it implements.
- *
- * The id is checked against the one the step declares, so a registration and
- * its step cannot name different actions. What the loader resolves to is a
- * value rather than a name to look up, so a renamed export is a compile error
- * rather than an action that reports itself missing at run time.
- *
- * `NoInfer` is what makes the first of those true. Without it `Id` is inferred
- * from both arguments at once, so a mismatched pair widens to the union of the
- * two ids and type-checks, which is the opposite of what this signature is for.
- * The key is the only thing that names `Id`; the loader is then checked against
- * it.
- */
-export function registerStep<Id extends string>(
-  actionId: Id,
-  load: () => Promise<StepDefinition<NoInfer<Id>>>
-): void {
-  STEP_LOADERS[actionId] = async () => (await load()).run;
-}
-
-/**
- * Register one of the two built-in steps, which are still Promise functions.
- *
- * A step written this way declares the config fields it needs as its parameter
- * type, while the engine builds the open record it actually gets, and a
- * function parameter narrows the wrong way for that assignment to hold. So this
- * is where the registration's promise -- that the step copes with the record
- * the engine builds -- is taken at its word.
- *
- * Stage 6b of ADR-0002 took every plugin step to `defineStep`, where the input
- * schema makes the same promise checkable, and this stopped being exported from
- * `@rova/core/plugin` with them: no integration can reach it, and the two call
- * sites left are the ones above. Database Query and HTTP Request each answer a
- * shape `StepResult` has no room for -- rows beside a count, a status beside
- * the data -- so moving them is a decision about what a step may return rather
- * than the mechanical conversion the plugins were.
- */
-function registerBuiltInStep(
-  actionId: string,
-  load: () => Promise<(input: never) => StepResult | Promise<StepResult>>
-): void {
-  STEP_LOADERS[actionId] = async () => {
-    const step = await load();
-    return (input) =>
-      // eslint-disable-next-line typescript/no-unsafe-type-assertion -- the two built-in steps; see above
-      step(input as never);
-  };
 }

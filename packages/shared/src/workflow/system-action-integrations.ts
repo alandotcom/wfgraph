@@ -1,8 +1,4 @@
-import type { IntegrationType } from "#src/types/integration";
-
-export const SYSTEM_ACTION_INTEGRATIONS: Readonly<
-  Record<string, IntegrationType>
-> = {
+export const SYSTEM_ACTION_INTEGRATIONS: Readonly<Record<string, string>> = {
   "Database Query": "database",
 };
 

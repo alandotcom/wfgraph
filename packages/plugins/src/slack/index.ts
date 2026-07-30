@@ -1,34 +1,159 @@
-import type { IntegrationPlugin } from "@rova/shared/plugins/registry";
-import { registerIntegration } from "@rova/shared/plugins/registry";
-import { sendSlackMessageOutput } from "#src/slack/schemas";
+/**
+ * The Slack integration: its credentials, its one action, and what that action
+ * does.
+ *
+ * One file, because only the server imports it. The editor gets this plugin's
+ * metadata as JSON over `/api/extensions`, so nothing here reaches a browser
+ * bundle. The icon is the exception, since a React component cannot be
+ * serialized: it stays in `ui.ts`, which only the browser imports.
+ */
 
-const slackPlugin: IntegrationPlugin = {
+import {
+  credentialFields,
+  type CredentialsOf,
+  defineIntegration,
+  defineStep,
+  StepFailure,
+  type StepRunContext,
+} from "@rova/core/plugin";
+import { Effect, Schema } from "effect";
+import { callSlack, describeSlackFailure } from "#src/slack/client";
+
+const slackCredentialFields = credentialFields([
+  {
+    label: "Bot Token",
+    type: "password",
+    placeholder: "xoxb-...",
+    configKey: "apiKey",
+    envVar: "SLACK_API_KEY",
+    helpText: "Create a Slack app and get your Bot Token from ",
+    helpLink: {
+      text: "api.slack.com/apps",
+      url: "https://api.slack.com/apps",
+    },
+  },
+]);
+
+/** The credential keys a Slack handler may read, derived from the fields above. */
+export type SlackCredentials = CredentialsOf<typeof slackCredentialFields>;
+
+type SlackTestBehavior = "log_only" | "send_message";
+
+// What chat.postMessage answers with, as much of it as this step reports on.
+const postMessageSchema = Schema.Struct({
+  ts: Schema.String,
+  channel: Schema.String,
+});
+
+/**
+ * The Send Slack Message config, as the step reads it.
+ *
+ * Every field is a string because that is what a resolved config field is: the
+ * editor writes text, and a template variable resolves to text. `optionalKey` for
+ * a field a builder may leave blank, which reaches a step as an absent key.
+ */
+const sendSlackMessageInput = Schema.Struct({
+  slackChannel: Schema.String,
+  slackMessage: Schema.String,
+  testBehavior: Schema.optionalKey(Schema.String),
+});
+
+/**
+ * What a posted message leaves for the nodes downstream of it.
+ *
+ * `optionalKey(NullOr(...))` on the way out, which is the one spelling that survives
+ * both a key the handler leaves out and a null it writes where the vendor sent
+ * nothing.
+ */
+const sendSlackMessageOutput = Schema.Struct({
+  ts: Schema.String.annotate({ description: "Message timestamp" }),
+  channel: Schema.String.annotate({ description: "Channel ID" }),
+  /** Absent on a real send: this is why a test run did not make one. */
+  reasonCode: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.String.annotate({ description: "Why a test run did not send" })
+    )
+  ),
+});
+
+function resolveSlackTestBehavior(
+  value: string | undefined
+): SlackTestBehavior {
+  return value === "send_message" ? "send_message" : "log_only";
+}
+
+/**
+ * Named rather than written inline, so a test can run it with a context it
+ * supplies: what this step decides is whether to post at all, and that decision
+ * is here.
+ */
+export const sendSlackMessageHandler = Effect.fn(function* (
+  input: typeof sendSlackMessageInput.Type,
+  context: StepRunContext<SlackCredentials>
+) {
+  const testBehavior = resolveSlackTestBehavior(input.testBehavior);
+
+  // A test run posts nothing unless the builder asked it to. The answer is a
+  // success carrying the reason, so the run shows what happened rather than an
+  // error someone has to interpret.
+  if (context.runMode === "test" && testBehavior === "log_only") {
+    return {
+      ts: "",
+      channel: input.slackChannel,
+      reasonCode: "test_mode_log_only",
+    };
+  }
+
+  const credentials = yield* context.credentials;
+  const apiKey = credentials.SLACK_API_KEY;
+
+  if (!apiKey) {
+    return yield* Effect.fail(
+      new StepFailure({
+        message:
+          "SLACK_API_KEY is not configured. Please add it in Project Integrations.",
+      })
+    );
+  }
+
+  const posted = yield* callSlack(
+    apiKey,
+    "chat.postMessage",
+    postMessageSchema,
+    {
+      body: {
+        channel: input.slackChannel,
+        text: input.slackMessage,
+      },
+    }
+  ).pipe(
+    Effect.mapError(
+      (error) =>
+        new StepFailure({
+          message: `Failed to send Slack message: ${describeSlackFailure(error)}`,
+        })
+    )
+  );
+
+  return { ts: posted.ts, channel: posted.channel };
+});
+
+export const slack = defineIntegration({
   type: "slack",
   label: "Slack",
   description: "Send messages to Slack channels",
+  credentials: slackCredentialFields,
 
-  formFields: [
-    {
-      id: "apiKey",
-      label: "Bot Token",
-      type: "password",
-      placeholder: "xoxb-...",
-      configKey: "apiKey",
-      envVar: "SLACK_API_KEY",
-      helpText: "Create a Slack app and get your Bot Token from ",
-      helpLink: {
-        text: "api.slack.com/apps",
-        url: "https://api.slack.com/apps",
-      },
-    },
-  ],
+  // The connection test reaches Slack, so it stays behind a dynamic import until
+  // someone presses "Test connection".
+  test: async () => (await import("#src/slack/test")).testSlack,
 
-  actions: [
-    {
-      slug: "send-message",
+  actions: {
+    "send-message": defineStep({
       label: "Send Slack Message",
       description: "Send a message to a Slack channel",
       category: "Slack",
+      input: sendSlackMessageInput,
       output: sendSlackMessageOutput,
       configFields: [
         {
@@ -60,11 +185,7 @@ const slackPlugin: IntegrationPlugin = {
           ],
         },
       ],
-    },
-  ],
-};
-
-// Auto-register on import
-registerIntegration(slackPlugin);
-
-export default slackPlugin;
+      handler: sendSlackMessageHandler,
+    }),
+  },
+});

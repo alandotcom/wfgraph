@@ -146,7 +146,7 @@ describe("findIssuesHandler", () => {
         url: "https://linear.app/team/issue/ABC-2",
         state: "Unknown",
         priority: 0,
-        assigneeId: undefined,
+        assigneeId: null,
       });
     }).pipe(withTransport)
   );

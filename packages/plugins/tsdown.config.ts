@@ -1,12 +1,13 @@
 import { defineConfig } from "tsdown";
 
-// The three names in this package's "exports" map. They stay separate so a
-// server can import metadata and step registrations without pulling React in.
+// The two names in this package's "exports" map. They stay separate because the
+// integrations are server-only values and the icons are React components: a server
+// imports the first without pulling React in, and the browser imports the second
+// without pulling a vendor client in.
 //
-// @rova/shared is private and gets inlined, as it is into @rova/core. The
-// registries it carries agree across both bundles through Symbol.for.
+// @rova/shared is private and gets inlined, as it is into @rova/core.
 export default defineConfig({
-  entry: ["src/index.ts", "src/server.ts", "src/ui.ts"],
+  entry: ["src/index.ts", "src/ui.ts"],
   format: "esm",
   platform: "node",
   outDir: "dist",

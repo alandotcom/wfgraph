@@ -12,7 +12,7 @@ import { Spinner } from "#src/components/ui/spinner";
 import { announceTestResult } from "#src/lib/connection-credentials";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
-import { getIntegrationLabels } from "@rova/shared/plugins/registry";
+import { integrationLabels } from "#src/lib/extensions";
 
 // System integrations that don't have plugins
 const SYSTEM_INTEGRATION_LABELS: Record<string, string> = {
@@ -39,7 +39,7 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
 
   // Get integrations with their labels, sorted by label then name
   const integrationsWithLabels = useMemo(() => {
-    const labels = getIntegrationLabels() as Record<string, string>;
+    const labels = integrationLabels();
     const filterLower = filter.toLowerCase();
 
     return integrations

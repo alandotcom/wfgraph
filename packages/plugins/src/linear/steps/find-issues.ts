@@ -1,13 +1,8 @@
 import { LinearClient, type LinearDocument } from "@linear/sdk";
-import {
-  defineLegacyStep,
-  StepFailure,
-  type StepRunContext,
-} from "@rova/core/plugin";
+import { StepFailure, type StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
-import type { LinearCredentials } from "#src/linear/credentials";
 import { describeLinearFailure } from "#src/linear/errors";
-import { findIssuesInput, findIssuesOutput } from "#src/linear/schemas";
+import { findIssuesInput, type LinearCredentials } from "#src/linear/index";
 
 /**
  * The filter Linear's GraphQL API takes, built from the fields the user filled
@@ -44,11 +39,9 @@ function buildIssueFilter(
  */
 export const findIssuesHandler = Effect.fn(function* (
   input: typeof findIssuesInput.Type,
-  context: StepRunContext
+  context: StepRunContext<LinearCredentials>
 ) {
-  // The plugin's own credential vocabulary, so a key it never declares is a
-  // compile error here rather than an undefined at run time.
-  const credentials: LinearCredentials = yield* context.credentials;
+  const credentials = yield* context.credentials;
   const apiKey = credentials.LINEAR_API_KEY;
 
   if (!apiKey) {
@@ -77,7 +70,7 @@ export const findIssuesHandler = Effect.fn(function* (
             url: issue.url,
             state: state?.name || "Unknown",
             priority: issue.priority,
-            assigneeId: issue.assigneeId || undefined,
+            assigneeId: issue.assigneeId ?? null,
           };
         })
       );
@@ -89,11 +82,4 @@ export const findIssuesHandler = Effect.fn(function* (
   });
 
   return { issues, count: issues.length };
-});
-
-export const findIssuesStep = defineLegacyStep({
-  id: "linear/find-issues",
-  input: findIssuesInput,
-  output: findIssuesOutput,
-  handler: findIssuesHandler,
 });

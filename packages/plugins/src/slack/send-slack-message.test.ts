@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { beforeEach, vi } from "vitest";
-import { sendSlackMessageHandler } from "./send-slack-message";
+import { sendSlackMessageHandler } from "#src/slack/index";
 
 // What this step decides is whether to post at all, so the seam under it is the
 // Slack client. What that client puts on the wire is covered separately in

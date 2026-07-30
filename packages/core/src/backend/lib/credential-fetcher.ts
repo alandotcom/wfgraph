@@ -18,10 +18,7 @@ import {
   credentialsFromConfig,
   findIntegration,
 } from "@rova/shared/extensions/catalog";
-import type {
-  IntegrationConfig,
-  IntegrationType,
-} from "@rova/shared/types/integration";
+import type { IntegrationConfig } from "@rova/shared/types/integration";
 import { getExtensions } from "./extensions/current";
 import { getIntegrationById } from "./db/integrations";
 import { getAppLogger } from "./logger";
@@ -53,7 +50,7 @@ const SYSTEM_CREDENTIAL_MAPPERS: Record<
  * plugin and no fields, which is what the mappers above are for.
  */
 function mapIntegrationConfig(
-  integrationType: IntegrationType,
+  integrationType: string,
   config: IntegrationConfig
 ): WorkflowCredentials {
   // Check for system integrations first

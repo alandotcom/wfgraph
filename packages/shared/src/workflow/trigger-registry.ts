@@ -1,6 +1,6 @@
 import type { StandardJSONSchemaV1 } from "@standard-schema/spec";
 import { Schema } from "effect";
-import type { ActionConfigField } from "#src/plugins/registry";
+import type { ActionConfigField } from "#src/plugins/action-fields";
 import type { JsonObject } from "#src/types/json";
 import type { StringPath } from "#src/types/payload-path";
 import { asStandardSchema, extractSchemaKeys } from "#src/types/schema";

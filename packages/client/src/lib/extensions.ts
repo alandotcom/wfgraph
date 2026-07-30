@@ -13,10 +13,6 @@
 
 import { getBasePath } from "#src/lib/base-path";
 import {
-  hydrateIntegrationsFromCatalog,
-  hydrateRuntimeExtensions,
-} from "#src/lib/runtime-extensions";
-import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
 } from "@rova/shared/extensions/catalog";
@@ -32,12 +28,40 @@ export function getExtensionCatalog(): ExtensionCatalog {
 }
 
 /**
+ * Every integration type a connection may name, in the order a picker lists them.
+ *
+ * The `database` connection is not an integration and is not in the catalog: the
+ * engine's Database Query action names it and `SYSTEM_INTEGRATION_LABELS` in the
+ * connection overlay is where it is spelled, so a caller wanting both concatenates.
+ */
+export function integrationTypes(): string[] {
+  return catalog.integrations.map((integration) => integration.type).toSorted();
+}
+
+/** The label each integration goes by, for a list keyed on type. */
+export function integrationLabels(): Record<string, string> {
+  return Object.fromEntries(
+    catalog.integrations.map((integration) => [
+      integration.type,
+      integration.label,
+    ])
+  );
+}
+
+/** The one-line description each integration goes by, keyed the same way. */
+export function integrationDescriptions(): Record<string, string> {
+  return Object.fromEntries(
+    catalog.integrations.map((integration) => [
+      integration.type,
+      integration.description,
+    ])
+  );
+}
+
+/**
  * Fetch the surface and decode it, before the first render.
  *
- * The endpoint answers the catalog beside what the registries send, so this owns
- * the one request: the envelope is decoded once here and each member handed to
- * the reader that owns it. Both hydration calls go when the registries do: the
- * editor's own readers move onto the catalog in B4.
+ * The endpoint answers one document, and this owns the one request that reads it.
  *
  * Calling this twice re-reads the surface, which is why nothing memoizes: a
  * memoized promise would answer the second caller with the first call's document.
@@ -75,12 +99,9 @@ export async function hydrateExtensionsFromApi(): Promise<void> {
   const decoded = readExtensionCatalog(envelope?.catalog);
   if (decoded) {
     catalog = decoded;
-    hydrateIntegrationsFromCatalog(decoded);
   } else {
     console.warn(
       "The extension catalog from /api/extensions did not fit the wire schema in @rova/shared/extensions/catalog-wire, so the editor is drawing from the catalog it had. The server serving it is most likely a different build of Rova."
     );
   }
-
-  hydrateRuntimeExtensions(envelope ?? {});
 }

@@ -77,15 +77,15 @@ const deleted = contractSchema(
 
 const idSchema = NonEmptyTrimmedString;
 
-const integrationTypeSchema = Schema.Literals([
-  "acuity",
-  "clerk",
-  "database",
-  "linear",
-  "resend",
-  "slack",
-  "twilio",
-]);
+/**
+ * Which integration a connection is for.
+ *
+ * A plain identifier rather than a closed list: the set of integrations is
+ * whatever a host passed to `createRovaApp`, so the server refuses a type its
+ * assembled catalog does not hold and says which types it does. A literal list
+ * here could only be a second, staler copy of that answer.
+ */
+const integrationTypeSchema = NonEmptyTrimmedString;
 
 const integrationConfigSchema = Schema.Record(
   Schema.String,

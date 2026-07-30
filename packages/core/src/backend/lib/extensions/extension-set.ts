@@ -12,7 +12,7 @@
  * slug is a record key the definition never spells out twice.
  */
 
-import { flattenConfigFields } from "@rova/shared/plugins/registry";
+import { flattenConfigFields } from "@rova/shared/plugins/action-fields";
 import type {
   ActionMetadata,
   EventMetadata,
@@ -43,17 +43,15 @@ export type RegisteredEvent = AnyEventDefinition;
  * What a host hands over.
  *
  * An integration arrives as a definition, so its actions bring their step
- * implementations with them and this set can answer for both halves. The
- * registries feed the plugins B4 has not ported yet, as metadata a registry
- * already read: `registries` and the module that fills it go together.
+ * implementations with them and this set can answer for both halves. `actions` is
+ * a host's own, which carry their implementation in the runtime action registry
+ * `createRovaApp` fills; they reach this as metadata because that is all the
+ * catalog wants from them.
  */
 export type RovaExtensions = {
   readonly events?: readonly AnyEventDefinition[];
   readonly integrations?: readonly IntegrationDefinition[];
-  readonly registries?: {
-    readonly actions: readonly ActionMetadata[];
-    readonly integrations: readonly IntegrationMetadata[];
-  };
+  readonly actions?: readonly ActionMetadata[];
 };
 
 export type ExtensionSet = {
@@ -294,21 +292,17 @@ export function assembleExtensions(input: RovaExtensions): ExtensionSet {
   const actions = [
     ...builtInActions,
     ...definedActions,
-    ...(input.registries?.actions ?? []),
+    ...(input.actions ?? []),
   ];
   assertDistinctActionIds(actions);
 
-  const integrations = [
-    ...definedIntegrations,
-    ...(input.registries?.integrations ?? []),
-  ];
-  assertDistinctIntegrationTypes(integrations);
+  assertDistinctIntegrationTypes(definedIntegrations);
 
   return {
     catalog: {
       events: events.map(toEventMetadata),
       actions,
-      integrations,
+      integrations: definedIntegrations,
     },
     stepFor: (actionId) => steps.get(actionId),
     connectionTestFor: (type) => tests.get(type),

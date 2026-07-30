@@ -13,7 +13,7 @@
 
 import { Schema } from "effect";
 import type { ExtensionCatalog } from "#src/extensions/catalog";
-import type { ActionConfigField } from "#src/plugins/registry";
+import type { ActionConfigField } from "#src/plugins/action-fields";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 import type { ReferenceField } from "#src/workflow/node-references";
 
@@ -142,21 +142,16 @@ export const readExtensionCatalog = readAs(extensionCatalogSchema);
 /**
  * The envelope `GET /api/extensions` answers, which is where the catalog sits.
  *
- * The two legacy lists are lists here, and their entries are `Unknown` so that
- * one unusable definition does not sink the list it sits in; the client's
- * runtime-extensions module reads them one at a time. `catalog` stays `Unknown`
- * so that a catalog which does not fit is answered by `readExtensionCatalog`
- * above, which reads it all-or-nothing and lets the editor say so, rather than
- * failing this decode and taking the two lists down with it.
+ * `catalog` stays `Unknown` here so that a document which does not fit is answered
+ * by `readExtensionCatalog` above, which reads it all-or-nothing and lets the
+ * editor say so, rather than failing this decode with nothing to report.
  *
  * The route builds the response out of typed values rather than encoding through
- * this schema, so the members are named in both places and this one is the
- * contract the browser holds.
+ * this schema, so the member is named in both places and this one is the contract
+ * the browser holds.
  */
 export const readExtensionsResponse = readAs(
   Schema.Struct({
     catalog: Schema.optionalKey(Schema.Unknown),
-    actions: Schema.optionalKey(Schema.Array(Schema.Unknown)),
-    triggers: Schema.optionalKey(Schema.Array(Schema.Unknown)),
   })
 );

@@ -15,7 +15,6 @@
 import type { IntegrationTestLoader } from "#src/backend/lib/extensions/integration-test";
 import type { ActionStep } from "#src/backend/lib/steps/define-step";
 import type { CredentialFieldMetadata } from "@rova/shared/extensions/catalog";
-import type { IntegrationType } from "@rova/shared/types/integration";
 
 /**
  * An integration's credential form, with each `envVar` kept as a literal type.
@@ -46,12 +45,12 @@ export type IntegrationDefinition = {
   /**
    * Keys the stored credentials, and prefixes every action id.
    *
-   * `IntegrationType` is a closed union while a global map is keyed by one, so a
+   * `string` is a closed union while a global map is keyed by one, so a
    * type outside it fails to compile here rather than reaching an editor that
    * quietly drops the integration. B4 deletes the union and this widens to a
    * string.
    */
-  readonly type: IntegrationType;
+  readonly type: string;
   readonly label: string;
   readonly description: string;
   readonly credentials: readonly CredentialFieldMetadata[];
@@ -68,7 +67,7 @@ export type IntegrationDefinition = {
 };
 
 export function defineIntegration(input: {
-  readonly type: IntegrationType;
+  readonly type: string;
   readonly label: string;
   readonly description: string;
   readonly credentials: readonly CredentialFieldMetadata[];

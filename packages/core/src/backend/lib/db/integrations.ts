@@ -1,10 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { getAppLogger } from "#src/backend/lib/logger";
-import type {
-  IntegrationConfig,
-  IntegrationType,
-} from "@rova/shared/types/integration";
+import type { IntegrationConfig } from "@rova/shared/types/integration";
 import { db } from "./index";
 import { integrations, type NewIntegration } from "./schema";
 
@@ -175,7 +172,7 @@ function decryptIntegrationConfig(rawConfig: unknown): IntegrationConfig {
 export type DecryptedIntegration = {
   id: string;
   name: string;
-  type: IntegrationType;
+  type: string;
   config: IntegrationConfig;
   isManaged: boolean | null;
   createdAt: Date;
@@ -183,7 +180,7 @@ export type DecryptedIntegration = {
 };
 
 export async function getIntegrations(
-  type?: IntegrationType
+  type?: string
 ): Promise<DecryptedIntegration[]> {
   const results = type
     ? await db.select().from(integrations).where(eq(integrations.type, type))
@@ -222,7 +219,7 @@ export function getIntegrationById(
 
 export async function createIntegration(
   name: string,
-  type: IntegrationType,
+  type: string,
   config: IntegrationConfig
 ): Promise<DecryptedIntegration> {
   const encryptedConfig = encryptConfig(config);
@@ -290,7 +287,7 @@ export async function deleteIntegration(
 
 export async function getIntegrationTypesByIds(
   integrationIds: string[]
-): Promise<Record<string, IntegrationType>> {
+): Promise<Record<string, string>> {
   if (integrationIds.length === 0) {
     return {};
   }
@@ -300,7 +297,7 @@ export async function getIntegrationTypesByIds(
     .from(integrations)
     .where(inArray(integrations.id, integrationIds));
 
-  return rows.reduce<Record<string, IntegrationType>>((acc, row) => {
+  return rows.reduce<Record<string, string>>((acc, row) => {
     acc[row.id] = row.type;
     return acc;
   }, {});

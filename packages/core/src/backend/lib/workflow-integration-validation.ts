@@ -3,10 +3,6 @@ import { getIntegrationTypesByIds as getIntegrationTypesByIdsInDb } from "#src/b
 import { getAppLogger } from "#src/backend/lib/logger";
 import { getExtensions } from "#src/backend/lib/extensions/current";
 import { findAction } from "@rova/shared/extensions/catalog";
-import {
-  type IntegrationType,
-  isIntegrationType,
-} from "@rova/shared/types/integration";
 import { SYSTEM_ACTION_INTEGRATIONS } from "@rova/shared/workflow/system-action-integrations";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
@@ -23,7 +19,7 @@ type ValidationResult = {
   invalidIds?: string[];
 };
 
-type IntegrationTypeMap = Record<string, IntegrationType>;
+type IntegrationTypeMap = Record<string, string>;
 
 export type GetIntegrationTypesByIds = (
   integrationIds: string[]
@@ -31,7 +27,7 @@ export type GetIntegrationTypesByIds = (
 
 type IntegrationRequirement = {
   integrationId: string;
-  requiredType: IntegrationType;
+  requiredType: string;
 };
 
 const integrationValidationLogger = getAppLogger("workflow", "integration");
@@ -63,13 +59,12 @@ function readConfigString(
 function getRequiredIntegrationType(
   actionType: string,
   resolveActionByType: ResolveActionByType
-): IntegrationType | undefined {
-  const action = resolveActionByType(actionType);
-  if (isIntegrationType(action?.integration)) {
-    return action.integration;
-  }
+): string | undefined {
+  const integration = resolveActionByType(actionType)?.integration;
 
-  return SYSTEM_ACTION_INTEGRATIONS[actionType];
+  return typeof integration === "string" && integration
+    ? integration
+    : SYSTEM_ACTION_INTEGRATIONS[actionType];
 }
 
 function extractRequiredIntegrationRequirements(

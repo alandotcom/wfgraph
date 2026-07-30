@@ -1,8 +1,4 @@
-import {
-  defineLegacyStep,
-  StepFailure,
-  type StepRunContext,
-} from "@rova/core/plugin";
+import { StepFailure, type StepRunContext } from "@rova/core/plugin";
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { Effect } from "effect";
@@ -11,9 +7,8 @@ import {
   getClerkApiErrorMessage,
   toClerkApiUser,
 } from "#src/clerk/client";
-import type { ClerkCredentials } from "#src/clerk/credentials";
 import { parseClerkMetadata } from "#src/clerk/metadata";
-import { updateUserInput, updateUserOutput } from "#src/clerk/schemas";
+import { type ClerkCredentials, updateUserInput } from "#src/clerk/index";
 import { toClerkUserData } from "#src/clerk/types";
 
 /**
@@ -22,11 +17,11 @@ import { toClerkUserData } from "#src/clerk/types";
  */
 export const clerkUpdateUserHandler = Effect.fn(function* (
   input: typeof updateUserInput.Type,
-  context: StepRunContext
+  context: StepRunContext<ClerkCredentials>
 ) {
   // The plugin's own credential vocabulary, so a key it never declares is a
   // compile error here rather than an undefined at run time.
-  const credentials: ClerkCredentials = yield* context.credentials;
+  const credentials = yield* context.credentials;
   const secretKey = credentials.CLERK_SECRET_KEY;
 
   if (!secretKey) {
@@ -75,11 +70,4 @@ export const clerkUpdateUserHandler = Effect.fn(function* (
   });
 
   return toClerkUserData(toClerkApiUser(user));
-});
-
-export const clerkUpdateUserStep = defineLegacyStep({
-  id: "clerk/update-user",
-  input: updateUserInput,
-  output: updateUserOutput,
-  handler: clerkUpdateUserHandler,
 });

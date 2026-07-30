@@ -9,7 +9,6 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { IntegrationType } from "@rova/shared/types/integration";
 import { generateId } from "@rova/shared/utils/id";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
@@ -56,7 +55,7 @@ export const integrations = pgTable("integrations", {
     .primaryKey()
     .$defaultFn(() => generateId()),
   name: text("name").notNull(),
-  type: text("type").notNull().$type<IntegrationType>(),
+  type: text("type").notNull().$type<string>(),
   config: jsonb("config").notNull().$type<any>(),
   isManaged: boolean("is_managed").default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),

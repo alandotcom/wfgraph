@@ -1,7 +1,7 @@
 import { Acuity, AcuityError } from "@fountain-bio/acuity";
 import { StepFailure } from "@rova/core/plugin";
 import { Effect } from "effect";
-import type { AcuityCredentials } from "#src/acuity/credentials";
+import type { AcuityCredentials } from "#src/acuity/index";
 import { getErrorMessage } from "@rova/shared/utils";
 
 /**

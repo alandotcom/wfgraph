@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { compact } from "es-toolkit/array";
 import { startCase } from "es-toolkit/string";
-import type { ActionConfigFieldBase } from "#src/plugins/registry";
+import type { ActionConfigFieldBase } from "#src/plugins/action-fields";
 import { readAs } from "#src/types/schema";
 
 /**

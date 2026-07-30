@@ -1,4 +1,5 @@
-import { findActionById } from "@rova/shared/plugins/registry";
+import { getExtensionCatalog } from "#src/lib/extensions";
+import { findAction } from "@rova/shared/extensions/catalog";
 import { parseTemplate, type TemplateToken } from "@rova/shared/workflow/node-references";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
@@ -91,7 +92,7 @@ function getDisplayTextForToken(
   if (!displayLabel && node.data.type === "action") {
     const actionType = readConfigString(node.data.config, "actionType");
     if (actionType) {
-      displayLabel = findActionById(actionType)?.label;
+      displayLabel = findAction(getExtensionCatalog(), actionType)?.label;
     }
   }
 

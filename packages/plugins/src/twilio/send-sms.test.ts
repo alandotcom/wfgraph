@@ -133,7 +133,7 @@ describe("sendSmsHandler", () => {
         status: "queued",
         to: "+15557654321",
         from: "+15551234567",
-        messagingServiceSid: undefined,
+        messagingServiceSid: null,
       });
     }).pipe(withTransport)
   );
@@ -184,7 +184,7 @@ describe("sendSmsHandler", () => {
           sid: "SM123",
           status: "queued",
           to: "+15550001111",
-          from: undefined,
+          from: null,
           messagingServiceSid: "MG999",
         });
       }).pipe(withTransport)

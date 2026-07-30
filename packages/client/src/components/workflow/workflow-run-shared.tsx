@@ -12,7 +12,6 @@ import {
   OUTPUT_DISPLAY_CONFIGS,
   type OutputDisplayConfig,
 } from "#src/lib/output-display-configs";
-import { findActionById } from "@rova/shared/plugins/registry";
 import type { WorkflowExecutionStatus } from "@rova/shared/workflow/execution-contracts";
 import { readAs } from "@rova/shared/types/schema";
 import { getActionOutputComponent } from "@rova/shared/plugins/ui-registry";
@@ -297,8 +296,6 @@ export function OutputDisplay({
   input?: unknown;
   actionType?: string;
 }) {
-  const action = actionType ? findActionById(actionType) : undefined;
-  const pluginConfig = action?.outputConfig;
   // A plugin can render its own output with a React component, which it
   // registers from its ui.ts. When one exists it takes precedence, and the
   // simple field-based display falls back to this app's own config table.
@@ -306,13 +303,13 @@ export function OutputDisplay({
     ? getActionOutputComponent(actionType)
     : undefined;
   const builtInConfig = actionType ? getOutputConfig(actionType) : undefined;
-  const effectiveBuiltInConfig = CustomComponent ? builtInConfig : pluginConfig;
+  const effectiveBuiltInConfig = CustomComponent ? undefined : builtInConfig;
   const displayValue = effectiveBuiltInConfig
     ? getOutputDisplayValue(output, effectiveBuiltInConfig)
     : undefined;
   const legacyBase64Output = readBase64ImageOutput(output);
   const isLegacyBase64 =
-    !(CustomComponent || pluginConfig || builtInConfig) && !!legacyBase64Output;
+    !(CustomComponent || builtInConfig) && !!legacyBase64Output;
 
   const renderRichResult = () => {
     if (CustomComponent) {

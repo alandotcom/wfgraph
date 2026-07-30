@@ -17,23 +17,19 @@ import {
   credentialsFromConfig,
   findIntegration,
 } from "@rova/shared/extensions/catalog";
-import type {
-  IntegrationConfig,
-  IntegrationType,
-} from "@rova/shared/types/integration";
+import type { IntegrationConfig } from "@rova/shared/types/integration";
 import { getErrorMessage } from "@rova/shared/utils";
 import {
   createSecretConfigKeyTest,
   maskIntegrationConfig,
   SECRET_MASK,
 } from "./integration-config-masking";
-import { getIntegrationTestFunction } from "./integration-test-loaders";
 import { IntegrationRepo } from "./repo";
 
 type IntegrationSummary = {
   id: string;
   name: string;
-  type: IntegrationType;
+  type: string;
   isManaged?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -51,12 +47,12 @@ type IntegrationTestResult = {
 /** The contract answers a delete with this and nothing else. */
 type IntegrationDeleted = { success: true };
 
-// Reaching here means the integration's metadata is registered but its
-// connection test is not, which is what importing "@rova/plugins" without
-// "@rova/plugins/server" leaves behind. Naming the missing import beats telling
-// someone their integration does not support a test it does support.
+// Reaching here means the integration is in the catalog and declares no `test`,
+// which is a definition that offers no connection test rather than a setup
+// mistake. The credentials dialog draws the button off `hasTest`, so this answers
+// the request that arrives anyway.
 const MISSING_TEST_MESSAGE =
-  'Connection testing is unavailable for this integration. A host that imports "@rova/plugins" also has to import "@rova/plugins/server", which registers the connection tests.';
+  "Connection testing is unavailable for this integration, because it declares no test.";
 
 const createDatabaseConnection = (url: string): Sql =>
   postgres(url, {
@@ -66,7 +62,7 @@ const createDatabaseConnection = (url: string): Sql =>
   });
 
 function mergeIntegrationConfig(
-  type: IntegrationType,
+  type: string,
   currentConfig: IntegrationConfig,
   updates?: IntegrationConfig
 ): IntegrationConfig {
@@ -94,7 +90,7 @@ function mergeIntegrationConfig(
 function toIntegrationSummary(input: {
   id: string;
   name: string;
-  type: IntegrationType;
+  type: string;
   isManaged?: boolean | null;
   createdAt: Date;
   updatedAt: Date;
@@ -112,7 +108,7 @@ function toIntegrationSummary(input: {
 function toIntegrationWithConfig(input: {
   id: string;
   name: string;
-  type: IntegrationType;
+  type: string;
   config: IntegrationConfig;
   isManaged?: boolean | null;
   createdAt: Date;
@@ -197,7 +193,7 @@ const attemptTestStep =
 const runConnectionTest = Effect.fn("runConnectionTest")(function* (
   callerLogger: EffectLogger,
   describe: DescribeTestFailure,
-  type: IntegrationType,
+  type: string,
   config: IntegrationConfig
 ) {
   const logger = callerLogger.with({ type });
@@ -221,7 +217,17 @@ const runConnectionTest = Effect.fn("runConnectionTest")(function* (
     );
   }
 
-  const testFn = yield* attempt(() => getIntegrationTestFunction(type));
+  const loadTest = getExtensions().connectionTestFor(type);
+  if (!loadTest) {
+    yield* logger.warn(MISSING_TEST_MESSAGE);
+    return yield* Effect.fail(
+      new InvalidInput({ error: MISSING_TEST_MESSAGE })
+    );
+  }
+
+  // The loader reaches for a vendor module, which is a throw the same `attempt`
+  // wraps as the vendor call below.
+  const testFn = yield* attempt(() => loadTest());
   if (!testFn) {
     yield* logger.warn(MISSING_TEST_MESSAGE);
     return yield* Effect.fail(
@@ -261,7 +267,7 @@ const runConnectionTest = Effect.fn("runConnectionTest")(function* (
 });
 
 export const getIntegrations = Effect.fn("getIntegrations")(function* (
-  type?: IntegrationType
+  type?: string
 ) {
   const repo = yield* IntegrationRepo;
   const logger = (yield* AppLogger)
@@ -381,7 +387,7 @@ export const deleteIntegration = Effect.fn("deleteIntegration")(function* (
 });
 
 export const postIntegrationsTest = Effect.fn("postIntegrationsTest")(
-  function* (body: { type: IntegrationType; config: IntegrationConfig }) {
+  function* (body: { type: string; config: IntegrationConfig }) {
     const logger = (yield* AppLogger).get("integrations").with({
       configKeys: Object.keys(body.config),
     });
@@ -466,7 +472,7 @@ async function testDatabaseConnection(
 
 export const postIntegrations = Effect.fn("postIntegrations")(function* (body: {
   name?: string;
-  type: IntegrationType;
+  type: string;
   config: IntegrationConfig;
 }) {
   const repo = yield* IntegrationRepo;

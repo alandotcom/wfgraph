@@ -12,10 +12,8 @@ import {
 } from "#src/lib/connection-credentials";
 import type { Integration } from "#src/lib/rpc-client";
 import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
-import {
-  getIntegration,
-  getIntegrationLabels,
-} from "@rova/shared/plugins/registry";
+import { getExtensionCatalog, integrationLabels } from "#src/lib/extensions";
+import { findIntegration } from "@rova/shared/extensions/catalog";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
@@ -25,7 +23,7 @@ const SYSTEM_INTEGRATION_LABELS: Record<string, string> = {
 };
 
 const getLabel = (type: string): string => {
-  const labels = getIntegrationLabels() as Record<string, string>;
+  const labels = integrationLabels();
   return labels[type] || SYSTEM_INTEGRATION_LABELS[type] || type;
 };
 
@@ -254,8 +252,8 @@ export function EditConnectionOverlay({
   };
 
   // Get plugin form fields
-  const plugin = getIntegration(integration.type);
-  const formFields = plugin?.formFields;
+  const catalogEntry = findIntegration(getExtensionCatalog(), integration.type);
+  const formFields = catalogEntry?.credentialFields;
 
   // Render config fields
   const renderConfigFields = () => {
@@ -282,10 +280,10 @@ export function EditConnectionOverlay({
         return (
           <SecretField
             configKey={field.configKey}
-            fieldId={field.id}
+            fieldId={field.configKey}
             helpLink={field.helpLink}
             helpText={field.helpText}
-            key={field.id}
+            key={field.configKey}
             label={field.label}
             onChange={updateConfig}
             placeholder={field.placeholder}
@@ -295,10 +293,10 @@ export function EditConnectionOverlay({
       }
 
       return (
-        <div className="space-y-2" key={field.id}>
-          <Label htmlFor={field.id}>{field.label}</Label>
+        <div className="space-y-2" key={field.configKey}>
+          <Label htmlFor={field.configKey}>{field.label}</Label>
           <Input
-            id={field.id}
+            id={field.configKey}
             onChange={(e) => updateConfig(field.configKey, e.target.value)}
             placeholder={field.placeholder}
             type={field.type}

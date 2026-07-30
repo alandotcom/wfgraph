@@ -186,8 +186,7 @@ describe.each([
 
     expect(response.status).toBe(200);
     expect(JSON.parse(response.body)).toMatchObject({
-      actions: expect.any(Array),
-      triggers: expect.any(Array),
+      catalog: expect.any(Object),
     });
   });
 
@@ -267,7 +266,7 @@ describe("Rova mounted on a bare node:http server", () => {
 
     expect(response.status).toBe(200);
     expect(JSON.parse(response.body)).toMatchObject({
-      actions: expect.any(Array),
+      catalog: expect.any(Object),
     });
   });
 });

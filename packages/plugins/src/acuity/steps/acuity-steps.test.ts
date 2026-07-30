@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { AcuityError } from "@fountain-bio/acuity";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { beforeEach, vi } from "vitest";
 import { cancelAppointmentHandler } from "./cancel-appointment";
@@ -10,6 +10,7 @@ import { getAvailabilityDatesHandler } from "./get-availability-dates";
 import { getAvailabilityTimesHandler } from "./get-availability-times";
 import { listAppointmentsHandler } from "./list-appointments";
 import { listAppointmentTypesHandler } from "./list-appointment-types";
+import { acuity } from "#src/acuity/index";
 import { rescheduleAppointmentHandler } from "./reschedule-appointment";
 
 /**
@@ -53,6 +54,17 @@ const ACUITY_CREDENTIALS = {
 };
 
 // What the SDK hands back, as much of it as the steps read.
+/**
+ * One appointment, shaped the way the API sends one rather than the way the SDK
+ * types one.
+ *
+ * The SDK casts the response without validating it, so its types are not evidence.
+ * Two things here are the corrections this fixture exists to hold: the timezone
+ * Acuity sends is `timezone`, and `forms` is a list of forms each carrying its own
+ * `values` list of answers. A `price` arriving as a number rather than the string
+ * the SDK promises is the third: it is an undeclared shape the schema tolerates, and
+ * it has to survive the encode.
+ */
 const APPOINTMENT = {
   id: 987,
   firstName: "Ada",
@@ -60,14 +72,32 @@ const APPOINTMENT = {
   email: "ada@example.com",
   date: "March 15, 2026",
   time: "3:00pm",
+  endTime: "3:30pm",
   duration: "30",
   datetime: "2026-03-15T15:00:00-04:00",
+  timezone: "America/New_York",
   type: "Consultation",
   appointmentTypeID: 12_345,
   calendar: "Main",
   calendarID: 67_890,
-  calendarTimeZone: "America/New_York",
-  forms: [],
+  price: 40,
+  paid: "no",
+  notes: null,
+  scheduledBy: null,
+  forms: [
+    {
+      id: 2_322_025,
+      name: "Intake",
+      values: [
+        {
+          id: 3_367_788_034,
+          fieldID: 11_281_125,
+          name: "Are you still using our App?",
+          value: "no",
+        },
+      ],
+    },
+  ],
   canceled: false,
 };
 
@@ -121,6 +151,9 @@ describe("listAppointmentTypesHandler", () => {
         contextFor(withCredentials())
       );
 
+      // The handler hands Acuity's own object back. What it omitted stays omitted:
+      // every field of an appointment type tolerates an absent key, so there is
+      // nothing to normalize and nothing that can fail the encode.
       expect(result).toEqual({
         appointmentTypes: [{ id: 1, name: "Consultation" }],
         count: 1,
@@ -610,6 +643,123 @@ describe("cancelAppointmentHandler", () => {
       );
 
       expect(error.message).toBe("Appointment already canceled");
+    }).pipe(withTransport)
+  );
+});
+
+/**
+ * What each appointment-returning handler answers, put through the encode that
+ * carries it to the run.
+ *
+ * This is the case the batch owed, and the pair is the point: the handler tests
+ * above stop at the handler, and the field-derivation tests never encode a payload,
+ * so a schema that disagreed with the wire failed no test while failing every run.
+ * All five did, on any appointment carrying an intake form.
+ *
+ * The bound step is one layer further out and needs a database for its credential
+ * fetch and its run log, so what runs here is the handler with the stubbed client
+ * and the action's own output codec -- which is the layer the mistake was in.
+ */
+describe("an appointment through the encode", () => {
+  function encodeOutputOf(slug: keyof typeof acuity.actions) {
+    return Schema.encodeUnknownPromise(
+      Schema.toCodecJson(acuity.actions[slug].output)
+    );
+  }
+
+  it.effect(
+    "keeps the whole appointment on the way out of get-appointment",
+    () =>
+      Effect.gen(function* () {
+        const result = yield* getAppointmentHandler(
+          { appointmentId: "987" },
+          contextFor(withCredentials())
+        );
+
+        const encoded = (yield* Effect.promise(() =>
+          encodeOutputOf("get-appointment")(result)
+        )) as { appointment: Record<string, unknown> };
+
+        // The intake answer survives two levels down, the number-valued price
+        // survives a field the SDK types as a string, and the timezone is the name
+        // Acuity actually sends.
+        expect(encoded.appointment.forms).toEqual(APPOINTMENT.forms);
+        expect(encoded.appointment.price).toBe(40);
+        expect(encoded.appointment.timezone).toBe("America/New_York");
+      }).pipe(withTransport)
+  );
+
+  it.effect("keeps every appointment on the way out of list-appointments", () =>
+    Effect.gen(function* () {
+      const result = yield* listAppointmentsHandler(
+        {},
+        contextFor(withCredentials())
+      );
+
+      const encoded = (yield* Effect.promise(() =>
+        encodeOutputOf("list-appointments")(result)
+      )) as { appointments: Array<Record<string, unknown>>; count: number };
+
+      expect(encoded.count).toBe(1);
+      expect(encoded.appointments[0].forms).toEqual(APPOINTMENT.forms);
+    }).pipe(withTransport)
+  );
+
+  it.effect(
+    "keeps the appointment on the way out of the three that write one",
+    () =>
+      Effect.gen(function* () {
+        const created = yield* createAppointmentHandler(
+          {
+            datetime: "2026-03-15T15:00:00-04:00",
+            appointmentTypeId: "12345",
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: "ada@example.com",
+            phone: "+15555550123",
+          },
+          contextFor(withCredentials())
+        );
+        const rescheduled = yield* rescheduleAppointmentHandler(
+          { appointmentId: "987", datetime: "2026-03-16T15:00:00-04:00" },
+          contextFor(withCredentials())
+        );
+        const canceled = yield* cancelAppointmentHandler(
+          { appointmentId: "987" },
+          contextFor(withCredentials())
+        );
+
+        for (const [slug, result] of [
+          ["create-appointment", created],
+          ["reschedule-appointment", rescheduled],
+          ["cancel-appointment", canceled],
+        ] as const) {
+          const encoded = (yield* Effect.promise(() =>
+            encodeOutputOf(slug)(result)
+          )) as { appointment: Record<string, unknown> };
+
+          expect(encoded.appointment.forms).toEqual(APPOINTMENT.forms);
+        }
+      }).pipe(withTransport)
+  );
+
+  // An appointment type is the other vendor shape these actions answer with, and
+  // every one of its fields tolerates an absent key: what Acuity omitted stays
+  // omitted rather than failing the encode.
+  it.effect("keeps a sparse appointment type on the way out", () =>
+    Effect.gen(function* () {
+      const result = yield* listAppointmentTypesHandler(
+        {},
+        contextFor(withCredentials())
+      );
+
+      const encoded = (yield* Effect.promise(() =>
+        encodeOutputOf("list-appointment-types")(result)
+      )) as { appointmentTypes: Array<Record<string, unknown>> };
+
+      expect(encoded.appointmentTypes).toEqual([
+        { id: 1, name: "Consultation" },
+      ]);
     }).pipe(withTransport)
   );
 });

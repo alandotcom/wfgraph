@@ -1,8 +1,5 @@
-import { findActionById } from "@rova/shared/plugins/registry";
-import {
-  type IntegrationType,
-  isIntegrationType,
-} from "@rova/shared/types/integration";
+import { getExtensionCatalog } from "#src/lib/extensions";
+import { findAction } from "@rova/shared/extensions/catalog";
 import { SYSTEM_ACTION_INTEGRATIONS } from "@rova/shared/workflow/system-action-integrations";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
@@ -39,12 +36,10 @@ function readConfigString(
  */
 export function requiredIntegrationType(
   actionType: string
-): IntegrationType | undefined {
-  const action = findActionById(actionType);
-  if (isIntegrationType(action?.integration)) {
-    return action.integration;
-  }
-  return SYSTEM_ACTION_INTEGRATIONS[actionType];
+): string | undefined {
+  const action = findAction(getExtensionCatalog(), actionType);
+
+  return action?.integration ?? SYSTEM_ACTION_INTEGRATIONS[actionType];
 }
 
 /**

@@ -13,7 +13,7 @@
  * the server and the browser run one implementation over the same document.
  */
 
-import type { ActionConfigField } from "#src/plugins/registry";
+import type { ActionConfigField } from "#src/plugins/action-fields";
 import type { ReferenceField } from "#src/workflow/node-references";
 
 /**
@@ -114,6 +114,29 @@ export function findIntegration(
   type: string
 ): IntegrationMetadata | undefined {
   return catalog.integrations.find((integration) => integration.type === type);
+}
+
+/**
+ * The actions grouped for the selector, each group in catalog order.
+ *
+ * The record is mutable and its lists are copies, because the editor sorts and
+ * filters what it is given.
+ */
+export function actionsByCategory(
+  catalog: ExtensionCatalog
+): Record<string, ActionMetadata[]> {
+  const grouped: Record<string, ActionMetadata[]> = {};
+
+  for (const action of catalog.actions) {
+    const group = grouped[action.category];
+    if (group) {
+      group.push(action);
+    } else {
+      grouped[action.category] = [action];
+    }
+  }
+
+  return grouped;
 }
 
 /**

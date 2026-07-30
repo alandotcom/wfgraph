@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Schema } from "effect";
-import { createTrigger, defineEvent } from "#src/index";
+import { createAction, defineEvent } from "#src/index";
 import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
 import { defineStep } from "#src/backend/lib/steps/define-step";
 import { createRovaApp, type RovaApp } from "#src/app";
@@ -64,8 +64,6 @@ describe("createRovaApp mounted at the root", () => {
 
       expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({
-        actions: expect.any(Array),
-        triggers: expect.any(Array),
         // The catalog is the one channel the editor learns the surface through,
         // so an app that starts serves all three of its lists.
         catalog: {
@@ -517,32 +515,36 @@ describe("createRovaApp configuration", () => {
     }
   });
 
-  // Registering a trigger type twice throws, so a second app carrying the same
-  // trigger only starts if dispose gave the first one's registrations back.
+  // Registering an action id twice throws, so a second app carrying the same
+  // action only starts if dispose gave the first one's registrations back. What
+  // proves it arrived is the catalog: a host's own actions reach the editor
+  // through it like any other.
   it("releases its registrations on dispose", async () => {
-    const trigger = createTrigger({
-      type: "DisposeProbe",
+    const action = createAction({
+      id: "dispose/probe",
       label: "Dispose Probe",
       description: "Registered twice, on purpose",
-      schema: Schema.Struct({ id: Schema.String, event: Schema.String }),
-      correlationIdPath: "id",
-      eventTypePath: "event",
+      schema: Schema.Struct({ id: Schema.String }),
+      outputSchema: Schema.Struct({
+        id: Schema.String.annotate({ description: "What it echoed" }),
+      }),
+      execute: ({ payload }) => ({ success: true, data: { id: payload.id } }),
     });
 
-    const first = await createRovaApp({ ...BASE_OPTIONS, triggers: [trigger] });
+    const first = await createRovaApp({ ...BASE_OPTIONS, actions: [action] });
     await first.dispose();
 
     const second = await createRovaApp({
       ...BASE_OPTIONS,
-      triggers: [trigger],
+      actions: [action],
     });
     try {
-      const extensions = (await (
+      const { catalog } = (await (
         await get(second, "/api/extensions")
-      ).json()) as { triggers: Array<{ type: string }> };
+      ).json()) as { catalog: { actions: Array<{ id: string }> } };
 
-      expect(extensions.triggers.map((entry) => entry.type)).toContain(
-        "DisposeProbe"
+      expect(catalog.actions.map((entry) => entry.id)).toContain(
+        "dispose/probe"
       );
     } finally {
       await second.dispose();

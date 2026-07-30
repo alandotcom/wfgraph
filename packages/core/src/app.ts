@@ -33,13 +33,10 @@ import {
   clearExtensions,
   configureExtensions,
 } from "#src/backend/lib/extensions/current";
+import type { ActionMetadata } from "@rova/shared/extensions/catalog";
 import type { AnyEventDefinition } from "#src/backend/lib/extensions/define-event";
 import type { IntegrationDefinition } from "#src/backend/lib/extensions/define-integration";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
-import {
-  catalogActionsFromRegistries,
-  catalogIntegrationsFromRegistries,
-} from "#src/backend/lib/extensions/from-registries";
 import {
   configureInngest,
   type RovaInngestConfig,
@@ -53,14 +50,11 @@ import {
 } from "#src/backend/lib/logger";
 import { initializeWorkflowTriggers } from "#src/backend/lib/workflow-trigger-bootstrap";
 import { createRovaRuntime, type RovaRuntime } from "#src/backend/runtime";
-import { unregisterIntegration } from "@rova/shared/plugins/registry";
-import {
-  type IntegrationType,
-  isIntegrationType,
-} from "@rova/shared/types/integration";
 import type { RovaLogger } from "@rova/shared/types/logger";
 import {
   type RuntimeExtensionActionDefinition,
+  getRuntimeActions,
+  type RegisteredRuntimeAction,
   registerRuntimeAction,
   unregisterRuntimeAction,
 } from "@rova/shared/workflow/action-registry";
@@ -75,15 +69,31 @@ export type { MigrationsOptions } from "#src/backend/lib/db/migrations";
 export type { EncryptionRuntimeConfig } from "#src/backend/lib/db/integrations";
 export type { RovaInngestConfig } from "#src/backend/lib/inngest/client";
 export type { RovaAuth } from "#src/backend/lib/http/authorize";
-export type { IntegrationType } from "@rova/shared/types/integration";
 export type { RovaLogger } from "@rova/shared/types/logger";
 export type { RuntimeExtensionActionDefinition } from "@rova/shared/workflow/action-registry";
 export type { RuntimeExtensionTriggerDefinition } from "@rova/shared/workflow/trigger-registry";
 
-export type PluginConfig = {
-  /** Whether this plugin is enabled (default: true) */
-  enabled?: boolean;
-};
+/**
+ * A host's own action, as the catalog lists it.
+ *
+ * Its implementation stays in the runtime action registry, which is where the
+ * engine dispatches to it from; what the catalog wants is the metadata the editor
+ * draws it with. An action declaring neither config fields nor output fields lists
+ * as an action with nothing to fill in, which is what an author who wrote neither
+ * asked for.
+ */
+function toActionMetadata(action: RegisteredRuntimeAction): ActionMetadata {
+  return {
+    id: action.id,
+    label: action.label,
+    description: action.description,
+    category: action.category,
+    ...(action.integration ? { integration: action.integration } : {}),
+    ...(action.logoUrl ? { logoUrl: action.logoUrl } : {}),
+    configFields: action.configFields ?? [],
+    outputFields: action.outputFields ?? [],
+  };
+}
 
 /**
  * The extension surface, assembled in one place.
@@ -135,8 +145,6 @@ export type RovaAppOptions = {
   triggers?: RuntimeExtensionTriggerDefinition[];
   actions?: RuntimeExtensionActionDefinition[];
   extensions?: RovaExtensionOptions;
-  /** Per-plugin configuration (all enabled by default) */
-  plugins?: Partial<Record<IntegrationType, PluginConfig>>;
   /**
    * The workflow editor, from `import { clientBundle } from "@rova/client"`.
    *
@@ -226,14 +234,6 @@ async function buildRovaApp(
 ): Promise<RovaApp> {
   const { basePath, authorize } = startup;
 
-  if (options.plugins) {
-    for (const [type, config] of Object.entries(options.plugins)) {
-      if (config?.enabled === false && isIntegrationType(type)) {
-        unregisterIntegration(type);
-      }
-    }
-  }
-
   if (options.logger) {
     configureAppLoggingWithBridge(options.logger);
   } else if (options.configureLogging !== false) {
@@ -261,16 +261,12 @@ async function buildRovaApp(
 
   initializeWorkflowTriggers();
 
-  // The registries have to be full before they are read: a plugin fills its own
-  // as the host's module graph loads, and a host action fills the other in the
-  // loop above.
+  // The runtime action registry has to be full before it is read, which the loop
+  // above is what fills.
   const extensions = assembleExtensions({
     events: options.extensions?.events,
     integrations: options.extensions?.integrations,
-    registries: {
-      actions: catalogActionsFromRegistries(),
-      integrations: catalogIntegrationsFromRegistries(),
-    },
+    actions: getRuntimeActions().map(toActionMetadata),
   });
   configureExtensions(extensions);
 

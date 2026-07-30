@@ -2,8 +2,7 @@ import type { Schema } from "effect";
 import type {
   ActionConfigField,
   ActionConfigFieldBase,
-} from "#src/plugins/registry";
-import type { IntegrationType } from "#src/types/integration";
+} from "#src/plugins/action-fields";
 import { asStandardSchema, type StandardSchema } from "#src/types/schema";
 import type { ReferenceField } from "#src/workflow/node-references";
 import {
@@ -173,7 +172,7 @@ export type RegisteredRuntimeAction = RuntimeActionMetadata & {
   /** Defaulted at registration, so readers never have to. */
   category: string;
   /** Set when the action came from a plugin, never by `createAction`. */
-  integration?: IntegrationType;
+  integration?: string;
   execute?: RuntimeActionExecute;
 };
 
@@ -183,34 +182,17 @@ export type RuntimeActionWireMetadata = Omit<
   "execute"
 >;
 
-// Symbol.for on globalThis, so the registry stays one map even when this module
-// is duplicated across bundles: the @rova/core build inlines @rova/shared while
-// @rova/plugins imports it separately.
-// eslint-disable-next-line typescript/no-unsafe-type-assertion -- cross-bundle singleton via Symbol.for
-const globalStore = globalThis as Record<symbol, unknown>;
-const registryKey = Symbol.for("@rova/runtime-action-registry");
-
-globalStore[registryKey] ??= {
-  actions: new Map<string, RegisteredRuntimeAction>(),
-  version: 0,
-};
-
-// eslint-disable-next-line typescript/no-unsafe-type-assertion -- initialized above
-const registryState = globalStore[registryKey] as {
-  actions: Map<string, RegisteredRuntimeAction>;
-  version: number;
-};
-
-const runtimeActionRegistry = registryState.actions;
-
 /**
- * Bumped on every write. Anything caching a view of this registry compares the
- * number it last saw, which is what keeps a cached lookup from outliving the
- * action it described.
+ * The actions a host registered, held in module state.
+ *
+ * A plain map: one bundle holds it, because `createRovaApp` is the only writer and
+ * the engine's dispatch is the only reader. It was keyed on `globalThis` with a
+ * `Symbol.for`, and carried a version counter beside it, while the browser held a
+ * copy of the same registry and cached lookups over it; the editor reads the
+ * extension catalog now, so neither is needed. Stage 7 of ADR-0002 makes this a
+ * service the runtime provides, the way the database handle went.
  */
-export function getRuntimeActionRegistryVersion(): number {
-  return registryState.version;
-}
+const runtimeActionRegistry = new Map<string, RegisteredRuntimeAction>();
 
 function isPromiseLike<T>(value: unknown): value is Promise<T> {
   return (
@@ -416,7 +398,7 @@ export function createAction<TPayload extends Record<string, unknown>>(
 
 export function registerRuntimeAction(
   definition: RuntimeActionMetadata & {
-    integration?: IntegrationType;
+    integration?: string;
     execute?: RuntimeActionExecute;
   }
 ): void {
@@ -428,7 +410,6 @@ export function registerRuntimeAction(
     ...(integration ? { integration } : {}),
     ...(execute ? { execute } : {}),
   });
-  registryState.version += 1;
 }
 
 export function unregisterRuntimeAction(actionId: string): void {
@@ -437,7 +418,6 @@ export function unregisterRuntimeAction(actionId: string): void {
     return;
   }
   runtimeActionRegistry.delete(normalizedId);
-  registryState.version += 1;
 }
 
 export function getRuntimeAction(
@@ -448,11 +428,6 @@ export function getRuntimeAction(
 
 export function getRuntimeActions(): RegisteredRuntimeAction[] {
   return Array.from(runtimeActionRegistry.values());
-}
-
-export function clearRuntimeActions(): void {
-  runtimeActionRegistry.clear();
-  registryState.version += 1;
 }
 
 export function listRuntimeActions(): RuntimeActionWireMetadata[] {

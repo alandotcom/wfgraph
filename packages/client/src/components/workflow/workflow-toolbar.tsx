@@ -86,15 +86,9 @@ import {
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
-import {
-  findActionById,
-  flattenConfigFields,
-  getIntegrationLabels,
-} from "@rova/shared/plugins/registry";
-import {
-  type IntegrationType,
-  isIntegrationType,
-} from "@rova/shared/types/integration";
+import { getExtensionCatalog, integrationLabels } from "#src/lib/extensions";
+import { findAction } from "@rova/shared/extensions/catalog";
+import { flattenConfigFields } from "@rova/shared/plugins/action-fields";
 import {
   getMissingRequiredFieldsForNodes,
   type MissingRequiredFieldInfo,
@@ -132,7 +126,7 @@ function updateNodesStatus(
 }
 
 type MissingIntegrationInfo = {
-  integrationType: IntegrationType;
+  integrationType: string;
   integrationLabel: string;
   nodeNames: string[];
 };
@@ -233,7 +227,9 @@ function getBrokenTemplateReferences(
     if (brokenRefs.length > 0) {
       // Get action for label lookups
       const actionType = readConfigString(config, "actionType");
-      const action = actionType ? findActionById(actionType) : undefined;
+      const action = actionType
+        ? findAction(getExtensionCatalog(), actionType)
+        : undefined;
       const flatFields = action ? flattenConfigFields(action.configFields) : [];
 
       brokenByNode.push({
@@ -262,7 +258,8 @@ function getMissingRequiredFields(
 ): MissingRequiredFieldInfo[] {
   return getMissingRequiredFieldsForNodes({
     nodes,
-    resolveActionByType: (actionType) => findActionById(actionType),
+    resolveActionByType: (actionType) =>
+      findAction(getExtensionCatalog(), actionType),
   });
 }
 
@@ -271,11 +268,11 @@ function getMissingRequiredFields(
 // Also handles built-in actions that aren't in the plugin registry
 function getMissingIntegrations(
   nodes: WorkflowNode[],
-  userIntegrations: Array<{ id: string; type: IntegrationType }>
+  userIntegrations: Array<{ id: string; type: string }>
 ): MissingIntegrationInfo[] {
   const userIntegrationIds = new Set(userIntegrations.map((i) => i.id));
-  const missingByType = new Map<IntegrationType, string[]>();
-  const integrationLabels = getIntegrationLabels();
+  const missingByType = new Map<string, string[]>();
+  const labels = integrationLabels();
 
   for (const node of nodes) {
     // Skip disabled nodes
@@ -288,22 +285,15 @@ function getMissingIntegrations(
       continue;
     }
 
-    // Look up the integration type from the plugin registry first
-    const action = findActionById(actionType);
-    // Fall back to built-in action integrations for actions not in the registry
-    const requiredIntegrationTypeRaw =
+    // The catalog says which integration an action needs; the table beside it
+    // covers the built-ins, which belong to no integration definition.
+    const action = findAction(getExtensionCatalog(), actionType);
+    const requiredIntegrationType =
       action?.integration || SYSTEM_ACTION_INTEGRATIONS[actionType];
 
-    if (
-      !(
-        requiredIntegrationTypeRaw &&
-        isIntegrationType(requiredIntegrationTypeRaw)
-      )
-    ) {
+    if (!requiredIntegrationType) {
       continue;
     }
-
-    const requiredIntegrationType = requiredIntegrationTypeRaw;
 
     // Check if this node has a valid integrationId configured
     // The integration must exist (not just be configured)
@@ -328,7 +318,7 @@ function getMissingIntegrations(
     ([integrationType, nodeNames]) => ({
       integrationType,
       integrationLabel:
-        integrationLabels[integrationType] ||
+        labels[integrationType] ||
         SYSTEM_INTEGRATION_LABELS[integrationType] ||
         integrationType,
       nodeNames,
@@ -424,7 +414,7 @@ type WorkflowHandlerParams = {
   setActiveTab: (value: string) => void;
   setSelectedNodeId: (id: string | null) => void;
   setSelectedExecutionId: (id: string | null) => void;
-  userIntegrations: Array<{ id: string; type: IntegrationType }>;
+  userIntegrations: Array<{ id: string; type: string }>;
 };
 
 function useWorkflowHandlers({

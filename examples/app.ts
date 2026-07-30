@@ -24,12 +24,10 @@ import { createServer } from "node:http";
 import { createAction, defineEvent } from "@rova/core";
 import { createRovaApp } from "@rova/core/app";
 import { createRequestListener } from "@rova/core/node";
-// The built-in integrations. The ported ones are values, passed to
-// `createRovaApp` below, so that line is what turns them on; the rest still
-// register themselves on import, metadata first and then their step
-// implementations and connection tests.
-import "@rova/plugins";
-import { builtInIntegrations } from "@rova/plugins/server";
+// The built-in integrations, as values. Nothing registers on import, so the line
+// that passes them to `createRovaApp` below is what turns them on and dropping it
+// is what turns them off.
+import { builtInIntegrations } from "@rova/plugins";
 import { Schema } from "effect";
 
 const DEFAULT_PORT = 4017;

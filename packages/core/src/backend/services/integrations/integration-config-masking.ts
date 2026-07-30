@@ -8,10 +8,7 @@
 
 import { getExtensions } from "#src/backend/lib/extensions/current";
 import { findIntegration } from "@rova/shared/extensions/catalog";
-import type {
-  IntegrationConfig,
-  IntegrationType,
-} from "@rova/shared/types/integration";
+import type { IntegrationConfig } from "@rova/shared/types/integration";
 
 export const SECRET_MASK = "********";
 
@@ -27,7 +24,7 @@ export const SECRET_MASK = "********";
  * defaults to true.
  */
 export function createSecretConfigKeyTest(
-  type: IntegrationType
+  type: string
 ): (key: string) => boolean {
   if (type === "database") {
     return (key) => key === "url";
@@ -47,7 +44,7 @@ export function createSecretConfigKeyTest(
 }
 
 export function maskIntegrationConfig(
-  type: IntegrationType,
+  type: string,
   config: IntegrationConfig
 ): IntegrationConfig {
   const isSecretKey = createSecretConfigKeyTest(type);

@@ -10,11 +10,9 @@
  * schema, an output schema, the metadata the editor draws the action with, and a
  * handler that fails with a `StepFailure`; and a connection test, which answers
  * the credentials UI over a Promise rather than inside a handler, provides
- * `VendorTransport` itself. The credential fetch and the run logging a plugin
- * used to reach for are `defineStep`'s business now, so they are not here.
- *
- * `registerStep` and `registerIntegrationTest` are the surface an integration
- * used before it could be one value, and they go with the five plugins B4 ports.
+ * `VendorTransport` itself. There is nothing to register: an integration is a
+ * value a host passes to `createRovaApp`, and the credential fetch and the run
+ * logging a plugin used to reach for are `defineStep`'s business.
  */
 
 export type {
@@ -29,14 +27,10 @@ export {
 } from "#src/backend/lib/extensions/define-integration";
 export {
   type ActionStep,
-  defineLegacyStep,
   defineStep,
   StepFailure,
-  type StepDefinition,
   type StepRunContext,
 } from "#src/backend/lib/steps/define-step";
-export { registerStep } from "#src/backend/lib/step-registry";
-export { registerIntegrationTest } from "#src/backend/services/integrations/integration-test-loaders";
 /**
  * The layer a `defineStep` handler already runs with, exported for the calls a
  * plugin makes outside one: a connection test answers the credentials UI over a
