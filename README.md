@@ -67,7 +67,18 @@ HOST=127.0.0.1
 INNGEST_BASE_URL=http://localhost:8288
 RUN_DB_MIGRATIONS=false
 MIGRATIONS_DIR=packages/core/drizzle
+DATABASE_SCHEMA=_workflows
 ```
+
+`DATABASE_SCHEMA` names the Postgres schema Rova keeps its tables in. Both paths read it
+here: `pnpm run db:migrate` applies migrations without building an app, and `examples/app.ts`
+passes it to `database.schema`. An embedding app sets `database.schema` directly.
+
+Rova sends that schema as a `search_path` startup parameter, so the connection has to keep
+one. Behind PgBouncer that means `track_extra_parameters=search_path` (1.22+), not
+`ignore_startup_parameters`, which drops the value instead of passing it on; a session-mode or
+direct connection also works. Migrations read `current_schema()` back and fail naming both
+schemas rather than quietly building the tables in `public`.
 
 Integration-specific credentials can be provided via the integrations UI and/or environment variables, depending on plugin.
 
@@ -75,7 +86,8 @@ Integration-specific credentials can be provided via the integrations UI and/or 
 
 The server can run Drizzle migrations automatically during startup.
 
-- Controlled by `RUN_DB_MIGRATIONS` (default `false`)
+- The option is `database.migrations.runOnStartup` (default `false`); this repo's example app
+  reads `RUN_DB_MIGRATIONS` into it
 - Migration folder defaults to the `drizzle/` directory `@rova/core` ships, found relative
   to the running code. `MIGRATIONS_DIR` overrides it and is resolved from the working
   directory. Nothing is guessed from the working directory otherwise, so an embedder's own
@@ -102,7 +114,7 @@ pnpm install
 docker compose up -d
 
 # Apply schema
-pnpm run db:push
+pnpm run db:migrate
 
 # Start the app, the client dev server, and the inngest dev process
 pnpm run dev
@@ -168,11 +180,13 @@ const trigger = createTrigger({
 });
 
 const rova = await createRovaApp({
-  database: { url: process.env.DATABASE_URL! },
+  database: {
+    url: process.env.DATABASE_URL!,
+    migrations: { runOnStartup: true },
+  },
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
   auth: (request) => hasValidSession(request),
   client: clientBundle,
-  migrations: { runOnStartup: true },
   inngest: {
     id: "my-rova-app",
     baseUrl: process.env.INNGEST_BASE_URL,
@@ -284,21 +298,27 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
 
 ### createRovaApp options
 
-| Option                     | Required | Description                                                |
-| -------------------------- | -------- | ---------------------------------------------------------- |
-| `basePath`                 | No       | Path the host mounted Rova at (default `/`)                |
-| `database.url`             | Yes      | PostgreSQL connection string                               |
-| `encryption.key`           | Yes      | 64-character hex string; encrypts integration secrets      |
-| `auth`                     | Yes      | Predicate deciding who reaches the editor, or `"external"` |
-| `inngest.id`               | Yes      | Inngest application ID                                     |
-| `inngest.*`                | No       | baseUrl, eventKey, env, isDev, signingKey, serveOrigin     |
-| `migrations.runOnStartup`  | No       | Run Drizzle migrations at startup (default `false`)        |
-| `migrations.migrationsDir` | No       | Custom migrations directory                                |
-| `logger`                   | No       | Custom logger conforming to `RovaLogger` interface         |
-| `configureLogging`         | No       | Enable built-in structured logging (default `true`)        |
-| `triggers`                 | No       | Array of custom trigger definitions                        |
-| `actions`                  | No       | Array of custom action definitions                         |
-| `client`                   | No       | The editor bundle to serve, from `@rova/client`            |
+| Option                              | Required | Description                                                      |
+| ----------------------------------- | -------- | ---------------------------------------------------------------- |
+| `basePath`                          | No       | Path the host mounted Rova at (default `/`)                      |
+| `database.url`                      | Yes¹     | PostgreSQL connection string                                     |
+| `database.host` and co.             | Yes¹     | `host`, `port`, `user`, `password`, `database`, instead of a URL |
+| `database.schema`                   | No       | Postgres schema Rova keeps its tables in (default `_workflows`)  |
+| `database.maxConnections`           | No       | Connections the query pool may open (default 10)                 |
+| `database.ssl`                      | No       | `true`, `"require"`, `"allow"`, `"prefer"` or `"verify-full"`    |
+| `database.migrations.runOnStartup`  | No       | Apply pending migrations at startup (default `false`)            |
+| `database.migrations.migrationsDir` | No       | Custom migrations directory                                      |
+| `encryption.key`                    | Yes      | 64-character hex string; encrypts integration secrets            |
+| `auth`                              | Yes      | Predicate deciding who reaches the editor, or `"external"`       |
+| `inngest.id`                        | Yes      | Inngest application ID                                           |
+| `inngest.*`                         | No       | baseUrl, eventKey, env, isDev, signingKey, serveOrigin           |
+| `logger`                            | No       | Custom logger conforming to `RovaLogger` interface               |
+| `configureLogging`                  | No       | Enable built-in structured logging (default `true`)              |
+| `triggers`                          | No       | Array of custom trigger definitions                              |
+| `actions`                           | No       | Array of custom action definitions                               |
+| `client`                            | No       | The editor bundle to serve, from `@rova/client`                  |
+
+¹ `database` takes either arm, never both: one `url`, or the discrete fields. `schema`, `maxConnections`, `ssl` and `migrations` are valid on both. The fields reach the driver as fields, so a database name or password needing escaping in a URL is fine as-is, and an IPv6 or unix-socket host works. A `url` may not carry a `search_path`: `database.schema` names the schema, and a query parameter would outrank it.
 
 ### Notes
 
@@ -382,10 +402,11 @@ docker run --rm \
 - `pnpm run knip` - report unused files, exports, and dependencies
 - `pnpm run check` - format check (oxfmt --check)
 - `pnpm run fix` - format auto-fix (oxfmt)
-- `pnpm run db:generate` - generate drizzle migration
-- `pnpm run db:migrate` - apply generated migration
-- `pnpm run db:push` - push schema directly
-- `pnpm run db:studio` - open Drizzle Studio
+- `pnpm run db:generate` - generate the migration for a schema change
+- `pnpm run db:migrate` - apply pending migrations to `DATABASE_URL`, through Rova's own
+  migrator. Safe to run from several instances at once; it holds an advisory lock. A database
+  built before the tables were unqualified needs its old journal reconciled, or its schema
+  dropped, before this will apply the current baseline.
 
 ## API Endpoints
 

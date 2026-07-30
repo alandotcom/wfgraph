@@ -3,8 +3,7 @@ import {
   boolean,
   index,
   jsonb,
-  type PgSchema,
-  pgSchema,
+  pgTable,
   text,
   timestamp,
   uniqueIndex,
@@ -13,13 +12,17 @@ import type { IntegrationType } from "@rova/shared/types/integration";
 import { generateId } from "@rova/shared/utils/id";
 import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
 
-export const workflowsSchema: PgSchema<"_workflows"> = pgSchema("_workflows");
+// Every table here is unqualified, and the Postgres schema holding them is the
+// host's `database.schema` option: the connection's search_path names it, on the
+// query client and on the migration client alike. Naming it here instead, with
+// `pgSchema`, would bake one schema into the generated migration SQL and into
+// every query, which is what made the name unconfigurable.
 
 // Workflow visibility type
 export type WorkflowVisibility = "private" | "public";
 export type WorkflowMode = "live" | "test";
 
-export const workflows = workflowsSchema.table(
+export const workflows = pgTable(
   "workflows",
   {
     id: text("id")
@@ -42,7 +45,7 @@ export const workflows = workflowsSchema.table(
   ]
 );
 
-export const integrations = workflowsSchema.table("integrations", {
+export const integrations = pgTable("integrations", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => generateId()),
@@ -54,7 +57,7 @@ export const integrations = workflowsSchema.table("integrations", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const workflowExecutions = workflowsSchema.table(
+export const workflowExecutions = pgTable(
   "workflow_executions",
   {
     id: text("id")
@@ -103,7 +106,7 @@ export const workflowExecutions = workflowsSchema.table(
   ]
 );
 
-export const workflowExecutionLogs = workflowsSchema.table(
+export const workflowExecutionLogs = pgTable(
   "workflow_execution_logs",
   {
     id: text("id")
@@ -135,7 +138,7 @@ export const workflowExecutionLogs = workflowsSchema.table(
   ]
 );
 
-export const workflowWaitStates = workflowsSchema.table(
+export const workflowWaitStates = pgTable(
   "workflow_wait_states",
   {
     id: text("id")
@@ -177,7 +180,7 @@ export const workflowWaitStates = workflowsSchema.table(
   ]
 );
 
-export const workflowExecutionEvents = workflowsSchema.table(
+export const workflowExecutionEvents = pgTable(
   "workflow_execution_events",
   {
     id: text("id")
@@ -206,7 +209,7 @@ export const workflowExecutionEvents = workflowsSchema.table(
   ]
 );
 
-export const apiKeys = workflowsSchema.table(
+export const apiKeys = pgTable(
   "api_keys",
   {
     id: text("id")

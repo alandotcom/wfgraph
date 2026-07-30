@@ -20,10 +20,8 @@
     "knip": "knip",
     "check": "oxfmt --check .",
     "fix": "oxfmt .",
-    "db:generate": "pnpm exec drizzle-kit generate --config packages/core/drizzle.config.ts",
-    "db:migrate": "pnpm exec drizzle-kit migrate --config packages/core/drizzle.config.ts",
-    "db:push": "pnpm exec drizzle-kit push --config packages/core/drizzle.config.ts",
-    "db:studio": "pnpm exec drizzle-kit studio --config packages/core/drizzle.config.ts"
+    "db:generate": "pnpm exec drizzle-kit generate --config packages/core/drizzle.config.ts && tsx scripts/unqualify-migrations.ts",
+    "db:migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
     "@rova/core": "workspace:*",

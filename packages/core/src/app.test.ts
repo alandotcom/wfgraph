@@ -380,6 +380,33 @@ describe("createRovaApp configuration", () => {
     ).rejects.toThrow("encryption.key is unset");
   });
 
+  // The option sits under `database` now, beside the connection it applies to. A
+  // directory that is not there is the cheapest proof that it was read at all:
+  // startup migrations look for the folder before they open a connection.
+  it("takes startup migrations from database.migrations", async () => {
+    await expect(
+      createRovaApp({
+        ...BASE_OPTIONS,
+        database: {
+          ...BASE_OPTIONS.database,
+          migrations: { runOnStartup: true, migrationsDir: "no-such-folder" },
+        },
+      })
+    ).rejects.toThrow("Migrations folder not found");
+  });
+
+  it("leaves the database alone when startup migrations go unasked for", async () => {
+    const app = await createRovaApp({
+      ...BASE_OPTIONS,
+      database: {
+        ...BASE_OPTIONS.database,
+        migrations: { migrationsDir: "no-such-folder" },
+      },
+    });
+
+    await app.dispose();
+  });
+
   it("refuses an encryption key of the wrong length", async () => {
     await expect(
       createRovaApp({ ...BASE_OPTIONS, encryption: { key: "abc123" } })

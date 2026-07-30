@@ -147,16 +147,22 @@ const rova = await createRovaApp({
   // gateway in front.
   auth: "external",
   database: {
+    // One URL, or the discrete host/port/user/password/database fields a
+    // platform hands out separately.
     url: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
+    // Rova keeps its tables in "_workflows" unless told otherwise. This is read
+    // here because `pnpm run db:migrate` reads the same variable, and an app
+    // querying one schema while the migrator creates another is a bad afternoon.
+    schema: process.env.DATABASE_SCHEMA?.trim() || undefined,
+    migrations: {
+      runOnStartup: process.env.RUN_DB_MIGRATIONS === "true",
+      migrationsDir: process.env.MIGRATIONS_DIR,
+    },
   },
   // Rova refuses to start without a 64-character hex key and says so, so there
   // is nothing to check here.
   encryption: {
     key: process.env.INTEGRATION_ENCRYPTION_KEY,
-  },
-  migrations: {
-    runOnStartup: process.env.RUN_DB_MIGRATIONS === "true",
-    migrationsDir: process.env.MIGRATIONS_DIR,
   },
   inngest: {
     id: process.env.INNGEST_APP_ID ?? "notifications-workflow",

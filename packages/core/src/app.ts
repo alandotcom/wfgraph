@@ -3,8 +3,12 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { createApiApp } from "#src/backend/api-app";
 import {
+  assertDatabaseConfig,
+  closeMigrationClient,
   configureDatabaseRuntime,
   type DatabaseRuntimeConfig,
+  describeConnection,
+  getQueryClient,
 } from "#src/backend/lib/db/index";
 import {
   configureEncryptionKey,
@@ -12,7 +16,7 @@ import {
   assertValidEncryptionKey,
 } from "#src/backend/lib/db/integrations";
 import {
-  type MigrationsRuntimeOptions,
+  type MigrationsOptions,
   runMigrations,
 } from "#src/backend/lib/db/migrations";
 import {
@@ -67,6 +71,7 @@ import {
 } from "@rova/shared/workflow/trigger-registry";
 
 export type { DatabaseRuntimeConfig } from "#src/backend/lib/db/index";
+export type { MigrationsOptions } from "#src/backend/lib/db/migrations";
 export type { EncryptionRuntimeConfig } from "#src/backend/lib/db/integrations";
 export type { RovaInngestConfig } from "#src/backend/lib/inngest/client";
 export type { RovaAuth } from "#src/backend/lib/http/authorize";
@@ -91,6 +96,16 @@ export type RovaExtensionOptions = {
   readonly events?: readonly AnyEventDefinition[];
 };
 
+/**
+ * Where the database is, which schema Rova lives in, and whether it migrates on
+ * the way up. Migrations sit here rather than beside `database` because they are
+ * a statement about the same database, and a host reading the options should not
+ * have to notice that two top-level keys describe one thing.
+ */
+export type RovaDatabaseOptions = DatabaseRuntimeConfig & {
+  migrations?: MigrationsOptions;
+};
+
 export type RovaAppOptions = {
   /**
    * Absolute path the host mounted Rova at, for example "/workflows". Defaults
@@ -111,10 +126,7 @@ export type RovaAppOptions = {
   auth: RovaAuth;
   logger?: RovaLogger;
   configureLogging?: boolean;
-  database: DatabaseRuntimeConfig;
-  migrations?: Omit<MigrationsRuntimeOptions, "runOnStartup"> & {
-    runOnStartup?: boolean;
-  };
+  database: RovaDatabaseOptions;
   encryption: EncryptionRuntimeConfig;
   inngest: RovaInngestConfig;
   triggers?: RuntimeExtensionTriggerDefinition[];
@@ -173,9 +185,7 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const authorize = resolveAuthorize(options.auth);
 
-  if (!options.database.url?.trim()) {
-    throw new Error("createRovaApp requires database.url");
-  }
+  assertDatabaseConfig(options.database);
 
   if (!options.inngest.id?.trim()) {
     throw new Error("createRovaApp requires inngest.id");
@@ -265,10 +275,25 @@ async function buildRovaApp(
     `Extension surface assembled: ${events.length} events, ${actions.length} actions, ${integrations.length} integrations`
   );
 
-  await runMigrations({
-    runOnStartup: options.migrations?.runOnStartup === true,
-    migrationsDir: options.migrations?.migrationsDir,
-  });
+  // Where the tables are is a startup fact worth one line: Rova lives in a schema
+  // of a database the host chose, and "it is reading the wrong schema" is
+  // otherwise a guess made from an empty editor.
+  getAppLogger("database").info(
+    "Database configured",
+    describeConnection(getQueryClient())
+  );
+
+  if (options.database.migrations?.runOnStartup === true) {
+    try {
+      await runMigrations({
+        migrationsDir: options.database.migrations.migrationsDir,
+      });
+    } finally {
+      // Nothing migrates twice in one process, so the pool goes back rather than
+      // sitting idle for the life of the app.
+      await closeMigrationClient();
+    }
+  }
 
   // The Layer graph this instance owns. Building it is lazy, so an app that
   // never serves a migrated procedure never constructs a service.

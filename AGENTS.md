@@ -361,8 +361,61 @@ packaging change with `pnpm pack` and read the extracted manifest.
 ## Database
 
 Schema is `packages/core/src/backend/lib/db/schema.ts`. Generate migrations with
-`pnpm run db:generate` and apply them with `pnpm run db:push`. Do not hand-write migration
+`pnpm run db:generate` and apply them with `pnpm run db:migrate`. Do not hand-write migration
 SQL in `packages/core/drizzle/`.
+
+**The schema name is a runtime option, so the tables are declared unqualified.**
+`database.schema` on `RovaAppOptions` names the Postgres schema Rova lives in, `_workflows`
+unless a host says otherwise, and the connection's `search_path` is what puts the tables
+there: `db/index.ts` sends it in the startup packet on the query client and the migration
+client alike, so every connection a pool opens, and every one it reopens after a network
+drop, is already pointed at it. `runMigrations` creates that schema and keeps the migration
+journal inside it, so dropping the one schema removes Rova from the database. A name that is
+not an unquoted lowercase identifier of at most 63 characters is refused, because
+`search_path` would fold it to lowercase or Postgres would truncate it and quietly mean
+something else. A `database.url` carrying a `search_path` of its own is refused too: a URL
+query parameter reaches the startup packet and outranks the option, so the two would
+disagree about where the tables are. Every config source, the `DATABASE_URL` and
+`DATABASE_SCHEMA` fallbacks included, goes through `normalizeRuntimeConfig`, which is where
+all of that is enforced once.
+
+The invariant has three guards in the suite, and they are the reason this arrangement can be
+trusted: `db/schema.test.ts` reads the tables off the module and holds every one to naming no
+schema, `db/migrations-sql.test.ts` holds every committed statement to qualifying nothing but
+Rova's own table names, and `db/index.test.ts` covers the option and the environment path.
+
+**Only a connection that keeps the search_path startup parameter works.** `runMigrations`
+reads `current_schema()` back before applying anything and fails naming both schemas, because
+a pooler silently dropping the parameter would otherwise migrate `public`. PgBouncer needs
+`track_extra_parameters=search_path` (1.22+); `ignore_startup_parameters` is the wrong knob,
+since it drops the value rather than passing it on. Failing that, Rova needs a session-mode
+or direct connection.
+
+**Migrations hold an advisory lock.** Postgres does not serialize concurrent `CREATE SCHEMA`
+or `CREATE TABLE` of the same name, it fails the losers on a unique violation in
+`pg_namespace` or `pg_type`, so replicas starting together used to crash all but the first.
+The lock is session-scoped, which is why the migration pool is one connection: that is what
+puts the lock and the statements it guards on the same session.
+
+Two consequences of unqualified tables, worth knowing before touching this. First, drizzle-kit
+can no longer be told where the tables are: `push` offers to drop whichever schema it was
+filtered onto, and `studio` and `pull` look in `public`, so those scripts are gone and
+`drizzle.config.ts` carries no credentials. Generating SQL is the one thing drizzle-kit does
+offline, and `pnpm run db:migrate` (`scripts/migrate.ts`) applies it through Rova's own
+migrator. That migrator is Rova's for one reason: drizzle-kit has no way to carry a
+search_path except a URL query parameter, which Rova refuses for the reason above. Second,
+drizzle-kit writes `REFERENCES "public"."workflows"` for a foreign key even where both tables
+are unqualified, so `pnpm run db:generate` runs `scripts/unqualify-migrations.ts` after it to
+take that one qualifier off. The script handles that spelling and nothing else;
+`db/migrations-sql.test.ts` is what catches any other.
+
+**`database` takes one URL or the discrete fields, and neither is rewritten into the other.**
+`normalizeConnection` in `db/index.ts` checks whichever arm arrived and hands the fields to
+postgres.js as fields, so a database name holding a space, an IPv6 or unix-socket host, and
+`ssl` all work; folding them into a URL broke all three, because postgres.js decodes a URL's
+user and password but not its path segment. The rebinding guard compares the normalized
+fields one by one. The two arms are exclusive both ways: `never`-typed fields on each make a
+mixed literal fail to compile, and the normalizer refuses the same mixture at runtime.
 
 ## API client
 

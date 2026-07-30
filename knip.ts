@@ -50,14 +50,12 @@ const config: KnipConfig = {
         //
         // knip already reads the "scripts" block of package.json and treats a
         // file a script runs as an entry, which covers examples/app.ts through
-        // "start". Listing such a file here draws a "redundant entry pattern"
-        // hint. What remains is the two it cannot see.
+        // "start", and scripts/migrate.ts and scripts/unqualify-migrations.ts
+        // through the two db: scripts. Listing such a file here draws a
+        // "redundant entry pattern" hint. What remains is the one it cannot see.
         //
         // Run by the afterFileEdit hook in .cursor/hooks.json:
         "scripts/format-edited-file.ts",
-        // Run by hand against a deployed database. Nothing in the repo calls it,
-        // which is why it has to be listed rather than found.
-        "scripts/migrate-prod.ts",
       ],
       project: ["*.ts", "examples/**/*.ts", "scripts/**/*.ts"],
 

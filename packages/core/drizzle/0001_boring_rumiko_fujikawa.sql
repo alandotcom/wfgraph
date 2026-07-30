@@ -1,1 +1,0 @@
-CREATE INDEX "workflow_executions_in_flight_by_correlation_idx" ON "_workflows"."workflow_executions" USING btree ("workflow_id","correlation_key","run_mode") WHERE "_workflows"."workflow_executions"."status" in ('pending', 'running', 'waiting');
