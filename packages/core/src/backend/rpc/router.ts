@@ -18,6 +18,7 @@ import {
   putIntegration,
 } from "#src/backend/services/integrations/integrations";
 import { postWorkflowExecute } from "#src/backend/services/workflows/triggering/execute";
+import { resumeWaitByToken } from "#src/backend/services/workflows/triggering/resume";
 import { postExecutionCancel } from "#src/backend/services/workflows/executions/cancel";
 import { getExecutionEvents } from "#src/backend/services/workflows/executions/events";
 import { getExecutionLogs } from "#src/backend/services/workflows/executions/logs";
@@ -286,6 +287,15 @@ export const rpcRouter = rpc.router({
     ),
     getExecutionEvents: rpc.workflow.getExecutionEvents.handler(
       rpcEffectHandler(({ input }) => getExecutionEvents(input.executionId))
+    ),
+    resumeWait: rpc.workflow.resumeWait.handler(
+      rpcEffectHandler(({ input }) =>
+        resumeWaitByToken({
+          token: input.token,
+          body: input.payload ?? {},
+          source: "the runs panel",
+        })
+      )
     ),
     cancelExecution: rpc.workflow.cancelExecution.handler(
       rpcEffectHandler(({ input }) => postExecutionCancel(input.executionId))

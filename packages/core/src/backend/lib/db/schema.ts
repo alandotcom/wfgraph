@@ -200,18 +200,23 @@ export const workflowWaitStates = pgTable(
     runId: text("run_id").notNull(),
     nodeId: text("node_id").notNull(),
     nodeName: text("node_name").notNull(),
-    waitType: text("wait_type").notNull().$type<"delay" | "hook">(),
+    waitType: text("wait_type").notNull().$type<"delay" | "event">(),
     status: text("status")
       .notNull()
       .$type<"waiting" | "resumed" | "timed_out" | "cancelled">(),
-    hookToken: text("hook_token"),
+    /**
+     * What `POST /workflows/waits/:token/resume` unparks this run by. Generated
+     * per park: a token decided at design time is one two runs at the same node
+     * would collide on, and a unique index leaves one of them unfindable.
+     */
+    resumeToken: text("resume_token"),
     waitUntil: timestamp("wait_until"),
-    correlationKey: text("correlation_key"),
     /**
      * The Events this run parked on, as the node named them at park time. A
      * delivery finds parked runs through this rather than through the graph,
      * which is what keeps a run reachable after an edit to the node it parked
-     * on. B6 grows this into a stored predicate over the payload.
+     * on. Which of those runs an arrival actually wakes is then decided by the
+     * compiled match in `metadata.waitFor`.
      */
     subscribedEvents: text("subscribed_events").array(),
     metadata: jsonb("metadata").$type<Record<string, any>>(),
@@ -220,14 +225,9 @@ export const workflowWaitStates = pgTable(
     cancelledAt: timestamp("cancelled_at"),
   },
   (table) => [
-    uniqueIndex("workflow_wait_states_hook_token_uidx").on(table.hookToken),
+    uniqueIndex("workflow_wait_states_resume_token_uidx").on(table.resumeToken),
     index("workflow_wait_states_execution_status_idx").on(
       table.executionId,
-      table.status
-    ),
-    index("workflow_wait_states_workflow_correlation_status_idx").on(
-      table.workflowId,
-      table.correlationKey,
       table.status
     ),
     index("workflow_wait_states_run_id_idx").on(table.runId),

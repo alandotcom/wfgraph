@@ -210,7 +210,7 @@ export type CreateApiAppOptions = {
 /**
  * Routes reached by machines, each carrying a credential of its own: Inngest
  * signs its callback, the event intake path checks an API key, the resume path a
- * hook token. A session check would break all three.
+ * resume token. A session check would break all three.
  *
  * Written as the exception, so a route added to this file is gated by default
  * and opening one is an edit here with a reason attached. Listing what to gate
@@ -222,7 +222,7 @@ export type CreateApiAppOptions = {
 export const MACHINE_ROUTES = [
   "/inngest",
   "/events/:eventName",
-  "/workflows/hooks/:token/resume",
+  "/workflows/waits/:token/resume",
 ] as const;
 
 /**
@@ -509,7 +509,7 @@ export function createApiApp(options: CreateApiAppOptions) {
         )
       );
     })
-    .post("/workflows/hooks/:token/resume", async (c) => {
+    .post("/workflows/waits/:token/resume", async (c) => {
       const params = readTokenParams(c.req.param());
       if (Result.isFailure(params)) {
         return c.json(

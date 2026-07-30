@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+import { useAtomValue } from "jotai";
 import { HelpCircle, Plus, Settings, Zap } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ConfigureConnectionOverlay } from "#src/components/overlays/add-connection-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { Button } from "#src/components/ui/button";
@@ -32,7 +33,14 @@ import {
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
 import { getExtensionCatalog } from "#src/lib/extensions";
+import { getUpstreamConditionFields } from "#src/lib/upstream-node-fields";
+import {
+  edgesAtom,
+  nodesAtom,
+  selectedNodeAtom,
+} from "#src/lib/workflow-graph-store";
 import { actionsByCategory, findAction } from "@rova/shared/extensions/catalog";
+import { DEFAULT_WAIT_TIMEOUT } from "@rova/shared/workflow/wait-subscription";
 import {
   parseWorkflowSchemaFieldsOrJsonSchema,
   parseWorkflowSchemaFieldsString,
@@ -370,7 +378,12 @@ function HttpRequestFields({
   );
 }
 
-// Condition fields component
+/**
+ * The Condition node's rule builder, over what the nodes above it produce.
+ *
+ * The model and the CEL it compiles to are both stored, because the save path
+ * checks one against the other before a run is allowed to read either.
+ */
 function ConditionFields({
   config,
   onUpdateConfig,
@@ -380,13 +393,40 @@ function ConditionFields({
   onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
 }) {
+  const selectedNodeId = useAtomValue(selectedNodeAtom);
+  const nodes = useAtomValue(nodesAtom);
+  const edges = useAtomValue(edgesAtom);
+
+  const fields = useMemo(
+    () =>
+      getUpstreamConditionFields({
+        currentNodeId: selectedNodeId ?? undefined,
+        nodes,
+        edges,
+      }),
+    [selectedNodeId, nodes, edges]
+  );
+
+  const handleChange = useCallback(
+    (next: { model: string; expression: string }) => {
+      onUpdateConfig({
+        conditionModel: next.model,
+        condition: next.expression,
+      });
+    },
+    [onUpdateConfig]
+  );
+
   return (
     <ConditionBuilderRow
-      config={config}
+      currentNodeId={selectedNodeId ?? undefined}
       description="Build a condition from trigger and upstream action output fields. Timestamp fields support relative and absolute time filters."
       disabled={disabled}
+      emptyFieldsMessage="No upstream fields available. Connect this node to a trigger or action with typed outputs first."
+      fields={fields}
       label="Condition"
-      onUpdateConfig={onUpdateConfig}
+      onChange={handleChange}
+      value={readConfigString(config, "conditionModel")}
     />
   );
 }
@@ -621,13 +661,10 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   );
 }
 
-function SharedHookWaitFields({
-  config,
-  onUpdateConfig,
-  disabled,
-}: WaitFieldProps) {
+function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   return (
-    <>
+    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+      <p className="font-medium text-sm">Wait for Event</p>
       <WaitEventSelect
         config={config}
         disabled={disabled}
@@ -635,32 +672,21 @@ function SharedHookWaitFields({
       />
 
       <div className="space-y-2">
-        <Label htmlFor="waitTimeout">Stop waiting after (optional)</Label>
+        <Label htmlFor="waitTimeout">Stop waiting after</Label>
         <TemplateBadgeInput
           disabled={disabled}
           fieldType="duration"
           id="waitTimeout"
           onChange={(value) => onUpdateConfig({ waitTimeout: value })}
-          placeholder="48h"
+          placeholder={DEFAULT_WAIT_TIMEOUT}
           value={readConfigString(config, "waitTimeout")}
         />
         <p className="text-muted-foreground text-xs">
-          Optional safety timeout if the expected event never arrives.
+          Required. A wait with no end holds a run, and a place in the run list,
+          until somebody notices.
         </p>
       </div>
-    </>
-  );
-}
 
-function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
-  return (
-    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <p className="font-medium text-sm">Wait for Event</p>
-      <SharedHookWaitFields
-        config={config}
-        disabled={disabled}
-        onUpdateConfig={onUpdateConfig}
-      />
       <div className="space-y-2">
         <Label htmlFor="waitTimeoutBehavior">On timeout</Label>
         <Select
@@ -687,37 +713,23 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   );
 }
 
-function HookWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
-  return (
-    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      {/* Must echo the "Wait for webhook event" option that reveals this
-          block, or the builder cannot tell their selection took. */}
-      <p className="font-medium text-sm">Wait for Webhook Event</p>
-      <SharedHookWaitFields
-        config={config}
-        disabled={disabled}
-        onUpdateConfig={onUpdateConfig}
-      />
-      <div className="space-y-2">
-        <Label htmlFor="waitHookToken">Explicit hook token (optional)</Label>
-        <TemplateBadgeInput
-          disabled={disabled}
-          id="waitHookToken"
-          onChange={(value) => onUpdateConfig({ waitHookToken: value })}
-          placeholder="custom-token-if-you-need-deterministic-resume"
-          value={readConfigString(config, "waitHookToken")}
-        />
-        <p className="text-muted-foreground text-xs">
-          Leave blank unless an external system must target a fixed token.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// Wait fields component
+/**
+ * The Wait node's two modes: resume on a clock, or resume on an Event.
+ *
+ * Choosing the event mode writes the timeout default in the same handler, so the
+ * common case costs no thought and the save rule that requires one is satisfied
+ * before a builder ever meets it.
+ */
 function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   const waitMode = readConfigString(config, "waitMode", "delay");
+
+  const handleModeChange = (value: string) => {
+    onUpdateConfig(
+      value === "event" && !readConfigString(config, "waitTimeout").trim()
+        ? { waitMode: value, waitTimeout: DEFAULT_WAIT_TIMEOUT }
+        : { waitMode: value }
+    );
+  };
 
   return (
     <>
@@ -725,7 +737,7 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <Label htmlFor="waitMode">How should this step wait?</Label>
         <Select
           disabled={disabled}
-          onValueChange={(value) => onUpdateConfig({ waitMode: value })}
+          onValueChange={handleModeChange}
           value={waitMode}
         >
           <SelectTrigger className="w-full" id="waitMode">
@@ -733,13 +745,12 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="delay">Wait for time</SelectItem>
-            <SelectItem value="event">Wait for event</SelectItem>
-            <SelectItem value="hook">Wait for webhook event</SelectItem>
+            <SelectItem value="event">Wait for an event</SelectItem>
           </SelectContent>
         </Select>
         <p className="text-muted-foreground text-xs">
-          Resume on a clock, on an event matching this run's entity, or on a
-          call to a token this step issues.
+          Resume on a clock, or when an event arrives that this step's match
+          accepts.
         </p>
       </div>
 
@@ -753,14 +764,6 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
 
       {waitMode === "event" && (
         <EventWaitFields
-          config={config}
-          disabled={disabled}
-          onUpdateConfig={onUpdateConfig}
-        />
-      )}
-
-      {waitMode === "hook" && (
-        <HookWaitFields
           config={config}
           disabled={disabled}
           onUpdateConfig={onUpdateConfig}

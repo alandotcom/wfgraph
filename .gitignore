@@ -63,3 +63,8 @@ dist/
 # Reference checkouts cloned by scripts/prepare-effect.sh so agents can read
 # Effect's real source; a build input, never project source
 .repos/effect
+
+# Worktrees an agent creates to work on an isolated copy of the repo. A second
+# checkout of the whole tree, so anything walking the repo would judge every
+# file twice.
+.claude/worktrees/

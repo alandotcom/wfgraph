@@ -11,8 +11,8 @@ import { Button } from "#src/components/ui/button";
 import { Spinner } from "#src/components/ui/spinner";
 import {
   isRunInProgress,
+  toExecutionDetail,
   toExecutionEvents,
-  toExecutionLogs,
   toWorkflowExecutions,
 } from "#src/lib/execution-logs";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
@@ -82,10 +82,10 @@ export function WorkflowRuns() {
   // means a request. Both stop once the run is finished, which the single
   // interval this replaced could not do: it refreshed the open run forever,
   // long after there was anything left to learn about it.
-  const logsQuery = useQuery({
+  const detailQuery = useQuery({
     ...orpcQuery.workflow.getExecutionLogs.queryOptions({
       input: { executionId: activeRunId ?? "" },
-      select: toExecutionLogs,
+      select: toExecutionDetail,
     }),
     enabled: activeRunId !== null,
     staleTime: 0,
@@ -106,6 +106,13 @@ export function WorkflowRuns() {
     orpcQuery.workflow.cancelExecution.mutationOptions({
       onSuccess: () => refreshRunHistory(queryClient),
       meta: { errorMessage: "Failed to cancel run" },
+    })
+  );
+
+  const resumeWait = useMutation(
+    orpcQuery.workflow.resumeWait.mutationOptions({
+      onSuccess: () => refreshRunHistory(queryClient),
+      meta: { errorMessage: "Failed to resume the run" },
     })
   );
 
@@ -184,10 +191,13 @@ export function WorkflowRuns() {
           cancelExecution.isPending &&
           cancelExecution.variables?.executionId === activeExecution.id
         }
-        logs={logsQuery.data ?? []}
+        isResuming={resumeWait.isPending}
+        logs={detailQuery.data?.logs ?? []}
         onBack={handleBack}
         onCancel={(executionId) => cancelExecution.mutate({ executionId })}
+        onResume={(token) => resumeWait.mutate({ token })}
         runNumber={runNumber}
+        waits={detailQuery.data?.waits ?? []}
       />
     );
   }

@@ -18,8 +18,8 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { callDbModule } from "#src/backend/lib/effect/database";
 import { callInngestModule } from "#src/backend/lib/effect/inngest-client";
-import { resumeMatchingWaitHooks } from "#src/backend/lib/workflow-wait-resume";
-import { listWorkflowWaitingStatesByCorrelation } from "#src/backend/lib/workflow-wait-state";
+import { resumeWaitsMatchingEvent } from "#src/backend/lib/workflow-wait-resume";
+import { listWorkflowWaitsForEvent } from "#src/backend/lib/workflow-wait-state";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 import { runWorkflowExecutionPreflight } from "#src/backend/services/workflows/triggering/preflight";
 import {
@@ -227,12 +227,10 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
  * its way out and waking its wait would resume a run with no next step, and the
  * run just started has parked nothing yet.
  *
- * Which waits an Event wakes is still today's matcher: candidates are found by
- * Entity Value and each row's stored event-name list decides. The path the value
- * is read at comes from the Event, or from the subscription index for an Event
- * that declares none, so no delivery reads a graph. B6 replaces the matcher with a
- * stored predicate over the payload, which is what lets a wait match on something
- * other than the entity.
+ * Candidates are found by Event name alone, and each row's own compiled match
+ * decides whether the payload belongs to that run. Nothing here reads a
+ * Correlation Path: a Wait Subscription states what it compares, so an Event with
+ * no entity of its own still wakes exactly the runs that asked for it.
  */
 export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
   subscriber: EventSubscriber;
@@ -245,33 +243,10 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
     resumedWaits: 0,
   };
 
-  const path =
-    input.event.correlationPath ??
-    input.subscriber.correlationPath ??
-    undefined;
-  if (!path) {
-    // Neither the Event nor the workflow says where this Event's entity sits, so
-    // there is nothing to match a parked run against. It reaches here when a graph
-    // edit dropped the Event from the node its runs parked on; B6's per-run
-    // predicate is what removes the case.
-    yield* (yield* AppLogger)
-      .get("workflow", "deliver-event")
-      .warn("No Correlation Path for a parked run's Event", {
-        eventName: input.event.name,
-        workflowId: input.subscriber.id,
-      });
-    return nothing;
-  }
-
-  const entityValue = asNonEmptyString(getValueByPath(input.payload, path));
-  if (!entityValue) {
-    return nothing;
-  }
-
   const waitStates = yield* callDbModule(() =>
-    listWorkflowWaitingStatesByCorrelation({
+    listWorkflowWaitsForEvent({
       workflowId: input.subscriber.id,
-      correlationKey: entityValue,
+      eventName: input.event.name,
       runMode: input.subscriber.mode,
     })
   );
@@ -284,7 +259,7 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
   }
 
   const resumedWaits = yield* callInngestModule(() =>
-    resumeMatchingWaitHooks({
+    resumeWaitsMatchingEvent({
       workflowId: input.subscriber.id,
       eventType: input.event.name,
       payload: input.payload,

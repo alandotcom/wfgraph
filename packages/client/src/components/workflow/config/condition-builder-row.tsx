@@ -1,7 +1,6 @@
-import { useAtomValue } from "jotai";
 import { Plus, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
@@ -15,12 +14,7 @@ import {
   SelectValue,
 } from "#src/components/ui/select";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
-import { getUpstreamConditionFields } from "#src/lib/upstream-node-fields";
-import {
-  edgesAtom,
-  nodesAtom,
-  selectedNodeAtom,
-} from "#src/lib/workflow-graph-store";
+import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
 import {
   BOOLEAN_OPERATOR_OPTIONS,
   type ConditionFieldDefinition,
@@ -46,13 +40,28 @@ import {
   type TimestampRelativeOperator,
   type TimeUnit,
 } from "@rova/shared/workflow/conditions";
-import type { UpdateNodeConfig } from "./node-config-patch";
 
+/**
+ * What the row is written against, rather than where it is stored.
+ *
+ * Two callers build rules with it and neither keeps them the same way: a
+ * Condition node stores a model and the CEL it compiles to on its own config, a
+ * Wait Subscription stores the model alone and compiles it at park time, against
+ * a payload that has not arrived yet. So the row takes its vocabulary and its
+ * value as props and hands back both halves, leaving the storing to the caller.
+ */
 type ConditionBuilderRowProps = {
   label: string;
   description: string;
-  config: Record<string, unknown>;
-  onUpdateConfig: UpdateNodeConfig;
+  /** The fields rules may be built from, already typed. */
+  fields: ConditionSelectableField[];
+  /** What to say when there are none. */
+  emptyFieldsMessage: string;
+  /** Serialized `ConditionModel`, empty when nothing is configured yet. */
+  value: string;
+  onChange: (next: { model: string; expression: string }) => void;
+  /** Excluded from a value field's template autocomplete, being its own node. */
+  currentNodeId?: string;
   disabled: boolean;
 };
 
@@ -456,24 +465,13 @@ function ConditionValueInput(input: {
 export function ConditionBuilderRow({
   label,
   description,
-  config,
-  onUpdateConfig,
+  fields: availableFields,
+  emptyFieldsMessage,
+  value: storedValue,
+  onChange,
+  currentNodeId,
   disabled,
 }: ConditionBuilderRowProps) {
-  const selectedNodeId = useAtomValue(selectedNodeAtom);
-  const nodes = useAtomValue(nodesAtom);
-  const edges = useAtomValue(edgesAtom);
-  const [compileError, setCompileError] = useState<string | null>(null);
-
-  const availableFields = useMemo(
-    () =>
-      getUpstreamConditionFields({
-        currentNodeId: selectedNodeId ?? undefined,
-        nodes,
-        edges,
-      }),
-    [selectedNodeId, nodes, edges]
-  );
   const seedField = availableFields[0] ?? null;
 
   const fieldByPath = useMemo(
@@ -500,28 +498,23 @@ export function ConditionBuilderRow({
       }));
   }, [availableFields]);
 
-  const modelParseResult = parseConditionModel(config.conditionModel);
+  const modelValue = storedValue.trim();
+  const modelParseResult = parseConditionModel(modelValue);
   const storedModel = modelParseResult.valid ? modelParseResult.model : null;
-  const expressionValue =
-    typeof config.condition === "string" ? config.condition.trim() : "";
-  const modelValue =
-    typeof config.conditionModel === "string"
-      ? config.conditionModel.trim()
-      : "";
 
   const persistModel = useCallback(
     (model: ConditionModel) => {
-      // The model and the CEL string it compiles to are one fact about the
-      // node, so they are written together. A model that fails to compile
-      // still gets stored, with an empty expression alongside it.
+      // The model and the CEL it compiles to are one fact, so both go to the
+      // caller together. A model that fails to compile is still handed over,
+      // with an empty expression beside it: a half-built rule is a state the
+      // builder is in, not an edit to refuse.
       const compiled = compileConditionModel(model);
-      onUpdateConfig({
-        conditionModel: serializeConditionModel(model),
-        condition: compiled.valid ? compiled.expression : "",
+      onChange({
+        model: serializeConditionModel(model),
+        expression: compiled.valid ? compiled.expression : "",
       });
-      setCompileError(compiled.valid ? null : compiled.error);
     },
-    [onUpdateConfig]
+    [onChange]
   );
 
   const addConditionModel = useCallback(() => {
@@ -541,6 +534,10 @@ export function ConditionBuilderRow({
   const parsedModel = storedModel
     ? reconcileModelWithFields(storedModel, fieldByPath)
     : null;
+
+  // Derived in render rather than remembered from the last write, so a model
+  // that arrives already broken says so on the first paint.
+  const compiled = parsedModel ? compileConditionModel(parsedModel) : null;
 
   const updateGroup = (
     groupId: string,
@@ -648,10 +645,7 @@ export function ConditionBuilderRow({
             Configure condition
           </Button>
         ) : (
-          <p className="text-muted-foreground text-xs">
-            No upstream fields available. Connect this node to a trigger or
-            action with typed outputs first.
-          </p>
+          <p className="text-muted-foreground text-xs">{emptyFieldsMessage}</p>
         )}
         {modelValue && !modelParseResult.valid && (
           <p className="text-destructive text-xs">{modelParseResult.error}</p>
@@ -810,7 +804,7 @@ export function ConditionBuilderRow({
 
                         <ConditionValueInput
                           condition={condition}
-                          currentNodeId={selectedNodeId ?? undefined}
+                          currentNodeId={currentNodeId}
                           disabled={disabled}
                           enumValues={selectedFieldDef?.enumValues}
                           onConditionChange={(nextCondition) => {
@@ -897,12 +891,12 @@ export function ConditionBuilderRow({
         </Button>
       </div>
 
-      {compileError && (
-        <p className="text-destructive text-xs">{compileError}</p>
+      {compiled?.valid === false && (
+        <p className="text-destructive text-xs">{compiled.error}</p>
       )}
-      {!compileError && expressionValue && (
+      {compiled?.valid && (
         <p className="text-muted-foreground text-xs">
-          Compiled CEL: {expressionValue}
+          Compiled CEL: {compiled.expression}
         </p>
       )}
     </div>

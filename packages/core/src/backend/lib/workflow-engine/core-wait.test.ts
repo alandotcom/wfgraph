@@ -9,6 +9,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { JsonObject } from "@rova/shared/types/json";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 import { executeWorkflow } from "./core";
@@ -66,9 +67,29 @@ type RunWaitOptions = {
   config: Record<string, unknown>;
   store: RecordingWorkflowStore;
   resumeEvent?: unknown;
-  correlationKey?: string;
+  triggerInput?: JsonObject;
   memo?: Map<string, unknown>;
 };
+
+/**
+ * A match comparing one payload field against a value, as the editor stores it:
+ * the serialized `ConditionModel` the Condition node builds.
+ */
+function matchOn(field: string, value: string): string {
+  return JSON.stringify({
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: "group",
+        logic: "and",
+        conditions: [
+          { id: "rule", field, fieldType: "string", operator: "equals", value },
+        ],
+      },
+    ],
+  });
+}
 
 /**
  * The Wait node returns an ExecutionResult, which the engine then stores whole
@@ -93,9 +114,7 @@ function runWait(options: RunWaitOptions) {
       graph: createWaitGraph(options.config),
       executionId: "exec_wait",
       workflowId: "workflow_wait",
-      eventContext: options.correlationKey
-        ? { correlationKey: options.correlationKey }
-        : undefined,
+      triggerInput: options.triggerInput,
     },
     runtime,
     options.store
@@ -206,7 +225,7 @@ describe("wait node - delay mode", () => {
   });
 });
 
-describe("wait node - hook mode", () => {
+describe("wait node - event mode", () => {
   let store: RecordingWorkflowStore;
 
   beforeEach(() => {
@@ -215,7 +234,11 @@ describe("wait node - hook mode", () => {
 
   it("waits on the signal event scoped to this run, node, and token", async () => {
     const { runtime, execution } = runWait({
-      config: { waitMode: "hook", waitHookToken: "token_abc" },
+      config: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
       store,
       resumeEvent: { data: { approved: true } },
     });
@@ -223,45 +246,57 @@ describe("wait node - hook mode", () => {
 
     expect(result.success).toBe(true);
     expect(waitOutput(result)).toMatchObject({
-      waitType: "hook",
-      hookToken: "token_abc",
+      waitType: "event",
       timedOut: false,
       payload: { data: { approved: true } },
     });
 
+    const resumeToken = store.callsOf("createWaitState")[0]?.resumeToken;
+    expect(typeof resumeToken).toBe("string");
+    expect(resumeToken).not.toBe("");
+
     const wait = runtime.waits.at(0);
-    expect(wait?.stepId).toBe("wait-hook-wait_1");
+    expect(wait?.stepId).toBe("wait-event-wait_1");
     expect(wait?.options.event).toBe("workflow/wait.signal");
-    expect(wait?.options.ifExpression).toContain("'token_abc'");
+    expect(wait?.options.ifExpression).toContain(`'${resumeToken}'`);
     expect(wait?.options.ifExpression).toContain(
       "async.data.nodeId == 'wait_1'"
     );
-    // No waitTimeout configured means the runtime picks its own ceiling.
-    expect(wait?.options.timeoutMs).toBeUndefined();
+    expect(wait?.options.timeoutMs).toBeGreaterThan(0);
 
     expect(store.callsOf("createWaitState")[0]).toMatchObject({
-      waitType: "hook",
-      hookToken: "token_abc",
+      waitType: "event",
     });
     expect(store.callsOf("markWaitStateStatus")[0]?.status).toBe("resumed");
   });
 
-  it("generates a hook token when the node does not pin one", async () => {
-    const { execution } = runWait({
-      config: { waitMode: "hook" },
+  // A wait with no end is an immortal run, so the timeout the editor writes is
+  // applied here too rather than being left to whatever Inngest would pick.
+  it("falls back to the default timeout when the config names none", async () => {
+    const { runtime, execution } = runWait({
+      config: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+      },
       store,
       resumeEvent: {},
     });
     await execution;
 
-    const hookToken = store.callsOf("createWaitState")[0]?.hookToken;
-    expect(typeof hookToken).toBe("string");
-    expect(hookToken).not.toBe("");
+    expect(runtime.waits.at(0)?.options.timeoutMs).toBeGreaterThan(0);
+    expect(store.callsOf("createWaitState")[0]?.metadata).toMatchObject({
+      waitTimeout: "7d",
+      waitTimeoutBehavior: "continue",
+    });
   });
 
   it("records a timeout when the signal never arrives", async () => {
     const { execution } = runWait({
-      config: { waitMode: "hook", waitTimeout: "30m" },
+      config: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "30m",
+      },
       store,
       resumeEvent: null,
     });
@@ -276,13 +311,17 @@ describe("wait node - hook mode", () => {
     ]);
   });
 
-  it("copies the node's event list onto the wait row", async () => {
-    // Resume matching reads this list off the stored wait state, so the node
-    // config and the row have to agree entry for entry.
+  it("copies the subscribed Event names onto the wait row", async () => {
+    // The delivery fan-out finds parked runs by this column, so the node config
+    // and the row have to agree entry for entry.
     const { execution } = runWait({
       config: {
-        waitMode: "hook",
-        waitForEvents: ["appointment.confirmed", "appointment.cancelled"],
+        waitMode: "event",
+        waitFor: [
+          { event: "appointment.confirmed" },
+          { event: "appointment.cancelled" },
+        ],
+        waitTimeout: "1d",
       },
       store,
       resumeEvent: {},
@@ -295,35 +334,118 @@ describe("wait node - hook mode", () => {
     ]);
   });
 
-  // The filtering happens where the list is produced, so nothing downstream of
-  // the wait state ever has to defend against a shape the editor cannot write.
-  it("stores no events for a config holding the old comma-separated string", async () => {
+  // The whole of the wait bug, pinned: a run started by one Event parks on a
+  // different one, and what it compares is the arriving payload against a value
+  // only this run knows. The run side is a literal by the time it is stored.
+  it("resolves the run side of a match to a literal at park time", async () => {
     const { execution } = runWait({
-      config: { waitMode: "hook", waitForEvents: "a,b" },
+      config: {
+        waitMode: "event",
+        waitFor: [
+          {
+            event: "billing/payment.settled",
+            match: matchOn(
+              "appointmentId",
+              "{{@trigger_1:Trigger.appointment.id}}"
+            ),
+          },
+        ],
+        waitTimeout: "7d",
+      },
       store,
+      triggerInput: { appointment: { id: "appt_8813" } },
       resumeEvent: {},
     });
     await execution;
 
-    expect(store.callsOf("createWaitState")[0]?.subscribedEvents).toEqual([]);
+    expect(store.callsOf("createWaitState")[0]?.metadata).toMatchObject({
+      waitFor: [
+        {
+          event: "billing/payment.settled",
+          match: {
+            expression: '((payload.appointmentId == "appt_8813"))',
+            timestampPaths: [],
+          },
+        },
+      ],
+    });
   });
 
-  it("drops blank entries from the event list before storing it", async () => {
+  it("stores no expression for a subscription carrying no match", async () => {
     const { execution } = runWait({
-      config: { waitMode: "hook", waitForEvents: ["", " ", "x"] },
+      config: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
       store,
       resumeEvent: {},
     });
     await execution;
 
-    expect(store.callsOf("createWaitState")[0]?.subscribedEvents).toEqual([
-      "x",
-    ]);
+    expect(store.callsOf("createWaitState")[0]?.metadata).toMatchObject({
+      waitFor: [{ event: "billing/payment.settled" }],
+    });
+  });
+
+  // A reference the resolver cannot answer is left as the authored text, so
+  // compiling it would park the run on a comparison against the literal
+  // `{{...}}` -- a wait nothing can wake, quiet until its timeout runs out.
+  it("fails the node when a match still names a node that did not run", async () => {
+    const { runtime, execution } = runWait({
+      config: {
+        waitMode: "event",
+        waitFor: [
+          {
+            event: "billing/payment.settled",
+            match: matchOn(
+              "appointmentId",
+              "{{@no_such_node:Gone.appointment.id}}"
+            ),
+          },
+        ],
+        waitTimeout: "7d",
+      },
+      store,
+    });
+    const result = await execution;
+
+    expect(result.results.wait_1?.success).toBe(false);
+    expect(result.results.wait_1?.error).toContain(
+      "is not available to this run"
+    );
+    expect(runtime.waits).toHaveLength(0);
+    expect(store.callsOf("createWaitState")).toHaveLength(0);
+  });
+
+  // Parking without the match would subscribe the run to every occurrence of
+  // that Event, which is the opposite of what the builder wrote.
+  it("fails the node when a match will not compile", async () => {
+    const { runtime, execution } = runWait({
+      config: {
+        waitMode: "event",
+        waitFor: [
+          { event: "billing/payment.settled", match: matchOn("id", "") },
+        ],
+        waitTimeout: "7d",
+      },
+      store,
+    });
+    const result = await execution;
+
+    expect(result.results.wait_1?.success).toBe(false);
+    expect(result.results.wait_1?.error).toContain("billing/payment.settled");
+    expect(runtime.waits).toHaveLength(0);
+    expect(store.callsOf("createWaitState")).toHaveLength(0);
   });
 
   it("fails the node when the configured timeout cannot be parsed", async () => {
     const { execution } = runWait({
-      config: { waitMode: "hook", waitTimeout: "whenever" },
+      config: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "whenever",
+      },
       store,
     });
     const result = await execution;
@@ -332,56 +454,87 @@ describe("wait node - hook mode", () => {
     expect(store.callsOf("createWaitState")).toHaveLength(0);
     expect(store.callsOf("completeStepLog")[0]?.status).toBe("error");
   });
-});
 
-describe("wait node - event mode", () => {
-  let store: RecordingWorkflowStore;
-
-  beforeEach(() => {
-    store = createRecordingWorkflowStore();
-  });
-
-  it("fails before waiting when the trigger supplied no correlation key", async () => {
+  // The retired third mode has no fallback path: a saved node holding it fails
+  // the decode, which is where a graph written against the old shape stops.
+  it("fails a node still configured for the retired hook mode", async () => {
     const { runtime, execution } = runWait({
-      config: { waitMode: "event" },
+      config: { waitMode: "hook", waitHookToken: "token_abc" },
       store,
     });
     const result = await execution;
 
     expect(result.results.wait_1?.success).toBe(false);
-    expect(result.results.wait_1?.error).toContain("correlation key");
+    expect(result.results.wait_1?.error).toContain("configuration is invalid");
     expect(runtime.waits).toHaveLength(0);
-    // The failure is still logged as a step, opened and closed in one unit.
-    expect(store.callsOf("startStepLog")).toHaveLength(1);
+    expect(store.callsOf("createWaitState")).toHaveLength(0);
     expect(store.callsOf("completeStepLog")[0]?.status).toBe("error");
   });
 
-  it("carries the trigger's correlation key onto the wait state", async () => {
+  it("parks with no Correlation Path in sight", async () => {
+    // The match is the matcher, so a run whose start carried no entity still
+    // parks. The failure this replaces refused the wait outright.
     const { execution } = runWait({
-      config: { waitMode: "event" },
+      config: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
       store,
-      correlationKey: "donor_42",
       resumeEvent: {},
     });
-    await execution;
+    const result = await execution;
 
-    expect(store.callsOf("createWaitState")[0]?.correlationKey).toBe(
-      "donor_42"
-    );
+    expect(result.results.wait_1?.success).toBe(true);
+    expect(store.callsOf("createWaitState")).toHaveLength(1);
   });
 
   it("halts the branch on timeout when configured to skip", async () => {
     const { execution } = runWait({
       config: {
         waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
         waitTimeout: "5m",
         waitTimeoutBehavior: "skip",
       },
       store,
-      correlationKey: "donor_42",
       resumeEvent: null,
     });
     const result = await execution;
+
+    expect(result.results.wait_1?.haltBranch).toBe(true);
+    expect(waitOutput(result)).toMatchObject({
+      skipped: true,
+      skippedReason: "timeout_skip",
+    });
+  });
+
+  // A wait can outlive several edits to the node it parked on. The timeout
+  // behaviour comes off the memoized preparation, so the run finishes the way it
+  // started rather than reading a config that has moved underneath it.
+  //
+  // The two passes are the real sequence: a run parks, and the pass that closes
+  // the wait out is a separate invocation, replaying the preparation from the
+  // memo and reaching the resume step for the first time. Dropping that step's
+  // entry is what models the suspend this in-memory runtime does not perform.
+  it("keeps the timeout behaviour the run parked with across an edit", async () => {
+    const memo = new Map<string, unknown>();
+    const parked = {
+      waitMode: "event",
+      waitFor: [{ event: "billing/payment.settled" }],
+      waitTimeout: "5m",
+      waitTimeoutBehavior: "skip",
+    };
+
+    await runWait({ config: parked, store, memo, resumeEvent: null }).execution;
+    memo.delete("wait-event-resume-wait_1");
+
+    const result = await runWait({
+      config: { ...parked, waitTimeoutBehavior: "continue" },
+      store,
+      memo,
+      resumeEvent: null,
+    }).execution;
 
     expect(result.results.wait_1?.haltBranch).toBe(true);
     expect(waitOutput(result)).toMatchObject({

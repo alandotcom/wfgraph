@@ -176,12 +176,13 @@ describe("getNodeMissingRequiredFields", () => {
     ]);
   });
 
-  it("accepts wait nodes with event mode (no required fields)", () => {
+  it("accepts an event wait naming an Event and a timeout", () => {
     const result = getNodeMissingRequiredFields({
       node: createActionNode({
         actionType: "Wait",
         waitMode: "event",
-        waitForEvents: ["appointment.created"],
+        waitFor: [{ event: "appointment.created" }],
+        waitTimeout: "7d",
       }),
       resolveActionByType,
     });
@@ -189,12 +190,47 @@ describe("getNodeMissingRequiredFields", () => {
     expect(result).toBeNull();
   });
 
+  // A wait with no end holds a run, and a place in the run list, until somebody
+  // notices. The editor writes a default the moment the mode is chosen, so a
+  // blank one is a builder who cleared it.
+  it("refuses an event wait with no timeout", () => {
+    const result = getNodeMissingRequiredFields({
+      node: createActionNode({
+        actionType: "Wait",
+        waitMode: "event",
+        waitFor: [{ event: "appointment.created" }],
+      }),
+      resolveActionByType,
+    });
+
+    expect(result?.missingFields).toEqual([
+      { fieldKey: "waitTimeout", fieldLabel: "Stop waiting after" },
+    ]);
+  });
+
+  it("refuses an event wait naming no Event", () => {
+    const result = getNodeMissingRequiredFields({
+      node: createActionNode({
+        actionType: "Wait",
+        waitMode: "event",
+        waitFor: [],
+        waitTimeout: "7d",
+      }),
+      resolveActionByType,
+    });
+
+    expect(result?.missingFields).toEqual([
+      { fieldKey: "waitFor", fieldLabel: "Wait for these events" },
+    ]);
+  });
+
   it("does not require delay fields when waitMode is event", () => {
     const result = getNodeMissingRequiredFields({
       node: createActionNode({
         actionType: "Wait",
         waitMode: "event",
-        waitForEvents: ["appointment.created"],
+        waitFor: [{ event: "appointment.created" }],
+        waitTimeout: "7d",
         waitDuration: "",
         waitUntil: "",
       }),
@@ -237,8 +273,9 @@ describe("getMissingRequiredFieldsForNodes", () => {
         createActionNode(
           {
             actionType: "Wait",
-            waitMode: "hook",
-            waitForEvents: ["appointment.created"],
+            waitMode: "event",
+            waitFor: [{ event: "appointment.created" }],
+            waitTimeout: "7d",
           },
           { id: "action_2" }
         ),

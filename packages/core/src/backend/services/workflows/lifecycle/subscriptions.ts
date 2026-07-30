@@ -11,7 +11,7 @@
 import type { WorkflowEventSubscriptionRow } from "#src/backend/services/workflows/repo";
 import { readLifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
-import { readWaitForEvents } from "@rova/shared/workflow/wait-events";
+import { readWaitSubscriptions } from "@rova/shared/workflow/wait-subscription";
 
 /** The action type of the built-in Wait step, which is what parks on an Event. */
 const WAIT_ACTION_TYPE = "Wait";
@@ -67,10 +67,8 @@ export function deriveEventSubscriptions(input: {
     }
 
     if (node.data.config?.actionType === WAIT_ACTION_TYPE) {
-      for (const eventName of readWaitForEvents(
-        node.data.config.waitForEvents
-      )) {
-        add(eventName, "wait");
+      for (const subscription of readWaitSubscriptions(node.data.config)) {
+        add(subscription.event, "wait");
       }
     }
   }

@@ -207,6 +207,22 @@ const executionSummarySchema = Schema.Struct({
   duration: Schema.NullOr(Schema.String),
 });
 
+/**
+ * One wait a run is parked on, as the runs panel reads it.
+ *
+ * The token is here because the panel's Resume affordance is what an operator
+ * uses when the Event a run parked on will never arrive. It is a session-gated
+ * read of a row this operator can already see.
+ */
+const executionWaitSchema = Schema.Struct({
+  id: idSchema,
+  nodeId: Schema.String,
+  nodeName: Schema.String,
+  resumeToken: Schema.NullOr(Schema.String),
+  subscribedEvents: listOf(Schema.String),
+  waitUntil: Schema.NullOr(Schema.String),
+});
+
 /** One Refused Start: an audit row with no Execution behind it. */
 const refusedStartSchema = Schema.Struct({
   id: idSchema,
@@ -515,6 +531,25 @@ export const rpcContract = {
           Schema.Struct({
             execution: executionSummarySchema,
             logs: listOf(executionLogSchema),
+            waits: listOf(executionWaitSchema),
+          })
+        )
+      ),
+    resumeWait: route("POST", "/workflows/waits/{token}/resume-from-panel")
+      .input(
+        contractSchema(
+          Schema.Struct({
+            token: idSchema,
+            payload: Schema.optionalKey(jsonObjectSchema),
+          })
+        )
+      )
+      .output(
+        contractSchema(
+          Schema.Struct({
+            success: Schema.Literal(true),
+            status: Schema.Literal("resumed"),
+            executionId: idSchema,
           })
         )
       ),

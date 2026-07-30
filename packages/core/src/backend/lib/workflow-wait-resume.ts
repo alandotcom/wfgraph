@@ -1,4 +1,5 @@
 import type { JsonObject } from "@rova/shared/types/json";
+import { evaluateCompiledCondition } from "#src/backend/lib/cel/condition-payload";
 import { sendWorkflowWaitSignal } from "#src/backend/lib/inngest/runtime-events";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
@@ -6,22 +7,68 @@ import {
   markExecutionRunning,
   markWaitStateStatus,
 } from "#src/backend/lib/workflow-wait-state";
-import { waitMatchesEvent } from "@rova/shared/workflow/wait-events";
+import { readCompiledWaitSubscriptions } from "#src/backend/lib/workflow-engine/wait-match";
 
 const logger = getAppLogger("workflow", "wait-resume");
 
-export async function resumeMatchingWaitHooks(input: {
+type CandidateWaitState = {
+  id: string;
+  executionId: string;
+  nodeId: string;
+  resumeToken: string | null;
+  subscribedEvents: string[] | null;
+  metadata: Record<string, unknown> | null;
+};
+
+/**
+ * Whether this arrival is one this row parked for.
+ *
+ * The row's own subscriptions decide, not the node's current ones: the node may
+ * name different Events by now, and the run is owed what it waited for. A
+ * subscription with no expression resumes on the next occurrence of its Event,
+ * which is what the editor says a match-free subscription means.
+ *
+ * An expression that fails to evaluate does not wake the run. The payload
+ * arrived from outside and may carry anything, so a field of the wrong type is a
+ * payload that does not satisfy the match rather than a reason to resume.
+ */
+function waitStateMatches(input: {
+  waitState: CandidateWaitState;
+  eventType: string;
+  payload: JsonObject;
+}): boolean {
+  const subscriptions = readCompiledWaitSubscriptions(
+    input.waitState.metadata
+  ).filter((subscription) => subscription.event === input.eventType);
+
+  return subscriptions.some((subscription) => {
+    if (!subscription.match) {
+      return true;
+    }
+
+    const evaluation = evaluateCompiledCondition({
+      ...subscription.match,
+      payload: input.payload,
+    });
+
+    if (!evaluation.ok) {
+      logger.warn("Wait match did not evaluate", {
+        eventType: input.eventType,
+        waitStateId: input.waitState.id,
+        error: evaluation.error,
+      });
+      return false;
+    }
+
+    return evaluation.value;
+  });
+}
+
+export async function resumeWaitsMatchingEvent(input: {
   workflowId: string;
   eventType?: string;
   payload: JsonObject;
-  waitStates: Array<{
-    id: string;
-    executionId: string;
-    nodeId: string;
-    hookToken: string | null;
-    subscribedEvents: string[] | null;
-    metadata: Record<string, unknown> | null;
-  }>;
+  waitStates: CandidateWaitState[];
 }) {
   const { eventType } = input;
   if (!eventType) {
@@ -30,15 +77,12 @@ export async function resumeMatchingWaitHooks(input: {
 
   const resumeResults = await Promise.all(
     input.waitStates.map(async (waitState) => {
-      if (!waitState.hookToken) {
+      const resumeToken = waitState.resumeToken;
+      if (!resumeToken) {
         return 0;
       }
 
-      const metadata = waitState.metadata ?? {};
-
-      // The row's own list, written when it parked: the node it parked on may
-      // name different Events by now, and the run is owed the ones it waited for.
-      if (!waitMatchesEvent(waitState.subscribedEvents ?? [], eventType)) {
+      if (!waitStateMatches({ waitState, eventType, payload: input.payload })) {
         return 0;
       }
 
@@ -46,12 +90,8 @@ export async function resumeMatchingWaitHooks(input: {
         await sendWorkflowWaitSignal({
           executionId: waitState.executionId,
           nodeId: waitState.nodeId,
-          token: waitState.hookToken,
+          token: resumeToken,
           eventType,
-          correlationKey:
-            typeof metadata.correlationKey === "string"
-              ? metadata.correlationKey
-              : undefined,
           payload: input.payload,
         });
 
@@ -79,7 +119,7 @@ export async function resumeMatchingWaitHooks(input: {
 
         return 1;
       } catch (error) {
-        logger.error("Failed to resume hook", {
+        logger.error("Failed to resume wait", {
           workflowId: input.workflowId,
           eventType,
           waitStateId: waitState.id,

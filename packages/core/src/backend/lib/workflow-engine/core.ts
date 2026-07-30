@@ -3,7 +3,7 @@
  * Keeps node execution, templating, and logging behavior aligned with the builder.
  */
 
-import { evaluateCelBooleanExpression } from "#src/backend/lib/cel/environment";
+import { evaluateCompiledCondition } from "#src/backend/lib/cel/condition-payload";
 import { getAppLogger } from "#src/backend/lib/logger";
 import {
   getActionLabel,
@@ -13,10 +13,7 @@ import {
 import type { StepContext } from "#src/backend/lib/steps/step-handler";
 import { triggerStep } from "#src/backend/lib/steps/trigger";
 import { withSpan } from "#src/backend/lib/telemetry";
-import {
-  decodeIsoTimestamp,
-  encodeIsoTimestamp,
-} from "@rova/shared/types/timestamp";
+import { encodeIsoTimestamp } from "@rova/shared/types/timestamp";
 import {
   type JsonObject,
   type JsonValue,
@@ -27,7 +24,6 @@ import { resolveWaitUntil } from "@rova/shared/utils/wait-time";
 import { normalizeConditionBranch } from "@rova/shared/workflow/condition-branch";
 import {
   collectTimestampFieldPaths,
-  CONDITION_CONTEXT_ROOT,
   parseConditionModel,
 } from "@rova/shared/workflow/conditions";
 import { toWorkflowGraphData } from "@rova/shared/workflow/graph";
@@ -38,7 +34,11 @@ import {
   unwrapStepOutput,
 } from "@rova/shared/workflow/node-references";
 import type { StepResult } from "@rova/shared/workflow/step-result";
-import { readWaitForEvents } from "@rova/shared/workflow/wait-events";
+import {
+  DEFAULT_WAIT_TIMEOUT,
+  readWaitConfig,
+  type WaitConfig,
+} from "@rova/shared/workflow/wait-subscription";
 import type {
   ConditionBranch,
   SerializedWorkflowGraph,
@@ -50,6 +50,7 @@ import {
   type WorkflowExecutionRuntime,
 } from "./runtime";
 import { noopWorkflowStore, type WorkflowStore } from "./store";
+import { compileWaitSubscriptions, type ResolveTemplates } from "./wait-match";
 
 export type { WorkflowExecutionRuntime } from "./runtime";
 export type { WorkflowStore } from "./store";
@@ -162,10 +163,7 @@ function getConditionNextNodeIds(input: {
  * so two nodes that both produce a field called `id` collide, and the node that
  * runs later wins. Node-qualifying it would mean naming a node in every rule.
  */
-function mergeConditionContextValue(
-  context: Record<string, unknown>,
-  value: JsonValue
-) {
+function mergeConditionContextValue(context: JsonObject, value: JsonValue) {
   const record = unwrapStepOutput(value);
   // A node output is JSON that came back from a plugin's own API call, so its
   // shape belongs to that API and nothing here knows it. Only a keyed object
@@ -189,72 +187,6 @@ function mergeConditionContextValue(
   for (const key of Object.keys(nestedInput)) {
     if (!(key in context)) {
       context[key] = Reflect.get(nestedInput, key);
-    }
-  }
-}
-
-/**
- * Read a dotted field path out of the condition context.
- *
- * Paths come from the condition model, where the user picked them off a schema,
- * so a path that finds nothing here means the payload did not carry that field
- * on this run.
- */
-function readContextPath(
-  context: Record<string, unknown>,
-  path: string
-): { parent: object; key: string; value: unknown } | null {
-  const segments = path.split(".");
-  const key = segments.pop();
-  if (!key) {
-    return null;
-  }
-
-  let parent: object = context;
-  for (const segment of segments) {
-    const next: unknown = Reflect.get(parent, segment);
-    // Only a keyed object can hold the rest of the path. An array stops the
-    // walk: a condition field names a property, never an index.
-    if (typeof next !== "object" || next === null || Array.isArray(next)) {
-      return null;
-    }
-    parent = next;
-  }
-
-  return { parent, key, value: Reflect.get(parent, key) };
-}
-
-/**
- * Turn the fields a condition treats as timestamps into `Date`s.
- *
- * Node outputs are JSON, so a timestamp reaches this context as an ISO string,
- * and CEL refuses to compare a string against a Timestamp: without this step
- * `appointment.startsAt > now` fails to evaluate and the branch silently reads
- * false. The Condition node's own model names the paths it treats as
- * timestamps, so those paths, and nothing else, are converted. Values the
- * templating path reads are untouched, because that path renders text and wants
- * the string exactly as the payload sent it.
- *
- * A path that is missing, already a `Date`, or holding text that is not a
- * timestamp is left as found, and the expression then fails the way it would
- * have anyway, naming the field in its error.
- *
- * The context handed here has to be private to this evaluation, since the write
- * lands inside whatever object holds the path.
- */
-function decodeConditionTimestamps(
-  context: Record<string, unknown>,
-  paths: string[]
-) {
-  for (const path of paths) {
-    const located = readContextPath(context, path);
-    if (!located || typeof located.value !== "string") {
-      continue;
-    }
-
-    const decoded = decodeIsoTimestamp(located.value);
-    if (decoded) {
-      Reflect.set(located.parent, located.key, decoded);
     }
   }
 }
@@ -307,26 +239,15 @@ function evaluateConditionExpression(
     return { result: false };
   }
 
-  const merged: Record<string, unknown> = {};
+  const merged: JsonObject = {};
   for (const output of Object.values(outputs)) {
     mergeConditionContextValue(merged, output.data);
   }
 
-  // A condition evaluates over its own copy. The merge above lifts keys by
-  // reference, so a nested object in it is the same object a node's stored output
-  // holds, and the timestamp decode below writes `Date`s into whatever object
-  // holds the path. Sharing that write would hand a downstream template a `Date`
-  // where the payload has an ISO string, which renders as a quoted UTC instant no
-  // timestamp parser accepts. Node outputs are JSON, so one clone is enough.
-  const payload = structuredClone(merged);
-  decodeConditionTimestamps(
-    payload,
-    readConditionTimestampPaths(conditionModel)
-  );
-
-  const evaluation = evaluateCelBooleanExpression({
+  const evaluation = evaluateCompiledCondition({
     expression,
-    context: { now: new Date(), [CONDITION_CONTEXT_ROOT]: payload },
+    timestampPaths: readConditionTimestampPaths(conditionModel),
+    payload: merged,
   });
 
   if (!evaluation.ok) {
@@ -506,21 +427,22 @@ function processTemplates(
       continue;
     }
 
-    if (typeof value !== "string") {
-      processed[key] = value;
-      continue;
-    }
-
-    processed[key] = parseTemplate(value)
-      .map((segment) =>
-        segment.kind === "literal"
-          ? segment.text
-          : resolveTemplateToken(segment.token, outputs)
-      )
-      .join("");
+    processed[key] =
+      typeof value === "string" ? resolveTemplateString(value, outputs) : value;
   }
 
   return processed;
+}
+
+/** One authored string with its references replaced. */
+function resolveTemplateString(value: string, outputs: NodeOutputs): string {
+  return parseTemplate(value)
+    .map((segment) =>
+      segment.kind === "literal"
+        ? segment.text
+        : resolveTemplateToken(segment.token, outputs)
+    )
+    .join("");
 }
 
 function getErrorMessage(error: unknown): string {
@@ -561,44 +483,38 @@ type WaitActionInput = {
   executionId: string;
   workflowId: string;
   workflowRunId?: string;
-  eventContext?: {
-    eventType?: string;
-    correlationKey?: string;
-  };
+  /** See `WaitBranchContext.resolveTemplates`. */
+  resolveTemplates: ResolveTemplates;
 };
 
 /**
- * Wait context shared by the delay and hook branches.
+ * Wait context shared by the delay and event branches.
  */
 type WaitBranchContext = {
-  config: Record<string, unknown>;
+  config: WaitConfig;
   context: StepContext;
   runtime: WorkflowExecutionRuntime;
   store: WorkflowStore;
   executionId: string;
   workflowId: string;
   runId: string;
-  waitMode: "delay" | "hook" | "event";
-  correlationKey?: string;
+  /**
+   * Resolves the `{{@nodeId:Label.field}}` references inside a match, which the
+   * config-wide template pass does not reach: it walks the config's own string
+   * values, and a match sits one level down inside `waitFor`.
+   */
+  resolveTemplates: ResolveTemplates;
   /** Memoized "step started" log row reused by every branch below. */
   startLog: { logId: string; startTime: number };
 };
 
-function readWaitTimezone(config: Record<string, unknown>): string | undefined {
-  return typeof config.waitTimezone === "string"
-    ? config.waitTimezone
-    : undefined;
-}
-
-function readWaitGateMode(
-  config: Record<string, unknown>
-): "require_actual_wait" | "off" {
+function readWaitGateMode(config: WaitConfig): "require_actual_wait" | "off" {
   return config.waitGateMode === "require_actual_wait"
     ? "require_actual_wait"
     : "off";
 }
 
-function readAllowedHoursConfig(config: Record<string, unknown>) {
+function readAllowedHoursConfig(config: WaitConfig) {
   return {
     waitAllowedHoursMode: config.waitAllowedHoursMode,
     waitAllowedStartTime: config.waitAllowedStartTime,
@@ -607,19 +523,12 @@ function readAllowedHoursConfig(config: Record<string, unknown>) {
 }
 
 function executeWaitAction(input: WaitActionInput): Promise<ExecutionResult> {
-  const waitModeRawOuter =
-    typeof input.config.waitMode === "string"
-      ? input.config.waitMode.trim()
-      : "";
-  const waitTypeOuter =
-    waitModeRawOuter === "hook" || waitModeRawOuter === "event"
-      ? "hook"
-      : "delay";
+  const waitType = input.config.waitMode === "event" ? "event" : "delay";
 
   return withSpan(
     "rova.workflow.wait",
     {
-      "rova.wait.type": waitTypeOuter,
+      "rova.wait.type": waitType,
       "rova.node.id": input.context.nodeId,
       "rova.node.name": input.context.nodeName,
     },
@@ -631,53 +540,44 @@ async function executeWaitActionInner(
   input: WaitActionInput
 ): Promise<ExecutionResult> {
   const {
-    config,
     context,
     runtime,
     store,
     executionId,
     workflowId,
     workflowRunId,
-    eventContext,
+    resolveTemplates,
   } = input;
-
-  const waitModeRaw =
-    typeof config.waitMode === "string" ? config.waitMode.trim() : "";
-  const waitMode: "delay" | "hook" | "event" =
-    waitModeRaw === "hook" || waitModeRaw === "event" ? waitModeRaw : "delay";
 
   const runId = workflowRunId || runtime.runId || executionId;
 
-  if (waitMode === "event" && !eventContext?.correlationKey) {
-    const errorMessage =
-      "Wait mode 'event' requires a correlation key from the trigger. Ensure the workflow trigger has a correlation path configured.";
+  // The first schema this node has ever had, so a config written against the
+  // retired shape stops the run here rather than parking on a wait nothing can
+  // reach. Both log rows are one durable unit, so a replay does not duplicate.
+  const read = readWaitConfig(input.config);
+  if (!read.valid) {
+    const errorMessage = `Wait node configuration is invalid: ${read.error}`;
+    await runtime.step(`wait-invalid-config-${context.nodeId}`, async () => {
+      const earlyLog = await store.startStepLog({
+        executionId,
+        nodeId: context.nodeId,
+        nodeName: context.nodeName,
+        nodeType: "Wait",
+        input: {},
+      });
+      await store.completeStepLog({
+        logId: earlyLog.logId,
+        startTime: earlyLog.startTime,
+        status: "error",
+        error: errorMessage,
+      });
+      return { logged: true };
+    });
 
-    // Both log rows are one durable unit so a replay does not duplicate them.
-    await runtime.step(
-      `wait-missing-correlation-${context.nodeId}`,
-      async () => {
-        const earlyLog = await store.startStepLog({
-          executionId,
-          nodeId: context.nodeId,
-          nodeName: context.nodeName,
-          nodeType: "Wait",
-          input: { waitMode },
-        });
-        await store.completeStepLog({
-          logId: earlyLog.logId,
-          startTime: earlyLog.startTime,
-          status: "error",
-          error: errorMessage,
-        });
-        return { logged: true };
-      }
-    );
-
-    return {
-      success: false,
-      error: errorMessage,
-    };
+    return { success: false, error: errorMessage };
   }
+
+  const config = read.config;
 
   // The "step started" row is written once and its id is replayed from the
   // memoized step return, so the branches below always close the same row.
@@ -688,14 +588,14 @@ async function executeWaitActionInner(
       nodeName: context.nodeName,
       nodeType: "Wait",
       input: {
-        waitMode,
+        waitMode: read.waitMode,
         waitDuration: config.waitDuration,
         waitUntil: config.waitUntil,
         waitOffset: config.waitOffset,
-        waitTimezone: readWaitTimezone(config),
+        waitTimezone: config.waitTimezone,
         waitGateMode: readWaitGateMode(config),
         ...readAllowedHoursConfig(config),
-        waitForEvents: readWaitForEvents(config.waitForEvents),
+        waitFor: config.waitFor?.map((subscription) => subscription.event),
         waitTimeout: config.waitTimeout,
       },
     })
@@ -709,15 +609,14 @@ async function executeWaitActionInner(
     executionId,
     workflowId,
     runId,
-    waitMode,
-    correlationKey: eventContext?.correlationKey,
+    resolveTemplates,
     startLog,
   };
 
-  if (waitMode === "delay") {
+  if (read.waitMode === "delay") {
     return await executeDelayWait(branch);
   }
-  return await executeHookWait(branch);
+  return await executeEventWait(branch);
 }
 
 /**
@@ -737,19 +636,10 @@ type DelayWaitPreparation =
 async function prepareDelayWait(
   branch: WaitBranchContext
 ): Promise<DelayWaitPreparation> {
-  const {
-    config,
-    context,
-    store,
-    executionId,
-    workflowId,
-    runId,
-    waitMode,
-    correlationKey,
-    startLog,
-  } = branch;
+  const { config, context, store, executionId, workflowId, runId, startLog } =
+    branch;
 
-  const waitTimezone = readWaitTimezone(config);
+  const waitTimezone = config.waitTimezone;
   const waitGateMode = readWaitGateMode(config);
 
   const resolved = resolveWaitUntil({
@@ -802,7 +692,6 @@ async function prepareDelayWait(
         waitUntil: waitUntilIso,
         plannedWaitMs,
         reason: "past_due_no_wait",
-        correlationKey,
       },
     });
 
@@ -824,9 +713,7 @@ async function prepareDelayWait(
     nodeName: context.nodeName,
     waitType: "delay",
     waitUntilIso,
-    correlationKey,
     metadata: {
-      waitMode,
       waitGateMode,
       waitTimezone,
     },
@@ -856,7 +743,6 @@ async function prepareDelayWait(
       waitType: "delay",
       waitUntil: waitUntilIso,
       waitGateMode,
-      correlationKey,
     },
   });
 
@@ -945,21 +831,24 @@ async function executeDelayWait(
 }
 
 /**
- * Outcome of the persistence work that happens before a hook wait suspends the
- * run. The generated hook token lives here because it must survive replays.
+ * Outcome of the persistence work that happens before an event wait suspends the
+ * run. Everything a resumed run needs is here rather than read from the config
+ * again: this crosses a memoized step boundary, so it is what the run parked
+ * with, and a graph edited while the run was parked cannot reach it.
  */
-type HookWaitPreparation =
+type EventWaitPreparation =
   | { status: "error"; error: string }
   | {
       status: "ready";
       waitStateId: string;
-      hookToken: string;
+      resumeToken: string;
       timeoutMs?: number;
+      timeoutBehavior: "continue" | "skip";
     };
 
-async function prepareHookWait(
+async function prepareEventWait(
   branch: WaitBranchContext
-): Promise<HookWaitPreparation> {
+): Promise<EventWaitPreparation> {
   const {
     config,
     context,
@@ -967,33 +856,42 @@ async function prepareHookWait(
     executionId,
     workflowId,
     runId,
-    waitMode,
-    correlationKey,
+    resolveTemplates,
     startLog,
   } = branch;
 
-  const waitTimeoutResolution =
-    config.waitTimeout !== undefined && config.waitTimeout !== ""
-      ? resolveWaitUntil({ waitDuration: config.waitTimeout })
-      : { waitUntil: undefined, error: undefined };
-
-  if (waitTimeoutResolution.error) {
+  const failWith = async (error: string): Promise<EventWaitPreparation> => {
     await store.completeStepLog({
       logId: startLog.logId,
       startTime: startLog.startTime,
       status: "error",
-      error: waitTimeoutResolution.error,
+      error,
     });
-    return { status: "error", error: waitTimeoutResolution.error };
+    return { status: "error", error };
+  };
+
+  // The timeout is what keeps a parked run mortal, so a wait that names none is
+  // held to the default the editor writes rather than parking forever.
+  const timeout = config.waitTimeout?.trim() || DEFAULT_WAIT_TIMEOUT;
+  const waitTimeoutResolution = resolveWaitUntil({ waitDuration: timeout });
+  if (waitTimeoutResolution.error || !waitTimeoutResolution.waitUntil) {
+    return await failWith(
+      waitTimeoutResolution.error ??
+        "Wait could not determine a timeout from waitTimeout."
+    );
   }
 
-  const explicitHookToken =
-    typeof config.waitHookToken === "string" && config.waitHookToken.trim()
-      ? config.waitHookToken.trim()
-      : undefined;
-  const hookToken = explicitHookToken || generateWaitToken();
+  const compiled = compileWaitSubscriptions({
+    subscriptions: config.waitFor ?? [],
+    resolveTemplates,
+  });
+  if (!compiled.valid) {
+    return await failWith(compiled.error);
+  }
 
-  const waitForEvents = readWaitForEvents(config.waitForEvents);
+  const resumeToken = generateWaitToken();
+  const waitUntilIso = encodeIsoTimestamp(waitTimeoutResolution.waitUntil);
+  const timeoutBehavior = config.waitTimeoutBehavior ?? "continue";
 
   const waitState = await store.createWaitState({
     executionId,
@@ -1001,79 +899,62 @@ async function prepareHookWait(
     runId,
     nodeId: context.nodeId,
     nodeName: context.nodeName,
-    waitType: "hook",
-    hookToken,
-    waitUntilIso: waitTimeoutResolution.waitUntil
-      ? encodeIsoTimestamp(waitTimeoutResolution.waitUntil)
-      : undefined,
-    correlationKey,
-    subscribedEvents: waitForEvents,
+    waitType: "event",
+    resumeToken,
+    waitUntilIso,
+    subscribedEvents: compiled.subscriptions.map(
+      (subscription) => subscription.event
+    ),
+    // Everything here crosses the JSONB column and Inngest's memoization, so a
+    // compiled string and a literal are what the match is reduced to.
     metadata: {
-      waitMode,
-      waitTimeout: config.waitTimeout,
+      waitTimeout: timeout,
+      waitTimeoutBehavior: timeoutBehavior,
+      waitFor: compiled.subscriptions,
     },
   });
 
   if (!waitState) {
     // A policy cancel flipped the execution terminal between the last step
     // and this park; Inngest is already killing the run.
-    const cancelledMessage =
-      "Execution was cancelled before the wait was registered";
-    await store.completeStepLog({
-      logId: startLog.logId,
-      startTime: startLog.startTime,
-      status: "error",
-      error: cancelledMessage,
-    });
-    return { status: "error", error: cancelledMessage };
+    return await failWith(
+      "Execution was cancelled before the wait was registered"
+    );
   }
-
-  const waitModeLabel = waitMode === "event" ? "event" : "hook";
 
   await store.recordAuditEvent({
     workflowId,
     executionId,
     eventType: "run_waiting",
-    message: `Run waiting on ${waitModeLabel} in node '${context.nodeName}'`,
+    message: `Run waiting on event in node '${context.nodeName}'`,
     metadata: {
       nodeId: context.nodeId,
-      hookToken,
-      waitForEvents,
-      timeoutAt: waitTimeoutResolution.waitUntil
-        ? encodeIsoTimestamp(waitTimeoutResolution.waitUntil)
-        : undefined,
+      resumeToken,
+      waitFor: compiled.subscriptions.map((subscription) => subscription.event),
+      timeoutAt: waitUntilIso,
     },
   });
 
   return {
     status: "ready",
     waitStateId: waitState.waitStateId,
-    hookToken,
-    timeoutMs: waitTimeoutResolution.waitUntil
-      ? Math.max(waitTimeoutResolution.waitUntil.getTime() - Date.now(), 0)
-      : undefined,
+    resumeToken,
+    timeoutMs: Math.max(
+      waitTimeoutResolution.waitUntil.getTime() - Date.now(),
+      0
+    ),
+    timeoutBehavior,
   };
 }
 
-async function executeHookWait(
+async function executeEventWait(
   branch: WaitBranchContext
 ): Promise<ExecutionResult> {
-  const {
-    config,
-    context,
-    runtime,
-    store,
-    executionId,
-    workflowId,
-    waitMode,
-    startLog,
-  } = branch;
-  const waitType = "hook";
-  const waitModeLabel = waitMode === "event" ? "event" : "hook";
+  const { context, runtime, store, executionId, workflowId, startLog } = branch;
 
   const prepared = await runtime.step(
-    `wait-hook-prepare-${context.nodeId}`,
-    () => prepareHookWait(branch)
+    `wait-event-prepare-${context.nodeId}`,
+    () => prepareEventWait(branch)
   );
 
   if (prepared.status === "error") {
@@ -1081,24 +962,27 @@ async function executeHookWait(
   }
 
   let timedOut = false;
-  let hookPayload: unknown;
+  let eventPayload: unknown;
 
   try {
+    // Inngest waits on Rova's own signal envelope rather than on the business
+    // Event: which runs an arrival concerns is decided by resume matching, in
+    // Rova code, before this signal is ever sent.
     const resumeEvent = await runtime.waitForEvent(
-      `wait-hook-${context.nodeId}`,
+      `wait-event-${context.nodeId}`,
       {
         event: "workflow/wait.signal",
         timeoutMs: prepared.timeoutMs,
         ifExpression: [
           "async.data.executionId == event.data.executionId",
           `async.data.nodeId == '${escapeCelString(context.nodeId)}'`,
-          `async.data.token == '${escapeCelString(prepared.hookToken)}'`,
+          `async.data.token == '${escapeCelString(prepared.resumeToken)}'`,
           `async.data.signalType == 'wait-resume'`,
         ].join(" && "),
       }
     );
     timedOut = resumeEvent === null;
-    hookPayload = resumeEvent;
+    eventPayload = resumeEvent;
   } catch (error) {
     // Same reasoning as the delay branch: the run is unwinding, so no new step.
     await store.completeStepLog({
@@ -1111,7 +995,7 @@ async function executeHookWait(
   }
 
   const resumed = await runtime.step(
-    `wait-hook-resume-${context.nodeId}`,
+    `wait-event-resume-${context.nodeId}`,
     async () => {
       await store.markWaitStateStatus({
         waitStateId: prepared.waitStateId,
@@ -1124,32 +1008,30 @@ async function executeHookWait(
         executionId,
         eventType: timedOut ? "run_timed_out" : "run_resumed",
         message: timedOut
-          ? `Run timed out in ${waitModeLabel} wait node '${context.nodeName}'`
-          : `Run resumed from ${waitModeLabel} in node '${context.nodeName}'`,
+          ? `Run timed out in event wait node '${context.nodeName}'`
+          : `Run resumed from event in node '${context.nodeName}'`,
         metadata: {
           nodeId: context.nodeId,
-          hookToken: prepared.hookToken,
-          waitMode,
+          resumeToken: prepared.resumeToken,
         },
       });
 
-      // An event wait configured to skip on timeout stops its branch instead of
-      // letting downstream nodes run without the awaited event.
-      const skipOnTimeout =
-        timedOut &&
-        waitMode === "event" &&
-        config.waitTimeoutBehavior === "skip";
+      // A wait configured to skip on timeout stops its branch instead of letting
+      // downstream nodes run without the awaited Event. The behaviour comes off
+      // the preparation, which is what this run parked with: a wait can outlive
+      // several edits to the node it parked on, and none of them may change how
+      // this run treats a timeout it is already counting down.
+      const skipOnTimeout = timedOut && prepared.timeoutBehavior === "skip";
 
       const base = {
-        waitType,
-        waitMode,
-        hookToken: prepared.hookToken,
+        waitType: "event",
+        resumeToken: prepared.resumeToken,
         timedOut,
         resumedAt: encodeIsoTimestamp(new Date()),
       };
       const output = skipOnTimeout
         ? { ...base, skipped: true, skippedReason: "timeout_skip" }
-        : { ...base, ...(timedOut ? {} : { payload: hookPayload }) };
+        : { ...base, ...(timedOut ? {} : { payload: eventPayload }) };
 
       await store.completeStepLog({
         logId: startLog.logId,
@@ -1635,7 +1517,7 @@ async function executeWorkflowInner(
           executionId,
           workflowId,
           workflowRunId: currentWorkflowRunId,
-          eventContext,
+          resolveTemplates: (value) => resolveTemplateString(value, outputs),
         });
 
         if (waitResult.success) {

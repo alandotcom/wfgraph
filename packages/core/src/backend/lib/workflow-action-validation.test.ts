@@ -130,13 +130,14 @@ describe("validateWorkflowActionConfigs", () => {
     }
   });
 
-  it("accepts Wait hook actions without delay fields", () => {
+  it("accepts an event Wait without delay fields", () => {
     const result = validateWorkflowActionConfigs([
       createTriggerNode(),
       createActionNode({
         actionType: "Wait",
-        waitMode: "hook",
-        waitForEvents: ["appointment.created"],
+        waitMode: "event",
+        waitFor: [{ event: "appointment.created" }],
+        waitTimeout: "7d",
       }),
     ]);
 

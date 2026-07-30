@@ -113,11 +113,14 @@ const appointmentCanceled = defineEvent({
  * An Event no workflow starts on.
  *
  * This app's billing service already sends it. Declaring it makes it available
- * to a Wait node, so a run parked after "send the invoice" resumes when the
- * payment settles. An Event needs no lifecycle role to wake a wait.
+ * to a Wait node, so a run started by an appointment Event and parked after
+ * "send the invoice" resumes when the payment settles. An Event needs no
+ * lifecycle role to wake a wait.
  *
- * Its Correlation Path names a different field from the appointment Events, and
- * they still describe the same entity: agreement is by value, not by path.
+ * Which parked run an arrival wakes is the Wait node's own match, written in the
+ * editor: `appointmentId` here against the run's `appointment.id`. The Correlation
+ * Path below is what the match editor offers first, and what Concurrency would
+ * compare if a workflow ever started on this Event.
  */
 const paymentSettled = defineEvent({
   name: "billing/payment.settled",

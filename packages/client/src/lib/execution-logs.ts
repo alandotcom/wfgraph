@@ -127,6 +127,42 @@ export function toExecutionLogs(payload: RawExecutionLogs): ExecutionLog[] {
   );
 }
 
+/**
+ * One node this run is parked at, with what would unpark it.
+ *
+ * A run reaches this state when a Wait node is holding it, and the token is what
+ * the panel's Resume affordance posts: an operator's way out when the Event a run
+ * is waiting for is never going to arrive.
+ */
+export type ExecutionWait = {
+  id: string;
+  nodeId: string;
+  nodeName: string;
+  resumeToken: string | null;
+  subscribedEvents: string[];
+  waitUntil: Date | null;
+};
+
+/**
+ * Everything the run detail view reads, off the one payload that carries it.
+ *
+ * The logs and the waits arrive together, so they are selected together: two
+ * observers on one query key would each hold their own `refetchInterval`, and the
+ * pair would drift apart into two polls of the same endpoint.
+ */
+export function toExecutionDetail(payload: RawExecutionLogs): {
+  logs: ExecutionLog[];
+  waits: ExecutionWait[];
+} {
+  return {
+    logs: toExecutionLogs(payload),
+    waits: payload.waits.map((wait) => ({
+      ...wait,
+      waitUntil: wait.waitUntil ? new Date(wait.waitUntil) : null,
+    })),
+  };
+}
+
 export function toExecutionLogsByNodeId(
   payload: RawExecutionLogs
 ): Record<string, ExecutionLogEntry> {
@@ -160,6 +196,7 @@ type RawExecutionLogs = {
       completedAt: string | null;
     }
   >;
+  waits: Array<Omit<ExecutionWait, "waitUntil"> & { waitUntil: string | null }>;
 };
 
 type RawExecutionEvents = {

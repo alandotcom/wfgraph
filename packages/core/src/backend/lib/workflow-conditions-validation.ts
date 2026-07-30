@@ -4,6 +4,7 @@ import {
   parseConditionModel,
 } from "@rova/shared/workflow/conditions";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
+import { readWaitSubscriptions } from "@rova/shared/workflow/wait-subscription";
 
 export type WorkflowConditionsValidationResult =
   | { valid: true }
@@ -30,6 +31,45 @@ function getNodeLabel(node: WorkflowNode): string {
   }
 
   return node.id;
+}
+
+/**
+ * Every Wait Subscription's match, held to the same bar a Condition node's is.
+ *
+ * The match compiles at park time rather than at save, so without this a model
+ * the builder never finished would be found by a run that had already started
+ * and had nowhere to go. There is no stored expression to compare against here:
+ * the wait keeps the model alone, because half of what it compares is a value
+ * only the run knows.
+ */
+function validateWaitMatches(
+  node: WorkflowNode,
+  config: Record<string, unknown>
+): WorkflowConditionsValidationResult {
+  for (const subscription of readWaitSubscriptions(config)) {
+    const match = asNonEmptyString(subscription.match);
+    if (!match) {
+      continue;
+    }
+
+    const parsed = parseConditionModel(match);
+    if (!parsed.valid) {
+      return {
+        valid: false,
+        error: `Node "${getNodeLabel(node)}" has an invalid match for "${subscription.event}": ${parsed.error}`,
+      };
+    }
+
+    const compiled = compileConditionModel(parsed.model);
+    if (!compiled.valid) {
+      return {
+        valid: false,
+        error: `Node "${getNodeLabel(node)}" has an invalid match for "${subscription.event}": ${compiled.error}`,
+      };
+    }
+  }
+
+  return { valid: true };
 }
 
 function validateCompiledExpression(input: {
@@ -115,6 +155,13 @@ export function validateWorkflowConditionConfigs(
       });
       if (!conditionValidation.valid) {
         return conditionValidation;
+      }
+    }
+
+    if (actionType === "Wait") {
+      const matchValidation = validateWaitMatches(node, config);
+      if (!matchValidation.valid) {
+        return matchValidation;
       }
     }
   }

@@ -226,14 +226,18 @@ export class ExecutionRepo extends Context.Service<
       error: string;
     }) => Effect.Effect<boolean, DatabaseError>;
     /**
-     * The waiting node one hook token addresses, or null when the token names
+     * The waiting node one resume token addresses, or null when the token names
      * no wait or one that has already moved on. Status is part of the question
      * rather than of the answer, since a resumed wait and an absent one are the
      * same "no longer active" to the caller.
      */
     readonly findWaitingStateByToken: (
-      hookToken: string
+      resumeToken: string
     ) => Effect.Effect<WorkflowWaitState | null, DatabaseError>;
+    /** Every wait one run is currently parked on, for the runs panel. */
+    readonly listWaitingStates: (
+      executionId: string
+    ) => Effect.Effect<WorkflowWaitState[], DatabaseError>;
     /** One run's node logs, newest first, whole rows. */
     readonly listLogs: (
       executionId: string
@@ -610,17 +614,27 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
             return closed.length > 0;
           }),
 
-        findWaitingStateByToken: (hookToken) =>
+        findWaitingStateByToken: (resumeToken) =>
           database.query(async (db) => {
             const waitState = await db.query.workflowWaitStates.findFirst({
               where: and(
-                eq(workflowWaitStates.hookToken, hookToken),
+                eq(workflowWaitStates.resumeToken, resumeToken),
                 eq(workflowWaitStates.status, "waiting")
               ),
             });
 
             return waitState ?? null;
           }),
+
+        listWaitingStates: (executionId) =>
+          database.query((db) =>
+            db.query.workflowWaitStates.findMany({
+              where: and(
+                eq(workflowWaitStates.executionId, executionId),
+                eq(workflowWaitStates.status, "waiting")
+              ),
+            })
+          ),
 
         listLogs: (executionId) =>
           database.query((db) =>

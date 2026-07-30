@@ -1,4 +1,4 @@
-import { and, eq, getTableColumns, inArray } from "drizzle-orm";
+import { and, arrayContains, eq, getTableColumns, inArray } from "drizzle-orm";
 import { db } from "#src/backend/lib/db/index";
 import {
   workflowExecutions,
@@ -28,10 +28,9 @@ export async function createWaitState(input: {
   runId: string;
   nodeId: string;
   nodeName: string;
-  waitType: "delay" | "hook";
-  hookToken?: string;
+  waitType: "delay" | "event";
+  resumeToken?: string;
   waitUntil?: Date;
-  correlationKey?: string;
   /** The Event names a delivery finds this row by. Empty for a wait on a clock. */
   subscribedEvents?: string[];
   metadata?: Record<string, unknown>;
@@ -64,9 +63,8 @@ export async function createWaitState(input: {
       nodeName: input.nodeName,
       waitType: input.waitType,
       status: "waiting",
-      hookToken: input.hookToken,
+      resumeToken: input.resumeToken,
       waitUntil: input.waitUntil,
-      correlationKey: input.correlationKey,
       subscribedEvents: input.subscribedEvents ?? [],
       metadata: input.metadata,
     })
@@ -187,14 +185,22 @@ export async function listExecutionWaitingStates(executionId: string) {
 }
 
 /**
- * The execution-status filter on the join makes reads self-healing: a wait
- * row orphaned by a partially failed cancellation (execution already
- * terminal, wait still `waiting`) never re-enters resume matching, where it
- * would silently consume a real event against a dead run.
+ * Every run of this workflow parked on this Event name, whatever it is waiting
+ * for the payload to say.
+ *
+ * The name narrows the candidates and the stored match decides between them, so
+ * this query answers a question about subscription rather than about entity: a
+ * run parked on an Event its workflow never starts on is found here, which is the
+ * whole point of a Wait Subscription being independent of the Lifecycle Rules.
+ *
+ * The execution-status filter on the join makes reads self-healing: a wait row
+ * orphaned by a partially failed cancellation (execution already terminal, wait
+ * still `waiting`) never re-enters resume matching, where it would silently
+ * consume a real Event against a dead run.
  */
-export async function listWorkflowWaitingStatesByCorrelation(input: {
+export async function listWorkflowWaitsForEvent(input: {
   workflowId: string;
-  correlationKey: string;
+  eventName: string;
   runMode: "live" | "test";
 }) {
   return await db
@@ -207,7 +213,8 @@ export async function listWorkflowWaitingStatesByCorrelation(input: {
     .where(
       and(
         eq(workflowWaitStates.workflowId, input.workflowId),
-        eq(workflowWaitStates.correlationKey, input.correlationKey),
+        // The GIN index over this column is what the containment test rides on.
+        arrayContains(workflowWaitStates.subscribedEvents, [input.eventName]),
         eq(workflowWaitStates.status, "waiting"),
         eq(workflowExecutions.runMode, input.runMode),
         inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES])

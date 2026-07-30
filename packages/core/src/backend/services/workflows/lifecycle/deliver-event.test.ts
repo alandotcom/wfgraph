@@ -19,13 +19,13 @@ import { applyLifecycleRules, deliverToWaits } from "./deliver-event";
 // The modules holding their own database handle, replaced for this file.
 const {
   logWorkflowAuditEventMock,
-  resumeMatchingWaitHooksMock,
+  resumeWaitsMatchingEventMock,
   listWaitingMock,
   validateWorkflowIntegrationsMock,
   startWithConcurrencyMock,
 } = vi.hoisted(() => ({
   logWorkflowAuditEventMock: vi.fn(),
-  resumeMatchingWaitHooksMock: vi.fn(),
+  resumeWaitsMatchingEventMock: vi.fn(),
   listWaitingMock: vi.fn(),
   validateWorkflowIntegrationsMock: vi.fn(),
   startWithConcurrencyMock: vi.fn(),
@@ -36,11 +36,11 @@ vi.mock("#src/backend/lib/workflow-audit", () => ({
 }));
 
 vi.mock("#src/backend/lib/workflow-wait-resume", () => ({
-  resumeMatchingWaitHooks: resumeMatchingWaitHooksMock,
+  resumeWaitsMatchingEvent: resumeWaitsMatchingEventMock,
 }));
 
 vi.mock("#src/backend/lib/workflow-wait-state", () => ({
-  listWorkflowWaitingStatesByCorrelation: listWaitingMock,
+  listWorkflowWaitsForEvent: listWaitingMock,
 }));
 
 // Concurrency's own cases are `concurrency.test.ts`; what matters here is what it
@@ -143,7 +143,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   logWorkflowAuditEventMock.mockResolvedValue(undefined);
   listWaitingMock.mockResolvedValue([]);
-  resumeMatchingWaitHooksMock.mockResolvedValue(0);
+  resumeWaitsMatchingEventMock.mockResolvedValue(0);
   validateWorkflowIntegrationsMock.mockResolvedValue({ valid: true });
   startWithConcurrencyMock.mockReturnValue(
     Effect.succeed({
@@ -370,12 +370,15 @@ describe("applyLifecycleRules", () => {
 
 describe("deliverToWaits", () => {
   layer(SilentAppLoggerLayer)((it) => {
-    it.effect("wakes the waits parked on this entity", () =>
+    // Candidates are found by Event name, and each row's own compiled match
+    // decides. Nothing here reads a Correlation Path, which is what lets a run
+    // park on an Event that has no entity of its own.
+    it.effect("offers the Event to the runs parked on its name", () =>
       Effect.gen(function* () {
         listWaitingMock.mockResolvedValueOnce([
           { id: "wait_1", executionId: "exec_parked" },
         ]);
-        resumeMatchingWaitHooksMock.mockResolvedValueOnce(1);
+        resumeWaitsMatchingEventMock.mockResolvedValueOnce(1);
 
         const outcome = yield* deliverToWaits({
           subscriber: subscriber({ roles: ["wait"] }),
@@ -389,7 +392,11 @@ describe("deliverToWaits", () => {
           resumedWaits: 1,
         });
         assert.deepStrictEqual(listWaitingMock.mock.calls[0], [
-          { workflowId: "wf_1", correlationKey: "appt_8813", runMode: "live" },
+          {
+            workflowId: "wf_1",
+            eventName: "app/appointment.created",
+            runMode: "live",
+          },
         ]);
       })
     );
@@ -410,29 +417,43 @@ describe("deliverToWaits", () => {
         }).pipe(Effect.provide(stubWorkflowRepo()));
 
         assert.strictEqual(outcome.resumedWaits, 0);
-        assert.strictEqual(resumeMatchingWaitHooksMock.mock.calls.length, 0);
+        assert.strictEqual(resumeWaitsMatchingEventMock.mock.calls.length, 0);
       })
     );
 
-    it.effect("reaches no wait when the payload carries no Entity Value", () =>
+    // The failure this replaces: an Event nobody declared a path for reached no
+    // parked run at all, whatever the Wait node had asked for.
+    it.effect("reaches parked runs with no Correlation Path in sight", () =>
       Effect.gen(function* () {
-        const outcome = yield* deliverToWaits({
-          subscriber: subscriber(),
-          event: appointmentCreated,
-          payload: { appointment: {} },
-          excluding: [],
-        }).pipe(Effect.provide(stubWorkflowRepo()));
+        listWaitingMock.mockResolvedValueOnce([
+          { id: "wait_1", executionId: "exec_parked" },
+        ]);
+        resumeWaitsMatchingEventMock.mockResolvedValueOnce(1);
 
-        assert.strictEqual(outcome.resumedWaits, 0);
-        assert.strictEqual(listWaitingMock.mock.calls.length, 0);
+        const outcome = yield* deliverToWaits({
+          subscriber: subscriber({ roles: ["wait"] }),
+          event: { name: "ops/nightly.swept" },
+          payload: { sweep: { id: "sweep_1" } },
+          excluding: [],
+        }).pipe(Effect.provide(stubWorkflowRepo({})));
+
+        assert.strictEqual(outcome.resumedWaits, 1);
+        assert.deepStrictEqual(listWaitingMock.mock.calls[0], [
+          {
+            workflowId: "wf_1",
+            eventName: "ops/nightly.swept",
+            runMode: "live",
+          },
+        ]);
       })
     );
 
-    // An Event declaring its own Correlation Path needs no rules, so no graph
-    // read: that column runs to megabytes and this path runs per delivery.
-    it.effect("reads no graph for an Event that declares its own path", () =>
+    // The wait half reads no graph: that column runs to megabytes and this path
+    // runs per delivery.
+    it.effect("reads no graph on the way to a parked run", () =>
       Effect.gen(function* () {
         const findById = vi.fn(() => Effect.succeed(null));
+        listWaitingMock.mockResolvedValueOnce([]);
 
         yield* deliverToWaits({
           subscriber: subscriber({ roles: ["wait"] }),
@@ -445,39 +466,10 @@ describe("deliverToWaits", () => {
       })
     );
 
-    // An Event whose author declared none falls back to the builder's override,
-    // which lives on the entry node: the one wait delivery that reads a graph.
-    // An Event declaring no Correlation Path leaves the builder's override to say
-    // where the entity sits, and it arrives on the subscription row: reading it
-    // off the graph would mean a megabyte-class read per delivery.
-    it.effect("falls back to the builder's own Correlation Path", () =>
+    it.effect("wakes nothing when no run is parked on the Event", () =>
       Effect.gen(function* () {
-        listWaitingMock.mockResolvedValueOnce([
-          { id: "wait_1", executionId: "exec_parked" },
-        ]);
-        resumeMatchingWaitHooksMock.mockResolvedValueOnce(1);
+        listWaitingMock.mockResolvedValueOnce([]);
 
-        const outcome = yield* deliverToWaits({
-          subscriber: subscriber({
-            roles: ["wait"],
-            correlationPath: "sweep.id",
-          }),
-          event: { name: "ops/nightly.swept" },
-          payload: { sweep: { id: "sweep_1" } },
-          excluding: [],
-        }).pipe(Effect.provide(stubWorkflowRepo({})));
-
-        assert.strictEqual(outcome.resumedWaits, 1);
-        assert.deepStrictEqual(listWaitingMock.mock.calls[0], [
-          { workflowId: "wf_1", correlationKey: "sweep_1", runMode: "live" },
-        ]);
-      })
-    );
-
-    // Neither side says where the entity sits, so no parked run can be matched.
-    // The delivery says so and wakes nothing rather than guessing.
-    it.effect("wakes nothing when no Correlation Path is known", () =>
-      Effect.gen(function* () {
         const outcome = yield* deliverToWaits({
           subscriber: subscriber({ roles: ["wait"] }),
           event: { name: "ops/nightly.swept" },
@@ -486,7 +478,7 @@ describe("deliverToWaits", () => {
         }).pipe(Effect.provide(stubWorkflowRepo({})));
 
         assert.strictEqual(outcome.resumedWaits, 0);
-        assert.strictEqual(listWaitingMock.mock.calls.length, 0);
+        assert.strictEqual(resumeWaitsMatchingEventMock.mock.calls.length, 0);
       })
     );
   });

@@ -177,7 +177,7 @@ function useWaitPreview(
   if (waitMode === "event") {
     return {
       countdown: "Waiting for event",
-      triggerTime: "Resumes when a correlated event arrives",
+      triggerTime: "Resumes when a matching event arrives",
     };
   }
 
@@ -239,7 +239,7 @@ function useRuntimeWaitPreview(
   const waitMode = runtimeInput.waitMode || "delay";
   const waitTimezone = runtimeInput.waitTimezone || undefined;
 
-  if (waitMode === "hook" || waitMode === "event") {
+  if (waitMode === "event") {
     const timeoutResolution = resolveWaitUntil({
       now: startedAt,
       waitDuration: runtimeInput.waitTimeout,

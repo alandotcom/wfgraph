@@ -172,6 +172,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   setRunId: refuse("setRunId"),
   markEnqueueFailed: refuse("markEnqueueFailed"),
   findWaitingStateByToken: refuse("findWaitingStateByToken"),
+  listWaitingStates: refuse("listWaitingStates"),
   listLogs: refuse("listLogs"),
   listNodeStatuses: refuse("listNodeStatuses"),
   listEvents: refuse("listEvents"),

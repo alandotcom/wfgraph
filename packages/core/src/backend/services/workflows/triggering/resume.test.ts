@@ -44,7 +44,7 @@ vi.mock("#src/backend/lib/workflow-audit", () => ({
   logWorkflowAuditEvent: () => Promise.resolve(undefined),
 }));
 
-const HOOK_TOKEN = "hook_token_1";
+const RESUME_TOKEN = "resume_token_1";
 
 const liveWaitState: WorkflowWaitState = {
   id: "wait_1",
@@ -53,11 +53,10 @@ const liveWaitState: WorkflowWaitState = {
   runId: "run_1",
   nodeId: "node_wait",
   nodeName: "Wait for approval",
-  waitType: "hook",
+  waitType: "event",
   status: "waiting",
-  hookToken: HOOK_TOKEN,
+  resumeToken: RESUME_TOKEN,
   waitUntil: null,
-  correlationKey: null,
   subscribedEvents: ["appointment.confirmed"],
   metadata: null,
   createdAt: new Date("2026-03-01T00:00:00.000Z"),
@@ -114,7 +113,7 @@ describe("postWorkflowResume", () => {
         const seams = makeResumeSeams({ candidates: [] });
 
         const failure = yield* postWorkflowResume({
-          token: HOOK_TOKEN,
+          token: RESUME_TOKEN,
           body: {},
           authHeader: null,
         }).pipe(Effect.provide(seams.layer), Effect.flip);
@@ -138,7 +137,7 @@ describe("postWorkflowResume", () => {
         });
 
         const failure = yield* postWorkflowResume({
-          token: HOOK_TOKEN,
+          token: RESUME_TOKEN,
           body: {},
           authHeader: "Bearer wfb_not_the_stored_key",
         }).pipe(Effect.provide(seams.layer), Effect.flip);
@@ -159,17 +158,14 @@ describe("postWorkflowResume", () => {
         });
 
         const failure = yield* postWorkflowResume({
-          token: HOOK_TOKEN,
+          token: RESUME_TOKEN,
           body: {},
           authHeader: `Bearer ${key}`,
         }).pipe(Effect.provide(seams.layer), Effect.flip);
 
         assert.instanceOf(failure, NotFound);
-        assert.strictEqual(
-          failure.error,
-          "Wait hook not found or no longer active"
-        );
-        assert.deepStrictEqual(seams.calls.tokenLookups, [HOOK_TOKEN]);
+        assert.strictEqual(failure.error, "Wait not found or no longer active");
+        assert.deepStrictEqual(seams.calls.tokenLookups, [RESUME_TOKEN]);
       })
     );
 
@@ -192,7 +188,7 @@ describe("postWorkflowResume", () => {
         });
 
         const resumed = yield* postWorkflowResume({
-          token: HOOK_TOKEN,
+          token: RESUME_TOKEN,
           body: { approved: true },
           authHeader: `Bearer ${key}`,
         }).pipe(Effect.provide(seams.layer));
@@ -206,7 +202,7 @@ describe("postWorkflowResume", () => {
           {
             executionId: "exec_1",
             nodeId: "node_wait",
-            token: HOOK_TOKEN,
+            token: RESUME_TOKEN,
             payload: { approved: true },
           },
         ]);

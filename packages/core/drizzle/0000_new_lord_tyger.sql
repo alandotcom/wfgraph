@@ -79,9 +79,8 @@ CREATE TABLE "workflow_wait_states" (
 	"node_name" text NOT NULL,
 	"wait_type" text NOT NULL,
 	"status" text NOT NULL,
-	"hook_token" text,
+	"resume_token" text,
 	"wait_until" timestamp,
-	"correlation_key" text,
 	"subscribed_events" text[],
 	"metadata" jsonb,
 	"created_at" timestamp DEFAULT now() NOT NULL,
@@ -118,9 +117,8 @@ CREATE UNIQUE INDEX "workflow_executions_workflow_run_id_uidx" ON "workflow_exec
 CREATE INDEX "workflow_executions_workflow_id_started_at_idx" ON "workflow_executions" USING btree ("workflow_id","started_at");--> statement-breakpoint
 CREATE INDEX "workflow_executions_workflow_id_correlation_key_idx" ON "workflow_executions" USING btree ("workflow_id","correlation_key");--> statement-breakpoint
 CREATE INDEX "workflow_executions_in_flight_by_correlation_idx" ON "workflow_executions" USING btree ("workflow_id","correlation_key","run_mode") WHERE "workflow_executions"."status" in ('pending', 'running', 'waiting');--> statement-breakpoint
-CREATE UNIQUE INDEX "workflow_wait_states_hook_token_uidx" ON "workflow_wait_states" USING btree ("hook_token");--> statement-breakpoint
+CREATE UNIQUE INDEX "workflow_wait_states_resume_token_uidx" ON "workflow_wait_states" USING btree ("resume_token");--> statement-breakpoint
 CREATE INDEX "workflow_wait_states_execution_status_idx" ON "workflow_wait_states" USING btree ("execution_id","status");--> statement-breakpoint
-CREATE INDEX "workflow_wait_states_workflow_correlation_status_idx" ON "workflow_wait_states" USING btree ("workflow_id","correlation_key","status");--> statement-breakpoint
 CREATE INDEX "workflow_wait_states_run_id_idx" ON "workflow_wait_states" USING btree ("run_id");--> statement-breakpoint
 CREATE INDEX "workflow_wait_states_subscribed_events_idx" ON "workflow_wait_states" USING gin ("subscribed_events") WHERE "workflow_wait_states"."status" = 'waiting';--> statement-breakpoint
 CREATE UNIQUE INDEX "workflows_name_ci_uidx" ON "workflows" USING btree (lower("name"));

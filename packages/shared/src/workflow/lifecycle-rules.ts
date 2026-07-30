@@ -156,7 +156,7 @@ const refuse = (error: string): LifecycleRulesCheck => ({
 });
 
 /** Which node is asking a builder for an Event's Correlation Path. */
-export type CorrelationPathRole = "start" | "cancel" | "wait";
+export type CorrelationPathRole = "start" | "cancel";
 
 export type CorrelationPathRequest = {
   eventName: string;
@@ -169,11 +169,10 @@ export type CorrelationPathRequest = {
  * The Events this workflow matches by Entity Value whose author declared no path,
  * so the builder is the one being asked.
  *
- * Every role that matches an entity needs a path: a cancel and a wait always do,
- * and a start does once Concurrency compares, which is why an unlimited workflow
- * may start on a correlation-free Event. A wait naming an Event the catalog has
- * never heard of is left out -- the picker admits a free name, and an Event nothing
- * declares has no author to ask.
+ * A cancel always matches by entity, and a start does once Concurrency compares,
+ * which is why an unlimited workflow may start on a correlation-free Event. A wait
+ * is not here: a Wait Subscription carries its own match expression, so what an
+ * arriving payload is compared against is stated on the Wait node itself.
  *
  * A member whose `suppliedPath` is set is answered, not absent: the panel renders an
  * input per member so a path can be corrected or cleared, and the save refuses on
@@ -183,10 +182,8 @@ export type CorrelationPathRequest = {
 export function eventsNeedingCorrelationPath(input: {
   rules: LifecycleRules;
   catalog: ExtensionCatalog;
-  waitEvents?: readonly string[];
 }): CorrelationPathRequest[] {
   const { rules, catalog } = input;
-  const waitEvents = input.waitEvents ?? [];
 
   const matchByEntityValue: Array<{
     eventName: string;
@@ -202,9 +199,6 @@ export function eventsNeedingCorrelationPath(input: {
       eventName,
       role: "cancel" as const,
     })),
-    ...waitEvents
-      .filter((eventName) => findEvent(catalog, eventName))
-      .map((eventName) => ({ eventName, role: "wait" as const })),
   ];
 
   const seen = new Set<string>();
@@ -238,14 +232,8 @@ export function eventsNeedingCorrelationPath(input: {
 export function checkLifecycleRules(input: {
   rules: LifecycleRules;
   catalog: ExtensionCatalog;
-  /**
-   * Event names the graph's Wait nodes park on. A wait matches by Entity Value
-   * too, so it needs a Correlation Path for the same reason a cancel does.
-   */
-  waitEvents?: readonly string[];
 }): LifecycleRulesCheck {
   const { rules, catalog } = input;
-  const waitEvents = input.waitEvents ?? [];
 
   // ADR-0007 rejects one Event holding both roles rather than picking a winner,
   // which is what makes the one-role rule a set intersection.
@@ -266,11 +254,9 @@ export function checkLifecycleRules(input: {
     }
   }
 
-  const owed = eventsNeedingCorrelationPath({
-    rules,
-    catalog,
-    waitEvents,
-  }).find((request) => !request.suppliedPath);
+  const owed = eventsNeedingCorrelationPath({ rules, catalog }).find(
+    (request) => !request.suppliedPath
+  );
   if (owed) {
     return refuse(missingCorrelationPathMessage(owed.eventName));
   }

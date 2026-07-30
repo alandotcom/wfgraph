@@ -44,7 +44,7 @@ const cancelRequest = {
 const waitSignal = {
   executionId: "exec_1",
   nodeId: "node_wait",
-  token: "hook_token_1",
+  token: "resume_token_1",
 };
 
 describe("InngestClientLayer", () => {

@@ -1,5 +1,5 @@
 {
-  "id": "2a2de792-6d71-4afc-a2f7-9e8fd00549aa",
+  "id": "85ba6452-6f51-46b1-926c-6c44a2d22d16",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -713,8 +713,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "hook_token": {
-          "name": "hook_token",
+        "resume_token": {
+          "name": "resume_token",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -722,12 +722,6 @@
         "wait_until": {
           "name": "wait_until",
           "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "correlation_key": {
-          "name": "correlation_key",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -764,11 +758,11 @@
         }
       },
       "indexes": {
-        "workflow_wait_states_hook_token_uidx": {
-          "name": "workflow_wait_states_hook_token_uidx",
+        "workflow_wait_states_resume_token_uidx": {
+          "name": "workflow_wait_states_resume_token_uidx",
           "columns": [
             {
-              "expression": "hook_token",
+              "expression": "resume_token",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -784,33 +778,6 @@
           "columns": [
             {
               "expression": "execution_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "workflow_wait_states_workflow_correlation_status_idx": {
-          "name": "workflow_wait_states_workflow_correlation_status_idx",
-          "columns": [
-            {
-              "expression": "workflow_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "correlation_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

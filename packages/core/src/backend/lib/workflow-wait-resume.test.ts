@@ -1,16 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resumeMatchingWaitHooks } from "./workflow-wait-resume";
+import { resumeWaitsMatchingEvent } from "./workflow-wait-resume";
 
 const {
   sendWorkflowWaitSignalMock,
   logWorkflowAuditEventMock,
   markExecutionRunningMock,
   markWaitStateStatusMock,
+  loggerErrorMock,
+  loggerWarnMock,
 } = vi.hoisted(() => ({
   sendWorkflowWaitSignalMock: vi.fn(),
   logWorkflowAuditEventMock: vi.fn(),
   markExecutionRunningMock: vi.fn(),
   markWaitStateStatusMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
+}));
+
+// Both this module and `wait-match` log through the app logger, and two of the
+// cases below are about what reaches it rather than about what is returned.
+vi.mock("#src/backend/lib/logger", () => ({
+  getAppLogger: () => ({
+    error: loggerErrorMock,
+    warn: loggerWarnMock,
+    info: vi.fn(),
+    debug: vi.fn(),
+  }),
 }));
 
 vi.mock("#src/backend/lib/inngest/runtime-events", () => ({
@@ -30,41 +45,44 @@ vi.mock("#src/backend/lib/workflow-wait-state", () => ({
   markWaitingStatesCancelled: vi.fn(),
   createWaitState: vi.fn(),
   listExecutionWaitingStates: vi.fn(),
-  listWorkflowWaitingStatesByCorrelation: vi.fn(),
+  listWorkflowWaitsForEvent: vi.fn(),
 }));
 
+type Subscription = {
+  event: string;
+  match?: { expression: string; timestampPaths: string[] };
+};
+
 /**
- * A parked wait, naming the Event the cases below deliver.
+ * A parked wait, holding the subscriptions it compiled when it parked.
  *
- * The names live on the row's own column, written when it parked, so an edit to
- * the node it parked on cannot change what it is owed. A wait always names at
- * least one: the empty list used to mean "any Event for this entity" and is
- * refused at save, because neither the column nor the subscription index can hold
- * a wildcard.
+ * The row's own metadata is the matcher, so an edit to the node it parked on
+ * cannot change what the run is owed. `subscribedEvents` is what the candidate
+ * query narrows by, and it is set here to match so a row reaching this function
+ * looks the way the query would have handed it over.
  */
 function createWaitState(
   id: string,
   executionId: string,
   opts?: {
-    hookToken?: string | null;
-    subscribedEvents?: string[] | null;
-    metadata?: Record<string, unknown> | null;
+    resumeToken?: string | null;
+    subscriptions?: Subscription[];
   }
 ) {
+  const subscriptions = opts?.subscriptions ?? [{ event: "event.update" }];
+
   return {
     id,
     executionId,
     nodeId: `node_${id}`,
-    hookToken: opts?.hookToken === undefined ? `token_${id}` : opts.hookToken,
-    subscribedEvents:
-      opts?.subscribedEvents === undefined
-        ? ["event.update"]
-        : opts.subscribedEvents,
-    metadata: opts?.metadata ?? null,
+    resumeToken:
+      opts?.resumeToken === undefined ? `token_${id}` : opts.resumeToken,
+    subscribedEvents: subscriptions.map((subscription) => subscription.event),
+    metadata: { waitFor: subscriptions } as Record<string, unknown> | null,
   };
 }
 
-describe("resumeMatchingWaitHooks", () => {
+describe("resumeWaitsMatchingEvent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sendWorkflowWaitSignalMock.mockResolvedValue(undefined);
@@ -74,7 +92,7 @@ describe("resumeMatchingWaitHooks", () => {
   });
 
   it("returns 0 when eventType is undefined", async () => {
-    const result = await resumeMatchingWaitHooks({
+    const result = await resumeWaitsMatchingEvent({
       workflowId: "workflow_1",
       eventType: undefined,
       payload: { data: "test" },
@@ -86,7 +104,7 @@ describe("resumeMatchingWaitHooks", () => {
   });
 
   it("returns 0 when eventType is empty string", async () => {
-    const result = await resumeMatchingWaitHooks({
+    const result = await resumeWaitsMatchingEvent({
       workflowId: "workflow_1",
       eventType: "",
       payload: { data: "test" },
@@ -98,7 +116,7 @@ describe("resumeMatchingWaitHooks", () => {
   });
 
   it("returns 0 for empty waitStates array", async () => {
-    const result = await resumeMatchingWaitHooks({
+    const result = await resumeWaitsMatchingEvent({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: { data: "test" },
@@ -108,14 +126,14 @@ describe("resumeMatchingWaitHooks", () => {
     expect(result).toBe(0);
   });
 
-  it("skips wait states without a hookToken", async () => {
-    const result = await resumeMatchingWaitHooks({
+  it("skips wait states without a resume token", async () => {
+    const result = await resumeWaitsMatchingEvent({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: { data: "test" },
       waitStates: [
-        createWaitState("1", "exec_1", { hookToken: null }),
-        createWaitState("2", "exec_2", { hookToken: null }),
+        createWaitState("1", "exec_1", { resumeToken: null }),
+        createWaitState("2", "exec_2", { resumeToken: null }),
       ],
     });
 
@@ -123,8 +141,8 @@ describe("resumeMatchingWaitHooks", () => {
     expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
   });
 
-  it("resumes a single wait state with hookToken", async () => {
-    const result = await resumeMatchingWaitHooks({
+  it("resumes a match-free subscription on the next occurrence", async () => {
+    const result = await resumeWaitsMatchingEvent({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: { key: "value" },
@@ -138,7 +156,6 @@ describe("resumeMatchingWaitHooks", () => {
       nodeId: "node_1",
       token: "token_1",
       eventType: "event.update",
-      correlationKey: undefined,
       payload: { key: "value" },
     });
     expect(markWaitStateStatusMock).toHaveBeenCalledWith({
@@ -150,7 +167,7 @@ describe("resumeMatchingWaitHooks", () => {
   });
 
   it("resumes multiple wait states and returns total count", async () => {
-    const result = await resumeMatchingWaitHooks({
+    const result = await resumeWaitsMatchingEvent({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: {},
@@ -167,64 +184,48 @@ describe("resumeMatchingWaitHooks", () => {
     expect(markExecutionRunningMock).toHaveBeenCalledTimes(3);
   });
 
-  it("extracts correlationKey from wait state metadata", async () => {
-    const result = await resumeMatchingWaitHooks({
+  it("wakes nothing for a row whose metadata holds no subscriptions", async () => {
+    const result = await resumeWaitsMatchingEvent({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: {},
       waitStates: [
-        createWaitState("1", "exec_1", {
-          metadata: { correlationKey: "corr_123" },
-        }),
+        { ...createWaitState("1", "exec_1"), metadata: null },
+        { ...createWaitState("2", "exec_2"), metadata: {} },
       ],
-    });
-
-    expect(result).toBe(1);
-    expect(sendWorkflowWaitSignalMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        correlationKey: "corr_123",
-      })
-    );
-  });
-
-  it("passes undefined correlationKey when metadata.correlationKey is not a string", async () => {
-    const result = await resumeMatchingWaitHooks({
-      workflowId: "workflow_1",
-      eventType: "event.update",
-      payload: {},
-      waitStates: [
-        createWaitState("1", "exec_1", {
-          metadata: { correlationKey: 42 },
-        }),
-      ],
-    });
-
-    expect(result).toBe(1);
-    expect(sendWorkflowWaitSignalMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        correlationKey: undefined,
-      })
-    );
-  });
-
-  // A row naming no Event wakes on nothing: the wildcard it used to mean is
-  // refused at save.
-  it("wakes nothing for a row that named no Event", async () => {
-    const result = await resumeMatchingWaitHooks({
-      workflowId: "workflow_1",
-      eventType: "event.update",
-      payload: {},
-      waitStates: [createWaitState("1", "exec_1", { subscribedEvents: null })],
     });
 
     expect(result).toBe(0);
     expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
   });
 
+  // A candidate row reached the matcher because its own `subscribed_events`
+  // named this Event, so a `waitFor` that will not decode is a row this engine
+  // wrote and cannot read. Silently, it looks exactly like an ordinary no-match.
+  it("says so when a parked row's subscriptions will not decode", async () => {
+    const result = await resumeWaitsMatchingEvent({
+      workflowId: "workflow_1",
+      eventType: "event.update",
+      payload: {},
+      waitStates: [
+        {
+          ...createWaitState("1", "exec_1"),
+          metadata: { waitFor: "not a list of subscriptions" },
+        },
+      ],
+    });
+
+    expect(result).toBe(0);
+    expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      "Parked wait holds subscriptions that will not decode"
+    );
+  });
+
   it("returns 0 for a wait state when markWaitStateStatus returns false", async () => {
     markWaitStateStatusMock.mockResolvedValue(false);
 
-    const result = await resumeMatchingWaitHooks({
+    const result = await resumeWaitsMatchingEvent({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: {},
@@ -244,7 +245,7 @@ describe("resumeMatchingWaitHooks", () => {
       .mockRejectedValueOnce(new Error("signal failed"))
       .mockResolvedValueOnce(undefined);
 
-    const result = await resumeMatchingWaitHooks({
+    const result = await resumeWaitsMatchingEvent({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: {},
@@ -264,7 +265,7 @@ describe("resumeMatchingWaitHooks", () => {
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(false);
 
-    const result = await resumeMatchingWaitHooks({
+    const result = await resumeWaitsMatchingEvent({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: {},
@@ -277,30 +278,14 @@ describe("resumeMatchingWaitHooks", () => {
     expect(result).toBe(1);
   });
 
-  it("mixes hookToken present and absent wait states", async () => {
-    const result = await resumeMatchingWaitHooks({
-      workflowId: "workflow_1",
-      eventType: "event.update",
-      payload: {},
-      waitStates: [
-        createWaitState("1", "exec_1", { hookToken: "token_1" }),
-        createWaitState("2", "exec_2", { hookToken: null }),
-        createWaitState("3", "exec_3", { hookToken: "token_3" }),
-      ],
-    });
-
-    expect(result).toBe(2);
-    expect(sendWorkflowWaitSignalMock).toHaveBeenCalledTimes(2);
-  });
-
   it("logs audit event with correct eventType", async () => {
-    await resumeMatchingWaitHooks({
+    await resumeWaitsMatchingEvent({
       workflowId: "workflow_audit",
       eventType: "appointment.rescheduled",
       payload: { appointment: { id: "apt_1" } },
       waitStates: [
         createWaitState("1", "exec_1", {
-          subscribedEvents: ["appointment.rescheduled"],
+          subscriptions: [{ event: "appointment.rescheduled" }],
         }),
       ],
     });
@@ -316,81 +301,171 @@ describe("resumeMatchingWaitHooks", () => {
     });
   });
 
-  describe("subscribed-event filtering", () => {
-    it("resumes when the event is one of the names the row parked on", async () => {
-      const result = await resumeMatchingWaitHooks({
-        workflowId: "workflow_1",
-        eventType: "appointment.confirmed",
-        payload: {},
-        waitStates: [
-          createWaitState("1", "exec_1", {
-            subscribedEvents: [
-              "appointment.confirmed",
-              "appointment.cancelled",
-            ],
-          }),
-        ],
+  describe("the stored match decides", () => {
+    // The owner's case: a run started by one Event, parked on a different one,
+    // woken by the arrival whose payload names this run's entity and by no other.
+    it("wakes the run whose match the payload satisfies, and no other", async () => {
+      const parkedOn = (appointmentId: string) => ({
+        event: "billing/payment.settled",
+        match: {
+          expression: `payload.appointmentId == "${appointmentId}"`,
+          timestampPaths: [],
+        },
       });
 
-      expect(result).toBe(1);
-      expect(sendWorkflowWaitSignalMock).toHaveBeenCalledTimes(1);
-    });
-
-    it("skips when the event is none of the names the row parked on", async () => {
-      const result = await resumeMatchingWaitHooks({
+      const result = await resumeWaitsMatchingEvent({
         workflowId: "workflow_1",
-        eventType: "appointment.rescheduled",
-        payload: {},
+        eventType: "billing/payment.settled",
+        payload: { appointmentId: "appt_8813", amountCents: 4200 },
         waitStates: [
           createWaitState("1", "exec_1", {
-            subscribedEvents: [
-              "appointment.confirmed",
-              "appointment.cancelled",
-            ],
-          }),
-        ],
-      });
-
-      expect(result).toBe(0);
-      expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
-    });
-
-    // The wildcard is gone. An empty list, or none at all, is a wait nothing can
-    // wake -- refused at save now, and treated here as naming no Event rather than
-    // as naming every Event.
-    it("wakes nothing when the row names no Event", async () => {
-      const result = await resumeMatchingWaitHooks({
-        workflowId: "workflow_1",
-        eventType: "anything.happened",
-        payload: {},
-        waitStates: [
-          createWaitState("1", "exec_1", { subscribedEvents: [] }),
-          createWaitState("2", "exec_2", { subscribedEvents: null }),
-        ],
-      });
-
-      expect(result).toBe(0);
-      expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
-    });
-
-    it("filters independently per wait state", async () => {
-      const result = await resumeMatchingWaitHooks({
-        workflowId: "workflow_1",
-        eventType: "appointment.confirmed",
-        payload: {},
-        waitStates: [
-          createWaitState("1", "exec_1", {
-            subscribedEvents: ["appointment.confirmed"],
+            subscriptions: [parkedOn("appt_8813")],
           }),
           createWaitState("2", "exec_2", {
-            subscribedEvents: ["appointment.cancelled"],
+            subscriptions: [parkedOn("appt_0001")],
           }),
-          createWaitState("3", "exec_3", { subscribedEvents: [] }),
         ],
       });
 
       expect(result).toBe(1);
       expect(sendWorkflowWaitSignalMock).toHaveBeenCalledTimes(1);
+      expect(sendWorkflowWaitSignalMock).toHaveBeenCalledWith(
+        expect.objectContaining({ executionId: "exec_1" })
+      );
+    });
+
+    it("wakes nothing when no arriving payload satisfies the match", async () => {
+      const result = await resumeWaitsMatchingEvent({
+        workflowId: "workflow_1",
+        eventType: "billing/payment.settled",
+        payload: { appointmentId: "appt_nobody_waits_for" },
+        waitStates: [
+          createWaitState("1", "exec_1", {
+            subscriptions: [
+              {
+                event: "billing/payment.settled",
+                match: {
+                  expression: 'payload.appointmentId == "appt_8813"',
+                  timestampPaths: [],
+                },
+              },
+            ],
+          }),
+        ],
+      });
+
+      expect(result).toBe(0);
+      expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
+    });
+
+    // A free-entered Event the catalog never heard of parks and wakes the same
+    // way: the name and the match are all resume matching ever reads.
+    it("wakes on an undeclared Event name with a match", async () => {
+      const result = await resumeWaitsMatchingEvent({
+        workflowId: "workflow_1",
+        eventType: "vendor/never.declared",
+        payload: { ref: "abc" },
+        waitStates: [
+          createWaitState("1", "exec_1", {
+            subscriptions: [
+              {
+                event: "vendor/never.declared",
+                match: {
+                  expression: 'payload.ref == "abc"',
+                  timestampPaths: [],
+                },
+              },
+            ],
+          }),
+        ],
+      });
+
+      expect(result).toBe(1);
+    });
+
+    // A payload delivers a timestamp as an ISO string, and CEL has no overload
+    // comparing a string to an instant, so the paths the model marked travel
+    // beside the expression and are decoded before it runs.
+    it("compares a timestamp field the model marked", async () => {
+      const subscriptions = [
+        {
+          event: "billing/payment.settled",
+          match: {
+            expression: 'payload.settledAt < date("2026-07-01T00:00:00.000Z")',
+            timestampPaths: ["settledAt"],
+          },
+        },
+      ];
+
+      const before = await resumeWaitsMatchingEvent({
+        workflowId: "workflow_1",
+        eventType: "billing/payment.settled",
+        payload: { settledAt: "2026-06-30T12:00:00.000Z" },
+        waitStates: [createWaitState("1", "exec_1", { subscriptions })],
+      });
+      expect(before).toBe(1);
+
+      vi.clearAllMocks();
+      markWaitStateStatusMock.mockResolvedValue(true);
+
+      const after = await resumeWaitsMatchingEvent({
+        workflowId: "workflow_1",
+        eventType: "billing/payment.settled",
+        payload: { settledAt: "2026-07-02T12:00:00.000Z" },
+        waitStates: [createWaitState("2", "exec_2", { subscriptions })],
+      });
+      expect(after).toBe(0);
+    });
+
+    // The payload arrived from outside and may carry anything, so a field of the
+    // wrong shape is a payload that does not satisfy the match.
+    it("does not wake a run when the match fails to evaluate", async () => {
+      const result = await resumeWaitsMatchingEvent({
+        workflowId: "workflow_1",
+        eventType: "billing/payment.settled",
+        payload: { appointmentId: { nested: "object" } },
+        waitStates: [
+          createWaitState("1", "exec_1", {
+            subscriptions: [
+              {
+                event: "billing/payment.settled",
+                match: {
+                  expression: 'payload.appointmentId.contains("appt")',
+                  timestampPaths: [],
+                },
+              },
+            ],
+          }),
+        ],
+      });
+
+      expect(result).toBe(0);
+      expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
+    });
+
+    it("reads only the subscriptions naming the arriving Event", async () => {
+      const result = await resumeWaitsMatchingEvent({
+        workflowId: "workflow_1",
+        eventType: "app/appointment.confirmed",
+        payload: { id: "no" },
+        waitStates: [
+          createWaitState("1", "exec_1", {
+            subscriptions: [
+              {
+                event: "app/appointment.confirmed",
+                match: {
+                  expression: 'payload.id == "yes"',
+                  timestampPaths: [],
+                },
+              },
+              // Satisfied by this payload, and irrelevant: a different Event.
+              { event: "app/appointment.canceled" },
+            ],
+          }),
+        ],
+      });
+
+      expect(result).toBe(0);
     });
   });
 });

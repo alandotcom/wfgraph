@@ -1,4 +1,3 @@
-import { useAtomValue } from "jotai";
 import { CalendarClock, Copy, Info, TriangleAlert } from "lucide-react";
 import { useId, useState } from "react";
 import { toast } from "sonner";
@@ -8,7 +7,6 @@ import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { getBasePath } from "#src/lib/base-path";
 import { getExtensionCatalog } from "#src/lib/extensions";
-import { nodesAtom } from "#src/lib/workflow-graph-store";
 import { buildEventIntakeUrl } from "@rova/shared/workflow/event-intake-url";
 import { cn } from "@rova/shared/utils";
 import {
@@ -22,7 +20,6 @@ import {
   readLifecycleRules,
   SCHEDULE_INTERIM_MESSAGE,
 } from "@rova/shared/workflow/lifecycle-rules";
-import { readWaitEventNames } from "@rova/shared/workflow/wait-events";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 /**
@@ -51,15 +48,13 @@ export function LifecyclePanel({
 }) {
   const startEventsLabelId = useId();
   const manualStartId = useId();
-  const nodes = useAtomValue(nodesAtom);
   const catalog = getExtensionCatalog();
   const rules = readLifecycleRules(config) ?? initialLifecycleRules;
 
-  // The same function the save is refused by, over the same catalog and the same
-  // graph, so the sentence a builder reads here is the sentence the server would
-  // answer with rather than a second opinion about the rules.
-  const waitEvents = readWaitEventNames(nodes);
-  const check = checkLifecycleRules({ rules, catalog, waitEvents });
+  // The same function the save is refused by, over the same catalog, so the
+  // sentence a builder reads here is the sentence the server would answer with
+  // rather than a second opinion about the rules.
+  const check = checkLifecycleRules({ rules, catalog });
 
   const write = (next: LifecycleRules) => {
     onUpdateConfig({ lifecycleRules: next });
@@ -89,14 +84,9 @@ export function LifecyclePanel({
     });
   };
 
-  // The same set the save is refused over, so a Wait node parked on a pathless
-  // Event has an input here rather than being an unsavable dead end, and an
-  // unlimited workflow is not asked about a value nothing compares.
-  const pathRequests = eventsNeedingCorrelationPath({
-    rules,
-    catalog,
-    waitEvents,
-  });
+  // The same set the save is refused over, so an unlimited workflow is not asked
+  // about a value nothing compares.
+  const pathRequests = eventsNeedingCorrelationPath({ rules, catalog });
 
   return (
     <div className="space-y-4">
@@ -284,7 +274,6 @@ export function LifecyclePanel({
 const ROLE_LABELS: Record<CorrelationPathRole, string> = {
   start: "starts a run",
   cancel: "cancels runs",
-  wait: "a Wait node parks on this",
 };
 
 /**

@@ -70,11 +70,15 @@ export type CreateWaitStateInput = {
   runId: string;
   nodeId: string;
   nodeName: string;
-  waitType: "delay" | "hook";
-  hookToken?: string;
+  waitType: "delay" | "event";
+  /**
+   * What `POST /workflows/waits/:token/resume` unparks this run by. Generated per
+   * park rather than authored, because two runs at one node would collide on a
+   * token decided at design time.
+   */
+  resumeToken?: string;
   /** Target timestamp as ISO 8601; the adapter converts it for storage. */
   waitUntilIso?: string;
-  correlationKey?: string;
   /**
    * The Event names this wait parks on, which the delivery fan-out finds the run
    * by. Empty for a wait on a clock, which no Event reaches.

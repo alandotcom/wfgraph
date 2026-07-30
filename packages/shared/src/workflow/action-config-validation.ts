@@ -1,5 +1,5 @@
 import { asNonEmptyString } from "#src/types/string";
-import { readWaitForEvents } from "#src/workflow/wait-events";
+import { readWaitSubscriptions } from "#src/workflow/wait-subscription";
 import { parseTimeOfDayMinutes } from "#src/utils/wait-allowed-hours";
 import type { WorkflowNode } from "#src/workflow/types";
 
@@ -111,14 +111,8 @@ function getPluginMissingRequiredFields(input: {
     }));
 }
 
-function getWaitMode(
-  config: Record<string, unknown>
-): "delay" | "hook" | "event" {
-  const mode = asNonEmptyString(config.waitMode);
-  if (mode === "hook" || mode === "event") {
-    return mode;
-  }
-  return "delay";
+function getWaitMode(config: Record<string, unknown>): "delay" | "event" {
+  return asNonEmptyString(config.waitMode) === "event" ? "event" : "delay";
 }
 
 function getDelayTimingMode(
@@ -143,13 +137,31 @@ function getWaitMissingRequiredFields(
 ): MissingRequiredField[] {
   const waitMode = getWaitMode(config);
 
-  // An event-mode wait has to name at least one Event. An empty list used to mean
-  // "any Event for this entity", and the subscription index the fan-out reads has
-  // no way to hold that: a wildcard is a subscription to every Event there is.
-  if (waitMode === "hook" || waitMode === "event") {
-    return readWaitForEvents(config.waitForEvents).length > 0
-      ? []
-      : [{ fieldKey: "waitForEvents", fieldLabel: "Wait for these events" }];
+  if (waitMode === "event") {
+    const eventMissing: MissingRequiredField[] = [];
+
+    // An event-mode wait has to name at least one Event. An empty list used to
+    // mean "any Event for this entity", and the subscription index the fan-out
+    // reads has no way to hold that: a wildcard is a subscription to every Event
+    // there is.
+    if (readWaitSubscriptions(config).length === 0) {
+      eventMissing.push({
+        fieldKey: "waitFor",
+        fieldLabel: "Wait for these events",
+      });
+    }
+
+    // A wait with no timeout is an immortal Execution, holding a row and a place
+    // in the run list until somebody notices. The editor writes a default the
+    // moment the mode is chosen, so a blank one here is a builder who cleared it.
+    if (isFieldEmpty(config.waitTimeout)) {
+      eventMissing.push({
+        fieldKey: "waitTimeout",
+        fieldLabel: "Stop waiting after",
+      });
+    }
+
+    return eventMissing;
   }
 
   const missing: MissingRequiredField[] = [];

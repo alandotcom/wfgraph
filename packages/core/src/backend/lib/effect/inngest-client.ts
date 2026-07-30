@@ -93,7 +93,7 @@ export const InngestClientLayer: Layer.Layer<InngestClient> = Layer.succeed(
  * Run a call into one of the `backend/lib/workflow-*` helpers that drives runs
  * through Inngest, and give it the same typed error channel a send gets.
  *
- * `cancelInFlightRuns` and `resumeMatchingWaitHooks` each mix a send with the
+ * `cancelInFlightRuns` and `resumeWaitsMatchingEvent` each mix a send with the
  * wait-state bookkeeping around it, so neither belongs behind a repository and
  * neither is reachable through the three sends above. This is the seam they
  * cross until stage 7 brings the run engine itself onto Effect, and it mirrors

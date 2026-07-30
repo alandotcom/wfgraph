@@ -28,6 +28,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
     }
 
     const logs = yield* repo.listLogs(executionId);
+    const waits = yield* repo.listWaitingStates(executionId);
 
     return {
       execution: {
@@ -56,6 +57,14 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
         startedAt: log.startedAt.toISOString(),
         completedAt: toIso(log.completedAt),
         duration: log.duration,
+      })),
+      waits: waits.map((wait) => ({
+        id: wait.id,
+        nodeId: wait.nodeId,
+        nodeName: wait.nodeName,
+        resumeToken: wait.resumeToken,
+        subscribedEvents: wait.subscribedEvents ?? [],
+        waitUntil: toIso(wait.waitUntil),
       })),
     };
   },

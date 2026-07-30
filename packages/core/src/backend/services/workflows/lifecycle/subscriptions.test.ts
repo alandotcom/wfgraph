@@ -16,7 +16,7 @@ function lifecycleNode(rules?: LifecycleRules): WorkflowNode {
   };
 }
 
-function waitNode(input: { id: string; waitForEvents: unknown }): WorkflowNode {
+function waitNode(input: { id: string; waitFor: string[] }): WorkflowNode {
   return {
     id: input.id,
     type: "action",
@@ -24,7 +24,11 @@ function waitNode(input: { id: string; waitForEvents: unknown }): WorkflowNode {
     data: {
       label: "Wait",
       type: "action",
-      config: { actionType: "Wait", waitForEvents: input.waitForEvents },
+      config: {
+        actionType: "Wait",
+        waitMode: "event",
+        waitFor: input.waitFor.map((event) => ({ event })),
+      },
     },
   };
 }
@@ -69,7 +73,7 @@ describe("deriveEventSubscriptions", () => {
           cancelEvents: [],
           concurrency: "unlimited",
         }),
-        waitNode({ id: "wait-1", waitForEvents: ["billing/payment.settled"] }),
+        waitNode({ id: "wait-1", waitFor: ["billing/payment.settled"] }),
       ],
     });
 
@@ -89,7 +93,7 @@ describe("deriveEventSubscriptions", () => {
     const rows = deriveEventSubscriptions({
       workflowId: "wf_1",
       nodes: [
-        waitNode({ id: "wait-1", waitForEvents: ["ops/nightly.swept"] }),
+        waitNode({ id: "wait-1", waitFor: ["ops/nightly.swept"] }),
         lifecycleNode({
           startEvents: ["app/appointment.created"],
           cancelEvents: [],
@@ -127,8 +131,8 @@ describe("deriveEventSubscriptions", () => {
           cancelEvents: [],
           concurrency: "unlimited",
         }),
-        waitNode({ id: "wait-1", waitForEvents: ["billing/payment.settled"] }),
-        waitNode({ id: "wait-2", waitForEvents: ["billing/payment.settled"] }),
+        waitNode({ id: "wait-1", waitFor: ["billing/payment.settled"] }),
+        waitNode({ id: "wait-2", waitFor: ["billing/payment.settled"] }),
       ],
     });
 
@@ -146,7 +150,7 @@ describe("deriveEventSubscriptions", () => {
           cancelEvents: [],
           concurrency: "unlimited",
         }),
-        waitNode({ id: "wait-1", waitForEvents: ["app/appointment.created"] }),
+        waitNode({ id: "wait-1", waitFor: ["app/appointment.created"] }),
       ],
     });
 
@@ -157,7 +161,7 @@ describe("deriveEventSubscriptions", () => {
     expect(
       deriveEventSubscriptions({
         workflowId: "wf_1",
-        nodes: [lifecycleNode(), waitNode({ id: "wait-1", waitForEvents: [] })],
+        nodes: [lifecycleNode(), waitNode({ id: "wait-1", waitFor: [] })],
       })
     ).toEqual([]);
   });

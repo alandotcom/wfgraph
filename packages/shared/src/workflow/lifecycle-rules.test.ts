@@ -4,6 +4,7 @@ import type { ExtensionCatalog } from "#src/extensions/catalog";
 import { rejectUnknownKeys } from "#src/types/schema";
 import {
   checkLifecycleRules,
+  eventsNeedingCorrelationPath,
   type LifecycleRules,
   type LifecycleRulesCheck,
   lifecycleRulesSchema,
@@ -269,25 +270,22 @@ describe("checkLifecycleRules", () => {
     ).toContain("Nothing can start this workflow");
   });
 
-  // A wait matches by Entity Value like a cancel does, so it needs a path for the
-  // same reason. A name the catalog never heard of has no author to ask.
-  it("holds a wait-role Event to the same Correlation Path rule", () => {
-    expect(
-      refusalOf(
-        checkLifecycleRules({
-          rules: rules({ concurrency: "unlimited" }),
-          catalog,
-          waitEvents: ["ops/nightly.swept"],
-        })
-      )
-    ).toContain("declares no Correlation Path");
-
+  // A Wait Subscription carries its own match expression, so what a parked run
+  // compares an arrival against is stated on the Wait node. The rules are asked
+  // about start and cancel roles and about nothing else.
+  it("asks for no Correlation Path on account of a Wait node", () => {
     expect(
       checkLifecycleRules({
         rules: rules({ concurrency: "unlimited" }),
         catalog,
-        waitEvents: ["billing/nothing.declares.this"],
       })
     ).toEqual({ valid: true });
+
+    expect(
+      eventsNeedingCorrelationPath({
+        rules: rules({ concurrency: "unlimited" }),
+        catalog,
+      })
+    ).toEqual([]);
   });
 });

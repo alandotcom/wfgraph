@@ -350,6 +350,51 @@ function toConditionFieldType(field: UpstreamField): ConditionFieldType | null {
   return null;
 }
 
+/**
+ * The typed vocabulary a Wait node's match editor builds rules from: the fields
+ * of the Event being waited on, as the catalog declares them.
+ *
+ * The source label is the Event itself rather than a node, because a match reads
+ * a payload that has not arrived yet: no node in this graph produces it. An Event
+ * the catalog has never heard of has no declared fields, and the editor says so
+ * rather than offering a vocabulary it made up.
+ */
+export function getEventConditionFields(
+  catalog: ExtensionCatalog,
+  eventName: string
+): ConditionSelectableField[] {
+  const event = findEvent(catalog, eventName);
+  if (!event) {
+    return [];
+  }
+
+  return compact(
+    event.payloadFields.map((field) => {
+      const path = field.path.trim();
+      const type = toConditionFieldType({
+        ...field,
+        sourceNodeId: eventName,
+        sourceNodeName: event.label,
+      });
+      if (!(path && type)) {
+        return null;
+      }
+
+      return {
+        path,
+        label: path,
+        type,
+        description: field.description,
+        sourceNodeId: eventName,
+        sourceNodeLabel: event.label,
+        sourceNodeLabels: [event.label],
+        ...(field.nullable ? { nullable: true } : {}),
+        ...(field.enumValues ? { enumValues: field.enumValues } : {}),
+      };
+    })
+  ).toSorted((a, b) => a.path.localeCompare(b.path));
+}
+
 export function getUpstreamConditionFields(input: {
   currentNodeId?: string;
   nodes: WorkflowNode[];

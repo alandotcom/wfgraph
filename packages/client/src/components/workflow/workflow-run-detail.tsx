@@ -1,7 +1,9 @@
 import { getRelativeTime } from "@rova/shared/utils/time";
+import { Button } from "#src/components/ui/button";
 import {
   type ExecutionEvent,
   type ExecutionLog,
+  type ExecutionWait,
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
 import { CollapsibleSection } from "./workflow-run-shared";
@@ -13,9 +15,12 @@ type WorkflowRunDetailProps = {
   runNumber: number;
   logs: ExecutionLog[];
   events: ExecutionEvent[];
+  waits: ExecutionWait[];
   isCanceling: boolean;
+  isResuming: boolean;
   onBack: () => void;
   onCancel: (executionId: string) => void;
+  onResume: (token: string) => void;
 };
 
 export function WorkflowRunDetail({
@@ -23,9 +28,12 @@ export function WorkflowRunDetail({
   runNumber,
   logs,
   events,
+  waits,
   isCanceling,
+  isResuming,
   onBack,
   onCancel,
+  onResume,
 }: WorkflowRunDetailProps) {
   const sortedLogs = logs.toSorted(
     (a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()
@@ -48,6 +56,34 @@ export function WorkflowRunDetail({
             : { type: "spacer" }
         }
       />
+
+      {waits.map((wait) => (
+        <div
+          className="space-y-1.5 rounded-md border bg-muted/30 p-2"
+          key={wait.id}
+        >
+          <p className="font-medium text-xs">Parked at {wait.nodeName}</p>
+          <p className="text-[11px] text-muted-foreground">
+            {wait.subscribedEvents.length > 0
+              ? `Waiting for ${wait.subscribedEvents.join(", ")}`
+              : "Waiting on a timer"}
+          </p>
+          {wait.resumeToken ? (
+            <Button
+              disabled={isResuming}
+              // The operator's way past an Event that is never going to come.
+              // It carries no payload, so a match downstream of it reads an
+              // empty object; that is the point of forcing the run onward.
+              onClick={() => onResume(wait.resumeToken ?? "")}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Resume now
+            </Button>
+          ) : null}
+        </div>
+      ))}
 
       {/* Timeline */}
       <WorkflowRunTimeline logs={sortedLogs} />

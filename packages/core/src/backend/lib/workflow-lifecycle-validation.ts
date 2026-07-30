@@ -12,7 +12,6 @@ import {
   readLifecycleRules,
 } from "@rova/shared/workflow/lifecycle-rules";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
-import { readWaitEventNames } from "@rova/shared/workflow/wait-events";
 
 export type WorkflowLifecycleValidationResult =
   | { valid: true }
@@ -27,7 +26,6 @@ export function validateWorkflowLifecycleRules(
   nodes: readonly WorkflowNode[]
 ): WorkflowLifecycleValidationResult {
   const catalog = getExtensions().catalog;
-  const waitEvents = readWaitEventNames(nodes);
 
   for (const node of nodes) {
     if (node.data.type !== "trigger") {
@@ -39,7 +37,7 @@ export function validateWorkflowLifecycleRules(
       continue;
     }
 
-    const check = checkLifecycleRules({ rules, catalog, waitEvents });
+    const check = checkLifecycleRules({ rules, catalog });
     if (!check.valid) {
       return check;
     }

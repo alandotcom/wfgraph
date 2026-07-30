@@ -17,6 +17,13 @@ function toDurationString(milliseconds: number): string {
   return `${seconds}s`;
 }
 
+/**
+ * Escapes a value into a double-quoted CEL literal for an Inngest expression.
+ *
+ * `escapeCelString` in `workflow-engine/core.ts` is the same escape for the
+ * single-quoted form, on the other side of the runtime port. Stage 7 brings that
+ * module across and is where the pair should become one.
+ */
 function escapeInngestExpressionString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }

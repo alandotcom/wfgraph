@@ -71,7 +71,7 @@ function withGraph(nodes: WorkflowNode[], children: ReactNode) {
   return <JotaiProvider store={store}>{children}</JotaiProvider>;
 }
 
-function waitNode(waitForEvents: string[]): WorkflowNode {
+function waitNode(events: string[]): WorkflowNode {
   return {
     id: "wait-1",
     type: "action",
@@ -79,7 +79,11 @@ function waitNode(waitForEvents: string[]): WorkflowNode {
     data: {
       label: "Wait",
       type: "action",
-      config: { actionType: "Wait", waitForEvents },
+      config: {
+        actionType: "Wait",
+        waitMode: "event",
+        waitFor: events.map((event) => ({ event })),
+      },
     },
   };
 }
@@ -348,10 +352,9 @@ describe("LifecyclePanel Correlation Paths", () => {
     expect(view.queryByLabelText("ops/nightly.swept")).toBeNull();
   });
 
-  // A Wait node matches by Entity Value too, so the Event it parks on is asked
-  // about here, and the node asking is named because it is not the one the builder
-  // is looking at.
-  it("asks for a wait Event's path and says which node wants it", () => {
+  // A Wait Subscription carries its own match expression, so nothing a Wait node
+  // parks on is asked about here. The rules answer for start and cancel roles.
+  it("asks nothing on account of a Wait node", () => {
     const view = render(
       withGraph(
         [waitNode(["ops/nightly.swept"])],
@@ -368,8 +371,8 @@ describe("LifecyclePanel Correlation Paths", () => {
       )
     );
 
-    expect(view.getByLabelText("ops/nightly.swept")).toBeTruthy();
-    expect(view.getByText("a Wait node parks on this")).toBeTruthy();
+    expect(view.queryByLabelText("ops/nightly.swept")).toBeNull();
+    expect(view.queryByText("This will not save")).toBeNull();
   });
 });
 
@@ -413,33 +416,6 @@ describe("LifecyclePanel refusals", () => {
 
     expect(
       view.getByText(/^No Event named "app\/appointment\.moved" is defined/)
-    ).toBeTruthy();
-  });
-
-  // The graph's Wait nodes are part of what a save is held to, so a wait on a
-  // pathless Event surfaces here rather than only from the server.
-  it("surfaces a wait Event's missing path as the save refusal", () => {
-    const view = render(
-      withGraph(
-        [waitNode(["ops/nightly.swept"])],
-        <ControlledPanel
-          initialConfig={{
-            lifecycleRules: {
-              startEvents: ["app/appointment.created"],
-              cancelEvents: [],
-              concurrency: "unlimited",
-              allowManualStart: true,
-            },
-          }}
-        />
-      )
-    );
-
-    expect(view.getByText("This will not save")).toBeTruthy();
-    expect(
-      view.getByText(
-        /^Event "ops\/nightly\.swept" declares no Correlation Path/
-      )
     ).toBeTruthy();
   });
 });

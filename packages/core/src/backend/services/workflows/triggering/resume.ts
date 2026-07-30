@@ -25,35 +25,27 @@ const loggerFor = (token: string) =>
     appLogger.get("workflow", "resume").with({ token })
   );
 
-export const postWorkflowResume = Effect.fn("postWorkflowResume")(
-  function* (input: {
-    token: string;
-    body: JsonObject;
-    authHeader: string | null;
-  }) {
-    const { token, body, authHeader } = input;
+/**
+ * Unparks one wait by its resume token, whatever the wait was subscribed to.
+ *
+ * The token is the whole of the address: no Event name and no match are consulted,
+ * which is what makes this the way out for a run parked on an Event that will
+ * never arrive. Two callers reach it, and each gates its own way in -- the machine
+ * route on an API key, the runs panel on the session it already holds.
+ */
+export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
+  function* (input: { token: string; body: JsonObject; source: string }) {
+    const { token, body } = input;
     const repo = yield* ExecutionRepo;
     const inngest = yield* InngestClient;
     const logger = yield* loggerFor(token);
 
-    // Credentials before the lookup, the ordering event intake uses too. A wait
-    // token travels in a URL and so accumulates in browser history, proxy logs,
-    // and referrers; answering "not found" versus "unauthorized" to a caller who
-    // has one but no API key tells them whether that token is still live.
-    yield* validateApiKey(authHeader).pipe(
-      Effect.tapError((failure) =>
-        logger.warn("Workflow resume rejected due to invalid API key", {
-          reason: failure.payload.error,
-        })
-      )
-    );
-
     const waitState = yield* repo.findWaitingStateByToken(token);
 
     if (!waitState) {
-      yield* logger.warn("Wait hook not found or no longer active");
+      yield* logger.warn("Wait not found or no longer active");
       return yield* Effect.fail(
-        new NotFound({ error: "Wait hook not found or no longer active" })
+        new NotFound({ error: "Wait not found or no longer active" })
       );
     }
 
@@ -68,9 +60,9 @@ export const postWorkflowResume = Effect.fn("postWorkflowResume")(
       markWaitStateStatus({ waitStateId: waitState.id, status: "resumed" })
     );
     if (!waitStateUpdated) {
-      yield* logger.warn("Wait hook changed state before resume update");
+      yield* logger.warn("Wait changed state before resume update");
       return yield* Effect.fail(
-        new Conflict({ error: "Wait hook not found or no longer active" })
+        new Conflict({ error: "Wait not found or no longer active" })
       );
     }
 
@@ -81,7 +73,7 @@ export const postWorkflowResume = Effect.fn("postWorkflowResume")(
         workflowId: waitState.workflowId,
         executionId: waitState.executionId,
         eventType: "run_resumed",
-        message: "Run resumed from external hook endpoint",
+        message: `Run resumed from ${input.source}`,
         metadata: {
           token,
         },
@@ -96,15 +88,47 @@ export const postWorkflowResume = Effect.fn("postWorkflowResume")(
     return resumed;
   },
   (effect, input) =>
-    // A machine route across origins: the caller holds a resume token, not our
-    // confidence, so the cause goes to the log and they get a stated sentence.
+    // The caller holds a resume token, not our confidence, so the cause goes to
+    // the log and they get a stated sentence.
     effect.pipe(
       Effect.catchTags(
         statedSeamFailureHandlers(
           loggerFor(input.token),
-          "Failed to resume wait hook",
+          "Failed to resume wait",
           "Could not resume this wait"
         )
       )
     )
+);
+
+/**
+ * The machine route's resume: an API key, then the token.
+ *
+ * Credentials before the lookup, the ordering event intake uses too. A wait token
+ * travels in a URL and so accumulates in browser history, proxy logs, and
+ * referrers; answering "not found" versus "unauthorized" to a caller who has one
+ * but no API key tells them whether that token is still live.
+ */
+export const postWorkflowResume = Effect.fn("postWorkflowResume")(
+  function* (input: {
+    token: string;
+    body: JsonObject;
+    authHeader: string | null;
+  }) {
+    yield* validateApiKey(input.authHeader).pipe(
+      Effect.tapError((failure) =>
+        Effect.andThen(loggerFor(input.token), (logger) =>
+          logger.warn("Workflow resume rejected due to invalid API key", {
+            reason: failure.payload.error,
+          })
+        )
+      )
+    );
+
+    return yield* resumeWaitByToken({
+      token: input.token,
+      body: input.body,
+      source: "the resume endpoint",
+    });
+  }
 );
