@@ -55,8 +55,8 @@ const served: ExtensionCatalog = {
 };
 
 /**
- * The endpoint's whole answer. The catalog arrives beside what the old registries
- * send, and this hydration reads its own member out of it.
+ * The endpoint's whole answer, which is one member: `catalog`. Passing the envelope
+ * rather than the document is what the cases below decoding a malformed one need.
  */
 function respondWith(body: unknown, status = 200): void {
   vi.stubGlobal(

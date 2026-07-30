@@ -1,6 +1,5 @@
 import { type JsonObject, readJsonObject } from "#src/types/json";
 import { asNonEmptyString } from "#src/types/string";
-import type { WorkflowTriggerDefinition } from "#src/workflow/trigger-registry";
 
 /**
  * Reads the mock request body a user typed into the trigger's editor, stored as
@@ -26,26 +25,4 @@ export function parseWebhookMockInput(
   } catch {
     return undefined;
   }
-}
-
-/**
- * The webhook trigger validates nothing: the builder's request schema is editor
- * guidance, and the service doing the sending is outside the builder's control, so
- * every payload classifies. It names no Event Type or Correlation Key either --
- * which Events start a run, and where each carries its Entity Value, is the
- * Lifecycle Rules' declaration now (ADR-0007).
- */
-export function createWebhookTriggerDefinition(): WorkflowTriggerDefinition {
-  return {
-    runtime: {
-      type: "Webhook",
-      executionType: "webhook",
-      evaluate() {
-        return { ok: true, eventType: undefined, correlationKey: undefined };
-      },
-    },
-    ui: {
-      label: "Webhook",
-    },
-  };
 }

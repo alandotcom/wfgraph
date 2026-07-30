@@ -14,7 +14,16 @@
 
 import type { IntegrationTestLoader } from "#src/backend/lib/extensions/integration-test";
 import type { ActionStep } from "#src/backend/lib/steps/define-step";
-import type { CredentialFieldMetadata } from "@rova/shared/extensions/catalog";
+import {
+  type CredentialFieldMetadata,
+  formatActionId,
+} from "@rova/shared/extensions/catalog";
+import { flattenConfigFields } from "@rova/shared/plugins/action-fields";
+import type { ReferenceField } from "@rova/shared/workflow/node-references";
+import {
+  requireOutputFieldsFromSchema,
+  requiredKeysFromSchema,
+} from "@rova/shared/workflow/output-fields";
 
 /**
  * An integration's credential form, with each `envVar` kept as a literal type.
@@ -45,10 +54,8 @@ export type IntegrationDefinition = {
   /**
    * Keys the stored credentials, and prefixes every action id.
    *
-   * `string` is a closed union while a global map is keyed by one, so a
-   * type outside it fails to compile here rather than reaching an editor that
-   * quietly drops the integration. B4 deletes the union and this widens to a
-   * string.
+   * Any string: the set of types a server holds is whatever was passed to
+   * `createRovaApp`, and the assembled catalog is what a reader asks.
    */
   readonly type: string;
   readonly label: string;
@@ -75,4 +82,77 @@ export function defineIntegration(input: {
   readonly actions: Readonly<Record<string, ActionStep>>;
 }): IntegrationDefinition {
   return { kind: "integration", ...input };
+}
+
+/** One action of an integration, named and with its field list derived. */
+export type CheckedAction = {
+  /** `${integration.type}/${slug}`, which is where the id first exists. */
+  readonly id: string;
+  readonly step: ActionStep;
+  /** What the editor offers downstream nodes, read from the output schema. */
+  readonly outputFields: readonly ReferenceField[];
+};
+
+/**
+ * Every key an action's config form insists on a value for, groups flattened.
+ *
+ * A group is a rendering decision, so a field inside one fills its key the same
+ * as a field beside it.
+ */
+function requiredFieldKeys(step: ActionStep): Set<string> {
+  return new Set(
+    flattenConfigFields(step.configFields)
+      .filter((field) => field.required === true)
+      .map((field) => field.key)
+  );
+}
+
+/**
+ * A key the step cannot run without needs a field a builder has to fill in.
+ *
+ * The compiler already holds each declared field to a key the schema names; this
+ * is the other half. A field that is merely present is not enough: one a builder
+ * may leave blank produces the config with the key missing, which is the
+ * every-run decode failure this check exists to prevent.
+ */
+function assertRequiredKeysHaveFields(
+  actionId: string,
+  step: ActionStep
+): void {
+  const required = requiredFieldKeys(step);
+  const missing = requiredKeysFromSchema(step.input).filter(
+    (key) => !required.has(key)
+  );
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Action "${actionId}" cannot run without the config keys ${missing.join(", ")}, and declares no field marked required for them, so a builder could save a node that fails on every run. Mark a field for each \`required: true\`, or make the key optional in the input schema.`
+    );
+  }
+}
+
+/**
+ * Hold an integration's actions to what the editor and the engine need of them,
+ * naming the offender.
+ *
+ * Assembly calls this for every integration a host passes, so a bad definition
+ * fails the app that turned it on. It is exported for the package that wrote the
+ * definition to call in its own suite: a host meeting the throw at startup is the
+ * right place for a host and the wrong place for the author, where a missing
+ * annotation would otherwise pass review as a green run.
+ */
+export function checkIntegration(
+  integration: IntegrationDefinition
+): readonly CheckedAction[] {
+  return Object.entries(integration.actions).map(([slug, step]) => {
+    const id = formatActionId(integration.type, slug);
+
+    const outputFields = requireOutputFieldsFromSchema(
+      `Action "${id}"`,
+      step.output
+    );
+    assertRequiredKeysHaveFields(id, step);
+
+    return { id, step, outputFields };
+  });
 }

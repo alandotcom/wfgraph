@@ -61,9 +61,10 @@ describe("createRovaApp mounted at the root", () => {
     const app = await createTestApp();
     try {
       const response = await get(app, "/api/extensions");
+      const payload = await response.json();
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({
+      expect(payload).toMatchObject({
         // The catalog is the one channel the editor learns the surface through,
         // so an app that starts serves all three of its lists.
         catalog: {
@@ -72,6 +73,9 @@ describe("createRovaApp mounted at the root", () => {
           integrations: expect.any(Array),
         },
       });
+      // And it is the whole envelope. The browser reads this one member, so a
+      // second one here would be a surface the editor never sees.
+      expect(Object.keys(payload as object)).toEqual(["catalog"]);
     } finally {
       await app.dispose();
     }
@@ -129,7 +133,10 @@ describe("createRovaApp mounted at the root", () => {
         };
       };
 
+      // The database connection Rova ships is in the catalog beside it, so what a
+      // host passed is one entry of the list rather than the whole of it.
       expect(payload.catalog.integrations).toEqual([
+        expect.objectContaining({ type: "database", hasTest: true }),
         expect.objectContaining({ type: "twilio", hasTest: false }),
       ]);
       // The id is computed from the type and the record key, and the field list
@@ -515,15 +522,16 @@ describe("createRovaApp configuration", () => {
     }
   });
 
-  // Registering an action id twice throws, so a second app carrying the same
-  // action only starts if dispose gave the first one's registrations back. What
-  // proves it arrived is the catalog: a host's own actions reach the editor
-  // through it like any other.
-  it("releases its registrations on dispose", async () => {
+  // A host's own action reaches the editor through the catalog like any other, and
+  // it does so from the definition the host passed rather than from anything
+  // startup registered. Two apps in sequence is what says so: the surface is
+  // assembled per app and given back on dispose, so the same definition serves the
+  // second one as well.
+  it("serves a host's own action from the definition it was handed", async () => {
     const action = createAction({
-      id: "dispose/probe",
-      label: "Dispose Probe",
-      description: "Registered twice, on purpose",
+      id: "host/probe",
+      label: "Host Probe",
+      description: "Passed to two apps, on purpose",
       schema: Schema.Struct({ id: Schema.String }),
       outputSchema: Schema.Struct({
         id: Schema.String.annotate({ description: "What it echoed" }),
@@ -531,21 +539,22 @@ describe("createRovaApp configuration", () => {
       execute: ({ payload }) => ({ success: true, data: { id: payload.id } }),
     });
 
-    const first = await createRovaApp({ ...BASE_OPTIONS, actions: [action] });
+    const first = await createRovaApp({
+      ...BASE_OPTIONS,
+      extensions: { actions: [action] },
+    });
     await first.dispose();
 
     const second = await createRovaApp({
       ...BASE_OPTIONS,
-      actions: [action],
+      extensions: { actions: [action] },
     });
     try {
       const { catalog } = (await (
         await get(second, "/api/extensions")
       ).json()) as { catalog: { actions: Array<{ id: string }> } };
 
-      expect(catalog.actions.map((entry) => entry.id)).toContain(
-        "dispose/probe"
-      );
+      expect(catalog.actions.map((entry) => entry.id)).toContain("host/probe");
     } finally {
       await second.dispose();
     }

@@ -161,13 +161,13 @@ app's port (4017).
 
 ## Embedding
 
-Rova Workflow Builder mounts into a host app as a single fetch handler. Import `@rova/core/app` for the `createRovaApp` factory, and `@rova/core` for the `createAction`/`createTrigger` helpers. The handler has the shape `(request: Request) => Promise<Response>`, so Bun, Deno, Cloudflare Workers, and Node 18+ consume it directly.
+Rova Workflow Builder mounts into a host app as a single fetch handler. Import `@rova/core/app` for the `createRovaApp` factory, and `@rova/core` for the `defineEvent`/`createAction` helpers. The handler has the shape `(request: Request) => Promise<Response>`, so Bun, Deno, Cloudflare Workers, and Node 18+ consume it directly.
 
 ```ts
 import { createServer } from "node:http";
 import { Schema } from "effect";
 import { clientBundle } from "@rova/client";
-import { createAction, createTrigger } from "@rova/core";
+import { createAction, defineEvent } from "@rova/core";
 import { createRovaApp } from "@rova/core/app";
 import { createRequestListener } from "@rova/core/node";
 
@@ -190,25 +190,21 @@ const action = createAction({
   },
 });
 
-// A trigger describes the payload a run receives: its schema, and where the
-// correlation key lives. What starts a run, and what happens to the runs
-// already going, is the workflow's Lifecycle Rules, written in the editor's
-// Lifecycle panel and named in Events rather than in trigger event types.
-const trigger = createTrigger({
-  type: "CustomWebhook",
-  label: "Custom Webhook",
-  description: "Classifies custom webhook events",
-  logoUrl: "https://cdn.example.com/logos/custom-trigger.svg",
+// An Event is a named payload shape your app raises: a name, a schema, and where
+// the payload carries the value identifying the entity a run tracks. It holds no
+// lifecycle role. Which workflow starts on it, which cancels on it, and how many
+// runs one entity may have at once are each Workflow Builder's declaration in the
+// editor's Lifecycle panel.
+const entityCreated = defineEvent({
+  name: "app/entity.created",
+  label: "Entity created",
+  description: "Raised when an entity is first stored.",
   schema: Schema.Struct({
-    event: Schema.Literals([
-      "entity.created",
-      "entity.updated",
-      "entity.deleted",
-    ]),
-    entity: Schema.Struct({ id: Schema.String }),
+    entity: Schema.Struct({
+      id: Schema.String.annotate({ description: "Entity ID" }),
+    }).annotate({ description: "The entity this event is about" }),
   }),
-  correlationIdPath: "entity.id",
-  eventTypePath: "event",
+  correlationPath: "entity.id",
 });
 
 const rova = await createRovaApp({
@@ -225,8 +221,13 @@ const rova = await createRovaApp({
     eventKey: process.env.INNGEST_EVENT_KEY,
     signingKey: process.env.INNGEST_SIGNING_KEY,
   },
-  actions: [action],
-  triggers: [trigger],
+  // The whole extension surface, in one place. Nothing registers itself, so this
+  // is what turns each half on: `builtInIntegrations` from `@rova/plugins` goes
+  // under `integrations` beside them.
+  extensions: {
+    events: [entityCreated],
+    actions: [action],
+  },
 });
 
 // rova.fetch answers the API under /api/* and, since a client was handed over,
@@ -311,7 +312,7 @@ An integration is one `defineIntegration` value: its credential form, a `defineS
 
 ### Package exports
 
-- `@rova/core` -- `createAction`, `createTrigger`, and related types.
+- `@rova/core` -- `defineEvent`, `createAction`, and related types.
 - `@rova/core/app` -- `createRovaApp` factory, `RovaAppOptions`, `RovaApp`, and re-exported config types.
 - `@rova/core/node` -- `createRequestListener`, for hosts on Express, Fastify, or `node:http`.
 - `@rova/core/plugin` -- what an integration package builds against.
@@ -373,14 +374,12 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
   - `schema` validates resolved action input at runtime. Write it in Effect Schema, Zod, or arktype and pass it as it is — `createAction` takes each in the form its library produces.
   - `execute({ payload, context })` receives typed payload validated by `schema`.
   - `id`, `label`, `description`, `category`, `logoUrl`, `configFields`, and `outputFields` define action metadata.
-- Trigger extensions are strict-schema triggers via `createTrigger(...)`:
-  - `type` is the stable trigger ID and must be unique.
-  - `schema` validates inbound payloads at runtime, in whichever library you wrote it. A payload that fails is ignored as `invalid_payload`.
-  - `correlationIdPath` is required and typed from the payload schema (`string` fields only). Runs sharing its value belong to the same entity: Replace and Cancel act on them, and Waits resume on them.
-  - `eventTypePath` names where the event type lives in the payload.
-  - What a workflow does when something arrives is the workflow's own declaration: the Lifecycle panel names the Events that start a run, the Concurrency between runs of one entity, and whether manual runs are allowed. A trigger says nothing about it. Events are declared with `defineEvent` and passed to `createRovaApp`.
-  - `label`, `description`, `logoUrl`, and `configFields` control editor metadata.
-- `logoUrl` is optional; when provided, it is rendered in trigger/action selectors.
+- Events are declared with `defineEvent(...)` and passed under `extensions.events`:
+  - `name` is the Event's identity in Rova, and by default the name it arrives under. `source` separates the two for an existing bus that sends one umbrella name.
+  - `schema` validates an arriving payload, in whichever library you wrote it. A payload that fails is refused at intake, and the sender is told why.
+  - `correlationPath` names where the payload carries its Entity Value, typed from the schema (`string` fields only). Runs sharing that value are about the same entity: Concurrency and Cancel act on them, and a Wait resumes on them.
+  - What a workflow does when an Event arrives is that workflow's own declaration: the Lifecycle panel names the Events that start a run, the Events that cancel one, the Concurrency between runs of one entity, and whether manual runs are allowed. An Event says nothing about any of it.
+- `logoUrl` is optional; when provided, it is rendered in the action selector.
 
 ## Run In Production
 

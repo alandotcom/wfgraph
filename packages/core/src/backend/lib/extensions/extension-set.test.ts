@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import type { ActionMetadata } from "@rova/shared/extensions/catalog";
+import { findIntegration } from "@rova/shared/extensions/catalog";
+import { createAction } from "@rova/shared/workflow/action-registry";
 import { defineEvent } from "#src/backend/lib/extensions/define-event";
 import {
   defineIntegration,
@@ -28,15 +29,16 @@ function anEvent(
   });
 }
 
-function anAction(id: string, category = "Appointments"): ActionMetadata {
-  return {
+/** A host's own action, which carries its `execute` into the set. */
+function anAction(id: string, category = "Appointments") {
+  return createAction({
     id,
     label: id,
     description: `The ${id} action`,
     category,
-    configFields: [],
-    outputFields: [],
-  };
+    schema: Schema.Struct({ appointmentId: Schema.String }),
+    execute: ({ payload }) => ({ success: true, data: { echoed: payload } }),
+  });
 }
 
 const sendSmsHandler = Effect.fn(function* () {
@@ -83,8 +85,37 @@ describe("assembleExtensions", () => {
     const { catalog, events } = assembleExtensions({});
 
     expect(catalog.events).toEqual([]);
-    expect(catalog.integrations).toEqual([]);
     expect(events).toEqual([]);
+  });
+
+  // The database connection the engine's own Database Query action runs against is
+  // a catalog entry, so the connections dialog reads it from the same place it
+  // reads every other integration and nothing spells it out twice.
+  it("puts the database integration in the catalog", () => {
+    const { catalog, connectionTestFor } = assembleExtensions({});
+
+    expect(catalog.integrations).toEqual([
+      expect.objectContaining({
+        type: "database",
+        label: "Database",
+        hasTest: true,
+      }),
+    ]);
+    expect(connectionTestFor("database")).toBeDefined();
+  });
+
+  // The URL is what a Database Query step reads as DATABASE_URL, and it is marked a
+  // password so the masking layer treats a stored connection string as a secret.
+  it("declares the database URL as a secret credential field", () => {
+    const { catalog } = assembleExtensions({});
+
+    expect(catalog.integrations[0]?.credentialFields).toEqual([
+      expect.objectContaining({
+        configKey: "url",
+        envVar: "DATABASE_URL",
+        type: "password",
+      }),
+    ]);
   });
 
   it("puts the four built-in actions in the catalog", () => {
@@ -104,6 +135,35 @@ describe("assembleExtensions", () => {
     });
 
     expect(catalog.actions.at(-1)?.id).toBe("appointments/cancel");
+  });
+
+  // A host action is a step the engine calls like any other, which is the whole of
+  // what dispatch needs to know about it. The context is what the engine puts in
+  // the record, and the action id is what `stepFor` is keyed on.
+  it("answers with a step for a host's own action", async () => {
+    const set = assembleExtensions({
+      actions: [anAction("appointments/cancel")],
+    });
+
+    const step = set.stepFor("appointments/cancel");
+
+    expect(
+      await step?.({
+        appointmentId: "appt_1",
+        _context: {
+          nodeId: "action_1",
+          nodeName: "Cancel",
+          nodeType: "action",
+        },
+      })
+    ).toEqual({
+      success: true,
+      data: { echoed: { appointmentId: "appt_1" } },
+    });
+  });
+
+  it("has no step for an action nothing declared", () => {
+    expect(assembleExtensions({}).stepFor("nobody/knows")).toBeUndefined();
   });
 
   it("carries an Event's label, Correlation Path and payload fields into the catalog", () => {
@@ -164,9 +224,8 @@ describe("assembleExtensions", () => {
     expect(set.eventByName("app/appointment.canceled")).toBeUndefined();
   });
 
-  // One listener per Event, so what the registry iterates is the Events
-  // themselves. Several may share a source name and each narrows it with its own
-  // filter.
+  // One listener per Event, so what the set hands back is the Events themselves.
+  // Several may share a source name and each narrows it with its own filter.
   it("holds every Event, which is the listener set", () => {
     const set = assembleExtensions({
       events: [
@@ -333,14 +392,14 @@ describe("assembleExtensions and an integration definition", () => {
       ],
     });
 
-    expect(set.catalog.integrations[0].hasTest).toBe(true);
+    expect(findIntegration(set.catalog, "twilio")?.hasTest).toBe(true);
     expect(await set.connectionTestFor("twilio")?.()).toBe(testTwilio);
   });
 
   it("says an integration has no test when it carries no loader", () => {
     const set = assembleExtensions({ integrations: [aDefinition("twilio")] });
 
-    expect(set.catalog.integrations[0].hasTest).toBe(false);
+    expect(findIntegration(set.catalog, "twilio")?.hasTest).toBe(false);
     expect(set.connectionTestFor("twilio")).toBeUndefined();
   });
 
@@ -360,7 +419,7 @@ describe("assembleExtensions and an integration definition", () => {
       ],
     });
 
-    expect(catalog.integrations[0].credentialFields).toEqual([
+    expect(findIntegration(catalog, "twilio")?.credentialFields).toEqual([
       {
         label: "Auth Token",
         type: "password",

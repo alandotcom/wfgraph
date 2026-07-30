@@ -4,7 +4,7 @@ import {
   createClerkBackendClient,
   getClerkApiErrorMessage,
 } from "#src/clerk/client";
-import { deleteUserInput, type ClerkCredentials } from "#src/clerk/index";
+import type { ClerkCredentials, deleteUserInput } from "#src/clerk/index";
 
 /**
  * Named rather than written inline, so a test can run it with a context it
@@ -14,8 +14,6 @@ export const clerkDeleteUserHandler = Effect.fn(function* (
   input: typeof deleteUserInput.Type,
   context: StepRunContext<ClerkCredentials>
 ) {
-  // The plugin's own credential vocabulary, so a key it never declares is a
-  // compile error here rather than an undefined at run time.
   const credentials = yield* context.credentials;
   const secretKey = credentials.CLERK_SECRET_KEY;
 

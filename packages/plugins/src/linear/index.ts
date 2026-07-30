@@ -6,9 +6,9 @@
  * file. Linear's SDK is a runtime import of both `steps/` and `errors.ts`, so
  * `load` is what keeps it out of a process that never runs a Linear action: a
  * handler's module is imported the first time its action runs, and this file holds
- * only what the editor needs. The schemas are exported for those modules to type
- * themselves against, which is why they are the only exports beside the
- * integration.
+ * only what the editor needs. Each input schema is exported for the handler module
+ * to type its parameter against; an output schema is read here and nowhere else,
+ * because a handler's return type is inferred from it.
  *
  * Only the server imports this. The editor gets the metadata below as JSON over
  * `/api/extensions`, and the icon stays in `ui.ts`.
@@ -46,7 +46,6 @@ const linearCredentialFields = credentialFields([
   },
 ]);
 
-/** The credential keys a Linear handler may read, derived from the fields above. */
 export type LinearCredentials = CredentialsOf<typeof linearCredentialFields>;
 
 /**
@@ -61,7 +60,7 @@ export const createTicketInput = Schema.Struct({
   ticketDescription: Schema.optionalKey(Schema.String),
 });
 
-export const createTicketOutput = Schema.Struct({
+const createTicketOutput = Schema.Struct({
   id: Schema.String.annotate({ description: "Ticket ID" }),
   url: Schema.String.annotate({ description: "Ticket URL" }),
   title: Schema.String.annotate({ description: "Ticket title" }),
@@ -97,7 +96,7 @@ const linearIssueSchema = Schema.Struct({
   ),
 });
 
-export const findIssuesOutput = Schema.Struct({
+const findIssuesOutput = Schema.Struct({
   issues: Schema.Array(linearIssueSchema).annotate({
     description: "Array of issues found",
   }),

@@ -12,9 +12,8 @@
 import { Effect, Schema, SchemaTransformation } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createAction,
   type RuntimeActionResult,
-  registerRuntimeAction,
-  unregisterRuntimeAction,
 } from "@rova/shared/workflow/action-registry";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
@@ -112,33 +111,37 @@ const branchAction = vi.fn<() => RuntimeActionResult>(() => ({
   data: { ok: true },
 }));
 
+function aHostAction(
+  id: string,
+  label: string,
+  execute: () => RuntimeActionResult
+) {
+  return createAction({
+    id,
+    label,
+    description: `Test ${label} action`,
+    schema: Schema.Struct({}),
+    execute,
+  });
+}
+
 describe("workflow engine replay safety", () => {
   let store: RecordingWorkflowStore;
 
   beforeEach(() => {
     // The engine reads the assembled surface for an action's step and its label,
-    // and `getExtensions` throws outside an app. These cases run runtime actions,
-    // so an empty assembly is all they need.
-    configureExtensions(assembleExtensions({}));
+    // and `getExtensions` throws outside an app, so the three host actions these
+    // cases run reach the engine the way a host's own would.
+    configureExtensions(
+      assembleExtensions({
+        actions: [
+          aHostAction(EMAIL_ACTION_ID, "Send Email", emailAction),
+          aHostAction(FOLLOWUP_ACTION_ID, "Send Followup", followupAction),
+          aHostAction(BRANCH_ACTION_ID, "Branch Action", branchAction),
+        ],
+      })
+    );
     store = createRecordingWorkflowStore();
-    registerRuntimeAction({
-      id: EMAIL_ACTION_ID,
-      label: "Send Email",
-      description: "Test email action",
-      execute: emailAction,
-    });
-    registerRuntimeAction({
-      id: FOLLOWUP_ACTION_ID,
-      label: "Send Followup",
-      description: "Test followup action",
-      execute: followupAction,
-    });
-    registerRuntimeAction({
-      id: BRANCH_ACTION_ID,
-      label: "Branch Action",
-      description: "Test fan-out action",
-      execute: branchAction,
-    });
 
     emailAction.mockClear();
     followupAction.mockClear();
@@ -147,9 +150,6 @@ describe("workflow engine replay safety", () => {
 
   afterEach(() => {
     clearExtensions();
-    unregisterRuntimeAction(EMAIL_ACTION_ID);
-    unregisterRuntimeAction(FOLLOWUP_ACTION_ID);
-    unregisterRuntimeAction(BRANCH_ACTION_ID);
   });
 
   // Trigger -> Send Email -> Wait -> Send Followup, the shape that produced

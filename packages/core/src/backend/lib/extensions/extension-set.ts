@@ -12,23 +12,25 @@
  * slug is a record key the definition never spells out twice.
  */
 
-import { flattenConfigFields } from "@rova/shared/plugins/action-fields";
 import type {
   ActionMetadata,
   EventMetadata,
   ExtensionCatalog,
   IntegrationMetadata,
 } from "@rova/shared/extensions/catalog";
-import {
-  requireOutputFieldsFromSchema,
-  requiredKeysFromSchema,
-} from "@rova/shared/workflow/output-fields";
+import type { RuntimeExtensionActionDefinition } from "@rova/shared/workflow/action-registry";
 import type { StepFunction } from "@rova/shared/workflow/step-result";
-import { builtInActions } from "#src/backend/lib/extensions/built-ins";
+import {
+  builtInActions,
+  databaseIntegration,
+} from "#src/backend/lib/extensions/built-ins";
 import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
 import type { AnyEventDefinition } from "#src/backend/lib/extensions/define-event";
-import type { IntegrationDefinition } from "#src/backend/lib/extensions/define-integration";
-import type { ActionStep } from "#src/backend/lib/steps/define-step";
+import {
+  checkIntegration,
+  type IntegrationDefinition,
+} from "#src/backend/lib/extensions/define-integration";
+import { hostActionStep } from "#src/backend/lib/steps/host-action-step";
 import type { IntegrationTestLoader } from "#src/backend/lib/extensions/integration-test";
 
 /**
@@ -42,16 +44,15 @@ export type RegisteredEvent = AnyEventDefinition;
 /**
  * What a host hands over.
  *
- * An integration arrives as a definition, so its actions bring their step
- * implementations with them and this set can answer for both halves. `actions` is
- * a host's own, which carry their implementation in the runtime action registry
- * `createRovaApp` fills; they reach this as metadata because that is all the
- * catalog wants from them.
+ * Every kind arrives as a definition carrying its own implementation, so this set
+ * answers for both halves of the surface and nothing has to be registered
+ * anywhere for it to. An integration brings a step per action and a connection
+ * test; a host's own action, from `createAction`, brings its `execute`.
  */
 export type RovaExtensions = {
   readonly events?: readonly AnyEventDefinition[];
   readonly integrations?: readonly IntegrationDefinition[];
-  readonly actions?: readonly ActionMetadata[];
+  readonly actions?: readonly RuntimeExtensionActionDefinition[];
 };
 
 export type ExtensionSet = {
@@ -142,6 +143,14 @@ function assertDistinctListenerIds(events: readonly RegisteredEvent[]): void {
   }
 }
 
+/**
+ * Two actions may not share an id.
+ *
+ * The whole surface goes through this in one list, so a host action colliding with
+ * a built-in, with an integration's, or with another host action is one failure
+ * with one message. The engine dispatches on the id, so it names one
+ * implementation.
+ */
 function assertDistinctActionIds(actions: readonly ActionMetadata[]): void {
   const seen = new Set<string>();
 
@@ -188,67 +197,29 @@ function toEventMetadata(event: RegisteredEvent): EventMetadata {
 }
 
 /**
- * Every key an action's config form insists on a value for, groups flattened.
+ * Where the two halves an integration's action has are put.
  *
- * A group is a rendering decision, so a field inside one fills its key the same
- * as a field beside it.
+ * The catalog half crosses the wire; the step half stays here for `stepFor` to
+ * answer with, keyed by the same id.
  */
-function requiredFieldKeys(step: ActionStep): Set<string> {
-  return new Set(
-    flattenConfigFields(step.configFields)
-      .filter((field) => field.required === true)
-      .map((field) => field.key)
-  );
-}
-
-/**
- * A key the step cannot run without needs a field a builder has to fill in.
- *
- * The compiler already holds each declared field to a key the schema names; this
- * is the other half. A field that is merely present is not enough: one a builder
- * may leave blank produces the config with the key missing, which is the
- * every-run decode failure this check exists to prevent.
- */
-function assertRequiredKeysHaveFields(
-  actionId: string,
-  step: ActionStep
-): void {
-  const required = requiredFieldKeys(step);
-  const missing = requiredKeysFromSchema(step.input).filter(
-    (key) => !required.has(key)
-  );
-
-  if (missing.length > 0) {
-    throw new Error(
-      `Action "${actionId}" cannot run without the config keys ${missing.join(", ")}, and declares no field marked required for them, so a builder could save a node that fails on every run. Mark a field for each \`required: true\`, or make the key optional in the input schema.`
-    );
-  }
-}
+type Assembly = {
+  actions: ActionMetadata[];
+  steps: Map<string, StepFunction>;
+  tests: Map<string, IntegrationTestLoader>;
+};
 
 /**
  * An integration's actions, as the catalog lists them and as the engine runs them.
  *
- * This is where the action id exists: nothing before it holds both the
- * integration's type and the slug, which is why the derived field list and both
- * checks over an action's schemas happen here rather than at definition.
+ * `checkIntegration` is where the action id is computed and where the definition
+ * is held to what the editor and the engine need: nothing before it holds both the
+ * integration's type and the slug.
  */
 function readIntegration(
   integration: IntegrationDefinition,
-  into: {
-    actions: ActionMetadata[];
-    steps: Map<string, StepFunction>;
-    tests: Map<string, IntegrationTestLoader>;
-  }
+  into: Assembly
 ): IntegrationMetadata {
-  for (const [slug, step] of Object.entries(integration.actions)) {
-    const id = `${integration.type}/${slug}`;
-
-    const outputFields = requireOutputFieldsFromSchema(
-      `Action "${id}"`,
-      step.output
-    );
-    assertRequiredKeysHaveFields(id, step);
-
+  for (const { id, step, outputFields } of checkIntegration(integration)) {
     into.actions.push({
       id,
       label: step.label,
@@ -274,38 +245,66 @@ function readIntegration(
   };
 }
 
+/**
+ * A host's own action, in both halves the same way an integration's is.
+ *
+ * `createAction` has already derived the config fields and the output fields from
+ * the author's schemas and normalized the rest, so the metadata is read straight
+ * off the definition. Its `execute` becomes a step the engine calls the same way
+ * it calls an integration's, so dispatch has one kind of thing to find.
+ */
+function readHostAction(
+  action: RuntimeExtensionActionDefinition,
+  into: Assembly
+): void {
+  into.actions.push({
+    id: action.id,
+    label: action.label,
+    description: action.description,
+    category: action.category,
+    ...(action.logoUrl ? { logoUrl: action.logoUrl } : {}),
+    configFields: action.configFields ?? [],
+    outputFields: action.outputFields ?? [],
+  });
+  into.steps.set(action.id, hostActionStep(action));
+}
+
 export function assembleExtensions(input: RovaExtensions): ExtensionSet {
   const eventsByName = indexEvents(input.events ?? []);
   const events = Array.from(eventsByName.values());
   assertSourcesAreDistinguishable(events);
   assertDistinctListenerIds(events);
 
-  const steps = new Map<string, StepFunction>();
-  const tests = new Map<string, IntegrationTestLoader>();
-  const definedActions: ActionMetadata[] = [];
-  const definedIntegrations = (input.integrations ?? []).map((integration) =>
-    readIntegration(integration, { actions: definedActions, steps, tests })
+  // The built-ins go in first, so anything colliding with one of them is caught
+  // by the same check as any other collision.
+  const into: Assembly = {
+    actions: [...builtInActions],
+    steps: new Map(),
+    tests: new Map(),
+  };
+
+  // The database goes in first for the same reason the built-in actions do, and it
+  // is what makes a host integration typed "database" a collision rather than a
+  // silent replacement of the engine's own connection form.
+  const integrations = [databaseIntegration, ...(input.integrations ?? [])].map(
+    (integration) => readIntegration(integration, into)
   );
 
-  // The built-ins go in first, so a host action colliding with one of them is
-  // caught by the same check as any other collision.
-  const actions = [
-    ...builtInActions,
-    ...definedActions,
-    ...(input.actions ?? []),
-  ];
-  assertDistinctActionIds(actions);
+  for (const action of input.actions ?? []) {
+    readHostAction(action, into);
+  }
 
-  assertDistinctIntegrationTypes(definedIntegrations);
+  assertDistinctActionIds(into.actions);
+  assertDistinctIntegrationTypes(integrations);
 
   return {
     catalog: {
       events: events.map(toEventMetadata),
-      actions,
-      integrations: definedIntegrations,
+      actions: into.actions,
+      integrations,
     },
-    stepFor: (actionId) => steps.get(actionId),
-    connectionTestFor: (type) => tests.get(type),
+    stepFor: (actionId) => into.steps.get(actionId),
+    connectionTestFor: (type) => into.tests.get(type),
     eventByName: (name) => eventsByName.get(name),
     events,
   };

@@ -7,7 +7,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import {
   AlertTriangle,
-  Code,
   Database,
   EyeOff,
   GitBranch,
@@ -317,43 +316,23 @@ const getModelDisplayName = (modelId: string): string => {
   return modelNames[modelId] || modelId;
 };
 
-// System action labels (non-plugin actions)
-const SYSTEM_ACTION_LABELS: Record<string, string> = {
-  "HTTP Request": "System",
-  "Database Query": "Database",
-  Condition: "Condition",
-  "Execute Code": "System",
-  Wait: "System",
-};
-
-// Helper to get integration name from action type
+// The badge over an action node: the integration it belongs to, by the label that
+// integration goes by. An action belonging to none reads as "System", which is the
+// engine's own -- and Database Query is not one of those, because it names the
+// database connection it runs against.
 const getIntegrationFromActionType = (actionType: string): string => {
-  // Check if it's a system action first
-  if (SYSTEM_ACTION_LABELS[actionType]) {
-    return SYSTEM_ACTION_LABELS[actionType];
-  }
-
   const catalog = getExtensionCatalog();
   const integrationType = findAction(catalog, actionType)?.integration;
-  if (integrationType) {
-    return findIntegration(catalog, integrationType)?.label || "System";
-  }
 
-  return "System";
+  return integrationType
+    ? findIntegration(catalog, integrationType)?.label || "System"
+    : "System";
 };
 
-// Helper to check if an action requires an integration
-const requiresIntegration = (actionType: string): boolean => {
-  // System actions that require integration configuration
-  const systemActionsRequiringIntegration = ["Database Query"];
-  if (systemActionsRequiringIntegration.includes(actionType)) {
-    return true;
-  }
-
-  // Plugin actions always require integration
-  const action = findAction(getExtensionCatalog(), actionType);
-  return Boolean(action?.integration);
-};
+// Whether this action needs a connection, which the catalog answers for every
+// action alike: the engine's own Database Query names "database" there too.
+const requiresIntegration = (actionType: string): boolean =>
+  Boolean(findAction(getExtensionCatalog(), actionType)?.integration);
 
 // Helper to get provider logo for action type
 const getProviderLogo = (actionType: string) => {
@@ -363,8 +342,6 @@ const getProviderLogo = (actionType: string) => {
       return <Zap className="size-12 text-amber-300" strokeWidth={1.5} />;
     case "Database Query":
       return <Database className="size-12 text-blue-300" strokeWidth={1.5} />;
-    case "Execute Code":
-      return <Code className="size-12 text-green-300" strokeWidth={1.5} />;
     case "Condition":
       return <GitBranch className="size-12 text-pink-300" strokeWidth={1.5} />;
     case "Wait":
@@ -372,14 +349,16 @@ const getProviderLogo = (actionType: string) => {
         <Hourglass className="size-12 text-orange-300" strokeWidth={1.5} />
       );
     default:
-      // Not a system action, continue to check plugin registry
+      // Not a built-in, so the icon comes from its integration below.
       break;
   }
 
-  // Look up action in plugin registry and get the integration icon
-  const action = findAction(getExtensionCatalog(), actionType);
-  const integrationType = action?.integration;
-  if (typeof integrationType === "string") {
+  // The icon an integration registered from its ui.ts, keyed by integration type.
+  const integrationType = findAction(
+    getExtensionCatalog(),
+    actionType
+  )?.integration;
+  if (integrationType) {
     const ui = getIntegrationUi(integrationType);
     if (ui) {
       const PluginIcon = ui.icon;

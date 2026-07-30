@@ -12,12 +12,8 @@ import { Spinner } from "#src/components/ui/spinner";
 import { announceTestResult } from "#src/lib/connection-credentials";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
-import { integrationLabels } from "#src/lib/extensions";
-
-// System integrations that don't have plugins
-const SYSTEM_INTEGRATION_LABELS: Record<string, string> = {
-  database: "Database",
-};
+import { getExtensionCatalog } from "#src/lib/extensions";
+import { findIntegration } from "@rova/shared/extensions/catalog";
 
 type IntegrationsManagerProps = {
   filter?: string;
@@ -37,19 +33,24 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
     })
   );
 
-  // Get integrations with their labels, sorted by label then name
+  // Get integrations with their labels, sorted by label then name. A stored
+  // connection whose type is not in the catalog goes by its type and offers no
+  // test: this build does not hold the integration it names.
   const integrationsWithLabels = useMemo(() => {
-    const labels = integrationLabels();
     const filterLower = filter.toLowerCase();
 
     return integrations
-      .map((integration) => ({
-        ...integration,
-        label:
-          labels[integration.type] ||
-          SYSTEM_INTEGRATION_LABELS[integration.type] ||
-          integration.type,
-      }))
+      .map((integration) => {
+        const catalogEntry = findIntegration(
+          getExtensionCatalog(),
+          integration.type
+        );
+        return {
+          ...integration,
+          label: catalogEntry?.label ?? integration.type,
+          hasTest: catalogEntry?.hasTest === true,
+        };
+      })
       .filter((integration) => {
         if (!filter) {
           return true;
@@ -132,21 +133,23 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
               </span>
             </div>
             <div className="flex items-center gap-1">
-              <Button
-                className="h-7 px-2"
-                disabled={testingId === integration.id}
-                onClick={() =>
-                  testConnection.mutate({ integrationId: integration.id })
-                }
-                size="sm"
-                variant="outline"
-              >
-                {testingId === integration.id ? (
-                  <Spinner className="size-3" />
-                ) : (
-                  <span className="text-xs">Test</span>
-                )}
-              </Button>
+              {integration.hasTest && (
+                <Button
+                  className="h-7 px-2"
+                  disabled={testingId === integration.id}
+                  onClick={() =>
+                    testConnection.mutate({ integrationId: integration.id })
+                  }
+                  size="sm"
+                  variant="outline"
+                >
+                  {testingId === integration.id ? (
+                    <Spinner className="size-3" />
+                  ) : (
+                    <span className="text-xs">Test</span>
+                  )}
+                </Button>
+              )}
               <Button
                 className="size-7"
                 onClick={() => handleEdit(integration)}

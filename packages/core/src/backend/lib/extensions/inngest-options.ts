@@ -5,8 +5,8 @@
  * An Event Author writes every path against the payload, so the translation into
  * the `event.data.` form belongs somewhere; `defineEvent` is the only caller, and
  * this sits beside it. The prefixing and the CEL rewrite themselves are
- * `@rova/shared/workflow/inngest-event-data`, shared with the trigger registry,
- * which accepts the same authored shape.
+ * `@rova/shared/workflow/inngest-event-data`, since a path and an expression over
+ * a payload are the same problem wherever they are written.
  */
 
 import type { JsonObject } from "@rova/shared/types/json";

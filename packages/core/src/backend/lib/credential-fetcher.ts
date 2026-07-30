@@ -25,40 +25,21 @@ import { getAppLogger } from "./logger";
 
 const credentialFetcherLogger = getAppLogger("credentials", "fetcher");
 
-// WorkflowCredentials is now a generic record since plugins define their own keys
+/** A handler's own credential vocabulary, which its integration declares. */
 export type WorkflowCredentials = Record<string, string | undefined>;
-
-// System integrations that don't have plugins need hardcoded mapping
-const SYSTEM_CREDENTIAL_MAPPERS: Record<
-  string,
-  (config: IntegrationConfig) => WorkflowCredentials
-> = {
-  database: (config) => {
-    const creds: WorkflowCredentials = {};
-    if (config.url) {
-      creds.DATABASE_URL = config.url;
-    }
-    return creds;
-  },
-};
 
 /**
  * The stored config as the environment-variable names a handler reads it by.
  *
- * A plugin integration's mapping is its credential fields, which the assembled
- * catalog carries, so that is where this reads it. A database integration has no
- * plugin and no fields, which is what the mappers above are for.
+ * Every mapping an integration has is in its credential fields, which the
+ * assembled catalog carries, so that is where this reads it -- the database
+ * connection the engine's own Database Query action uses included, since it is a
+ * catalog entry like any other.
  */
 function mapIntegrationConfig(
   integrationType: string,
   config: IntegrationConfig
 ): WorkflowCredentials {
-  // Check for system integrations first
-  const systemMapper = SYSTEM_CREDENTIAL_MAPPERS[integrationType];
-  if (systemMapper) {
-    return systemMapper(config);
-  }
-
   return credentialsFromConfig(
     findIntegration(getExtensions().catalog, integrationType),
     config

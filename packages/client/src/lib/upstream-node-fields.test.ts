@@ -182,7 +182,7 @@ describe("upstream-node-fields", () => {
     );
   });
 
-  it("surfaces runtime action fields without explicit type as string", () => {
+  it("surfaces an action field with no declared type as a string", () => {
     surface.actions = [
       anAction({
         id: "custom/test-action",

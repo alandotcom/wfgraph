@@ -3,16 +3,24 @@ import { getIntegrationTypesByIds as getIntegrationTypesByIdsInDb } from "#src/b
 import { getAppLogger } from "#src/backend/lib/logger";
 import { getExtensions } from "#src/backend/lib/extensions/current";
 import { findAction } from "@rova/shared/extensions/catalog";
-import { SYSTEM_ACTION_INTEGRATIONS } from "@rova/shared/workflow/system-action-integrations";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
+/** As much of a catalog entry as the checks below read. */
 type ResolvedAction = {
-  integration?: unknown;
+  integration?: string;
 };
 
 export type ResolveActionByType = (
   actionType: string
 ) => ResolvedAction | undefined;
+
+/**
+ * Where an action's required integration comes from when a caller names no
+ * resolver: the assembled catalog, which is what a save reads. A test passes its
+ * own to keep off the surface.
+ */
+const resolveFromCatalog: ResolveActionByType = (actionType) =>
+  findAction(getExtensions().catalog, actionType);
 
 type ValidationResult = {
   valid: boolean;
@@ -56,21 +64,9 @@ function readConfigString(
   return typeof value === "string" ? value.trim() : undefined;
 }
 
-function getRequiredIntegrationType(
-  actionType: string,
-  resolveActionByType: ResolveActionByType
-): string | undefined {
-  const integration = resolveActionByType(actionType)?.integration;
-
-  return typeof integration === "string" && integration
-    ? integration
-    : SYSTEM_ACTION_INTEGRATIONS[actionType];
-}
-
 function extractRequiredIntegrationRequirements(
   nodes: WorkflowNode[],
-  resolveActionByType: ResolveActionByType = (actionType) =>
-    findAction(getExtensions().catalog, actionType)
+  resolveActionByType: ResolveActionByType = resolveFromCatalog
 ): IntegrationRequirement[] {
   const requirements: IntegrationRequirement[] = [];
 
@@ -80,8 +76,11 @@ function extractRequiredIntegrationRequirements(
     }
 
     const actionType = readConfigString(node.data.config, "actionType");
+    // Which integration an action needs is the catalog's answer, the engine's own
+    // Database Query included: it names "database" in `built-ins.ts` the same way a
+    // plugin action names the integration it belongs to.
     const requiredType = actionType
-      ? getRequiredIntegrationType(actionType, resolveActionByType)
+      ? resolveActionByType(actionType)?.integration
       : undefined;
     if (!(actionType && requiredType)) {
       continue;
@@ -103,8 +102,7 @@ function extractRequiredIntegrationRequirements(
 
 export function extractRequiredIntegrationIds(
   nodes: WorkflowNode[],
-  resolveActionByType: ResolveActionByType = (actionType) =>
-    findAction(getExtensions().catalog, actionType)
+  resolveActionByType: ResolveActionByType = resolveFromCatalog
 ): string[] {
   return uniq(
     extractRequiredIntegrationRequirements(nodes, resolveActionByType).map(
@@ -162,9 +160,7 @@ export async function validateWorkflowIntegrations(
     strictValidation?: boolean;
   } = {}
 ): Promise<ValidationResult> {
-  const resolveActionByType =
-    options.resolveActionByType ??
-    ((actionType: string) => findAction(getExtensions().catalog, actionType));
+  const resolveActionByType = options.resolveActionByType ?? resolveFromCatalog;
   const getIntegrationTypesByIds =
     options.getIntegrationTypesByIds ?? getIntegrationTypesByIdsInDb;
   const strictValidationEnabled = shouldEnforceStrictValidation(

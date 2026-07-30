@@ -33,10 +33,10 @@ import {
   clearExtensions,
   configureExtensions,
 } from "#src/backend/lib/extensions/current";
-import type { ActionMetadata } from "@rova/shared/extensions/catalog";
-import type { AnyEventDefinition } from "#src/backend/lib/extensions/define-event";
-import type { IntegrationDefinition } from "#src/backend/lib/extensions/define-integration";
-import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import {
+  assembleExtensions,
+  type RovaExtensions,
+} from "#src/backend/lib/extensions/extension-set";
 import {
   configureInngest,
   type RovaInngestConfig,
@@ -48,21 +48,8 @@ import {
   configureAppLoggingWithBridge,
   getAppLogger,
 } from "#src/backend/lib/logger";
-import { initializeWorkflowTriggers } from "#src/backend/lib/workflow-trigger-bootstrap";
 import { createRovaRuntime, type RovaRuntime } from "#src/backend/runtime";
 import type { RovaLogger } from "@rova/shared/types/logger";
-import {
-  type RuntimeExtensionActionDefinition,
-  getRuntimeActions,
-  type RegisteredRuntimeAction,
-  registerRuntimeAction,
-  unregisterRuntimeAction,
-} from "@rova/shared/workflow/action-registry";
-import {
-  type RuntimeExtensionTriggerDefinition,
-  registerWorkflowTrigger,
-  unregisterWorkflowTrigger,
-} from "@rova/shared/workflow/trigger-registry";
 
 export type { DatabaseRuntimeConfig } from "#src/backend/lib/db/index";
 export type { MigrationsOptions } from "#src/backend/lib/db/migrations";
@@ -70,44 +57,7 @@ export type { EncryptionRuntimeConfig } from "#src/backend/lib/db/integrations";
 export type { RovaInngestConfig } from "#src/backend/lib/inngest/client";
 export type { RovaAuth } from "#src/backend/lib/http/authorize";
 export type { RovaLogger } from "@rova/shared/types/logger";
-export type { RuntimeExtensionActionDefinition } from "@rova/shared/workflow/action-registry";
-export type { RuntimeExtensionTriggerDefinition } from "@rova/shared/workflow/trigger-registry";
-
-/**
- * A host's own action, as the catalog lists it.
- *
- * Its implementation stays in the runtime action registry, which is where the
- * engine dispatches to it from; what the catalog wants is the metadata the editor
- * draws it with. An action declaring neither config fields nor output fields lists
- * as an action with nothing to fill in, which is what an author who wrote neither
- * asked for.
- */
-function toActionMetadata(action: RegisteredRuntimeAction): ActionMetadata {
-  return {
-    id: action.id,
-    label: action.label,
-    description: action.description,
-    category: action.category,
-    ...(action.integration ? { integration: action.integration } : {}),
-    ...(action.logoUrl ? { logoUrl: action.logoUrl } : {}),
-    configFields: action.configFields ?? [],
-    outputFields: action.outputFields ?? [],
-  };
-}
-
-/**
- * The extension surface, assembled in one place.
- *
- * An integration listed here brings its actions, its steps and its connection
- * test with it, so this line is what turns it on and dropping it is what turns it
- * off. A host action still arrives through `actions` below and the plugins B4 has
- * not ported still turn themselves on by being imported, so those two halves are
- * read out of the registries at startup and join this option in the catalog.
- */
-export type RovaExtensionOptions = {
-  readonly events?: readonly AnyEventDefinition[];
-  readonly integrations?: readonly IntegrationDefinition[];
-};
+export type { RovaExtensions } from "#src/backend/lib/extensions/extension-set";
 
 /**
  * Where the database is, which schema Rova lives in, and whether it migrates on
@@ -142,9 +92,15 @@ export type RovaAppOptions = {
   database: RovaDatabaseOptions;
   encryption: EncryptionRuntimeConfig;
   inngest: RovaInngestConfig;
-  triggers?: RuntimeExtensionTriggerDefinition[];
-  actions?: RuntimeExtensionActionDefinition[];
-  extensions?: RovaExtensionOptions;
+  /**
+   * The whole extension surface, in one place.
+   *
+   * Nothing registers itself, so what is listed here is what this app has: an
+   * integration brings its actions, its steps and its connection test with it, an
+   * Event brings its listener, and a `createAction` brings its `execute`. Dropping
+   * a line is what turns something off.
+   */
+  extensions?: RovaExtensions;
   /**
    * The workflow editor, from `import { clientBundle } from "@rova/client"`.
    *
@@ -186,9 +142,9 @@ export type RovaApp = {
 /**
  * One Rova per process.
  *
- * The database handle, the Inngest client, the encryption key, and both
- * registries are process-global, so a second app with a different database URL
- * silently aliases the first connection. ADR-0002 makes a second app per
+ * The database handle, the Inngest client, the encryption key, and the assembled
+ * extension surface are process-global, so a second app with a different database
+ * URL silently aliases the first connection. ADR-0002 makes a second app per
  * process undefined behavior rather than a supported arrangement that fails
  * loudly.
  */
@@ -246,31 +202,10 @@ async function buildRovaApp(
   configureInngest(options.inngest);
   reportInngestCallbackExposure();
 
-  const registeredTriggerTypes = new Set<string>();
-  const registeredActionIds = new Set<string>();
-
-  for (const trigger of options.triggers ?? []) {
-    registerWorkflowTrigger(trigger);
-    registeredTriggerTypes.add(trigger.runtime.type.trim());
-  }
-
-  for (const action of options.actions ?? []) {
-    registerRuntimeAction(action);
-    registeredActionIds.add(action.id.trim());
-  }
-
-  initializeWorkflowTriggers();
-
-  // The runtime action registry has to be full before it is read, which the loop
-  // above is what fills.
-  const extensions = assembleExtensions({
-    events: options.extensions?.events,
-    integrations: options.extensions?.integrations,
-    actions: getRuntimeActions().map(toActionMetadata),
-  });
+  const extensions = assembleExtensions(options.extensions ?? {});
   configureExtensions(extensions);
 
-  // A host who forgets to import the integrations gets an empty editor and no
+  // A host who forgets to pass its integrations gets an empty editor and no
   // error, so the counts go where a startup log is read.
   const { events, actions, integrations } = extensions.catalog;
   getAppLogger("extensions").info(
@@ -296,13 +231,7 @@ async function buildRovaApp(
   const runtime = createRovaRuntime();
 
   try {
-    return await assembleRovaApp(options, {
-      basePath,
-      authorize,
-      runtime,
-      registeredTriggerTypes,
-      registeredActionIds,
-    });
+    return await assembleRovaApp(options, { basePath, authorize, runtime });
   } catch (error) {
     // Nothing else holds this runtime yet, so a failure from here on leaves it
     // to be finalized by whoever created it, which is this function.
@@ -323,17 +252,9 @@ async function assembleRovaApp(
     basePath: "" | `/${string}`;
     authorize: Authorize;
     runtime: RovaRuntime;
-    registeredTriggerTypes: Set<string>;
-    registeredActionIds: Set<string>;
   }
 ): Promise<RovaApp> {
-  const {
-    basePath,
-    authorize,
-    runtime,
-    registeredTriggerTypes,
-    registeredActionIds,
-  } = startup;
+  const { basePath, authorize, runtime } = startup;
 
   const apiApp = createApiApp({
     basePath: `${basePath}/api`,
@@ -365,16 +286,6 @@ async function assembleRovaApp(
   }
 
   const dispose = async (): Promise<void> => {
-    for (const triggerType of registeredTriggerTypes) {
-      unregisterWorkflowTrigger(triggerType);
-    }
-    registeredTriggerTypes.clear();
-
-    for (const actionId of registeredActionIds) {
-      unregisterRuntimeAction(actionId);
-    }
-    registeredActionIds.clear();
-
     clearExtensions();
 
     // The cached Inngest functions close over this runtime, so they go before

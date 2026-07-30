@@ -55,7 +55,7 @@ export const integrations = pgTable("integrations", {
     .primaryKey()
     .$defaultFn(() => generateId()),
   name: text("name").notNull(),
-  type: text("type").notNull().$type<string>(),
+  type: text("type").notNull(),
   config: jsonb("config").notNull().$type<any>(),
   isManaged: boolean("is_managed").default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),

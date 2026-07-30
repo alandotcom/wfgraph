@@ -1,10 +1,68 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { hydrateExtensionsFromApi } from "#src/lib/extensions";
 import {
   repairNodeIntegration,
   repairNodeIntegrations,
   requiredIntegrationType,
 } from "#src/lib/node-integration";
+import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
+
+/**
+ * Which connection an action needs is the catalog's answer, so these cases need
+ * one. The two entries are what the assembled surface holds for the engine's own
+ * Database Query and Condition: one names a connection, the other needs none.
+ */
+const served: ExtensionCatalog = {
+  events: [],
+  actions: [
+    {
+      id: "Database Query",
+      label: "Database Query",
+      description: "Query your database",
+      category: "System",
+      integration: "database",
+      configFields: [],
+      outputFields: [],
+    },
+    {
+      id: "Condition",
+      label: "Condition",
+      description: "Branch based on a condition",
+      category: "System",
+      configFields: [],
+      outputFields: [],
+    },
+  ],
+  integrations: [
+    {
+      type: "database",
+      label: "Database",
+      description: "Connect to PostgreSQL databases",
+      credentialFields: [],
+      hasTest: true,
+    },
+  ],
+};
+
+beforeAll(async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ catalog: served }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+    )
+  );
+  await hydrateExtensionsFromApi();
+});
+
+afterAll(() => {
+  vi.unstubAllGlobals();
+});
 
 function actionNode(
   config: Record<string, unknown>,
@@ -23,7 +81,7 @@ const otherDbConnection = { id: "int_db_2", type: "database" };
 const slackConnection = { id: "int_slack", type: "slack" };
 
 describe("requiredIntegrationType", () => {
-  it("reads the table of system actions", () => {
+  it("reads the integration a built-in action names", () => {
     expect(requiredIntegrationType("Database Query")).toBe("database");
   });
 

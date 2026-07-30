@@ -1,20 +1,14 @@
 /**
  * The fixtures here are Zod, deliberately, and Zod is a devDependency of this
- * package for no other reason. The registry takes any Standard Schema, and
+ * package for no other reason. `createAction` takes any Standard Schema, and
  * writing these against the library the repo itself uses would leave that claim
- * untested: a schema built by Effect would only prove the registry works with
- * the shape Effect produces. `standard-schema-compat.test.ts` makes the same
- * point with arktype from the other side.
+ * untested: a schema built by Effect would only prove it works with the shape
+ * Effect produces. `standard-schema-compat.test.ts` makes the same point with
+ * arktype from the other side.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import {
-  createAction,
-  getRuntimeAction,
-  listRuntimeActions,
-  registerRuntimeAction,
-  unregisterRuntimeAction,
-} from "./action-registry";
+import { createAction } from "./action-registry";
 
 describe("createAction", () => {
   it("validates payload with schema and executes with typed payload", async () => {
@@ -263,6 +257,22 @@ describe("createAction with outputSchema", () => {
     expect(extraField?.description).toBe("Extra field not in schema");
   });
 
+  // The default is what an author who named no category gets, and it is the group
+  // heading the action selector lists them under.
+  it("defaults an action with no category to Custom", () => {
+    const action = createAction({
+      id: "custom/uncategorized",
+      label: "Uncategorized",
+      description: "Names no category",
+      schema: z.object({ value: z.string() }),
+      execute() {
+        return { success: true };
+      },
+    });
+
+    expect(action.category).toBe("Custom");
+  });
+
   it("preserves existing behavior without outputSchema", () => {
     const action = createAction({
       id: "custom/no-output-schema",
@@ -278,37 +288,5 @@ describe("createAction with outputSchema", () => {
     expect(action.outputFields).toEqual([
       { path: "result", description: "Manual result field" },
     ]);
-  });
-});
-
-describe("runtime action registry", () => {
-  it("registers metadata and allows unregistering custom actions", () => {
-    const actionId = "custom/runtime-registry";
-    const action = createAction({
-      id: actionId,
-      label: "Registry Action",
-      description: "Registry action description",
-      schema: z.object({
-        value: z.string(),
-      }),
-      execute() {
-        return { success: true };
-      },
-    });
-
-    registerRuntimeAction(action);
-
-    const runtimeAction = getRuntimeAction(actionId);
-    expect(runtimeAction).toBeDefined();
-    expect(runtimeAction?.category).toBe("Custom");
-
-    const metadata = listRuntimeActions().find(
-      (value) => value.id === actionId
-    );
-    expect(metadata).toBeDefined();
-    expect(metadata?.label).toBe("Registry Action");
-
-    unregisterRuntimeAction(actionId);
-    expect(getRuntimeAction(actionId)).toBeUndefined();
   });
 });

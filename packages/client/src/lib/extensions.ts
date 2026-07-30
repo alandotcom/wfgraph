@@ -28,37 +28,6 @@ export function getExtensionCatalog(): ExtensionCatalog {
 }
 
 /**
- * Every integration type a connection may name, in the order a picker lists them.
- *
- * The `database` connection is not an integration and is not in the catalog: the
- * engine's Database Query action names it and `SYSTEM_INTEGRATION_LABELS` in the
- * connection overlay is where it is spelled, so a caller wanting both concatenates.
- */
-export function integrationTypes(): string[] {
-  return catalog.integrations.map((integration) => integration.type).toSorted();
-}
-
-/** The label each integration goes by, for a list keyed on type. */
-export function integrationLabels(): Record<string, string> {
-  return Object.fromEntries(
-    catalog.integrations.map((integration) => [
-      integration.type,
-      integration.label,
-    ])
-  );
-}
-
-/** The one-line description each integration goes by, keyed the same way. */
-export function integrationDescriptions(): Record<string, string> {
-  return Object.fromEntries(
-    catalog.integrations.map((integration) => [
-      integration.type,
-      integration.description,
-    ])
-  );
-}
-
-/**
  * Fetch the surface and decode it, before the first render.
  *
  * The endpoint answers one document, and this owns the one request that reads it.

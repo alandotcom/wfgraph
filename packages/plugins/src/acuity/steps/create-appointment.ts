@@ -1,9 +1,9 @@
 import type { CreateAppointmentPayload } from "@fountain-bio/acuity";
 import { StepFailure, type StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
-import {
+import type {
+  AcuityCredentials,
   createAppointmentInput,
-  type AcuityCredentials,
 } from "#src/acuity/index";
 import { callAcuity, createAcuityClient } from "./client";
 import {

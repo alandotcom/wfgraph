@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Input } from "#src/components/ui/input";
 import { IntegrationIcon } from "#src/components/ui/integration-icon";
@@ -11,42 +11,24 @@ import {
   hasProvidedConfigValues,
 } from "#src/lib/connection-credentials";
 import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
-import {
-  getExtensionCatalog,
-  integrationDescriptions,
-  integrationLabels,
-  integrationTypes as catalogIntegrationTypes,
-} from "#src/lib/extensions";
+import { getExtensionCatalog } from "#src/lib/extensions";
 import { findIntegration } from "@rova/shared/extensions/catalog";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
 
-// The database connection is not an integration: the engine's own Database Query
-// action names it, so it is spelled here rather than in the catalog.
-const SYSTEM_INTEGRATION_TYPES = ["database"];
-const SYSTEM_INTEGRATION_LABELS: Record<string, string> = {
-  database: "Database",
-};
-const SYSTEM_INTEGRATION_DESCRIPTIONS: Record<string, string> = {
-  database: "Connect to PostgreSQL databases",
-};
+/**
+ * Everything an operator may connect to, from the one place that knows: the
+ * catalog. The database connection is in it like any other, so this list needs no
+ * second source and no ordering rule of its own.
+ */
+const connectableIntegrations = () =>
+  getExtensionCatalog().integrations.toSorted((a, b) =>
+    a.label.localeCompare(b.label)
+  );
 
-// Get all integration types (catalog + system)
-const getIntegrationTypes = (): string[] => [
-  ...catalogIntegrationTypes(),
-  ...SYSTEM_INTEGRATION_TYPES,
-];
-
-// Get label for any integration type
 const getLabel = (type: string): string =>
-  integrationLabels()[type] || SYSTEM_INTEGRATION_LABELS[type] || type;
-
-// Get description for any integration type
-const getDescription = (type: string): string =>
-  integrationDescriptions()[type] ||
-  SYSTEM_INTEGRATION_DESCRIPTIONS[type] ||
-  "";
+  findIntegration(getExtensionCatalog(), type)?.label ?? type;
 
 type AddConnectionOverlayProps = {
   overlayId: string;
@@ -64,17 +46,13 @@ export function AddConnectionOverlay({
   const [searchQuery, setSearchQuery] = useState("");
   const isMobile = useIsMobile();
 
-  const integrationTypes = getIntegrationTypes();
-
-  const filteredTypes = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return integrationTypes;
-    }
-    const query = searchQuery.toLowerCase();
-    return integrationTypes.filter((type) =>
-      getLabel(type).toLowerCase().includes(query)
-    );
-  }, [integrationTypes, searchQuery]);
+  // Plain render work: the catalog is fixed for the process and the list is short,
+  // and `connectableIntegrations` builds a fresh array every render anyway, so a
+  // memo keyed on it would never hit.
+  const query = searchQuery.trim().toLowerCase();
+  const filtered = connectableIntegrations().filter(
+    (integration) => !query || integration.label.toLowerCase().includes(query)
+  );
 
   const handleSelectType = (type: string) => {
     // Push to configure overlay
@@ -99,36 +77,33 @@ export function AddConnectionOverlay({
           />
         </div>
         <div className="max-h-[300px] space-y-1 overflow-y-auto">
-          {filteredTypes.length === 0 ? (
+          {filtered.length === 0 ? (
             <p className="py-4 text-center text-muted-foreground text-sm">
               No services found
             </p>
           ) : (
-            filteredTypes.map((type) => {
-              const description = getDescription(type);
-              return (
-                <button
-                  className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted/50"
-                  key={type}
-                  onClick={() => handleSelectType(type)}
-                  type="button"
-                >
-                  <IntegrationIcon
-                    className="size-5 shrink-0"
-                    integration={type}
-                  />
-                  <span className="min-w-0 flex-1 truncate">
-                    <span className="font-medium">{getLabel(type)}</span>
-                    {description && (
-                      <span className="text-muted-foreground text-xs">
-                        {" "}
-                        - {description}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              );
-            })
+            filtered.map((integration) => (
+              <button
+                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted/50"
+                key={integration.type}
+                onClick={() => handleSelectType(integration.type)}
+                type="button"
+              >
+                <IntegrationIcon
+                  className="size-5 shrink-0"
+                  integration={integration.type}
+                />
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="font-medium">{integration.label}</span>
+                  {integration.description && (
+                    <span className="text-muted-foreground text-xs">
+                      {" "}
+                      - {integration.description}
+                    </span>
+                  )}
+                </span>
+              </button>
+            ))
           )}
         </div>
       </div>
@@ -239,6 +214,12 @@ export function ConfigureConnectionOverlay({
     })
   );
 
+  const catalogEntry = findIntegration(getExtensionCatalog(), type);
+  const formFields = catalogEntry?.credentialFields;
+  // Whether this integration has a connection test at all. An integration that
+  // declares none has nothing to press and nothing to run before a save.
+  const hasTest = catalogEntry?.hasTest === true;
+
   const saving = create.isPending || testForSave.isPending;
 
   const saveConnection = () => {
@@ -258,6 +239,11 @@ export function ConfigureConnectionOverlay({
     const hasConfig = hasProvidedConfigValues(config);
     if (!hasConfig) {
       toast.error("Please enter credentials");
+      return;
+    }
+
+    if (!hasTest) {
+      saveConnection();
       return;
     }
 
@@ -289,27 +275,8 @@ export function ConfigureConnectionOverlay({
     testNewCredentials.mutate({ type, config });
   };
 
-  const formFields = findIntegration(
-    getExtensionCatalog(),
-    type
-  )?.credentialFields;
-
   // Render config fields
   const renderConfigFields = () => {
-    if (type === "database") {
-      return (
-        <SecretField
-          configKey="url"
-          fieldId="url"
-          helpText="Connection string in the format: postgresql://user:password@host:port/database"
-          label="Database URL"
-          onChange={updateConfig}
-          placeholder="postgresql://user:password@host:port/database"
-          value={config.url || ""}
-        />
-      );
-    }
-
     if (!formFields) {
       return null;
     }
@@ -364,13 +331,17 @@ export function ConfigureConnectionOverlay({
   return (
     <Overlay
       actions={[
-        {
-          label: "Test",
-          variant: "outline",
-          onClick: handleTest,
-          loading: testNewCredentials.isPending,
-          disabled: saving,
-        },
+        ...(hasTest
+          ? [
+              {
+                label: "Test",
+                variant: "outline" as const,
+                onClick: handleTest,
+                loading: testNewCredentials.isPending,
+                disabled: saving,
+              },
+            ]
+          : []),
         { label: "Create", onClick: handleSave, loading: saving },
       ]}
       overlayId={overlayId}

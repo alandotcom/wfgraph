@@ -34,7 +34,6 @@ const clerkCredentialFields = credentialFields([
   },
 ]);
 
-/** The credential keys a Clerk handler may read, derived from the fields above. */
 export type ClerkCredentials = CredentialsOf<typeof clerkCredentialFields>;
 
 /**
@@ -76,7 +75,7 @@ export const getUserInput = Schema.Struct({
   userId: Schema.String,
 });
 
-export const getUserOutput = Schema.Struct(clerkUserOutput);
+const getUserOutput = Schema.Struct(clerkUserOutput);
 
 /** `optionalKey` for a field a builder may leave blank: it reaches a step absent. */
 export const createUserInput = Schema.Struct({
@@ -89,7 +88,7 @@ export const createUserInput = Schema.Struct({
   privateMetadata: Schema.optionalKey(Schema.String),
 });
 
-export const createUserOutput = Schema.Struct(clerkUserOutput);
+const createUserOutput = Schema.Struct(clerkUserOutput);
 
 export const updateUserInput = Schema.Struct({
   userId: Schema.String,
@@ -99,13 +98,13 @@ export const updateUserInput = Schema.Struct({
   privateMetadata: Schema.optionalKey(Schema.String),
 });
 
-export const updateUserOutput = Schema.Struct(clerkUserOutput);
+const updateUserOutput = Schema.Struct(clerkUserOutput);
 
 export const deleteUserInput = Schema.Struct({
   userId: Schema.String,
 });
 
-export const deleteUserOutput = Schema.Struct({
+const deleteUserOutput = Schema.Struct({
   deleted: Schema.Boolean.annotate({ description: "Deletion success" }),
 });
 

@@ -17,12 +17,12 @@ import type { StepError, StepResult } from "#src/workflow/step-result";
 
 /**
  * What `schema` in `createAction` accepts, in either of the two forms a schema
- * reaches this registry in.
+ * arrives in.
  *
- * The framework needs both halves of Standard Schema from one object: it
- * validates resolved config values with `~standard.validate` and derives
- * `configFields` from `~standard.jsonSchema.input()` at registration. Zod v4
- * and arktype hand over an object carrying both, and that is the first arm.
+ * Both halves of Standard Schema are needed from one object: resolved config
+ * values are validated with `~standard.validate`, and `configFields` is derived
+ * from `~standard.jsonSchema.input()`. Zod v4 and arktype hand over an object
+ * carrying both, and that is the first arm.
  *
  * The second arm is a bare Effect schema, which carries neither until it is
  * asked to. `createAction` asks, once, so an author writes
@@ -46,16 +46,16 @@ export type RuntimeActionExecuteInput = {
 };
 
 /**
- * What a runtime action's `execute` resolves to. A runtime action answers with
- * the same wrapper every other step returns, so the engine handles a runtime
- * action and a plugin step identically.
+ * What a host action's `execute` resolves to. It is the wrapper every other step
+ * returns, so the engine runs a host's action and an integration's step the same
+ * way.
  */
 export type RuntimeActionResult = StepResult;
 
 export type RuntimeActionMetadata = {
   /**
    * Unique identifier in `"category/slug"` format (e.g. `"appointments/cancel"`).
-   * Used internally to dispatch execution and register the action.
+   * The engine dispatches on it, and it is what a saved node stores.
    */
   id: string;
 
@@ -99,7 +99,15 @@ export type RuntimeActionDefinition = RuntimeActionMetadata & {
   execute: RuntimeActionExecute;
 };
 
+/**
+ * What `createAction` hands back: a definition with everything filled in.
+ *
+ * `category` is no longer optional, because the default has been applied by the
+ * time a value of this type exists, and assembly copies it into the catalog
+ * without deciding anything of its own.
+ */
 export type RuntimeExtensionActionDefinition = RuntimeActionDefinition & {
+  readonly category: string;
   readonly __runtimeExtensionActionBrand: true;
 };
 
@@ -160,39 +168,6 @@ export type CreateActionInputWithOutput<
     context: RuntimeActionExecutionContext;
   }) => TypedActionResult<TOutput> | Promise<TypedActionResult<TOutput>>;
 };
-
-/**
- * What the registry holds.
- *
- * The server registers actions it can run; the browser registers the same
- * actions as metadata, arriving over /api/extensions with no `execute` to send.
- * They differ in what they put in, not in which registry they put it in.
- */
-export type RegisteredRuntimeAction = RuntimeActionMetadata & {
-  /** Defaulted at registration, so readers never have to. */
-  category: string;
-  /** Set when the action came from a plugin, never by `createAction`. */
-  integration?: string;
-  execute?: RuntimeActionExecute;
-};
-
-/** What `/api/extensions` sends: what the editor draws from, minus what cannot serialize. */
-export type RuntimeActionWireMetadata = Omit<
-  RegisteredRuntimeAction,
-  "execute"
->;
-
-/**
- * The actions a host registered, held in module state.
- *
- * A plain map: one bundle holds it, because `createRovaApp` is the only writer and
- * the engine's dispatch is the only reader. It was keyed on `globalThis` with a
- * `Symbol.for`, and carried a version counter beside it, while the browser held a
- * copy of the same registry and cached lookups over it; the editor reads the
- * extension catalog now, so neither is needed. Stage 7 of ADR-0002 makes this a
- * service the runtime provides, the way the database handle went.
- */
-const runtimeActionRegistry = new Map<string, RegisteredRuntimeAction>();
 
 function isPromiseLike<T>(value: unknown): value is Promise<T> {
   return (
@@ -297,7 +272,7 @@ function mergeOutputFields(
 }
 
 /**
- * Create a typed action definition for use with `server.start({ actions })`.
+ * Create a typed action definition, for `createRovaApp({ extensions: { actions } })`.
  *
  * Actions are the executable steps in a workflow. When a workflow reaches
  * an action node, the engine resolves template variables in the config,
@@ -376,9 +351,9 @@ export function createAction<TPayload extends Record<string, unknown>>(
 
   // Named rather than spread, so the schemas stay behind. Everything they had
   // to say has been said, into `configFields`, `outputFields` and the `execute`
-  // above, and `RuntimeActionMetadata` is what /api/extensions serializes to the
-  // browser -- where a schema object is a dump of one library's internals or
-  // nothing at all, depending on who wrote it.
+  // above, and what assembly copies into the catalog is what /api/extensions
+  // serializes to the browser -- where a schema object is a dump of one library's
+  // internals or nothing at all, depending on who wrote it.
   const normalized = normalizeRuntimeActionMetadata({
     id: input.id,
     label: input.label,
@@ -394,44 +369,4 @@ export function createAction<TPayload extends Record<string, unknown>>(
     execute,
     __runtimeExtensionActionBrand: true,
   };
-}
-
-export function registerRuntimeAction(
-  definition: RuntimeActionMetadata & {
-    integration?: string;
-    execute?: RuntimeActionExecute;
-  }
-): void {
-  const { execute, integration, ...metadata } = definition;
-  const normalized = normalizeRuntimeActionMetadata(metadata);
-
-  runtimeActionRegistry.set(normalized.id, {
-    ...normalized,
-    ...(integration ? { integration } : {}),
-    ...(execute ? { execute } : {}),
-  });
-}
-
-export function unregisterRuntimeAction(actionId: string): void {
-  const normalizedId = actionId.trim();
-  if (!normalizedId) {
-    return;
-  }
-  runtimeActionRegistry.delete(normalizedId);
-}
-
-export function getRuntimeAction(
-  actionId: string
-): RegisteredRuntimeAction | undefined {
-  return runtimeActionRegistry.get(actionId);
-}
-
-export function getRuntimeActions(): RegisteredRuntimeAction[] {
-  return Array.from(runtimeActionRegistry.values());
-}
-
-export function listRuntimeActions(): RuntimeActionWireMetadata[] {
-  return Array.from(runtimeActionRegistry.values()).map(
-    ({ execute: _execute, ...metadata }) => metadata
-  );
 }

@@ -1,6 +1,5 @@
 import {
   afterAll,
-  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -14,10 +13,8 @@ import {
 } from "#src/backend/lib/extensions/current";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import { checkCelBooleanExpression } from "#src/backend/lib/cel/environment";
-import {
-  registerRuntimeAction,
-  unregisterRuntimeAction,
-} from "@rova/shared/workflow/action-registry";
+import { createAction } from "@rova/shared/workflow/action-registry";
+import { Schema } from "effect";
 import {
   compileConditionModel,
   type ConditionModel,
@@ -31,7 +28,7 @@ import {
   type RecordingWorkflowStore,
 } from "./recording-store";
 
-// Condition steps log through step-handler, which is not behind the store
+// A step logs its own run rows through step-handler, which is not behind the store
 // port; this stub keeps that path off a database.
 vi.mock("#src/backend/lib/workflow-logging", () => ({
   logStepStartDb: () =>
@@ -40,12 +37,22 @@ vi.mock("#src/backend/lib/workflow-logging", () => ({
   logWorkflowCompleteDb: () => Promise.resolve(),
 }));
 
+const WRAPPED_ACTION_ID = "test/wrapped-output-action";
+
+const wrappedOutputAction = createAction({
+  id: WRAPPED_ACTION_ID,
+  label: "Wrapped Output",
+  description: "Returns its fields inside the standard step wrapper",
+  schema: Schema.Struct({}),
+  execute: () => ({ success: true, data: { donorId: "abc" } }),
+});
+
 // The engine reads the assembled surface for an action's step and its label, and
-// `getExtensions` throws outside an app rather than answering nothing. An empty
-// assembly is what these cases want: their actions are runtime actions, and the
-// built-in four ride in on it.
+// `getExtensions` throws outside an app rather than answering nothing, so the host
+// action these cases run reaches the engine the way a host's would. The built-in
+// four ride in on the same assembly.
 beforeAll(() => {
-  configureExtensions(assembleExtensions({}));
+  configureExtensions(assembleExtensions({ actions: [wrappedOutputAction] }));
 });
 
 afterAll(() => {
@@ -345,26 +352,15 @@ describe("executeWorkflow branch traversal", () => {
 
 /**
  * A CEL condition reads bare field names out of one flat context merged from every
- * upstream node's output. Runtime and plugin steps return their fields inside a
+ * upstream node's output. Every step returns its fields inside a
  * `{ success, data }` wrapper, so these tests pin that the wrapper is transparent
  * here in the same way it is transparent to a template token.
  */
 describe("condition context from upstream outputs", () => {
-  const WRAPPED_ACTION_ID = "test/wrapped-output-action";
   let store: RecordingWorkflowStore;
 
   beforeEach(() => {
     store = createRecordingWorkflowStore();
-    registerRuntimeAction({
-      id: WRAPPED_ACTION_ID,
-      label: "Wrapped Output",
-      description: "Returns its fields inside the standard step wrapper",
-      execute: () => ({ success: true, data: { donorId: "abc" } }),
-    });
-  });
-
-  afterEach(() => {
-    unregisterRuntimeAction(WRAPPED_ACTION_ID);
   });
 
   function createConditionRoutingGraph(expression: string) {

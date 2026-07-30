@@ -19,7 +19,7 @@ import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
  * with a status, and first-wins has to refuse a start and say so in run
  * history. Inngest concurrency can do neither.
  */
-export const concurrencySchema = Schema.Literals([
+const concurrencySchema = Schema.Literals([
   "newest-wins",
   "first-wins",
   "unlimited",

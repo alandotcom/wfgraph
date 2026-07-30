@@ -1,6 +1,5 @@
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { findAction } from "@rova/shared/extensions/catalog";
-import { SYSTEM_ACTION_INTEGRATIONS } from "@rova/shared/workflow/system-action-integrations";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 /**
@@ -31,15 +30,14 @@ function readConfigString(
 }
 
 /**
- * The kind of connection an action needs, whether it comes from a plugin's
- * manifest or from the table of system actions.
+ * The kind of connection an action needs, which is the catalog's answer for every
+ * action alike: the engine's own Database Query names "database" there the same
+ * way a plugin action names the integration it belongs to.
  */
 export function requiredIntegrationType(
   actionType: string
 ): string | undefined {
-  const action = findAction(getExtensionCatalog(), actionType);
-
-  return action?.integration ?? SYSTEM_ACTION_INTEGRATIONS[actionType];
+  return findAction(getExtensionCatalog(), actionType)?.integration;
 }
 
 /**

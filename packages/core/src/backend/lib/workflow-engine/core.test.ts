@@ -1,6 +1,5 @@
 import {
   afterAll,
-  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -13,11 +12,13 @@ import {
   configureExtensions,
 } from "#src/backend/lib/extensions/current";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { Schema } from "effect";
 import {
+  createAction,
+  type RuntimeActionExecuteInput,
   type RuntimeActionResult,
-  registerRuntimeAction,
-  unregisterRuntimeAction,
 } from "@rova/shared/workflow/action-registry";
+import { unknownRest } from "@rova/shared/types/schema";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 import { executeWorkflow } from "./core";
@@ -27,7 +28,20 @@ import {
 } from "./recording-store";
 import { createInMemoryWorkflowRuntime } from "./runtime";
 
-const RUNTIME_ACTION_ID = "test/runtime-action";
+const HOST_ACTION_ID = "test/host-action";
+const PRODUCER_ACTION_ID = "test/producer-action";
+const CONSUMER_ACTION_ID = "test/consumer-action";
+
+/** What the host action under test answers with, per case. */
+const executeFn = vi.fn<
+  (input: RuntimeActionExecuteInput) => RuntimeActionResult
+>(() => ({
+  success: true,
+  data: { donorId: "d_123", name: "Test Donor" },
+}));
+
+/** The resolved config the consumer action was handed, for the template cases. */
+let capturedPayload: Record<string, unknown> = {};
 
 function createTriggerNode(id: string): WorkflowNode {
   return {
@@ -42,10 +56,7 @@ function createTriggerNode(id: string): WorkflowNode {
   };
 }
 
-function createRuntimeActionNode(
-  id: string,
-  label = "Runtime Action"
-): WorkflowNode {
+function createHostActionNode(id: string, label = "Host Action"): WorkflowNode {
   return {
     id,
     type: "action",
@@ -54,7 +65,7 @@ function createRuntimeActionNode(
       label,
       type: "action",
       config: {
-        actionType: RUNTIME_ACTION_ID,
+        actionType: HOST_ACTION_ID,
       },
     },
   };
@@ -64,27 +75,16 @@ function createTriggerToActionGraph(actionLabel?: string) {
   return createSerializedWorkflowGraph({
     nodes: [
       createTriggerNode("trigger_1"),
-      createRuntimeActionNode("action_1", actionLabel),
+      createHostActionNode("action_1", actionLabel),
     ],
     edges: [{ id: "edge_1", source: "trigger_1", target: "action_1" }],
   });
 }
 
-describe("runtime action execution", () => {
-  const executeFn = vi.fn<() => RuntimeActionResult>(() => ({
-    success: true,
-    data: { donorId: "d_123", name: "Test Donor" },
-  }));
+describe("host action execution", () => {
   let store: RecordingWorkflowStore;
 
   beforeEach(() => {
-    registerRuntimeAction({
-      id: RUNTIME_ACTION_ID,
-      label: "Test Runtime Action",
-      description: "A test runtime action",
-      execute: executeFn,
-    });
-
     store = createRecordingWorkflowStore();
     executeFn.mockClear();
     executeFn.mockImplementation(() => ({
@@ -93,11 +93,7 @@ describe("runtime action execution", () => {
     }));
   });
 
-  afterEach(() => {
-    unregisterRuntimeAction(RUNTIME_ACTION_ID);
-  });
-
-  it("executes a runtime action and returns its result", async () => {
+  it("executes a host action and returns its result", async () => {
     const result = await executeWorkflow(
       {
         graph: createTriggerToActionGraph(),
@@ -113,7 +109,10 @@ describe("runtime action execution", () => {
     expect(executeFn).toHaveBeenCalledTimes(1);
   });
 
-  it("passes the resolved node name into the action's step context", async () => {
+  // The context is how an author learns which node their action is running as, and
+  // the node name is the label off the saved graph rather than anything the action
+  // declared.
+  it("passes the resolved node name into the action's context", async () => {
     await executeWorkflow(
       {
         graph: createTriggerToActionGraph("Look Up Donor"),
@@ -124,14 +123,16 @@ describe("runtime action execution", () => {
       store
     );
 
-    const startCall = store
-      .callsOf("startStepLog")
-      .find((call) => call.nodeId === "action_1");
-    expect(startCall?.nodeName).toBe("Look Up Donor");
-    expect(startCall?.executionId).toBe("exec_123");
+    expect(executeFn.mock.calls[0]?.[0]).toMatchObject({
+      context: {
+        executionId: "exec_123",
+        nodeId: "action_1",
+        nodeName: "Look Up Donor",
+      },
+    });
   });
 
-  it("reports a failing runtime action as a failed node result", async () => {
+  it("reports a failing host action as a failed node result", async () => {
     executeFn.mockImplementation(() => ({
       success: false as const,
       error: { message: "Donor not found" },
@@ -153,11 +154,49 @@ describe("runtime action execution", () => {
 });
 
 // The engine reads the assembled surface for an action's step and its label, and
-// `getExtensions` throws outside an app rather than answering nothing. An empty
-// assembly is what these cases want: their actions are runtime actions, and the
-// built-in four ride in on it.
+// `getExtensions` throws outside an app rather than answering nothing, so every
+// action these cases run is assembled here the way a host's own would be. The
+// built-in four ride in on the same assembly.
 beforeAll(() => {
-  configureExtensions(assembleExtensions({}));
+  configureExtensions(
+    assembleExtensions({
+      actions: [
+        createAction({
+          id: HOST_ACTION_ID,
+          label: "Test Host Action",
+          description: "A test host action",
+          schema: Schema.Struct({}),
+          execute: executeFn,
+        }),
+        createAction({
+          id: PRODUCER_ACTION_ID,
+          label: "Producer",
+          description: "Produces the output later nodes reference",
+          schema: Schema.Struct({}),
+          execute: () => ({
+            success: true,
+            data: {
+              items: [{ name: "Widget" }, { name: "Gadget" }],
+              customer: { name: "Ada" },
+              count: 2,
+            },
+          }),
+        }),
+        createAction({
+          id: CONSUMER_ACTION_ID,
+          label: "Consumer",
+          description: "Records the config it was handed",
+          // Every case hands this action a config of its own, so the shape stays
+          // open: a declared field list would decode the keys under test away.
+          schema: Schema.StructWithRest(Schema.Struct({}), unknownRest),
+          execute: ({ payload }) => {
+            capturedPayload = payload;
+            return { success: true, data: {} };
+          },
+        }),
+      ],
+    })
+  );
 });
 
 afterAll(() => {
@@ -165,26 +204,12 @@ afterAll(() => {
 });
 
 describe("run persistence through the store port", () => {
-  const executeFn = vi.fn<() => RuntimeActionResult>(() => ({
-    success: true,
-    data: { ok: true },
-  }));
   let store: RecordingWorkflowStore;
 
   beforeEach(() => {
-    registerRuntimeAction({
-      id: RUNTIME_ACTION_ID,
-      label: "Test Runtime Action",
-      description: "A test runtime action",
-      execute: executeFn,
-    });
     store = createRecordingWorkflowStore();
     executeFn.mockClear();
     executeFn.mockImplementation(() => ({ success: true, data: { ok: true } }));
-  });
-
-  afterEach(() => {
-    unregisterRuntimeAction(RUNTIME_ACTION_ID);
   });
 
   it("writes the terminal run record and its timeline event on success", async () => {
@@ -269,42 +294,8 @@ describe("run persistence through the store port", () => {
  * offered token resolves to the value a user sees in the picker.
  */
 describe("template resolution into action config", () => {
-  const PRODUCER_ACTION_ID = "test/producer-action";
-  const CONSUMER_ACTION_ID = "test/consumer-action";
-
-  let capturedPayload: Record<string, unknown> = {};
-
   beforeEach(() => {
     capturedPayload = {};
-
-    registerRuntimeAction({
-      id: PRODUCER_ACTION_ID,
-      label: "Producer",
-      description: "Produces the output later nodes reference",
-      execute: () => ({
-        success: true,
-        data: {
-          items: [{ name: "Widget" }, { name: "Gadget" }],
-          customer: { name: "Ada" },
-          count: 2,
-        },
-      }),
-    });
-
-    registerRuntimeAction({
-      id: CONSUMER_ACTION_ID,
-      label: "Consumer",
-      description: "Records the config it was handed",
-      execute: ({ payload }) => {
-        capturedPayload = payload;
-        return { success: true, data: {} };
-      },
-    });
-  });
-
-  afterEach(() => {
-    unregisterRuntimeAction(PRODUCER_ACTION_ID);
-    unregisterRuntimeAction(CONSUMER_ACTION_ID);
   });
 
   async function runWithConsumerConfig(

@@ -66,11 +66,11 @@ function describeSchema(
  * The paths and types a schema offers, as the editor lists them.
  *
  * A schema this cannot read contributes nothing, which is what `createAction`
- * wants: an embedder registering a runtime action may hand over a schema from
- * any library and may pass an `outputFields` list of its own alongside it, so a
- * derivation that came back empty still has somewhere to fall back to. A plugin
- * action has no such fallback, and `requireOutputFieldsFromSchema` below is what
- * it registers through.
+ * wants: a host may write its action's schema in any library and may pass an
+ * `outputFields` list of its own alongside it, so a derivation that came back
+ * empty still has somewhere to fall back to. An integration's action has no such
+ * fallback, and `requireOutputFieldsFromSchema` below is what assembly holds it
+ * to.
  */
 export function outputFieldsFromSchema(
   schema: OutputSchema<unknown>

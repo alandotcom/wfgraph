@@ -213,11 +213,33 @@ step's environment, settled in `define-step.ts`, not a type parameter widened he
 ```ts
 "do-something": defineStep({
   label: "Do Something",
-  // ... the same metadata and the same two schemas, which stay exported from
-  // index.ts so the handler's module can type itself against them
+  // ... the same metadata and the same two schemas. The input schema is exported
+  // from index.ts, because the handler's module types its parameter against it; the
+  // output schema is read here and nowhere else.
   load: async () =>
     (await import("#src/my-service/steps/do-something")).doSomethingHandler,
 }),
+```
+
+The handler's module reads that schema as a type and never as a value, so it takes
+it with `import type`. A value import would make the module's own import of
+`index.ts` a real edge in the graph, and the cycle it closes with the `load` above
+is broken only by that `load` being lazy:
+
+```ts
+// packages/plugins/src/my-service/steps/do-something.ts
+import type { StepRunContext } from "@rova/core/plugin";
+import type {
+  doSomethingInput,
+  MyServiceCredentials,
+} from "#src/my-service/index";
+
+export const doSomethingHandler = Effect.fn(function* (
+  input: typeof doSomethingInput.Type,
+  context: StepRunContext<MyServiceCredentials>
+) {
+  // ...
+});
 ```
 
 Exactly one of `handler` and `load` is written; a value carrying both fails to

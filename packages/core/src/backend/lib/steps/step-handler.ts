@@ -130,9 +130,14 @@ async function logStepComplete(
 }
 
 /**
- * Strip internal fields from input for logging (we don't want to log internal metadata)
+ * The step's own config, with the three keys the engine's dispatch owns removed.
+ *
+ * A run log shows what the node was configured with, so `_context` and the two
+ * fields naming the action and its connection come out. A step that hands its
+ * input to something an author wrote wants the same three gone, which is why this
+ * is exported rather than private to the wrapper below.
  */
-function stripInternalFields<T extends StepInputWithInternalFields>(
+export function stripInternalFields<T extends StepInputWithInternalFields>(
   input: T
 ): Omit<T, "_context" | "actionType" | "integrationId"> {
   const {

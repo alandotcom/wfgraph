@@ -21,6 +21,8 @@ import {
 } from "#src/backend/lib/effect/test-layers";
 import {
   getIntegration,
+  postIntegrations,
+  postIntegrationsTest,
   postIntegrationTest,
   putIntegration,
 } from "#src/backend/services/integrations/integrations";
@@ -108,6 +110,13 @@ function makeIntegrationRepo(stored: StoredIntegration) {
   // Secret handling never reaches the rest of the table, so every other method
   // refuses.
   const repoLayer = stubIntegrationRepo({
+    insert: (row) =>
+      Effect.sync(() => ({
+        ...stored,
+        id: "int_new",
+        name: row.name,
+        config: row.config,
+      })),
     findById: (integrationId) =>
       Effect.succeed(integrationId === stored.id ? stored : null),
     update: (integrationId, updates) =>
@@ -291,6 +300,75 @@ describe("integration connection test failures", () => {
             "terminating connection due to administrator command"
           );
         })
+    );
+  });
+});
+
+/**
+ * What the surface answers for a type it does not hold.
+ *
+ * Both refusals guard the same gap: an editor served by a different build than
+ * this process lists integrations this one may not have, and a request naming one
+ * arrives with credentials attached. Storing them would leave a connection this
+ * process can neither test nor mask.
+ */
+describe("an integration this server does not hold", () => {
+  afterEach(() => {
+    clearExtensions();
+  });
+
+  layer(SilentAppLoggerLayer)((it) => {
+    it.effect("refuses to test it", () =>
+      Effect.gen(function* () {
+        configureExtensions(
+          assembleExtensions({ integrations: [slackDefinition()] })
+        );
+
+        const failure = yield* postIntegrationsTest({
+          type: "notion",
+          config: { apiKey: "secret" },
+        }).pipe(Effect.flip);
+
+        assert.instanceOf(failure, InvalidInput);
+        assert.include(failure.error, "extensions.integrations");
+        // The list is what shows the cause: this build and the editor's disagree.
+        assert.include(failure.error, "This server holds: database, slack.");
+      })
+    );
+
+    it.effect("refuses to store credentials for it, naming the option", () =>
+      Effect.gen(function* () {
+        configureExtensions(
+          assembleExtensions({ integrations: [slackDefinition()] })
+        );
+        const repo = makeIntegrationRepo(storedSlackIntegration);
+
+        const failure = yield* postIntegrations({
+          name: "Notion",
+          type: "notion",
+          config: { apiKey: "secret" },
+        }).pipe(Effect.provide(repo.layer), Effect.flip);
+
+        assert.instanceOf(failure, InvalidInput);
+        assert.include(failure.error, "extensions.integrations");
+      })
+    );
+
+    // The database connection is a catalog entry the engine assembles itself, so a
+    // connection to it stores like any other and needs nothing passed by a host.
+    it.effect("stores a database connection, which Rova ships", () =>
+      Effect.gen(function* () {
+        configureExtensions(assembleExtensions({}));
+        const repo = makeIntegrationRepo(storedSlackIntegration);
+
+        const created = yield* postIntegrations({
+          name: "Warehouse",
+          type: "database",
+          config: { url: "postgresql://localhost:5432/app" },
+        }).pipe(Effect.provide(repo.layer));
+
+        assert.strictEqual(created.name, "Warehouse");
+      })
     );
   });
 });

@@ -10,29 +10,14 @@ function outputFieldsOf(slug: keyof typeof acuity.actions) {
 }
 
 /**
- * What a node downstream of an Acuity node can reference.
- *
- * Every path the hand-written lists carried is still here with its exact
- * description -- `appointment`, `id`, `datetime`, `canceled`, the four array
- * names and the four counts. What is new is the inside of those payloads: an
- * appointment used to be one entry a template could name and then had nothing
- * to do with, and its own fields are addressable now, in a list and on their
- * own.
- */
-
-/** An appointment's own fields, which four actions offer under two prefixes. */
-
-/** The same fields, addressed under the prefix the action puts them behind. */
-
-/**
  * What a node downstream of an Acuity node can reference, and what the schemas say
  * about the payloads Acuity sends.
  *
- * The appointment cases assert paths rather than a full ordered list: what matters
- * about them is the correction, and a thirty-line list per action is a list nobody
- * reads and everybody re-pastes. `send-sms`-style exact lists stay where the payload
- * is this repo's own. The wire shape itself is pinned in `acuity-steps.test.ts`,
- * against a fixture built from a recorded response.
+ * The appointment cases assert individual paths rather than a full ordered list:
+ * a thirty-line list per action over a vendor's payload is a list nobody reads and
+ * everybody re-pastes. An exact list stays where the payload is this repo's own,
+ * the way `twilio/index.test.ts` writes one. The wire shape itself is pinned in
+ * `acuity-steps.test.ts`, against a fixture built from a recorded response.
  */
 describe("the acuity integration", () => {
   const appointmentActions = [
@@ -43,20 +28,35 @@ describe("the acuity integration", () => {
     "cancel-appointment",
   ] as const;
 
-  it("declares its credentials and its eight actions", () => {
+  // Nothing registers on import. The value is the whole of what an integration is,
+  // and the line that passes it to `createRovaApp` is what turns it on. The slug is
+  // the record key and nowhere else, so an id like "acuity/get-appointment" is
+  // computed at assembly rather than written here.
+  it("declares its credentials and its actions as one value", () => {
     expect(acuity.type).toBe("acuity");
+    expect(acuity.label).toBe("Acuity");
     expect(acuity.test).toBeDefined();
     expect(acuity.credentials.map((field) => field.envVar)).toEqual([
       "ACUITY_USER_ID",
       "ACUITY_API_KEY",
     ]);
-    expect(Object.keys(acuity.actions)).toHaveLength(8);
+    expect(Object.keys(acuity.actions)).toEqual([
+      "list-appointment-types",
+      "list-appointments",
+      "get-appointment",
+      "get-availability-dates",
+      "get-availability-times",
+      "create-appointment",
+      "reschedule-appointment",
+      "cancel-appointment",
+    ]);
   });
 
-  // The correction this batch made: `forms` is a list of forms, each holding its own
-  // answers, and the timezone Acuity sends is `timezone`. The previous schema
-  // described the answers one level up and insisted on a `calendarTimeZone` the API
-  // does not send, which failed the encode of every appointment carrying a form.
+  // `forms` is a list of forms, each holding its own answers, and the timezone
+  // Acuity sends is `timezone`. The SDK declares a `calendarTimeZone` the API does
+  // not send, and an appointment carrying a form puts its answers one level deeper
+  // than the SDK's types say: both are why these paths are asserted rather than
+  // taken on the vendor's word.
   it.each(appointmentActions)(
     "describes %s's appointment as Acuity sends it",
     (slug) => {

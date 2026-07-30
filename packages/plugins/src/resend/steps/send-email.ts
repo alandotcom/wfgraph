@@ -3,7 +3,7 @@ import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema } from "effect";
 import { describeResendFailure, sendResendEmail } from "#src/resend/client";
-import { type ResendCredentials, sendEmailInput } from "#src/resend/index";
+import type { ResendCredentials, sendEmailInput } from "#src/resend/index";
 import type { JsonObject } from "@rova/shared/types/json";
 
 type ResendTestBehavior = "log_only" | "send_to_test_email";
@@ -214,8 +214,6 @@ export const sendEmailHandler = Effect.fn(function* (
     };
   }
 
-  // The plugin's own credential vocabulary, so a key it never declares is a
-  // compile error here rather than an undefined at run time.
   const credentials = yield* context.credentials;
   const apiKey = credentials.RESEND_API_KEY;
 

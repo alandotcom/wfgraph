@@ -86,18 +86,14 @@ import {
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
-import { getExtensionCatalog, integrationLabels } from "#src/lib/extensions";
-import { findAction } from "@rova/shared/extensions/catalog";
+import { getExtensionCatalog } from "#src/lib/extensions";
+import { findAction, findIntegration } from "@rova/shared/extensions/catalog";
 import { flattenConfigFields } from "@rova/shared/plugins/action-fields";
 import {
   getMissingRequiredFieldsForNodes,
   type MissingRequiredFieldInfo,
 } from "@rova/shared/workflow/action-config-validation";
 import { findTemplateTokens } from "@rova/shared/workflow/node-references";
-import {
-  SYSTEM_ACTION_INTEGRATIONS,
-  SYSTEM_INTEGRATION_LABELS,
-} from "@rova/shared/workflow/system-action-integrations";
 
 // The `satisfies` is the exhaustiveness check: a reason added to the shared
 // union fails to compile here until it has user-facing copy.
@@ -263,16 +259,15 @@ function getMissingRequiredFields(
   });
 }
 
-// Get missing integrations for workflow nodes
-// Uses the plugin registry to determine which integrations are required
-// Also handles built-in actions that aren't in the plugin registry
+// Which integrations a graph needs a connection for and does not have. The
+// catalog answers both halves: which integration each action belongs to, and what
+// that integration goes by.
 function getMissingIntegrations(
   nodes: WorkflowNode[],
   userIntegrations: Array<{ id: string; type: string }>
 ): MissingIntegrationInfo[] {
   const userIntegrationIds = new Set(userIntegrations.map((i) => i.id));
   const missingByType = new Map<string, string[]>();
-  const labels = integrationLabels();
 
   for (const node of nodes) {
     // Skip disabled nodes
@@ -285,11 +280,10 @@ function getMissingIntegrations(
       continue;
     }
 
-    // The catalog says which integration an action needs; the table beside it
-    // covers the built-ins, which belong to no integration definition.
+    // The catalog says which integration an action needs, the engine's own
+    // Database Query included.
     const action = findAction(getExtensionCatalog(), actionType);
-    const requiredIntegrationType =
-      action?.integration || SYSTEM_ACTION_INTEGRATIONS[actionType];
+    const requiredIntegrationType = action?.integration;
 
     if (!requiredIntegrationType) {
       continue;
@@ -309,7 +303,7 @@ function getMissingIntegrations(
     }
 
     const existing = missingByType.get(requiredIntegrationType) || [];
-    // Use human-readable label from registry if no custom label
+    // The node's own label, or the action's if it was never renamed.
     existing.push(node.data.label || action?.label || actionType);
     missingByType.set(requiredIntegrationType, existing);
   }
@@ -318,8 +312,7 @@ function getMissingIntegrations(
     ([integrationType, nodeNames]) => ({
       integrationType,
       integrationLabel:
-        labels[integrationType] ||
-        SYSTEM_INTEGRATION_LABELS[integrationType] ||
+        findIntegration(getExtensionCatalog(), integrationType)?.label ||
         integrationType,
       nodeNames,
     })

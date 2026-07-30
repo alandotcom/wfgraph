@@ -11,7 +11,7 @@ import {
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import {
   getActionLabel,
-  getStepImporter,
+  getStepFunction,
 } from "#src/backend/lib/step-registry";
 import { defineStep } from "#src/backend/lib/steps/define-step";
 
@@ -70,28 +70,26 @@ describe("getActionLabel", () => {
   });
 });
 
-describe("getStepImporter", () => {
+describe("getStepFunction", () => {
   it("dispatches to the step an integration definition carries", async () => {
     configureExtensions(assembleExtensions({ integrations: [twilio] }));
 
-    const importer = getStepImporter("twilio/send-sms");
-    expect(importer?.kind).toBe("step");
+    const step = getStepFunction("twilio/send-sms");
 
-    const run = importer?.kind === "step" ? await importer.load() : undefined;
-    expect(await run?.({ smsTo: "+15550001111" })).toEqual({
+    expect(await step?.({ smsTo: "+15550001111" })).toEqual({
       success: true,
       data: { sid: "SM1" },
     });
   });
 
-  it("has no importer for an action nothing registered", () => {
-    expect(getStepImporter("nobody/knows")).toBeUndefined();
+  it("has no step for an action nothing declared", () => {
+    expect(getStepFunction("nobody/knows")).toBeUndefined();
   });
 
-  // The two the engine ships itself are Promise functions behind an import, which
-  // is the one arm of the lookup an integration definition does not fill.
+  // The two the engine ships itself are the one part of the lookup the assembled
+  // surface does not answer for.
   it("dispatches to a built-in step the engine ships", () => {
-    expect(getStepImporter("HTTP Request")?.kind).toBe("step");
-    expect(getStepImporter("Database Query")?.kind).toBe("step");
+    expect(getStepFunction("HTTP Request")).toBeDefined();
+    expect(getStepFunction("Database Query")).toBeDefined();
   });
 });

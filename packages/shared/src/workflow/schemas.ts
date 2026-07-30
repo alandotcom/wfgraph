@@ -42,7 +42,7 @@ import { lifecycleRulesSchema } from "#src/workflow/lifecycle-rules";
  * shape belongs, and this closed struct is what makes the swap a compile error
  * rather than a field nobody removed.
  */
-export const workflowTriggerConfigSchema = Schema.Struct({
+const workflowTriggerConfigSchema = Schema.Struct({
   lifecycleRules: Schema.optional(lifecycleRulesSchema),
   webhookSchema: Schema.optional(Schema.String),
   webhookOutputSchema: Schema.optional(Schema.String),
@@ -139,12 +139,12 @@ export const workflowEdgeAttributesSchema = Schema.StructWithRest(
   unknownRest
 );
 
-export const serializedWorkflowNodeSchema = Schema.Struct({
+const serializedWorkflowNodeSchema = Schema.Struct({
   key: NonEmptyTrimmedString,
   attributes: workflowNodeAttributesSchema,
 });
 
-export const serializedWorkflowEdgeSchema = Schema.Struct({
+const serializedWorkflowEdgeSchema = Schema.Struct({
   key: NonEmptyTrimmedString,
   source: NonEmptyTrimmedString,
   target: NonEmptyTrimmedString,

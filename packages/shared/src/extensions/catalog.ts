@@ -95,6 +95,35 @@ export const emptyExtensionCatalog: ExtensionCatalog = {
   integrations: [],
 };
 
+/**
+ * An action's id, from the integration it belongs to and the slug it is keyed by.
+ *
+ * The one place the two halves are joined. Assembly calls it, so the id exists
+ * once: an integration definition never spells it out, and `parseActionId` below
+ * is the same rule read backwards.
+ */
+export function formatActionId(integration: string, slug: string): string {
+  return `${integration}/${slug}`;
+}
+
+/**
+ * The integration and slug halves of an action id, or null when it is not one.
+ *
+ * A built-in action's id is a bare label ("HTTP Request"), and a host's own may be
+ * anything it wrote, so a caller that needs the integration half asks and handles
+ * the null.
+ */
+export function parseActionId(
+  actionId: string | undefined | null
+): { integration: string; slug: string } | null {
+  const parts = actionId?.split("/");
+  if (parts?.length !== 2) {
+    return null;
+  }
+
+  return { integration: parts[0], slug: parts[1] };
+}
+
 export function findEvent(
   catalog: ExtensionCatalog,
   name: string

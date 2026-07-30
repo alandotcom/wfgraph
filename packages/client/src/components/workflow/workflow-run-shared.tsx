@@ -1,17 +1,7 @@
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Copy,
-  ExternalLink,
-} from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { Schema } from "effect";
 import { useState } from "react";
 import { Button } from "#src/components/ui/button";
-import {
-  OUTPUT_DISPLAY_CONFIGS,
-  type OutputDisplayConfig,
-} from "#src/lib/output-display-configs";
 import type { WorkflowExecutionStatus } from "@rova/shared/workflow/execution-contracts";
 import { readAs } from "@rova/shared/types/schema";
 import { getActionOutputComponent } from "@rova/shared/plugins/ui-registry";
@@ -105,30 +95,6 @@ export function formatDuration(duration: string): string {
 }
 
 // Data helpers
-
-function getOutputConfig(nodeType: string): OutputDisplayConfig | undefined {
-  return OUTPUT_DISPLAY_CONFIGS[nodeType];
-}
-
-const readNonEmptyString = readAs(Schema.NonEmptyString);
-
-/**
- * Read the one field a display config names out of a step's stored output.
- *
- * The output is JSONB coming back from the database, so the field is read rather
- * than assumed. The key comes from the plugin's own display config, so the object
- * is stepped into by hand and the leaf is what gets validated.
- */
-function getOutputDisplayValue(
-  output: unknown,
-  config: { type: "image" | "video" | "url"; field: string }
-): string | undefined {
-  if (output === null || typeof output !== "object" || Array.isArray(output)) {
-    return undefined;
-  }
-
-  return readNonEmptyString(Reflect.get(output, config.field));
-}
 
 /**
  * Step output carrying an image inline as base64. Also read from a stored step
@@ -230,14 +196,12 @@ export function CollapsibleSection({
   defaultExpanded = false,
   copyData,
   isError = false,
-  externalLink,
 }: {
   title: string;
   children: React.ReactNode;
   defaultExpanded?: boolean;
   copyData?: unknown;
   isError?: boolean;
-  externalLink?: string;
 }) {
   const [isOpen, setIsOpen] = useState(defaultExpanded);
 
@@ -259,24 +223,6 @@ export function CollapsibleSection({
           </span>
         </button>
         <div className="flex items-center gap-1">
-          {externalLink ? (
-            <Button
-              className="h-7 px-2"
-              render={
-                <a
-                  href={externalLink}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  <span className="sr-only">Open external link</span>
-                </a>
-              }
-              size="sm"
-              variant="ghost"
-            >
-              <ExternalLink className="h-3 w-3" />
-            </Button>
-          ) : null}
           {copyData !== undefined ? (
             <CopyButton data={copyData} isError={isError} />
           ) : null}
@@ -296,20 +242,13 @@ export function OutputDisplay({
   input?: unknown;
   actionType?: string;
 }) {
-  // A plugin can render its own output with a React component, which it
-  // registers from its ui.ts. When one exists it takes precedence, and the
-  // simple field-based display falls back to this app's own config table.
+  // An integration can render its own output with a React component, which it
+  // registers from its ui.ts. When one exists it takes precedence over the plain
+  // base64 image below, which is keyed on nothing but the shape of the output.
   const CustomComponent = actionType
     ? getActionOutputComponent(actionType)
     : undefined;
-  const builtInConfig = actionType ? getOutputConfig(actionType) : undefined;
-  const effectiveBuiltInConfig = CustomComponent ? undefined : builtInConfig;
-  const displayValue = effectiveBuiltInConfig
-    ? getOutputDisplayValue(output, effectiveBuiltInConfig)
-    : undefined;
-  const legacyBase64Output = readBase64ImageOutput(output);
-  const isLegacyBase64 =
-    !(CustomComponent || builtInConfig) && !!legacyBase64Output;
+  const base64Image = CustomComponent ? null : readBase64ImageOutput(output);
 
   const renderRichResult = () => {
     if (CustomComponent) {
@@ -320,62 +259,14 @@ export function OutputDisplay({
       );
     }
 
-    if (effectiveBuiltInConfig && displayValue) {
-      switch (effectiveBuiltInConfig.type) {
-        case "image": {
-          const imageSrc =
-            effectiveBuiltInConfig.field === "base64" &&
-            !displayValue.startsWith("data:")
-              ? `data:image/png;base64,${displayValue}`
-              : displayValue;
-          return (
-            <div className="overflow-hidden rounded-lg border bg-muted/50 p-3">
-              <img
-                alt="Generated output"
-                className="max-h-96 w-auto rounded"
-                height={384}
-                src={imageSrc}
-                width={384}
-              />
-            </div>
-          );
-        }
-        case "video":
-          return (
-            <div className="overflow-hidden rounded-lg border bg-muted/50 p-3">
-              <video
-                className="max-h-96 w-auto rounded"
-                controls
-                src={displayValue}
-              >
-                <track kind="captions" />
-              </video>
-            </div>
-          );
-        case "url":
-          return (
-            <div className="overflow-hidden rounded-lg border bg-muted/50">
-              <iframe
-                className="h-96 w-full rounded"
-                sandbox="allow-scripts"
-                src={displayValue}
-                title="Output preview"
-              />
-            </div>
-          );
-        default:
-          return null;
-      }
-    }
-
-    if (isLegacyBase64) {
+    if (base64Image) {
       return (
         <div className="overflow-hidden rounded-lg border bg-muted/50 p-3">
           <img
-            alt="AI output"
+            alt="Step output"
             className="max-h-96 w-auto rounded"
             height={384}
-            src={`data:image/png;base64,${legacyBase64Output}`}
+            src={`data:image/png;base64,${base64Image}`}
             width={384}
           />
         </div>
@@ -386,11 +277,6 @@ export function OutputDisplay({
   };
 
   const richResult = renderRichResult();
-  const hasRichResult = richResult !== null;
-  const externalLink =
-    effectiveBuiltInConfig?.type === "url" && displayValue
-      ? displayValue
-      : undefined;
 
   return (
     <>
@@ -400,12 +286,8 @@ export function OutputDisplay({
         </pre>
       </CollapsibleSection>
 
-      {hasRichResult ? (
-        <CollapsibleSection
-          defaultExpanded
-          externalLink={externalLink}
-          title="Result"
-        >
+      {richResult ? (
+        <CollapsibleSection defaultExpanded title="Result">
           {richResult}
         </CollapsibleSection>
       ) : null}

@@ -23,13 +23,13 @@ const selectOptionSchema = Schema.Struct({
 });
 
 /**
- * One declarative config field, matching `ActionConfigFieldBase` in the plugin
- * registry. The field types are a closed set because the config renderer
- * switches on them: a field the renderer cannot draw is not a usable field.
+ * One declarative config field, matching `ActionConfigFieldBase` in
+ * `plugins/action-fields`. The field types are a closed set because the config
+ * renderer switches on them: a field the renderer cannot draw is not a usable
+ * field.
  *
- * The list fields are wrapped in `Schema.mutable` because the registry's own
- * types spell them as mutable arrays, and a decoded `readonly` array would not
- * satisfy them.
+ * The list fields are wrapped in `Schema.mutable` because that module spells them
+ * as mutable arrays, and a decoded `readonly` array would not satisfy them.
  */
 const actionConfigFieldBaseSchema = Schema.Struct({
   key: Schema.String,
@@ -65,30 +65,29 @@ const actionConfigFieldGroupSchema = Schema.Struct({
   defaultExpanded: Schema.optionalKey(Schema.Boolean),
 });
 
-// The annotation is the check: a schema that admits a field the registry's own
-// contract does not have -- a type literal the config renderer cannot draw, say
-// -- stops compiling here.
-export const actionConfigFieldWireSchema: Schema.Codec<ActionConfigField> =
+// The annotation is the check: a schema admitting a field that `action-fields.ts`
+// does not describe -- a type literal the config renderer cannot draw, say --
+// stops compiling here.
+const actionConfigFieldWireSchema: Schema.Codec<ActionConfigField> =
   Schema.Union([actionConfigFieldGroupSchema, actionConfigFieldBaseSchema]);
 
-export const referenceFieldWireSchema: Schema.Codec<ReferenceField> =
-  Schema.Struct({
-    path: Schema.String,
-    description: Schema.String,
-    type: Schema.optionalKey(
-      Schema.Literals([
-        "string",
-        "number",
-        "boolean",
-        "timestamp",
-        "array",
-        "object",
-      ])
-    ),
-    format: Schema.optionalKey(Schema.Literal("timestamp")),
-    nullable: Schema.optionalKey(Schema.Boolean),
-    enumValues: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
-  });
+const referenceFieldWireSchema: Schema.Codec<ReferenceField> = Schema.Struct({
+  path: Schema.String,
+  description: Schema.String,
+  type: Schema.optionalKey(
+    Schema.Literals([
+      "string",
+      "number",
+      "boolean",
+      "timestamp",
+      "array",
+      "object",
+    ])
+  ),
+  format: Schema.optionalKey(Schema.Literal("timestamp")),
+  nullable: Schema.optionalKey(Schema.Boolean),
+  enumValues: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
+});
 
 const eventMetadataSchema = Schema.Struct({
   name: NonEmptyTrimmedString,
@@ -130,12 +129,11 @@ const integrationMetadataSchema = Schema.Struct({
   hasTest: Schema.Boolean,
 });
 
-export const extensionCatalogSchema: Schema.Codec<ExtensionCatalog> =
-  Schema.Struct({
-    events: Schema.Array(eventMetadataSchema),
-    actions: Schema.Array(actionMetadataSchema),
-    integrations: Schema.Array(integrationMetadataSchema),
-  });
+const extensionCatalogSchema: Schema.Codec<ExtensionCatalog> = Schema.Struct({
+  events: Schema.Array(eventMetadataSchema),
+  actions: Schema.Array(actionMetadataSchema),
+  integrations: Schema.Array(integrationMetadataSchema),
+});
 
 export const readExtensionCatalog = readAs(extensionCatalogSchema);
 

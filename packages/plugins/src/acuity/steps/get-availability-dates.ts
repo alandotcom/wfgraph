@@ -1,9 +1,9 @@
 import type { AvailabilityDatesParams } from "@fountain-bio/acuity";
 import { StepFailure, type StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
-import {
+import type {
+  AcuityCredentials,
   getAvailabilityDatesInput,
-  type AcuityCredentials,
 } from "#src/acuity/index";
 import { callAcuity, createAcuityClient } from "./client";
 import { optionalInteger, requiredInteger } from "./shared";

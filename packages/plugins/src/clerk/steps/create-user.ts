@@ -8,7 +8,7 @@ import {
   toClerkApiUser,
 } from "#src/clerk/client";
 import { parseClerkMetadata } from "#src/clerk/metadata";
-import { createUserInput, type ClerkCredentials } from "#src/clerk/index";
+import type { ClerkCredentials, createUserInput } from "#src/clerk/index";
 import { toClerkUserData } from "#src/clerk/types";
 
 /**
@@ -19,8 +19,6 @@ export const clerkCreateUserHandler = Effect.fn(function* (
   input: typeof createUserInput.Type,
   context: StepRunContext<ClerkCredentials>
 ) {
-  // The plugin's own credential vocabulary, so a key it never declares is a
-  // compile error here rather than an undefined at run time.
   const credentials = yield* context.credentials;
   const secretKey = credentials.CLERK_SECRET_KEY;
 

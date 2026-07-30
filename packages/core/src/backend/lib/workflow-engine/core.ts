@@ -3,13 +3,11 @@
  * Keeps node execution, templating, and logging behavior aligned with the builder.
  */
 
-import { isNil } from "es-toolkit/predicate";
-import { omitBy } from "es-toolkit/object";
 import { evaluateCelBooleanExpression } from "#src/backend/lib/cel/environment";
 import { getAppLogger } from "#src/backend/lib/logger";
 import {
   getActionLabel,
-  getStepImporter,
+  getStepFunction,
   getSystemActionTypes,
 } from "#src/backend/lib/step-registry";
 import type { StepContext } from "#src/backend/lib/steps/step-handler";
@@ -41,10 +39,7 @@ import {
 } from "@rova/shared/workflow/node-references";
 import { validateWorkflowOutputAgainstSchema } from "@rova/shared/workflow/schema-validation";
 import type { StepResult } from "@rova/shared/workflow/step-result";
-import {
-  evaluateWorkflowTrigger,
-  resolveWorkflowTriggerDefinition,
-} from "@rova/shared/workflow/trigger-registry";
+import { entryNodeLabel } from "@rova/shared/workflow/entry-node-label";
 import { readWaitForEvents } from "@rova/shared/workflow/wait-events";
 import { parseWebhookMockInput } from "@rova/shared/workflow/triggers/webhook-trigger";
 import type {
@@ -98,11 +93,6 @@ type NodeWorkOutcome = {
   /** Action node without an actionType: recorded as failed, no output stored. */
   unconfigured?: boolean;
   /**
-   * Trigger routing decided this event is none of the workflow's business, so
-   * the branch below the trigger stays unrun.
-   */
-  triggerIgnored?: boolean;
-  /**
    * The branch a Condition node picked. Absent on every other node, and absent
    * on a disabled Condition node, which evaluated nothing and therefore fans
    * out to every branch below it.
@@ -150,69 +140,6 @@ function readConfigString(
 ): string | undefined {
   const value = config?.[key];
   return typeof value === "string" ? value : undefined;
-}
-
-/**
- * Opens a step-log row around a runtime-extension action, then closes it with
- * the outcome. Plugin and system steps do their own logging inside the step
- * module; runtime actions have no such wrapper, so the engine logs them here.
- *
- * Routed through the store port rather than the database helpers directly, so
- * the engine stays free of db imports and tests can assert on a recording
- * store. A logging failure must never fail the step it is describing, so every
- * write is best-effort.
- */
-async function withStoreStepLogging(
-  store: WorkflowStore,
-  context: StepContext,
-  // Runtime actions may be written sync or async; accept either.
-  runStep: () => StepResult | Promise<StepResult>
-): Promise<StepResult> {
-  const { executionId } = context;
-  // No execution to attach rows to (a store that persists still needs an id).
-  const handle = executionId
-    ? await store
-        .startStepLog({
-          executionId,
-          nodeId: context.nodeId,
-          nodeName: context.nodeName,
-          nodeType: context.nodeType,
-          // Matches the previous wrapper, which stripped every internal field
-          // and so logged an empty input for this path.
-          input: {},
-        })
-        .catch(() => undefined)
-    : undefined;
-
-  const complete = async (
-    status: "success" | "error",
-    output?: unknown,
-    error?: string
-  ) => {
-    if (!handle?.logId) {
-      return;
-    }
-    await store
-      .completeStepLog({ ...handle, status, output, error })
-      .catch(() => undefined);
-  };
-
-  try {
-    const result = await runStep();
-
-    if (result.success) {
-      // A success logs its payload. An action that reports success and nothing
-      // else leaves only the wrapper to log.
-      await complete("success", "data" in result ? result.data : result);
-    } else {
-      await complete("error", result.error, result.error.message);
-    }
-
-    return result;
-  } catch (error) {
-    await complete("error", undefined, await getErrorMessageAsync(error));
-    throw error;
-  }
 }
 
 function getConditionNextNodeIds(input: {
@@ -428,7 +355,6 @@ function executeActionStep(input: {
   config: Record<string, unknown>;
   outputs: NodeOutputs;
   context: StepContext;
-  store: WorkflowStore;
 }): Promise<ActionStepOutcome> {
   return withSpan(
     "rova.workflow.action.execute",
@@ -446,10 +372,8 @@ async function executeActionStepInner(input: {
   config: Record<string, unknown>;
   outputs: NodeOutputs;
   context: StepContext;
-  store: WorkflowStore;
 }): Promise<ActionStepOutcome> {
-  const { actionType, config, outputs, context, store } = input;
-  const integrationId = readConfigString(config, "integrationId");
+  const { actionType, config, outputs, context } = input;
 
   // Build step input WITHOUT credentials, but WITH integrationId reference and logging context
   const stepInput: Record<string, unknown> = {
@@ -487,32 +411,10 @@ async function executeActionStepInner(input: {
     };
   }
 
-  // Look up the action's implementation: a built-in, a plugin step, or a
-  // runtime action a host registered.
-  const stepImporter = getStepImporter(actionType);
-  if (stepImporter) {
-    if (stepImporter.kind === "runtime") {
-      const {
-        actionType: _ignoredActionType,
-        integrationId: _ignoredIntegrationId,
-        ...runtimeActionPayload
-      } = config;
-
-      const executeFn = stepImporter.execute;
-      return {
-        result: await withStoreStepLogging(store, context, () =>
-          executeFn({
-            payload: runtimeActionPayload,
-            context: {
-              ...context,
-              integrationId,
-            },
-          })
-        ),
-      };
-    }
-
-    const stepFunction = await stepImporter.load();
+  // Look up the action's implementation: an integration's step, a host's own
+  // action, or one of the two the engine ships.
+  const stepFunction = getStepFunction(actionType);
+  if (stepFunction) {
     return { result: await stepFunction(stepInput) };
   }
 
@@ -521,7 +423,7 @@ async function executeActionStepInner(input: {
     result: {
       success: false,
       error: {
-        message: `Unknown action type: "${actionType}". This action is not registered in the plugin system. Available system actions: ${getSystemActionTypes().join(", ")}.`,
+        message: `Unknown action type: "${actionType}". No action with this id was assembled: no integration, no host action, and none of the built-ins, which are ${getSystemActionTypes().join(", ")}.`,
       },
     },
   };
@@ -1491,7 +1393,8 @@ async function executeWorkflowInner(
     if (node.data.type === "action") {
       const actionType = readConfigString(node.data.config, "actionType");
       if (actionType) {
-        // Look up the human-readable label from the step registry
+        // The label comes from the assembled catalog, so a run log names an action
+        // the way the editor does.
         const label = getActionLabel(actionType);
         if (label) {
           return label;
@@ -1500,10 +1403,7 @@ async function executeWorkflowInner(
       return "Action";
     }
     if (node.data.type === "trigger") {
-      const triggerDefinition = resolveWorkflowTriggerDefinition(
-        node.data.config
-      );
-      return triggerDefinition.ui.label;
+      return entryNodeLabel(node.data.config);
     }
     return node.data.type;
   }
@@ -1619,14 +1519,12 @@ async function executeWorkflowInner(
       success: false,
       error: "Node execution did not produce a result.",
     };
-    let triggerIgnored = false;
     let conditionValue: boolean | undefined;
 
     if (node.data.type === "trigger") {
       namedNodeLogger.debug("Executing trigger node");
 
       const configRecord = node.data.config ?? {};
-      const triggerDefinition = resolveWorkflowTriggerDefinition(configRecord);
       // The entry node's own sample payload, which stands in when a run was
       // started with nothing: a test run from the canvas, before any Event.
       const mockInput = parseWebhookMockInput(configRecord);
@@ -1648,55 +1546,25 @@ async function executeWorkflowInner(
         triggerData = { ...triggerData, ...triggerInput };
       }
 
-      // Routing was resolved at the entrypoint before this run was enqueued;
-      // inside the run the classification only guards against a payload the
-      // trigger's schema rejects.
-      const triggerClassification = evaluateWorkflowTrigger({
-        config: configRecord,
-        payload: triggerData,
-      });
-
-      if (!triggerClassification.ok) {
-        triggerIgnored = true;
-        // The trigger node's output is stored as JSON, where a key holding
-        // `undefined` disappears anyway. Dropping those keys here makes the
-        // in-memory object match what a template or the run row will see.
-        triggerData = omitBy(
-          {
-            ...triggerData,
-            triggered: false,
-            ignoredReason: triggerClassification.reason,
-          },
-          isNil
-        );
-
-        namedNodeLogger.info("Trigger payload failed the trigger schema", {
-          triggerType: triggerDefinition.runtime.type,
-          ignoredReason: triggerClassification.reason,
-        });
-      }
-
       let shouldExecuteTriggerStep = true;
 
       // The output contract is the entry node's narrowing of its payload, so it
       // is checked for every run rather than for one trigger type.
-      if (!triggerIgnored) {
-        const schemaValidation = validateWorkflowOutputAgainstSchema({
-          schemaValue: configRecord.webhookOutputSchema,
-          output: triggerData,
-          contextLabel: "Webhook trigger",
-        });
+      const schemaValidation = validateWorkflowOutputAgainstSchema({
+        schemaValue: configRecord.webhookOutputSchema,
+        output: triggerData,
+        contextLabel: "Webhook trigger",
+      });
 
-        if (!schemaValidation.ok) {
-          result = {
-            success: false,
-            error: schemaValidation.error,
-          };
-          shouldExecuteTriggerStep = false;
-          namedNodeLogger.error("Webhook output schema validation failed", {
-            error: schemaValidation.error,
-          });
-        }
+      if (!schemaValidation.ok) {
+        result = {
+          success: false,
+          error: schemaValidation.error,
+        };
+        shouldExecuteTriggerStep = false;
+        namedNodeLogger.error("Webhook output schema validation failed", {
+          error: schemaValidation.error,
+        });
       }
 
       if (shouldExecuteTriggerStep) {
@@ -1821,7 +1689,6 @@ async function executeWorkflowInner(
           config: processedConfig,
           outputs,
           context: stepContext,
-          store,
         });
 
         // Set by a Condition node and by nothing else, which is what the
@@ -1856,7 +1723,7 @@ async function executeWorkflowInner(
       };
     }
 
-    return { result, triggerIgnored, conditionValue };
+    return { result, conditionValue };
   }
 
   /**
@@ -1945,15 +1812,7 @@ async function executeWorkflowInner(
       if (result.success) {
         let shouldContinueDownstream = true;
 
-        // Webhook trigger routing may intentionally ignore an event.
-        if (outcome.triggerIgnored) {
-          namedNodeLogger.info(
-            "Skipping downstream nodes because trigger was not fired"
-          );
-          shouldContinueDownstream = false;
-        }
-
-        if (result.haltBranch && shouldContinueDownstream) {
+        if (result.haltBranch) {
           namedNodeLogger.info(
             "Skipping downstream nodes because step requested halt"
           );

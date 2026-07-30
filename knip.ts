@@ -122,11 +122,11 @@ const config: KnipConfig = {
     },
 
     "packages/plugins": {
-      // src/index.ts, src/server.ts and src/ui.ts are the three names in this
-      // package's "exports" map, and knip picks them up from there. All three
-      // exist for their import side effects: they register plugin metadata, the
-      // server-side lazy loaders (step importers and connection tests), and
-      // React components.
+      // src/index.ts and src/ui.ts are the two names in this package's "exports"
+      // map, and knip picks them up from there. The first exports the
+      // integrations as values, which a host passes to createRovaApp; the second
+      // exists for its import side effects, since the icons and output renderers
+      // are React components and cannot travel over /api/extensions.
       entry: [],
       project: ["src/**/*.{ts,tsx}"],
       ignoreDependencies: [

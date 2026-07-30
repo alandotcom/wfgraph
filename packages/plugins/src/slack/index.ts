@@ -34,7 +34,6 @@ const slackCredentialFields = credentialFields([
   },
 ]);
 
-/** The credential keys a Slack handler may read, derived from the fields above. */
 export type SlackCredentials = CredentialsOf<typeof slackCredentialFields>;
 
 type SlackTestBehavior = "log_only" | "send_message";

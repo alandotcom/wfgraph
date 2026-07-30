@@ -98,9 +98,9 @@ Four rules, each of which cost something to learn:
   `~standard.validate(payload)` with nothing else to say. Effect assigns `~standard` onto
   the schema and returns early if a `validate` is already there, so a schema crosses that
   bridge once and the first crossing decides its options. The RPC contracts and the Inngest
-  event types call it directly for that reason. The trigger and action registries call it
-  themselves, at registration, so `createTrigger` and `createAction` take a bare
-  `Schema.Struct` and an integration author writes no bridging ceremony; `Schema.isSchema`
+  event types call it directly for that reason. `createAction` calls it itself, where the
+  action is defined, so an author takes a bare
+  `Schema.Struct` and writes no bridging ceremony; `Schema.isSchema`
   is the discriminator, testing for the type id Effect brands its schemas with, so a Zod or
   arktype schema is passed through untouched.
 - **`Schema.optionalKey` for a shape read from JSON, `Schema.optional` for one built in
@@ -137,10 +137,9 @@ as run errors, written to the log, and answered over HTTP. Use it wherever a dec
 becomes text a person reads.
 
 **Zod is a test fixture, nothing more.** It is a devDependency of `packages/shared` alone,
-used by `trigger-registry.test.ts`, `action-registry.test.ts`, and
-`standard-schema-compat.test.ts` as the foreign Standard Schema library those registries
-claim to accept, beside arktype. Nothing at runtime imports it and no published manifest
-names it. Do not reach for it in new code.
+used by `action-registry.test.ts` and `standard-schema-compat.test.ts` as the foreign
+Standard Schema library `createAction` claims to accept, beside arktype. Nothing at runtime
+imports it and no published manifest names it. Do not reach for it in new code.
 
 **Timestamps cross through a codec.** `packages/shared/src/types/timestamp.ts` owns the
 one ISO-string-to-`Date` conversion, as a checked `Schema.decodeTo` pair. Do not hand-roll `new Date(x)` or
@@ -239,11 +238,12 @@ derivation cannot read is refused naming the action, and so is a required config
 no field for a builder to fill in. It is also where an integration definition's actions
 get their ids and their derived field lists, and where `stepFor` and `connectionTestFor`
 come from, since a definition carries both. The four actions the engine ships itself are
-catalog entries in `built-ins.ts`, and a host's own actions arrive as `actions`, which is
-metadata because their implementations stay in the runtime action registry the engine
-dispatches from.
+catalog entries in `built-ins.ts`, beside the `database` integration one of them runs
+against, and a host's own actions arrive as `extensions.actions` -- `createAction` values,
+which carry their `execute` into the same `stepFor`, so dispatch has one kind of thing to
+find.
 
-The server reads that catalog wherever it used to ask the plugin registry: the credential
+The server reads that catalog for everything it used to ask a registry: the credential
 mapping in `credential-fetcher.ts`, the secret-key test in
 `integration-config-masking.ts`, the action labels and step dispatch in
 `step-registry.ts`, and both workflow validators. Each asks `getExtensions()`, which
@@ -263,8 +263,8 @@ hold its vendor client, its SDK and its secrets in the same file as its metadata
 
 `packages/shared/src/plugins/action-fields.ts` is what is left of the registry that used to
 carry all of this: the config-field types both ends share, `parseActionId`, and two helpers
-over a field list. The runtime action registry survives as server-side module state, a plain
-map now that no second bundle holds a copy.
+over a field list. Nothing registers anything: `assembleExtensions` is handed every
+definition and answers for every half of it.
 
 **An Event is a `defineEvent` value, and carries no lifecycle role.**
 `packages/core/src/backend/lib/extensions/define-event.ts` takes a name, a payload schema,

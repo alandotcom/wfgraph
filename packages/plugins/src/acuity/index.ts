@@ -45,7 +45,6 @@ const acuityCredentialFields = credentialFields([
   },
 ]);
 
-/** The credential keys an Acuity handler may read, derived from the fields above. */
 export type AcuityCredentials = CredentialsOf<typeof acuityCredentialFields>;
 
 /**
@@ -267,7 +266,7 @@ const availabilityTimeSlotSchema = Schema.Struct({
 
 export const listAppointmentTypesInput = Schema.Struct({});
 
-export const listAppointmentTypesOutput = Schema.Struct({
+const listAppointmentTypesOutput = Schema.Struct({
   appointmentTypes: Schema.mutable(
     Schema.Array(appointmentTypeSchema)
   ).annotate({
@@ -290,7 +289,7 @@ export const listAppointmentsInput = Schema.Struct({
   page: optionalNumeric,
 });
 
-export const listAppointmentsOutput = Schema.Struct({
+const listAppointmentsOutput = Schema.Struct({
   appointments: Schema.mutable(Schema.Array(appointmentSchema)).annotate({
     description: "Array of appointments",
   }),
@@ -302,7 +301,7 @@ export const getAppointmentInput = Schema.Struct({
   pastFormAnswers: optionalText,
 });
 
-export const getAppointmentOutput = Schema.Struct({
+const getAppointmentOutput = Schema.Struct({
   appointment: appointmentSchema.annotate({
     description: "The appointment details",
   }),
@@ -317,7 +316,7 @@ export const getAvailabilityDatesInput = Schema.Struct({
   timezone: optionalText,
 });
 
-export const getAvailabilityDatesOutput = Schema.Struct({
+const getAvailabilityDatesOutput = Schema.Struct({
   dates: Schema.mutable(Schema.Array(availabilityDateSchema)).annotate({
     description: "Available dates",
   }),
@@ -333,7 +332,7 @@ export const getAvailabilityTimesInput = Schema.Struct({
   ignoreAppointmentIds: optionalText,
 });
 
-export const getAvailabilityTimesOutput = Schema.Struct({
+const getAvailabilityTimesOutput = Schema.Struct({
   slots: Schema.mutable(Schema.Array(availabilityTimeSlotSchema)).annotate({
     description: "Available time slots",
   }),
@@ -356,7 +355,7 @@ export const createAppointmentInput = Schema.Struct({
   noEmail: optionalText,
 });
 
-export const createAppointmentOutput = Schema.Struct({
+const createAppointmentOutput = Schema.Struct({
   appointment: appointmentSchema.annotate({
     description: "Created appointment payload",
   }),
@@ -374,7 +373,7 @@ export const rescheduleAppointmentInput = Schema.Struct({
   noEmail: optionalText,
 });
 
-export const rescheduleAppointmentOutput = Schema.Struct({
+const rescheduleAppointmentOutput = Schema.Struct({
   appointment: appointmentSchema.annotate({
     description: "Rescheduled appointment payload",
   }),
@@ -392,7 +391,7 @@ export const cancelAppointmentInput = Schema.Struct({
   noEmail: optionalText,
 });
 
-export const cancelAppointmentOutput = Schema.Struct({
+const cancelAppointmentOutput = Schema.Struct({
   appointment: appointmentSchema.annotate({
     description: "Canceled appointment payload",
   }),
@@ -401,6 +400,51 @@ export const cancelAppointmentOutput = Schema.Struct({
     Schema.Boolean.annotate({ description: "Cancellation flag" })
   ),
 });
+
+/** What a tri-state Acuity flag offers: leave it alone, or say yes or no. */
+const yesNoSelect = [
+  { value: "", label: "Default" },
+  { value: "true", label: "Yes" },
+  { value: "false", label: "No" },
+];
+
+/**
+ * The two flags every mutating Acuity action takes, written once.
+ *
+ * `satisfies` with the keys spelled out is what keeps each `key` a literal type:
+ * `defineStep` checks a field's key against its step's input schema, and a widened
+ * `string` names no key at all. All three actions that use this group declare both.
+ */
+const mutationFlagsGroup = {
+  type: "group",
+  label: "Mutation Flags",
+  fields: [
+    {
+      key: "admin",
+      label: "Run as Admin",
+      type: "select",
+      defaultValue: "",
+      options: yesNoSelect,
+    },
+    {
+      key: "noEmail",
+      label: "Suppress Acuity Emails",
+      type: "select",
+      defaultValue: "",
+      options: yesNoSelect,
+    },
+  ],
+} satisfies {
+  type: "group";
+  label: string;
+  fields: {
+    key: "admin" | "noEmail";
+    label: string;
+    type: "select";
+    defaultValue: string;
+    options: typeof yesNoSelect;
+  }[];
+};
 
 export const acuity = defineIntegration({
   type: "acuity",
@@ -492,11 +536,7 @@ export const acuity = defineIntegration({
               label: "Include Inactive",
               type: "select",
               defaultValue: "",
-              options: [
-                { value: "", label: "Default" },
-                { value: "true", label: "Yes" },
-                { value: "false", label: "No" },
-              ],
+              options: yesNoSelect,
             },
             {
               key: "limit",
@@ -705,11 +745,7 @@ export const acuity = defineIntegration({
               label: "SMS Opt-In",
               type: "select",
               defaultValue: "",
-              options: [
-                { value: "", label: "Default" },
-                { value: "true", label: "Yes" },
-                { value: "false", label: "No" },
-              ],
+              options: yesNoSelect,
             },
             {
               key: "customFieldsJson",
@@ -721,34 +757,7 @@ export const acuity = defineIntegration({
             },
           ],
         },
-        {
-          type: "group",
-          label: "Mutation Flags",
-          fields: [
-            {
-              key: "admin",
-              label: "Run as Admin",
-              type: "select",
-              defaultValue: "",
-              options: [
-                { value: "", label: "Default" },
-                { value: "true", label: "Yes" },
-                { value: "false", label: "No" },
-              ],
-            },
-            {
-              key: "noEmail",
-              label: "Suppress Acuity Emails",
-              type: "select",
-              defaultValue: "",
-              options: [
-                { value: "", label: "Default" },
-                { value: "true", label: "Yes" },
-                { value: "false", label: "No" },
-              ],
-            },
-          ],
-        },
+        mutationFlagsGroup,
       ],
       load: async () =>
         (await import("#src/acuity/steps/create-appointment"))
@@ -782,34 +791,7 @@ export const acuity = defineIntegration({
           type: "template-input",
           placeholder: "67890",
         },
-        {
-          type: "group",
-          label: "Mutation Flags",
-          fields: [
-            {
-              key: "admin",
-              label: "Run as Admin",
-              type: "select",
-              defaultValue: "",
-              options: [
-                { value: "", label: "Default" },
-                { value: "true", label: "Yes" },
-                { value: "false", label: "No" },
-              ],
-            },
-            {
-              key: "noEmail",
-              label: "Suppress Acuity Emails",
-              type: "select",
-              defaultValue: "",
-              options: [
-                { value: "", label: "Default" },
-                { value: "true", label: "Yes" },
-                { value: "false", label: "No" },
-              ],
-            },
-          ],
-        },
+        mutationFlagsGroup,
       ],
       load: async () =>
         (await import("#src/acuity/steps/reschedule-appointment"))
@@ -842,40 +824,9 @@ export const acuity = defineIntegration({
           label: "Mark as No-Show",
           type: "select",
           defaultValue: "",
-          options: [
-            { value: "", label: "Default" },
-            { value: "true", label: "Yes" },
-            { value: "false", label: "No" },
-          ],
+          options: yesNoSelect,
         },
-        {
-          type: "group",
-          label: "Mutation Flags",
-          fields: [
-            {
-              key: "admin",
-              label: "Run as Admin",
-              type: "select",
-              defaultValue: "",
-              options: [
-                { value: "", label: "Default" },
-                { value: "true", label: "Yes" },
-                { value: "false", label: "No" },
-              ],
-            },
-            {
-              key: "noEmail",
-              label: "Suppress Acuity Emails",
-              type: "select",
-              defaultValue: "",
-              options: [
-                { value: "", label: "Default" },
-                { value: "true", label: "Yes" },
-                { value: "false", label: "No" },
-              ],
-            },
-          ],
-        },
+        mutationFlagsGroup,
       ],
       load: async () =>
         (await import("#src/acuity/steps/cancel-appointment"))

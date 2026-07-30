@@ -313,7 +313,7 @@ function FieldGroup({
   defaultExpanded = false,
 }: {
   label: string;
-  fields: ActionConfigFieldBase[];
+  fields: readonly ActionConfigFieldBase[];
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
   disabled?: boolean;
@@ -347,7 +347,7 @@ function FieldGroup({
 }
 
 type ActionConfigRendererProps = {
-  fields: ActionConfigField[];
+  fields: readonly ActionConfigField[];
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
   disabled?: boolean;

@@ -57,7 +57,6 @@ const twilioCredentialFields = credentialFields([
   },
 ]);
 
-/** The credential keys a Twilio handler may read, derived from the fields above. */
 export type TwilioCredentials = CredentialsOf<typeof twilioCredentialFields>;
 
 type TwilioTestBehavior = "log_only" | "send_to_test_phone";

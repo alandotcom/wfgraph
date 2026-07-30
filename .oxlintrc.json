@@ -25,35 +25,25 @@
     // Every such name is spelled out here, so introducing another one is a visible
     // decision and an accidental `_foo` is an error.
     //
-    // `_context` and `_workflowComplete` are engine-internal fields on a step's
-    // input record; `withStepLogging` reads them and strips them before the input
-    // reaches the run log. `_g` and the key constants beside it are the
-    // module-private handles the shared registries use to reach one instance across
-    // bundles. The `__rova*` names and `__resizeObserverPatched` are the dev
-    // hot-reload singletons on globalThis described in AGENTS.md. `_id` is the row
-    // identity the key/value config editor holds outside the JSON it emits.
-    // `_tag` is not ours: it is the discriminant Effect puts on every tagged
-    // error and tagged class, and code that narrows a failure union by hand
-    // rather than through `Effect.catchTag` has to read it.
+    // `_context` is the engine-internal field on a step's input record;
+    // `withStepLogging` reads it and strips it before the input reaches the run
+    // log. The three `__rova*State` names are the process-global handles
+    // `createRovaApp` configures, and `__resizeObserverPatched` is the editor's own
+    // one-time patch, all on globalThis so a dev reload does not double them. `_id`
+    // is the row identity the key/value config editor holds outside the JSON it
+    // emits. `_tag` is not ours: it is the discriminant Effect puts on every tagged
+    // error and tagged class, and code that narrows a failure union by hand rather
+    // than through `Effect.catchTag` has to read it.
     "no-underscore-dangle": [
       "error",
       {
         "allow": [
           "_tag",
           "_context",
-          "_workflowComplete",
-          "_g",
-          "_intKey",
-          "_rtKey",
-          "_cacheKey",
-          "_uiKey",
           "_id",
           "__rovaDatabaseState",
           "__rovaEncryptionState",
           "__rovaInngestState",
-          "__rovaActiveInstance",
-          "__rovaDevServer",
-          "__rovaDevSignalsInstalled",
           "__resizeObserverPatched"
         ]
       }
@@ -65,10 +55,10 @@
     // return of undefined as far as the checker is concerned. This rule reports
     // both. Enabling each one separately over the tree at the time gave 12 sites for
     // the compiler and 73 for the rule, and the 12 were not a subset: the compiler
-    // alone found two fall-through gaps this rule missed, and this rule alone found
-    // the bare-return mismatches in main.tsx, inngest/client.ts and step-registry.ts.
-    // Every site is now written as an explicit `return undefined;`, so a function
-    // that returns a value on one path states what it returns on all of them.
+    // alone found fall-through gaps this rule missed, and this rule alone found the
+    // bare-return mismatches. Every site is written as an explicit
+    // `return undefined;`, so a function that returns a value on one path states
+    // what it returns on all of them.
     "typescript/consistent-return": "error",
     "react/rules-of-hooks": "off",
     "react/exhaustive-deps": "off",

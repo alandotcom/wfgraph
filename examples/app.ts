@@ -214,7 +214,6 @@ const rova = await createRovaApp({
     serveOrigin: process.env.INNGEST_SERVE_ORIGIN,
     servePath: process.env.INNGEST_SERVE_PATH,
   },
-  actions: [cancelAppointmentAction],
   // The whole extension surface, assembled in one place. The Events are what the
   // editor lists and what the per-Event Inngest listeners are built from.
   extensions: {
@@ -225,6 +224,7 @@ const rova = await createRovaApp({
       appointmentCanceled,
       paymentSettled,
     ],
+    actions: [cancelAppointmentAction],
   },
 });
 

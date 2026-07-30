@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  actionsByCategory,
   credentialsFromConfig,
   emptyExtensionCatalog,
   type ExtensionCatalog,
@@ -102,6 +103,30 @@ describe("catalog lookups", () => {
     expect(findEvent(catalog, "app/nothing.happened")).toBeUndefined();
     expect(findAction(catalog, "twilio/send-mms")).toBeUndefined();
     expect(findIntegration(catalog, "postmark")).toBeUndefined();
+  });
+});
+
+/**
+ * The groups the action selector draws, which is the one lookup that reshapes the
+ * catalog rather than searching it.
+ *
+ * Catalog order is kept inside each group, because that order is assembly's: the
+ * built-ins first, then each integration's actions, then a host's own. The editor
+ * sorts what it is given, so the lists it gets are copies.
+ */
+describe("actionsByCategory", () => {
+  it("groups every action under its own category, in catalog order", () => {
+    expect(actionsByCategory(catalog)).toEqual({
+      System: [
+        findAction(catalog, "HTTP Request"),
+        findAction(catalog, "Condition"),
+      ],
+      Twilio: [findAction(catalog, "twilio/send-sms")],
+    });
+  });
+
+  it("answers with no groups for a catalog holding no actions", () => {
+    expect(actionsByCategory(emptyExtensionCatalog)).toEqual({});
   });
 });
 

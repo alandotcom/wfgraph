@@ -38,7 +38,6 @@ import {
   parseWorkflowSchemaFieldsString,
   workflowSchemaFieldsToJsonSchemaDocument,
 } from "@rova/shared/workflow/schema-codec";
-import { SYSTEM_ACTION_INTEGRATIONS } from "@rova/shared/workflow/system-action-integrations";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";
@@ -851,18 +850,6 @@ function getCategoryForAction(actionType: string): string | null {
   return findAction(getExtensionCatalog(), actionType)?.category ?? null;
 }
 
-/**
- * The id the catalog knows this action by.
- *
- * A saved node holds whatever was written when it was configured, and a built-in's
- * id is its label, so the answer is usually the argument. It stays a lookup because
- * a node naming an action the surface no longer has must keep its stored value:
- * blanking it would turn a missing integration into a missing action.
- */
-function normalizeActionType(actionType: string): string {
-  return findAction(getExtensionCatalog(), actionType)?.id ?? actionType;
-}
-
 export function ActionConfig({
   config,
   onUpdateConfig,
@@ -871,14 +858,6 @@ export function ActionConfig({
 }: ActionConfigProps) {
   const actionType = readConfigString(config, "actionType");
   const categories = useCategoryData();
-  const integrations = useMemo(() => getExtensionCatalog().integrations, []);
-  const integrationByLabel = useMemo(
-    () =>
-      new Map(
-        integrations.map((integration) => [integration.label, integration])
-      ),
-    [integrations]
-  );
   const categoryOptions = useMemo(
     () =>
       Object.keys(categories)
@@ -910,28 +889,14 @@ export function ActionConfig({
     ? findAction(getExtensionCatalog(), actionType)
     : undefined;
 
-  // Determine the integration type for the current action
-  const integrationType: string | undefined = useMemo(() => {
-    if (!actionType) {
-      return undefined;
-    }
-
-    // Check system actions first
-    if (SYSTEM_ACTION_INTEGRATIONS[actionType]) {
-      return SYSTEM_ACTION_INTEGRATIONS[actionType];
-    }
-
-    return findAction(getExtensionCatalog(), actionType)?.integration;
-    // eslint-disable-next-line react-hooks-js/preserve-manual-memoization -- the catalog is fixed for the process; only actionType can change the answer
-  }, [actionType]);
+  // Which connection this action needs, which the catalog answers for every action
+  // alike: the engine's own Database Query names "database" there too.
+  const integrationType = catalogAction?.integration;
 
   // Check if there are existing connections for this integration type
-  const hasExistingConnections = useMemo(() => {
-    if (!integrationType) {
-      return false;
-    }
-    return globalIntegrations.some((i) => i.type === integrationType);
-  }, [integrationType, globalIntegrations]);
+  const hasExistingConnections = globalIntegrations.some(
+    (integration) => integration.type === integrationType
+  );
 
   const openConnectionOverlay = () => {
     if (integrationType) {
@@ -972,18 +937,22 @@ export function ActionConfig({
               </SelectItem>
               {categoryOptions.length > 0 && <SelectSeparator />}
               {categoryOptions.map((categoryName) => {
-                const integration = integrationByLabel.get(categoryName);
-                const categoryLogoUrl = categories[categoryName]
+                const actionsInCategory = categories[categoryName];
+                // A category groups the actions that declared it, so the icon comes
+                // off one of them. Matching the category name against an
+                // integration's label worked only because the two happen to agree.
+                const categoryIntegration = actionsInCategory?.[0]?.integration;
+                const categoryLogoUrl = actionsInCategory
                   ?.map((action) => action.logoUrl)
                   .find(
                     (value) =>
                       typeof value === "string" && value.trim().length > 0
                   );
 
-                const fallbackIcon = integration ? (
+                const fallbackIcon = categoryIntegration ? (
                   <IntegrationIcon
                     className="size-4"
-                    integration={integration.type}
+                    integration={categoryIntegration}
                   />
                 ) : (
                   <Zap className="size-4" />
@@ -1013,7 +982,7 @@ export function ActionConfig({
           <Select
             disabled={disabled || !category}
             onValueChange={handleActionTypeChange}
-            value={normalizeActionType(actionType) || undefined}
+            value={actionType || undefined}
           >
             <SelectTrigger className="w-full" id="actionType">
               <SelectValue placeholder="Select action" />
@@ -1021,23 +990,14 @@ export function ActionConfig({
             <SelectContent>
               {category &&
                 categories[category]?.map((action) => {
-                  const actionIntegrationType =
-                    typeof action.integration === "string"
-                      ? action.integration
-                      : undefined;
-                  const integration = actionIntegrationType
-                    ? integrations.find(
-                        (item) => item.type === actionIntegrationType
-                      )
-                    : undefined;
                   let fallbackIcon: ReactNode;
                   if (category === "System") {
                     fallbackIcon = <Settings className="size-4" />;
-                  } else if (integration) {
+                  } else if (action.integration) {
                     fallbackIcon = (
                       <IntegrationIcon
                         className="size-4"
-                        integration={integration.type}
+                        integration={action.integration}
                       />
                     );
                   } else {
@@ -1120,7 +1080,7 @@ export function ActionConfig({
         <ActionConfigRenderer
           config={config}
           disabled={disabled}
-          fields={[...catalogAction.configFields]}
+          fields={catalogAction.configFields}
           onUpdateConfig={onUpdateConfig}
         />
       )}

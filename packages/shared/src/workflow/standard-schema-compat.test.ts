@@ -10,7 +10,6 @@ import { extractSchemaKeys, toStandardSchema } from "#src/types/schema";
 import { requireOutputFieldsFromSchema } from "#src/workflow/output-fields";
 import { createAction } from "./action-registry";
 import { rewriteCelExpression } from "./inngest-event-data";
-import { createTrigger } from "./trigger-registry";
 import {
   jsonSchemaLibraryOptions,
   parseWorkflowSchemaFieldsOrJsonSchema,
@@ -225,11 +224,11 @@ describe("toStandardSchema with Effect Schema", () => {
 });
 
 /**
- * The seam itself: what an author hands a registry, and what the registry does
- * with it before anything reads it.
+ * The seam itself: what an author hands `createAction`, and what it does with the
+ * schema before anything reads it.
  */
-describe("registries bridge the schema they are given", () => {
-  it("gives a bare Effect schema both halves, at registration", () => {
+describe("createAction bridges the schema it is given", () => {
+  it("gives a bare Effect schema both halves, once", () => {
     const schema = Schema.Struct({ text: Schema.String });
     expect("~standard" in schema).toBe(false);
 
@@ -243,54 +242,14 @@ describe("registries bridge the schema they are given", () => {
       },
     });
 
-    // The same object, now carrying what the registry needed from it. Effect's
-    // bridge assigns onto the schema rather than wrapping it, which is what
-    // makes "bridged once, at registration" observable from out here.
+    // The same object, now carrying both halves. Effect's bridge assigns onto the
+    // schema rather than wrapping it, which is what makes "bridged once, where the
+    // action is defined" observable from out here.
     const bridged = schema as unknown as StandardSchemaV1<unknown, unknown> &
       StandardJSONSchemaV1<unknown, unknown>;
     expect(bridged["~standard"].vendor).toBe("effect");
     expect(typeof bridged["~standard"].validate).toBe("function");
     expect(typeof bridged["~standard"].jsonSchema.input).toBe("function");
-  });
-
-  it("takes a bare Effect schema through createTrigger", () => {
-    const trigger = createTrigger({
-      type: "EffectBridgeTrigger",
-      label: "Effect Bridge Trigger",
-      schema: Schema.Struct({
-        event: Schema.Literals(["order.created", "order.canceled"]),
-        order: Schema.Struct({ id: Schema.String }),
-      }),
-      correlationIdPath: "order.id",
-      eventTypePath: "event",
-    });
-
-    // The output fields come off the JSON Schema half, so their presence is the
-    // bridge having happened. `order.id` is there because the list descends: the
-    // correlation path names that leaf, and a config field asking for an order id
-    // has to be able to.
-    expect(trigger.ui.outputFields?.map((field) => field.path)).toEqual([
-      "event",
-      "order",
-      "order.id",
-    ]);
-    expect(
-      trigger.runtime.evaluate({
-        config: undefined,
-        payload: { event: "order.created", order: { id: "o-1" } },
-      })
-    ).toEqual({
-      ok: true,
-      eventType: "order.created",
-      correlationKey: "o-1",
-    });
-
-    expect(
-      trigger.runtime.evaluate({
-        config: undefined,
-        payload: { event: "order.created", order: "not-an-object" },
-      })
-    ).toEqual({ ok: false, reason: "invalid_payload" });
   });
 
   it("reads the field names of an open Effect payload schema", () => {

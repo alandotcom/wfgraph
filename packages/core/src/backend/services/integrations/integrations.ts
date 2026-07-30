@@ -1,7 +1,6 @@
 import { Effect } from "effect";
 import { mapValues, omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
-import postgres, { type Sql } from "postgres";
 import {
   AppLogger,
   type EffectLogger,
@@ -54,12 +53,20 @@ type IntegrationDeleted = { success: true };
 const MISSING_TEST_MESSAGE =
   "Connection testing is unavailable for this integration, because it declares no test.";
 
-const createDatabaseConnection = (url: string): Sql =>
-  postgres(url, {
-    max: 1,
-    idle_timeout: 5,
-    connect_timeout: 5,
-  });
+/**
+ * What an editor served by a different build than this process runs into: it lists
+ * an integration this server does not hold, and a request naming one arrives with
+ * credentials attached. Both refusals below say what is available rather than only
+ * that the request was wrong, because the two builds disagreeing is the cause and
+ * the list is what shows it.
+ */
+function describeUnavailableIntegration(type: string): string {
+  const available = getExtensions()
+    .catalog.integrations.map((integration) => integration.type)
+    .toSorted();
+
+  return `Integration "${type}" is not available on this server. Pass it to createRovaApp under extensions.integrations, or pass builtInIntegrations from "@rova/plugins" for the built-in ones. This server holds: ${available.join(", ")}.`;
+}
 
 function mergeIntegrationConfig(
   type: string,
@@ -166,7 +173,7 @@ const testFailure =
  * Run one step of a connection test, reporting a throw the way `testFailure`
  * does.
  *
- * The plugin registry, the test loader's dynamic import, and the vendor call
+ * The catalog lookup, the test loader's dynamic import, and the vendor call
  * itself all sit outside the database, and the pre-Effect code caught them in
  * the same `try` as the query. This is that `try`, one step at a time.
  */
@@ -187,8 +194,8 @@ const attemptTestStep =
  * Both endpoints ask exactly that; `postIntegrationTest` reads the pair out of a
  * stored row first and `postIntegrationsTest` is handed one that was typed into
  * the credentials form. Everything after the read is the same work, so it lives
- * here once: the database branch, the plugin lookup, the test lookup, the
- * credential mapping, and the answer the UI shows.
+ * here once: the catalog lookup, the test lookup, the credential mapping, and the
+ * answer the UI shows.
  */
 const runConnectionTest = Effect.fn("runConnectionTest")(function* (
   callerLogger: EffectLogger,
@@ -199,22 +206,14 @@ const runConnectionTest = Effect.fn("runConnectionTest")(function* (
   const logger = callerLogger.with({ type });
   const attempt = attemptTestStep(logger, describe);
 
-  if (type === "database") {
-    return yield* attempt(() => testDatabaseConnection(config.url));
-  }
-
   // The assembled surface is module-level state that stage 7 of ADR-0002 owns,
   // so it stays a plain function call rather than becoming a service here.
-  const catalog = getExtensions().catalog;
-  const integration = findIntegration(catalog, type);
+  const integration = findIntegration(getExtensions().catalog, type);
 
   if (!integration) {
-    yield* logger.warn("Invalid integration type for test", {
-      availableTypes: catalog.integrations.map((entry) => entry.type),
-    });
-    return yield* Effect.fail(
-      new InvalidInput({ error: "Invalid integration type" })
-    );
+    const error = describeUnavailableIntegration(type);
+    yield* logger.warn(error);
+    return yield* Effect.fail(new InvalidInput({ error }));
   }
 
   const loadTest = getExtensions().connectionTestFor(type);
@@ -228,12 +227,6 @@ const runConnectionTest = Effect.fn("runConnectionTest")(function* (
   // The loader reaches for a vendor module, which is a throw the same `attempt`
   // wraps as the vendor call below.
   const testFn = yield* attempt(() => loadTest());
-  if (!testFn) {
-    yield* logger.warn(MISSING_TEST_MESSAGE);
-    return yield* Effect.fail(
-      new InvalidInput({ error: MISSING_TEST_MESSAGE })
-    );
-  }
 
   const credentials = credentialsFromConfig(integration, config);
   yield* logger.info("Testing integration credentials", {
@@ -430,46 +423,6 @@ export const postIntegrationTest = Effect.fn("postIntegrationTest")(function* (
   );
 });
 
-/**
- * Probe a Postgres URL by opening a connection and closing it again.
- *
- * Still a Promise: it owns a connection it has to close on every path, which
- * `try/finally` states in one place. A failed probe is a test result rather than
- * a service failure, so nothing here reaches the error channel.
- */
-async function testDatabaseConnection(
-  databaseUrl?: string
-): Promise<IntegrationTestResult> {
-  let connection: Sql | null = null;
-
-  try {
-    if (!databaseUrl) {
-      return {
-        status: "error",
-        message: "Connection failed",
-      };
-    }
-
-    connection = createDatabaseConnection(databaseUrl);
-
-    await connection`SELECT 1`;
-
-    return {
-      status: "success",
-      message: "Connection successful",
-    };
-  } catch {
-    return {
-      status: "error",
-      message: "Connection failed",
-    };
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
-  }
-}
-
 export const postIntegrations = Effect.fn("postIntegrations")(function* (body: {
   name?: string;
   type: string;
@@ -480,18 +433,12 @@ export const postIntegrations = Effect.fn("postIntegrations")(function* (body: {
     .get("integrations")
     .with({ type: body.type });
 
-  // An editor served by a different build than this process lists integrations
-  // this server may not hold. Refusing here is what keeps that gap from turning
-  // into credentials stored for an integration this process cannot run, which
-  // would then be neither testable nor maskable.
-  if (
-    body.type !== "database" &&
-    !findIntegration(getExtensions().catalog, body.type)
-  ) {
+  // Refusing here is what keeps a build gap from turning into credentials stored
+  // for an integration this process cannot run, which would then be neither
+  // testable nor maskable.
+  if (!findIntegration(getExtensions().catalog, body.type)) {
     return yield* Effect.fail(
-      new InvalidInput({
-        error: `Integration "${body.type}" is not available on this server. Pass it to createRovaApp under extensions.integrations, or import "@rova/plugins" for the built-in ones.`,
-      })
+      new InvalidInput({ error: describeUnavailableIntegration(body.type) })
     );
   }
 

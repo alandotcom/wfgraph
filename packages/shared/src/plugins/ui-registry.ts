@@ -1,4 +1,4 @@
-import { parseActionId } from "#src/plugins/action-fields";
+import { parseActionId } from "#src/extensions/catalog";
 
 /**
  * The React half of an integration: its icon, and any custom renderer for a
@@ -33,9 +33,7 @@ export type IntegrationUi = {
 };
 
 // A plain module map: one bundle holds it, because the only writer is the browser
-// import above and the only readers are the components beside it. It was keyed on
-// `globalThis` with a `Symbol.for` while the server held a copy of the same
-// registry too.
+// import above and the only readers are the components beside it.
 const integrationUiRegistry = new Map<string, IntegrationUi>();
 
 /**

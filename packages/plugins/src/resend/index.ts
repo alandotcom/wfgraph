@@ -42,7 +42,6 @@ const resendCredentialFields = credentialFields([
   },
 ]);
 
-/** The credential keys a Resend handler may read, derived from the fields above. */
 export type ResendCredentials = CredentialsOf<typeof resendCredentialFields>;
 
 /**
@@ -82,7 +81,7 @@ export const sendEmailInput = Schema.Struct({
  * both a key the handler leaves out and a null it writes where the vendor sent
  * nothing.
  */
-export const sendEmailOutput = Schema.Struct({
+const sendEmailOutput = Schema.Struct({
   id: Schema.String.annotate({ description: "Email ID" }),
   /** Absent on a real send: this is why a test run did not make one. */
   reasonCode: Schema.optionalKey(

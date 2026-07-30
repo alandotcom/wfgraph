@@ -1,9 +1,12 @@
+import { Effect, Schema } from "effect";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   clearExtensions,
   configureExtensions,
 } from "#src/backend/lib/extensions/current";
+import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { defineStep } from "#src/backend/lib/steps/define-step";
 import {
   extractRequiredIntegrationIds,
   type ResolveActionByType,
@@ -36,9 +39,41 @@ function createActionNode(config: Record<string, unknown>): WorkflowNode {
   };
 }
 
+/** An integration whose one action names it, which is what the default resolver reads. */
+const twilio = defineIntegration({
+  type: "twilio",
+  label: "Twilio",
+  description: "Sends messages",
+  credentials: [],
+  actions: {
+    "send-sms": defineStep({
+      label: "Send SMS",
+      description: "Sends a message",
+      category: "Twilio",
+      input: Schema.Struct({ smsTo: Schema.String }),
+      output: Schema.Struct({
+        sid: Schema.String.annotate({ description: "Message SID" }),
+      }),
+      configFields: [
+        { key: "smsTo", label: "To", type: "template-input", required: true },
+      ],
+      handler: Effect.fn(function* () {
+        return yield* Effect.succeed({ sid: "SM1" });
+      }),
+    }),
+  },
+});
+
+/**
+ * The catalog's answer, as a stub: an action that needs a connection names its
+ * integration, and that is true of the engine's own Database Query too.
+ */
 const resolveActionByType: ResolveActionByType = (actionType) => {
   if (actionType === "custom/send-message") {
     return { integration: "slack" };
+  }
+  if (actionType === "Database Query") {
+    return { integration: "database" };
   }
   return undefined;
 };
@@ -171,21 +206,7 @@ describe("validateWorkflowIntegrations", () => {
   // action it holds carries the integration its nodes must name, and a row of a
   // different type is refused by id.
   it("reads an action's required integration off the assembled catalog", async () => {
-    configureExtensions(
-      assembleExtensions({
-        actions: [
-          {
-            id: "twilio/send-sms",
-            label: "Send SMS",
-            description: "Sends a message",
-            category: "Twilio",
-            integration: "twilio",
-            configFields: [],
-            outputFields: [],
-          },
-        ],
-      })
-    );
+    configureExtensions(assembleExtensions({ integrations: [twilio] }));
 
     const result = await validateWorkflowIntegrations(
       [

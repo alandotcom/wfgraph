@@ -1,31 +1,25 @@
-import { flattenConfigFields } from "@rova/shared/plugins/action-fields";
-import {
-  requiredKeysFromSchema,
-  requireOutputFieldsFromSchema,
-} from "@rova/shared/workflow/output-fields";
+import { checkIntegration } from "@rova/core/plugin";
 import { describe, expect, it } from "vitest";
 import { builtInIntegrations } from "#src/index";
 
 /**
- * The two checks `assembleExtensions` runs over every action, run here over the real
+ * Every check `assembleExtensions` runs over an integration, run here over the real
  * six.
  *
  * A host finds out about a bad definition when its app starts, which is the right
  * place for a host and the wrong place for this repo: a description missing from one
  * field of one output schema would otherwise reach a reviewer as a green suite and an
- * adopter as a startup crash. Assembly itself lives in `@rova/core`, which this
- * package may not import, so what the cases below run is the same pair of readers
- * assembly runs.
+ * adopter as a startup crash. `checkIntegration` is the function assembly itself
+ * calls, exported for exactly this, and it throws naming the action -- so the line
+ * below is a check as much as the cases are, and a bad definition fails this file's
+ * collection.
  */
 const actions = builtInIntegrations.flatMap((integration) =>
-  Object.entries(integration.actions).map(([slug, step]) => ({
-    id: `${integration.type}/${slug}`,
-    step,
-  }))
+  checkIntegration(integration)
 );
 
-describe("every built-in action", () => {
-  it("covers all six integrations", () => {
+describe("every built-in integration", () => {
+  it("covers all six", () => {
     expect(builtInIntegrations.map((integration) => integration.type)).toEqual([
       "acuity",
       "clerk",
@@ -37,30 +31,10 @@ describe("every built-in action", () => {
     expect(actions).not.toHaveLength(0);
   });
 
-  it.each(actions)(
-    "derives the editor's field list for $id",
-    ({ id, step }) => {
-      expect(
-        requireOutputFieldsFromSchema(`Action "${id}"`, step.output)
-      ).not.toHaveLength(0);
-    }
-  );
-
-  // A key the step cannot run without needs a field a builder has to fill in. A
-  // field that is merely present is not enough: one left blank produces the config
-  // with the key missing, which is a node that fails on every run.
-  it.each(actions)(
-    "has a required field for every required key of $id",
-    ({ step }) => {
-      const required = new Set(
-        flattenConfigFields(step.configFields)
-          .filter((field) => field.required === true)
-          .map((field) => field.key)
-      );
-
-      expect(
-        requiredKeysFromSchema(step.input).filter((key) => !required.has(key))
-      ).toEqual([]);
-    }
-  );
+  // The field list is what the editor offers downstream nodes. Assembly counts it at
+  // the root of the output schema, so a schema describing nothing is refused there;
+  // this says the same thing per action, where a failure names which one.
+  it.each(actions)("offers a field list for $id", ({ outputFields }) => {
+    expect(outputFields).not.toHaveLength(0);
+  });
 });

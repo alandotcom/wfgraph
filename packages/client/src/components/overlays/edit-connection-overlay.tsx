@@ -12,20 +12,20 @@ import {
 } from "#src/lib/connection-credentials";
 import type { Integration } from "#src/lib/rpc-client";
 import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
-import { getExtensionCatalog, integrationLabels } from "#src/lib/extensions";
-import { findIntegration } from "@rova/shared/extensions/catalog";
+import { getExtensionCatalog } from "#src/lib/extensions";
+import {
+  findIntegration,
+  type IntegrationMetadata,
+} from "@rova/shared/extensions/catalog";
 import { ConfirmOverlay } from "./confirm-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
 
-const SYSTEM_INTEGRATION_LABELS: Record<string, string> = {
-  database: "Database",
-};
-
-const getLabel = (type: string): string => {
-  const labels = integrationLabels();
-  return labels[type] || SYSTEM_INTEGRATION_LABELS[type] || type;
-};
+/** An integration's label, falling back to its type when the catalog lacks it. */
+const integrationLabel = (
+  entry: IntegrationMetadata | undefined,
+  type: string
+): string => entry?.label ?? type;
 
 type EditConnectionOverlayProps = {
   overlayId: string;
@@ -179,6 +179,12 @@ export function EditConnectionOverlay({
     })
   );
 
+  const catalogEntry = findIntegration(getExtensionCatalog(), integration.type);
+  const formFields = catalogEntry?.credentialFields;
+  // Whether this integration has a connection test at all. An integration that
+  // declares none has nothing to press and nothing to run before a save.
+  const hasTest = catalogEntry?.hasTest === true;
+
   const saving = update.isPending || testForSave.isPending;
   const testing =
     testNewCredentials.isPending || testStoredCredentials.isPending;
@@ -205,8 +211,9 @@ export function EditConnectionOverlay({
   const handleSave = async () => {
     const hasNewConfig = hasProvidedConfigValues(config);
 
-    // If no new config, just save the name
-    if (!hasNewConfig) {
+    // Nothing new to test: either the credentials were left alone, in which case
+    // only the label is being saved, or the integration declares no test.
+    if (!(hasNewConfig && hasTest)) {
       saveConnection();
       return;
     }
@@ -251,26 +258,8 @@ export function EditConnectionOverlay({
     });
   };
 
-  // Get plugin form fields
-  const catalogEntry = findIntegration(getExtensionCatalog(), integration.type);
-  const formFields = catalogEntry?.credentialFields;
-
   // Render config fields
   const renderConfigFields = () => {
-    if (integration.type === "database") {
-      return (
-        <SecretField
-          configKey="url"
-          fieldId="url"
-          helpText="Connection string in the format: postgresql://user:password@host:port/database"
-          label="Database URL"
-          onChange={updateConfig}
-          placeholder="postgresql://user:password@host:port/database"
-          value={config.url || ""}
-        />
-      );
-    }
-
     if (!formFields) {
       return null;
     }
@@ -331,17 +320,21 @@ export function EditConnectionOverlay({
           onClick: handleDelete,
           disabled: saving || testing,
         },
-        {
-          label: "Test",
-          variant: "outline",
-          onClick: handleTest,
-          loading: testing,
-          disabled: saving,
-        },
+        ...(hasTest
+          ? [
+              {
+                label: "Test",
+                variant: "outline" as const,
+                onClick: handleTest,
+                loading: testing,
+                disabled: saving,
+              },
+            ]
+          : []),
         { label: "Update", onClick: handleSave, loading: saving },
       ]}
       overlayId={overlayId}
-      title={`Edit ${getLabel(integration.type)}`}
+      title={`Edit ${integrationLabel(catalogEntry, integration.type)}`}
     >
       <p className="-mt-2 mb-4 text-muted-foreground text-sm">
         Update your connection credentials

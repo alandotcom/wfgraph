@@ -1,8 +1,8 @@
 import type { StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
-import {
+import type {
+  AcuityCredentials,
   cancelAppointmentInput,
-  type AcuityCredentials,
 } from "#src/acuity/index";
 import { callAcuity, createAcuityClient } from "./client";
 import { optionalBoolean, requiredInteger } from "./shared";

@@ -2,7 +2,7 @@ import { LinearClient, type LinearDocument } from "@linear/sdk";
 import { StepFailure, type StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
 import { describeLinearFailure } from "#src/linear/errors";
-import { findIssuesInput, type LinearCredentials } from "#src/linear/index";
+import type { findIssuesInput, LinearCredentials } from "#src/linear/index";
 
 /**
  * The filter Linear's GraphQL API takes, built from the fields the user filled

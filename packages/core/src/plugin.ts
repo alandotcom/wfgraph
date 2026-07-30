@@ -20,6 +20,7 @@ export type {
   IntegrationTestResult,
 } from "#src/backend/lib/extensions/integration-test";
 export {
+  checkIntegration,
   credentialFields,
   type CredentialsOf,
   defineIntegration,

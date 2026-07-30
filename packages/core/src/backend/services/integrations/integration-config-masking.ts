@@ -26,10 +26,6 @@ export const SECRET_MASK = "********";
 export function createSecretConfigKeyTest(
   type: string
 ): (key: string) => boolean {
-  if (type === "database") {
-    return (key) => key === "url";
-  }
-
   const integration = findIntegration(getExtensions().catalog, type);
   if (!integration) {
     return () => true;

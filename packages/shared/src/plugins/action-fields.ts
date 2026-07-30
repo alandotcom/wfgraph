@@ -7,10 +7,9 @@
  * the type, so the set of types is closed by construction: a field the renderer
  * cannot draw is not a usable field.
  *
- * This module used to be the plugin registry as well, filled by import side
- * effects and read by the editor. Integrations are values a host passes to
- * `createRovaApp` now, and the editor reads the catalog, so what is left is the
- * vocabulary those two share.
+ * An integration is a value a host passes to `createRovaApp` and the editor reads
+ * the catalog, so what is left here is the field vocabulary those two share and two
+ * helpers over a field list.
  */
 
 /**
@@ -94,27 +93,6 @@ export type ActionConfigFieldGroup = {
  * Can be either a regular field or a group of fields
  */
 export type ActionConfigField = ActionConfigFieldBase | ActionConfigFieldGroup;
-
-/**
- * The integration and slug halves of an action id, or null when it is not one.
- *
- * A built-in action's id is a bare label ("HTTP Request"), and a host's own may be
- * anything it wrote, so a caller that needs the integration half asks and handles
- * the null.
- */
-export function parseActionId(actionId: string | undefined | null): {
-  integration: string;
-  slug: string;
-} | null {
-  if (!actionId || typeof actionId !== "string") {
-    return null;
-  }
-  const parts = actionId.split("/");
-  if (parts.length !== 2) {
-    return null;
-  }
-  return { integration: parts[0], slug: parts[1] };
-}
 
 /**
  * Type guard to check if a field is a group

@@ -1,12 +1,13 @@
 /**
- * The four actions the engine ships itself, as catalog entries.
+ * What the engine ships itself, as catalog entries: four actions and the database
+ * connection one of them runs against.
  *
  * They belong here rather than in the browser because the catalog is the one
  * channel the editor learns the surface through: a built-in the browser knew
- * about on its own would be an action selector that disagrees with what the
- * server can run.
+ * about on its own would be an action selector, or a connection form, that
+ * disagrees with what the server can run.
  *
- * Each of the four is configured by a bespoke panel in the editor, written
+ * Each of the four actions is configured by a bespoke panel in the editor, written
  * against the shape that built-in has, which is why every `configFields` below is
  * empty: none of them renders through the declarative field list a plugin action
  * declares.
@@ -16,6 +17,10 @@
  * and the editor adds those fields to these.
  */
 
+import {
+  credentialFields,
+  defineIntegration,
+} from "#src/backend/lib/extensions/define-integration";
 import type { ActionMetadata } from "@rova/shared/extensions/catalog";
 
 export const builtInActions: readonly ActionMetadata[] = [
@@ -61,3 +66,36 @@ export const builtInActions: readonly ActionMetadata[] = [
     outputFields: [],
   },
 ];
+
+/**
+ * The database a Database Query node runs against.
+ *
+ * An integration with no actions of its own: what it contributes is the
+ * connection form, the key the step reads the URL by, and the probe behind "Test
+ * connection". Database Query is the action, and it names this type the same way
+ * a plugin action names its own integration, so the editor asks for a connection
+ * on that node and nothing has to know which types are special.
+ *
+ * It is assembled with every host's integrations rather than passed by one,
+ * because the action needing it is the engine's.
+ */
+export const databaseIntegration = defineIntegration({
+  type: "database",
+  label: "Database",
+  description: "Connect to PostgreSQL databases",
+  credentials: credentialFields([
+    {
+      label: "Database URL",
+      type: "password",
+      placeholder: "postgresql://user:password@host:port/database",
+      configKey: "url",
+      envVar: "DATABASE_URL",
+      helpText:
+        "Connection string in the format: postgresql://user:password@host:port/database",
+    },
+  ]),
+  test: async () =>
+    (await import("#src/backend/lib/extensions/database-test"))
+      .testDatabaseConnection,
+  actions: {},
+});

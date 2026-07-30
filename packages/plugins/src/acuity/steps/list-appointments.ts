@@ -1,9 +1,9 @@
 import type { ListAppointmentsParams } from "@fountain-bio/acuity";
 import type { StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
-import {
+import type {
+  AcuityCredentials,
   listAppointmentsInput,
-  type AcuityCredentials,
 } from "#src/acuity/index";
 import { callAcuity, createAcuityClient } from "./client";
 import { optionalBoolean, optionalInteger } from "./shared";

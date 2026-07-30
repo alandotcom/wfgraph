@@ -1,10 +1,9 @@
 /**
  * What "Test connection" is, as an integration author writes it.
  *
- * These types live with the extension surface rather than with the registry that
- * still holds the built-ins' tests, because that registry goes in B4 and the
- * shape an author writes against must not go with it. `@rova/core/plugin`
- * publishes `IntegrationTestResult` for that reason.
+ * `@rova/core/plugin` publishes these, because a test is written in the
+ * integration package and run by the credentials dialog: the answer below is what
+ * reaches an operator filling in the form.
  */
 
 export type IntegrationTestResult = {

@@ -2,7 +2,7 @@ import { LinearClient } from "@linear/sdk";
 import { StepFailure, type StepRunContext } from "@rova/core/plugin";
 import { Effect } from "effect";
 import { describeLinearFailure } from "#src/linear/errors";
-import { createTicketInput, type LinearCredentials } from "#src/linear/index";
+import type { createTicketInput, LinearCredentials } from "#src/linear/index";
 
 /**
  * Everything the Linear SDK does is a Promise that throws, so every call goes
