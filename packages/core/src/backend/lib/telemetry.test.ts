@@ -15,7 +15,7 @@ beforeAll(() => {
   provider = new BasicTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
-  provider.register();
+  trace.setGlobalTracerProvider(provider);
 });
 
 afterAll(async () => {

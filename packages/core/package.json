@@ -62,7 +62,7 @@
   "devDependencies": {
     "@fastify/middie": "^9.3.3",
     "@inngest/test": "^1.0.0",
-    "@opentelemetry/sdk-trace-base": "^1.25.0",
+    "@opentelemetry/sdk-trace-base": "^2.10.0",
     "@rova/shared": "workspace:*",
     "@types/express": "^5.0.6",
     "express": "^5.2.1",

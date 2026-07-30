@@ -48,6 +48,14 @@ catalog:
 overrides:
   react: "catalog:"
   react-dom: "catalog:"
+  # inngest-cli pins adm-zip to ^0.5.10, which never reaches the patched line;
+  # GHSA-xcpc-8h2w-3j85 (crafted ZIP triggers a 4GB allocation) is fixed in 0.6.0.
+  adm-zip: "0.6.0"
+  # @esbuild-kit/core-utils (an unmaintained drizzle-kit transitive, dev-only)
+  # pins esbuild to ~0.18.20; GHSA-67mh-4wv8-2f99 (dev server answers any
+  # origin's request) is fixed at 0.24.3, and drizzle-kit's own direct esbuild
+  # dependency already resolves within this same range.
+  esbuild: "^0.25.4"
 
 # pnpm refuses to run a dependency's install scripts until the dependency is
 # named here, so a package that gains a postinstall arrives as a warning rather
