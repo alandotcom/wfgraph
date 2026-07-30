@@ -31,11 +31,8 @@ import {
   DropdownMenuTrigger,
 } from "#src/components/ui/dropdown-menu";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
-import {
-  type SavedWorkflow,
-  toSavedWorkflows,
-  type WorkflowExecutionsGlobalResult,
-} from "#src/lib/rpc-client";
+import type { WorkflowExecutionsGlobalResult } from "#src/lib/rpc-client";
+import type { WorkflowSummaryPayload } from "@rova/shared/workflow/api-contracts";
 import {
   orpcQuery,
   refreshRunHistory,
@@ -107,15 +104,18 @@ const RUNS_PAGE_SIZE = 100;
 
 /**
  * Newest first. A module-level function so TanStack can memoise the select by
- * identity instead of deserialising and re-sorting on every render.
+ * identity instead of re-sorting on every render.
  */
 function toSortedWorkflows(
-  payload: Parameters<typeof toSavedWorkflows>[0]
-): SavedWorkflow[] {
-  return toSavedWorkflows(payload).toSorted(byUpdatedDesc);
+  payload: readonly WorkflowSummaryPayload[]
+): WorkflowSummaryPayload[] {
+  return payload.toSorted(byUpdatedDesc);
 }
 
-function byUpdatedDesc(a: SavedWorkflow, b: SavedWorkflow): number {
+function byUpdatedDesc(
+  a: WorkflowSummaryPayload,
+  b: WorkflowSummaryPayload
+): number {
   return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
 }
 

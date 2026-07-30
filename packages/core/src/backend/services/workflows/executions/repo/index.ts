@@ -3,7 +3,6 @@ import { Context, Effect, Layer } from "effect";
 import { partition } from "es-toolkit";
 import {
   workflowExecutionEvents,
-  workflowExecutionLogs,
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
@@ -98,8 +97,9 @@ async function reclaimStuckRuns(
  * The two methods that touch more than one table in one transaction, which is
  * the reason `ExecutionRepo` is one service rather than four: `startForEntity`
  * writes `workflow_executions` and `workflow_wait_states` inside one advisory
- * lock, and `deleteAllForWorkflow` deletes across all four tables it owns.
- * Neither can be split across services without splitting a transaction.
+ * lock, and `deleteAllForWorkflow` deletes the runs and the workflow-scoped audit
+ * rows together. Neither can be split across services without splitting a
+ * transaction.
  */
 type CrossTableRepoMethods = {
   /**
@@ -128,9 +128,10 @@ type CrossTableRepoMethods = {
     supersededReason: string;
   }) => Effect.Effect<EntityStartOutcome, DatabaseError>;
   /**
-   * Erase one workflow's run history, answering how many runs went. Logs, wait
-   * states, and events go with them, which is why this is one method rather
-   * than four: half a deletion leaves rows pointing at a run that is gone.
+   * Erase one workflow's run history, answering how many runs went. Node logs
+   * and wait states follow the runs by cascade; the audit rows are deleted here
+   * beside them, in the same transaction, because half a deletion leaves rows
+   * pointing at a run that is gone.
    */
   readonly deleteAllForWorkflow: (
     workflowId: string
@@ -350,46 +351,34 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
           }),
 
         deleteAllForWorkflow: (workflowId) =>
-          database.query(async (db) => {
-            const executions = await db.query.workflowExecutions.findMany({
-              where: eq(workflowExecutions.workflowId, workflowId),
-              columns: { id: true },
-            });
-
-            const executionIds = executions.map((execution) => execution.id);
-
-            // One transaction, because the deletes only make sense together: a
-            // failure between them would leave logs, wait states, or audit rows
-            // pointing at a run that is gone.
-            //
-            // The audit rows go by workflow rather than by run, which is what
-            // makes "all runs deleted" true: a Refused Start has no run to be
-            // found through, and a workflow with nothing but refusals has an
-            // empty execution list and history to clear all the same.
-            await db.transaction(async (tx) => {
-              if (executionIds.length > 0) {
+          database.query(
+            async (db) =>
+              // One transaction, because the two deletes only make sense together:
+              // a failure between them would leave audit rows pointing at a run
+              // that is gone.
+              //
+              // The audit rows go by workflow rather than by run, which is what
+              // makes "all runs deleted" true: a Refused Start has no run to be
+              // found through, and a workflow with nothing but refusals has an
+              // empty execution list and history to clear all the same.
+              //
+              // Node logs and wait states are not named here: both foreign keys
+              // are `ON DELETE cascade`, so Postgres takes them with the runs. The
+              // count comes off the delete rather than from a pre-read of ids,
+              // which would bind one parameter per run and stop working past the
+              // protocol's 65535.
+              await db.transaction(async (tx) => {
                 await tx
-                  .delete(workflowExecutionLogs)
-                  .where(
-                    inArray(workflowExecutionLogs.executionId, executionIds)
-                  );
+                  .delete(workflowExecutionEvents)
+                  .where(eq(workflowExecutionEvents.workflowId, workflowId));
 
-                await tx
-                  .delete(workflowWaitStates)
-                  .where(inArray(workflowWaitStates.executionId, executionIds));
-              }
+                const deleted = await tx
+                  .delete(workflowExecutions)
+                  .where(eq(workflowExecutions.workflowId, workflowId));
 
-              await tx
-                .delete(workflowExecutionEvents)
-                .where(eq(workflowExecutionEvents.workflowId, workflowId));
-
-              await tx
-                .delete(workflowExecutions)
-                .where(eq(workflowExecutions.workflowId, workflowId));
-            });
-
-            return executionIds.length;
-          }),
+                return deleted.count;
+              })
+          ),
       };
     })
   );

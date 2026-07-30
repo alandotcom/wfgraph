@@ -568,24 +568,6 @@ describe("run persistence through the store port", () => {
       store.callsOf("recordAuditEvent").map((call) => call.eventType)
     ).toContain("run_failed");
   });
-
-  it("persists nothing when no store is injected", async () => {
-    const result = await executeWorkflow(
-      {
-        graph: createTriggerToActionGraph(),
-        executionId: "exec_no_store",
-        workflowId: "workflow_no_store",
-      },
-      undefined,
-      undefined,
-      actions
-    );
-
-    // The engine's default store is the noop adapter: the run still executes,
-    // it just leaves no trace.
-    expect(result.success).toBe(true);
-    expect(store.calls).toHaveLength(0);
-  });
 });
 
 /**

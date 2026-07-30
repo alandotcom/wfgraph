@@ -41,8 +41,14 @@ const slackLike: IntegrationMetadata = {
       label: "API Key",
       type: "password",
       configKey: "apiKey",
+      envVar: "SLACK_API_KEY",
     },
-    { label: "Team ID", type: "text", configKey: "teamId" },
+    {
+      label: "Team ID",
+      type: "text",
+      configKey: "teamId",
+      envVar: "SLACK_TEAM_ID",
+    },
   ],
 };
 

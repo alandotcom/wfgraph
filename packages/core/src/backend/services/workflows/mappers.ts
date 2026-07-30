@@ -1,6 +1,9 @@
 import { nanoid } from "nanoid";
 import type { Workflow } from "#src/backend/lib/db/schema";
-import type { WorkflowApiPayload } from "@rova/shared/workflow/api-contracts";
+import type {
+  WorkflowApiPayload,
+  WorkflowSummaryPayload,
+} from "@rova/shared/workflow/api-contracts";
 import {
   createSerializedWorkflowGraph,
   isSerializedWorkflowGraph,
@@ -35,14 +38,13 @@ type WorkflowUpdateInput = {
 export type WorkflowUpdateData = Pick<Workflow, "updatedAt"> &
   Partial<Pick<Workflow, "name" | "description" | "graph" | "mode">>;
 
-export function toWorkflowApiPayload(
-  workflow: WorkflowPayloadSource
-): WorkflowApiPayload {
+export function toWorkflowSummaryPayload(
+  workflow: Omit<WorkflowPayloadSource, "graph">
+): WorkflowSummaryPayload {
   return {
     id: workflow.id,
     name: workflow.name,
     description: workflow.description ?? undefined,
-    graph: workflow.graph,
     isPaused: workflow.isPaused,
     mode: workflow.mode,
     visibility: workflow.visibility,
@@ -50,6 +52,12 @@ export function toWorkflowApiPayload(
     createdAt: workflow.createdAt.toISOString(),
     updatedAt: workflow.updatedAt.toISOString(),
   };
+}
+
+export function toWorkflowApiPayload(
+  workflow: WorkflowPayloadSource
+): WorkflowApiPayload {
+  return { ...toWorkflowSummaryPayload(workflow), graph: workflow.graph };
 }
 
 /**

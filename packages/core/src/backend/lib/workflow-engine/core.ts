@@ -25,6 +25,8 @@ import {
   type LifecycleOutlet,
   nodesBehindOutlet,
 } from "@rova/shared/workflow/lifecycle-outlets";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/workflow/built-in-actions";
+import { readLifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
 import {
   parseTemplate,
   resolveOutputPath,
@@ -38,31 +40,19 @@ import type {
   WorkflowEdge,
   WorkflowNode,
 } from "@rova/shared/workflow/types";
-import { noWorkflowActions, type WorkflowActions } from "./actions";
-import {
-  createInMemoryWorkflowRuntime,
-  type WorkflowExecutionRuntime,
-} from "./runtime";
+import type { WorkflowActions } from "./actions";
+import type { WorkflowExecutionRuntime } from "./runtime";
 import { type NodeContext, runWithStepLog } from "./step-log";
-import {
-  noopWorkflowStore,
-  type PendingCancel,
-  type WorkflowRunAuditEventType,
-  type WorkflowStore,
+import type {
+  PendingCancel,
+  WorkflowRunAuditEventType,
+  WorkflowStore,
 } from "./store";
 import { executeWaitAction } from "./wait";
 
 export type { WorkflowActions } from "./actions";
 export type { WorkflowExecutionRuntime } from "./runtime";
 export type { WorkflowStore } from "./store";
-
-/**
- * Action type of the built-in Wait step. The executor dispatches on this value
- * to reach `executeWaitAction`, and the same check keeps Wait nodes out of the
- * node-level step wrapper (Wait suspends the run, and Inngest forbids a sleep
- * or a wait inside a step).
- */
-const WAIT_ACTION_TYPE = "Wait";
 
 /**
  * What one node left behind, as the traversal reads it. `haltBranch` is how a
@@ -125,10 +115,6 @@ export type WorkflowExecutionInput = {
   workflowName?: string;
   workflowRunId?: string;
   runMode?: "live" | "test";
-  eventContext?: {
-    eventType?: string;
-    correlationKey?: string;
-  };
 };
 
 const workflowExecutorLogger = getAppLogger("workflow", "executor");
@@ -177,11 +163,16 @@ function outputKey(nodeId: string): string {
   return nodeId.replace(/[^a-zA-Z0-9]/g, "_");
 }
 
-/** Whether this node is the Wait step, which the engine runs itself. */
+/**
+ * Whether this node is the Wait step, which the engine runs itself. It is also
+ * what keeps a Wait node out of the node-level step wrapper: a wait suspends the
+ * run, and Inngest forbids a sleep or a wait inside a step.
+ */
 function isWaitNode(node: WorkflowNode): boolean {
   return (
     node.data.type === "action" &&
-    readConfigString(node.data.config, "actionType") === WAIT_ACTION_TYPE
+    readConfigString(node.data.config, "actionType") ===
+      BUILT_IN_ACTION_IDS.wait
   );
 }
 
@@ -351,7 +342,7 @@ async function executeActionStepInner(
   // The Condition action evaluates its expression here, against the outputs of
   // the nodes upstream. The decision is what the run log records and what the
   // traversal routes on, so it is computed once and travels both ways.
-  if (actionType === "Condition") {
+  if (actionType === BUILT_IN_ACTION_IDS.condition) {
     const originalExpression = stepInput.condition;
     const { result: evaluatedCondition } = evaluateConditionExpression(
       originalExpression,
@@ -655,20 +646,18 @@ async function recordRunFailed(input: {
 /**
  * Main workflow executor function.
  *
- * All three dependencies are ports the caller supplies: `runtime` decides how
- * work is made durable, `store` decides where the run's trace is written, and
- * `actions` decides what an action id dispatches to. The defaults are the honest
- * in-process choices - work runs inline, nothing is persisted, no action is
- * implemented - so a caller that wants a run recorded must inject a store that
- * records, and one that wants a node to do work must inject a surface. The
- * Inngest adapter in lib/inngest/workflow-function.ts is where a real run picks
- * up all three.
+ * All three ports are required. `runtime` decides how work is made durable,
+ * `store` decides where the run's trace is written, and `actions` decides what
+ * an action id dispatches to. None of them defaults, because a port that
+ * silently does nothing reads to the caller as a working run: omitting `store`
+ * would complete green having persisted nothing. The Inngest adapter in
+ * lib/inngest/workflow-function.ts is where a real run picks up all three.
  */
 export function executeWorkflow(
   input: WorkflowExecutionInput,
-  runtime: WorkflowExecutionRuntime = createInMemoryWorkflowRuntime(),
-  store: WorkflowStore = noopWorkflowStore,
-  actions: WorkflowActions = noWorkflowActions
+  runtime: WorkflowExecutionRuntime,
+  store: WorkflowStore,
+  actions: WorkflowActions
 ) {
   return withSpan(
     "rova.workflow.execution",
@@ -697,7 +686,6 @@ async function executeWorkflowInner(
     workflowName,
     workflowRunId,
     runMode = "live",
-    eventContext,
   } = input;
   const { nodes, edges } = toWorkflowGraphData(graph);
 
@@ -715,7 +703,6 @@ async function executeWorkflowInner(
     nodeCount: nodes.length,
     edgeCount: edges.length,
     runMode,
-    eventContext,
     triggerInput,
     requestPayload: requestPayload ?? triggerInput,
   });
@@ -768,6 +755,17 @@ async function executeWorkflowInner(
     outlet: LIFECYCLE_CANCELED_HANDLE,
     edges,
   });
+
+  // A Cancel Event is the only thing that ever stamps the flag the boundary read
+  // below asks for, so a graph declaring none can never be flagged and buys
+  // neither the durable step nor the query at any node. The answer comes from
+  // this run's own graph, which the run carries in its Inngest event: a Cancel
+  // Event added mid-run reaches the runs that start after it, not the ones
+  // already walking.
+  const canBeCanceled = triggerNodes.some(
+    (node) =>
+      (readLifecycleRules(node.data.config)?.cancelEvents.length ?? 0) > 0
+  );
 
   // Helper to get a meaningful node name
   function getNodeName(node: WorkflowNode): string {
@@ -829,7 +827,7 @@ async function executeWorkflowInner(
    * would then belong to neither.
    */
   async function settleCancelBoundary(nodeId: string): Promise<boolean> {
-    if (canceledBranchNodeIds.has(nodeId)) {
+    if (!canBeCanceled || canceledBranchNodeIds.has(nodeId)) {
       return false;
     }
 
@@ -1066,7 +1064,7 @@ async function executeWorkflowInner(
       // The Wait action is the one action the engine runs itself, so its result
       // is an ExecutionResult already and carries the branch-halting decision
       // the durable runtime made. Everything else comes back as a StepResult.
-      if (actionType === WAIT_ACTION_TYPE) {
+      if (actionType === BUILT_IN_ACTION_IDS.wait) {
         const waitResult = await executeWaitAction({
           config: processedConfig,
           context: stepContext,
@@ -1191,9 +1189,9 @@ async function executeWorkflowInner(
       results[nodeId] = result;
 
       // Store outputs with sanitized nodeId for template variable lookup.
-      // A step's payload arrives as unknown because the dispatch is a dynamic
-      // import, so this is where it becomes JSON again for the template
-      // resolver and the CEL context to walk.
+      // A step result crosses Inngest's memoization boundary as JSON, so this is
+      // where it becomes JSON again for the template resolver and the CEL
+      // context to walk.
       const sanitizedNodeId = outputKey(nodeId);
       const outputData = readJsonValue(result.data);
       if (outputData === null && result.data !== null) {
@@ -1236,7 +1234,7 @@ async function executeWorkflowInner(
         const isConditionNode =
           node.data.enabled !== false &&
           node.data.type === "action" &&
-          node.data.config?.actionType === "Condition";
+          node.data.config?.actionType === BUILT_IN_ACTION_IDS.condition;
 
         if (isConditionNode && shouldContinueDownstream) {
           const conditionResult = outcome.conditionValue;

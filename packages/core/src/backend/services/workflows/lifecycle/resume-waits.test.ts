@@ -452,6 +452,48 @@ describe("resumeWaitsMatchingEvent", () => {
       expect(after).toBe(0);
     });
 
+    // The timestamp decode writes a `Date` into whatever object holds the path,
+    // so it runs against a copy. Sharing it would leave the second wait comparing
+    // a `Date` where its own match, and every downstream template, expects the
+    // ISO string the sender wrote.
+    it("leaves the arriving payload as the sender wrote it", async () => {
+      const payload = { settledAt: "2026-06-30T12:00:00.000Z" };
+
+      const woken = await resumeWaits({
+        workflowId: "workflow_1",
+        eventType: "billing/payment.settled",
+        payload,
+        waitStates: [
+          createWaitState("1", "exec_1", {
+            subscriptions: [
+              {
+                event: "billing/payment.settled",
+                match: {
+                  expression:
+                    'payload.settledAt < date("2026-07-01T00:00:00.000Z")',
+                  timestampPaths: ["settledAt"],
+                },
+              },
+            ],
+          }),
+          createWaitState("2", "exec_2", {
+            subscriptions: [
+              {
+                event: "billing/payment.settled",
+                match: {
+                  expression: 'payload.settledAt == "2026-06-30T12:00:00.000Z"',
+                  timestampPaths: [],
+                },
+              },
+            ],
+          }),
+        ],
+      });
+
+      expect(woken).toBe(2);
+      expect(payload.settledAt).toBe("2026-06-30T12:00:00.000Z");
+    });
+
     // The payload arrived from outside and may carry anything, so a field of the
     // wrong shape is a payload that does not satisfy the match.
     it("does not wake a run when the match fails to evaluate", async () => {

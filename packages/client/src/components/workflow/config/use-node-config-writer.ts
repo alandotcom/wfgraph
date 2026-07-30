@@ -16,6 +16,7 @@ import {
   selectedNodeAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/workflow/built-in-actions";
 import type { NodeConfigPatch } from "./node-config-patch";
 
 /**
@@ -59,7 +60,10 @@ export function useNodeConfigWriter() {
 
       // A Condition node has to arrive with a model, because the engine rejects
       // one without it. The action being chosen is the moment that gap opens.
-      if (patch.actionType === "Condition" && !newConfig.conditionModel) {
+      if (
+        patch.actionType === BUILT_IN_ACTION_IDS.condition &&
+        !newConfig.conditionModel
+      ) {
         Object.assign(
           newConfig,
           seedConditionModel({

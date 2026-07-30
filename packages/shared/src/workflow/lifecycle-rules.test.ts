@@ -5,9 +5,11 @@ import { rejectUnknownKeys } from "#src/types/schema";
 import {
   checkLifecycleRules,
   eventsNeedingCorrelationPath,
+  hasStartSource,
   type LifecycleRules,
   type LifecycleRulesCheck,
   lifecycleRulesSchema,
+  manualStartAllowed,
   readLifecycleRules,
   resolveCorrelationPath,
 } from "./lifecycle-rules";
@@ -312,5 +314,33 @@ describe("checkLifecycleRules", () => {
         catalog,
       })
     ).toEqual([]);
+  });
+});
+
+describe("manualStartAllowed", () => {
+  // A graph the Lifecycle panel has never been near is one the Run button is how
+  // anybody tries, so the absence of rules is a yes rather than a no.
+  it("allows a manual start of a workflow carrying no rules", () => {
+    expect(manualStartAllowed(undefined)).toBe(true);
+  });
+
+  // Rules that exist and leave manual starts out are a decision.
+  it("refuses one the rules leave out", () => {
+    expect(manualStartAllowed(rules())).toBe(false);
+    expect(manualStartAllowed(rules({ allowManualStart: false }))).toBe(false);
+    expect(manualStartAllowed(rules({ allowManualStart: true }))).toBe(true);
+  });
+});
+
+describe("hasStartSource", () => {
+  it("counts a Start Event and the manual checkbox alike", () => {
+    expect(hasStartSource(rules())).toBe(true);
+    expect(
+      hasStartSource(rules({ startEvents: [], allowManualStart: true }))
+    ).toBe(true);
+    expect(
+      hasStartSource(rules({ startEvents: [], allowManualStart: false }))
+    ).toBe(false);
+    expect(hasStartSource(rules({ startEvents: [] }))).toBe(false);
   });
 });

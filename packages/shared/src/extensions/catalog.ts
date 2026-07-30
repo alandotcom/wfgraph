@@ -53,8 +53,10 @@ export type ActionMetadata = {
 /**
  * One credential the integrations dialog asks an operator for.
  *
- * `configKey` is the field's one name: it is where the value is stored and what
- * the form keys its input by, so there is no second identifier to keep in step.
+ * A credential has two names, and they answer different questions: `configKey`
+ * is where the value is stored and what the form keys its input by, `envVar` is
+ * the name a handler reads it under. Assembly refuses a field missing the
+ * second, since `credentialsFromConfig` has no other route to a handler.
  */
 export type CredentialFieldMetadata = {
   readonly label: string;

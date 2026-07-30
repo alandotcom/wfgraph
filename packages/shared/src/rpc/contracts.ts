@@ -126,11 +126,10 @@ const integrationTestResultSchema = Schema.Struct({
 // invent a value. It used to be optional throughout, which pushed a `?? ""` into
 // every consumer — including two that fed the result straight to a router as a
 // workflow id, where the empty string resolves to a route that redirects away.
-const workflowApiPayloadSchema = Schema.Struct({
+const workflowSummarySchema = Schema.Struct({
   id: idSchema,
   name: Schema.String,
   description: Schema.optionalKey(Schema.String),
-  graph: serializedWorkflowGraphSchema,
   isPaused: Schema.Boolean,
   mode: Schema.Literals(["live", "test"]),
   visibility: Schema.Literals(["private", "public"]),
@@ -138,6 +137,16 @@ const workflowApiPayloadSchema = Schema.Struct({
   updatedAt: Schema.String,
   /** Absent on a payload the viewer did not author. */
   isOwner: Schema.optionalKey(Schema.Boolean),
+});
+
+/**
+ * One workflow in full. The graph is the whole difference from the summary
+ * above, and it is why the list procedure answers with the summary: a stored
+ * graph runs to megabytes, and the two screens that read the list show names.
+ */
+const workflowApiPayloadSchema = Schema.Struct({
+  ...workflowSummarySchema.fields,
+  graph: serializedWorkflowGraphSchema,
 });
 
 /**
@@ -223,11 +232,14 @@ const executionWaitSchema = Schema.Struct({
   waitUntil: Schema.NullOr(Schema.String),
 });
 
-/** One Refused Start: an audit row with no Execution behind it. */
+/**
+ * One Refused Start: an audit row with no Execution behind it. The audit row
+ * carries metadata too, and it stays server-side: this crosses on a two-second
+ * poll, and the message already names the reason and the Event.
+ */
 const refusedStartSchema = Schema.Struct({
   id: idSchema,
   message: Schema.String,
-  metadata: Schema.Unknown,
   createdAt: Schema.String,
 });
 
@@ -392,7 +404,7 @@ export const rpcContract = {
   workflow: {
     getAll: route("GET", "/workflows")
       .input(noInput)
-      .output(contractSchema(listOf(workflowApiPayloadSchema))),
+      .output(contractSchema(listOf(workflowSummarySchema))),
     getById: route("GET", "/workflows/{workflowId}")
       .input(contractSchema(Schema.Struct({ workflowId: idSchema })))
       .output(workflowApiPayload),

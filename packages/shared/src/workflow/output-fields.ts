@@ -11,8 +11,7 @@
  * The walk descends. A nested object contributes its own path and every leaf
  * beneath it, so a field asking for an id is offered `appointment.id` and not
  * only the `appointment` object it sits in. `node-references.ts` owns the
- * descent and its depth cap, so a derived schema and a user-authored one (a
- * webhook payload, an HTTP node's output) flatten by the same rules.
+ * descent and its depth cap.
  */
 
 import { Schema } from "effect";

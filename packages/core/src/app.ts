@@ -85,8 +85,11 @@ export type RovaAppOptions = {
    * serves except `MACHINE_ROUTES`.
    */
   auth: RovaAuth;
+  /**
+   * Where Rova's own log lines go. Absent, Rova configures a console sink of
+   * its own; present, every line is handed to this instead.
+   */
   logger?: RovaLogger;
-  configureLogging?: boolean;
   database: RovaDatabaseOptions;
   encryption: EncryptionRuntimeConfig;
   inngest: RovaInngestConfig;
@@ -193,7 +196,7 @@ async function buildRovaApp(
 
   if (options.logger) {
     configureAppLoggingWithBridge(options.logger);
-  } else if (options.configureLogging !== false) {
+  } else {
     configureAppLogging();
   }
 

@@ -5,6 +5,7 @@ import {
   readSlackError,
 } from "#src/slack/client";
 import { runVendorCall } from "#src/vendor-http";
+import type { IntegrationTestResult } from "@rova/core/plugin";
 
 // auth.test is Slack's own "is this token any good" call: it takes no arguments
 // and answers with the workspace and bot the token belongs to.
@@ -12,7 +13,9 @@ const authTestSchema = Schema.Struct({
   team: Schema.optionalKey(Schema.String),
 });
 
-export async function testSlack(credentials: Record<string, string>) {
+export async function testSlack(
+  credentials: Record<string, string>
+): Promise<IntegrationTestResult> {
   const apiKey = credentials.SLACK_API_KEY;
 
   if (!apiKey) {

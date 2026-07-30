@@ -26,6 +26,7 @@ import {
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 import { executeWorkflow } from "#src/backend/lib/workflow-engine/core";
+import { createInMemoryWorkflowRuntime } from "#src/backend/lib/workflow-engine/runtime";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
@@ -302,7 +303,7 @@ describe("an Event's datetime field, end to end", () => {
         workflowId: "workflow_event_timestamp",
         triggerInput: bookedPayload(),
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -326,7 +327,7 @@ describe("an Event's datetime field, end to end", () => {
         workflowId: "workflow_event_timestamp",
         triggerInput: bookedPayload(),
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -348,7 +349,7 @@ describe("an Event's datetime field, end to end", () => {
         workflowId: "workflow_event_timestamp",
         triggerInput: bookedPayload(),
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -371,7 +372,7 @@ describe("an Event's datetime field, end to end", () => {
         workflowId: "workflow_event_timestamp",
         triggerInput: bookedPayload(),
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -426,7 +427,7 @@ describe("an Event's datetime field, end to end", () => {
         executionId: "exec_no_payload",
         workflowId: "workflow_event_timestamp",
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );

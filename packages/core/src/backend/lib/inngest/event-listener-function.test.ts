@@ -1,4 +1,5 @@
 import { Effect, Layer, Schema } from "effect";
+import { Inngest } from "inngest";
 // The mocks API has to be the one vitest itself exports; reaching it through the
 // `@effect/vitest` re-export leaves it unable to find the module registry.
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,7 +9,10 @@ import {
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { defineEvent } from "#src/backend/lib/extensions/define-event";
-import { runEventListener } from "#src/backend/lib/inngest/event-listener-function";
+import {
+  createInngestEventListenerFunction,
+  runEventListener,
+} from "#src/backend/lib/inngest/event-listener-function";
 import type { RovaRuntime } from "#src/backend/runtime";
 import type { EventSubscriber } from "#src/backend/services/workflows/repo";
 
@@ -98,7 +102,10 @@ describe("runEventListener", () => {
   // and replaying the start above it would open a second run for one arrival.
   it("runs the lifecycle and the waits as siblings per workflow", async () => {
     listEventSubscribersMock.mockReturnValue(
-      Effect.succeed([subscriber(), subscriber({ id: "wf_2" })])
+      Effect.succeed([
+        subscriber({ roles: ["start", "wait"] }),
+        subscriber({ id: "wf_2", roles: ["start", "wait"] }),
+      ])
     );
     applyLifecycleRulesMock.mockReturnValue(
       Effect.succeed({
@@ -140,7 +147,7 @@ describe("runEventListener", () => {
   // would resume a run that is ending.
   it("keeps the Event off the waits of the runs a cancel claimed", async () => {
     listEventSubscribersMock.mockReturnValue(
-      Effect.succeed([subscriber({ roles: ["cancel"] })])
+      Effect.succeed([subscriber({ roles: ["cancel", "wait"] })])
     );
     applyLifecycleRulesMock.mockReturnValue(
       Effect.succeed({
@@ -194,11 +201,38 @@ describe("runEventListener", () => {
     expect(applyLifecycleRulesMock.mock.calls).toHaveLength(0);
   });
 
+  // The wait role is pushed only from the parked-run read, so a subscriber
+  // without it had nothing waiting on this Event when the list was built and the
+  // step would resolve to zero runs.
+  it("skips the wait step for a subscriber with nothing parked", async () => {
+    listEventSubscribersMock.mockReturnValue(
+      Effect.succeed([subscriber({ roles: ["start"] })])
+    );
+    const recorder = recordingStep();
+
+    const result = await runEventListener({
+      event: appointmentCreated,
+      payload,
+      arrival: {},
+      runtime: testRuntime(),
+      step: recorder.step,
+    });
+
+    expect(recorder.ids).toEqual([
+      "subscribers-app/appointment.created",
+      "lifecycle-wf_1",
+    ]);
+    expect(deliverToWaitsMock.mock.calls).toHaveLength(0);
+    expect(result.workflows[0]?.resumedWaits).toBe(0);
+  });
+
   // A refused start is not a refused delivery. Under first-wins the run already
   // going is the one parked on this Event, so refusing a second run is exactly
   // what leaves it the one to wake.
   it("delivers the waits of a workflow whose start was refused", async () => {
-    listEventSubscribersMock.mockReturnValue(Effect.succeed([subscriber()]));
+    listEventSubscribersMock.mockReturnValue(
+      Effect.succeed([subscriber({ roles: ["start", "wait"] })])
+    );
     const refused = {
       kind: "refused",
       workflowId: "wf_1",
@@ -298,5 +332,84 @@ describe("runEventListener", () => {
     );
 
     expect(failure).toBeInstanceOf(DatabaseError);
+  });
+});
+
+/**
+ * The trigger the listener is registered with.
+ *
+ * Several Events may share one bus source and narrow it with `source.when`, and
+ * the filter is what stops each of them being invoked for every sibling subtype
+ * and failing its intake gate. Constructing a client opens nothing, and none of
+ * these functions is invoked.
+ */
+describe("createInngestEventListenerFunction", () => {
+  const client = new Inngest({ id: "listener-test", isDev: true });
+
+  type BuiltOptions = {
+    opts: {
+      triggers: { event: string; if?: string }[];
+      throttle?: { key?: string };
+    };
+  };
+
+  /** The function inngest built, read back through the options it kept. */
+  function build(
+    event: Parameters<typeof createInngestEventListenerFunction>[0]["event"]
+  ): BuiltOptions["opts"] {
+    const built = createInngestEventListenerFunction({
+      client,
+      event,
+      runtime: testRuntime(stubWorkflowRepo()),
+    });
+
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return (built as unknown as BuiltOptions).opts;
+  }
+
+  const vendorPayload = Schema.Struct({
+    type: Schema.String.annotate({ description: "Subtype" }),
+  });
+
+  it("listens on the bus name and narrows it to this subtype", () => {
+    const [trigger] = build(
+      defineEvent({
+        name: "vendor/appointment.created",
+        schema: vendorPayload,
+        source: {
+          event: "vendor/webhook",
+          when: { path: "type", equals: "created" },
+        },
+      })
+    ).triggers;
+
+    expect(trigger?.event).toBe("vendor/webhook");
+    expect(trigger?.if).toBe('event.data.type == "created"');
+  });
+
+  // An Event that is its own source narrows nothing, and a filter there would
+  // refuse every payload the bus carries under that name.
+  it("writes no filter for an Event that declares no subtype", () => {
+    const [trigger] = build(
+      defineEvent({ name: "vendor/webhook", schema: vendorPayload })
+    ).triggers;
+
+    expect(trigger?.event).toBe("vendor/webhook");
+    expect(trigger?.if).toBeUndefined();
+  });
+
+  // `rewriteInngestOptions` prefixes the key against the payload; what this
+  // pins is that its answer reaches the function rather than being computed and
+  // dropped.
+  it("carries the Event's flow control onto the function", () => {
+    const options = build(
+      defineEvent({
+        name: "vendor/webhook",
+        schema: vendorPayload,
+        inngest: { throttle: { limit: 2, period: "1m", key: "type" } },
+      })
+    );
+
+    expect(options.throttle?.key).toBe("event.data.type");
   });
 });

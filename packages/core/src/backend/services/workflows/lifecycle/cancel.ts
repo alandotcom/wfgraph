@@ -11,9 +11,13 @@
  */
 
 import { Effect } from "effect";
+import { DEFAULT_QUERY_CONNECTIONS } from "#src/backend/lib/db/config";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { getAppLogger } from "#src/backend/lib/logger";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import {
+  ExecutionRepo,
+  type WorkflowWaitState,
+} from "#src/backend/services/workflows/executions/repo/index";
 import type { JsonObject } from "@rova/shared/types/json";
 import type { WorkflowMode } from "@rova/shared/workflow/types";
 
@@ -51,6 +55,30 @@ export const requestCanceledOutlet = Effect.fn("requestCanceledOutlet")(
       return claimed;
     }
 
+    // One read for the whole claimed set. The claim itself is one statement, so
+    // asking each run separately would be that set taken apart again, and an
+    // entity with many in-flight runs would queue those reads against a pool of
+    // ten.
+    //
+    // A refused read is contained rather than raised, for the same reason a
+    // refused send is: the flag is written and the claim cannot be re-made, so
+    // failing here would leave the claimed runs asleep until their wait timeout
+    // with no retry able to reach them.
+    const parkedByExecution = yield* repo
+      .listWaitingStatesForExecutions(claimed)
+      .pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            logger.error("Failed to read the waits of claimed runs", {
+              workflowId: input.workflowId,
+              eventName: input.eventName,
+              error,
+            });
+            return new Map<string, WorkflowWaitState[]>();
+          })
+        )
+      );
+
     yield* Effect.forEach(
       claimed,
       (executionId) =>
@@ -59,8 +87,9 @@ export const requestCanceledOutlet = Effect.fn("requestCanceledOutlet")(
           executionId,
           eventName: input.eventName,
           payload: input.payload,
+          parked: parkedByExecution.get(executionId) ?? [],
         }),
-      { concurrency: "unbounded" }
+      { concurrency: DEFAULT_QUERY_CONNECTIONS }
     );
 
     return claimed;
@@ -79,15 +108,15 @@ const nudgeParkedWaits = Effect.fn("nudgeParkedWaits")(function* (input: {
   executionId: string;
   eventName: string;
   payload: JsonObject;
+  /** This run's parked waits, from the caller's one read over the claimed set. */
+  parked: WorkflowWaitState[];
 }) {
   const repo = yield* ExecutionRepo;
   const inngest = yield* InngestClient;
 
   yield* Effect.gen(function* () {
-    const waiting = yield* repo.listWaitingStates(input.executionId);
-
     yield* Effect.forEach(
-      waiting,
+      input.parked,
       (waitState) =>
         inngest.sendWaitSignal({
           executionId: input.executionId,
@@ -97,7 +126,7 @@ const nudgeParkedWaits = Effect.fn("nudgeParkedWaits")(function* (input: {
           payload: input.payload,
           signalType: "lifecycle-cancel",
         }),
-      { concurrency: "unbounded" }
+      { concurrency: DEFAULT_QUERY_CONNECTIONS }
     );
 
     yield* repo.recordAuditEvent({
@@ -105,7 +134,10 @@ const nudgeParkedWaits = Effect.fn("nudgeParkedWaits")(function* (input: {
       executionId: input.executionId,
       eventType: "run_cancel_requested",
       message: `Cancellation requested by ${input.eventName}`,
-      metadata: { eventName: input.eventName, parkedWaits: waiting.length },
+      metadata: {
+        eventName: input.eventName,
+        parkedWaits: input.parked.length,
+      },
     });
   }).pipe(
     Effect.catch((error) =>

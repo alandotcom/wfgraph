@@ -9,6 +9,7 @@
  * a payload are the same problem wherever they are written.
  */
 
+import type { InngestFunction } from "inngest";
 import type { JsonObject } from "@rova/shared/types/json";
 import type { PayloadPath } from "@rova/shared/types/payload-path";
 import {
@@ -20,6 +21,23 @@ import {
   rewriteCelExpression,
 } from "@rova/shared/workflow/inngest-event-data";
 
+type FunctionOptions = InngestFunction.Options;
+
+/**
+ * One Inngest option with its partition key retyped as a payload path.
+ *
+ * Everything else about the option is the SDK's, so `period: "1 hour"` and a
+ * retry count past 20 fail the Event author's build rather than Inngest's sync,
+ * and a field Inngest adds or re-constrains arrives here for free.
+ */
+type WithPayloadKey<TOption, TPayload extends JsonObject> = Omit<
+  NonNullable<TOption>,
+  "key"
+> & {
+  /** Schema-relative dot-path to partition by. */
+  key?: PayloadPath<TPayload>;
+};
+
 /**
  * Inngest flow control for an Event's listener, written against the payload.
  *
@@ -29,43 +47,13 @@ import {
  * nor refuse a start and say so in run history.
  */
 export type InngestEventOptions<TPayload extends JsonObject> = {
+  rateLimit?: WithPayloadKey<FunctionOptions["rateLimit"], TPayload>;
+  throttle?: WithPayloadKey<FunctionOptions["throttle"], TPayload>;
+  debounce?: WithPayloadKey<FunctionOptions["debounce"], TPayload>;
   /**
-   * Limit how many times the listener runs within a time period. When `key` is
-   * set, the limit is tracked per unique key value.
-   */
-  rateLimit?: {
-    /** Maximum number of runs allowed per `period`. */
-    limit: number;
-    /** Time window (e.g. `"1m"`, `"1h"`). */
-    period: string;
-    /** Schema-relative dot-path to partition the rate limit by. */
-    key?: PayloadPath<TPayload>;
-  };
-  /** Limit throughput over a rolling window. */
-  throttle?: {
-    /** Maximum number of runs in the rolling `period`. */
-    limit: number;
-    /** Rolling window duration (e.g. `"1h"`). */
-    period: string;
-    /** Schema-relative dot-path to partition the throttle by. */
-    key?: PayloadPath<TPayload>;
-    /** Number of burst runs allowed above the steady-state limit. */
-    burst?: number;
-  };
-  /**
-   * Delay running until no new matching Event arrives within `period`. Only the
-   * last Event in the window is delivered.
-   */
-  debounce?: {
-    /** Debounce window (e.g. `"5s"`, `"1m"`). */
-    period: string;
-    /** Schema-relative dot-path to partition the debounce by. */
-    key?: PayloadPath<TPayload>;
-    /** Maximum time to wait before forcing delivery (e.g. `"1h"`). */
-    timeout?: string;
-  };
-  /**
-   * Dynamic priority, evaluated at enqueue time. Higher runs first.
+   * Dynamic priority, evaluated at enqueue time. Higher runs first. `run` is
+   * required here where the SDK leaves it optional: an empty `priority` says
+   * nothing, and the rewrite below has an expression to translate.
    *
    * @example
    * ```ts
@@ -73,20 +61,16 @@ export type InngestEventOptions<TPayload extends JsonObject> = {
    * // becomes: 'event.data.appointment.priority == "high" ? 100 : 50'
    * ```
    */
-  priority?: {
-    /** CEL expression using schema-relative identifiers. */
-    run: string;
-  };
-  /** Inngest timeout overrides. */
-  timeouts?: {
-    /** Max time to wait before the listener starts (e.g. `"1h"`). */
-    start?: string;
-    /** Max time it may run after starting (e.g. `"2h"`). */
-    finish?: string;
-  };
-  /** Number of automatic retries on failure. */
-  retries?: number;
+  priority?: { run: string };
+  timeouts?: FunctionOptions["timeouts"];
+  retries?: FunctionOptions["retries"];
 };
+
+/** What `createFunction` is handed, once every path is under `event.data`. */
+type RewrittenInngestOptions = Pick<
+  FunctionOptions,
+  "rateLimit" | "throttle" | "debounce" | "priority" | "timeouts" | "retries"
+>;
 
 /**
  * The two Inngest options an Event may not carry.
@@ -128,10 +112,10 @@ export function rewriteInngestOptions<TPayload extends JsonObject>(
   // its `shape` or `fields` container, and a CEL identifier is checked against
   // those. No type is read, and no JSON Schema is derived here.
   schema: StandardSchema<unknown>
-): Record<string, unknown> {
+): RewrittenInngestOptions {
   assertNoRetiredInngestOptions(eventName, inngest);
 
-  const result: Record<string, unknown> = {};
+  const result: RewrittenInngestOptions = {};
 
   if (inngest.rateLimit) {
     result.rateLimit = prefixKeyField(inngest.rateLimit);

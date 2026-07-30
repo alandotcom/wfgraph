@@ -156,14 +156,21 @@ export async function runEventListener(input: {
     // is ending, and the run just started has parked nothing yet.
     const excluding = settledExecutionIds(lifecycle);
 
-    // eslint-disable-next-line no-await-in-loop -- sibling of the step above, and sequential for the same reason.
-    const waits = await step.run(
-      `waits-${subscriber.id}`,
-      async () =>
-        await runtime.runPromise(
-          deliverToWaits({ subscriber, event, payload, excluding })
+    // The wait role is pushed only from the parked-run read, so a subscriber
+    // without it had nothing waiting on this Event when the list was built and
+    // the delivery would resolve to zero runs. A run parking between that step
+    // and this one is outside this arrival's window either way: the subscriber
+    // list is memoized, so a replay reads the same list it did the first time.
+    const waits = subscriber.roles.includes("wait")
+      ? // eslint-disable-next-line no-await-in-loop -- sibling of the step above, and sequential for the same reason.
+        await step.run(
+          `waits-${subscriber.id}`,
+          async () =>
+            await runtime.runPromise(
+              deliverToWaits({ subscriber, event, payload, excluding })
+            )
         )
-    );
+      : { workflowId: subscriber.id, resumedWaits: 0 };
 
     arrivalLogger.info("Delivered an event to a workflow", {
       workflowId: subscriber.id,

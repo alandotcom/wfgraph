@@ -1,6 +1,6 @@
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import type { QueryClient } from "@tanstack/react-query";
-import { type Integration, rpc, toSavedWorkflows } from "#src/lib/rpc-client";
+import { type Integration, rpc } from "#src/lib/rpc-client";
 
 /**
  * TanStack Query bindings for the RPC contract.
@@ -45,17 +45,13 @@ export const integrationIdsQueryOptions = () =>
   });
 
 /**
- * The workflow list, shaped for the dashboard and the toolbar's switcher.
+ * The workflow list, for the dashboard and the toolbar's switcher.
  *
- * `toSavedWorkflows` is passed by reference rather than wrapped in an arrow:
- * TanStack memoises a select by the function's identity, so an inline closure
- * would re-run the whole graph deserialisation on every render.
+ * The procedure answers summaries, so there is no graph to deserialise and no
+ * select to memoise: both screens draw names.
  */
 export const workflowListQueryOptions = () =>
-  orpcQuery.workflow.getAll.queryOptions({
-    input: {},
-    select: toSavedWorkflows,
-  });
+  orpcQuery.workflow.getAll.queryOptions({ input: {} });
 
 /*
  * What a write invalidates, said once.

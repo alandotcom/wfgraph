@@ -18,6 +18,7 @@ import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
 } from "./recording-store";
+import { noWorkflowActions } from "./actions";
 import { createInMemoryWorkflowRuntime } from "./runtime";
 
 /**
@@ -164,7 +165,8 @@ function runWait(options: RunWaitOptions) {
       triggerInput: options.triggerInput,
     },
     runtime,
-    options.store
+    options.store,
+    noWorkflowActions
   );
 
   return { runtime, execution };

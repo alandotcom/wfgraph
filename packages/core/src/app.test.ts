@@ -55,7 +55,8 @@ const BASE_OPTIONS = {
   database: { url: "postgresql://rova:rova@127.0.0.1:1/rova_test" },
   encryption: { key: "a".repeat(64) },
   inngest: { id: "rova-app-test", isDev: true },
-  configureLogging: false,
+  // A logger that drops everything, so the suite gets no console sink.
+  logger: { info: () => {}, warn: () => {}, error: () => {} },
 } as const;
 
 async function createTestApp(basePath?: string): Promise<RovaApp> {

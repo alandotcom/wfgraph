@@ -39,7 +39,8 @@ type IntegrationWithConfig = IntegrationSummary & {
   config: IntegrationConfig;
 };
 
-type IntegrationTestResult = {
+/** The contract answers a connection test with this. */
+type IntegrationTestResponse = {
   status: "success" | "error";
   message: string;
 };
@@ -262,12 +263,9 @@ const runConnectionTest = Effect.fn("runConnectionTest")(function* (
     );
   }
 
-  const answer: IntegrationTestResult = {
-    status: testResult.success ? "success" : "error",
-    message: testResult.success
-      ? "Connection successful"
-      : testResult.error || "Connection failed",
-  };
+  const answer: IntegrationTestResponse = testResult.success
+    ? { status: "success", message: "Connection successful" }
+    : { status: "error", message: testResult.error };
   return answer;
 });
 

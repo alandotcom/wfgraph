@@ -153,9 +153,8 @@ describe("defineEvent payload fields", () => {
   });
 });
 
-// What the translation itself does with an authored option is
-// `cel/rewrite.test.ts`. This is the one case that belongs to defineEvent: an
-// Event that authored nothing carries nothing.
+// The one option case that belongs to defineEvent: an Event that authored
+// nothing carries nothing.
 describe("defineEvent Inngest options", () => {
   it("holds no options when the Event declares none", () => {
     const event = defineEvent({

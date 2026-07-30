@@ -29,6 +29,7 @@ import {
   parseTimestampWithTimezone,
   resolveWaitUntil,
 } from "@rova/shared/utils/wait-time";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/workflow/built-in-actions";
 import { isConditionActionType } from "@rova/shared/workflow/condition-branch";
 import { useAfterPaint, useNowMs } from "#src/hooks/effects";
 import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
@@ -128,7 +129,8 @@ function useWaitPreview(
 ): WaitPreviewData | null {
   const waitMode = readConfigString(config, "waitMode", "delay");
   const shouldShowWaitPreview =
-    actionType === "Wait" && (waitMode === "delay" || waitMode === "event");
+    actionType === BUILT_IN_ACTION_IDS.wait &&
+    (waitMode === "delay" || waitMode === "event");
   const waitDuration = config?.waitDuration;
   const waitUntil = config?.waitUntil;
   const waitOffset = config?.waitOffset;
@@ -200,7 +202,7 @@ function useRuntimeWaitPreview(
   nodeLog: ExecutionLogEntry | undefined
 ): WaitPreviewData | null {
   const shouldShowRuntimeWaitPreview =
-    actionType === "Wait" &&
+    actionType === BUILT_IN_ACTION_IDS.wait &&
     selectedExecutionId !== null &&
     nodeLog !== undefined &&
     (nodeLog.status === "running" || nodeLog.status === "pending");
@@ -330,9 +332,9 @@ const requiresIntegration = (actionType: string): boolean =>
 const getProviderLogo = (actionType: string) => {
   // Check for system actions first (non-plugin)
   switch (actionType) {
-    case "Condition":
+    case BUILT_IN_ACTION_IDS.condition:
       return <GitBranch className="size-12 text-pink-300" strokeWidth={1.5} />;
-    case "Wait":
+    case BUILT_IN_ACTION_IDS.wait:
       return (
         <Hourglass className="size-12 text-orange-300" strokeWidth={1.5} />
       );

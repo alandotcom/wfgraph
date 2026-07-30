@@ -160,7 +160,7 @@ export function stubStepEnvironment(
 }
 
 const workflowRepoStubs: WorkflowRepo["Service"] = {
-  listNewestFirst: refuse("listNewestFirst"),
+  listSummariesNewestFirst: refuse("listSummariesNewestFirst"),
   listIdentities: refuse("listIdentities"),
   findById: refuse("findById"),
   existsById: refuse("existsById"),
@@ -215,6 +215,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   listWaitsForEvent: refuse("listWaitsForEvent"),
   findWaitingStateByToken: refuse("findWaitingStateByToken"),
   listWaitingStates: refuse("listWaitingStates"),
+  listWaitingStatesForExecutions: refuse("listWaitingStatesForExecutions"),
   listLogs: refuse("listLogs"),
   listNodeStatuses: refuse("listNodeStatuses"),
   listEvents: refuse("listEvents"),

@@ -44,6 +44,10 @@ function isUpdate(query: string): boolean {
   return query.startsWith("update");
 }
 
+function isLock(query: string): boolean {
+  return query.includes("pg_advisory_xact_lock");
+}
+
 function harness(answers: {
   ownRow?: boolean;
   inFlight?: InFlightRow[];
@@ -215,6 +219,49 @@ describe("startForEntity", () => {
     expect(sentAny(isUpdate)).toBe(false);
   });
 
+  // Two reschedules arriving together otherwise both read an empty in-flight set
+  // and both start. The two-key form keeps the workflow and the entity in
+  // separate hashes, so no pair of values can join into another pair's key.
+  it("serializes the decision per workflow and entity", async () => {
+    const { sent, start } = harness({});
+
+    await start("newest-wins");
+
+    const lock = sent(isLock);
+    expect(lock?.params).toEqual(["rova:entity:wf_1", "appt_1"]);
+  });
+
+  // Unlimited compares nothing, so a lock would only make concurrent starts of
+  // one entity queue up behind each other for no decision.
+  it("takes no lock where nothing is compared", async () => {
+    const { sentAny, start } = harness({});
+
+    await start("unlimited");
+
+    expect(sentAny(isLock)).toBe(false);
+  });
+
+  // The four equalities are the whole scope of what this start may displace.
+  // Without the run mode a test run supersedes the live run it was meant to sit
+  // beside; without the correlation key one arrival supersedes every in-flight
+  // run of the workflow.
+  it("looks only at this workflow's in-flight runs for this entity and mode", async () => {
+    const { sent, start } = harness({});
+
+    await start("newest-wins");
+
+    const candidates = sent(isInFlightQuery);
+    expect(candidates?.query).toContain('"workflow_id" = ');
+    expect(candidates?.query).toContain('"correlation_key" = ');
+    expect(candidates?.query).toContain('"run_mode" = ');
+    expect(candidates?.params.slice(0, 3)).toEqual(["wf_1", "appt_1", "live"]);
+    expect(candidates?.params.slice(3)).toEqual([
+      "pending",
+      "running",
+      "waiting",
+    ]);
+  });
+
   // A start with nothing to serialize on cannot be replayed by a retry loop, so
   // it carries no delivery id and asks no lookup.
   it("skips the arrival lookup for a start that carries no delivery", async () => {
@@ -223,5 +270,80 @@ describe("startForEntity", () => {
     await start("first-wins", null);
 
     expect(sentAny(isDeliveryLookup)).toBe(false);
+  });
+});
+
+/**
+ * The same harness, for the other cross-table method. What is pinned is which
+ * tables the deletion names: the run rows carry logs and wait states with them by
+ * `ON DELETE cascade`, and naming those tables again meant first reading every
+ * execution id into the application and re-sending it as one bind parameter each.
+ */
+function deleteHarness() {
+  const statements: { query: string; params: unknown[] }[] = [];
+
+  const base = drizzle(
+    async (query, params) => {
+      statements.push({ query, params });
+      return { rows: [] };
+    },
+    { schema }
+  );
+
+  const db: RovaDatabase = new Proxy(base, {
+    get(target, property, receiver) {
+      if (property === "transaction") {
+        return async (body: (tx: unknown) => Promise<unknown>) => body(db);
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  }) as unknown as RovaDatabase;
+
+  const databaseLayer = Layer.succeed(Database, {
+    query: <A>(run: (db: RovaDatabase) => Promise<A>) =>
+      Effect.promise(() => run(db)),
+  } as Database["Service"]);
+
+  const run = () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const repo = yield* ExecutionRepo;
+        return yield* repo.deleteAllForWorkflow("wf_1");
+      }).pipe(
+        Effect.provide(ExecutionRepoLayer.pipe(Layer.provide(databaseLayer)))
+      )
+    );
+
+  return { run, statements };
+}
+
+describe("deleteAllForWorkflow", () => {
+  it("deletes the audit rows and the runs, by workflow id, and nothing else", async () => {
+    const { run, statements } = deleteHarness();
+
+    await run();
+
+    expect(statements).toHaveLength(2);
+    expect(statements[0]?.query).toContain(
+      'delete from "workflow_execution_events"'
+    );
+    expect(statements[1]?.query).toContain('delete from "workflow_executions"');
+    for (const statement of statements) {
+      expect(statement.query).toContain('"workflow_id" = $1');
+      expect(statement.params).toEqual(["wf_1"]);
+    }
+  });
+
+  // The pre-read this replaces bound one parameter per run, which stops working
+  // at the protocol's 65535 and shipped every id twice over the wire.
+  it("names no execution id and no cascading table", async () => {
+    const { run, statements } = deleteHarness();
+
+    await run();
+
+    const queries = statements.map((statement) => statement.query).join("\n");
+    expect(queries).not.toContain("workflow_execution_logs");
+    expect(queries).not.toContain("workflow_wait_states");
+    expect(queries).not.toContain('"id" in');
   });
 });

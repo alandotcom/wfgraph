@@ -190,10 +190,6 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
       workflowId: workflow.id,
       workflowName: workflow.name,
       runMode,
-      eventContext: {
-        eventType: start.eventName,
-        correlationKey: start.entityValue,
-      },
     })
     .pipe(Effect.tapError((failure) => closeRefusedEnqueue(input, failure)));
 

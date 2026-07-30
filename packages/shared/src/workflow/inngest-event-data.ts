@@ -138,30 +138,76 @@ function isCelAstNode(value: unknown): value is CelAstNode {
   );
 }
 
+/**
+ * CEL's comprehension macros, each of which binds a loop variable.
+ *
+ * cel-js parses `items.exists(i, i.x > 1)` as an `rcall` whose args are the
+ * macro name, the receiver, and a body list beginning with the bound variable's
+ * `id` node -- indistinguishable in the tree from a free variable. A receiver
+ * method call parses the same way, so the name is what tells the two apart.
+ */
+const CEL_COMPREHENSION_MACROS = new Set([
+  "all",
+  "exists",
+  "exists_one",
+  "filter",
+  "map",
+]);
+
+/** The `id` node a macro's args bind, when this node is one of those calls. */
+function macroBoundVariable(node: CelAstNode): string | undefined {
+  if (node.op !== "rcall" || !Array.isArray(node.args)) {
+    return undefined;
+  }
+
+  const [name, , body] = node.args;
+  if (typeof name !== "string" || !CEL_COMPREHENSION_MACROS.has(name)) {
+    return undefined;
+  }
+
+  const iterVar = Array.isArray(body) ? body[0] : undefined;
+  return isCelAstNode(iterVar) &&
+    iterVar.op === "id" &&
+    typeof iterVar.args === "string"
+    ? iterVar.args
+    : undefined;
+}
+
+/**
+ * Every free identifier in the expression, with the position it starts at.
+ *
+ * A macro's loop variable and every reference to it are left out: it names a
+ * list element rather than a payload field, so checking it against the schema
+ * keys would refuse a valid expression and prefixing it would produce one
+ * Inngest cannot evaluate.
+ */
 function collectCelIdentifiers(
   root: CelAstNode
 ): Array<{ name: string; pos: number }> {
   const results: Array<{ name: string; pos: number }> = [];
 
-  function walk(value: unknown): void {
+  function walk(value: unknown, bound: ReadonlySet<string>): void {
     if (!isCelAstNode(value)) {
       if (Array.isArray(value)) {
         for (const item of value) {
-          walk(item);
+          walk(item, bound);
         }
       }
       return;
     }
 
     if (value.op === "id" && typeof value.args === "string") {
-      results.push({ name: value.args, pos: value.pos });
+      if (!bound.has(value.args)) {
+        results.push({ name: value.args, pos: value.pos });
+      }
       return;
     }
 
-    walk(value.args);
+    const iterVar = macroBoundVariable(value);
+    walk(value.args, iterVar ? new Set([...bound, iterVar]) : bound);
   }
 
-  walk(root);
+  walk(root, new Set());
   return results;
 }
 

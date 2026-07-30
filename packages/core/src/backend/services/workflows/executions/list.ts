@@ -63,13 +63,11 @@ function toWorkflowExecutionItem(input: {
 function toRefusedStartItem(event: {
   id: string;
   message: string;
-  metadata: unknown;
   createdAt: Date;
 }) {
   return {
     id: event.id,
     message: event.message,
-    metadata: event.metadata,
     createdAt: event.createdAt.toISOString(),
   };
 }

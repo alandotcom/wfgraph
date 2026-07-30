@@ -1,4 +1,13 @@
-import { and, arrayContains, eq, getTableColumns, inArray } from "drizzle-orm";
+import {
+  and,
+  arrayContains,
+  asc,
+  eq,
+  getTableColumns,
+  gt,
+  inArray,
+  notInArray,
+} from "drizzle-orm";
 import type { Effect } from "effect";
 import {
   workflowExecutions,
@@ -49,14 +58,18 @@ export type WaitsRepoMethods = {
     waitStateIds: string[]
   ) => Effect.Effect<string[], DatabaseError>;
   /**
-   * Every run of this workflow parked on this Event name, whatever it is
-   * waiting for the payload to say.
+   * One page of the runs of this workflow parked on this Event name, whatever
+   * they are waiting for the payload to say.
    *
    * The name narrows the candidates and the stored match decides between them,
    * so this answers a question about subscription rather than about entity: a
    * run parked on an Event its workflow never starts on is found here, which is
    * the whole point of a Wait Subscription being independent of the Lifecycle
    * Rules.
+   *
+   * Paged by id because nothing bounds the parked population -- an event wait
+   * defaults to a 7-day timeout -- and every row carries the JSONB holding its
+   * compiled match. The caller walks the pages; `afterId` is the last id it saw.
    *
    * The execution-status filter on the join makes reads self-healing: a wait
    * row orphaned by a partially failed cancellation (execution already
@@ -67,6 +80,10 @@ export type WaitsRepoMethods = {
     workflowId: string;
     eventName: string;
     runMode: WorkflowExecution["runMode"];
+    limit: number;
+    afterId?: string;
+    /** Runs this delivery already settled, filtered in SQL rather than after. */
+    excludingExecutionIds?: string[];
   }) => Effect.Effect<WorkflowWaitState[], DatabaseError>;
   /**
    * The waiting node one resume token addresses, or null when the token names
@@ -81,6 +98,16 @@ export type WaitsRepoMethods = {
   readonly listWaitingStates: (
     executionId: string
   ) => Effect.Effect<WorkflowWaitState[], DatabaseError>;
+  /**
+   * The same question asked of a set of runs at once, grouped by run.
+   *
+   * A cancellation claims every in-flight run of one entity in one statement,
+   * and asking each claimed run for its parked waits separately is that set
+   * taken apart again. Runs with nothing parked are absent from the map.
+   */
+  readonly listWaitingStatesForExecutions: (
+    executionIds: string[]
+  ) => Effect.Effect<Map<string, WorkflowWaitState[]>, DatabaseError>;
 };
 
 /** Builds the `workflow_wait_states` slice of `ExecutionRepo` over one database. */
@@ -174,7 +201,8 @@ export function makeWaitsMethods(
             and(
               eq(workflowWaitStates.workflowId, input.workflowId),
               // The GIN index over this column is what the containment test
-              // rides on.
+              // rides on; the partial btree on `workflow_id` is what narrows the
+              // posting list to this workflow before the recheck.
               arrayContains(workflowWaitStates.subscribedEvents, [
                 input.eventName,
               ]),
@@ -182,9 +210,20 @@ export function makeWaitsMethods(
               eq(workflowExecutions.runMode, input.runMode),
               inArray(workflowExecutions.status, [
                 ...IN_FLIGHT_EXECUTION_STATUSES,
-              ])
+              ]),
+              input.afterId
+                ? gt(workflowWaitStates.id, input.afterId)
+                : undefined,
+              input.excludingExecutionIds?.length
+                ? notInArray(
+                    workflowWaitStates.executionId,
+                    input.excludingExecutionIds
+                  )
+                : undefined
             )
           )
+          .orderBy(asc(workflowWaitStates.id))
+          .limit(input.limit)
       ),
 
     findWaitingStateByToken: (resumeToken) =>
@@ -208,5 +247,31 @@ export function makeWaitsMethods(
           ),
         })
       ),
+
+    listWaitingStatesForExecutions: (executionIds) =>
+      database.query(async (db) => {
+        const byExecution = new Map<string, WorkflowWaitState[]>();
+        if (executionIds.length === 0) {
+          return byExecution;
+        }
+
+        const rows = await db.query.workflowWaitStates.findMany({
+          where: and(
+            inArray(workflowWaitStates.executionId, executionIds),
+            eq(workflowWaitStates.status, "waiting")
+          ),
+        });
+
+        for (const row of rows) {
+          const existing = byExecution.get(row.executionId);
+          if (existing) {
+            existing.push(row);
+            continue;
+          }
+          byExecution.set(row.executionId, [row]);
+        }
+
+        return byExecution;
+      }),
   };
 }

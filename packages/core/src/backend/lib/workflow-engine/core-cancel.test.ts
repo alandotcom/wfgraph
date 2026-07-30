@@ -85,12 +85,29 @@ function withCancelAnswers(
   };
 }
 
+/**
+ * The entry node, declaring a Cancel Event.
+ *
+ * The declaration is what buys the boundary read: only a Cancel Event ever
+ * stamps the flag, so the engine skips the read outright for a graph naming
+ * none, and a run of a rules-free graph would reach no Canceled branch here.
+ */
 function createTriggerNode(id: string): WorkflowNode {
   return {
     id,
     type: "trigger",
     position: { x: 0, y: 0 },
-    data: { label: "Trigger", type: "trigger", config: {} },
+    data: {
+      label: "Trigger",
+      type: "trigger",
+      config: {
+        lifecycleRules: {
+          startEvents: ["app/appointment.created"],
+          cancelEvents: ["app/appointment.canceled"],
+          concurrency: "unlimited",
+        },
+      },
+    },
   };
 }
 

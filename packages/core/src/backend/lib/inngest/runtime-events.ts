@@ -25,10 +25,6 @@ export type WorkflowRunRequestedEventData = {
   workflowId: string;
   workflowRunId?: string;
   runMode?: "live" | "test";
-  eventContext?: {
-    eventType?: string;
-    correlationKey?: string;
-  };
 };
 
 /**

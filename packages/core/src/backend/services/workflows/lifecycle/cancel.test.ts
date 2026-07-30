@@ -35,9 +35,9 @@ type Repo = ExecutionRepo["Service"];
 const requestCancelForEntityMock = vi.fn<Repo["requestCancelForEntity"]>(() =>
   Effect.succeed(["exec_1"])
 );
-const listWaitingStatesMock = vi.fn<Repo["listWaitingStates"]>(() =>
-  Effect.succeed([])
-);
+const listWaitingStatesForExecutionsMock = vi.fn<
+  Repo["listWaitingStatesForExecutions"]
+>(() => Effect.succeed(new Map()));
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 const sendWaitSignalMock = vi.fn<InngestClient["Service"]["sendWaitSignal"]>(
   () => Effect.void
@@ -46,13 +46,13 @@ const sendWaitSignalMock = vi.fn<InngestClient["Service"]["sendWaitSignal"]>(
 const services = Layer.mergeAll(
   stubExecutionRepo({
     requestCancelForEntity: requestCancelForEntityMock,
-    listWaitingStates: listWaitingStatesMock,
+    listWaitingStatesForExecutions: listWaitingStatesForExecutionsMock,
     recordAuditEvent: recordAuditEventMock,
   }),
   stubInngestClient({ sendWaitSignal: sendWaitSignalMock })
 );
 
-/** A run parked on a wait, as `listWaitingStates` hands one over. */
+/** A run parked on a wait, as the batched read hands one over. */
 function createWaitState(
   overrides: Partial<WorkflowWaitState> = {}
 ): WorkflowWaitState {
@@ -95,7 +95,7 @@ function cancel(overrides: Partial<typeof cancelInput> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   requestCancelForEntityMock.mockReturnValue(Effect.succeed(["exec_1"]));
-  listWaitingStatesMock.mockReturnValue(Effect.succeed([]));
+  listWaitingStatesForExecutionsMock.mockReturnValue(Effect.succeed(new Map()));
   recordAuditEventMock.mockReturnValue(Effect.void);
   sendWaitSignalMock.mockReturnValue(Effect.void);
 });
@@ -117,15 +117,22 @@ describe("requestCanceledOutlet", () => {
   // A parked run is reaching no step boundary, so the flag alone would leave it
   // asleep until its wait timed out.
   it("nudges every wait a flagged run is parked on", async () => {
-    listWaitingStatesMock.mockReturnValue(
-      Effect.succeed([
-        createWaitState(),
-        createWaitState({
-          id: "wait_2",
-          nodeId: "node_wait_2",
-          resumeToken: "token_2",
-        }),
-      ])
+    listWaitingStatesForExecutionsMock.mockReturnValue(
+      Effect.succeed(
+        new Map([
+          [
+            "exec_1",
+            [
+              createWaitState(),
+              createWaitState({
+                id: "wait_2",
+                nodeId: "node_wait_2",
+                resumeToken: "token_2",
+              }),
+            ],
+          ],
+        ])
+      )
     );
 
     await cancel();
@@ -157,14 +164,16 @@ describe("requestCanceledOutlet", () => {
     const claimed = await cancel();
 
     expect(claimed).toEqual([]);
-    expect(listWaitingStatesMock).not.toHaveBeenCalled();
+    expect(listWaitingStatesForExecutionsMock).not.toHaveBeenCalled();
     expect(recordAuditEventMock).not.toHaveBeenCalled();
   });
 
   // The flag is the authority and it is already written, so the run reaches its
   // Canceled outlet whether or not the nudge landed.
   it("keeps a flagged run on the list when its nudge fails", async () => {
-    listWaitingStatesMock.mockReturnValue(Effect.succeed([createWaitState()]));
+    listWaitingStatesForExecutionsMock.mockReturnValue(
+      Effect.succeed(new Map([["exec_1", [createWaitState()]]]))
+    );
     sendWaitSignalMock.mockReturnValue(
       Effect.fail(new InngestError({ cause: new Error("bus refused") }))
     );
@@ -175,27 +184,37 @@ describe("requestCanceledOutlet", () => {
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
   });
 
-  it("wakes the other flagged runs when one of them cannot be read", async () => {
+  // The flag is written and `requestCancelForEntity` refuses to re-claim a run it
+  // already flagged, so raising here would leave the claimed runs asleep until
+  // their wait timeout with no retry able to reach them.
+  it("still claims the runs when their waits cannot be read", async () => {
     requestCancelForEntityMock.mockReturnValue(
       Effect.succeed(["exec_1", "exec_2"])
     );
-    listWaitingStatesMock.mockImplementation((executionId) =>
-      executionId === "exec_1"
-        ? Effect.fail(
-            new DatabaseError({ cause: new Error("connection reset") })
-          )
-        : Effect.succeed([
-            createWaitState({ id: "wait_2", executionId: "exec_2" }),
-          ])
+    listWaitingStatesForExecutionsMock.mockReturnValue(
+      Effect.fail(new DatabaseError({ cause: new Error("connection reset") }))
     );
 
     const claimed = await cancel();
 
     expect(claimed).toEqual(["exec_1", "exec_2"]);
-    expect(sendWaitSignalMock).toHaveBeenCalledTimes(1);
-    expect(sendWaitSignalMock).toHaveBeenCalledWith(
-      expect.objectContaining({ executionId: "exec_2" })
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+  });
+
+  // One read for the whole claimed set, rather than one per run.
+  it("asks for every claimed run's waits in one read", async () => {
+    requestCancelForEntityMock.mockReturnValue(
+      Effect.succeed(["exec_1", "exec_2"])
     );
+
+    await cancel();
+
+    expect(listWaitingStatesForExecutionsMock).toHaveBeenCalledTimes(1);
+    expect(listWaitingStatesForExecutionsMock).toHaveBeenCalledWith([
+      "exec_1",
+      "exec_2",
+    ]);
   });
 
   // A refused write is not a verdict: nothing was flagged, so the delivery keeps

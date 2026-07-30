@@ -277,7 +277,8 @@ graph as the `Extensions` service (`backend/lib/effect/extensions.ts`). Assembly
 where a definition mistake is caught, naming the offender: each of an Event's name, an
 action's id and an integration's type is held to one owner, an output schema the
 derivation cannot read is refused naming the action, and so is a required config key with
-no field for a builder to fill in. It is also where an integration definition's actions
+no field for a builder to fill in and a credential field with no `envVar`, which would
+render an input and reach no handler. It is also where an integration definition's actions
 get their ids and their derived field lists, and where `stepFor` and `connectionTestFor`
 come from, since a definition carries both. Condition and Wait are the two actions the
 engine ships itself, catalog entries in `built-ins.ts` with no step of their own -- the
@@ -391,7 +392,16 @@ run Inngest really did take.
 start in the graph they hold now, from that index, and which runs are still parked on it, from
 `workflow_wait_states.subscribed_events` -- the names the row was written with, so an edit to
 the Wait node cannot orphan the runs already parked on it. A workflow reached only by the
-second question is delivered no start and gets no preflight.
+second question is delivered no start and gets no preflight, and one reached only by the
+first is delivered no waits: each role gates its own step, so a delivery buys a step only
+where the subscriber row already answered that there is something for it to do.
+
+Preflight itself is one query per arrival and no more. Its graph-and-catalog arm -- the
+decode, the action and condition configs, the Lifecycle Rules -- is pure over those two, so
+it is memoized per catalog on a digest of the graph, and only `validateWorkflowIntegrations`
+runs per call, because the rows it reads change with no write to the workflow. The digest is
+the key rather than `(id, updatedAt)` because a stale verdict carries the stale graph, which
+is the object a start hands to the bus.
 
 One Inngest listener per Event, built from the catalog in `lib/inngest/functions.ts`, so the
 listener set is fixed for the life of the process and a workflow that starts on a new Event
@@ -495,9 +505,12 @@ since a node the Started branch reaches already has an incoming edge and
 **A cancellation is that routing and nothing else.** The flag and the canceling payload on
 the execution row are the whole authority, and the engine reads them at each node boundary
 inside a step keyed `lifecycle-check-${nodeId}`, so a replay takes the branch the attempt
-took. A parked run is nudged awake through the wait signal, which closes the wait row and
-decides nothing else. The branch runs inside the same Execution, which ends with status
-`canceled` -- immediately so where the outlet has no edge.
+took. That read is bought only by a graph whose Lifecycle Rules name a Cancel Event: nothing
+else ever writes the flag, so a graph naming none pays neither the step nor the query, and a
+Cancel Event added mid-run reaches the runs that start after it. A parked run is nudged
+awake through the wait signal, which closes the wait row and decides nothing else. The
+branch runs inside the same Execution, which ends with status `canceled` -- immediately so
+where the outlet has no edge.
 
 **The editor's runs panel shows what did not run.** `getExecutions` answers three things at
 once, because the panel polls every two seconds and a second procedure would double that: the

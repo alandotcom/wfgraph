@@ -1,4 +1,5 @@
 import { asNonEmptyString } from "#src/types/string";
+import { BUILT_IN_ACTION_IDS } from "#src/workflow/built-in-actions";
 import { compileSerializedConditionModel } from "#src/workflow/conditions";
 import { readWaitSubscriptions } from "#src/workflow/wait-subscription";
 import { parseTimeOfDayMinutes } from "#src/utils/wait-allowed-hours";
@@ -235,7 +236,7 @@ function getSystemMissingRequiredFields(input: {
   const { actionType, config } = input;
 
   switch (actionType) {
-    case "Condition": {
+    case BUILT_IN_ACTION_IDS.condition: {
       return isFieldEmpty(config.condition)
         ? [
             {
@@ -245,7 +246,7 @@ function getSystemMissingRequiredFields(input: {
           ]
         : [];
     }
-    case "Wait":
+    case BUILT_IN_ACTION_IDS.wait:
       return getWaitMissingRequiredFields(config);
     default:
       return [];

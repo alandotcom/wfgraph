@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Effect } from "effect";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { Extensions } from "#src/backend/lib/effect/extensions";
@@ -12,6 +13,7 @@ import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
 import { validateWorkflowIntegrations } from "#src/backend/lib/workflow-integration-validation";
 import { validateWorkflowLifecycleRules } from "#src/backend/lib/workflow-lifecycle-validation";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
 import {
   type LifecycleRules,
   readLifecycleRules,
@@ -22,21 +24,145 @@ import type {
 } from "@rova/shared/workflow/types";
 
 type WorkflowForPreflight = {
-  name: string;
   graph: unknown;
 };
 
 export type WorkflowExecutionPreflight = {
   workflowGraph: SerializedWorkflowGraph;
-  workflowNodes: WorkflowNode[];
   /** The entry node's Lifecycle Rules, absent when it carries none. */
   lifecycleRules: LifecycleRules | undefined;
 };
 
 /**
+ * The graph-and-catalog arm's verdict, in the form the memo holds. It carries
+ * the decoded nodes as well, which the integration check reads and no caller
+ * does.
+ */
+type GraphCheck =
+  | ({
+      valid: true;
+      workflowNodes: WorkflowNode[];
+    } & WorkflowExecutionPreflight)
+  | { valid: false; error: string };
+
+/**
+ * How many verdicts one catalog's memo holds. A workflow edited in a loop leaves
+ * its older graphs' verdicts behind, and the bound is what keeps that from being
+ * a leak.
+ */
+const GRAPH_CHECK_MEMO_LIMIT = 500;
+
+/**
+ * The memoized verdicts, one map per assembled catalog.
+ *
+ * Held per catalog rather than flat, because a verdict is a function of the graph
+ * *and* the surface it names: an app assembled with a different plugin set
+ * answers differently about the same graph. Weak so the memo goes when the app
+ * that owns the catalog does.
+ */
+const graphCheckMemo = new WeakMap<object, Map<string, GraphCheck>>();
+
+/**
+ * The memo key: a digest of the graph itself.
+ *
+ * The workflow's id and `updatedAt` would be the cheaper key and the wrong one.
+ * `updatedAt` has millisecond resolution, so two saves inside one millisecond
+ * would share a key, and the stale verdict carries the stale graph -- which is
+ * the object a start hands to the bus. Content is what the verdict is actually
+ * about, and hashing it costs a fraction of the decode it saves.
+ */
+function graphDigest(graph: unknown): string {
+  return createHash("sha1")
+    .update(JSON.stringify(graph) ?? "")
+    .digest("hex");
+}
+
+function readMemo(catalog: object, key: string): GraphCheck | undefined {
+  return graphCheckMemo.get(catalog)?.get(key);
+}
+
+function writeMemo(catalog: object, key: string, check: GraphCheck): void {
+  let entries = graphCheckMemo.get(catalog);
+  if (!entries) {
+    entries = new Map();
+    graphCheckMemo.set(catalog, entries);
+  }
+
+  if (entries.size >= GRAPH_CHECK_MEMO_LIMIT) {
+    const coldest = entries.keys().next();
+    if (!coldest.done) {
+      entries.delete(coldest.value);
+    }
+  }
+
+  entries.set(key, check);
+}
+
+/**
+ * Everything about a graph that a delivery can settle without a query: it
+ * parses, its actions and conditions are configured, and its Lifecycle Rules
+ * name Events this app defines.
+ *
+ * All four are pure over the graph and the catalog, so the answer is memoized on
+ * the pair. That is what takes the fan-out's cost off the arrival: the decode is
+ * a megabyte of JSONB and the condition check compiles every Condition node and
+ * every Wait node's match through the CEL type checker, once per subscribing
+ * workflow per delivered Event. Nothing is skipped -- a graph that fails is
+ * refused on every arrival, from the memo.
+ */
+function checkGraphAndCatalog(input: {
+  graph: unknown;
+  catalog: ExtensionCatalog;
+}): GraphCheck {
+  const graphValidation = validateWorkflowGraph(input.graph);
+  if (!graphValidation.valid) {
+    return { valid: false, error: "Workflow graph is invalid" };
+  }
+
+  const actionValidation = validateWorkflowActionConfigs(
+    graphValidation.nodes,
+    input.catalog
+  );
+  if (!actionValidation.valid) {
+    return { valid: false, error: actionValidation.error };
+  }
+
+  const conditionValidation = validateWorkflowConditionConfigs(
+    graphValidation.nodes
+  );
+  if (!conditionValidation.valid) {
+    return { valid: false, error: conditionValidation.error };
+  }
+
+  const lifecycleValidation = validateWorkflowLifecycleRules(
+    graphValidation.nodes,
+    input.catalog
+  );
+  if (!lifecycleValidation.valid) {
+    return { valid: false, error: lifecycleValidation.error };
+  }
+
+  const lifecycleNode = graphValidation.nodes.find(
+    (node) => node.data.type === "trigger"
+  );
+
+  return {
+    valid: true,
+    workflowGraph: graphValidation.graph,
+    workflowNodes: graphValidation.nodes,
+    lifecycleRules: readLifecycleRules(lifecycleNode?.data.config),
+  };
+}
+
+/**
  * Everything that has to hold before a stored graph is allowed to run: it
  * parses, its actions and conditions are configured, the integrations it names
  * exist, and its Lifecycle Rules name Events the app still defines.
+ *
+ * The integration check is the one that stays per call, because it is the one
+ * question the graph cannot answer: an integration deleted since the save
+ * changes the verdict with the graph untouched. Everything above it is settled
+ * once per distinct graph and read from the memo after.
  *
  * Nothing is logged here, and the refusals carry the sentence instead. One caller
  * is an entrypoint answering a person, where a refused run is an error worth
@@ -50,40 +176,15 @@ export const runWorkflowExecutionPreflight = Effect.fn(
   const { workflow } = input;
   const { catalog } = yield* Extensions;
 
-  const graphValidation = validateWorkflowGraph(workflow.graph);
-  if (!graphValidation.valid) {
-    return yield* Effect.fail(
-      new InvalidInput({ error: "Workflow graph is invalid" })
-    );
+  const memoKey = graphDigest(workflow.graph);
+  let check = readMemo(catalog, memoKey);
+  if (!check) {
+    check = checkGraphAndCatalog({ graph: workflow.graph, catalog });
+    writeMemo(catalog, memoKey, check);
   }
 
-  const actionValidation = validateWorkflowActionConfigs(
-    graphValidation.nodes,
-    catalog
-  );
-  if (!actionValidation.valid) {
-    return yield* Effect.fail(
-      new InvalidInput({ error: actionValidation.error })
-    );
-  }
-
-  const conditionValidation = validateWorkflowConditionConfigs(
-    graphValidation.nodes
-  );
-  if (!conditionValidation.valid) {
-    return yield* Effect.fail(
-      new InvalidInput({ error: conditionValidation.error })
-    );
-  }
-
-  const lifecycleValidation = validateWorkflowLifecycleRules(
-    graphValidation.nodes,
-    catalog
-  );
-  if (!lifecycleValidation.valid) {
-    return yield* Effect.fail(
-      new InvalidInput({ error: lifecycleValidation.error })
-    );
+  if (!check.valid) {
+    return yield* Effect.fail(new InvalidInput({ error: check.error }));
   }
 
   // The only way this fails is the integration rows it reads, so a rejected
@@ -91,7 +192,7 @@ export const runWorkflowExecutionPreflight = Effect.fn(
   // It is last because it is the one check that costs a query.
   const integrations = yield* IntegrationRepo;
   const integrationValidation = yield* validateWorkflowIntegrations(
-    graphValidation.nodes,
+    check.workflowNodes,
     catalog,
     integrations.typesByIds
   );
@@ -104,14 +205,9 @@ export const runWorkflowExecutionPreflight = Effect.fn(
     );
   }
 
-  const lifecycleNode = graphValidation.nodes.find(
-    (node) => node.data.type === "trigger"
-  );
-
   const preflight: WorkflowExecutionPreflight = {
-    workflowGraph: graphValidation.graph,
-    workflowNodes: graphValidation.nodes,
-    lifecycleRules: readLifecycleRules(lifecycleNode?.data.config),
+    workflowGraph: check.workflowGraph,
+    lifecycleRules: check.lifecycleRules,
   };
   return preflight;
 });

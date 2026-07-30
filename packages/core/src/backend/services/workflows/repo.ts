@@ -17,6 +17,20 @@ import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
 export type WorkflowEventSubscriptionRow =
   typeof workflowEventSubscriptions.$inferSelect;
 
+/** Every column of `workflows` but the graph. */
+const workflowSummaryColumns = {
+  id: workflows.id,
+  name: workflows.name,
+  description: workflows.description,
+  isPaused: workflows.isPaused,
+  mode: workflows.mode,
+  visibility: workflows.visibility,
+  createdAt: workflows.createdAt,
+  updatedAt: workflows.updatedAt,
+};
+
+export type WorkflowSummaryRow = Omit<Workflow, "graph">;
+
 /**
  * A workflow one delivered Event concerns, and what it holds that Event for.
  *
@@ -53,8 +67,16 @@ export type EventSubscriber = {
 export class WorkflowRepo extends Context.Service<
   WorkflowRepo,
   {
-    /** Most recently updated first, which is the order the list screen shows. */
-    readonly listNewestFirst: () => Effect.Effect<Workflow[], DatabaseError>;
+    /**
+     * Most recently updated first, which is the order the list screen shows,
+     * and without the graph column: the dashboard table and the toolbar's
+     * switcher both draw names, and reading whole rows here would pull every
+     * stored graph into memory on every `refreshWorkflowList`.
+     */
+    readonly listSummariesNewestFirst: () => Effect.Effect<
+      WorkflowSummaryRow[],
+      DatabaseError
+    >;
     /**
      * Every workflow's id and name, and nothing else.
      *
@@ -191,9 +213,12 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
         });
 
       return {
-        listNewestFirst: () =>
+        listSummariesNewestFirst: () =>
           database.query((db) =>
-            db.select().from(workflows).orderBy(desc(workflows.updatedAt))
+            db
+              .select(workflowSummaryColumns)
+              .from(workflows)
+              .orderBy(desc(workflows.updatedAt))
           ),
 
         listIdentities: () =>

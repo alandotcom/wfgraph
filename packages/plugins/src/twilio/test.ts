@@ -4,8 +4,11 @@ import {
   readTwilioError,
 } from "#src/twilio/client";
 import { runVendorCall } from "#src/vendor-http";
+import type { IntegrationTestResult } from "@rova/core/plugin";
 
-export async function testTwilio(credentials: Record<string, string>) {
+export async function testTwilio(
+  credentials: Record<string, string>
+): Promise<IntegrationTestResult> {
   const accountSid = credentials.TWILIO_ACCOUNT_SID;
   const authToken = credentials.TWILIO_AUTH_TOKEN;
 

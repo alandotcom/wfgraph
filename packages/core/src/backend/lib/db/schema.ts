@@ -9,6 +9,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "#src/backend/lib/workflow-audit";
 import type { JsonObject } from "@rova/shared/types/json";
 import { generateId } from "@rova/shared/utils/id";
 import {
@@ -75,6 +76,11 @@ const inFlightStatusLiterals = IN_FLIGHT_EXECUTION_STATUSES.map(
   (status) => `'${status}'`
 ).join(", ");
 
+/** The workflow-scoped audit types as SQL literals, quoted for the same reason. */
+const workflowScopedTypeLiterals = WORKFLOW_SCOPED_AUDIT_EVENT_TYPES.map(
+  (eventType) => `'${eventType}'`
+).join(", ");
+
 export const workflowExecutions = pgTable(
   "workflow_executions",
   {
@@ -126,14 +132,32 @@ export const workflowExecutions = pgTable(
       table.workflowId,
       table.deliveryId
     ),
+    // The per-workflow run list, with `id` carrying the cursor's tiebreak so a
+    // page after the first rides the index rather than filtering.
     index("workflow_executions_workflow_id_started_at_idx").on(
       table.workflowId,
-      table.startedAt
+      table.startedAt,
+      table.id
     ),
-    index("workflow_executions_workflow_id_correlation_key_idx").on(
-      table.workflowId,
-      table.correlationKey
+    // The dashboard's cross-workflow page, which filters on nothing and sorts on
+    // this pair. A backward scan serves the `desc, desc` order, so the columns
+    // are declared plain.
+    index("workflow_executions_started_at_id_idx").on(
+      table.startedAt,
+      table.id
     ),
+    // The Refused Starts toggle's count, on the runs panel's two-second poll.
+    // Partial because superseded is the status that accretes without bound, and
+    // counting it off the (workflow_id, started_at) index meant walking every
+    // run the workflow ever produced.
+    index("workflow_executions_superseded_by_workflow_idx")
+      .on(table.workflowId)
+      .where(sql`${table.status} = 'superseded'`),
+    // The same poll's default run list, which hides superseded rows. Without
+    // this, a newest-wins workflow walks a long discarded prefix to fill 50.
+    index("workflow_executions_live_by_workflow_idx")
+      .on(table.workflowId, table.startedAt)
+      .where(sql`${table.status} <> 'superseded'`),
     // Partial index for Concurrency's candidate query: the live set per entity
     // stays tiny while terminal rows accrete without bound, so the index tracks
     // only the rows the query can return. The predicate is built from the same
@@ -254,13 +278,19 @@ export const workflowWaitStates = pgTable(
       table.executionId,
       table.status
     ),
-    index("workflow_wait_states_run_id_idx").on(table.runId),
     // The delivery fan-out's parked-run question, asked of every arrival: which
     // runs are still waiting on this Event name. GIN because the answer is a
     // containment test over the array, partial because a resumed or timed-out row
     // can never be one.
     index("workflow_wait_states_subscribed_events_idx")
       .using("gin", table.subscribedEvents)
+      .where(sql`${table.status} = 'waiting'`),
+    // The other half of that question. GIN has no leading column, so the
+    // containment test alone returns every waiting row subscribed to the Event
+    // across every workflow; Postgres BitmapAnds this with it and rechecks only
+    // the asking workflow's parked rows.
+    index("workflow_wait_states_waiting_by_workflow_idx")
+      .on(table.workflowId)
       .where(sql`${table.status} = 'waiting'`),
   ]
 );
@@ -291,6 +321,16 @@ export const workflowExecutionEvents = pgTable(
       table.executionId,
       table.createdAt
     ),
+    // The Refused Starts list on the runs panel's two-second poll. Its LIMIT is
+    // 50 and a healthy workflow has fewer refusals than that, so the scan never
+    // stops early and walked the workflow's whole audit history without this.
+    // The predicate is built from the same list the query's filter is, so the
+    // two cannot drift.
+    index("workflow_execution_events_workflow_scoped_idx")
+      .on(table.workflowId, table.createdAt)
+      .where(
+        sql`${table.eventType} in (${sql.raw(workflowScopedTypeLiterals)})`
+      ),
   ]
 );
 

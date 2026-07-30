@@ -14,11 +14,12 @@
  * declarative field list a plugin action declares.
  */
 
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/workflow/built-in-actions";
 import type { ActionMetadata } from "@rova/shared/extensions/catalog";
 
 export const builtInActions: readonly ActionMetadata[] = [
   {
-    id: "Condition",
+    id: BUILT_IN_ACTION_IDS.condition,
     label: "Condition",
     description: "Branch based on a condition",
     category: "System",
@@ -28,7 +29,7 @@ export const builtInActions: readonly ActionMetadata[] = [
     outputFields: [],
   },
   {
-    id: "Wait",
+    id: BUILT_IN_ACTION_IDS.wait,
     label: "Wait",
     description: "Delay execution or wait for an Event",
     category: "System",

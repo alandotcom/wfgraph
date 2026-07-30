@@ -18,7 +18,7 @@ import type {
   ExtensionCatalog,
   IntegrationMetadata,
 } from "@rova/shared/extensions/catalog";
-import type { RuntimeExtensionActionDefinition } from "@rova/shared/workflow/action-registry";
+import type { ActionDefinition } from "@rova/shared/workflow/action-registry";
 import type { StepFactory } from "#src/backend/lib/steps/step-runner";
 import { builtInActions } from "#src/backend/lib/extensions/built-ins";
 import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
@@ -49,7 +49,7 @@ export type RegisteredEvent = AnyEventDefinition;
 export type RovaExtensions = {
   readonly events?: readonly AnyEventDefinition[];
   readonly integrations?: readonly IntegrationDefinition[];
-  readonly actions?: readonly RuntimeExtensionActionDefinition[];
+  readonly actions?: readonly ActionDefinition[];
 };
 
 export type ExtensionSet = {
@@ -167,6 +167,26 @@ function assertDistinctActionIds(actions: readonly ActionMetadata[]): void {
   }
 }
 
+/**
+ * A credential a handler cannot read is a form field that goes nowhere.
+ *
+ * `credentialsFromConfig` keys a handler's credentials by `envVar` and by
+ * nothing else, so a field without one renders an input, stores an encrypted
+ * value, and reaches no handler. The failure would surface as an integration
+ * that says it is configured while every call comes back unauthorized.
+ */
+function assertCredentialsAreReadable(
+  integration: IntegrationDefinition
+): void {
+  for (const field of integration.credentials) {
+    if (!field.envVar) {
+      throw new Error(
+        `Integration "${integration.type}" declares the credential "${field.configKey}" with no envVar. A handler reads its credentials by envVar, so a field without one is stored and never read.`
+      );
+    }
+  }
+}
+
 function assertDistinctIntegrationTypes(
   integrations: readonly IntegrationMetadata[]
 ): void {
@@ -222,6 +242,8 @@ function readIntegration(
   integration: IntegrationDefinition,
   into: Assembly
 ): IntegrationMetadata {
+  assertCredentialsAreReadable(integration);
+
   for (const { id, step, outputFields } of checkIntegration(integration)) {
     into.actions.push({
       id,
@@ -256,10 +278,7 @@ function readIntegration(
  * off the definition. Its `execute` becomes a step the engine calls the same way
  * it calls an integration's, so dispatch has one kind of thing to find.
  */
-function readHostAction(
-  action: RuntimeExtensionActionDefinition,
-  into: Assembly
-): void {
+function readHostAction(action: ActionDefinition, into: Assembly): void {
   into.actions.push({
     id: action.id,
     label: action.label,

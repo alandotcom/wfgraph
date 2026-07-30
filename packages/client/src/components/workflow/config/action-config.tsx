@@ -33,6 +33,7 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { actionsByCategory, findAction } from "@rova/shared/extensions/catalog";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/workflow/built-in-actions";
 import { DEFAULT_WAIT_TIMEOUT } from "@rova/shared/workflow/wait-subscription";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
@@ -498,7 +499,7 @@ function SystemActionFields({
   disabled: boolean;
 }) {
   switch (actionType) {
-    case "Condition":
+    case BUILT_IN_ACTION_IDS.condition:
       return (
         <ConditionFields
           config={config}
@@ -506,7 +507,7 @@ function SystemActionFields({
           onUpdateConfig={onUpdateConfig}
         />
       );
-    case "Wait":
+    case BUILT_IN_ACTION_IDS.wait:
       return (
         <WaitFields
           config={config}

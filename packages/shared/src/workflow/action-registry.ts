@@ -112,9 +112,9 @@ export type RuntimeActionDefinition = RuntimeActionMetadata & {
  * time a value of this type exists, and assembly copies it into the catalog
  * without deciding anything of its own.
  */
-export type RuntimeExtensionActionDefinition = RuntimeActionDefinition & {
+export type ActionDefinition = RuntimeActionDefinition & {
   readonly category: string;
-  readonly __runtimeExtensionActionBrand: true;
+  readonly __rovaActionBrand: true;
 };
 
 export type CreateActionInput<TPayload extends Record<string, unknown>> = Omit<
@@ -351,6 +351,11 @@ function mergeOutputFields(
  * validates the result against `schema`, and calls `execute` with the
  * typed payload.
  *
+ * An `outputSchema` written in a foreign Standard Schema library derives the
+ * field list but encodes nothing on the way out, since only an Effect schema
+ * carries an encoder: a `Date` in a result then survives to JSONB by accident
+ * and comes back a string on the replay.
+ *
  * @example
  * ```ts
  * const action = createAction({
@@ -373,17 +378,15 @@ function mergeOutputFields(
 export function createAction<
   TPayload extends Record<string, unknown>,
   TOutput extends Record<string, unknown>,
->(
-  input: CreateActionInputWithOutput<TPayload, TOutput>
-): RuntimeExtensionActionDefinition;
+>(input: CreateActionInputWithOutput<TPayload, TOutput>): ActionDefinition;
 export function createAction<TPayload extends Record<string, unknown>>(
   input: CreateActionInput<TPayload>
-): RuntimeExtensionActionDefinition;
+): ActionDefinition;
 export function createAction<TPayload extends Record<string, unknown>>(
   input:
     | CreateActionInput<TPayload>
     | CreateActionInputWithOutput<TPayload, Record<string, unknown>>
-): RuntimeExtensionActionDefinition {
+): ActionDefinition {
   // The one place a schema is bridged. Everything below reads Standard Schema
   // and nothing below knows which library wrote what it is reading.
   const schema = asStandardSchema(input.schema);
@@ -449,6 +452,6 @@ export function createAction<TPayload extends Record<string, unknown>>(
   return {
     ...normalized,
     execute,
-    __runtimeExtensionActionBrand: true,
+    __rovaActionBrand: true,
   };
 }

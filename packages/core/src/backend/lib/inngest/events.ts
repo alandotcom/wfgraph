@@ -54,12 +54,6 @@ export const workflowExecutionInputSchema = Schema.Struct({
   workflowName: Schema.optional(Schema.String),
   workflowRunId: Schema.optional(Schema.String),
   runMode: Schema.optional(Schema.Literals(["live", "test"])),
-  eventContext: Schema.optional(
-    Schema.Struct({
-      eventType: Schema.optional(Schema.String),
-      correlationKey: Schema.optional(Schema.String),
-    })
-  ),
 });
 
 export const workflowRunRequested = eventType("workflow/run.requested", {

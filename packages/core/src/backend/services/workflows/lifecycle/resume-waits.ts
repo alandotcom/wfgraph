@@ -8,6 +8,7 @@
 
 import { Effect } from "effect";
 import { evaluateCompiledCondition } from "#src/backend/lib/cel/condition-payload";
+import { DEFAULT_QUERY_CONNECTIONS } from "#src/backend/lib/db/config";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { readCompiledWaitSubscriptions } from "#src/backend/lib/workflow-engine/wait-match";
@@ -82,6 +83,9 @@ export const resumeWaitsMatchingEvent = Effect.fn("resumeWaitsMatchingEvent")(
       return 0;
     }
 
+    // Bounded because each woken run costs a send and three writes, and the
+    // parked population this walks is not bounded by anything: an event wait
+    // defaults to a 7-day timeout, so one arrival can find a week's runs.
     const resumed = yield* Effect.forEach(
       input.waitStates,
       (waitState) =>
@@ -91,7 +95,7 @@ export const resumeWaitsMatchingEvent = Effect.fn("resumeWaitsMatchingEvent")(
           payload: input.payload,
           waitState,
         }),
-      { concurrency: "unbounded" }
+      { concurrency: DEFAULT_QUERY_CONNECTIONS }
     );
 
     return resumed.reduce<number>((total, count) => total + count, 0);

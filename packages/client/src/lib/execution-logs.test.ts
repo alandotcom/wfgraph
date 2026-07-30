@@ -31,7 +31,6 @@ describe("toWorkflowExecutions", () => {
         {
           id: "evt_1",
           message: "Refused a start",
-          metadata: { reason: "concurrency_first_wins" },
           createdAt: "2026-03-01T09:59:00.000Z",
         },
       ],

@@ -147,9 +147,8 @@ export type WorkflowStore = {
 };
 
 /**
- * Store that drops everything written to it. Used when a run should leave no
- * persisted trace - the engine's own fallback, and the honest default for
- * callers that have no database.
+ * Store that drops everything written to it, for a test whose subject is not the
+ * trace. `executeWorkflow` requires a store, so nothing reaches this by omission.
  */
 export const noopWorkflowStore: WorkflowStore = {
   startStepLog: () => Promise.resolve({ logId: "", startTime: Date.now() }),

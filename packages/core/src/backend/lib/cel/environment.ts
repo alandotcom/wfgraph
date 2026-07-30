@@ -18,6 +18,20 @@ export type CelEvaluationResult =
   | { ok: false; error: string };
 
 let sharedEnvironment: Environment | null = null;
+
+/**
+ * How many parsed expressions this process keeps.
+ *
+ * The cache earns its place twice over: a Condition node's expression is parsed
+ * once and evaluated on every run, and a parked run's wait match is evaluated on
+ * every arrival of its Event until the run resumes or its timeout expires. The
+ * bound is here because the second caller's key is generated rather than
+ * authored -- `compileWaitSubscriptions` inlines the run's own Entity Value as a
+ * literal, so cardinality follows the parked population and an unbounded map
+ * would hold one entry per entity ever parked, for the life of the process.
+ */
+const PARSED_EXPRESSION_CACHE_LIMIT = 2000;
+
 const parsedExpressionCache = new Map<string, ParsedExpression>();
 
 function isParsedExpression(value: unknown): value is ParsedExpression {
@@ -146,15 +160,30 @@ function getEnvironment(): Environment {
   return sharedEnvironment;
 }
 
+/**
+ * The parsed form of one expression, least-recently-used eviction over a Map.
+ *
+ * A Map iterates in insertion order, so re-inserting on a hit moves the entry to
+ * the end and the first key is always the coldest one.
+ */
 function getParsedExpression(expression: string): ParsedExpression {
   const cached = parsedExpressionCache.get(expression);
   if (cached) {
+    parsedExpressionCache.delete(expression);
+    parsedExpressionCache.set(expression, cached);
     return cached;
   }
 
   const parsed = getEnvironment().parse(expression);
   if (!isParsedExpression(parsed)) {
     throw new Error("CEL parser did not return an executable expression");
+  }
+
+  if (parsedExpressionCache.size >= PARSED_EXPRESSION_CACHE_LIMIT) {
+    const coldest = parsedExpressionCache.keys().next();
+    if (!coldest.done) {
+      parsedExpressionCache.delete(coldest.value);
+    }
   }
 
   parsedExpressionCache.set(expression, parsed);

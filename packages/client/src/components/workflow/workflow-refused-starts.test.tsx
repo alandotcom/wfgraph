@@ -7,7 +7,6 @@ function refusal(id: string, message: string): RefusedStart {
   return {
     id,
     message,
-    metadata: { reason: "concurrency_first_wins" },
     createdAt: new Date("2026-03-01T10:00:00.000Z"),
   };
 }

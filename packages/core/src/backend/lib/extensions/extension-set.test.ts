@@ -380,7 +380,7 @@ describe("assembleExtensions and an integration definition", () => {
   });
 
   it("says an integration has a test when it carries a loader, and answers it", async () => {
-    const testTwilio = () => Promise.resolve({ success: true });
+    const testTwilio = () => Promise.resolve({ success: true as const });
     const set = assembleExtensions({
       integrations: [
         aDefinition("twilio", { test: () => Promise.resolve(testTwilio) }),

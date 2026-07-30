@@ -3,6 +3,7 @@ import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
 import { checkCelBooleanExpression } from "#src/backend/lib/cel/environment";
+import { createInMemoryWorkflowRuntime } from "./runtime";
 import { createAction } from "@rova/shared/workflow/action-registry";
 import { Schema } from "effect";
 import {
@@ -187,7 +188,7 @@ describe("executeWorkflow branch traversal", () => {
 
     const result = await executeWorkflow(
       { graph, executionId: "exec_join", workflowId: "workflow_join" },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -234,7 +235,7 @@ describe("executeWorkflow branch traversal", () => {
         executionId: "exec_condition",
         workflowId: "workflow_condition",
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -287,7 +288,7 @@ describe("executeWorkflow branch traversal", () => {
         executionId: "exec_condition",
         workflowId: "workflow_condition",
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -345,7 +346,7 @@ describe("executeWorkflow branch traversal", () => {
         executionId: "exec_condition",
         workflowId: "workflow_condition",
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -419,7 +420,7 @@ describe("condition context from upstream outputs", () => {
         executionId: "exec_wrapped_condition",
         workflowId: "workflow_wrapped_condition",
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -436,7 +437,7 @@ describe("condition context from upstream outputs", () => {
         executionId: "exec_wrapped_condition_false",
         workflowId: "workflow_wrapped_condition",
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -454,7 +455,7 @@ describe("condition context from upstream outputs", () => {
         workflowId: "workflow_plain_condition",
         triggerInput: { plan: "premium" },
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -524,7 +525,7 @@ describe("timestamp conditions against payload values", () => {
         workflowId: "workflow_timestamp_condition",
         triggerInput: { appointment: { startsAt: isoDaysFromNow(1) } },
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -545,7 +546,7 @@ describe("timestamp conditions against payload values", () => {
         workflowId: "workflow_timestamp_condition",
         triggerInput: { appointment: { startsAt: isoDaysFromNow(30) } },
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -568,7 +569,7 @@ describe("timestamp conditions against payload values", () => {
         workflowId: "workflow_timestamp_condition",
         triggerInput: { appointment: { startsAt: isoDaysFromNow(1) } },
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -588,7 +589,7 @@ describe("timestamp conditions against payload values", () => {
         workflowId: "workflow_timestamp_condition",
         triggerInput: { plan: "premium" },
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -687,7 +688,7 @@ describe("conditions on fields named after CEL type constants", () => {
         workflowId: "workflow_type_condition",
         triggerInput: { type: "appointment.created" },
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );
@@ -705,7 +706,7 @@ describe("conditions on fields named after CEL type constants", () => {
         workflowId: "workflow_type_condition",
         triggerInput: { type: "appointment.cancelled" },
       },
-      undefined,
+      createInMemoryWorkflowRuntime(),
       store,
       actions
     );

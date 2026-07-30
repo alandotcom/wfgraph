@@ -1,3 +1,4 @@
+import { BUILT_IN_ACTION_IDS } from "#src/workflow/built-in-actions";
 import type { ConditionBranch, WorkflowNode } from "#src/workflow/types";
 
 function asTrimmedString(value: unknown): string | null {
@@ -52,7 +53,9 @@ export function isConditionActionType(value: unknown): boolean {
     return false;
   }
 
-  return actionType.toLowerCase() === "condition";
+  return (
+    actionType.toLowerCase() === BUILT_IN_ACTION_IDS.condition.toLowerCase()
+  );
 }
 
 export function isConditionActionNode(node: WorkflowNode | undefined): boolean {

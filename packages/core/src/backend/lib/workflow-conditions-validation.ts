@@ -4,6 +4,7 @@ import {
   compileSerializedConditionModel,
   parseConditionModel,
 } from "@rova/shared/workflow/conditions";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/workflow/built-in-actions";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 import { readWaitSubscriptions } from "@rova/shared/workflow/wait-subscription";
 
@@ -127,7 +128,7 @@ export function validateWorkflowConditionConfigs(
     const actionType =
       typeof config.actionType === "string" ? config.actionType : "";
 
-    if (actionType === "Condition") {
+    if (actionType === BUILT_IN_ACTION_IDS.condition) {
       // The builder writes an empty expression while a rule is still incomplete,
       // so an empty one marks a node the user is mid-way through rather than a
       // broken one. Running is what requires it: preflight's action-config pass
@@ -157,7 +158,7 @@ export function validateWorkflowConditionConfigs(
       }
     }
 
-    if (actionType === "Wait") {
+    if (actionType === BUILT_IN_ACTION_IDS.wait) {
       const matchValidation = validateWaitMatches(node, config);
       if (!matchValidation.valid) {
         return matchValidation;

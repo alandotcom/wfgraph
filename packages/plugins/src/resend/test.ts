@@ -1,7 +1,10 @@
 import { listResendDomains, readResendError } from "#src/resend/client";
 import { runVendorCall } from "#src/vendor-http";
+import type { IntegrationTestResult } from "@rova/core/plugin";
 
-export async function testResend(credentials: Record<string, string>) {
+export async function testResend(
+  credentials: Record<string, string>
+): Promise<IntegrationTestResult> {
   const apiKey = credentials.RESEND_API_KEY;
 
   if (!(apiKey && apiKey.startsWith("re_"))) {

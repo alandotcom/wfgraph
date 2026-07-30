@@ -27,11 +27,7 @@ import {
 } from "#src/backend/services/workflows/repo";
 import type { JsonObject } from "@rova/shared/types/json";
 import { getValueByPath } from "@rova/shared/utils/object-path";
-import {
-  emptyLifecycleRules,
-  type LifecycleRules,
-  resolveCorrelationPath,
-} from "@rova/shared/workflow/lifecycle-rules";
+import { emptyLifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
 import { asNonEmptyString } from "@rova/shared/types/string";
 
 /**
@@ -87,23 +83,42 @@ export type WaitDeliveryOutcome = {
 };
 
 /**
+ * How many parked runs one read of the candidate set brings back. The whole set
+ * is still walked; this is what keeps a workflow with thousands of parked runs
+ * from materializing all of them, and their compiled matches, at once.
+ */
+const WAIT_CANDIDATE_PAGE_SIZE = 200;
+
+/**
+ * Where this workflow reads the Event's Entity Value.
+ *
+ * The Event Author's path wins, and the builder's override for an Event that
+ * declares none comes off the subscription row rather than off the graph: the
+ * row is written in the same transaction as the graph it was derived from, which
+ * is what lets the index answer a delivery on its own.
+ */
+function correlationPathFor(input: {
+  event: DeliveredEvent;
+  subscriber: EventSubscriber;
+}): string | undefined {
+  return (
+    input.event.correlationPath ?? input.subscriber.correlationPath ?? undefined
+  );
+}
+
+/**
  * The Entity Value a payload carries for this workflow, trimmed.
  *
- * The path is the Event Author's, or the one the builder supplied for an Event
- * that declares none. Two Events describe one entity when these agree, whatever
- * paths they came from. Untrimmed, `" appt_1"` and `"appt_1"` would be two
- * entities and Concurrency would serialize neither against the other.
+ * Two Events describe one entity when these agree, whatever paths they came
+ * from. Untrimmed, `" appt_1"` and `"appt_1"` would be two entities and
+ * Concurrency would serialize neither against the other.
  */
 function readEntityValue(input: {
   event: DeliveredEvent;
-  rules: LifecycleRules;
+  subscriber: EventSubscriber;
   payload: JsonObject;
 }): string | undefined {
-  const path = resolveCorrelationPath({
-    rules: input.rules,
-    eventName: input.event.name,
-    declaredPath: input.event.correlationPath,
-  });
+  const path = correlationPathFor(input);
   if (!path) {
     return undefined;
   }
@@ -185,7 +200,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
 
     const entityValue = readEntityValue({
       event: input.event,
-      rules,
+      subscriber: input.subscriber,
       payload: input.payload,
     });
 
@@ -206,11 +221,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
           metadata: {
             reason: "entity_value_missing",
             eventName: input.event.name,
-            correlationPath: resolveCorrelationPath({
-              rules,
-              eventName: input.event.name,
-              declaredPath: input.event.correlationPath,
-            }),
+            correlationPath: correlationPathFor(input),
             deliveryId: input.deliveryId,
             runMode: workflow.mode,
           },
@@ -308,25 +319,45 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
   };
 
   const repo = yield* ExecutionRepo;
-  const waitStates = yield* repo.listWaitsForEvent({
-    workflowId: input.subscriber.id,
-    eventName: input.event.name,
-    runMode: input.subscriber.mode,
-  });
 
-  const candidates = waitStates.filter(
-    (state) => !input.excluding.includes(state.executionId)
-  );
-  if (candidates.length === 0) {
-    return nothing;
+  let afterId: string | undefined;
+  let resumedWaits = 0;
+
+  // A page at a time, because nothing bounds how many runs are parked on one
+  // Event: the wait timeout defaults to 7 days, and every candidate row carries
+  // the JSONB holding its compiled match. Every page is still walked, so no run
+  // owed this Event is skipped.
+  for (;;) {
+    const candidates = yield* repo.listWaitsForEvent({
+      workflowId: input.subscriber.id,
+      eventName: input.event.name,
+      runMode: input.subscriber.mode,
+      limit: WAIT_CANDIDATE_PAGE_SIZE,
+      afterId,
+      excludingExecutionIds: input.excluding,
+    });
+
+    if (candidates.length === 0) {
+      break;
+    }
+
+    resumedWaits += yield* resumeWaitsMatchingEvent({
+      workflowId: input.subscriber.id,
+      eventType: input.event.name,
+      payload: input.payload,
+      waitStates: candidates,
+    });
+
+    if (candidates.length < WAIT_CANDIDATE_PAGE_SIZE) {
+      break;
+    }
+
+    afterId = candidates.at(-1)?.id;
   }
 
-  const resumedWaits = yield* resumeWaitsMatchingEvent({
-    workflowId: input.subscriber.id,
-    eventType: input.event.name,
-    payload: input.payload,
-    waitStates: candidates,
-  });
+  if (resumedWaits === 0) {
+    return nothing;
+  }
 
   return { workflowId: input.subscriber.id, resumedWaits };
 });

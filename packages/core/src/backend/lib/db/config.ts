@@ -9,7 +9,13 @@
  */
 
 const DEFAULT_DATABASE_SCHEMA = "_workflows";
-const DEFAULT_QUERY_CONNECTIONS = 10;
+/**
+ * Connections the query pool opens unless a host says otherwise. Exported
+ * because it is also the size a fan-out bounds itself to: postgres.js queues
+ * rather than errors, so an unbounded fan-out shows up as latency inside a
+ * durable step instead of as a failure.
+ */
+export const DEFAULT_QUERY_CONNECTIONS = 10;
 const MAX_IDENTIFIER_LENGTH = 63;
 const MAX_PORT = 65_535;
 

@@ -536,18 +536,20 @@ describe("deliverToWaits", () => {
             workflowId: "wf_1",
             eventName: "app/appointment.created",
             runMode: "live",
+            limit: 200,
+            afterId: undefined,
+            excludingExecutionIds: [],
           },
         ]);
       })
     );
 
     // A run this delivery settled takes nothing: one is ending, and the other has
-    // parked nothing yet.
+    // parked nothing yet. The set goes to the query rather than to a filter after
+    // it, so a settled run never occupies a place in the page.
     it.effect("leaves out the runs the lifecycle just settled", () =>
       Effect.gen(function* () {
-        listWaitsForEventMock.mockReturnValueOnce(
-          Effect.succeed([{ id: "wait_1", executionId: "exec_superseded" }])
-        );
+        listWaitsForEventMock.mockReturnValueOnce(Effect.succeed([]));
 
         const outcome = yield* deliverToWaits({
           subscriber: subscriber(),
@@ -558,6 +560,10 @@ describe("deliverToWaits", () => {
 
         assert.strictEqual(outcome.resumedWaits, 0);
         assert.strictEqual(resumeWaitsMatchingEventMock.mock.calls.length, 0);
+        assert.deepStrictEqual(
+          listWaitsForEventMock.mock.calls[0][0].excludingExecutionIds,
+          ["exec_superseded"]
+        );
       })
     );
 
@@ -583,6 +589,9 @@ describe("deliverToWaits", () => {
             workflowId: "wf_1",
             eventName: "ops/nightly.swept",
             runMode: "live",
+            limit: 200,
+            afterId: undefined,
+            excludingExecutionIds: [],
           },
         ]);
       })

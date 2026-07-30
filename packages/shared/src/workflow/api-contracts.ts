@@ -4,11 +4,14 @@ import type {
   WorkflowVisibility,
 } from "./types";
 
-export type WorkflowApiPayload = {
+/**
+ * One workflow without its graph, which is what the list procedure answers with:
+ * a stored graph runs to megabytes and neither screen reading the list draws one.
+ */
+export type WorkflowSummaryPayload = {
   id: string;
   name: string;
   description?: string;
-  graph: SerializedWorkflowGraph;
   isPaused: boolean;
   mode: WorkflowMode;
   visibility: WorkflowVisibility;
@@ -16,4 +19,8 @@ export type WorkflowApiPayload = {
   updatedAt: string;
   /** Absent on a payload the viewer did not author. */
   isOwner?: boolean;
+};
+
+export type WorkflowApiPayload = WorkflowSummaryPayload & {
+  graph: SerializedWorkflowGraph;
 };

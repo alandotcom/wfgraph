@@ -220,12 +220,6 @@ export function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
   };
 }
 
-export function toSavedWorkflows(
-  payload: WorkflowApiPayload[]
-): SavedWorkflow[] {
-  return payload.map(toSavedWorkflow);
-}
-
 function toGraphPayload(input: {
   graph?: SerializedWorkflowGraph;
   nodes?: WorkflowNode[];

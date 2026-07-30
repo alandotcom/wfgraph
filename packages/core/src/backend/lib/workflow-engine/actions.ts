@@ -28,11 +28,9 @@ export type WorkflowActions = {
 };
 
 /**
- * A surface holding nothing, which reports every action as unknown.
- *
- * The honest default for a caller with no assembled surface, matching
- * `noopWorkflowStore`: a run against it reaches every node and fails each one
- * by name rather than pretending to have done the work.
+ * A surface holding nothing, which reports every action as unknown, for a test
+ * whose graph reaches no action node. `executeWorkflow` requires a surface, so
+ * nothing reaches this by omission.
  */
 export const noWorkflowActions: WorkflowActions = {
   stepFor: () => undefined,

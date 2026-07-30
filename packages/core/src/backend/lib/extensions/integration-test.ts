@@ -6,11 +6,13 @@
  * reaches an operator filling in the form.
  */
 
-export type IntegrationTestResult = {
-  success: boolean;
-  error?: string;
-  details?: Record<string, unknown>;
-};
+/**
+ * A discriminated union, so a failure always carries its sentence and a success
+ * cannot carry one. `details` is whatever the vendor said, for the log line only.
+ */
+export type IntegrationTestResult =
+  | { success: true; details?: Record<string, unknown> }
+  | { success: false; error: string; details?: Record<string, unknown> };
 
 export type IntegrationTestFunction = (
   credentials: Record<string, string>

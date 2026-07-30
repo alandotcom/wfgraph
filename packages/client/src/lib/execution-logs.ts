@@ -60,7 +60,6 @@ export type ExecutionEvent = {
 export type RefusedStart = {
   id: string;
   message: string;
-  metadata: unknown;
   createdAt: Date;
 };
 
