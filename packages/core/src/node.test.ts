@@ -203,11 +203,11 @@ describe.each([
     expect(response.body).toContain("Input validation failed");
   });
 
-  it("delivers a POST body to the webhook route", async () => {
+  it("delivers a POST body to the event intake route", async () => {
     // Valid JSON of the wrong shape, so validation rejects it before the route
     // reaches the database.
     const response = await postJson(
-      `${origin()}/rova/api/workflows/wf_1/webhook`,
+      `${origin()}/rova/api/events/order.created`,
       JSON.stringify(["not", "an", "object"])
     );
 
@@ -219,7 +219,7 @@ describe.each([
 
   it("reports a malformed body as such rather than as an empty one", async () => {
     const response = await postJson(
-      `${origin()}/rova/api/workflows/wf_1/webhook`,
+      `${origin()}/rova/api/events/order.created`,
       "{ not json"
     );
 
@@ -283,7 +283,7 @@ describe("Rova mounted somewhere other than its basePath", () => {
 describe("Rova mounted behind a body parser", () => {
   it("names the misconfiguration instead of running on an empty body", async () => {
     const response = await postJson(
-      `${parsedBodyOrigin}/rova/api/workflows/wf_1/webhook`,
+      `${parsedBodyOrigin}/rova/api/events/order.created`,
       JSON.stringify({ event: "created" })
     );
 

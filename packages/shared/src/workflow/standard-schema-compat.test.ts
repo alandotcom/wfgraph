@@ -11,8 +11,9 @@ import {
   registerIntegration,
   unregisterIntegration,
 } from "#src/plugins/registry";
-import { toStandardSchema } from "#src/types/schema";
+import { extractSchemaKeys, toStandardSchema } from "#src/types/schema";
 import { createAction } from "./action-registry";
+import { rewriteCelExpression } from "./inngest-event-data";
 import { createTrigger } from "./trigger-registry";
 import {
   jsonSchemaLibraryOptions,
@@ -302,38 +303,26 @@ describe("registries bridge the schema they are given", () => {
     // A payload that admits keys it did not name is a `Schema.StructWithRest`,
     // which carries neither Zod's `shape` nor `Schema.Struct`'s `fields`: the
     // struct it wraps is under `schema`. Those names are what a `priority.run`
-    // expression is checked against, so reading them is the difference between
-    // a typo being caught at registration and being sent to Inngest.
+    // expression is checked against, so reading them is the difference between a
+    // typo being caught where it was written and being sent to Inngest.
     const schema = Schema.StructWithRest(
       Schema.Struct({ event: Schema.String, entityId: Schema.String }),
       [Schema.Record(Schema.String, Schema.String)]
     );
 
-    const trigger = createTrigger({
-      type: "EffectOpenPayloadTrigger",
-      label: "Effect Open Payload Trigger",
-      schema,
-      event: "app/open.payload",
-      correlationIdPath: "entityId",
-      eventTypePath: "event",
-      inngest: { priority: { run: "entityId == 'x' ? 100 : 0" } },
-    });
-
     expect(
-      trigger.runtime.inngestEventTrigger?.functionOptions.priority
-    ).toEqual({ run: "event.data.entityId == 'x' ? 100 : 0" });
+      rewriteCelExpression(
+        "entityId == 'x' ? 100 : 0",
+        extractSchemaKeys(schema)
+      )
+    ).toBe("event.data.entityId == 'x' ? 100 : 0");
 
     expect(() =>
-      createTrigger({
-        type: "EffectOpenPayloadTriggerTypo",
-        label: "Effect Open Payload Trigger Typo",
-        schema,
-        event: "app/open.payload",
-        correlationIdPath: "entityId",
-        eventTypePath: "event",
-        inngest: { priority: { run: "entityID == 'x' ? 100 : 0" } },
-      })
-    ).toThrow('Invalid identifier "entityID"');
+      rewriteCelExpression(
+        "entitId == 'x' ? 100 : 0",
+        extractSchemaKeys(schema)
+      )
+    ).toThrow('Invalid identifier "entitId"');
   });
 
   it("reads a plugin action's output schema at registration", () => {

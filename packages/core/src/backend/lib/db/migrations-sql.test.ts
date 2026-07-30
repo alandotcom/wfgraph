@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { is } from "drizzle-orm";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import * as schema from "#src/backend/lib/db/schema";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/workflow/execution-contracts";
 
 /**
  * The committed SQL, held to naming no schema.
@@ -61,5 +62,22 @@ describe("the generated migrations", () => {
     );
 
     expect([...new Set(foreign)]).toEqual([]);
+  });
+
+  // The predicate is generated from IN_FLIGHT_EXECUTION_STATUSES, so this is
+  // where a status added to that list without a regenerated migration shows up:
+  // the index would stop covering the query its guard makes.
+  it("index the in-flight rows the concurrency query reads", async () => {
+    const sql = (await readMigrations())
+      .map((migration) => migration.sql)
+      .join("\n");
+    const predicate = IN_FLIGHT_EXECUTION_STATUSES.map(
+      (status) => `'${status}'`
+    ).join(", ");
+
+    expect(sql).toContain(
+      `CREATE INDEX "workflow_executions_in_flight_by_correlation_idx"`
+    );
+    expect(sql).toContain(`in (${predicate})`);
   });
 });

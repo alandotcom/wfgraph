@@ -32,7 +32,7 @@ const workflowListKey = orpcQuery.workflow.getAll.queryKey({ input: {} });
 // The dashboard pages through runs behind a filter, so its entry is an infinite
 // one keyed on that filter. Seeding two of them is the point: one invalidation
 // has to reach every filter variant, not just the unfiltered one.
-const runHistoryKey = (statuses?: ["error"]) =>
+const runHistoryKey = (statuses?: ["failed"]) =>
   orpcQuery.workflow.getExecutionsGlobal.infiniteKey({
     input: (cursor: undefined) => ({ limit: RUNS_PAGE_SIZE, statuses, cursor }),
     initialPageParam: undefined,
@@ -54,7 +54,7 @@ beforeEach(() => {
   queryClient.setQueryData(workflowKey("a"), aWorkflow("a"));
   queryClient.setQueryData(workflowRunsKey("a"), []);
   queryClient.setQueryData(integrationsKey, []);
-  for (const statuses of [undefined, ["error"] satisfies ["error"]]) {
+  for (const statuses of [undefined, ["failed"] satisfies ["failed"]]) {
     queryClient.setQueryData(runHistoryKey(statuses), {
       pages: [{ items: [], nextCursor: null }],
       pageParams: [undefined],
@@ -90,7 +90,7 @@ describe("refreshRunHistory", () => {
     await refreshRunHistory(queryClient);
 
     expect(isInvalidated(runHistoryKey())).toBe(true);
-    expect(isInvalidated(runHistoryKey(["error"]))).toBe(true);
+    expect(isInvalidated(runHistoryKey(["failed"]))).toBe(true);
   });
 
   it("marks the editor's per-workflow run list stale", async () => {

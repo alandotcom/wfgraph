@@ -151,7 +151,7 @@ function stripInternalFields<T extends StepInputWithInternalFields>(
  */
 export async function logWorkflowComplete(options: {
   executionId: string;
-  status: "success" | "error" | "cancelled";
+  status: "completed" | "failed" | "canceled";
   output?: unknown;
   error?: string;
   startTime: number;

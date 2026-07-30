@@ -8,8 +8,8 @@
  * and anything that would exist only to serve this repo's dev loop belongs
  * somewhere else.
  *
- * The custom trigger and action are the interesting half. They show what
- * `createTrigger` and `createAction` are for, and Rova serves them beside its
+ * The Events and the custom action are the interesting half. They show what
+ * `defineEvent` and `createAction` are for, and Rova serves them beside its
  * built-in integrations with no further registration.
  *
  * Development hands over no editor. `pnpm run dev` runs Vite's dev server in
@@ -21,7 +21,7 @@
 // First, so the rest of the graph loads with .env already applied.
 import "../load-env";
 import { createServer } from "node:http";
-import { createAction, createTrigger } from "@rova/core";
+import { createAction, defineEvent } from "@rova/core";
 import { createRovaApp } from "@rova/core/app";
 import { createRequestListener } from "@rova/core/node";
 // The built-in integrations, turned on by importing them: metadata the editor
@@ -30,7 +30,6 @@ import "@rova/plugins";
 import "@rova/plugins/server";
 import { Schema } from "effect";
 
-const APPOINTMENT_TRIGGER_TYPE = "AppointmentLifecycle";
 const DEFAULT_PORT = 4017;
 const DEFAULT_DATABASE_URL =
   "postgresql://workflow:workflow@localhost:55437/workflow_builder";
@@ -58,42 +57,82 @@ const appointmentSchema = Schema.Struct({
   status: Schema.String.annotate({ description: "Appointment status" }),
 }).annotate({ description: "The appointment this event is about" });
 
-// When `event` is set, workflows using this trigger listen for the named
-// Inngest event instead of requiring webhook HTTP calls. Send events from
-// your app with:
-//
-//   inngest.send({
-//     name: "app/appointment.updated",
-//     data: { event: "appointment.created", timestamp: "...", appointment: { ... } },
-//   });
-//
-// README's Embedding section documents the rest of the options an event
-// trigger takes, under "Notes".
-//
-// The trigger supplies vocabulary only: the schema, the correlation path,
-// and the event type path. What each event type does to a run (Start,
-// Replace, Cancel, Ignore) is the workflow's Routing Policy, configured per
-// workflow in the editor's trigger panel.
-const appointmentTrigger = createTrigger({
-  type: APPOINTMENT_TRIGGER_TYPE,
-  label: "Appointment Lifecycle",
-  event: "app/appointment.updated",
-  concurrency: { limit: 1, key: "appointment.id" },
-  description:
-    "Classifies appointment.created, appointment.rescheduled, and appointment.canceled events for the routing policy.",
+/**
+ * The Events this app raises: a name, a payload shape, and where the payload
+ * carries its Entity Value. An Event holds no lifecycle role -- which workflow
+ * starts on it, and which cancels on it, is each Workflow Builder's decision in
+ * the editor (ADR-0007).
+ *
+ * Send one from your app:
+ *
+ *   inngest.send({ name: "app/appointment.created", data: { appointment, occurredAt } });
+ *
+ * Or post it, which needs no Inngest client:
+ *
+ *   POST /api/events/app%2Fappointment.created
+ */
+const occurredAt = Schema.String.annotate({
+  description: "When the event was raised, ISO 8601",
+});
+
+const appointmentCreated = defineEvent({
+  name: "app/appointment.created",
+  label: "Appointment created",
+  description: "Raised when a new appointment is booked.",
+  schema: Schema.Struct({ appointment: appointmentSchema, occurredAt }),
+  correlationPath: "appointment.id",
+});
+
+const appointmentRescheduled = defineEvent({
+  name: "app/appointment.rescheduled",
+  label: "Appointment rescheduled",
+  description: "Raised when an appointment moves to a new time.",
   schema: Schema.Struct({
-    event: Schema.Literals([
-      "appointment.created",
-      "appointment.rescheduled",
-      "appointment.canceled",
-    ]).annotate({ description: "What happened to the appointment" }),
-    timestamp: Schema.String.annotate({
-      description: "When the event was raised, ISO 8601",
-    }),
     appointment: appointmentSchema,
+    occurredAt,
+    previousStartsAt: Schema.String.annotate({
+      description: "The time it was moved from, ISO 8601",
+    }),
   }),
-  correlationIdPath: "appointment.id",
-  eventTypePath: "event",
+  correlationPath: "appointment.id",
+});
+
+const appointmentCanceled = defineEvent({
+  name: "app/appointment.canceled",
+  label: "Appointment canceled",
+  description: "Raised when an appointment is called off.",
+  schema: Schema.Struct({
+    appointment: appointmentSchema,
+    occurredAt,
+    reason: Schema.String.annotate({ description: "Why it was canceled" }),
+  }),
+  correlationPath: "appointment.id",
+});
+
+/**
+ * An Event no workflow starts on.
+ *
+ * This app's billing service already sends it. Declaring it makes it available
+ * to a Wait node, so a run parked after "send the invoice" resumes when the
+ * payment settles. An Event needs no lifecycle role to wake a wait.
+ *
+ * Its Correlation Path names a different field from the appointment Events, and
+ * they still describe the same entity: agreement is by value, not by path.
+ */
+const paymentSettled = defineEvent({
+  name: "billing/payment.settled",
+  label: "Payment settled",
+  description: "Raised by the billing service when a charge clears.",
+  schema: Schema.Struct({
+    appointmentId: appointmentIdSchema,
+    amountCents: Schema.Number.annotate({
+      description: "Amount settled, in cents",
+    }).check(Schema.isFinite()),
+    settledAt: Schema.String.annotate({
+      description: "When the payment settled, ISO 8601",
+    }),
+  }),
+  correlationPath: "appointmentId",
 });
 
 const cancelAppointmentAction = createAction({
@@ -176,7 +215,16 @@ const rova = await createRovaApp({
     servePath: process.env.INNGEST_SERVE_PATH,
   },
   actions: [cancelAppointmentAction],
-  triggers: [appointmentTrigger],
+  // The Events this app declares, which is what the editor lists and what the
+  // per-Event Inngest listeners are built from.
+  extensions: {
+    events: [
+      appointmentCreated,
+      appointmentRescheduled,
+      appointmentCanceled,
+      paymentSettled,
+    ],
+  },
 });
 
 // The whole mount is one fetch handler. Bun, Deno and Workers take `rova.fetch`

@@ -108,12 +108,13 @@ import {
 // The `satisfies` is the exhaustiveness check: a reason added to the shared
 // union fails to compile here until it has user-facing copy.
 const IGNORED_REASON_MESSAGES = {
-  missing_event_type: "No event type was found in the payload.",
-  invalid_payload: "Payload failed the trigger schema.",
-  event_not_mapped:
-    "The routing policy does not map this event type to an action.",
-  no_in_flight_runs: "No in-flight runs were found to cancel.",
   workflow_paused: "Workflow is paused and cannot start new runs.",
+  concurrency_first_wins:
+    "A run for this entity is already going, and this workflow keeps the first one.",
+  entity_value_missing:
+    "This payload carries nothing at the workflow's Correlation Path, and its Concurrency needs an entity to compare.",
+  manual_start_not_allowed:
+    "This workflow does not list manual runs as a start source.",
 } satisfies Record<WorkflowExecutionIgnoredReason, string>;
 
 // Helper functions to reduce complexity
@@ -368,21 +369,11 @@ async function executeWorkflowRun({
     const result = await runWorkflow();
 
     if (result.status !== "running" || !result.executionId) {
-      if (result.status === "cancelled") {
-        const cancelledExecutions =
-          typeof result.cancelledExecutions === "number"
-            ? result.cancelledExecutions
-            : 0;
-        toast.success(
-          cancelledExecutions > 0
-            ? `Cancelled ${cancelledExecutions} in-flight run${cancelledExecutions === 1 ? "" : "s"}.`
-            : "Cancelled this entity's in-flight runs."
-        );
-      } else if (result.status === "ignored") {
-        toast.message(IGNORED_REASON_MESSAGES[result.reason]);
-      } else {
-        toast.message("Execution completed without starting a new run.");
-      }
+      toast.message(
+        result.status === "ignored"
+          ? IGNORED_REASON_MESSAGES[result.reason]
+          : "Execution completed without starting a new run."
+      );
 
       setSelectedExecutionId(null);
       setIsExecuting(false);
@@ -391,11 +382,16 @@ async function executeWorkflowRun({
     }
 
     if (
-      typeof result.cancelledExecutions === "number" &&
-      result.cancelledExecutions > 0
+      typeof result.supersededExecutions === "number" &&
+      result.supersededExecutions > 0
     ) {
+      const failed = Array.isArray(result.failedToSupersede)
+        ? result.failedToSupersede.length
+        : 0;
       toast.message(
-        `Replaced this entity's runs: cancelled ${result.cancelledExecutions} in-flight run${result.cancelledExecutions === 1 ? "" : "s"}, started a new one.`
+        failed > 0
+          ? `Superseded ${result.supersededExecutions} run${result.supersededExecutions === 1 ? "" : "s"} for this entity and started a new one. ${failed} could not be signalled and may still be running.`
+          : `Superseded ${result.supersededExecutions} run${result.supersededExecutions === 1 ? "" : "s"} for this entity and started a new one.`
       );
     }
 

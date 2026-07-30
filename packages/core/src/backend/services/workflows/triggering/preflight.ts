@@ -1,5 +1,4 @@
 import { Effect } from "effect";
-import type { EffectLogger } from "#src/backend/lib/effect/app-logger";
 import { callDbModule } from "#src/backend/lib/effect/database";
 import {
   IntegrationValidationFailed,
@@ -10,12 +9,12 @@ import { validateWorkflowActionConfigs } from "#src/backend/lib/workflow-action-
 import { validateWorkflowConditionConfigs } from "#src/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
 import { validateWorkflowIntegrations } from "#src/backend/lib/workflow-integration-validation";
+import { validateWorkflowLifecycleRules } from "#src/backend/lib/workflow-lifecycle-validation";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
-  resolveWorkflowTriggerDefinition,
-  type TriggerExecutionType,
-  type WorkflowTriggerDefinition,
-} from "@rova/shared/workflow/trigger-registry";
+  type LifecycleRules,
+  readLifecycleRules,
+} from "@rova/shared/workflow/lifecycle-rules";
 import type {
   SerializedWorkflowGraph,
   WorkflowNode,
@@ -29,34 +28,28 @@ type WorkflowForPreflight = {
 export type WorkflowExecutionPreflight = {
   workflowGraph: SerializedWorkflowGraph;
   workflowNodes: WorkflowNode[];
-  triggerNode: WorkflowNode | undefined;
-  triggerConfig: Record<string, unknown> | undefined;
-  triggerDefinition: WorkflowTriggerDefinition;
+  /** The entry node's Lifecycle Rules, absent when it carries none. */
+  lifecycleRules: LifecycleRules | undefined;
 };
 
 /**
  * Everything that has to hold before a stored graph is allowed to run: it
  * parses, its actions and conditions are configured, the integrations it names
- * exist, and its trigger is the kind the entrypoint asking can drive.
+ * exist, and its Lifecycle Rules name Events the app still defines.
  *
- * The logger arrives from the caller rather than from `AppLogger` here, because
- * these lines belong to the entrypoint's category and carry the ids it bound.
+ * Nothing is logged here, and the refusals carry the sentence instead. One caller
+ * is an entrypoint answering a person, where a refused run is an error worth
+ * seeing; the other is an Event's fan-out, where the same broken graph would be
+ * refused once per delivered Event and fill the error stream with a fact one
+ * builder already knows. Each logs it its own way.
  */
 export const runWorkflowExecutionPreflight = Effect.fn(
   "runWorkflowExecutionPreflight"
-)(function* (input: {
-  workflow: WorkflowForPreflight;
-  logger: EffectLogger;
-  requireExecutionType?: TriggerExecutionType;
-}) {
-  const { workflow, logger, requireExecutionType } = input;
+)(function* (input: { workflow: WorkflowForPreflight }) {
+  const { workflow } = input;
 
   const graphValidation = validateWorkflowGraph(workflow.graph);
   if (!graphValidation.valid) {
-    yield* logger.error("Invalid workflow graph", {
-      workflowName: workflow.name,
-      error: graphValidation.error,
-    });
     return yield* Effect.fail(
       new InvalidInput({ error: "Workflow graph is invalid" })
     );
@@ -64,10 +57,6 @@ export const runWorkflowExecutionPreflight = Effect.fn(
 
   const actionValidation = validateWorkflowActionConfigs(graphValidation.nodes);
   if (!actionValidation.valid) {
-    yield* logger.error("Invalid workflow action configuration", {
-      workflowName: workflow.name,
-      error: actionValidation.error,
-    });
     return yield* Effect.fail(
       new InvalidInput({ error: actionValidation.error })
     );
@@ -77,25 +66,27 @@ export const runWorkflowExecutionPreflight = Effect.fn(
     graphValidation.nodes
   );
   if (!conditionValidation.valid) {
-    yield* logger.error("Invalid workflow condition configuration", {
-      workflowName: workflow.name,
-      error: conditionValidation.error,
-    });
     return yield* Effect.fail(
       new InvalidInput({ error: conditionValidation.error })
     );
   }
 
+  const lifecycleValidation = validateWorkflowLifecycleRules(
+    graphValidation.nodes
+  );
+  if (!lifecycleValidation.valid) {
+    return yield* Effect.fail(
+      new InvalidInput({ error: lifecycleValidation.error })
+    );
+  }
+
   // The only way this fails is the integration rows it reads, so a rejected
   // query arrives here as the same database failure a repository answers with.
+  // It is last because it is the one check that costs a query.
   const integrationValidation = yield* callDbModule(() =>
     validateWorkflowIntegrations(graphValidation.nodes)
   );
   if (!integrationValidation.valid) {
-    yield* logger.error("Invalid integration references in workflow", {
-      workflowName: workflow.name,
-      invalidIntegrationIds: integrationValidation.invalidIds,
-    });
     return yield* Effect.fail(
       new IntegrationValidationFailed({
         error: "Workflow contains invalid integration references",
@@ -104,62 +95,38 @@ export const runWorkflowExecutionPreflight = Effect.fn(
     );
   }
 
-  const triggerNode = graphValidation.nodes.find(
+  const lifecycleNode = graphValidation.nodes.find(
     (node) => node.data.type === "trigger"
   );
-  const triggerConfig = triggerNode?.data.config;
-  const triggerDefinition = resolveWorkflowTriggerDefinition(triggerConfig);
-
-  if (
-    requireExecutionType &&
-    (!triggerNode ||
-      triggerDefinition.runtime.executionType !== requireExecutionType)
-  ) {
-    return yield* Effect.fail(
-      new InvalidInput({
-        error: `This workflow is not configured for ${requireExecutionType} triggers`,
-      })
-    );
-  }
 
   const preflight: WorkflowExecutionPreflight = {
     workflowGraph: graphValidation.graph,
     workflowNodes: graphValidation.nodes,
-    triggerNode,
-    triggerConfig,
-    triggerDefinition,
+    lifecycleRules: readLifecycleRules(lifecycleNode?.data.config),
   };
   return preflight;
 });
 
 /**
- * The prelude the two HTTP entrypoints share: find the workflow the request
- * names, then check that it may run. Either step's refusal is the answer the
- * caller gets, so neither is handled here.
+ * The prelude the execute route needs: find the workflow it names, then check
+ * that it may run. Either step's refusal is the answer the caller gets, so
+ * neither is handled here.
  *
- * The event listener runs the same two steps itself rather than through this,
- * because it turns both refusals into a return value for Inngest and names the
- * workflow in the line it writes about the second one.
+ * The Event fan-out does not use this: it has the workflow's identity from the
+ * subscription index already, and it turns a refusal into a skipped workflow
+ * rather than into a failure a caller reads.
  */
-export const loadWorkflowForRun = Effect.fn("loadWorkflowForRun")(
-  function* (input: {
-    workflowId: string;
-    logger: EffectLogger;
-    requireExecutionType?: TriggerExecutionType;
-  }) {
-    const repo = yield* WorkflowRepo;
-    const workflow = yield* repo.findById(input.workflowId);
+export const loadWorkflowForRun = Effect.fn("loadWorkflowForRun")(function* (
+  workflowId: string
+) {
+  const repo = yield* WorkflowRepo;
+  const workflow = yield* repo.findById(workflowId);
 
-    if (!workflow) {
-      return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
-    }
-
-    const preflight = yield* runWorkflowExecutionPreflight({
-      workflow,
-      logger: input.logger,
-      requireExecutionType: input.requireExecutionType,
-    });
-
-    return { workflow, preflight };
+  if (!workflow) {
+    return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
   }
-);
+
+  const preflight = yield* runWorkflowExecutionPreflight({ workflow });
+
+  return { workflow, preflight };
+});

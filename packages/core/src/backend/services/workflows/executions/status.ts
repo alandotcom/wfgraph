@@ -29,13 +29,16 @@ export const getExecutionStatus = Effect.fn("getExecutionStatus")(
 
     const logs = yield* repo.listNodeStatuses(executionId);
 
-    // A cancelled run leaves its unfinished nodes recorded as pending or
+    // A run that stopped leaves its unfinished nodes recorded as pending or
     // running, because nothing writes to them once the run stops. The editor
-    // draws them as cancelled, so that is what it is told.
+    // draws them as cancelled, so that is what it is told. A node's status is
+    // its own vocabulary, which is why the one-L run status maps onto the
+    // two-L node one here.
     const nodeStatuses: NodeStatus[] = logs.map((log) => ({
       nodeId: log.nodeId,
       status:
-        execution.status === "cancelled" &&
+        (execution.status === "canceled" ||
+          execution.status === "superseded") &&
         (log.status === "pending" || log.status === "running")
           ? "cancelled"
           : log.status,

@@ -5,6 +5,11 @@ import {
   type LogProperties,
 } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
+import { configureExtensions } from "#src/backend/lib/extensions/current";
+import {
+  emptyExtensionCatalog,
+  type ExtensionCatalog,
+} from "@rova/shared/extensions/catalog";
 import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
@@ -102,12 +107,34 @@ export function makeRecordingLogger(): {
   };
 }
 
+/**
+ * The assembled surface, for a test whose subject validates against the catalog.
+ *
+ * `getExtensions()` throws when nothing has been assembled, which is right for a
+ * request path and wrong for a test that only wants to save a graph: every save
+ * checks the Lifecycle Rules against the catalog, so a test of the save paths has
+ * to say what the catalog holds. Call it in a `beforeAll`; the state is module
+ * state, and vitest gives each file its own module registry.
+ */
+export function configureTestExtensions(
+  catalog: Partial<ExtensionCatalog> = {}
+): void {
+  configureExtensions({
+    catalog: { ...emptyExtensionCatalog, ...catalog },
+    // A catalog entry is metadata, and `eventByName` answers a definition; a test
+    // that needs the definition builds the surface itself.
+    eventByName: () => undefined,
+    events: [],
+  });
+}
+
 const workflowRepoStubs: WorkflowRepo["Service"] = {
   listNewestFirst: refuse("listNewestFirst"),
   findById: refuse("findById"),
   existsById: refuse("existsById"),
   hasWithName: refuse("hasWithName"),
   hasOtherWithName: refuse("hasOtherWithName"),
+  listEventSubscribers: refuse("listEventSubscribers"),
   insert: refuse("insert"),
   findPausedById: refuse("findPausedById"),
   setPaused: refuse("setPaused"),
@@ -137,7 +164,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   findStatusById: refuse("findStatusById"),
   existsById: refuse("existsById"),
   findWorkflowIdById: refuse("findWorkflowIdById"),
-  insertRunning: refuse("insertRunning"),
+  startForEntity: refuse("startForEntity"),
   insertTerminal: refuse("insertTerminal"),
   setRunId: refuse("setRunId"),
   markEnqueueFailed: refuse("markEnqueueFailed"),
@@ -189,6 +216,7 @@ const inngestClientStubs: InngestClient["Service"] = {
   sendRunRequested: refuse("sendRunRequested"),
   sendCancelRequested: refuse("sendCancelRequested"),
   sendWaitSignal: refuse("sendWaitSignal"),
+  sendHostEvent: refuse("sendHostEvent"),
 };
 
 export function stubInngestClient(

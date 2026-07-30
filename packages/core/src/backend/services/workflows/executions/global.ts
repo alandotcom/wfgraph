@@ -7,6 +7,10 @@ import {
   ExecutionRepo,
   type GlobalExecutionRow,
 } from "#src/backend/services/workflows/executions/repo";
+import type {
+  WorkflowExecutionStartSource,
+  WorkflowExecutionStatus,
+} from "@rova/shared/workflow/execution-contracts";
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -30,8 +34,8 @@ type GlobalExecutionItem = {
   workflowId: string;
   workflowName: string;
   workflowIsPaused: boolean;
-  status: "pending" | "running" | "waiting" | "success" | "error" | "cancelled";
-  triggerType: "manual" | "webhook" | "event" | null;
+  status: WorkflowExecutionStatus;
+  startSource: WorkflowExecutionStartSource | null;
   runMode: "live" | "test";
   triggerEventType: string | null;
   correlationKey: string | null;
@@ -48,9 +52,7 @@ type GlobalExecutionItem = {
 
 type WorkflowExecutionsGlobalInput = {
   workflowIds?: string[];
-  statuses?: Array<
-    "pending" | "running" | "waiting" | "success" | "error" | "cancelled"
-  >;
+  statuses?: WorkflowExecutionStatus[];
   limit?: number;
   cursor?: ExecutionCursorPayload;
 };
@@ -76,7 +78,7 @@ function toGlobalExecutionItem(row: GlobalExecutionRow): GlobalExecutionItem {
     workflowName: row.workflowName,
     workflowIsPaused: row.workflowIsPaused,
     status: row.status,
-    triggerType: row.triggerType,
+    startSource: row.startSource,
     runMode: row.runMode,
     triggerEventType: row.triggerEventType,
     correlationKey: row.correlationKey,

@@ -4,12 +4,16 @@ import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-f
 import { NotFound } from "#src/backend/lib/effect/failures";
 import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import type {
+  WorkflowExecutionStartSource,
+  WorkflowExecutionStatus,
+} from "@rova/shared/workflow/execution-contracts";
 
 type WorkflowExecutionItem = {
   id: string;
   workflowId: string;
-  status: "pending" | "running" | "waiting" | "success" | "error" | "cancelled";
-  triggerType: "manual" | "webhook" | "event" | null;
+  status: WorkflowExecutionStatus;
+  startSource: WorkflowExecutionStartSource | null;
   runMode: "live" | "test";
   triggerEventType: string | null;
   correlationKey: string | null;
@@ -31,8 +35,8 @@ function toIso(value: Date | null): string | null {
 function toWorkflowExecutionItem(input: {
   id: string;
   workflowId: string;
-  status: "pending" | "running" | "waiting" | "success" | "error" | "cancelled";
-  triggerType: "manual" | "webhook" | "event" | null;
+  status: WorkflowExecutionStatus;
+  startSource: WorkflowExecutionStartSource | null;
   runMode: "live" | "test";
   triggerEventType: string | null;
   correlationKey: string | null;

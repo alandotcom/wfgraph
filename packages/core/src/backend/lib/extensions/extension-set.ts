@@ -14,7 +14,6 @@
  * arriving here are metadata a registry already read.
  */
 
-import { uniq } from "es-toolkit/array";
 import type {
   ActionMetadata,
   EventMetadata,
@@ -22,6 +21,7 @@ import type {
   IntegrationMetadata,
 } from "@rova/shared/extensions/catalog";
 import { builtInActions } from "#src/backend/lib/extensions/built-ins";
+import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
 import type { AnyEventDefinition } from "#src/backend/lib/extensions/define-event";
 
 /**
@@ -49,8 +49,8 @@ export type ExtensionSet = {
   /** The serializable half. This is what /api/extensions sends. */
   readonly catalog: ExtensionCatalog;
   readonly eventByName: (name: string) => RegisteredEvent | undefined;
-  /** Every distinct `source.event`, which is the Inngest listener set. */
-  readonly sourceEventNames: readonly string[];
+  /** Every Event, which is the Inngest listener set: one function each. */
+  readonly events: readonly RegisteredEvent[];
 };
 
 /**
@@ -76,6 +76,56 @@ function indexEvents(
   }
 
   return byName;
+}
+
+/**
+ * Two Events on one source have to be told apart by their payloads.
+ *
+ * `source.when` is what tells them apart, and an Event declaring none matches
+ * every payload on that source. Two such Events would both be delivered every
+ * time, which is one arrival counted twice: two runs where the builder configured
+ * one, and the same wait woken twice.
+ */
+function assertSourcesAreDistinguishable(
+  events: readonly RegisteredEvent[]
+): void {
+  const unfilteredBySource = new Map<string, string>();
+
+  for (const event of events) {
+    if (event.source.when) {
+      continue;
+    }
+
+    const existing = unfilteredBySource.get(event.source.event);
+    if (existing) {
+      throw new Error(
+        `Events "${existing}" and "${event.name}" both arrive as "${event.source.event}" and neither narrows it with source.when, so every payload would be delivered as both. Give one of them a filter, or a source name of its own.`
+      );
+    }
+    unfilteredBySource.set(event.source.event, event.name);
+  }
+}
+
+/**
+ * Two Events may not slug to one Inngest function id.
+ *
+ * The id is `slugify(name)`, so `app/appointment.created` and
+ * `app-appointment-created` are the same function to Inngest. It would sync one
+ * and drop the other, which reads as an Event that quietly never arrives.
+ */
+function assertDistinctListenerIds(events: readonly RegisteredEvent[]): void {
+  const byId = new Map<string, string>();
+
+  for (const event of events) {
+    const id = toListenerFunctionId(event.name);
+    const existing = byId.get(id);
+    if (existing) {
+      throw new Error(
+        `Events "${existing}" and "${event.name}" both name the Inngest function "${id}". An Event's listener id is its name slugged, so two names differing only in punctuation collide; rename one.`
+      );
+    }
+    byId.set(id, event.name);
+  }
 }
 
 function assertDistinctActionIds(actions: readonly ActionMetadata[]): void {
@@ -125,6 +175,9 @@ function toEventMetadata(event: RegisteredEvent): EventMetadata {
 
 export function assembleExtensions(input: RovaExtensions): ExtensionSet {
   const eventsByName = indexEvents(input.events ?? []);
+  const events = Array.from(eventsByName.values());
+  assertSourcesAreDistinguishable(events);
+  assertDistinctListenerIds(events);
 
   // The built-ins go in first, so a host action colliding with one of them is
   // caught by the same check as any other collision.
@@ -134,8 +187,6 @@ export function assembleExtensions(input: RovaExtensions): ExtensionSet {
   const integrations = input.integrations ?? [];
   assertDistinctIntegrationTypes(integrations);
 
-  const events = Array.from(eventsByName.values());
-
   return {
     catalog: {
       events: events.map(toEventMetadata),
@@ -143,6 +194,6 @@ export function assembleExtensions(input: RovaExtensions): ExtensionSet {
       integrations,
     },
     eventByName: (name) => eventsByName.get(name),
-    sourceEventNames: uniq(events.map((event) => event.source.event)),
+    events,
   };
 }

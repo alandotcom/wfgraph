@@ -288,27 +288,6 @@ export async function deleteIntegration(
   return result.length > 0;
 }
 
-export async function validateIntegrationIds(
-  integrationIds: string[]
-): Promise<{ valid: boolean; invalidIds?: string[] }> {
-  if (integrationIds.length === 0) {
-    return { valid: true };
-  }
-
-  const existingIntegrations = await db
-    .select({ id: integrations.id })
-    .from(integrations)
-    .where(inArray(integrations.id, integrationIds));
-  const existingIds = new Set(existingIntegrations.map((row) => row.id));
-  const invalidIds = integrationIds.filter((id) => !existingIds.has(id));
-
-  if (invalidIds.length > 0) {
-    return { valid: false, invalidIds };
-  }
-
-  return { valid: true };
-}
-
 export async function getIntegrationTypesByIds(
   integrationIds: string[]
 ): Promise<Record<string, IntegrationType>> {

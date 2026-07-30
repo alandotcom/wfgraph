@@ -1,24 +1,15 @@
-import { Option, Schema } from "effect";
 import type { InngestFunction } from "inngest";
 import { db } from "#src/backend/lib/db/index";
+import { getExtensions } from "#src/backend/lib/extensions/current";
 import type { RovaRuntime } from "#src/backend/runtime";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
-import { rejectUnknownKeys } from "@rova/shared/types/schema";
-import {
-  serializedWorkflowGraphSchema,
-  type WorkflowTriggerConfigInput,
-} from "@rova/shared/workflow/schemas";
-import type { InngestEventTriggerConfig } from "@rova/shared/workflow/trigger-registry";
-import { resolveWorkflowTriggerDefinition } from "@rova/shared/workflow/trigger-registry";
+// Static, now that the id helper the app assembly needs has moved to a leaf of
+// its own: this import is the only reason the delivery stack loads, and this
+// module is on the path of a request that serves it anyway.
+import { createInngestEventListenerFunction } from "./event-listener-function";
 import { createWorkflowRunRequestedFunction } from "./workflow-function";
 
 const REGISTRY_CACHE_TTL_MS = 5000;
-
-/** The graph column is untyped JSON, and a row that fails is skipped, not thrown. */
-const readGraph = Schema.decodeUnknownOption(
-  serializedWorkflowGraphSchema,
-  rejectUnknownKeys
-);
 
 /**
  * The registry holds both kinds of function side by side: run handlers, whose
@@ -31,12 +22,6 @@ type WorkflowFunction = InngestFunction.Any;
 type WorkflowDefinition = {
   id: string;
   name: string;
-  graph: unknown;
-};
-
-type EventTriggerInfo = {
-  workflowId: string;
-  inngestEventTrigger: InngestEventTriggerConfig;
 };
 
 let cachedFunctions: WorkflowFunction[] = [];
@@ -46,61 +31,6 @@ let inflightRegistryBuild: Promise<WorkflowFunction[]> | null = null;
 
 function toFunctionId(workflowId: string): string {
   return `workflow-${workflowId}`;
-}
-
-function toEventListenerFunctionId(workflowId: string): string {
-  return `workflow-event-${workflowId}`;
-}
-
-/**
- * Pull the trigger node's config out of the graph JSONB stored on a workflow row.
- *
- * The column is untyped JSON, so the graph goes through its schema before it is
- * read. Failure is scoped to one workflow on purpose: a graph that does not parse
- * loses only its own event listener, and every other workflow still registers.
- * A throwing parse here would take the entire function registry down with one
- * malformed row.
- */
-function findTriggerNodeConfig(
-  graph: unknown
-): WorkflowTriggerConfigInput | undefined {
-  const parsedGraph = readGraph(graph);
-  if (Option.isNone(parsedGraph)) {
-    return undefined;
-  }
-
-  for (const node of parsedGraph.value.nodes) {
-    const nodeData = node.attributes.data;
-    if (nodeData.type === "trigger" && nodeData.config) {
-      return nodeData.config;
-    }
-  }
-
-  return undefined;
-}
-
-function findEventTriggers(
-  workflows: WorkflowDefinition[]
-): EventTriggerInfo[] {
-  const triggers: EventTriggerInfo[] = [];
-  for (const workflow of workflows) {
-    const triggerConfig = findTriggerNodeConfig(workflow.graph);
-    if (!triggerConfig) {
-      continue;
-    }
-
-    const definition = resolveWorkflowTriggerDefinition(triggerConfig);
-    if (
-      definition.runtime.executionType === "event" &&
-      definition.runtime.inngestEventTrigger
-    ) {
-      triggers.push({
-        workflowId: workflow.id,
-        inngestEventTrigger: definition.runtime.inngestEventTrigger,
-      });
-    }
-  }
-  return triggers;
 }
 
 export function buildWorkflowFunctions(
@@ -117,48 +47,41 @@ export function buildWorkflowFunctions(
     );
 }
 
-async function buildEventListenerFunctions(
-  eventTriggers: EventTriggerInfo[],
-  runtime: RovaRuntime
-): Promise<WorkflowFunction[]> {
-  if (eventTriggers.length === 0) {
+/**
+ * One listener per Event, from the catalog.
+ *
+ * The set does not depend on any saved graph, so it is the same for the life of
+ * the process: a workflow that starts on a new Event needs no Inngest re-sync,
+ * because the listener for that Event was registered when the app was built.
+ */
+function buildEventListenerFunctions(runtime: RovaRuntime): WorkflowFunction[] {
+  const events = getExtensions().events;
+  if (events.length === 0) {
     return [];
   }
 
-  const { createInngestEventListenerFunction } =
-    await import("./event-listener-function");
-
-  return eventTriggers.map((trigger) =>
-    createInngestEventListenerFunction({
-      id: toEventListenerFunctionId(trigger.workflowId),
-      workflowId: trigger.workflowId,
-      inngestEventTrigger: trigger.inngestEventTrigger,
-      runtime,
-    })
+  return events.map((event) =>
+    createInngestEventListenerFunction({ event, runtime })
   );
 }
 
 async function loadWorkflowFunctionsFromDb(
   runtime: RovaRuntime
 ): Promise<WorkflowFunction[]> {
+  // Ids and names only. The graph column used to come too, for the per-workflow
+  // event listeners derived from it; the listener set is the catalog's now, and
+  // nothing here reads a graph.
   const workflowDefinitions = await db.query.workflows.findMany({
     columns: {
       id: true,
       name: true,
-      graph: true,
     },
   });
 
-  const savedWorkflows = workflowDefinitions.filter(
-    (workflow) => workflow.name !== CURRENT_WORKFLOW_NAME
-  );
-
-  const runRequestedFunctions = buildWorkflowFunctions(savedWorkflows);
-  const eventTriggers = findEventTriggers(savedWorkflows);
-  const eventListenerFunctions = await buildEventListenerFunctions(
-    eventTriggers,
-    runtime
-  );
+  // The draft is filtered inside `buildWorkflowFunctions`, which is where the
+  // rule is tested.
+  const runRequestedFunctions = buildWorkflowFunctions(workflowDefinitions);
+  const eventListenerFunctions = buildEventListenerFunctions(runtime);
 
   return [...runRequestedFunctions, ...eventListenerFunctions];
 }

@@ -90,7 +90,10 @@ Four rules, each of which cost something to learn:
   `Schema.Struct` is closed only because the decode was told to close it, so every decode
   of a wire shape passes `rejectUnknownKeys`. A shape meant to stay open says so in its own
   shape, with `Schema.StructWithRest` over a `Schema.Record` rest, and stays open under
-  those same options because an index signature skips the excess-property check.
+  those same options because an index signature skips the excess-property check. One
+  boundary is deliberately open and it is named where it lives: an Event's intake gate
+  (`defineEvent`, below), because that payload is a host's own message rather than a contract
+  between our two halves.
 - **`toStandardSchema` is where those options are baked in**, because oRPC and Inngest call
   `~standard.validate(payload)` with nothing else to say. Effect assigns `~standard` onto
   the schema and returns early if a `validate` is already there, so a schema crosses that
@@ -201,6 +204,57 @@ where the field names a CEL identifier is checked against come from.
 Which Events start a run and which cancel it is the Workflow Builder's per-workflow
 declaration, never the Event's (ADR-0007).
 
+`decodePayload` beside the schema is the intake gate, and it is the one boundary in this
+repo that decodes **open**: declared fields are validated and a key the schema never heard
+of is ignored. An Event's payload is the host's own message and their senders add fields, so
+an additive change upstream must not stop intake; drift on a declared field still fails
+loudly. What it decodes to is thrown away and the raw JSON travels on, because nothing
+downstream consumes a typed value and a transform would rewrite what the sender sent -- a
+`Date` round trip alone is enough to break a wait match comparing a literal captured at park
+time. It is built from the author's Effect schema when there is one, because the bridged
+object's parse options freeze at the first crossing, and from `~standard.validate` for a
+foreign schema; `isEffectSchema` in `types/schema.ts` picks the path, and both arms fail with
+one `PayloadRejected`.
+
+**The Lifecycle Rules are per workflow, and the engine reads them off the entry node.**
+`packages/shared/src/workflow/lifecycle-rules.ts` holds `lifecycleRulesSchema` and the
+sentences a save is refused with (`checkLifecycleRules`), which
+`backend/lib/workflow-lifecycle-validation.ts` runs against the assembled catalog wherever a
+graph is written and again in preflight. `services/workflows/lifecycle/` holds the rest:
+`deliver-event.ts` is Precedence (rules first, then the Wait Subscriptions of the runs that
+survived them), `concurrency.ts` is `startWithConcurrency`, `intake.ts` is
+`POST /api/events/:eventName`, and `subscriptions.ts` derives the
+`workflow_event_subscriptions` rows a graph calls for, each carrying the builder's
+Correlation Path override for its Event so a delivery never reads a graph to find one. Those
+rows are written by `WorkflowRepo` in the same transaction as the graph, and the fan-out
+re-reads a workflow's rules before acting, so a row that outlives the role it was written for
+costs a wasted read and nothing else.
+
+`listEventSubscribers` asks two questions per arrival: which workflows name this Event as a
+start in the graph they hold now, from that index, and which runs are still parked on it, from
+`workflow_wait_states.subscribed_events` -- the names the row was written with, so an edit to
+the Wait node cannot orphan the runs already parked on it. A workflow reached only by the
+second question is delivered no start and gets no preflight.
+
+One Inngest listener per Event, built from the catalog in `lib/inngest/functions.ts`, so the
+listener set is fixed for the life of the process and a workflow that starts on a new Event
+needs no re-sync. Several Events may share one source and narrow it with `source.when`: each
+listener carries that filter as its trigger's `if`, compiled by `compileEventDataEquals`, so
+the bus decides which Event a payload is and a subtype nothing declared costs no invocation.
+`extension-set.ts` refuses two Events on one source that both omit `when`. The handler gates
+the payload again -- a host may send to the bus directly -- and then runs two sibling steps per
+workflow, the Lifecycle Rules and the wait delivery, so a retry resumes at the workflow that
+failed without replaying a start.
+
+**An Execution's statuses live in one list.** `WORKFLOW_EXECUTION_STATUSES` in
+`packages/shared/src/workflow/execution-contracts.ts` is where the column's type, the RPC
+literals, and the run-history filter come from, and `WORKFLOW_EXECUTION_START_SOURCES` beside
+it is the `start_source` column. Terminal is `completed | canceled | superseded | failed`,
+one L as CONTEXT.md has it. Three other status vocabularies keep their own words and are not
+this one: a node log is `pending | running | success | error`, a wait row is
+`waiting | resumed | timed_out | cancelled`, and an integration test answers
+`success | error`.
+
 **Rova's own events are defined once, with a schema.**
 `packages/core/src/backend/lib/inngest/events.ts` holds the three
 (`workflow/run.requested`, `workflow/run.cancel.requested`, `workflow/wait.signal`) as
@@ -226,7 +280,7 @@ HTTP status.
 `rpcEffectHandler` in `backend/rpc/router.ts` runs a procedure's Effect on the runtime
 carried by `RpcContext`, logs a failure once, and fails with the oRPC error. `runPromise`
 squashes that down to the error itself, which is the object oRPC catches. The two plain
-Hono routes (webhook intake, wait-hook resume) run theirs the same way and build a
+Hono routes (event intake, wait-hook resume) run theirs the same way and build a
 `Response` from the failure.
 
 **The backend runs on Effect.** ADR-0002 has the plan and ADR-0005 the data layer.

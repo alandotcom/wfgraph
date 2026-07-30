@@ -8,17 +8,14 @@ import {
 } from "#src/backend/lib/workflow-audit";
 import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
 import type { JsonObject } from "@rova/shared/types/json";
-import type { WorkflowExecutionIgnoredReason } from "@rova/shared/workflow/execution-contracts";
+import type {
+  WorkflowExecutionIgnoredReason,
+  WorkflowExecutionStartSource,
+} from "@rova/shared/workflow/execution-contracts";
 import type {
   SerializedWorkflowGraph,
   WorkflowMode,
 } from "@rova/shared/workflow/types";
-
-/**
- * Every way a run can enter the system. Manual comes from the execute route,
- * webhook from the inbound HTTP entrypoint, event from an Inngest listener.
- */
-export type WorkflowRunTriggerType = "manual" | "webhook" | "event";
 
 /** Identity of the workflow plus the graph the run will execute. */
 export type WorkflowRunTarget = {
@@ -27,19 +24,33 @@ export type WorkflowRunTarget = {
   graph: SerializedWorkflowGraph;
 };
 
-/** What trigger evaluation concluded about the payload that arrived. */
-export type WorkflowRunTriggerContext = {
-  type: WorkflowRunTriggerType;
-  eventType?: string;
-  correlationKey?: string;
+/**
+ * Where the run came from, and which entity it is about.
+ *
+ * `entityValue` is the string the Lifecycle Rules read out of the payload at the
+ * Event's Correlation Path, or the workflow's own id for a start that carries no
+ * payload. Runs sharing one are about the same entity.
+ */
+export type WorkflowRunStart = {
+  source: WorkflowExecutionStartSource;
+  eventName?: string;
+  entityValue?: string;
+  /**
+   * The arrival this start answers, which for an Event is the id the intake route
+   * minted and the bus carried. It goes on the audit row so one arrival can be
+   * traced across every workflow it started or was refused by.
+   */
+  deliveryId?: string;
 };
 
-export type StartWorkflowRunInput = {
+export type EnqueueStartedRunInput = {
   workflow: WorkflowRunTarget;
-  trigger: WorkflowRunTriggerContext;
+  start: WorkflowRunStart;
   runMode: WorkflowMode;
+  /** The row Concurrency opened, which this hands to the bus. */
+  executionId: string;
   /**
-   * The payload the trigger node and downstream templates read from. It is JSON
+   * The payload the entry node and downstream templates read from. It is JSON
    * because it arrived as JSON and is stored as JSON in the JSONB
    * `workflow_executions.input` column.
    */
@@ -60,83 +71,72 @@ export type StartedWorkflowRun = {
 
 export type RecordTerminalWorkflowRunInput = {
   workflowId: string;
-  trigger: WorkflowRunTriggerContext;
+  start: WorkflowRunStart;
   runMode: WorkflowMode;
   payload: JsonObject;
-  status: "success" | "error" | "cancelled";
+  status: "completed" | "failed" | "canceled";
   error?: string;
   output?: Record<string, unknown>;
   audit: {
     eventType: Extract<
       WorkflowAuditEventType,
-      "run_cancelled" | "run_ignored" | "run_completed"
+      "run_cancelled" | "run_ignored" | "run_not_started" | "run_completed"
     >;
     message: string;
     metadata?: Record<string, unknown>;
   };
 };
 
-/** How each entrypoint names itself in a "run started" timeline entry. */
-const RUN_STARTED_LABELS: Record<WorkflowRunTriggerType, string> = {
+/** How each start source names itself in a "run started" timeline entry. */
+const RUN_STARTED_LABELS: Record<WorkflowExecutionStartSource, string> = {
   manual: "Manual",
-  webhook: "Webhook",
+  schedule: "Scheduled",
   event: "Event-triggered",
 };
 
 /**
- * How each entrypoint names the thing it declined to run, phrased so it reads
+ * How each start source names the thing it declined to run, phrased so it reads
  * as a noun inside "Ignored <subject> because ...".
  */
-const IGNORED_SUBJECTS: Record<WorkflowRunTriggerType, string> = {
-  manual: "execute event",
-  webhook: "webhook event",
+const IGNORED_SUBJECTS: Record<WorkflowExecutionStartSource, string> = {
+  manual: "manual run",
+  schedule: "scheduled run",
   event: "event",
 };
 
 export function buildRunStartedAuditMessage(input: {
-  triggerType: WorkflowRunTriggerType;
+  startSource: WorkflowExecutionStartSource;
   runMode: WorkflowMode;
-  eventType?: string;
+  eventName?: string;
 }): string {
-  const label = RUN_STARTED_LABELS[input.triggerType];
+  const label = RUN_STARTED_LABELS[input.startSource];
   const mode = input.runMode === "test" ? " test mode" : "";
-  const event = input.eventType ? ` for ${input.eventType}` : "";
+  const event = input.eventName ? ` for ${input.eventName}` : "";
   return `${label}${mode} run started${event}`;
 }
 
 export function buildIgnoredRunAuditMessage(input: {
-  triggerType: WorkflowRunTriggerType;
+  startSource: WorkflowExecutionStartSource;
   reason: WorkflowExecutionIgnoredReason;
-  eventType?: string;
-  eventTypePath?: string;
+  eventName?: string;
 }): string {
-  const subject = IGNORED_SUBJECTS[input.triggerType];
+  const subject = IGNORED_SUBJECTS[input.startSource];
 
   if (input.reason === "workflow_paused") {
     return `Ignored ${subject} because workflow is paused`;
   }
 
-  if (input.reason === "missing_event_type") {
-    // Only name a path that is actually known; a fabricated default sends
-    // the builder to fix a field the classifier never reads.
-    return input.eventTypePath
-      ? `Ignored ${subject}: event type missing at path "${input.eventTypePath}"`
-      : `Ignored ${subject}: no event type was found in the payload`;
+  const named = input.eventName ? `${subject} ${input.eventName}` : subject;
+
+  if (input.reason === "concurrency_first_wins") {
+    return `Did not start a run from ${named}: a run for this entity is already going and Concurrency is first-wins`;
   }
 
-  if (input.reason === "invalid_payload") {
-    return `Ignored ${subject}: payload failed the trigger schema`;
+  if (input.reason === "entity_value_missing") {
+    return `Did not start a run from ${named}: nothing at this workflow's Correlation Path, and Concurrency needs an entity to compare`;
   }
 
-  if (input.reason === "event_not_mapped") {
-    return input.eventType
-      ? `Ignored ${subject} ${input.eventType}: not mapped by the routing policy`
-      : `Ignored ${subject}: not mapped by the routing policy`;
-  }
-
-  return input.eventType
-    ? `Ignored ${input.eventType} because no in-flight runs were found`
-    : `Ignored ${subject} because no in-flight runs were found`;
+  return `Did not start a run from ${named}: this workflow does not list manual runs as a start source`;
 }
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
@@ -146,26 +146,22 @@ const loggerFor = (workflowId: string) =>
   );
 
 /**
- * Inserts the execution row, enqueues the Inngest run, and records the timeline
+ * Tells the bus about a run whose row already exists, and records the timeline
  * entry. A refused enqueue marks the row as errored before the failure travels
  * on, so a run is never left sitting in "running" with nothing behind it.
+ *
+ * The row is opened by `ExecutionRepo.startForEntity`, under the lock that makes
+ * Concurrency a decision rather than a race, and the send stays out here because
+ * a transaction has no business waiting on Inngest.
  */
-export const startWorkflowRun = Effect.fn("startWorkflowRun")(function* (
-  input: StartWorkflowRunInput
+export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
+  input: EnqueueStartedRunInput
 ) {
   const repo = yield* ExecutionRepo;
   const inngest = yield* InngestClient;
-  const { workflow, trigger, runMode, payload } = input;
+  const { workflow, start, runMode, payload } = input;
   const logger = yield* loggerFor(workflow.id);
-
-  const execution = yield* repo.insertRunning({
-    workflowId: workflow.id,
-    triggerType: trigger.type,
-    runMode,
-    triggerEventType: trigger.eventType,
-    correlationKey: trigger.correlationKey,
-    input: payload,
-  });
+  const execution = { id: input.executionId };
 
   const run = yield* inngest
     .sendRunRequested({
@@ -177,8 +173,8 @@ export const startWorkflowRun = Effect.fn("startWorkflowRun")(function* (
       workflowName: workflow.name,
       runMode,
       eventContext: {
-        eventType: trigger.eventType,
-        correlationKey: trigger.correlationKey,
+        eventType: start.eventName,
+        correlationKey: start.entityValue,
       },
     })
     .pipe(
@@ -216,15 +212,16 @@ export const startWorkflowRun = Effect.fn("startWorkflowRun")(function* (
       executionId: execution.id,
       eventType: "run_started",
       message: buildRunStartedAuditMessage({
-        triggerType: trigger.type,
+        startSource: start.source,
         runMode,
-        eventType: trigger.eventType,
+        eventName: start.eventName,
       }),
       metadata: {
-        triggerType: trigger.type,
+        startSource: start.source,
         runMode,
-        eventType: trigger.eventType,
-        correlationKey: trigger.correlationKey,
+        eventName: start.eventName,
+        entityValue: start.entityValue,
+        deliveryId: start.deliveryId,
         runId: run.eventId,
       },
     })
@@ -254,10 +251,10 @@ export const recordTerminalWorkflowRun = Effect.fn("recordTerminalWorkflowRun")(
     const execution = yield* repo.insertTerminal({
       workflowId: input.workflowId,
       status: input.status,
-      triggerType: input.trigger.type,
+      startSource: input.start.source,
       runMode: input.runMode,
-      triggerEventType: input.trigger.eventType,
-      correlationKey: input.trigger.correlationKey,
+      triggerEventType: input.start.eventName,
+      correlationKey: input.start.entityValue,
       input: input.payload,
       output: input.output,
       error: input.error,
@@ -280,23 +277,25 @@ export const recordTerminalWorkflowRun = Effect.fn("recordTerminalWorkflowRun")(
 /**
  * The terminal row a paused workflow's request gets.
  *
- * The manual and webhook entrypoints both answer a paused workflow with an
- * ignored run rather than silence, and they word it identically down to the
- * metadata; only the trigger type differs.
+ * The manual route is the only caller now that HTTP intake enqueues rather than
+ * delivering: a paused workflow is filtered out of the subscription join, so an
+ * Event never reaches one. The row exists because the runs list is the only
+ * feedback the Run button gives, and a decision with no row reads there as nothing
+ * having happened.
  */
 export const recordPausedRunIgnored = Effect.fn("recordPausedRunIgnored")(
   function* (input: {
     workflowId: string;
-    triggerType: WorkflowRunTriggerType;
+    startSource: WorkflowExecutionStartSource;
     runMode: WorkflowMode;
     payload: JsonObject;
   }) {
     return yield* recordTerminalWorkflowRun({
       workflowId: input.workflowId,
-      trigger: { type: input.triggerType },
+      start: { source: input.startSource },
       runMode: input.runMode,
       payload: input.payload,
-      status: "success",
+      status: "completed",
       output: {
         status: "ignored",
         reason: "workflow_paused",
@@ -305,7 +304,7 @@ export const recordPausedRunIgnored = Effect.fn("recordPausedRunIgnored")(
       audit: {
         eventType: "run_ignored",
         message: buildIgnoredRunAuditMessage({
-          triggerType: input.triggerType,
+          startSource: input.startSource,
           reason: "workflow_paused",
         }),
         metadata: {

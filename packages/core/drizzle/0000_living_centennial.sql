@@ -17,6 +17,14 @@ CREATE TABLE "integrations" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "workflow_event_subscriptions" (
+	"workflow_id" text NOT NULL,
+	"event_name" text NOT NULL,
+	"role" text NOT NULL,
+	"correlation_path" text,
+	CONSTRAINT "workflow_event_subscriptions_workflow_id_event_name_role_pk" PRIMARY KEY("workflow_id","event_name","role")
+);
+--> statement-breakpoint
 CREATE TABLE "workflow_execution_events" (
 	"id" text PRIMARY KEY NOT NULL,
 	"workflow_id" text NOT NULL,
@@ -48,7 +56,7 @@ CREATE TABLE "workflow_executions" (
 	"workflow_id" text NOT NULL,
 	"workflow_run_id" text,
 	"status" text NOT NULL,
-	"trigger_type" text,
+	"start_source" text,
 	"run_mode" text DEFAULT 'live' NOT NULL,
 	"trigger_event_type" text,
 	"correlation_key" text,
@@ -74,6 +82,7 @@ CREATE TABLE "workflow_wait_states" (
 	"hook_token" text,
 	"wait_until" timestamp,
 	"correlation_key" text,
+	"subscribed_events" text[],
 	"metadata" jsonb,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"resumed_at" timestamp,
@@ -92,6 +101,7 @@ CREATE TABLE "workflows" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "workflow_event_subscriptions" ADD CONSTRAINT "workflow_event_subscriptions_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "workflows"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_execution_events" ADD CONSTRAINT "workflow_execution_events_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "workflows"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_execution_events" ADD CONSTRAINT "workflow_execution_events_execution_id_workflow_executions_id_fk" FOREIGN KEY ("execution_id") REFERENCES "workflow_executions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_execution_logs" ADD CONSTRAINT "workflow_execution_logs_execution_id_workflow_executions_id_fk" FOREIGN KEY ("execution_id") REFERENCES "workflow_executions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -99,6 +109,7 @@ ALTER TABLE "workflow_executions" ADD CONSTRAINT "workflow_executions_workflow_i
 ALTER TABLE "workflow_wait_states" ADD CONSTRAINT "workflow_wait_states_execution_id_workflow_executions_id_fk" FOREIGN KEY ("execution_id") REFERENCES "workflow_executions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_wait_states" ADD CONSTRAINT "workflow_wait_states_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "workflows"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "api_keys_key_prefix_idx" ON "api_keys" USING btree ("key_prefix");--> statement-breakpoint
+CREATE INDEX "workflow_event_subscriptions_event_name_idx" ON "workflow_event_subscriptions" USING btree ("event_name");--> statement-breakpoint
 CREATE INDEX "workflow_execution_events_workflow_created_at_idx" ON "workflow_execution_events" USING btree ("workflow_id","created_at");--> statement-breakpoint
 CREATE INDEX "workflow_execution_events_execution_created_at_idx" ON "workflow_execution_events" USING btree ("execution_id","created_at");--> statement-breakpoint
 CREATE INDEX "workflow_execution_logs_execution_id_idx" ON "workflow_execution_logs" USING btree ("execution_id");--> statement-breakpoint
@@ -111,4 +122,5 @@ CREATE UNIQUE INDEX "workflow_wait_states_hook_token_uidx" ON "workflow_wait_sta
 CREATE INDEX "workflow_wait_states_execution_status_idx" ON "workflow_wait_states" USING btree ("execution_id","status");--> statement-breakpoint
 CREATE INDEX "workflow_wait_states_workflow_correlation_status_idx" ON "workflow_wait_states" USING btree ("workflow_id","correlation_key","status");--> statement-breakpoint
 CREATE INDEX "workflow_wait_states_run_id_idx" ON "workflow_wait_states" USING btree ("run_id");--> statement-breakpoint
+CREATE INDEX "workflow_wait_states_subscribed_events_idx" ON "workflow_wait_states" USING gin ("subscribed_events") WHERE "workflow_wait_states"."status" = 'waiting';--> statement-breakpoint
 CREATE UNIQUE INDEX "workflows_name_ci_uidx" ON "workflows" USING btree (lower("name"));

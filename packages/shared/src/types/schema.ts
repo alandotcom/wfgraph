@@ -236,9 +236,11 @@ export type StandardSchema<T> = StandardSchemaV1<unknown, T> &
  * `Schema.isSchema` under a signature that keeps the payload type.
  *
  * The guard Effect exports answers `Top`, which loses the `T` the caller is
- * holding, leaving the bridge below with a schema of no particular payload.
+ * holding: the bridge below would be left with a schema of no particular
+ * payload, and a decode built from one would ask for services no schema needs.
+ * Exported because the intake gate picks its path on the same question.
  */
-function isEffectSchema<T>(
+export function isEffectSchema<T>(
   schema: unknown
 ): schema is Schema.ConstraintDecoder<T> {
   return Schema.isSchema(schema);

@@ -91,6 +91,53 @@ export const internalFailureRelayingCause =
     });
 
 /**
+ * The same answer with the cause kept out of it, for a caller who is not us.
+ *
+ * The two machine routes -- event intake and wait-hook resume -- answer third
+ * parties across origins, and `internalFailureRelayingCause` would hand them a
+ * Postgres message naming our tables and bound parameters. They get a stated
+ * sentence; the cause goes to the log, where the operator greps `message`.
+ *
+ * It takes the logger as the Effect that produces one for the same reason the
+ * relaying handler does: both are used from an `Effect.fn` transform, which runs
+ * outside the generator that could have yielded `AppLogger`.
+ */
+export const statedInternalFailure =
+  (
+    logger: Effect.Effect<EffectLogger, never, AppLogger>,
+    message: string,
+    callerMessage: string
+  ) =>
+  (seamFailure: {
+    readonly cause: unknown;
+  }): Effect.Effect<never, InternalFailure, AppLogger> =>
+    Effect.gen(function* () {
+      const { cause } = seamFailure;
+      const serviceLogger = yield* logger;
+      yield* serviceLogger.error(`${message}: ${getErrorMessage(cause)}`, {
+        error: cause,
+      });
+      return yield* Effect.fail(
+        new InternalFailure({ error: callerMessage, cause })
+      );
+    });
+
+/**
+ * Both seams answered with a stated sentence, for the machine routes.
+ *
+ * Event intake and wait-hook resume both answer third parties across origins, and
+ * neither can act on a Postgres message naming our tables.
+ */
+export const statedSeamFailureHandlers = (
+  logger: Effect.Effect<EffectLogger, never, AppLogger>,
+  message: string,
+  callerMessage: string
+) => {
+  const handler = statedInternalFailure(logger, message, callerMessage);
+  return { DatabaseError: handler, InngestError: handler };
+};
+
+/**
  * Both seams answered by one policy, ready for `Effect.catchTags`.
  *
  * A service that both queries and enqueues has two tags to catch and one thing

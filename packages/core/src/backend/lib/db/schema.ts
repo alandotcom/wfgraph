@@ -4,12 +4,18 @@ import {
   index,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { IntegrationType } from "@rova/shared/types/integration";
 import { generateId } from "@rova/shared/utils/id";
+import {
+  IN_FLIGHT_EXECUTION_STATUSES,
+  type WorkflowExecutionStartSource,
+  type WorkflowExecutionStatus,
+} from "@rova/shared/workflow/execution-contracts";
 import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
 
 // Every table here is unqualified, and the Postgres schema holding them is the
@@ -57,6 +63,18 @@ export const integrations = pgTable("integrations", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+/**
+ * The in-flight statuses as SQL literals, for the partial index below.
+ *
+ * They are quoted by hand because `sql.raw` interpolates them as written. That is
+ * safe by construction rather than by escaping: the list is a closed union of
+ * lower-case words declared in `execution-contracts.ts`, so nothing here can
+ * carry a quote.
+ */
+const inFlightStatusLiterals = IN_FLIGHT_EXECUTION_STATUSES.map(
+  (status) => `'${status}'`
+).join(", ");
+
 export const workflowExecutions = pgTable(
   "workflow_executions",
   {
@@ -67,12 +85,8 @@ export const workflowExecutions = pgTable(
       .notNull()
       .references(() => workflows.id, { onDelete: "cascade" }),
     workflowRunId: text("workflow_run_id"),
-    status: text("status")
-      .notNull()
-      .$type<
-        "pending" | "running" | "waiting" | "success" | "error" | "cancelled"
-      >(),
-    triggerType: text("trigger_type").$type<"manual" | "webhook" | "event">(),
+    status: text("status").notNull().$type<WorkflowExecutionStatus>(),
+    startSource: text("start_source").$type<WorkflowExecutionStartSource>(),
     runMode: text("run_mode").notNull().default("live").$type<WorkflowMode>(),
     triggerEventType: text("trigger_event_type"),
     correlationKey: text("correlation_key"),
@@ -97,12 +111,46 @@ export const workflowExecutions = pgTable(
       table.workflowId,
       table.correlationKey
     ),
-    // Partial index for the Replace/Cancel candidate query: the live set per
-    // entity stays tiny while terminal rows accrete without bound, so the
-    // index tracks only the rows the query can return.
+    // Partial index for Concurrency's candidate query: the live set per entity
+    // stays tiny while terminal rows accrete without bound, so the index tracks
+    // only the rows the query can return. The predicate is built from the same
+    // list the query's guard is, so the two cannot drift.
     index("workflow_executions_in_flight_by_correlation_idx")
       .on(table.workflowId, table.correlationKey, table.runMode)
-      .where(sql`${table.status} in ('pending', 'running', 'waiting')`),
+      .where(sql`${table.status} in (${sql.raw(inFlightStatusLiterals)})`),
+  ]
+);
+
+/**
+ * Which workflows care about which Events, derived from their graphs.
+ *
+ * The listener set is app-wide, so a delivered Event needs one indexed lookup to
+ * find the workflows it concerns rather than a scan of every stored graph. The
+ * rows are rewritten in the same transaction as the graph they come from, and
+ * the fan-out re-reads a workflow's rules before acting, so a row that somehow
+ * outlived its graph costs a wasted read and nothing else.
+ */
+export const workflowEventSubscriptions = pgTable(
+  "workflow_event_subscriptions",
+  {
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    eventName: text("event_name").notNull(),
+    role: text("role").notNull().$type<"start" | "cancel" | "wait">(),
+    /**
+     * Where this workflow reads the Event's Entity Value, for an Event whose
+     * definition declares no Correlation Path. It is derived from the same rules
+     * the row is, so a delivery resolves the path from this index instead of
+     * reading the graph column the rules sit in.
+     */
+    correlationPath: text("correlation_path"),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.workflowId, table.eventName, table.role],
+    }),
+    index("workflow_event_subscriptions_event_name_idx").on(table.eventName),
   ]
 );
 
@@ -160,6 +208,13 @@ export const workflowWaitStates = pgTable(
     hookToken: text("hook_token"),
     waitUntil: timestamp("wait_until"),
     correlationKey: text("correlation_key"),
+    /**
+     * The Events this run parked on, as the node named them at park time. A
+     * delivery finds parked runs through this rather than through the graph,
+     * which is what keeps a run reachable after an edit to the node it parked
+     * on. B6 grows this into a stored predicate over the payload.
+     */
+    subscribedEvents: text("subscribed_events").array(),
     metadata: jsonb("metadata").$type<Record<string, any>>(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     resumedAt: timestamp("resumed_at"),
@@ -177,6 +232,13 @@ export const workflowWaitStates = pgTable(
       table.status
     ),
     index("workflow_wait_states_run_id_idx").on(table.runId),
+    // The delivery fan-out's parked-run question, asked of every arrival: which
+    // runs are still waiting on this Event name. GIN because the answer is a
+    // containment test over the array, partial because a resumed or timed-out row
+    // can never be one.
+    index("workflow_wait_states_subscribed_events_idx")
+      .using("gin", table.subscribedEvents)
+      .where(sql`${table.status} = 'waiting'`),
   ]
 );
 

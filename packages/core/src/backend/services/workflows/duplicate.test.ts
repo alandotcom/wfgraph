@@ -1,10 +1,14 @@
 // `it` comes from the `layer` callback below, typed with the services that layer
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
+// The lifecycle hooks come from vitest itself; `@effect/vitest` re-exports only
+// the ones its own `layer` block owns.
+import { beforeAll } from "vitest";
 import { Effect } from "effect";
 import type { Workflow } from "#src/backend/lib/db/schema";
 import { Conflict } from "#src/backend/lib/effect/failures";
 import {
+  configureTestExtensions,
   SilentAppLoggerLayer,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
@@ -21,7 +25,15 @@ const sourceGraph = createSerializedWorkflowGraph({
       data: {
         label: "Appointment",
         type: "trigger",
-        config: { triggerType: "Webhook", webhookEventPath: "event" },
+        config: {
+          triggerType: "Webhook",
+          webhookEventPath: "event",
+          lifecycleRules: {
+            startEvents: ["app/appointment.created"],
+            cancelEvents: [],
+            concurrency: "newest-wins",
+          },
+        },
       },
     },
     {
@@ -98,6 +110,21 @@ function nodeConfig(
     : undefined;
 }
 
+// Every save checks its Lifecycle Rules against the catalog, and a copy is a
+// save: this is the surface those rules are checked against.
+beforeAll(() => {
+  configureTestExtensions({
+    events: [
+      {
+        name: "app/appointment.created",
+        label: "Appointment created",
+        correlationPath: "appointment.id",
+        payloadFields: [],
+      },
+    ],
+  });
+});
+
 describe("postWorkflowDuplicate", () => {
   layer(SilentAppLoggerLayer)((it) => {
     // The integration key is removed rather than blanked. The first-class
@@ -115,9 +142,16 @@ describe("postWorkflowDuplicate", () => {
 
         const storedGraph = repo.calls.inserts[0]?.graph;
         assert.isDefined(storedGraph);
+        // The entry node's config travels whole, Lifecycle Rules included: the
+        // copy starts on the same Events as its source.
         assert.deepStrictEqual(nodeConfig(storedGraph, 0), {
           triggerType: "Webhook",
           webhookEventPath: "event",
+          lifecycleRules: {
+            startEvents: ["app/appointment.created"],
+            cancelEvents: [],
+            concurrency: "newest-wins",
+          },
         });
         assert.deepStrictEqual(nodeConfig(storedGraph, 1), {
           actionId: "resend/send-email",
@@ -173,6 +207,34 @@ describe("postWorkflowDuplicate", () => {
           'Workflow name "Appointment Reminders (Copy)" already exists'
         );
         assert.deepStrictEqual(repo.calls.inserts, []);
+      })
+    );
+  });
+
+  // A copy names the same Start Events as its source, so it subscribes to them
+  // from the moment it exists -- under its own id, and paused, because two
+  // unpaused workflows on one Event would double every run.
+  layer(SilentAppLoggerLayer)((it) => {
+    it.effect("derives the copy's own subscriptions and pauses it", () =>
+      Effect.gen(function* () {
+        const repo = makeWorkflowRepo();
+
+        yield* postWorkflowDuplicate(sourceWorkflow.id).pipe(
+          Effect.provide(repo.layer)
+        );
+
+        const insert = repo.calls.inserts[0];
+        assert.isDefined(insert);
+        assert.strictEqual(insert.isPaused, true);
+        assert.deepStrictEqual(insert.eventSubscriptions, [
+          {
+            workflowId: insert.id,
+            eventName: "app/appointment.created",
+            role: "start",
+            correlationPath: null,
+          },
+        ]);
+        assert.notStrictEqual(insert.id, sourceWorkflow.id);
       })
     );
   });

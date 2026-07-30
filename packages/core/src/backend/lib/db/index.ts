@@ -38,6 +38,18 @@ const tables: {
  */
 export type RovaDatabase = PostgresJsDatabase<typeof tables>;
 
+/**
+ * The handle inside `db.transaction(...)`, named by asking the handle itself.
+ *
+ * Drizzle's own transaction type takes four generic parameters that have to agree
+ * with the ones `RovaDatabase` was built from, and naming them again is how those
+ * drift. A repository writing part of a query inside a transaction and part
+ * outside takes this beside `RovaDatabase`.
+ */
+export type RovaTransaction = Parameters<
+  Parameters<RovaDatabase["transaction"]>[0]
+>[0];
+
 const DEFAULT_DATABASE_URL =
   "postgresql://workflow:workflow@localhost:55437/workflow_builder";
 const DEFAULT_DATABASE_SCHEMA = "_workflows";

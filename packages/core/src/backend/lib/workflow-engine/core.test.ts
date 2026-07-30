@@ -175,7 +175,7 @@ describe("run persistence through the store port", () => {
     const completions = store.callsOf("completeRun");
     expect(completions).toHaveLength(1);
     expect(completions[0]?.executionId).toBe("exec_success");
-    expect(completions[0]?.status).toBe("success");
+    expect(completions[0]?.status).toBe("completed");
 
     const audits = store.callsOf("recordAuditEvent");
     expect(audits).toHaveLength(1);
@@ -201,7 +201,7 @@ describe("run persistence through the store port", () => {
     );
 
     const completions = store.callsOf("completeRun");
-    expect(completions[0]?.status).toBe("error");
+    expect(completions[0]?.status).toBe("failed");
     expect(completions[0]?.error).toBe("boom");
     expect(store.callsOf("recordAuditEvent")[0]?.eventType).toBe("run_failed");
   });

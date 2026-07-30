@@ -9,7 +9,11 @@ import {
   toStandardSchema,
   unknownRest,
 } from "#src/types/schema";
-import { WORKFLOW_EXECUTION_IGNORED_REASONS } from "#src/workflow/execution-contracts";
+import {
+  WORKFLOW_EXECUTION_IGNORED_REASONS,
+  WORKFLOW_EXECUTION_START_SOURCES,
+  WORKFLOW_EXECUTION_STATUSES,
+} from "#src/workflow/execution-contracts";
 import { serializedWorkflowGraphSchema } from "#src/workflow/schemas";
 
 /**
@@ -151,20 +155,15 @@ const workflowApiPayload = contractSchema(workflowApiPayloadSchema);
 
 const workflowRunModeSchema = Schema.Literals(["live", "test"]);
 
-const workflowExecutionStatusSchema = Schema.Literals([
-  "pending",
-  "running",
-  "waiting",
-  "success",
-  "error",
-  "cancelled",
-]);
+const workflowExecutionStatusSchema = Schema.Literals(
+  WORKFLOW_EXECUTION_STATUSES
+);
 
 const workflowExecutionFields = {
   id: idSchema,
   workflowId: idSchema,
   status: workflowExecutionStatusSchema,
-  triggerType: Schema.NullOr(Schema.Literals(["manual", "webhook", "event"])),
+  startSource: Schema.NullOr(Schema.Literals(WORKFLOW_EXECUTION_START_SOURCES)),
   runMode: workflowRunModeSchema,
   triggerEventType: Schema.NullOr(Schema.String),
   correlationKey: Schema.NullOr(Schema.String),
@@ -221,7 +220,8 @@ const executionEventSchema = Schema.Struct({
 const ignoredReasonSchema = Schema.Literals(WORKFLOW_EXECUTION_IGNORED_REASONS);
 
 /**
- * The four shapes an execute or webhook call answers with.
+ * The two shapes a manual run answers with: it started a run, or it did not and
+ * says why.
  *
  * Each stays open, as the Zod originals did: the engine adds counters to a
  * response as it learns them, and a client that has not been rebuilt should
@@ -233,25 +233,8 @@ const workflowExecutionRunningSchema = Schema.StructWithRest(
     executionId: Schema.String,
     runId: Schema.optionalKey(Schema.String),
     runMode: workflowRunModeSchema,
-    cancelledExecutions: Schema.optionalKey(Schema.Finite),
-    cancelledWaits: Schema.optionalKey(Schema.Finite),
-    failedExecutions: Schema.optionalKey(listOf(Schema.String)),
-  }),
-  unknownRest
-);
-
-const workflowExecutionCancelledFields = {
-  status: Schema.Literal("cancelled"),
-  runMode: workflowRunModeSchema,
-  cancelledExecutions: Schema.Finite,
-  cancelledWaits: Schema.Finite,
-  failedExecutions: Schema.optionalKey(listOf(Schema.String)),
-};
-
-const workflowExecutionCancelledSchema = Schema.StructWithRest(
-  Schema.Struct({
-    ...workflowExecutionCancelledFields,
-    executionId: Schema.optionalKey(Schema.String),
+    supersededExecutions: Schema.optionalKey(Schema.Finite),
+    failedToSupersede: Schema.optionalKey(listOf(Schema.String)),
   }),
   unknownRest
 );
@@ -262,59 +245,23 @@ const workflowExecutionIgnoredFields = {
   reason: ignoredReasonSchema,
 };
 
-const workflowExecutionIgnoredSchema = Schema.StructWithRest(
-  Schema.Struct({
-    ...workflowExecutionIgnoredFields,
-    executionId: Schema.optionalKey(Schema.String),
-  }),
-  unknownRest
-);
-
-const workflowExecutionResumedSchema = Schema.StructWithRest(
-  Schema.Struct({
-    status: Schema.Literal("resumed"),
-    resumedCount: Schema.Finite,
-    runMode: workflowRunModeSchema,
-  }),
-  unknownRest
-);
-
-// An execute call has always started, cancelled or ignored a specific
-// execution, so the two arms that carry an optional id elsewhere require it
-// here.
+// A paused workflow gets a run row saying it declined, so the runs list still
+// shows the decision; a first-wins refusal has no run of its own, which is why
+// the id is optional on this arm.
 const workflowExecuteResponseSchema = Schema.Union([
   workflowExecutionRunningSchema,
   Schema.StructWithRest(
     Schema.Struct({
-      ...workflowExecutionCancelledFields,
-      executionId: Schema.String,
-    }),
-    unknownRest
-  ),
-  Schema.StructWithRest(
-    Schema.Struct({
       ...workflowExecutionIgnoredFields,
-      executionId: Schema.String,
+      executionId: Schema.optionalKey(Schema.String),
     }),
     unknownRest
   ),
 ]);
 
-const workflowWebhookResponseSchema = Schema.Union([
-  workflowExecutionRunningSchema,
-  workflowExecutionCancelledSchema,
-  workflowExecutionIgnoredSchema,
-  workflowExecutionResumedSchema,
-]);
-
-const workflowExecutionStatusFilterSchema = Schema.Literals([
-  "pending",
-  "running",
-  "waiting",
-  "success",
-  "error",
-  "cancelled",
-]);
+const workflowExecutionStatusFilterSchema = Schema.Literals(
+  WORKFLOW_EXECUTION_STATUSES
+);
 
 const workflowGlobalExecutionSchema = Schema.Struct({
   ...workflowExecutionFields,
@@ -477,16 +424,6 @@ export const rpcContract = {
         )
       )
       .output(contractSchema(workflowExecuteResponseSchema)),
-    triggerWebhook: route("POST", "/workflows/{workflowId}/webhook")
-      .input(
-        contractSchema(
-          Schema.Struct({
-            workflowId: idSchema,
-            input: Schema.optionalKey(jsonObjectSchema),
-          })
-        )
-      )
-      .output(contractSchema(workflowWebhookResponseSchema)),
     getExecutions: route("GET", "/workflows/{workflowId}/executions")
       .input(contractSchema(Schema.Struct({ workflowId: idSchema })))
       .output(contractSchema(listOf(workflowExecutionSchema))),
@@ -560,7 +497,7 @@ export const rpcContract = {
         contractSchema(
           Schema.Struct({
             success: Schema.Literal(true),
-            status: Schema.Literal("cancelled"),
+            status: Schema.Literal("canceled"),
             cancelledWaitStates: Schema.Finite,
           })
         )

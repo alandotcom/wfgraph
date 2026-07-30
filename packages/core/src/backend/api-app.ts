@@ -1,6 +1,7 @@
 import { RPCHandler } from "@orpc/server/fetch";
 import { Effect, Result, Schema, type SchemaAST } from "effect";
 import { Hono } from "hono";
+import type { InngestFunction } from "inngest";
 import { serve as serveInngest } from "inngest/hono";
 import { getExtensions } from "#src/backend/lib/extensions/current";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
@@ -21,8 +22,8 @@ import {
   openApiRestHandler,
 } from "#src/backend/rpc/openapi";
 import { rpcRouter } from "#src/backend/rpc/router";
+import { postEventIntake } from "#src/backend/services/workflows/lifecycle/intake";
 import { postWorkflowResume } from "#src/backend/services/workflows/triggering/resume";
-import { postWorkflowWebhook } from "#src/backend/services/workflows/triggering/webhook";
 import { type JsonObject, readJsonObject } from "@rova/shared/types/json";
 import { formatSchemaFailure } from "@rova/shared/types/schema-message";
 import {
@@ -42,8 +43,8 @@ const readParams = {
   ...rejectUnknownKeys,
   errors: "all",
 } as const satisfies SchemaAST.ParseOptions;
-const readWorkflowIdParams = Schema.decodeUnknownResult(
-  Schema.Struct({ workflowId: NonEmptyTrimmedString }),
+const readEventNameParams = Schema.decodeUnknownResult(
+  Schema.Struct({ eventName: NonEmptyTrimmedString }),
   readParams
 );
 const readTokenParams = Schema.decodeUnknownResult(
@@ -101,7 +102,7 @@ function truncateTextForLogs(text: string): {
 }
 
 /**
- * Read a request body as the JSON object a webhook or a resume call carries.
+ * Read a request body as the JSON object an event or a resume call carries.
  *
  * Rova parses untrusted input at the route boundary, which is what the project
  * asks for anyway, so no validator middleware sits between the request and the
@@ -206,8 +207,8 @@ export type CreateApiAppOptions = {
 
 /**
  * Routes reached by machines, each carrying a credential of its own: Inngest
- * signs its callback, the webhook path checks an API key, the resume path a hook
- * token. A session check would break all three.
+ * signs its callback, the event intake path checks an API key, the resume path a
+ * hook token. A session check would break all three.
  *
  * Written as the exception, so a route added to this file is gated by default
  * and opening one is an edit here with a reason attached. Listing what to gate
@@ -218,30 +219,63 @@ export type CreateApiAppOptions = {
  */
 export const MACHINE_ROUTES = [
   "/inngest",
-  "/workflows/:workflowId/webhook",
+  "/events/:eventName",
   "/workflows/hooks/:token/resume",
 ] as const;
 
-const WEBHOOK_ROUTE = "/workflows/:workflowId/webhook";
+/**
+ * One app-level route for every Event. An Event is global, so a sender
+ * integrates once and every workflow subscribing to that Event sees what
+ * arrives.
+ */
+const EVENT_INTAKE_ROUTE = "/events/:eventName";
 
 /**
- * The webhook intake endpoint is called from browsers and from third-party
+ * The event intake endpoint is called from browsers and from third-party
  * senders, so it answers preflight requests and carries these on every answer it
  * gives. CORS is a property of the transport, which is why it is stated here
  * beside the routes rather than inside the service.
  */
-const webhookCorsHeaders = {
+const eventIntakeCorsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
 type ApiEnv = {
-  Variables: { rovaMachineRoute?: true; rovaWebhookRoute?: true };
+  Variables: { rovaMachineRoute?: true; rovaEventIntakeRoute?: true };
 };
+
+/**
+ * The Inngest serve handler, rebuilt only when the function list changes.
+ *
+ * Every callback and every sync hits this route, and building a handler means
+ * Inngest walking each function to describe it. The list is a stable array while
+ * the registry's cache holds, so identity is the whole test.
+ */
+function makeServeHandlerCache() {
+  let cachedFor: InngestFunction.Any[] | undefined;
+  let handler: ReturnType<typeof serveInngest> | undefined;
+
+  return (functions: InngestFunction.Any[]) => {
+    if (!handler || cachedFor !== functions) {
+      handler = serveInngest({
+        client: getInngestClient(),
+        functions,
+        // Spread of a typed pair, so a serve option Inngest renames stops
+        // compiling rather than being silently dropped on the floor.
+        ...getInngestServeConfig(),
+      });
+      cachedFor = functions;
+    }
+
+    return handler;
+  };
+}
 
 export function createApiApp(options: CreateApiAppOptions) {
   const { basePath, authorize, runtime } = options;
+  const serveInngestFunctions = makeServeHandlerCache();
   const app = new Hono<ApiEnv>().basePath(basePath);
   const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
 
@@ -319,8 +353,8 @@ export function createApiApp(options: CreateApiAppOptions) {
   // route handler through `onError`, which builds its 500 without knowing what
   // was being served, and a sender reading a bodyless opaque response cannot
   // tell an outage from a rejection.
-  app.use(WEBHOOK_ROUTE, async (c, next) => {
-    c.set("rovaWebhookRoute", true);
+  app.use(EVENT_INTAKE_ROUTE, async (c, next) => {
+    c.set("rovaEventIntakeRoute", true);
     await next();
   });
 
@@ -344,7 +378,7 @@ export function createApiApp(options: CreateApiAppOptions) {
     return c.json(
       { error: "Internal Server Error" },
       500,
-      c.get("rovaWebhookRoute") ? webhookCorsHeaders : undefined
+      c.get("rovaEventIntakeRoute") ? eventIntakeCorsHeaders : undefined
     );
   });
 
@@ -441,49 +475,46 @@ export function createApiApp(options: CreateApiAppOptions) {
       // The registry is where this app's runtime reaches the event listeners it
       // builds: they run migrated services, and nothing there may reach for a
       // runtime of its own.
-      const functions = await getInngestFunctions(runtime);
-      const inngestHandler = serveInngest({
-        client: getInngestClient(),
-        functions,
-        // Spread of a typed pair, so a serve option Inngest renames stops
-        // compiling rather than being silently dropped on the floor.
-        ...getInngestServeConfig(),
-      });
-      return await inngestHandler(c);
+      return await serveInngestFunctions(await getInngestFunctions(runtime))(c);
     })
-    .options(WEBHOOK_ROUTE, () =>
-      Response.json({}, { headers: webhookCorsHeaders })
+    .options(EVENT_INTAKE_ROUTE, () =>
+      Response.json({}, { headers: eventIntakeCorsHeaders })
     )
-    .post(WEBHOOK_ROUTE, async (c) => {
+    .post(EVENT_INTAKE_ROUTE, async (c) => {
       // Both refusals below carry the CORS headers for the same reason the
       // service's failures do: a browser-side sender reading an opaque response
       // cannot tell a malformed request from an outage.
-      const params = readWorkflowIdParams(c.req.param());
+      const params = readEventNameParams(c.req.param());
       if (Result.isFailure(params)) {
         return c.json(
           { error: formatSchemaFailure(params.failure.issue) },
           400,
-          webhookCorsHeaders
+          eventIntakeCorsHeaders
         );
       }
 
       const body = await parseJsonObjectBody(c.req.raw);
       if (!body.ok) {
-        return c.json({ error: body.error }, 400, webhookCorsHeaders);
+        return c.json({ error: body.error }, 400, eventIntakeCorsHeaders);
       }
 
       return await runtime.runPromise(
-        postWorkflowWebhook({
-          workflowId: params.success.workflowId,
+        postEventIntake({
+          eventName: params.success.eventName,
           authHeader: c.req.header("Authorization") ?? null,
           body: body.data,
         }).pipe(
           Effect.match({
+            // 202: the route put the delivery on the bus, and every workflow
+            // behind the Event runs after this response is written.
             onSuccess: (data) =>
-              Response.json(data, { headers: webhookCorsHeaders }),
+              Response.json(data, {
+                status: 202,
+                headers: eventIntakeCorsHeaders,
+              }),
             onFailure: (failure) =>
               responseFromServiceFailure(failure, {
-                headers: webhookCorsHeaders,
+                headers: eventIntakeCorsHeaders,
               }),
           })
         )

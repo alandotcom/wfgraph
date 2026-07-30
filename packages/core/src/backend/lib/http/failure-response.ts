@@ -3,7 +3,7 @@ import type {
   ServiceFailureKind,
 } from "#src/backend/lib/effect/failures";
 
-// The two endpoints that are plain Hono handlers (webhook intake and wait-hook
+// The two endpoints that are plain Hono handlers (event intake and wait-hook
 // resume) speak HTTP directly, so this is where a domain failure kind picks up a
 // status.
 const FAILURE_KIND_TO_HTTP_STATUS = {

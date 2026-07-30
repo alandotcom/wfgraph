@@ -41,15 +41,9 @@ import {
   refreshRunHistory,
   refreshWorkflowList,
 } from "#src/lib/rpc-query";
+import { getStatusBadgeClass } from "#src/components/workflow/workflow-run-shared";
+import type { WorkflowExecutionStatus } from "@rova/shared/workflow/execution-contracts";
 import { getRelativeTime } from "@rova/shared/utils/time";
-
-type WorkflowExecutionStatus =
-  | "pending"
-  | "running"
-  | "waiting"
-  | "success"
-  | "error"
-  | "cancelled";
 
 type GlobalExecutionItem = WorkflowExecutionsGlobalResult["items"][number];
 
@@ -68,33 +62,22 @@ type ConfirmDeleteState = {
 // Above this many workflows, the delete dialog demands the count be typed back.
 const DELETE_CHALLENGE_THRESHOLD = 3;
 
+/**
+ * The statuses this list filters by.
+ *
+ * `superseded` is not among them and is filtered out by default below: a
+ * newest-wins workflow produces one on every reschedule, and they would bury the
+ * rows someone came to read. The count and the toggle that shows them arrive with
+ * the Lifecycle panel.
+ */
 const STATUS_OPTIONS: WorkflowExecutionStatus[] = [
   "running",
   "waiting",
-  "error",
-  "success",
-  "cancelled",
+  "failed",
+  "completed",
+  "canceled",
   "pending",
 ];
-
-function getStatusBadgeClass(status: WorkflowExecutionStatus): string {
-  switch (status) {
-    case "running":
-      return "border-blue-500/30 bg-blue-500/10 text-blue-700";
-    case "waiting":
-      return "border-amber-500/30 bg-amber-500/10 text-amber-700";
-    case "success":
-      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
-    case "error":
-      return "border-red-500/30 bg-red-500/10 text-red-700";
-    case "cancelled":
-      return "border-slate-500/30 bg-slate-500/10 text-slate-700";
-    case "pending":
-      return "border-zinc-500/30 bg-zinc-500/10 text-zinc-700";
-    default:
-      return "border-zinc-500/30 bg-zinc-500/10 text-zinc-700";
-  }
-}
 
 function formatDuration(duration: string | null): string {
   if (!duration) {
@@ -214,10 +197,13 @@ export default function WorkflowsPage() {
           workflowIds: hasSelectedRunsFilter
             ? selectedActionableIds.toSorted()
             : undefined,
+          // With no filter ticked the list asks for everything except superseded
+          // runs, rather than for everything: a newest-wins workflow makes one on
+          // every reschedule and they would bury the rest.
           statuses:
             statusFilters.size > 0
               ? Array.from(statusFilters).toSorted()
-              : undefined,
+              : STATUS_OPTIONS.toSorted(),
           limit: RUNS_PAGE_SIZE,
         },
         isNil

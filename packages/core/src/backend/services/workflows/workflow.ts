@@ -1,19 +1,19 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { callDbModule } from "#src/backend/lib/effect/database";
 import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
 import {
   Conflict,
-  IntegrationValidationFailed,
   InternalFailure,
   InvalidInput,
   NotFound,
 } from "#src/backend/lib/effect/failures";
 import { invalidateInngestFunctionsCache } from "#src/backend/lib/inngest/functions";
-import { validateWorkflowConditionConfigs } from "#src/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
-import { validateWorkflowIntegrations } from "#src/backend/lib/workflow-integration-validation";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
+import {
+  type WorkflowEventSubscriptionRow,
+  WorkflowRepo,
+} from "#src/backend/services/workflows/repo";
 import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
@@ -90,6 +90,9 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
       graph?: SerializedWorkflowGraph;
       mode?: "live" | "test";
     } = {};
+    /** A rename writes no graph, so the index derived from one stands. */
+    let eventSubscriptions: WorkflowEventSubscriptionRow[] | "unchanged" =
+      "unchanged";
 
     if (body.description !== undefined) {
       updateInput.description = body.description;
@@ -137,59 +140,25 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
     }
 
     if (body.graph !== undefined) {
-      const graphValidation = validateWorkflowGraph(body.graph);
-      if (!graphValidation.valid) {
-        yield* logger.warn("Rejected invalid workflow graph on update", {
-          error: graphValidation.error,
-        });
-        return yield* Effect.fail(
-          new InvalidInput({ error: graphValidation.error })
-        );
-      }
-
-      const conditionValidation = validateWorkflowConditionConfigs(
-        graphValidation.nodes
-      );
-      if (!conditionValidation.valid) {
-        yield* logger.warn(
-          "Rejected workflow update due to invalid condition configuration",
-          {
-            error: conditionValidation.error,
-          }
-        );
-        return yield* Effect.fail(
-          new InvalidInput({ error: conditionValidation.error })
-        );
-      }
-
-      // The only way this fails is the integration rows it reads, so a rejected
-      // query arrives here as the same database failure a repository answers with.
-      const integrationValidation = yield* callDbModule(() =>
-        validateWorkflowIntegrations(graphValidation.nodes)
+      const prepared = yield* prepareGraphSave({ graph: body.graph }).pipe(
+        // A refused query is not a rejected graph: it says nothing a builder can
+        // act on, and the policy below logs it with its cause.
+        Effect.tapError((failure) =>
+          "error" in failure
+            ? logger.warn("Rejected workflow update", { error: failure.error })
+            : Effect.void
+        )
       );
 
-      if (!integrationValidation.valid) {
-        yield* logger.warn(
-          "Rejected workflow update due to invalid integrations",
-          {
-            invalidIntegrationIds: integrationValidation.invalidIds,
-          }
-        );
-        return yield* Effect.fail(
-          new IntegrationValidationFailed({
-            error: "Invalid integration references in workflow",
-            invalidIntegrationIds: integrationValidation.invalidIds ?? [],
-          })
-        );
-      }
-
-      updateInput.graph = graphValidation.graph;
+      updateInput.graph = prepared.graph;
+      eventSubscriptions = prepared.subscriptionsFor(workflowId);
     }
 
-    const updatedWorkflow = yield* repo.update(
+    const updatedWorkflow = yield* repo.update({
       workflowId,
-      buildWorkflowUpdateData(updateInput)
-    );
+      updates: buildWorkflowUpdateData(updateInput),
+      eventSubscriptions,
+    });
 
     if (!updatedWorkflow) {
       return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));

@@ -2,42 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   policyCanTrigger,
   readRoutingPolicy,
-  resolveRoutingAction,
-  resolveTriggerRouting,
-} from "./routing-policy";
+} from "#src/workflow/routing-policy";
 
-describe("resolveRoutingAction", () => {
-  it("returns the action the Workflow Builder mapped to the Event Type", () => {
-    expect(
-      resolveRoutingAction(
-        {
-          "appointment.created": "start",
-          "appointment.rescheduled": "replace",
-          "appointment.canceled": "cancel",
-        },
-        "appointment.rescheduled"
-      )
-    ).toBe("replace");
-  });
-
-  it("ignores an Event Type the policy does not mention", () => {
-    expect(
-      resolveRoutingAction({ "appointment.created": "start" }, "appointment.x")
-    ).toBe("ignore");
-  });
-
-  it("ignores every Event Type when there is no policy at all", () => {
-    expect(resolveRoutingAction(undefined, "appointment.created")).toBe(
-      "ignore"
-    );
-  });
-
-  it("ignores a payload that carries no Event Type", () => {
-    expect(
-      resolveRoutingAction({ "appointment.created": "start" }, undefined)
-    ).toBe("ignore");
-  });
-});
+// The policy no longer routes anything -- ADR-0007's Lifecycle Rules do -- but the
+// editor's old trigger panel still writes this shape and the graph schema still
+// accepts it, so both readers stay covered until the panel goes.
 
 describe("readRoutingPolicy", () => {
   it("reads a valid policy off the trigger node config", () => {
@@ -57,8 +26,10 @@ describe("readRoutingPolicy", () => {
     expect(readRoutingPolicy({ triggerType: "Webhook" })).toBeUndefined();
   });
 
-  // A policy the editor could not have written is treated as absent, which
-  // resolves everything to ignore rather than guessing at an action.
+  // A policy the editor could not have written reads as absent rather than as
+  // partly usable. The empty-key case is the one the schema's `isPropertyNames`
+  // check exists for: as a key schema it would drop that entry and call the rest
+  // valid.
   it("reports no policy when the stored value is malformed", () => {
     expect(
       readRoutingPolicy({ routingPolicy: { "entity.created": "explode" } })
@@ -103,99 +74,5 @@ describe("policyCanTrigger", () => {
         "entity.updated": "replace",
       })
     ).toBe(true);
-  });
-});
-
-describe("resolveTriggerRouting", () => {
-  it("ignores a payload the trigger could not classify", () => {
-    expect(
-      resolveTriggerRouting({
-        classification: { ok: false, reason: "invalid_payload" },
-        config: { routingPolicy: { "entity.created": "start" } },
-      })
-    ).toEqual({
-      eventType: undefined,
-      correlationKey: undefined,
-      action: "ignore",
-      ignoreReason: "invalid_payload",
-    });
-  });
-
-  it("ignores a classification that named no Event Type", () => {
-    expect(
-      resolveTriggerRouting({
-        classification: {
-          ok: true,
-          eventType: undefined,
-          correlationKey: "ent_1",
-        },
-        config: { routingPolicy: { "entity.created": "start" } },
-      })
-    ).toEqual({
-      eventType: undefined,
-      correlationKey: "ent_1",
-      action: "ignore",
-      ignoreReason: "missing_event_type",
-    });
-  });
-
-  it("resolves a mapped Event Type to its action and leaves no ignore reason", () => {
-    expect(
-      resolveTriggerRouting({
-        classification: {
-          ok: true,
-          eventType: "entity.updated",
-          correlationKey: "ent_1",
-        },
-        config: {
-          routingPolicy: {
-            "entity.created": "start",
-            "entity.updated": "replace",
-          },
-        },
-      })
-    ).toEqual({
-      eventType: "entity.updated",
-      correlationKey: "ent_1",
-      action: "replace",
-    });
-  });
-
-  it("ignores an Event Type the workflow never mapped", () => {
-    expect(
-      resolveTriggerRouting({
-        classification: {
-          ok: true,
-          eventType: "entity.archived",
-          correlationKey: "ent_1",
-        },
-        config: { routingPolicy: { "entity.created": "start" } },
-      })
-    ).toEqual({
-      eventType: "entity.archived",
-      correlationKey: "ent_1",
-      action: "ignore",
-      ignoreReason: "event_not_mapped",
-    });
-  });
-
-  // An Event Type mapped to ignore on purpose is still reported as unmapped:
-  // the run does nothing either way, and the reason names the same outcome.
-  it("ignores an Event Type the workflow mapped to ignore", () => {
-    expect(
-      resolveTriggerRouting({
-        classification: {
-          ok: true,
-          eventType: "entity.noisy",
-          correlationKey: "ent_1",
-        },
-        config: { routingPolicy: { "entity.noisy": "ignore" } },
-      })
-    ).toEqual({
-      eventType: "entity.noisy",
-      correlationKey: "ent_1",
-      action: "ignore",
-      ignoreReason: "event_not_mapped",
-    });
   });
 });

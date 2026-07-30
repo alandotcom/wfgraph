@@ -12,8 +12,6 @@ import type { WorkflowNode } from "@rova/shared/workflow/types";
  * that store directly, the way the editor's loader does.
  */
 
-const CANCELLING_WARNING_FRAGMENT = /mapped to Replace or Cancel/;
-
 function webhookTriggerNode(config: Record<string, unknown>): WorkflowNode {
   return {
     id: "trigger_1",
@@ -97,24 +95,21 @@ describe("WaitEventSelect with an open vocabulary", () => {
   });
 });
 
-describe("WaitEventSelect conflict warning", () => {
-  // An event mapped to Cancel kills the run that is waiting on it, so waiting
-  // for it is a configuration the builder almost certainly did not intend.
-  it("warns when a selected event is mapped to Cancel in the routing policy", () => {
+// A wait subscribes to an Event on its own account: nothing here says what an
+// Event does to a run, because that is the Lifecycle Node's declaration and the
+// builder reads it there. What is left to warn about is a wait naming no Event,
+// which nothing can wake.
+describe("WaitEventSelect empty selection", () => {
+  it("says a wait with no event named cannot be resumed", () => {
     const { view } = renderSelect({
-      config: { waitForEvents: ["a.b"] },
-      nodes: [
-        webhookTriggerNode({
-          triggerType: "Webhook",
-          routingPolicy: { "a.b": "cancel" },
-        }),
-      ],
+      config: { waitForEvents: [] },
+      nodes: [webhookTriggerNode({ triggerType: "Webhook" })],
     });
 
-    expect(view.getByText(CANCELLING_WARNING_FRAGMENT)).toBeTruthy();
+    expect(view.getByText(/Name at least one event/)).toBeTruthy();
   });
 
-  it("stays quiet when the selected event only wakes the wait", () => {
+  it("stays quiet once an event is named", () => {
     const { view } = renderSelect({
       config: { waitForEvents: ["a.b"] },
       nodes: [
@@ -125,6 +120,6 @@ describe("WaitEventSelect conflict warning", () => {
       ],
     });
 
-    expect(view.queryByText(CANCELLING_WARNING_FRAGMENT)).toBeNull();
+    expect(view.queryByText(/Name at least one event/)).toBeNull();
   });
 });

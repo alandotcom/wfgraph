@@ -1,123 +1,268 @@
-// `it` comes from the `layer` callback below, typed with the services that layer
-// provides, so nothing here imports the bare one.
-import { assert, describe, layer } from "@effect/vitest";
-import { Effect, Layer } from "effect";
-import type { Workflow } from "#src/backend/lib/db/schema";
+import { Effect, Layer, Schema } from "effect";
+// The mocks API has to be the one vitest itself exports; reaching it through the
+// `@effect/vitest` re-export leaves it unable to find the module registry.
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   SilentAppLoggerLayer,
-  stubExecutionRepo,
-  stubInngestClient,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
-import { runEventTrigger } from "#src/backend/lib/inngest/event-listener-function";
+import { defineEvent } from "#src/backend/lib/extensions/define-event";
+import { runEventListener } from "#src/backend/lib/inngest/event-listener-function";
+import type { RovaRuntime } from "#src/backend/runtime";
+import type { EventSubscriber } from "#src/backend/services/workflows/repo";
+
+const {
+  applyLifecycleRulesMock,
+  deliverToWaitsMock,
+  listEventSubscribersMock,
+} = vi.hoisted(() => ({
+  applyLifecycleRulesMock: vi.fn(),
+  deliverToWaitsMock: vi.fn(),
+  listEventSubscribersMock: vi.fn(),
+}));
+
+// What this file is about is the order and the boundaries of the two halves, so
+// the halves themselves are replaced; `deliver-event.test.ts` covers what each
+// one does.
+vi.mock("#src/backend/services/workflows/lifecycle/deliver-event", () => ({
+  applyLifecycleRules: applyLifecycleRulesMock,
+  deliverToWaits: deliverToWaitsMock,
+  listEventSubscribers: listEventSubscribersMock,
+}));
+
+const appointmentCreated = defineEvent({
+  name: "app/appointment.created",
+  schema: Schema.Struct({
+    appointment: Schema.Struct({
+      id: Schema.String.annotate({ description: "Appointment ID" }),
+    }).annotate({ description: "The appointment this event is about" }),
+  }),
+  correlationPath: "appointment.id",
+});
+
+const payload = { appointment: { id: "appt_1" } };
+
+/** The steps a handler took, in the order it took them. */
+function recordingStep() {
+  const ids: string[] = [];
+  return {
+    ids,
+    step: {
+      run: async <T>(id: string, fn: () => Promise<T>): Promise<T> => {
+        ids.push(id);
+        return await fn();
+      },
+    },
+  };
+}
 
 /**
- * A workflow whose graph has no root trigger, which is the cheapest way to fail
- * preflight before it reaches the integration rows it would otherwise query.
+ * The runtime the handler runs its services on, which is the seam this stands on:
+ * `createRovaApp` hands the real one in, and here it provides the logger plus
+ * whatever a case needs.
  */
-const unrunnableWorkflow: Workflow = {
-  id: "wf_1",
-  name: "Appointment Reminders",
-  description: null,
-  graph: { nodes: [], edges: [] },
-  isPaused: false,
-  mode: "live",
-  visibility: "private",
-  createdAt: new Date("2026-03-01T00:00:00.000Z"),
-  updatedAt: new Date("2026-03-01T00:00:00.000Z"),
-};
+function testRuntime(services = Layer.empty): RovaRuntime {
+  return {
+    runPromise: (effect: Effect.Effect<unknown, unknown>) =>
+      Effect.runPromise(
+        Effect.provide(effect, Layer.mergeAll(SilentAppLoggerLayer, services))
+      ),
+  } as unknown as RovaRuntime;
+}
 
-/**
- * Everything a delivered event may reach beyond the workflow row.
- *
- * All three cases below stop before a run is opened, and the refusals are what
- * say so: this listener asks for them statically because its body can start a
- * run, so they have to be provided even where they are never touched.
- */
-const unreachableRunSeams = Layer.mergeAll(
-  stubExecutionRepo(),
-  stubInngestClient()
-);
+function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {
+  return {
+    id: "wf_1",
+    name: "Appointment Reminders",
+    mode: "live",
+    roles: ["start"],
+    correlationPath: null,
+    ...overrides,
+  };
+}
 
-const delivery = {
-  workflowId: "wf_1",
-  eventLabel: "order.created",
-  eventNames: ["order.created"],
-  eventName: "order.created",
-  payload: { id: "o1" },
-};
+beforeEach(() => {
+  vi.clearAllMocks();
+  listEventSubscribersMock.mockReturnValue(Effect.succeed([]));
+  applyLifecycleRulesMock.mockReturnValue(
+    Effect.succeed({ kind: "waits_only", workflowId: "wf_1" })
+  );
+  deliverToWaitsMock.mockReturnValue(
+    Effect.succeed({ workflowId: "wf_1", resumedWaits: 0 })
+  );
+});
 
-/**
- * Which failures Inngest is allowed to retry.
- *
- * A throw puts the event back in front of the retry policy and a return value
- * does not, so where the boundary sits is the whole of what these pin. A
- * workflow that is gone and a graph that will not validate are no better on a
- * second attempt, so both come back as values. A refused query is a different
- * thing entirely, and converting it to a refusal would drop the event silently.
- */
-describe("runEventTrigger", () => {
-  layer(SilentAppLoggerLayer)((it) => {
-    it.effect("refuses a workflow that is no longer there", () =>
-      Effect.gen(function* () {
-        const outcome = yield* runEventTrigger(delivery).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              stubWorkflowRepo({ findById: () => Effect.succeed(null) }),
-              unreachableRunSeams
-            )
-          )
-        );
-
-        assert.deepStrictEqual(outcome, {
-          status: "error",
-          reason: "workflow_not_found",
-        });
+describe("runEventListener", () => {
+  // Sibling steps, in this order: a wait delivery that fails retries on its own,
+  // and replaying the start above it would open a second run for one arrival.
+  it("runs the lifecycle and the waits as siblings per workflow", async () => {
+    listEventSubscribersMock.mockReturnValue(
+      Effect.succeed([subscriber(), subscriber({ id: "wf_2" })])
+    );
+    applyLifecycleRulesMock.mockReturnValue(
+      Effect.succeed({
+        kind: "started",
+        workflowId: "wf_1",
+        executionId: "exec_new",
+        supersededExecutionIds: ["exec_old"],
+        failedToSupersede: [],
       })
     );
+    const recorder = recordingStep();
 
-    it.effect("refuses a workflow whose graph will not validate", () =>
-      Effect.gen(function* () {
-        const outcome = yield* runEventTrigger(delivery).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              stubWorkflowRepo({
-                findById: () => Effect.succeed(unrunnableWorkflow),
-              }),
-              unreachableRunSeams
-            )
-          )
-        );
+    const result = await runEventListener({
+      event: appointmentCreated,
+      payload,
+      arrival: { eventId: "evt_1" },
+      runtime: testRuntime(),
+      step: recorder.step,
+    });
 
-        assert.deepStrictEqual(outcome, {
-          status: "error",
-          reason: "preflight_failed",
-        });
+    expect(recorder.ids).toEqual([
+      "subscribers-app/appointment.created",
+      "lifecycle-wf_1",
+      "waits-wf_1",
+      "lifecycle-wf_2",
+      "waits-wf_2",
+    ]);
+    expect(result.workflows).toHaveLength(2);
+
+    // The run just started and the run it displaced both take no wait: one is
+    // ending, and the other has parked nothing yet.
+    expect(deliverToWaitsMock.mock.calls[0]?.[0].excluding).toEqual([
+      "exec_new",
+      "exec_old",
+    ]);
+  });
+
+  // A workflow holding no start role is not worth a lifecycle step: preflight
+  // would validate every action and integration in its graph for a delivery that
+  // only wakes a wait.
+  it("skips the lifecycle step for a wait-only subscriber", async () => {
+    listEventSubscribersMock.mockReturnValue(
+      Effect.succeed([subscriber({ roles: ["wait"] })])
+    );
+    const recorder = recordingStep();
+
+    await runEventListener({
+      event: appointmentCreated,
+      payload,
+      arrival: {},
+      runtime: testRuntime(),
+      step: recorder.step,
+    });
+
+    expect(recorder.ids).toEqual([
+      "subscribers-app/appointment.created",
+      "waits-wf_1",
+    ]);
+    expect(applyLifecycleRulesMock.mock.calls).toHaveLength(0);
+  });
+
+  // A refused start is not a refused delivery. Under first-wins the run already
+  // going is the one parked on this Event, so refusing a second run is exactly
+  // what leaves it the one to wake.
+  it("delivers the waits of a workflow whose start was refused", async () => {
+    listEventSubscribersMock.mockReturnValue(Effect.succeed([subscriber()]));
+    const refused = {
+      kind: "refused",
+      workflowId: "wf_1",
+      reason: "concurrency_first_wins",
+    };
+    applyLifecycleRulesMock.mockReturnValue(Effect.succeed(refused));
+    deliverToWaitsMock.mockReturnValue(
+      Effect.succeed({ workflowId: "wf_1", resumedWaits: 1 })
+    );
+    const recorder = recordingStep();
+
+    const result = await runEventListener({
+      event: appointmentCreated,
+      payload,
+      arrival: { eventId: "dlv_9" },
+      runtime: testRuntime(),
+      step: recorder.step,
+    });
+
+    expect(recorder.ids).toEqual([
+      "subscribers-app/appointment.created",
+      "lifecycle-wf_1",
+      "waits-wf_1",
+    ]);
+    expect(deliverToWaitsMock.mock.calls[0]?.[0].excluding).toEqual([]);
+    expect(result.workflows).toEqual([{ lifecycle: refused, resumedWaits: 1 }]);
+
+    // The arrival travels with the delivery, so the audit row a start or a
+    // refusal writes names the arrival it answered.
+    expect(applyLifecycleRulesMock.mock.calls[0]?.[0].deliveryId).toBe("dlv_9");
+  });
+
+  it("delivers no waits to a workflow that is gone", async () => {
+    listEventSubscribersMock.mockReturnValue(Effect.succeed([subscriber()]));
+    applyLifecycleRulesMock.mockReturnValue(
+      Effect.succeed({
+        kind: "skipped",
+        workflowId: "wf_1",
+        reason: "workflow_gone",
       })
     );
+    const recorder = recordingStep();
 
-    it.effect("leaves a refused query failing, so the event is retried", () =>
-      Effect.gen(function* () {
-        const failure = yield* runEventTrigger(delivery).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              stubWorkflowRepo({
-                findById: () =>
-                  Effect.fail(
-                    new DatabaseError({
-                      cause: new Error("terminating connection due to crash"),
-                    })
-                  ),
-              }),
-              unreachableRunSeams
-            )
-          ),
-          Effect.flip
-        );
+    await runEventListener({
+      event: appointmentCreated,
+      payload,
+      arrival: {},
+      runtime: testRuntime(),
+      step: recorder.step,
+    });
 
-        assert.instanceOf(failure, DatabaseError);
+    expect(recorder.ids).toEqual([
+      "subscribers-app/appointment.created",
+      "lifecycle-wf_1",
+    ]);
+    expect(deliverToWaitsMock.mock.calls).toHaveLength(0);
+  });
+
+  // A payload that is not this Event will not become one on a second attempt, so
+  // it fails visibly and once: Inngest retries a plain throw.
+  it("throws without retrying when the payload fails the gate", async () => {
+    const recorder = recordingStep();
+
+    await expect(
+      runEventListener({
+        event: appointmentCreated,
+        payload: { appointment: {} },
+        arrival: {},
+        runtime: testRuntime(),
+        step: recorder.step,
       })
+    ).rejects.toThrow(/Payload refused for Event/);
+
+    expect(recorder.ids).toEqual([]);
+  });
+
+  // A rejected query is the one thing here worth retrying, so it leaves the
+  // handler as itself.
+  it("lets a refused query out to the retry policy", async () => {
+    listEventSubscribersMock.mockReturnValue(
+      Effect.fail(
+        new DatabaseError({
+          cause: new Error("terminating connection due to crash"),
+        })
+      )
     );
+
+    const failure = await runEventListener({
+      event: appointmentCreated,
+      payload,
+      arrival: {},
+      runtime: testRuntime(stubWorkflowRepo()),
+      step: recordingStep().step,
+    }).then(
+      () => undefined,
+      (error: unknown) => error
+    );
+
+    expect(failure).toBeInstanceOf(DatabaseError);
   });
 });

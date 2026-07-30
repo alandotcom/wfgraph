@@ -1,5 +1,5 @@
 {
-  "id": "3d4dac96-9da7-416d-b51d-b3671eb0ff0b",
+  "id": "2a2de792-6d71-4afc-a2f7-9e8fd00549aa",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -123,6 +123,74 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.workflow_event_subscriptions": {
+      "name": "workflow_event_subscriptions",
+      "schema": "",
+      "columns": {
+        "workflow_id": {
+          "name": "workflow_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_name": {
+          "name": "event_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "correlation_path": {
+          "name": "correlation_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "workflow_event_subscriptions_event_name_idx": {
+          "name": "workflow_event_subscriptions_event_name_idx",
+          "columns": [
+            {
+              "expression": "event_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "workflow_event_subscriptions_workflow_id_workflows_id_fk": {
+          "name": "workflow_event_subscriptions_workflow_id_workflows_id_fk",
+          "tableFrom": "workflow_event_subscriptions",
+          "tableTo": "workflows",
+          "columnsFrom": ["workflow_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "workflow_event_subscriptions_workflow_id_event_name_role_pk": {
+          "name": "workflow_event_subscriptions_workflow_id_event_name_role_pk",
+          "columns": ["workflow_id", "event_name", "role"]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -414,8 +482,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "trigger_type": {
-          "name": "trigger_type",
+        "start_source": {
+          "name": "start_source",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -663,6 +731,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "subscribed_events": {
+          "name": "subscribed_events",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
+        },
         "metadata": {
           "name": "metadata",
           "type": "jsonb",
@@ -766,6 +840,22 @@
           "isUnique": false,
           "concurrently": false,
           "method": "btree",
+          "with": {}
+        },
+        "workflow_wait_states_subscribed_events_idx": {
+          "name": "workflow_wait_states_subscribed_events_idx",
+          "columns": [
+            {
+              "expression": "subscribed_events",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"workflow_wait_states\".\"status\" = 'waiting'",
+          "concurrently": false,
+          "method": "gin",
           "with": {}
         }
       },

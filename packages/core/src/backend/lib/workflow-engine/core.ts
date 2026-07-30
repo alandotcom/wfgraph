@@ -1088,8 +1088,8 @@ async function prepareHookWait(
       ? encodeIsoTimestamp(waitTimeoutResolution.waitUntil)
       : undefined,
     correlationKey,
+    subscribedEvents: waitForEvents,
     metadata: {
-      waitForEvents,
       waitMode,
       waitTimeout: config.waitTimeout,
     },
@@ -1287,7 +1287,7 @@ async function recordRunCompleted(input: {
   store: WorkflowStore;
   executionId: string;
   workflowId: string;
-  status: "success" | "error";
+  status: "completed" | "failed";
   output: unknown;
   error?: string;
   startTime: number;
@@ -1296,7 +1296,7 @@ async function recordRunCompleted(input: {
   runMode: "live" | "test";
   logger: ExecutionLogger;
 }) {
-  const succeeded = input.status === "success";
+  const succeeded = input.status === "completed";
   let recorded = true;
 
   try {
@@ -1343,7 +1343,7 @@ async function recordRunFailed(input: {
   store: WorkflowStore;
   executionId: string;
   workflowId: string;
-  status: "error" | "cancelled";
+  status: "failed" | "canceled";
   cancelled: boolean;
   error: string;
   startTime: number;
@@ -2040,7 +2040,7 @@ async function executeWorkflowInner(
         store,
         executionId,
         workflowId,
-        status: finalSuccess ? "success" : "error",
+        status: finalSuccess ? "completed" : "failed",
         output: finalOutput,
         error: Object.values(results).find((r) => !r.success)?.error,
         startTime: workflowStartTime,
@@ -2063,7 +2063,7 @@ async function executeWorkflowInner(
 
     const errorMessage = await getErrorMessageAsync(error);
     const cancelled = isCancellationError(error);
-    const terminalStatus = cancelled ? "cancelled" : "error";
+    const terminalStatus = cancelled ? "canceled" : "failed";
 
     // Same exactly-once treatment as the success path above.
     await runtime.step("workflow-run-failed", () =>

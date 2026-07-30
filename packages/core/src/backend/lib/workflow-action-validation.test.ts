@@ -113,10 +113,28 @@ describe("validateWorkflowActionConfigs", () => {
   it("accepts Wait hook actions without delay fields", () => {
     const result = validateWorkflowActionConfigs([
       createTriggerNode(),
-      createActionNode({ actionType: "Wait", waitMode: "hook" }),
+      createActionNode({
+        actionType: "Wait",
+        waitMode: "hook",
+        waitForEvents: ["appointment.created"],
+      }),
     ]);
 
     expect(result.valid).toBe(true);
+  });
+
+  // A wait that parks on an Event has to name one: an empty list used to mean
+  // "any Event for this entity", which the subscription index cannot hold.
+  it("rejects a Wait on events that names none", () => {
+    const result = validateWorkflowActionConfigs([
+      createTriggerNode(),
+      createActionNode({ actionType: "Wait", waitMode: "event" }),
+    ]);
+
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.error).toContain("Wait for these events");
+    }
   });
 
   it("rejects plugin actions with missing required fields", () => {

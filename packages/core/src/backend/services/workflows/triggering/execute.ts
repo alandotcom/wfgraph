@@ -1,18 +1,21 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
-import { orchestrateRoutedTrigger } from "#src/backend/services/workflows/triggering/routing";
+import { getExtensions } from "#src/backend/lib/extensions/current";
+import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 import { loadWorkflowForRun } from "#src/backend/services/workflows/triggering/preflight";
-import {
-  buildIgnoredRunAuditMessage,
-  recordPausedRunIgnored,
-  recordTerminalWorkflowRun,
-  startWorkflowRun,
-} from "#src/backend/services/workflows/triggering/run-lifecycle";
+import { recordPausedRunIgnored } from "#src/backend/services/workflows/triggering/run-lifecycle";
+import { findEvent } from "@rova/shared/extensions/catalog";
 import type { JsonObject } from "@rova/shared/types/json";
+import { asNonEmptyString } from "@rova/shared/types/string";
+import { getValueByPath } from "@rova/shared/utils/object-path";
 import type { WorkflowExecuteResponse } from "@rova/shared/workflow/execution-contracts";
-import { routeWorkflowTrigger } from "@rova/shared/workflow/trigger-registry";
-import { resolveWebhookTriggerRuntimeConfig } from "@rova/shared/workflow/triggers/webhook-trigger";
+import {
+  emptyLifecycleRules,
+  type LifecycleRules,
+  manualStartAllowed,
+  resolveCorrelationPath,
+} from "@rova/shared/workflow/lifecycle-rules";
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
 const loggerFor = (workflowId: string) =>
@@ -20,12 +23,53 @@ const loggerFor = (workflowId: string) =>
     appLogger.get("workflow", "execute").with({ workflowId })
   );
 
+/**
+ * Which entity a manual run is about.
+ *
+ * A manual run stands in for an Event, so it is about whatever its payload is
+ * about: the Start Events' Correlation Paths are read against the body and the
+ * first value found is the entity. That is what makes a test run supersede the run
+ * it is testing rather than sit beside it.
+ *
+ * A payload carrying none falls back to the workflow itself (CONTEXT.md), and the
+ * fallback is namespaced because this entity space is shared with values a sender
+ * controls: a bare id would let a payload claim to be the workflow's own entity.
+ */
+function readManualEntityValue(input: {
+  workflowId: string;
+  rules: LifecycleRules;
+  payload: JsonObject;
+}): string {
+  const catalog = getExtensions().catalog;
+
+  for (const eventName of input.rules.startEvents) {
+    const path = resolveCorrelationPath({
+      rules: input.rules,
+      eventName,
+      declaredPath: findEvent(catalog, eventName)?.correlationPath,
+    });
+    const value = path
+      ? asNonEmptyString(getValueByPath(input.payload, path))
+      : undefined;
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return `workflow:${input.workflowId}`;
+}
+
+/**
+ * A manual run: the Run button, and the one entrypoint that names a workflow
+ * rather than an Event.
+ */
 export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
   function* (
     workflowId: string,
     body: {
       /**
-       * The manual-run payload. It stands in for a webhook body, follows the
+       * The manual-run payload. It stands in for an Event payload, follows the
        * same path onto the Inngest event and into the JSONB
        * `workflow_executions.input` column, and so carries the same JSON-only
        * contract.
@@ -35,35 +79,24 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
   ) {
     const logger = yield* loggerFor(workflowId);
 
-    const { workflow, preflight } = yield* loadWorkflowForRun({
-      workflowId,
-      logger,
-    });
+    const { workflow, preflight } = yield* loadWorkflowForRun(workflowId).pipe(
+      Effect.tapError((failure) =>
+        "error" in failure
+          ? logger.error("Refused a manual run", { error: failure.error })
+          : Effect.void
+      )
+    );
 
-    const { workflowGraph, triggerConfig, triggerDefinition } = preflight;
-    const triggerConfigRecord: Record<string, unknown> = triggerConfig ?? {};
-    const triggerExecutionType = triggerDefinition.runtime.executionType;
-    const webhookRuntimeConfig =
-      triggerExecutionType === "webhook"
-        ? resolveWebhookTriggerRuntimeConfig(triggerConfigRecord)
-        : undefined;
-    const input = body.input ?? {};
+    const payload = body.input ?? {};
     const runMode = workflow.mode;
-    let effectiveInput = input;
-
-    if (triggerExecutionType === "webhook" && Object.keys(input).length === 0) {
-      const mockInput = webhookRuntimeConfig?.mockInput;
-      if (mockInput) {
-        effectiveInput = mockInput;
-      }
-    }
+    const rules = preflight.lifecycleRules ?? emptyLifecycleRules;
 
     if (workflow.isPaused) {
       const ignoredExecution = yield* recordPausedRunIgnored({
         workflowId,
-        triggerType: "manual",
+        startSource: "manual",
         runMode,
-        payload: effectiveInput,
+        payload,
       });
 
       const response: WorkflowExecuteResponse = {
@@ -75,167 +108,63 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
       return response;
     }
 
-    // A manual run has no delivering Inngest event; classification owns the
-    // sole-declared-event-name stand-in, so no eventName is passed here.
-    const routing = routeWorkflowTrigger({
-      config: triggerConfigRecord,
-      payload: effectiveInput,
-    });
-    const { eventType, correlationKey, action } = routing;
+    if (!manualStartAllowed(preflight.lifecycleRules)) {
+      yield* logger.info("Refused a manual run", {
+        reason: "manual_start_not_allowed",
+      });
+
+      const response: WorkflowExecuteResponse = {
+        status: "ignored",
+        runMode,
+        reason: "manual_start_not_allowed",
+      };
+      return response;
+    }
 
     yield* logger.info("Workflow execute request received", {
       workflowName: workflow.name,
-      triggerType: triggerDefinition.runtime.type.toLowerCase(),
       runMode,
-      requestPayloadKeys: Object.keys(body.input ?? {}),
-      effectiveInputKeys: Object.keys(effectiveInput),
-      eventType,
-      correlationKey,
-      action,
+      payloadKeys: Object.keys(payload),
     });
 
-    // Only the two routed trigger kinds have a routing policy to act on; every
-    // other trigger a manual run can name just starts.
-    if (
-      triggerExecutionType !== "webhook" &&
-      triggerExecutionType !== "event"
-    ) {
-      const startedExecution = yield* startWorkflowRun({
-        workflow: {
-          id: workflowId,
-          name: workflow.name,
-          graph: workflowGraph,
-        },
-        trigger: { type: "manual", eventType, correlationKey },
-        payload: effectiveInput,
-        requestPayload: body.input ?? {},
-        runMode,
-      });
-
-      const response: WorkflowExecuteResponse = {
-        status: "running",
-        executionId: startedExecution.executionId,
-        runId: startedExecution.runId,
-        runMode,
-      };
-      return response;
-    }
-
-    const orchestrated = yield* orchestrateRoutedTrigger({
-      workflowId,
+    const started = yield* startWithConcurrency({
+      workflow: {
+        id: workflowId,
+        name: workflow.name,
+        graph: preflight.workflowGraph,
+      },
+      concurrency: rules.concurrency,
+      start: {
+        source: "manual",
+        entityValue: readManualEntityValue({ workflowId, rules, payload }),
+      },
       runMode,
-      routing,
-      sourceNoun: "execute event",
+      payload,
       logger,
-      startExecution: () =>
-        startWorkflowRun({
-          workflow: {
-            id: workflowId,
-            name: workflow.name,
-            graph: workflowGraph,
-          },
-          trigger: { type: triggerExecutionType, eventType, correlationKey },
-          payload: effectiveInput,
-          requestPayload: body.input ?? {},
-          runMode,
-        }),
-      // No resume callback: a manual run has no delivering event, so there is
-      // nothing here that could wake a waiting run, and "resumed" is not one of
-      // the outcomes this call can be answered with.
     });
 
-    if (orchestrated.status === "running") {
+    if (started.status === "not_started") {
+      // No execution id: the refusal wrote no run, and the run it deferred to
+      // belongs to whoever started it. The timeline carries the refusal.
       const response: WorkflowExecuteResponse = {
-        status: "running",
-        executionId: orchestrated.executionId,
-        runId: orchestrated.runId,
-        runMode: orchestrated.runMode,
-        cancelledExecutions: orchestrated.cancelledExecutions,
-        cancelledWaits: orchestrated.cancelledWaits,
-        failedExecutions: orchestrated.failedExecutions,
-      };
-      return response;
-    }
-
-    if (orchestrated.status === "cancelled") {
-      let cancellationAuditMessage =
-        "Cancelled in-flight runs from execute request";
-      if (eventType) {
-        cancellationAuditMessage = `Cancelled by execute event ${eventType}`;
-      }
-
-      const terminalExecution = yield* recordTerminalWorkflowRun({
-        workflowId,
-        trigger: { type: triggerExecutionType, eventType, correlationKey },
-        runMode: orchestrated.runMode,
-        payload: effectiveInput,
-        status: "cancelled",
-        output: {
-          status: orchestrated.status,
-          runMode: orchestrated.runMode,
-          cancelledExecutions: orchestrated.cancelledExecutions,
-          cancelledWaits: orchestrated.cancelledWaits,
-          failedExecutions: orchestrated.failedExecutions,
-        },
-        audit: {
-          eventType: "run_cancelled",
-          message: cancellationAuditMessage,
-          metadata: {
-            eventType,
-            correlationKey,
-            cancelledExecutions: orchestrated.cancelledExecutions,
-            cancelledWaits: orchestrated.cancelledWaits,
-            failedExecutions: orchestrated.failedExecutions,
-          },
-        },
-      });
-
-      const response: WorkflowExecuteResponse = {
-        status: "cancelled",
-        executionId: terminalExecution.id,
-        runMode: orchestrated.runMode,
-        cancelledExecutions: orchestrated.cancelledExecutions,
-        cancelledWaits: orchestrated.cancelledWaits,
-        failedExecutions: orchestrated.failedExecutions,
-      };
-      return response;
-    }
-
-    const ignoredReason = orchestrated.reason;
-    const terminalExecution = yield* recordTerminalWorkflowRun({
-      workflowId,
-      trigger: { type: triggerExecutionType, eventType, correlationKey },
-      runMode,
-      payload: effectiveInput,
-      status: "success",
-      output: {
         status: "ignored",
-        reason: ignoredReason,
         runMode,
-      },
-      audit: {
-        eventType: "run_ignored",
-        message: buildIgnoredRunAuditMessage({
-          triggerType: "manual",
-          reason: ignoredReason,
-          eventType,
-          eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
-        }),
-        metadata: {
-          eventType,
-          correlationKey,
-          reason: ignoredReason,
-          eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
-          runMode,
-        },
-      },
-    });
+        reason: started.reason,
+      };
+      return response;
+    }
 
     const response: WorkflowExecuteResponse = {
-      status: "ignored",
-      executionId: terminalExecution.id,
+      status: "running",
+      executionId: started.executionId,
+      runId: started.runId,
       runMode,
-      reason: ignoredReason,
+      ...(started.supersededExecutionIds.length > 0
+        ? { supersededExecutions: started.supersededExecutionIds.length }
+        : {}),
+      ...(started.failedToSupersede.length > 0
+        ? { failedToSupersede: started.failedToSupersede }
+        : {}),
     };
     return response;
   },

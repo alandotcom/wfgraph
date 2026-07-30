@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { cancelInFlightRuns } from "./workflow-cancellation";
+import {
+  announceSupersededRuns,
+  cancelInFlightRuns,
+} from "./workflow-cancellation";
 
 const {
   sendWorkflowCancelRequestedMock,
   logWorkflowAuditEventMock,
-  markExecutionCancelledMock,
+  endInFlightExecutionMock,
   markWaitingStatesCancelledMock,
 } = vi.hoisted(() => ({
   sendWorkflowCancelRequestedMock: vi.fn(),
   logWorkflowAuditEventMock: vi.fn(),
-  markExecutionCancelledMock: vi.fn(),
+  endInFlightExecutionMock: vi.fn(),
   markWaitingStatesCancelledMock: vi.fn(),
 }));
 
@@ -22,7 +25,7 @@ vi.mock("#src/backend/lib/workflow-audit", () => ({
 }));
 
 vi.mock("#src/backend/lib/workflow-wait-state", () => ({
-  markExecutionCancelled: markExecutionCancelledMock,
+  endInFlightExecution: endInFlightExecutionMock,
   markWaitingStatesCancelled: markWaitingStatesCancelledMock,
 }));
 
@@ -30,7 +33,7 @@ describe("cancelInFlightRuns", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sendWorkflowCancelRequestedMock.mockResolvedValue(undefined);
-    markExecutionCancelledMock.mockResolvedValue(true);
+    endInFlightExecutionMock.mockResolvedValue(true);
     markWaitingStatesCancelledMock.mockResolvedValue([]);
     logWorkflowAuditEventMock.mockResolvedValue(undefined);
   });
@@ -41,8 +44,6 @@ describe("cancelInFlightRuns", () => {
       .mockRejectedValueOnce(new Error("dispatch failed"));
     markWaitingStatesCancelledMock.mockResolvedValueOnce(["wait_1", "wait_2"]);
 
-    const logger = { error: vi.fn(), info: vi.fn() };
-
     const summary = await cancelInFlightRuns({
       workflowId: "workflow_1",
       executionIds: ["exec_success", "exec_failed"],
@@ -52,14 +53,14 @@ describe("cancelInFlightRuns", () => {
         { id: "wait_3", executionId: "exec_failed" },
       ],
       reason: "Cancelled by event",
-      eventType: "appointment.cancelled",
-      logger,
+      eventName: "appointment.cancelled",
     });
 
     expect(sendWorkflowCancelRequestedMock).toHaveBeenCalledTimes(2);
-    expect(markExecutionCancelledMock).toHaveBeenCalledTimes(1);
-    expect(markExecutionCancelledMock).toHaveBeenCalledWith({
+    expect(endInFlightExecutionMock).toHaveBeenCalledTimes(1);
+    expect(endInFlightExecutionMock).toHaveBeenCalledWith({
       executionId: "exec_success",
+      status: "canceled",
       error: "Cancelled by event",
     });
     expect(markWaitingStatesCancelledMock).toHaveBeenCalledWith([
@@ -76,12 +77,9 @@ describe("cancelInFlightRuns", () => {
         metadata: expect.objectContaining({ outcome: "send_failed" }),
       })
     );
-    expect(logger.error).toHaveBeenCalledTimes(1);
-
     expect(summary).toEqual({
-      cancelledExecutions: 1,
-      cancelledWaits: 2,
-      failedExecutions: ["exec_failed"],
+      endedExecutionIds: ["exec_success"],
+      failedExecutionIds: ["exec_failed"],
     });
   });
 
@@ -90,23 +88,26 @@ describe("cancelInFlightRuns", () => {
       workflowId: "workflow_1",
       executionIds: ["exec_running"],
       waitStates: [],
-      reason: "Replaced by event appointment.rescheduled",
-      eventType: "appointment.rescheduled",
-      logger: { error: vi.fn(), info: vi.fn() },
+      reason: "Cancelled by event appointment.rescheduled",
+      eventName: "appointment.rescheduled",
     });
 
     expect(sendWorkflowCancelRequestedMock).toHaveBeenCalledWith({
       executionId: "exec_running",
       workflowId: "workflow_1",
-      reason: "Replaced by event appointment.rescheduled",
+      reason: "Cancelled by event appointment.rescheduled",
       requestedBy: "workflow_1",
       eventType: "appointment.rescheduled",
     });
+    expect(endInFlightExecutionMock).toHaveBeenCalledWith({
+      executionId: "exec_running",
+      status: "canceled",
+      error: "Cancelled by event appointment.rescheduled",
+    });
     expect(markWaitingStatesCancelledMock).toHaveBeenCalledWith([]);
     expect(summary).toEqual({
-      cancelledExecutions: 1,
-      cancelledWaits: 0,
-      failedExecutions: undefined,
+      endedExecutionIds: ["exec_running"],
+      failedExecutionIds: [],
     });
   });
 
@@ -121,18 +122,20 @@ describe("cancelInFlightRuns", () => {
         { id: "wait_2", executionId: "exec_1" },
       ],
       reason: "Cancelled by event",
-      logger: { error: vi.fn(), info: vi.fn() },
     });
 
     expect(sendWorkflowCancelRequestedMock).toHaveBeenCalledTimes(1);
-    expect(summary.cancelledExecutions).toBe(1);
-    expect(summary.cancelledWaits).toBe(2);
+    expect(summary.endedExecutionIds).toEqual(["exec_1"]);
+    expect(markWaitingStatesCancelledMock).toHaveBeenCalledWith([
+      "wait_1",
+      "wait_2",
+    ]);
   });
 
   // The compare-and-set race: the run finished between the caller's in-flight
   // query and this write, so the row keeps its terminal status.
   it("does not count or audit an execution that finished before the cancel write", async () => {
-    markExecutionCancelledMock
+    endInFlightExecutionMock
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(true);
     markWaitingStatesCancelledMock.mockResolvedValueOnce(["wait_2"]);
@@ -145,18 +148,17 @@ describe("cancelInFlightRuns", () => {
         { id: "wait_2", executionId: "exec_still_waiting" },
       ],
       reason: "Cancelled by event",
-      eventType: "appointment.cancelled",
-      logger: { error: vi.fn(), info: vi.fn() },
+      eventName: "appointment.cancelled",
     });
 
-    expect(markExecutionCancelledMock).toHaveBeenCalledTimes(2);
+    expect(endInFlightExecutionMock).toHaveBeenCalledTimes(2);
     expect(logWorkflowAuditEventMock).toHaveBeenCalledTimes(1);
     expect(logWorkflowAuditEventMock).toHaveBeenCalledWith({
       workflowId: "workflow_1",
       executionId: "exec_still_waiting",
       eventType: "run_cancelled",
       message: "Cancelled by event",
-      metadata: { eventType: "appointment.cancelled" },
+      metadata: { eventName: "appointment.cancelled" },
     });
     // The lost race's wait state joins the cleanup batch: its execution is
     // terminal, and a still-waiting row on it would silently swallow future
@@ -167,9 +169,54 @@ describe("cancelInFlightRuns", () => {
       "wait_2",
     ]);
     expect(summary).toEqual({
-      cancelledExecutions: 1,
-      cancelledWaits: 1,
-      failedExecutions: undefined,
+      endedExecutionIds: ["exec_still_waiting"],
+      failedExecutionIds: [],
     });
+  });
+});
+
+// The rows are already terminal when this runs -- the entity lock flipped them --
+// so there is no compare-and-set here and no lost race to report. What is left is
+// the signal and the timeline.
+describe("announceSupersededRuns", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sendWorkflowCancelRequestedMock.mockResolvedValue(undefined);
+    logWorkflowAuditEventMock.mockResolvedValue(undefined);
+  });
+
+  it("signals each displaced run and says why on its timeline", async () => {
+    const summary = await announceSupersededRuns({
+      workflowId: "workflow_1",
+      executionIds: ["exec_old"],
+      reason: "Superseded by a newer start from appointment.rescheduled",
+      eventName: "appointment.rescheduled",
+    });
+
+    expect(sendWorkflowCancelRequestedMock).toHaveBeenCalledTimes(1);
+    expect(endInFlightExecutionMock).not.toHaveBeenCalled();
+    expect(logWorkflowAuditEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        executionId: "exec_old",
+        eventType: "run_superseded",
+      })
+    );
+    expect(summary).toEqual({ failedExecutionIds: [] });
+  });
+
+  // A signal that does not land leaves a live run against a superseded row, and
+  // the id travels back so the caller can say so.
+  it("names the runs no signal reached", async () => {
+    sendWorkflowCancelRequestedMock.mockRejectedValueOnce(
+      new Error("dispatch failed")
+    );
+
+    const summary = await announceSupersededRuns({
+      workflowId: "workflow_1",
+      executionIds: ["exec_old"],
+      reason: "Superseded by a newer start",
+    });
+
+    expect(summary).toEqual({ failedExecutionIds: ["exec_old"] });
   });
 });

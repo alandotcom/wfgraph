@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import {
+  sendHostEvent,
   sendWorkflowCancelRequested,
   sendWorkflowRunRequested,
   sendWorkflowWaitSignal,
@@ -24,9 +25,10 @@ export class InngestError extends Schema.TaggedErrorClass<InngestError>()(
  * The event bus that drives runs, as a service rather than a module-level
  * handle.
  *
- * Three sends is the whole of what the services ask Inngest for: start a run,
- * cancel one, wake a waiting one. Each answers an Effect whose error channel
- * names `InngestError`, so a service that enqueues can no longer forget that
+ * Four sends is the whole of what the services ask Inngest for: start a run,
+ * cancel one, wake a waiting one, and forward a host's Event so its listener
+ * drives the fan-out durably. Each answers an Effect whose error channel names
+ * `InngestError`, so a service that enqueues can no longer forget that
  * enqueueing fails, and a test provides its own sends instead of reaching a
  * dev server.
  */
@@ -47,6 +49,10 @@ export class InngestClient extends Context.Service<
     /** Wake one waiting node with the payload that arrived for it. */
     readonly sendWaitSignal: (
       input: Parameters<typeof sendWorkflowWaitSignal>[0]
+    ) => Effect.Effect<void, InngestError>;
+    /** Put a posted Event on the bus, for its own listener to fan out. */
+    readonly sendHostEvent: (
+      input: Parameters<typeof sendHostEvent>[0]
     ) => Effect.Effect<void, InngestError>;
   }
 >()("InngestClient") {}
@@ -79,6 +85,7 @@ export const InngestClientLayer: Layer.Layer<InngestClient> = Layer.succeed(
       send(async () => {
         await sendWorkflowWaitSignal(input);
       }),
+    sendHostEvent: (input) => send(() => sendHostEvent(input)),
   }
 );
 

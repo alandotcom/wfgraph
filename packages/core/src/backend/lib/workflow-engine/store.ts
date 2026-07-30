@@ -75,6 +75,11 @@ export type CreateWaitStateInput = {
   /** Target timestamp as ISO 8601; the adapter converts it for storage. */
   waitUntilIso?: string;
   correlationKey?: string;
+  /**
+   * The Event names this wait parks on, which the delivery fan-out finds the run
+   * by. Empty for a wait on a clock, which no Event reaches.
+   */
+  subscribedEvents?: string[];
   metadata?: Record<string, unknown>;
 };
 
@@ -85,7 +90,7 @@ export type MarkWaitStateStatusInput = {
 
 export type CompleteRunInput = {
   executionId: string;
-  status: "success" | "error" | "cancelled";
+  status: "completed" | "failed" | "canceled";
   output?: unknown;
   error?: string;
   /** Epoch milliseconds the run started, used to derive its duration. */

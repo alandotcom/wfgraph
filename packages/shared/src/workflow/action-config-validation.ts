@@ -1,3 +1,5 @@
+import { asNonEmptyString } from "#src/types/string";
+import { readWaitForEvents } from "#src/workflow/wait-events";
 import { parseTimeOfDayMinutes } from "#src/utils/wait-allowed-hours";
 import type { WorkflowNode } from "#src/workflow/types";
 
@@ -47,15 +49,6 @@ function isFieldGroup(
   return (
     field.type === "group" && "fields" in field && Array.isArray(field.fields)
   );
-}
-
-function asNonEmptyString(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function isFieldEmpty(value: unknown): boolean {
@@ -149,8 +142,14 @@ function getWaitMissingRequiredFields(
   config: Record<string, unknown>
 ): MissingRequiredField[] {
   const waitMode = getWaitMode(config);
+
+  // An event-mode wait has to name at least one Event. An empty list used to mean
+  // "any Event for this entity", and the subscription index the fan-out reads has
+  // no way to hold that: a wildcard is a subscription to every Event there is.
   if (waitMode === "hook" || waitMode === "event") {
-    return [];
+    return readWaitForEvents(config.waitForEvents).length > 0
+      ? []
+      : [{ fieldKey: "waitForEvents", fieldLabel: "Wait for these events" }];
   }
 
   const missing: MissingRequiredField[] = [];

@@ -95,15 +95,10 @@ describe("extractRequiredIntegrationIds", () => {
 });
 
 describe("validateWorkflowIntegrations", () => {
-  it("deduplicates integration IDs before validation and type lookup", async () => {
-    const validateIntegrationIds = vi.fn(() =>
-      Promise.resolve({ valid: true })
-    );
+  it("deduplicates integration ids before the one read it makes", async () => {
     const getIntegrationTypesByIds = vi.fn(
       (): Promise<Record<string, IntegrationType>> =>
-        Promise.resolve({
-          shared_integration: "database",
-        })
+        Promise.resolve({ shared_integration: "database" })
     );
 
     const result = await validateWorkflowIntegrations(
@@ -120,21 +115,19 @@ describe("validateWorkflowIntegrations", () => {
           id: "action_2",
         },
       ],
-      {
-        validateIntegrationIds,
-        getIntegrationTypesByIds,
-      }
+      { getIntegrationTypesByIds }
     );
 
     expect(result).toEqual({ valid: true });
-    expect(validateIntegrationIds).toHaveBeenCalledWith(["shared_integration"]);
+    expect(getIntegrationTypesByIds).toHaveBeenCalledTimes(1);
     expect(getIntegrationTypesByIds).toHaveBeenCalledWith([
       "shared_integration",
     ]);
   });
 
-  it("delegates to the provided integration validator", async () => {
-    const capturedIds: string[][] = [];
+  // An id absent from the type map is an id no row carries, which is why one read
+  // answers both questions the graph asks.
+  it("names an integration nothing carries", async () => {
     const result = await validateWorkflowIntegrations(
       [
         createActionNode({
@@ -151,14 +144,10 @@ describe("validateWorkflowIntegrations", () => {
       ],
       {
         resolveActionByType,
-        validateIntegrationIds: (integrationIds) => {
-          capturedIds.push(integrationIds);
-          return Promise.resolve({ valid: false, invalidIds: ["db_1"] });
-        },
+        getIntegrationTypesByIds: () => Promise.resolve({ slack_1: "slack" }),
       }
     );
 
-    expect(capturedIds).toEqual([["db_1", "slack_1"]]);
     expect(result).toEqual({ valid: false, invalidIds: ["db_1"] });
   });
 
@@ -170,138 +159,63 @@ describe("validateWorkflowIntegrations", () => {
           integrationId: "int_1",
         }),
       ],
-      {
-        validateIntegrationIds: () => Promise.resolve({ valid: true }),
-        getIntegrationTypesByIds: () =>
-          Promise.resolve({
-            int_1: "slack",
-          }),
-      }
+      { getIntegrationTypesByIds: () => Promise.resolve({ int_1: "slack" }) }
     );
 
     expect(result).toEqual({ valid: false, invalidIds: ["int_1"] });
   });
 
-  it("stops after existence validation failure", async () => {
-    const getIntegrationTypesByIds = vi.fn(
-      (): Promise<Record<string, IntegrationType>> =>
-        Promise.resolve({ int_1: "database" })
-    );
-
+  // A missing integration and a mismatched one are different fixes, so a graph
+  // with both is told about the missing one first.
+  it("reports a missing integration ahead of a mismatched one", async () => {
     const result = await validateWorkflowIntegrations(
       [
         createActionNode({
           actionType: "Database Query",
-          integrationId: "int_1",
-        }),
-      ],
-      {
-        validateIntegrationIds: () =>
-          Promise.resolve({ valid: false, invalidIds: ["int_1"] }),
-        getIntegrationTypesByIds,
-      }
-    );
-
-    expect(result).toEqual({ valid: false, invalidIds: ["int_1"] });
-    expect(getIntegrationTypesByIds).not.toHaveBeenCalled();
-  });
-
-  it("deduplicates mismatched integration IDs in the response", async () => {
-    const result = await validateWorkflowIntegrations(
-      [
-        createActionNode({
-          actionType: "Database Query",
-          integrationId: "int_1",
+          integrationId: "missing_1",
         }),
         {
           ...createActionNode({
             actionType: "Database Query",
-            integrationId: "int_1",
+            integrationId: "wrong_type_1",
           }),
           id: "action_2",
         },
       ],
       {
-        validateIntegrationIds: () => Promise.resolve({ valid: true }),
         getIntegrationTypesByIds: () =>
-          Promise.resolve({
-            int_1: "slack",
-          }),
+          Promise.resolve({ wrong_type_1: "slack" }),
       }
     );
 
-    expect(result).toEqual({ valid: false, invalidIds: ["int_1"] });
+    expect(result).toEqual({ valid: false, invalidIds: ["missing_1"] });
   });
 
-  it("accepts integrations that exist with matching types", async () => {
-    const result = await validateWorkflowIntegrations(
-      [
-        createActionNode({
-          actionType: "Database Query",
-          integrationId: "db_1",
-        }),
-        {
-          ...createActionNode({
-            actionType: "custom/send-message",
-            integrationId: "slack_1",
-          }),
-          id: "action_2",
-        },
-      ],
-      {
-        resolveActionByType,
-        validateIntegrationIds: () => Promise.resolve({ valid: true }),
-        getIntegrationTypesByIds: () =>
-          Promise.resolve({
-            db_1: "database",
-            slack_1: "slack",
-          }),
-      }
-    );
-
-    expect(result).toEqual({ valid: true });
-  });
-
-  it("supports bypassing missing integration failures when strict validation is disabled", async () => {
+  it("passes a graph naming no integration at all", async () => {
     const getIntegrationTypesByIds = vi.fn(
-      (): Promise<Record<string, IntegrationType>> =>
-        Promise.resolve({ int_1: "database" })
+      (): Promise<Record<string, IntegrationType>> => Promise.resolve({})
     );
 
     const result = await validateWorkflowIntegrations(
-      [
-        createActionNode({
-          actionType: "Database Query",
-          integrationId: "int_1",
-        }),
-      ],
-      {
-        strictValidation: false,
-        validateIntegrationIds: () =>
-          Promise.resolve({ valid: false, invalidIds: ["int_1"] }),
-        getIntegrationTypesByIds,
-      }
+      [createActionNode({ actionType: "HTTP Request" })],
+      { getIntegrationTypesByIds }
     );
 
     expect(result).toEqual({ valid: true });
     expect(getIntegrationTypesByIds).not.toHaveBeenCalled();
   });
 
-  it("supports bypassing integration type mismatches when strict validation is disabled", async () => {
+  it("bypasses both refusals when strict validation is off", async () => {
     const result = await validateWorkflowIntegrations(
       [
         createActionNode({
           actionType: "Database Query",
-          integrationId: "int_1",
+          integrationId: "missing_1",
         }),
       ],
       {
+        getIntegrationTypesByIds: () => Promise.resolve({}),
         strictValidation: false,
-        validateIntegrationIds: () => Promise.resolve({ valid: true }),
-        getIntegrationTypesByIds: () =>
-          Promise.resolve({
-            int_1: "slack",
-          }),
       }
     );
 

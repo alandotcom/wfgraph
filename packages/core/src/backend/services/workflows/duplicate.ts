@@ -10,6 +10,7 @@ import {
 } from "#src/backend/lib/effect/failures";
 import { invalidateInngestFunctionsCache } from "#src/backend/lib/inngest/functions";
 import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
+import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
 import { generateId } from "@rova/shared/utils/id";
@@ -101,20 +102,6 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
       attributes: sourceValidation.graph.attributes,
     });
 
-    // The rewrite renames every node and edge, so the copy is a graph this
-    // function built rather than one it read. Checking it here is what turns our
-    // own bug into a failure the caller can read instead of a row that no screen
-    // can load afterwards.
-    const copyValidation = validateWorkflowGraph(newGraph);
-    if (!copyValidation.valid) {
-      yield* logger.error("Duplicated workflow graph is invalid", {
-        reason: copyValidation.error,
-      });
-      return yield* Effect.fail(
-        new InternalFailure({ error: "Duplicated workflow graph is invalid" })
-      );
-    }
-
     const workflowName = `${sourceWorkflow.name} (Copy)`;
     const nameTaken = yield* repo.hasWithName(workflowName);
     if (nameTaken) {
@@ -129,13 +116,43 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
     }
 
     const newWorkflowId = generateId();
+
+    // The rewrite renames every node and edge, so the copy is a graph this
+    // function built rather than one it read. Checking it here is what turns our
+    // own bug into a failure the caller can read instead of a row no screen can
+    // load afterwards, and it derives the copy's own subscription rows.
+    const prepared = yield* prepareGraphSave({ graph: newGraph }).pipe(
+      Effect.catchIf(
+        (failure) => "error" in failure,
+        (failure) =>
+          logger
+            .error("Duplicated workflow graph is invalid", {
+              reason: "error" in failure ? failure.error : undefined,
+            })
+            .pipe(
+              Effect.andThen(
+                Effect.fail(
+                  new InternalFailure({
+                    error: "Duplicated workflow graph is invalid",
+                  })
+                )
+              )
+            )
+      )
+    );
+
     const newWorkflow = yield* repo.insert({
       id: newWorkflowId,
       name: workflowName,
       description: sourceWorkflow.description,
-      graph: newGraph,
+      graph: prepared.graph,
       mode: sourceWorkflow.mode,
       visibility: "private",
+      // A copy starts paused. It names the same Start Events as its source, so an
+      // unpaused copy would double every run the original does from the moment it
+      // exists -- and a copy is made to be edited, not to run as it is.
+      isPaused: true,
+      eventSubscriptions: prepared.subscriptionsFor(newWorkflowId),
     });
 
     invalidateInngestFunctionsCache();

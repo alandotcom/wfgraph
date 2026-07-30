@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { callDbModule } from "#src/backend/lib/effect/database";
-import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
+import { statedSeamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { Conflict, NotFound } from "#src/backend/lib/effect/failures";
 import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
@@ -36,7 +36,7 @@ export const postWorkflowResume = Effect.fn("postWorkflowResume")(
     const inngest = yield* InngestClient;
     const logger = yield* loggerFor(token);
 
-    // Credentials before the lookup, the same ordering the webhook uses. A wait
+    // Credentials before the lookup, the ordering event intake uses too. A wait
     // token travels in a URL and so accumulates in browser history, proxy logs,
     // and referrers; answering "not found" versus "unauthorized" to a caller who
     // has one but no API key tells them whether that token is still live.
@@ -96,11 +96,14 @@ export const postWorkflowResume = Effect.fn("postWorkflowResume")(
     return resumed;
   },
   (effect, input) =>
+    // A machine route across origins: the caller holds a resume token, not our
+    // confidence, so the cause goes to the log and they get a stated sentence.
     effect.pipe(
       Effect.catchTags(
-        seamFailureHandlers(
+        statedSeamFailureHandlers(
           loggerFor(input.token),
-          "Failed to resume wait hook"
+          "Failed to resume wait hook",
+          "Could not resume this wait"
         )
       )
     )

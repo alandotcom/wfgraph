@@ -645,6 +645,9 @@ export function TriggerConfig({
                 types are ignored, though they can still resume a waiting run.
               </p>
             </div>
+            {/* The engine reads none of this: which Events start a run and which
+                cancel it is the Lifecycle Rules on this node (ADR-0007). The panel
+                that replaces this one carries them. */}
             <RoutingPolicyEditor
               disabled={disabled}
               eventTypes={selectedRuntimeTrigger?.eventTypes}
@@ -964,6 +967,9 @@ export function TriggerConfig({
 
               <div className="space-y-2">
                 <p className="font-medium text-sm">Event Types</p>
+                {/* The engine reads none of this: which Events start a run and which
+                    cancel it is the Lifecycle Rules on this node (ADR-0007). The panel
+                    that replaces this one carries them. */}
                 <RoutingPolicyEditor
                   disabled={disabled}
                   eventTypes={undefined}

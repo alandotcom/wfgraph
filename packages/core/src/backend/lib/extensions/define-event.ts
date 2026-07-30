@@ -11,7 +11,8 @@
  * `createRovaApp`, which assembles the one catalog the editor reads.
  */
 
-import type { Schema } from "effect";
+import { Effect, Schema } from "effect";
+import { uniq } from "es-toolkit/array";
 import {
   type InngestEventOptions,
   rewriteInngestOptions,
@@ -19,10 +20,16 @@ import {
 import type { JsonObject } from "@rova/shared/types/json";
 import type { StringPath } from "@rova/shared/types/payload-path";
 import {
+  formatSchemaFailurePaths,
+  formatStandardIssuePath,
+} from "@rova/shared/types/schema-message";
+import {
   asStandardSchema,
+  isEffectSchema,
   type StandardSchema,
 } from "@rova/shared/types/schema";
 import type { ReferenceField } from "@rova/shared/workflow/node-references";
+import { compileEventDataEquals } from "@rova/shared/workflow/inngest-event-data";
 import { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fields";
 
 /**
@@ -50,7 +57,18 @@ export type EventDefinition<TPayload extends JsonObject> = {
   readonly name: string;
   readonly label: string;
   readonly description?: string;
+  /** The bridged object, kept for the JSON Schema half and the CEL key extraction. */
   readonly schema: StandardSchema<TPayload>;
+  /**
+   * The intake gate: whether an arriving payload is this Event at all.
+   *
+   * Built from the author's Effect schema with Rova's own parse options when
+   * there is one, and from `~standard.validate` when the payload was written in
+   * Zod or arktype, so intake has one thing to call and one failure to catch.
+   */
+  readonly decodePayload: (
+    payload: unknown
+  ) => Effect.Effect<void, PayloadRejected>;
   /**
    * Where this payload carries its Entity Value.
    *
@@ -73,6 +91,90 @@ export type EventDefinition<TPayload extends JsonObject> = {
 
 /** An Event definition of any payload, which is what a list of them holds. */
 export type AnyEventDefinition = EventDefinition<JsonObject>;
+
+/**
+ * A payload that is not the Event it arrived as.
+ *
+ * One type at the seam whichever library described the payload, so the HTTP
+ * route turns it into a 400 and the Inngest listener logs it and answers without
+ * retrying: a malformed payload does not improve on a second attempt.
+ */
+export class PayloadRejected extends Schema.TaggedErrorClass<PayloadRejected>()(
+  "PayloadRejected",
+  {
+    eventName: Schema.String,
+    error: Schema.String,
+  }
+) {}
+
+/**
+ * The intake gate for one Event, built once at definition.
+ *
+ * Two decisions are deliberate and both are the design's (section 2.3).
+ *
+ * The gate is **open**: declared fields are validated and a key the schema never
+ * heard of is ignored rather than refused. An Event's payload is the host's own
+ * message, senders add fields routinely, and an additive change upstream must not
+ * stop intake. This is the one boundary in the repo that does not carry
+ * `rejectUnknownKeys`, and the consequence is worth stating: drift on a declared
+ * field fails loudly, drift by addition is silent by choice.
+ *
+ * What it decodes to is **discarded**. Nothing downstream of an Event consumes a
+ * typed value: the lifecycle reads a string at the Correlation Path, a wait match
+ * evaluates CEL over JSON, templates resolve strings, and JSONB holds JSON. So the
+ * raw payload is what travels, and a schema carrying a transform cannot rewrite
+ * it on the way through -- a `Date` round trip would hand a run
+ * `"2026-03-01T10:00:00.000Z"` where the sender wrote `"2026-03-01T10:00:00Z"`,
+ * which is enough to break a wait match comparing a literal captured at park time.
+ */
+function buildPayloadGate(
+  eventName: string,
+  authored: PayloadSchema<JsonObject>,
+  bridged: StandardSchema<JsonObject>
+): (payload: unknown) => Effect.Effect<void, PayloadRejected> {
+  const reject = (error: string) =>
+    Effect.fail(new PayloadRejected({ eventName, error }));
+
+  // An Effect schema is decoded directly for the message rather than for the
+  // options: the bridge's defaults are these defaults, but `~standard.validate`
+  // hands back its own rendered strings, and Effect's renderer prints the value it
+  // rejected. A direct decode keeps the Effect issue, which this project renders
+  // itself.
+  if (isEffectSchema<JsonObject>(authored)) {
+    const decode = Schema.decodeUnknownEffect(authored, { errors: "all" });
+    return (payload) =>
+      decode(payload).pipe(
+        Effect.asVoid,
+        Effect.catchTag("SchemaError", (failure) =>
+          reject(formatSchemaFailurePaths(failure.issue))
+        )
+      );
+  }
+
+  // A foreign library's own validate, whose messages are its own. They are joined
+  // by path rather than passed through whole: this string is answered over HTTP
+  // and written to the log, and a library free to quote the value it rejected
+  // would put a payload in both.
+  return (payload) =>
+    Effect.suspend<void, PayloadRejected, never>(() => {
+      const result = bridged["~standard"].validate(payload);
+
+      if (result instanceof Promise) {
+        return reject(
+          "This Event's payload schema validates asynchronously, which intake cannot use"
+        );
+      }
+
+      if (!result.issues) {
+        return Effect.void;
+      }
+
+      const paths = uniq(
+        result.issues.map((issue) => formatStandardIssuePath(issue.path))
+      ).join(", ");
+      return reject(`Payload does not fit this Event at: ${paths}`);
+    });
+}
 
 export type DefineEventInput<TPayload extends JsonObject> = {
   /**
@@ -131,11 +233,20 @@ export function defineEvent<TPayload extends JsonObject>(
   const label = input.label?.trim() || name;
 
   // The one place a payload schema is bridged, so the parse options a decode
-  // would carry are decided once and by this call.
+  // would carry are decided once and by this call. The gate beside it is built
+  // from the authored schema for the same reason: those frozen options are not
+  // the ones an intake decode wants.
   const schema = asStandardSchema(input.schema);
 
   const sourceEvent = input.source?.event.trim() || name;
   const when = input.source?.when;
+
+  // Compiled here rather than where the listener is built, so a filter that
+  // cannot become a CEL expression fails at definition, in the build of whoever
+  // wrote it.
+  if (when) {
+    compileEventDataEquals(when);
+  }
 
   const inngestFunctionOptions = input.inngest
     ? rewriteInngestOptions(name, input.inngest, schema)
@@ -147,6 +258,7 @@ export function defineEvent<TPayload extends JsonObject>(
     label,
     description: input.description,
     schema,
+    decodePayload: buildPayloadGate(name, input.schema, schema),
     correlationPath: input.correlationPath?.trim() || undefined,
     source: when ? { event: sourceEvent, when } : { event: sourceEvent },
     inngestFunctionOptions,

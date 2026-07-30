@@ -5,11 +5,11 @@
 
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "#src/backend/lib/db/index";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/workflow/execution-contracts";
 import {
   workflowExecutionLogs,
   workflowExecutions,
 } from "#src/backend/lib/db/schema";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "#src/backend/lib/workflow-wait-state";
 
 export type LogStepStartParams = {
   executionId: string;
@@ -79,7 +79,7 @@ export async function logStepCompleteDb(
 
 export type LogWorkflowCompleteParams = {
   executionId: string;
-  status: "success" | "error" | "cancelled";
+  status: "completed" | "failed" | "canceled";
   output?: unknown;
   error?: string;
   startTime: number;
@@ -88,10 +88,10 @@ export type LogWorkflowCompleteParams = {
 /**
  * Log the completion of a workflow execution.
  *
- * Compare-and-set, mirroring `markExecutionCancelled`: a policy cancel can
- * flip the row to `cancelled` while the run is finishing its last step, and
- * the losing completion write must not resurrect it. Returns whether this
- * write recorded the terminal status.
+ * Compare-and-set, mirroring `endInFlightExecution`: a cancel can flip the row
+ * to `canceled` while the run is finishing its last step, and the losing
+ * completion write must not resurrect it. Returns whether this write recorded
+ * the terminal status.
  */
 export async function logWorkflowCompleteDb(
   params: LogWorkflowCompleteParams

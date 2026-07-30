@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, or, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne, or, type SQL, sql } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import {
   workflowExecutionEvents,
@@ -7,9 +7,11 @@ import {
   workflows,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
+import type { RovaDatabase, RovaTransaction } from "#src/backend/lib/db/index";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "#src/backend/lib/workflow-wait-state";
 import type { JsonObject } from "@rova/shared/types/json";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/workflow/execution-contracts";
+import type { Concurrency } from "@rova/shared/workflow/lifecycle-rules";
 
 /** One row of `workflow_executions`, as the run panel and the engine see it. */
 export type WorkflowExecution = typeof workflowExecutions.$inferSelect;
@@ -28,12 +30,12 @@ export type WorkflowWaitState = typeof workflowWaitStates.$inferSelect;
  * The columns every entrypoint fills when it opens a run.
  *
  * Status is not among them: which status a new row gets follows from which
- * method is called, so `insertRunning` writes "running" itself rather than
+ * method is called, so `startForEntity` writes "running" itself rather than
  * trusting a caller to pass it.
  */
 export type NewExecution = {
   workflowId: string;
-  triggerType: NonNullable<WorkflowExecution["triggerType"]>;
+  startSource: NonNullable<WorkflowExecution["startSource"]>;
   runMode: WorkflowExecution["runMode"];
   triggerEventType?: string;
   correlationKey?: string;
@@ -51,7 +53,7 @@ export type NewExecution = {
 export type NewTerminalExecution = NewExecution & {
   status: Extract<
     WorkflowExecution["status"],
-    "success" | "error" | "cancelled"
+    "completed" | "failed" | "canceled"
   >;
   output?: Record<string, unknown>;
   error?: string;
@@ -82,6 +84,21 @@ export type GlobalExecutionRow = WorkflowExecution & {
   workflowName: string;
   workflowIsPaused: boolean;
 };
+
+/**
+ * What Concurrency did when a start asked for room, and the row it opened.
+ *
+ * `refused` names the runs it deferred to, so first-wins can say what it deferred
+ * to rather than only that it declined.
+ */
+export type EntityStartOutcome =
+  | {
+      status: "started";
+      execution: WorkflowExecution;
+      /** Runs this start displaced, already `superseded` in the same transaction. */
+      supersededExecutionIds: string[];
+    }
+  | { status: "refused"; inFlightExecutionIds: string[] };
 
 /** Where a page of the cross-workflow runs list resumes from. */
 export type ExecutionCursor = {
@@ -138,10 +155,27 @@ export class ExecutionRepo extends Context.Service<
     readonly findWorkflowIdById: (
       executionId: string
     ) => Effect.Effect<string | null, DatabaseError>;
-    /** Open a run. The row exists before the Inngest event that drives it. */
-    readonly insertRunning: (
-      input: NewExecution
-    ) => Effect.Effect<WorkflowExecution, DatabaseError>;
+    /**
+     * Open a run, with Concurrency applied to the entity it is about.
+     *
+     * One transaction holding an advisory lock on the workflow and Entity Value,
+     * because the candidate read and the insert have to be one decision: two
+     * reschedules arriving together otherwise both read an empty in-flight set
+     * and both start, which the compare-and-set on the displaced rows cannot
+     * catch. `unlimited` compares nothing, so it takes no lock and inserts
+     * straight away.
+     *
+     * The Inngest sends stay outside: this answers what the rows now say, and the
+     * caller tells the bus about it.
+     */
+    readonly startForEntity: (input: {
+      execution: NewExecution;
+      concurrency: Concurrency;
+      /** Absent for a start with nothing to serialize on. */
+      entityValue?: string;
+      /** Written onto a displaced run's `error`, which run history shows. */
+      supersededReason: string;
+    }) => Effect.Effect<EntityStartOutcome, DatabaseError>;
     /** Record a run that never started, already in its terminal status. */
     readonly insertTerminal: (
       input: NewTerminalExecution
@@ -250,7 +284,14 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
         listByWorkflow: (workflowId) =>
           database.query((db) =>
             db.query.workflowExecutions.findMany({
-              where: eq(workflowExecutions.workflowId, workflowId),
+              where: and(
+                eq(workflowExecutions.workflowId, workflowId),
+                // A newest-wins workflow supersedes a run on every reschedule, so
+                // these would fill the panel with rows nobody opened it for. The
+                // count and the toggle that shows them arrive with the Lifecycle
+                // panel.
+                ne(workflowExecutions.status, "superseded")
+              ),
               orderBy: [desc(workflowExecutions.startedAt)],
               limit: WORKFLOW_EXECUTIONS_LIMIT,
             })
@@ -267,7 +308,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 workflowName: workflows.name,
                 workflowIsPaused: workflows.isPaused,
                 status: workflowExecutions.status,
-                triggerType: workflowExecutions.triggerType,
+                startSource: workflowExecutions.startSource,
                 runMode: workflowExecutions.runMode,
                 triggerEventType: workflowExecutions.triggerEventType,
                 correlationKey: workflowExecutions.correlationKey,
@@ -344,22 +385,121 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
             return execution?.workflowId ?? null;
           }),
 
-        insertRunning: (input) =>
+        startForEntity: ({
+          execution,
+          concurrency,
+          entityValue,
+          supersededReason,
+        }) =>
           database.query(async (db) => {
-            const [execution] = await db
-              .insert(workflowExecutions)
-              .values({
-                workflowId: input.workflowId,
-                status: "running",
-                triggerType: input.triggerType,
-                runMode: input.runMode,
-                triggerEventType: input.triggerEventType,
-                correlationKey: input.correlationKey,
-                input: input.input,
-              })
-              .returning();
+            const insertRunning = async (
+              tx: RovaDatabase | RovaTransaction
+            ) => {
+              const [row] = await tx
+                .insert(workflowExecutions)
+                .values({
+                  workflowId: execution.workflowId,
+                  status: "running",
+                  startSource: execution.startSource,
+                  runMode: execution.runMode,
+                  triggerEventType: execution.triggerEventType,
+                  correlationKey: execution.correlationKey,
+                  input: execution.input,
+                })
+                .returning();
 
-            return execution;
+              return row;
+            };
+
+            if (concurrency === "unlimited" || !entityValue) {
+              return {
+                status: "started" as const,
+                execution: await insertRunning(db),
+                supersededExecutionIds: [],
+              };
+            }
+
+            return await db.transaction(async (tx) => {
+              // Serialized per workflow and entity, and only against other
+              // starts: nothing else in Rova takes a lock in this name space, so a
+              // run's own writes never wait here. The two-key form keeps the
+              // workflow and the entity in separate hashes, so no pair of values
+              // can join into another pair's key. Two entities whose hashes
+              // collide serialize against each other, which costs a wait and
+              // decides nothing.
+              await tx.execute(
+                sql`select pg_advisory_xact_lock(hashtext(${`rova:entity:${execution.workflowId}`}), hashtext(${entityValue}))`
+              );
+
+              const inFlight = await tx
+                .select({ id: workflowExecutions.id })
+                .from(workflowExecutions)
+                .where(
+                  and(
+                    eq(workflowExecutions.workflowId, execution.workflowId),
+                    eq(workflowExecutions.correlationKey, entityValue),
+                    eq(workflowExecutions.runMode, execution.runMode),
+                    inArray(workflowExecutions.status, [
+                      ...IN_FLIGHT_EXECUTION_STATUSES,
+                    ])
+                  )
+                );
+
+              if (inFlight.length > 0 && concurrency === "first-wins") {
+                return {
+                  status: "refused" as const,
+                  inFlightExecutionIds: inFlight.map((row) => row.id),
+                };
+              }
+
+              let supersededExecutionIds: string[] = [];
+
+              if (inFlight.length > 0) {
+                const ids = inFlight.map((row) => row.id);
+                const now = new Date();
+
+                const superseded = await tx
+                  .update(workflowExecutions)
+                  .set({
+                    status: "superseded",
+                    waitingAt: null,
+                    completedAt: now,
+                    error: supersededReason,
+                  })
+                  .where(
+                    and(
+                      inArray(workflowExecutions.id, ids),
+                      inArray(workflowExecutions.status, [
+                        ...IN_FLIGHT_EXECUTION_STATUSES,
+                      ])
+                    )
+                  )
+                  .returning({ id: workflowExecutions.id });
+
+                supersededExecutionIds = superseded.map((row) => row.id);
+
+                if (supersededExecutionIds.length > 0) {
+                  await tx
+                    .update(workflowWaitStates)
+                    .set({ status: "cancelled", cancelledAt: now })
+                    .where(
+                      and(
+                        inArray(
+                          workflowWaitStates.executionId,
+                          supersededExecutionIds
+                        ),
+                        eq(workflowWaitStates.status, "waiting")
+                      )
+                    );
+                }
+              }
+
+              return {
+                status: "started" as const,
+                execution: await insertRunning(tx),
+                supersededExecutionIds,
+              };
+            });
           }),
 
         insertTerminal: (input) =>
@@ -370,7 +510,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
               .values({
                 workflowId: input.workflowId,
                 status: input.status,
-                triggerType: input.triggerType,
+                startSource: input.startSource,
                 runMode: input.runMode,
                 triggerEventType: input.triggerEventType,
                 correlationKey: input.correlationKey,
@@ -379,7 +519,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 error: input.error,
                 startedAt: now,
                 completedAt: now,
-                cancelledAt: input.status === "cancelled" ? now : null,
+                cancelledAt: input.status === "canceled" ? now : null,
               })
               .returning();
 
@@ -399,7 +539,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
             const closed = await db
               .update(workflowExecutions)
               .set({
-                status: "error",
+                status: "failed",
                 error: input.error,
                 completedAt: new Date(),
               })

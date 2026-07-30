@@ -1,8 +1,5 @@
 import { uniq } from "es-toolkit/array";
-import {
-  getIntegrationTypesByIds as getIntegrationTypesByIdsInDb,
-  validateIntegrationIds as validateIntegrationIdsInDb,
-} from "#src/backend/lib/db/integrations";
+import { getIntegrationTypesByIds as getIntegrationTypesByIdsInDb } from "#src/backend/lib/db/integrations";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { findActionById } from "@rova/shared/plugins/registry";
 import {
@@ -26,10 +23,6 @@ type ValidationResult = {
 };
 
 type IntegrationTypeMap = Record<string, IntegrationType>;
-
-export type ValidateIntegrationIds = (
-  integrationIds: string[]
-) => Promise<ValidationResult>;
 
 export type GetIntegrationTypesByIds = (
   integrationIds: string[]
@@ -124,43 +117,57 @@ export function extractRequiredIntegrationIds(
   );
 }
 
-async function findTypeMismatchIntegrationIds(input: {
+/**
+ * The integrations a graph names, checked in one read.
+ *
+ * One query answers both questions the graph asks -- whether each integration
+ * exists, and whether it is the type the action needs -- because an id absent from
+ * the type map is an id no row carries. It used to be two reads of the same rows
+ * for different columns, on a path a delivered Event runs per subscribing
+ * workflow.
+ */
+async function findInvalidIntegrations(input: {
   requirements: IntegrationRequirement[];
   getIntegrationTypesByIds: GetIntegrationTypesByIds;
-}): Promise<string[]> {
+}): Promise<{ missingIds: string[]; mismatchedIds: string[] }> {
   const { requirements, getIntegrationTypesByIds } = input;
   if (requirements.length === 0) {
-    return [];
+    return { missingIds: [], mismatchedIds: [] };
   }
 
   const integrationTypeById = await getIntegrationTypesByIds(
     uniq(requirements.map((requirement) => requirement.integrationId))
   );
+  const missingIds = new Set<string>();
   const mismatchedIds = new Set<string>();
 
   for (const requirement of requirements) {
     const actualType = integrationTypeById[requirement.integrationId];
-    if (actualType && actualType !== requirement.requiredType) {
+    if (!actualType) {
+      missingIds.add(requirement.integrationId);
+      continue;
+    }
+    if (actualType !== requirement.requiredType) {
       mismatchedIds.add(requirement.integrationId);
     }
   }
 
-  return Array.from(mismatchedIds);
+  return {
+    missingIds: Array.from(missingIds),
+    mismatchedIds: Array.from(mismatchedIds),
+  };
 }
 
 export async function validateWorkflowIntegrations(
   nodes: WorkflowNode[],
   options: {
     resolveActionByType?: ResolveActionByType;
-    validateIntegrationIds?: ValidateIntegrationIds;
     getIntegrationTypesByIds?: GetIntegrationTypesByIds;
     strictValidation?: boolean;
   } = {}
 ): Promise<ValidationResult> {
   const resolveActionByType =
     options.resolveActionByType ?? ((actionType) => findActionById(actionType));
-  const validateIntegrationIds =
-    options.validateIntegrationIds ?? validateIntegrationIdsInDb;
   const getIntegrationTypesByIds =
     options.getIntegrationTypesByIds ?? getIntegrationTypesByIdsInDb;
   const strictValidationEnabled = shouldEnforceStrictValidation(
@@ -170,49 +177,33 @@ export async function validateWorkflowIntegrations(
     nodes,
     resolveActionByType
   );
-  const integrationIds = uniq(
-    requirements.map((requirement) => requirement.integrationId)
-  );
 
-  const existenceValidation = await validateIntegrationIds(integrationIds);
-  if (!existenceValidation.valid) {
-    if (!strictValidationEnabled) {
-      integrationValidationLogger.warn(
-        "Bypassing invalid integration references because strict validation is disabled",
-        {
-          invalidIntegrationIds: existenceValidation.invalidIds ?? [],
-          invalidCount: existenceValidation.invalidIds?.length ?? 0,
-          strictValidationEnv: STRICT_VALIDATION_ENV,
-        }
-      );
-      return { valid: true };
-    }
-
-    return existenceValidation;
-  }
-
-  const typeMismatchIds = await findTypeMismatchIntegrationIds({
+  const { missingIds, mismatchedIds } = await findInvalidIntegrations({
     requirements,
     getIntegrationTypesByIds,
   });
-  if (typeMismatchIds.length > 0) {
-    if (!strictValidationEnabled) {
-      integrationValidationLogger.warn(
-        "Bypassing integration type mismatch because strict validation is disabled",
-        {
-          invalidIntegrationIds: typeMismatchIds,
-          invalidCount: typeMismatchIds.length,
-          strictValidationEnv: STRICT_VALIDATION_ENV,
-        }
-      );
-      return { valid: true };
-    }
 
-    return {
-      valid: false,
-      invalidIds: typeMismatchIds,
-    };
+  if (missingIds.length === 0 && mismatchedIds.length === 0) {
+    return { valid: true };
   }
 
-  return { valid: true };
+  if (!strictValidationEnabled) {
+    integrationValidationLogger.warn(
+      "Bypassing invalid integration references because strict validation is disabled",
+      {
+        invalidIntegrationIds: [...missingIds, ...mismatchedIds],
+        missingCount: missingIds.length,
+        mismatchedCount: mismatchedIds.length,
+        strictValidationEnv: STRICT_VALIDATION_ENV,
+      }
+    );
+    return { valid: true };
+  }
+
+  // A missing integration comes first: an id nothing carries is a different fix
+  // from an id carrying the wrong type, and naming both at once helps nobody.
+  return {
+    valid: false,
+    invalidIds: missingIds.length > 0 ? missingIds : mismatchedIds,
+  };
 }

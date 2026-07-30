@@ -4,21 +4,16 @@ import {
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
-
-type WaitStatus = "waiting" | "resumed" | "timed_out" | "cancelled";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/workflow/execution-contracts";
 
 /**
- * The statuses a terminal write may replace: the one definition of "this
- * execution is still live" shared by every status writer, so a terminal
- * status can never be overwritten in either direction. `pending` never
- * occurs today (startWorkflowRun inserts `running`) but is in the column's
- * type, so the filter names it for completeness.
+ * A wait row's own statuses, which are not an Execution's.
+ *
+ * `cancelled` keeps its two Ls here. A wait row is not an Execution and the words
+ * are separate vocabularies: the run status went to one L with CONTEXT.md, and
+ * renaming this one buys a migration and no clarity.
  */
-export const IN_FLIGHT_EXECUTION_STATUSES = [
-  "pending",
-  "running",
-  "waiting",
-] as const;
+type WaitStatus = "waiting" | "resumed" | "timed_out" | "cancelled";
 
 /**
  * Parks the execution on a wait. The status flip runs first, behind the
@@ -37,6 +32,8 @@ export async function createWaitState(input: {
   hookToken?: string;
   waitUntil?: Date;
   correlationKey?: string;
+  /** The Event names a delivery finds this row by. Empty for a wait on a clock. */
+  subscribedEvents?: string[];
   metadata?: Record<string, unknown>;
 }) {
   const flipped = await db
@@ -70,6 +67,7 @@ export async function createWaitState(input: {
       hookToken: input.hookToken,
       waitUntil: input.waitUntil,
       correlationKey: input.correlationKey,
+      subscribedEvents: input.subscribedEvents ?? [],
       metadata: input.metadata,
     })
     .returning();
@@ -96,22 +94,29 @@ export async function markExecutionRunning(executionId: string) {
 }
 
 /**
- * Compare-and-set: only an in-flight execution can become cancelled. A
- * running execution routinely completes between a policy cancel's candidate
- * query and this write; the guard keeps the finished row's status (and the
- * caller skips its audit event when this returns false).
+ * Compare-and-set: only an in-flight execution can be ended from outside. A
+ * running execution routinely completes between a candidate query and this
+ * write; the guard keeps the finished row's status (and the caller skips its
+ * audit event when this returns false).
+ *
+ * `canceled` is a Cancel Event or an operator stopping the run, so it stamps
+ * `cancelledAt`. `superseded` is newest-wins Concurrency letting a newer start
+ * take this run's place, which is routine and not a cancellation.
  */
-export async function markExecutionCancelled(input: {
+export async function endInFlightExecution(input: {
   executionId: string;
+  status: "canceled" | "superseded";
   error?: string;
 }) {
+  const now = new Date();
+
   const result = await db
     .update(workflowExecutions)
     .set({
-      status: "cancelled",
+      status: input.status,
       waitingAt: null,
-      cancelledAt: new Date(),
-      completedAt: new Date(),
+      cancelledAt: input.status === "canceled" ? now : null,
+      completedAt: now,
       error: input.error,
     })
     .where(
@@ -177,27 +182,6 @@ export async function listExecutionWaitingStates(executionId: string) {
     where: and(
       eq(workflowWaitStates.executionId, executionId),
       eq(workflowWaitStates.status, "waiting")
-    ),
-  });
-}
-
-/**
- * The candidate set for a Replace/Cancel routing action: every execution for
- * this entity that a cancel can still reach, whatever node it is standing on.
- * runMode is a column here, so unlike the wait-state lookup no join is needed.
- */
-export async function listWorkflowInFlightExecutionsByCorrelation(input: {
-  workflowId: string;
-  correlationKey: string;
-  runMode: "live" | "test";
-}) {
-  return await db.query.workflowExecutions.findMany({
-    columns: { id: true },
-    where: and(
-      eq(workflowExecutions.workflowId, input.workflowId),
-      eq(workflowExecutions.correlationKey, input.correlationKey),
-      eq(workflowExecutions.runMode, input.runMode),
-      inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES])
     ),
   });
 }

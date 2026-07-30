@@ -1,11 +1,4 @@
-function asNonEmptyString(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
+import { asNonEmptyString } from "#src/types/string";
 
 function readInvalidIntegrationIds(value: unknown): string[] {
   if (!Array.isArray(value)) {

@@ -3,9 +3,9 @@
  *
  * The host supplies a predicate; Rova supplies the knowledge of which routes it
  * applies to. That split is why this is an option rather than middleware a host
- * wraps the mount in: the Inngest callback and the webhook and resume paths are
- * reached by machines carrying their own credentials, and gating them uniformly
- * would break all three.
+ * wraps the mount in: the Inngest callback, the event intake route and the resume
+ * path are reached by machines carrying their own credentials, and gating them
+ * uniformly would break all three.
  *
  * The predicate authorizes; it does not identify. No table carries a tenant or a
  * user column, so a `Principal` type Rova defined and never read would be

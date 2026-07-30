@@ -276,7 +276,7 @@ describe("wait node - hook mode", () => {
     ]);
   });
 
-  it("copies the node's event list into the wait state metadata", async () => {
+  it("copies the node's event list onto the wait row", async () => {
     // Resume matching reads this list off the stored wait state, so the node
     // config and the row have to agree entry for entry.
     const { execution } = runWait({
@@ -289,9 +289,10 @@ describe("wait node - hook mode", () => {
     });
     await execution;
 
-    expect(store.callsOf("createWaitState")[0]?.metadata).toMatchObject({
-      waitForEvents: ["appointment.confirmed", "appointment.cancelled"],
-    });
+    expect(store.callsOf("createWaitState")[0]?.subscribedEvents).toEqual([
+      "appointment.confirmed",
+      "appointment.cancelled",
+    ]);
   });
 
   // The filtering happens where the list is produced, so nothing downstream of
@@ -304,9 +305,7 @@ describe("wait node - hook mode", () => {
     });
     await execution;
 
-    expect(store.callsOf("createWaitState")[0]?.metadata).toMatchObject({
-      waitForEvents: [],
-    });
+    expect(store.callsOf("createWaitState")[0]?.subscribedEvents).toEqual([]);
   });
 
   it("drops blank entries from the event list before storing it", async () => {
@@ -317,9 +316,9 @@ describe("wait node - hook mode", () => {
     });
     await execution;
 
-    expect(store.callsOf("createWaitState")[0]?.metadata).toMatchObject({
-      waitForEvents: ["x"],
-    });
+    expect(store.callsOf("createWaitState")[0]?.subscribedEvents).toEqual([
+      "x",
+    ]);
   });
 
   it("fails the node when the configured timeout cannot be parsed", async () => {

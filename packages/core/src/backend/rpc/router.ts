@@ -33,7 +33,6 @@ import {
   getWorkflowExecutions,
 } from "#src/backend/services/workflows/executions/list";
 import { getWorkflowExecutionsGlobal } from "#src/backend/services/workflows/executions/global";
-import { postWorkflowWebhook } from "#src/backend/services/workflows/triggering/webhook";
 import { getWorkflows } from "#src/backend/services/workflows/list";
 import { postWorkflowsBulkLifecycle } from "#src/backend/services/workflows/bulk-lifecycle";
 import { postWorkflowsCreate } from "#src/backend/services/workflows/create";
@@ -248,15 +247,6 @@ export const rpcRouter = rpc.router({
       rpcEffectHandler(({ input }) =>
         postWorkflowExecute(input.workflowId, {
           input: input.input,
-        })
-      )
-    ),
-    triggerWebhook: rpc.workflow.triggerWebhook.handler(
-      rpcEffectHandler(({ context, input }) =>
-        postWorkflowWebhook({
-          workflowId: input.workflowId,
-          authHeader: context.headers.get("Authorization"),
-          body: input.input ?? {},
         })
       )
     ),

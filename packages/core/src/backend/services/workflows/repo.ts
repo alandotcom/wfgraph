@@ -1,15 +1,42 @@
-import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { and, arrayContains, desc, eq, ne, sql } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import {
   type Workflow,
+  workflowEventSubscriptions,
   type WorkflowMode,
   type WorkflowVisibility,
   workflows,
+  workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import type { WorkflowUpdateData } from "#src/backend/services/workflows/mappers";
 import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
+
+/** One row of `workflow_event_subscriptions`: one workflow, one Event, one role. */
+export type WorkflowEventSubscriptionRow =
+  typeof workflowEventSubscriptions.$inferSelect;
+
+/**
+ * A workflow one delivered Event concerns, and what it holds that Event for.
+ *
+ * The roles decide how much work the delivery is worth: a `start` runs the full
+ * preflight, and a workflow holding only `wait` needs none of it. The name and
+ * mode ride along because the join reads them anyway, which is what keeps a
+ * wait-only delivery off the graph column.
+ */
+export type EventSubscriber = {
+  id: string;
+  name: string;
+  mode: WorkflowMode;
+  roles: WorkflowEventSubscriptionRow["role"][];
+  /**
+   * Where this workflow reads the Event's Entity Value when the Event declares no
+   * Correlation Path of its own. Null when neither declares one, which is a
+   * workflow that cannot identify entities for this Event at all.
+   */
+  correlationPath: string | null;
+};
 
 /**
  * Every database question the workflow services ask about workflows themselves.
@@ -52,9 +79,30 @@ export class WorkflowRepo extends Context.Service<
       excludingWorkflowId: string;
     }) => Effect.Effect<boolean, DatabaseError>;
     /**
+     * The workflows a delivered Event concerns.
+     *
+     * Two reads, unioned, because the Event reaches a workflow for two unrelated
+     * reasons. The derived index answers which workflows name this Event in the
+     * graph they hold now, which is what a start needs. The parked-run read answers
+     * which runs are still waiting on it, and it asks each row's own
+     * `subscribed_events`, written when the run parked: a Wait node edited since
+     * then no longer describes what its parked runs are owed, and the run would
+     * otherwise wait out its timeout. Both are indexed on the Event name.
+     *
+     * Paused workflows are left out here rather than skipped later: a paused
+     * workflow starts nothing and its parked runs are not reachable either, and
+     * filtering in the join is what keeps a per-delivery row out of the timeline.
+     */
+    readonly listEventSubscribers: (
+      eventName: string
+    ) => Effect.Effect<EventSubscriber[], DatabaseError>;
+    /**
      * Store a new workflow. `mode` and `visibility` are left to their column
      * defaults unless a caller carries them over from a source workflow, which
      * duplication does and creation does not.
+     *
+     * `eventSubscriptions` are the rows this graph calls for, written in the same
+     * transaction: a graph and the index over it are one fact.
      */
     readonly insert: (input: {
       id: string;
@@ -63,6 +111,8 @@ export class WorkflowRepo extends Context.Service<
       graph: SerializedWorkflowGraph;
       mode?: WorkflowMode;
       visibility?: WorkflowVisibility;
+      isPaused?: boolean;
+      eventSubscriptions: WorkflowEventSubscriptionRow[];
     }) => Effect.Effect<Workflow, DatabaseError>;
     /**
      * Whether the workflow is paused, or null when it is gone. The bulk
@@ -76,11 +126,21 @@ export class WorkflowRepo extends Context.Service<
       workflowId: string;
       isPaused: boolean;
     }) => Effect.Effect<void, DatabaseError>;
-    /** Null when the row was gone by the time the update ran. */
-    readonly update: (
-      workflowId: string,
-      updates: WorkflowUpdateData
-    ) => Effect.Effect<Workflow | null, DatabaseError>;
+    /**
+     * Null when the row was gone by the time the update ran.
+     *
+     * `eventSubscriptions` replaces this workflow's rows wholesale, and saying so
+     * is not optional: a graph write that forgot the index derived from it would
+     * leave a workflow subscribed to the Events of a graph it no longer has.
+     * `"unchanged"` is the other half of that -- a rename touches no graph, and
+     * re-deriving would mean re-validating a stored graph a rename has no business
+     * refusing.
+     */
+    readonly update: (input: {
+      workflowId: string;
+      updates: WorkflowUpdateData;
+      eventSubscriptions: WorkflowEventSubscriptionRow[] | "unchanged";
+    }) => Effect.Effect<Workflow | null, DatabaseError>;
     readonly deleteById: (
       workflowId: string
     ) => Effect.Effect<void, DatabaseError>;
@@ -89,6 +149,11 @@ export class WorkflowRepo extends Context.Service<
      * name is only unique through an index the autosave path predates.
      */
     readonly findCurrent: () => Effect.Effect<Workflow | null, DatabaseError>;
+    /**
+     * The draft subscribes to nothing: an Event may not start a run of a graph
+     * nobody has saved, so no subscription rows are written for it here or on
+     * the updates that follow.
+     */
     readonly insertCurrent: (input: {
       id: string;
       graph: SerializedWorkflowGraph;
@@ -162,22 +227,128 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
             return conflict !== undefined;
           }),
 
-        insert: (input) =>
+        listEventSubscribers: (eventName) =>
           database.query(async (db) => {
-            const [inserted] = await db
-              .insert(workflows)
-              .values({
-                id: input.id,
-                name: input.name,
-                description: input.description,
-                graph: input.graph,
-                mode: input.mode,
-                visibility: input.visibility,
-              })
-              .returning();
+            const [named, parked] = await Promise.all([
+              // The wait role is left to the parked read: a graph naming an Event
+              // on a Wait node with nothing parked on it is owed no delivery, and
+              // a row here would buy a durable step that resolves to zero runs.
+              // `cancel` rides along so the Canceled outlet needs no change here.
+              db
+                .select({
+                  id: workflows.id,
+                  name: workflows.name,
+                  mode: workflows.mode,
+                  role: workflowEventSubscriptions.role,
+                  correlationPath: workflowEventSubscriptions.correlationPath,
+                })
+                .from(workflowEventSubscriptions)
+                .innerJoin(
+                  workflows,
+                  eq(workflowEventSubscriptions.workflowId, workflows.id)
+                )
+                .where(
+                  and(
+                    eq(workflowEventSubscriptions.eventName, eventName),
+                    ne(workflowEventSubscriptions.role, "wait"),
+                    eq(workflows.isPaused, false)
+                  )
+                ),
+              // The path comes from the index by a left join rather than a second
+              // round trip, and it is a left join because an orphaned run's
+              // workflow may no longer name this Event anywhere.
+              db
+                .selectDistinct({
+                  id: workflows.id,
+                  name: workflows.name,
+                  mode: workflows.mode,
+                  correlationPath: workflowEventSubscriptions.correlationPath,
+                })
+                .from(workflowWaitStates)
+                .innerJoin(
+                  workflows,
+                  eq(workflowWaitStates.workflowId, workflows.id)
+                )
+                .leftJoin(
+                  workflowEventSubscriptions,
+                  and(
+                    eq(workflowEventSubscriptions.workflowId, workflows.id),
+                    eq(workflowEventSubscriptions.eventName, eventName)
+                  )
+                )
+                .where(
+                  and(
+                    eq(workflowWaitStates.status, "waiting"),
+                    arrayContains(workflowWaitStates.subscribedEvents, [
+                      eventName,
+                    ]),
+                    eq(workflows.isPaused, false)
+                  )
+                ),
+            ]);
 
-            return inserted;
+            const byId = new Map<string, EventSubscriber>();
+
+            for (const row of named) {
+              const existing = byId.get(row.id);
+              if (existing) {
+                existing.roles.push(row.role);
+                continue;
+              }
+              byId.set(row.id, {
+                id: row.id,
+                name: row.name,
+                mode: row.mode,
+                roles: [row.role],
+                correlationPath: row.correlationPath,
+              });
+            }
+
+            for (const row of parked) {
+              const existing = byId.get(row.id);
+              if (existing) {
+                if (!existing.roles.includes("wait")) {
+                  existing.roles.push("wait");
+                }
+                continue;
+              }
+              byId.set(row.id, {
+                id: row.id,
+                name: row.name,
+                mode: row.mode,
+                roles: ["wait"],
+                correlationPath: row.correlationPath,
+              });
+            }
+
+            return Array.from(byId.values());
           }),
+
+        insert: (input) =>
+          database.query(
+            async (db) =>
+              await db.transaction(async (tx) => {
+                const [inserted] = await tx
+                  .insert(workflows)
+                  .values({
+                    id: input.id,
+                    name: input.name,
+                    description: input.description,
+                    graph: input.graph,
+                    mode: input.mode,
+                    visibility: input.visibility,
+                  })
+                  .returning();
+
+                if (input.eventSubscriptions.length > 0) {
+                  await tx
+                    .insert(workflowEventSubscriptions)
+                    .values(input.eventSubscriptions);
+                }
+
+                return inserted;
+              })
+          ),
 
         findPausedById: (workflowId) =>
           database.query(async (db) => {
@@ -197,16 +368,40 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               .where(eq(workflows.id, input.workflowId));
           }),
 
-        update: (workflowId, updates) =>
-          database.query(async (db) => {
-            const updated = await db
-              .update(workflows)
-              .set(updates)
-              .where(eq(workflows.id, workflowId))
-              .returning();
+        update: (input) =>
+          database.query(
+            async (db) =>
+              await db.transaction(async (tx) => {
+                const updated = await tx
+                  .update(workflows)
+                  .set(input.updates)
+                  .where(eq(workflows.id, input.workflowId))
+                  .returning();
 
-            return updated.at(0) ?? null;
-          }),
+                const workflow = updated.at(0);
+                if (!workflow) {
+                  return null;
+                }
+
+                const rows = input.eventSubscriptions;
+                if (rows !== "unchanged") {
+                  await tx
+                    .delete(workflowEventSubscriptions)
+                    .where(
+                      eq(
+                        workflowEventSubscriptions.workflowId,
+                        input.workflowId
+                      )
+                    );
+
+                  if (rows.length > 0) {
+                    await tx.insert(workflowEventSubscriptions).values(rows);
+                  }
+                }
+
+                return workflow;
+              })
+          ),
 
         deleteById: (workflowId) =>
           database.query(async (db) => {

@@ -17,8 +17,8 @@ import {
 import {
   buildIgnoredRunAuditMessage,
   buildRunStartedAuditMessage,
+  enqueueStartedRun,
   recordPausedRunIgnored,
-  startWorkflowRun,
 } from "./run-lifecycle";
 
 // Both entrypoints below write a timeline entry through the audit module, which
@@ -37,7 +37,7 @@ function createExecution(
     workflowId: "wf_1",
     workflowRunId: null,
     status: "running",
-    triggerType: "webhook",
+    startSource: "event",
     runMode: "live",
     triggerEventType: null,
     correlationKey: null,
@@ -60,119 +60,71 @@ const runTarget = {
 };
 
 describe("buildRunStartedAuditMessage", () => {
-  it("names the entrypoint that started the run", () => {
+  it("names the start source that opened the run", () => {
     expect(
-      buildRunStartedAuditMessage({ triggerType: "manual", runMode: "live" })
+      buildRunStartedAuditMessage({ startSource: "manual", runMode: "live" })
     ).toBe("Manual run started");
     expect(
-      buildRunStartedAuditMessage({ triggerType: "webhook", runMode: "live" })
-    ).toBe("Webhook run started");
+      buildRunStartedAuditMessage({ startSource: "schedule", runMode: "live" })
+    ).toBe("Scheduled run started");
     expect(
-      buildRunStartedAuditMessage({ triggerType: "event", runMode: "live" })
+      buildRunStartedAuditMessage({ startSource: "event", runMode: "live" })
     ).toBe("Event-triggered run started");
   });
 
   it("marks test mode runs", () => {
     expect(
-      buildRunStartedAuditMessage({ triggerType: "webhook", runMode: "test" })
-    ).toBe("Webhook test mode run started");
+      buildRunStartedAuditMessage({ startSource: "event", runMode: "test" })
+    ).toBe("Event-triggered test mode run started");
   });
 
-  it("appends the event type when the trigger resolved one", () => {
+  it("appends the Event that started the run", () => {
     expect(
       buildRunStartedAuditMessage({
-        triggerType: "event",
+        startSource: "event",
         runMode: "test",
-        eventType: "order.created",
+        eventName: "app/appointment.created",
       })
-    ).toBe("Event-triggered test mode run started for order.created");
+    ).toBe("Event-triggered test mode run started for app/appointment.created");
   });
 });
 
 describe("buildIgnoredRunAuditMessage", () => {
-  it("uses the calling entrypoint's own vocabulary", () => {
+  it("uses the calling start source's own vocabulary", () => {
     expect(
       buildIgnoredRunAuditMessage({
-        triggerType: "manual",
+        startSource: "manual",
         reason: "workflow_paused",
       })
-    ).toBe("Ignored execute event because workflow is paused");
+    ).toBe("Ignored manual run because workflow is paused");
     expect(
       buildIgnoredRunAuditMessage({
-        triggerType: "webhook",
-        reason: "workflow_paused",
-      })
-    ).toBe("Ignored webhook event because workflow is paused");
-    expect(
-      buildIgnoredRunAuditMessage({
-        triggerType: "event",
+        startSource: "event",
         reason: "workflow_paused",
       })
     ).toBe("Ignored event because workflow is paused");
   });
 
-  it("reports where the event type was expected", () => {
+  // The refusal is the whole point of the row: without it, first-wins
+  // Concurrency declining a start is invisible.
+  it("says which Event first-wins Concurrency declined", () => {
     expect(
       buildIgnoredRunAuditMessage({
-        triggerType: "webhook",
-        reason: "missing_event_type",
-        eventTypePath: "body.type",
-      })
-    ).toBe('Ignored webhook event: event type missing at path "body.type"');
-  });
-
-  // No path is fabricated when none is known: a default would send the
-  // builder to fix a field the classifier never reads.
-  it("omits the path when none is configured", () => {
-    expect(
-      buildIgnoredRunAuditMessage({
-        triggerType: "webhook",
-        reason: "missing_event_type",
-      })
-    ).toBe("Ignored webhook event: no event type was found in the payload");
-  });
-
-  it("says the payload failed the trigger schema", () => {
-    expect(
-      buildIgnoredRunAuditMessage({
-        triggerType: "webhook",
-        reason: "invalid_payload",
-      })
-    ).toBe("Ignored webhook event: payload failed the trigger schema");
-  });
-
-  it("names the event the routing policy does not map", () => {
-    expect(
-      buildIgnoredRunAuditMessage({
-        triggerType: "webhook",
-        reason: "event_not_mapped",
-        eventType: "order.archived",
+        startSource: "event",
+        reason: "concurrency_first_wins",
+        eventName: "app/appointment.created",
       })
     ).toBe(
-      "Ignored webhook event order.archived: not mapped by the routing policy"
+      "Did not start a run from event app/appointment.created: a run for this entity is already going and Concurrency is first-wins"
     );
     expect(
       buildIgnoredRunAuditMessage({
-        triggerType: "webhook",
-        reason: "event_not_mapped",
+        startSource: "manual",
+        reason: "concurrency_first_wins",
       })
-    ).toBe("Ignored webhook event: not mapped by the routing policy");
-  });
-
-  it("explains that a cancel event found nothing to cancel", () => {
-    expect(
-      buildIgnoredRunAuditMessage({
-        triggerType: "webhook",
-        reason: "no_in_flight_runs",
-        eventType: "order.cancelled",
-      })
-    ).toBe("Ignored order.cancelled because no in-flight runs were found");
-    expect(
-      buildIgnoredRunAuditMessage({
-        triggerType: "manual",
-        reason: "no_in_flight_runs",
-      })
-    ).toBe("Ignored execute event because no in-flight runs were found");
+    ).toBe(
+      "Did not start a run from manual run: a run for this entity is already going and Concurrency is first-wins"
+    );
   });
 });
 
@@ -180,7 +132,7 @@ describe("buildIgnoredRunAuditMessage", () => {
 // services that layer provides. The message builders above need no services and
 // use the plain one imported at the top, so the callback parameter is named
 // apart from it rather than shadowing it.
-describe("startWorkflowRun", () => {
+describe("enqueueStartedRun", () => {
   layer(SilentAppLoggerLayer)((serviceIt) => {
     serviceIt.effect("stores the event id the enqueue answered with", () =>
       Effect.gen(function* () {
@@ -188,18 +140,20 @@ describe("startWorkflowRun", () => {
           runIds: [] as Array<{ executionId: string; runId: string | null }>,
         };
 
+        // The row is opened by `ExecutionRepo.startForEntity`, under the lock that
+        // makes Concurrency a decision; this is what happens after it exists.
         // `markEnqueueFailed` is left refusing, so a compensation on the happy
         // path would kill the test rather than pass unnoticed.
-        const started = yield* startWorkflowRun({
+        const started = yield* enqueueStartedRun({
           workflow: runTarget,
-          trigger: { type: "webhook" },
+          start: { source: "event" },
+          executionId: "exec_1",
           runMode: "live",
           payload: { order: "o1" },
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
               stubExecutionRepo({
-                insertRunning: () => Effect.succeed(createExecution()),
                 setRunId: (input) =>
                   Effect.sync(() => {
                     calls.runIds.push(input);
@@ -233,16 +187,16 @@ describe("startWorkflowRun", () => {
 
         // `setRunId` is left refusing: there is no run id to store, and writing
         // one would be the bug.
-        const failure = yield* startWorkflowRun({
+        const failure = yield* enqueueStartedRun({
           workflow: runTarget,
-          trigger: { type: "webhook" },
+          start: { source: "event" },
+          executionId: "exec_1",
           runMode: "live",
           payload: {},
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
               stubExecutionRepo({
-                insertRunning: () => Effect.succeed(createExecution()),
                 markEnqueueFailed: (input) =>
                   Effect.sync(() => {
                     calls.closed.push(input);
@@ -277,16 +231,16 @@ describe("startWorkflowRun", () => {
             closed: [] as Array<{ executionId: string; error: string }>,
           };
 
-          yield* startWorkflowRun({
+          yield* enqueueStartedRun({
             workflow: runTarget,
-            trigger: { type: "webhook" },
+            start: { source: "event" },
+            executionId: "exec_1",
             runMode: "live",
             payload: {},
           }).pipe(
             Effect.provide(
               Layer.mergeAll(
                 stubExecutionRepo({
-                  insertRunning: () => Effect.succeed(createExecution()),
                   markEnqueueFailed: (input) =>
                     Effect.sync(() => {
                       calls.closed.push(input);
@@ -316,16 +270,16 @@ describe("startWorkflowRun", () => {
       Effect.gen(function* () {
         const recorder = makeRecordingLogger();
 
-        yield* startWorkflowRun({
+        yield* enqueueStartedRun({
           workflow: runTarget,
-          trigger: { type: "webhook" },
+          start: { source: "event" },
+          executionId: "exec_1",
           runMode: "live",
           payload: {},
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
               stubExecutionRepo({
-                insertRunning: () => Effect.succeed(createExecution()),
                 markEnqueueFailed: () => Effect.succeed(false),
               }),
               stubInngestClient({
@@ -367,7 +321,7 @@ describe("recordPausedRunIgnored", () => {
 
         const execution = yield* recordPausedRunIgnored({
           workflowId: "wf_1",
-          triggerType: "webhook",
+          startSource: "event",
           runMode: "test",
           payload: { order: "o1" },
         }).pipe(
@@ -378,7 +332,7 @@ describe("recordPausedRunIgnored", () => {
                   calls.terminals.push(input);
                   return createExecution({
                     id: "exec_ignored",
-                    status: "success",
+                    status: "completed",
                   });
                 }),
             })
@@ -389,8 +343,8 @@ describe("recordPausedRunIgnored", () => {
 
         const recorded = calls.terminals[0];
         assert.isDefined(recorded);
-        assert.strictEqual(recorded.status, "success");
-        assert.strictEqual(recorded.triggerType, "webhook");
+        assert.strictEqual(recorded.status, "completed");
+        assert.strictEqual(recorded.startSource, "event");
         assert.strictEqual(recorded.runMode, "test");
         assert.deepStrictEqual(recorded.output, {
           status: "ignored",

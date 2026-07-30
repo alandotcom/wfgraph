@@ -1,198 +1,186 @@
+/**
+ * One Inngest function per Event, built from the catalog.
+ *
+ * The listener set is the app's extension surface rather than its saved graphs, so
+ * it is fixed for the life of the process: nothing a Workflow Builder does changes
+ * which Events Inngest delivers, and the re-sync a graph save used to need does not
+ * exist. Which workflows a delivered Event concerns is the subscription index's
+ * question, asked inside the handler.
+ *
+ * Per Event rather than per source name, even though several Events may share a
+ * source. A function then knows which Event it is without inspecting the payload,
+ * its own flow control is the function's, and Inngest's ten-trigger ceiling is out
+ * of reach. The narrowing stays Inngest's own: each function's single trigger
+ * carries that Event's compiled `source.when`.
+ */
+
 import { Effect } from "effect";
+import { NonRetriableError } from "inngest";
 import type { InngestFunction } from "inngest";
-import {
-  AppLogger,
-  type EffectLogger,
-} from "#src/backend/lib/effect/app-logger";
-import { callDbModule } from "#src/backend/lib/effect/database";
-import { callInngestModule } from "#src/backend/lib/effect/inngest-client";
-import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
-import { resumeMatchingWaitHooks } from "#src/backend/lib/workflow-wait-resume";
+import type { AnyEventDefinition } from "#src/backend/lib/extensions/define-event";
+import { getInngestClient } from "#src/backend/lib/inngest/client";
+import { getAppLogger } from "#src/backend/lib/logger";
 import type { RovaRuntime } from "#src/backend/runtime";
-import { orchestrateRoutedTrigger } from "#src/backend/services/workflows/triggering/routing";
-import { runWorkflowExecutionPreflight } from "#src/backend/services/workflows/triggering/preflight";
-import { startWorkflowRun } from "#src/backend/services/workflows/triggering/run-lifecycle";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import {
+  applyLifecycleRules,
+  deliverToWaits,
+  type LifecycleDeliveryOutcome,
+  listEventSubscribers,
+} from "#src/backend/services/workflows/lifecycle/deliver-event";
 import { type JsonObject, readJsonObject } from "@rova/shared/types/json";
-import type { InngestEventTriggerConfig } from "@rova/shared/workflow/trigger-registry";
-import { routeWorkflowTrigger } from "@rova/shared/workflow/trigger-registry";
-import { getInngestClient } from "./client";
+import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
+import { compileEventDataEquals } from "@rova/shared/workflow/inngest-event-data";
+
+const logger = getAppLogger("workflow", "event-listener");
 
 /**
- * Reads the trigger payload off an Inngest event.
+ * Reads the payload off an Inngest event.
  *
  * Inngest serializes event data with `JSON.stringify` before sending it, so
- * whatever the application passed to `inngest.send(...)` reaches us as JSON.
- * This parse is where that fact becomes a type. An event whose data is not a
- * JSON object (an array, a bare string, nothing at all) carries no fields for a
- * trigger to route on, so it is treated as an empty payload.
+ * whatever the application passed to `inngest.send(...)` reaches us as JSON. This
+ * parse is where that fact becomes a type. Data that is not a JSON object carries
+ * no fields for an Event schema to describe, so it is treated as an empty payload
+ * and refused by that schema.
  */
-function toTriggerPayload(value: unknown): JsonObject {
+function toEventPayload(value: unknown): JsonObject {
   return readJsonObject(value) ?? {};
 }
 
-/**
- * What this function answers Inngest with when the workflow behind it cannot
- * run. Neither is retryable, so both are values rather than throws.
- */
-type EventListenerRefusal = {
-  status: "error";
-  reason: "workflow_not_found" | "preflight_failed";
+/** What one workflow's delivery came to, as the function answers Inngest. */
+type WorkflowDelivery = {
+  lifecycle: LifecycleDeliveryOutcome;
+  resumedWaits: number;
 };
 
-const refusePreflight = (logger: EffectLogger, workflowName: string) =>
-  logger
-    .error("Event listener preflight failed", { workflowName })
-    .pipe(Effect.as(undefined));
+/**
+ * The steps this handler needs, named here rather than taken from the SDK's
+ * context, so the shape it depends on is stated in one readable place and a test
+ * can stand in for it.
+ */
+type EventListenerSteps = {
+  run: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
+};
 
 /**
- * One delivered event, from the workflow lookup through to the outcome.
+ * One delivered Event, fanned out.
  *
- * The two refusals become return values here because Inngest retries a throw,
- * and neither a missing workflow nor a graph that will not validate improves on
- * a second attempt. A rejected query or a refused send does still fail, which is
- * what puts the event back in front of the retry policy.
+ * Each workflow is two sibling steps: the Lifecycle Rules, then the wait delivery
+ * that follows from what they did. Sibling rather than nested, because a wait
+ * delivery that fails must not replay a start -- replaying one would open a second
+ * run for the same arrival. The ids are derived from the workflow, and the
+ * subscriber list is memoized above them, so a retry resumes at the workflow that
+ * failed with the same list it started from.
  */
-export const runEventTrigger = Effect.fn("runEventTrigger")(function* (input: {
-  workflowId: string;
-  eventLabel: string;
-  eventNames: string[];
-  eventName: string;
+export async function runEventListener(input: {
+  event: AnyEventDefinition;
   payload: JsonObject;
-}) {
-  const { workflowId, eventLabel, payload } = input;
-  const repo = yield* WorkflowRepo;
-  const logger = (yield* AppLogger)
-    .get("workflow", "event-listener")
-    .with({ workflowId, inngestEventNames: input.eventNames });
+  /** Names the arrival in every line and row this delivery writes. */
+  arrival: { eventId?: string; runId?: string };
+  runtime: RovaRuntime;
+  step: EventListenerSteps;
+}): Promise<{ eventName: string; workflows: WorkflowDelivery[] }> {
+  const { event, payload, runtime, step } = input;
+  const arrivalLogger = logger.with({
+    eventName: event.name,
+    ...input.arrival,
+  });
 
-  const workflow = yield* repo.findById(workflowId);
-
-  if (!workflow) {
-    yield* logger.error("Workflow not found for event listener");
-    const refusal: EventListenerRefusal = {
-      status: "error",
-      reason: "workflow_not_found",
-    };
-    return refusal;
-  }
-
-  const preflight = yield* runWorkflowExecutionPreflight({
-    workflow,
-    logger,
-    requireExecutionType: "event",
-  }).pipe(
-    // Only the two verdicts preflight reaches on its own are turned into a
-    // refusal. A rejected query underneath it is not a verdict, and is left to
-    // fail so the event is retried.
-    Effect.catchTags({
-      InvalidInput: () => refusePreflight(logger, workflow.name),
-      IntegrationValidationFailed: () => refusePreflight(logger, workflow.name),
-    })
-  );
-
-  if (!preflight) {
-    const refusal: EventListenerRefusal = {
-      status: "error",
-      reason: "preflight_failed",
-    };
-    return refusal;
-  }
-
-  const { workflowGraph, triggerConfig } = preflight;
-
-  if (workflow.isPaused) {
-    yield* callDbModule(() =>
-      logWorkflowAuditEvent({
-        workflowId,
-        eventType: "run_ignored",
-        message: "Ignored event because workflow is paused",
-        metadata: { inngestEventName: eventLabel, runMode: workflow.mode },
+  // The gate again, because a payload can reach the bus without passing the HTTP
+  // route: a host sends its own Events directly. A refusal is not retried, since
+  // the same payload fails the same way on the next attempt.
+  const rejection = await runtime.runPromise(
+    event.decodePayload(payload).pipe(
+      Effect.match({
+        onSuccess: () => undefined,
+        onFailure: (rejected) => rejected.error,
       })
-    );
-    return { status: "ignored", reason: "workflow_paused" } as const;
-  }
-
-  const routing = routeWorkflowTrigger({
-    config: triggerConfig,
-    payload,
-    eventName: input.eventName,
-  });
-  const { eventType, correlationKey, action } = routing;
-
-  yield* logger.info("Event trigger received", {
-    workflowName: workflow.name,
-    runMode: workflow.mode,
-    eventType,
-    correlationKey,
-    action,
-    payloadKeys: Object.keys(payload),
-  });
-
-  yield* callDbModule(() =>
-    logWorkflowAuditEvent({
-      workflowId,
-      eventType: "trigger_received",
-      message: `Event received: ${eventLabel}${eventType ? ` (${eventType})` : ""}`,
-      metadata: { eventType, correlationKey, runMode: workflow.mode },
-    })
+    )
   );
-
-  const outcome = yield* orchestrateRoutedTrigger({
-    workflowId,
-    runMode: workflow.mode,
-    routing,
-    sourceNoun: "event",
-    logger,
-    startExecution: () =>
-      startWorkflowRun({
-        workflow: {
-          id: workflowId,
-          name: workflow.name,
-          graph: workflowGraph,
-        },
-        trigger: { type: "event", eventType, correlationKey },
-        payload,
-        runMode: workflow.mode,
-      }),
-    resumeWaitStates: (currentEventType, waitStates) =>
-      callInngestModule(() =>
-        resumeMatchingWaitHooks({
-          workflowId,
-          eventType: currentEventType,
-          payload,
-          waitStates,
-        })
-      ),
-  });
-
-  if (outcome.status === "ignored") {
-    yield* callDbModule(() =>
-      logWorkflowAuditEvent({
-        workflowId,
-        eventType: "run_ignored",
-        message: `Ignored event ${eventLabel}${eventType ? ` (${eventType})` : ""}`,
-        metadata: {
-          eventType,
-          correlationKey,
-          reason: outcome.reason,
-          runMode: workflow.mode,
-        },
-      })
+  if (rejection) {
+    arrivalLogger.warn("Refused an event payload", { error: rejection });
+    throw new NonRetriableError(
+      `Payload refused for Event "${event.name}": ${rejection}`
     );
   }
 
-  return outcome;
-});
+  const subscribers = await step.run(
+    `subscribers-${event.name}`,
+    async () => await runtime.runPromise(listEventSubscribers(event.name))
+  );
+
+  const workflows: WorkflowDelivery[] = [];
+
+  for (const subscriber of subscribers) {
+    // The role says this workflow named the Event as a start somewhere in the graph
+    // it holds now; the rules read inside the step decide whether it still does.
+    // Both checks are wanted: this one keeps a wait-only delivery off the graph
+    // column, and that one is what a start is actually held to.
+    const lifecycle: LifecycleDeliveryOutcome = subscriber.roles.includes(
+      "start"
+    )
+      ? // eslint-disable-next-line no-await-in-loop -- one workflow at a time: each is its own retry unit.
+        await step.run(
+          `lifecycle-${subscriber.id}`,
+          async () =>
+            await runtime.runPromise(
+              applyLifecycleRules({
+                subscriber,
+                event,
+                payload,
+                // The intake route's delivery id is the id it sent the bus event
+                // under, so this is that id wherever the Event came in by HTTP.
+                deliveryId: input.arrival.eventId,
+              })
+            )
+        )
+      : { kind: "waits_only", workflowId: subscriber.id };
+
+    if (lifecycle.kind === "skipped" && lifecycle.reason === "workflow_gone") {
+      workflows.push({ lifecycle, resumedWaits: 0 });
+      continue;
+    }
+
+    // A run this delivery just settled takes no wait: a superseded run is ending,
+    // and the run just started has parked nothing yet.
+    const excluding =
+      lifecycle.kind === "started"
+        ? [lifecycle.executionId, ...lifecycle.supersededExecutionIds]
+        : [];
+
+    // eslint-disable-next-line no-await-in-loop -- sibling of the step above, and sequential for the same reason.
+    const waits = await step.run(
+      `waits-${subscriber.id}`,
+      async () =>
+        await runtime.runPromise(
+          deliverToWaits({ subscriber, event, payload, excluding })
+        )
+    );
+
+    arrivalLogger.info("Delivered an event to a workflow", {
+      workflowId: subscriber.id,
+      roles: subscriber.roles,
+      outcome: lifecycle.kind,
+      resumedWaits: waits.resumedWaits,
+    });
+
+    workflows.push({ lifecycle, resumedWaits: waits.resumedWaits });
+  }
+
+  arrivalLogger.info("Delivered an event", {
+    workflows: workflows.length,
+    started: workflows.filter((entry) => entry.lifecycle.kind === "started")
+      .length,
+  });
+
+  return { eventName: event.name, workflows };
+}
 
 // The return type is stated because declaration emit cannot name the inferred
 // one: it references types inngest keeps internal (`SendSignalResponse` under
 // inngest/api). `InngestFunction.Any` is what `getInngestFunctions` collects
 // these into anyway.
 export function createInngestEventListenerFunction(input: {
-  id: string;
-  workflowId: string;
-  inngestEventTrigger: InngestEventTriggerConfig;
+  event: AnyEventDefinition;
   /**
    * The app's Layer graph. It arrives from `createRovaApp` through the function
    * registry rather than being reached for here, so this function runs its
@@ -200,28 +188,30 @@ export function createInngestEventListenerFunction(input: {
    */
   runtime: RovaRuntime;
 }): InngestFunction.Any {
-  const { eventNames, functionOptions } = input.inngestEventTrigger;
-  const eventLabel = eventNames.join(", ");
+  const { event, runtime } = input;
+  const when = event.source.when;
 
   return getInngestClient().createFunction(
     {
-      ...functionOptions,
-      id: input.id,
-      name: `Event listener: ${eventLabel}`,
-      // These names come from whoever registered the trigger, so there is no
-      // schema to attach and `event.data` stays unknown until
-      // `toTriggerPayload` narrows it.
-      triggers: eventNames.map((name) => ({ event: name })),
+      ...event.inngestFunctionOptions,
+      id: toListenerFunctionId(event.name),
+      name: `Event listener: ${event.name}`,
+      triggers: [
+        {
+          event: event.source.event,
+          // An umbrella source pays no invocations for the subtypes this Event is
+          // not, because Inngest evaluates the filter before calling us.
+          ...(when ? { if: compileEventDataEquals(when) } : {}),
+        },
+      ],
     },
-    async ({ event }) =>
-      await input.runtime.runPromise(
-        runEventTrigger({
-          workflowId: input.workflowId,
-          eventLabel,
-          eventNames,
-          eventName: event.name,
-          payload: toTriggerPayload(event.data),
-        })
-      )
+    async ({ event: delivered, step, runId }) =>
+      await runEventListener({
+        event,
+        payload: toEventPayload(delivered.data),
+        arrival: { eventId: delivered.id, runId },
+        runtime,
+        step,
+      })
   );
 }

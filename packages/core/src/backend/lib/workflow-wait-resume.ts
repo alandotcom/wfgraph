@@ -6,10 +6,7 @@ import {
   markExecutionRunning,
   markWaitStateStatus,
 } from "#src/backend/lib/workflow-wait-state";
-import {
-  readWaitForEvents,
-  waitMatchesEvent,
-} from "@rova/shared/workflow/wait-events";
+import { waitMatchesEvent } from "@rova/shared/workflow/wait-events";
 
 const logger = getAppLogger("workflow", "wait-resume");
 
@@ -22,6 +19,7 @@ export async function resumeMatchingWaitHooks(input: {
     executionId: string;
     nodeId: string;
     hookToken: string | null;
+    subscribedEvents: string[] | null;
     metadata: Record<string, unknown> | null;
   }>;
 }) {
@@ -38,8 +36,9 @@ export async function resumeMatchingWaitHooks(input: {
 
       const metadata = waitState.metadata ?? {};
 
-      const waitForEvents = readWaitForEvents(metadata.waitForEvents);
-      if (!waitMatchesEvent(waitForEvents, eventType)) {
+      // The row's own list, written when it parked: the node it parked on may
+      // name different Events by now, and the run is owed the ones it waited for.
+      if (!waitMatchesEvent(waitState.subscribedEvents ?? [], eventType)) {
         return 0;
       }
 

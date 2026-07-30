@@ -15,10 +15,18 @@ export function readWaitForEvents(value: unknown): string[] {
   );
 }
 
-/** An empty list means the wait resumes on any event for its entity. */
+/**
+ * Whether one arriving Event is one this wait parks on.
+ *
+ * The list is never empty: an event-mode Wait node with no Event named is refused
+ * at save. It used to mean "any Event for this entity", and the derived
+ * subscription index has no way to spell that -- a wildcard subscribes a workflow
+ * to every Event there is -- so the wildcard is a configuration error now rather
+ * than a shape with two meanings.
+ */
 export function waitMatchesEvent(
   waitForEvents: string[],
   eventType: string
 ): boolean {
-  return waitForEvents.length === 0 || waitForEvents.includes(eventType);
+  return waitForEvents.includes(eventType);
 }

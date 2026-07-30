@@ -1,3 +1,8 @@
+import {
+  IN_FLIGHT_EXECUTION_STATUSES,
+  type WorkflowExecutionStartSource,
+  type WorkflowExecutionStatus,
+} from "@rova/shared/workflow/execution-contracts";
 import type { ExecutionLogEntry } from "@rova/shared/workflow/types";
 
 /**
@@ -26,8 +31,8 @@ export type ExecutionLog = {
 export type WorkflowExecution = {
   id: string;
   workflowId: string;
-  status: "pending" | "running" | "waiting" | "success" | "error" | "cancelled";
-  triggerType: "manual" | "webhook" | "event" | null;
+  status: WorkflowExecutionStatus;
+  startSource: WorkflowExecutionStartSource | null;
   runMode: "live" | "test";
   triggerEventType: string | null;
   correlationKey: string | null;
@@ -50,7 +55,7 @@ export type ExecutionEvent = {
 
 /** A run status that can still change, and so is still worth polling. */
 export function isRunInProgress(status: string | undefined): boolean {
-  return status === "pending" || status === "running" || status === "waiting";
+  return IN_FLIGHT_EXECUTION_STATUSES.some((inFlight) => inFlight === status);
 }
 
 /**
@@ -168,14 +173,15 @@ export function createExecutionLogsMap(
 }
 
 /**
- * A cancelled run leaves its unfinished steps recorded as pending or running,
- * because nothing ever came back to close them out. They read as cancelled.
+ * A run that stopped leaves its unfinished steps recorded as pending or running,
+ * because nothing ever came back to close them out. They read as cancelled,
+ * which is a step's own vocabulary rather than the run's.
  */
 export function applyExecutionStatusToLogs(
   logEntries: ExecutionLog[],
   executionStatus: string
 ): ExecutionLog[] {
-  if (executionStatus !== "cancelled") {
+  if (executionStatus !== "canceled" && executionStatus !== "superseded") {
     return logEntries;
   }
 

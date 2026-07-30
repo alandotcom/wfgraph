@@ -474,8 +474,8 @@ Base path: `/api`
 - `POST /api/workflows/:workflowId/duplicate`
 - `GET /api/workflows/:workflowId/executions`
 - `DELETE /api/workflows/:workflowId/executions`
-- `OPTIONS /api/workflows/:workflowId/webhook`
-- `POST /api/workflows/:workflowId/webhook`
+- `OPTIONS /api/events/:eventName`
+- `POST /api/events/:eventName`
 - `GET /api/workflows/executions/:executionId/status`
 - `GET /api/workflows/executions/:executionId/logs`
 - `GET /api/workflows/executions/:executionId/events`

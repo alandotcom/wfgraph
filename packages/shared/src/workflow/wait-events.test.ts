@@ -40,9 +40,10 @@ describe("readWaitForEvents", () => {
 });
 
 describe("waitMatchesEvent", () => {
-  it("matches any event when the list is empty", () => {
-    expect(waitMatchesEvent([], "appointment.confirmed")).toBe(true);
-    expect(waitMatchesEvent([], "anything.at.all")).toBe(true);
+  // The wildcard is gone: an empty list has no meaning the derived subscription
+  // index can hold, so it is refused at save instead.
+  it("matches nothing when the list is empty", () => {
+    expect(waitMatchesEvent([], "appointment.created")).toBe(false);
   });
 
   it("matches an event the list names", () => {

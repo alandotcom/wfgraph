@@ -124,10 +124,10 @@ function SummaryContent({
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-muted-foreground text-xs">
           <span>{getRelativeTime(execution.startedAt)}</span>
-          {execution.triggerType ? (
+          {execution.startSource ? (
             <>
               <span>·</span>
-              <span className="capitalize">{execution.triggerType}</span>
+              <span className="capitalize">{execution.startSource}</span>
             </>
           ) : null}
           {showTriggerEventType && execution.triggerEventType ? (

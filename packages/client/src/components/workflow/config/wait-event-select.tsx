@@ -6,28 +6,23 @@ import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { cn } from "@rova/shared/utils";
-import type { RoutingAction } from "@rova/shared/workflow/routing-policy";
+import { findEvent } from "@rova/shared/extensions/catalog";
 import { readWaitForEvents } from "@rova/shared/workflow/wait-events";
+import { getExtensionCatalog } from "#src/lib/extensions";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { useTriggerVocabulary } from "./trigger-vocabulary";
 
-/** How a chip suffixes its mapped action, e.g. "appointment.canceled · Cancel". */
-const CHIP_ACTION_LABELS: Record<RoutingAction, string> = {
-  start: "Start",
-  replace: "Replace",
-  cancel: "Cancel",
-  ignore: "Ignore",
-};
-
 /**
- * The Wait node's "resume on these events" picker, fed by the trigger's
- * Event Type vocabulary instead of free-typed strings. A custom trigger's
- * schema gives a closed set of options; the webhook trigger offers the
- * Routing Policy's Event Types plus free entry, because the sending service
- * can emit types the builder chose to leave unmapped. Only a closed
- * vocabulary can prove an event type unproducible, so only there do stale
- * selections render as invalid chips to remove — they would otherwise wait
- * forever on an event that cannot arrive.
+ * The Wait node's "resume on these events" picker.
+ *
+ * A wait subscribes to an Event on its own account, with no lifecycle role of its
+ * own, so nothing here says what an Event does to a run: that is the Lifecycle
+ * Node's declaration and the builder reads it there. At least one Event has to be
+ * named -- an empty list has no meaning the subscription index can hold.
+ *
+ * The vocabulary is still the trigger's. The catalog-fed picker lands with the
+ * Lifecycle panel; what this reads from the catalog today is the Correlation Path
+ * to name in the sentence at the bottom.
  */
 export function WaitEventSelect({
   config,
@@ -50,6 +45,12 @@ export function WaitEventSelect({
   };
 
   const selected = readWaitForEvents(config.waitForEvents);
+  const catalog = getExtensionCatalog();
+  // The first named Event's path, because the sentence names one and a wait's
+  // Events describe one entity between them.
+  const correlationPath = selected
+    .map((eventName) => findEvent(catalog, eventName)?.correlationPath)
+    .find((path) => path !== undefined);
   const closed = vocabulary.eventTypes !== undefined;
   // Open vocabularies render every selection as a chip, offered or
   // free-entered, so nothing the builder chose is ever invisible.
@@ -86,11 +87,6 @@ export function WaitEventSelect({
     setDraftEventType("");
   };
 
-  const cancellingSelections = selected.filter((eventType) => {
-    const action = vocabulary.policy?.[eventType];
-    return action === "replace" || action === "cancel";
-  });
-
   return (
     <div className="space-y-2">
       <Label id={chipGroupLabelId}>Resume when the event is</Label>
@@ -103,7 +99,6 @@ export function WaitEventSelect({
         >
           {options.map((eventType) => {
             const isSelected = selected.includes(eventType);
-            const mappedAction = vocabulary.policy?.[eventType];
             return (
               <button
                 aria-pressed={isSelected}
@@ -123,18 +118,6 @@ export function WaitEventSelect({
                 type="button"
               >
                 {eventType}
-                {mappedAction ? (
-                  <span
-                    className={cn(
-                      "ml-1.5",
-                      isSelected
-                        ? "text-primary-foreground/70"
-                        : "text-muted-foreground/70"
-                    )}
-                  >
-                    · {CHIP_ACTION_LABELS[mappedAction]}
-                  </span>
-                ) : null}
               </button>
             );
           })}
@@ -142,8 +125,7 @@ export function WaitEventSelect({
       ) : (
         <div className="space-y-2">
           <p className="text-muted-foreground text-xs">
-            No event types are named in the trigger's routing policy yet. Add
-            one below, or leave empty to resume on any event.
+            No event types are named on the entry node yet. Add one below.
           </p>
           {vocabulary.triggerNodeId ? (
             <Button
@@ -216,35 +198,31 @@ export function WaitEventSelect({
         </div>
       )}
 
-      {cancellingSelections.length > 0 ? (
+      {selected.length === 0 ? (
         <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
           <p className="text-amber-700 text-xs dark:text-amber-200">
-            {cancellingSelections.join(", ")}{" "}
-            {cancellingSelections.length === 1 ? "is" : "are"} mapped to Replace
-            or Cancel in the routing policy: runs waiting here will be cancelled
-            by that event, not resumed. Map it to Ignore if it should only wake
-            this wait.
+            Name at least one event. A wait with none cannot be resumed by
+            anything, and the workflow will not save.
           </p>
         </div>
-      ) : null}
-
-      <p className="text-muted-foreground text-xs">
-        {selected.length === 0 ? "Empty means any event" : "Only these events"}
-        {vocabulary.correlationPath ? (
-          <>
-            {" "}
-            where{" "}
-            <code className="font-mono text-xs">
-              {vocabulary.correlationPath}
-            </code>{" "}
-            matches this run's value
-          </>
-        ) : (
-          " for this run's entity"
-        )}{" "}
-        will resume the wait.
-      </p>
+      ) : (
+        <p className="text-muted-foreground text-xs">
+          Only these events
+          {correlationPath ? (
+            <>
+              {" "}
+              where <code className="font-mono text-xs">
+                {correlationPath}
+              </code>{" "}
+              matches this run's value
+            </>
+          ) : (
+            " for this run's entity"
+          )}{" "}
+          will resume the wait.
+        </p>
+      )}
     </div>
   );
 }

@@ -13,60 +13,91 @@ import {
   type OutputDisplayConfig,
 } from "#src/lib/output-display-configs";
 import { findActionById } from "@rova/shared/plugins/registry";
+import type { WorkflowExecutionStatus } from "@rova/shared/workflow/execution-contracts";
 import { readAs } from "@rova/shared/types/schema";
 import { getActionOutputComponent } from "@rova/shared/plugins/ui-registry";
 
-// Status helpers
+/**
+ * How a status reads on screen, for the two vocabularies that reach these.
+ *
+ * An Execution ends `completed`, `failed`, `canceled` or `superseded`; a node
+ * inside one ends `success`, `error` or `cancelled`. Both arrive here as strings
+ * off a payload, so the lookups are records rather than switches and `satisfies`
+ * is what holds each to naming every member of its own union.
+ */
+const RUN_STATUS_TONES = {
+  pending: "muted",
+  running: "info",
+  waiting: "pending",
+  completed: "good",
+  canceled: "quiet",
+  superseded: "quiet",
+  failed: "bad",
+} satisfies Record<WorkflowExecutionStatus, StatusTone>;
+
+const NODE_STATUS_TONES = {
+  pending: "muted",
+  running: "info",
+  success: "good",
+  error: "bad",
+  cancelled: "quiet",
+} satisfies Record<NodeStatus, StatusTone>;
+
+type StatusTone = "good" | "bad" | "info" | "pending" | "quiet" | "muted";
+
+/** A node's own statuses, which the engine writes and the canvas draws. */
+type NodeStatus = "pending" | "running" | "success" | "error" | "cancelled";
+
+function toneOf(status: string): StatusTone {
+  return (
+    (RUN_STATUS_TONES as Record<string, StatusTone | undefined>)[status] ??
+    (NODE_STATUS_TONES as Record<string, StatusTone | undefined>)[status] ??
+    "muted"
+  );
+}
+
+const DOT_CLASSES: Record<StatusTone, string> = {
+  good: "bg-green-600",
+  bad: "bg-red-600",
+  info: "bg-blue-600",
+  pending: "bg-amber-600",
+  quiet: "bg-slate-600",
+  muted: "bg-muted-foreground",
+};
+
+const LABELS: Record<StatusTone, string> = {
+  good: "Success",
+  bad: "Error",
+  info: "Running",
+  pending: "Waiting",
+  quiet: "Cancelled",
+  muted: "Unknown",
+};
+
+const BADGE_CLASSES: Record<StatusTone, string> = {
+  good: "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300",
+  bad: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
+  info: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  pending:
+    "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  quiet:
+    "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300",
+  muted: "border-muted bg-muted/40 text-muted-foreground",
+};
 
 export function getStatusDotClass(status: string): string {
-  switch (status) {
-    case "success":
-      return "bg-green-600";
-    case "error":
-      return "bg-red-600";
-    case "running":
-      return "bg-blue-600";
-    case "waiting":
-      return "bg-amber-600";
-    case "cancelled":
-      return "bg-slate-600";
-    default:
-      return "bg-muted-foreground";
-  }
+  return DOT_CLASSES[toneOf(status)];
 }
 
 export function getStatusLabel(status: string): string {
-  switch (status) {
-    case "success":
-      return "Success";
-    case "error":
-      return "Error";
-    case "running":
-      return "Running";
-    case "waiting":
-      return "Waiting";
-    case "cancelled":
-      return "Cancelled";
-    default:
-      return "Unknown";
-  }
+  // Superseded is the one run status whose label is not its tone's: a displaced
+  // run was not cancelled, and a builder reading "Cancelled" would go looking for
+  // who cancelled it.
+  return status === "superseded" ? "Superseded" : LABELS[toneOf(status)];
 }
 
 export function getStatusBadgeClass(status: string): string {
-  switch (status) {
-    case "success":
-      return "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300";
-    case "error":
-      return "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300";
-    case "running":
-      return "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300";
-    case "waiting":
-      return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
-    case "cancelled":
-      return "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300";
-    default:
-      return "border-muted bg-muted/40 text-muted-foreground";
-  }
+  return BADGE_CLASSES[toneOf(status)];
 }
 
 export function formatDuration(duration: string): string {

@@ -149,8 +149,21 @@ const formatIssues = SchemaIssue.makeFormatterStandardSchemaV1({
 type FormattedIssue = ReturnType<typeof formatIssues>["issues"][number];
 
 function formatIssuePath(issue: FormattedIssue): string {
+  return formatStandardIssuePath(issue.path);
+}
+
+/**
+ * A Standard Schema issue's path as a dot-path, `<root>` when it names none.
+ *
+ * Exported because a foreign library's issues arrive in the same shape and get
+ * rendered the same way: an Event payload written in Zod is refused with the paths
+ * this builds.
+ */
+export function formatStandardIssuePath(
+  segments: FormattedIssue["path"]
+): string {
   let path = "";
-  for (const segment of issue.path ?? []) {
+  for (const segment of segments ?? []) {
     const key = typeof segment === "object" ? segment.key : segment;
 
     if (typeof key === "number") {
@@ -170,6 +183,40 @@ function formatIssuePath(issue: FormattedIssue): string {
 }
 
 /**
+ * Every terminal issue as what was expected, with nothing of what arrived.
+ *
+ * The hook above cuts a rejected value down; this one leaves it out. An Event's
+ * payload is a host's own message -- a phone number, an address, an amount -- and
+ * a refusal built from it is answered to a third-party sender across origins and
+ * written to the log. What places the fault is the path and the expectation, and
+ * the sender holds the schema.
+ */
+const pathsOnlyLeafHook: SchemaIssue.LeafHook = (issue) => {
+  if (issue instanceof SchemaIssue.InvalidType) {
+    return `Expected ${expectedTypeName(issue.ast)}`;
+  }
+
+  if (issue instanceof SchemaIssue.MissingKey) {
+    return issue.annotations?.messageMissingKey ?? "Missing key";
+  }
+
+  if (issue instanceof SchemaIssue.UnexpectedKey) {
+    return "Unexpected key";
+  }
+
+  if (issue instanceof SchemaIssue.OneOf) {
+    return "Expected exactly one match";
+  }
+
+  return issue.annotations?.message ?? "Invalid value";
+};
+
+const formatIssuePaths = SchemaIssue.makeFormatterStandardSchemaV1({
+  leafHook: pathsOnlyLeafHook,
+  checkHook: (issue) => SchemaIssue.defaultCheckHook(issue) ?? "Invalid value",
+});
+
+/**
  * The whole failure in one line: `path: message` per issue, semicolon
  * separated, with a count standing in for whatever did not fit.
  *
@@ -177,7 +224,21 @@ function formatIssuePath(issue: FormattedIssue): string {
  * issue would make the count this prints always zero.
  */
 export function formatSchemaFailure(issue: SchemaIssue.Issue): string {
-  const issues = formatIssues(issue).issues;
+  return summarize(formatIssues(issue).issues);
+}
+
+/**
+ * The same summary with the values left out entirely.
+ *
+ * For a refusal that travels to whoever sent the value: an Event payload at
+ * intake, where the sender is a third party and the string is answered across
+ * origins.
+ */
+export function formatSchemaFailurePaths(issue: SchemaIssue.Issue): string {
+  return summarize(formatIssuePaths(issue).issues);
+}
+
+function summarize(issues: readonly FormattedIssue[]): string {
   const displayedIssues = issues.slice(0, MAX_LISTED_ISSUES);
   const summary = displayedIssues
     .map((formatted) => `${formatIssuePath(formatted)}: ${formatted.message}`)

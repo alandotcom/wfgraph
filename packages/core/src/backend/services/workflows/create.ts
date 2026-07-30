@@ -1,21 +1,14 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { callDbModule } from "#src/backend/lib/effect/database";
+import { Conflict, InvalidInput } from "#src/backend/lib/effect/failures";
 import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
-import {
-  Conflict,
-  IntegrationValidationFailed,
-  InvalidInput,
-} from "#src/backend/lib/effect/failures";
 import { invalidateInngestFunctionsCache } from "#src/backend/lib/inngest/functions";
-import { validateWorkflowConditionConfigs } from "#src/backend/lib/workflow-conditions-validation";
-import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
-import { validateWorkflowIntegrations } from "#src/backend/lib/workflow-integration-validation";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import {
   toWorkflowApiPayload,
   withDefaultTriggerNode,
 } from "#src/backend/services/workflows/mappers";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { generateId } from "@rova/shared/utils/id";
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
@@ -45,62 +38,28 @@ export const postWorkflowsCreate = Effect.fn("postWorkflowsCreate")(
       );
     }
 
-    const graphValidation = validateWorkflowGraph(
-      withDefaultTriggerNode(body.graph)
-    );
-    if (!graphValidation.valid) {
-      yield* logger.warn("Rejected invalid workflow graph on create", {
-        workflowName,
-        error: graphValidation.error,
-      });
-      return yield* Effect.fail(
-        new InvalidInput({ error: graphValidation.error })
-      );
-    }
-
-    const conditionValidation = validateWorkflowConditionConfigs(
-      graphValidation.nodes
-    );
-    if (!conditionValidation.valid) {
-      yield* logger.warn(
-        "Rejected workflow create due to invalid condition configuration",
-        {
-          workflowName,
-          error: conditionValidation.error,
-        }
-      );
-      return yield* Effect.fail(
-        new InvalidInput({ error: conditionValidation.error })
-      );
-    }
-
-    // The only way this fails is the integration rows it reads, so a rejected
-    // query arrives here as the same database failure a repository answers with.
-    const integrationValidation = yield* callDbModule(() =>
-      validateWorkflowIntegrations(graphValidation.nodes)
-    );
-    if (!integrationValidation.valid) {
-      yield* logger.warn(
-        "Rejected workflow create due to invalid integrations",
-        {
-          workflowName,
-          invalidIntegrationIds: integrationValidation.invalidIds,
-        }
-      );
-      return yield* Effect.fail(
-        new IntegrationValidationFailed({
-          error: "Invalid integration references in workflow",
-          invalidIntegrationIds: integrationValidation.invalidIds ?? [],
-        })
-      );
-    }
-
     const workflowId = generateId();
+    const prepared = yield* prepareGraphSave({
+      graph: withDefaultTriggerNode(body.graph),
+    }).pipe(
+      // A refused query is not a rejected graph: it says nothing a builder can
+      // act on, and the policy below logs it with its cause.
+      Effect.tapError((failure) =>
+        "error" in failure
+          ? logger.warn("Rejected workflow create", {
+              workflowName,
+              error: failure.error,
+            })
+          : Effect.void
+      )
+    );
+
     const newWorkflow = yield* repo.insert({
       id: workflowId,
       name: workflowName,
       description: body.description,
-      graph: graphValidation.graph,
+      graph: prepared.graph,
+      eventSubscriptions: prepared.subscriptionsFor(workflowId),
     });
 
     invalidateInngestFunctionsCache();
@@ -108,8 +67,8 @@ export const postWorkflowsCreate = Effect.fn("postWorkflowsCreate")(
     yield* logger.info("Workflow created", {
       workflowId,
       workflowName,
-      nodeCount: graphValidation.nodes.length,
-      edgeCount: graphValidation.edges.length,
+      nodeCount: prepared.nodes.length,
+      edgeCount: prepared.edgeCount,
     });
 
     return toWorkflowApiPayload(newWorkflow);

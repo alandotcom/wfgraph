@@ -4,7 +4,7 @@
  * Event rides on `asStandardSchema`, and `standard-schema-compat.test.ts` in
  * @rova/shared is where that bridge is tested against a foreign library.
  */
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { defineEvent } from "#src/backend/lib/extensions/define-event";
 
@@ -165,5 +165,173 @@ describe("defineEvent Inngest options", () => {
     });
 
     expect(event.inngestFunctionOptions).toBeUndefined();
+  });
+});
+
+// A `source.when` that cannot become a CEL expression fails at definition rather
+// than at sync time, which is what this covers here; the compiler's own escaping
+// is `inngest-event-data.test.ts`.
+describe("defineEvent source filters", () => {
+  it("refuses a filter whose path is nothing", () => {
+    expect(() =>
+      defineEvent({
+        name: "app/appointment.updated",
+        schema: appointmentPayload,
+        correlationPath: "appointment.id",
+        // The path is typed against the payload, so an empty one needs the cast
+        // a caller could only reach for deliberately.
+        source: {
+          event: "app/bus",
+          when: { path: "" as "event", equals: "x" },
+        },
+      })
+    ).toThrow("needs a payload path");
+  });
+
+  it("accepts a value with an apostrophe in it", () => {
+    const event = defineEvent({
+      name: "app/appointment.updated",
+      schema: appointmentPayload,
+      correlationPath: "appointment.id",
+      source: { event: "app/bus", when: { path: "event", equals: "it's on" } },
+    });
+
+    expect(event.source.when).toEqual({ path: "event", equals: "it's on" });
+  });
+});
+
+describe("the intake gate", () => {
+  const appointmentCreated = defineEvent({
+    name: "app/appointment.created",
+    schema: appointmentPayload,
+    correlationPath: "appointment.id",
+  });
+
+  const gate = (payload: unknown) =>
+    Effect.runSync(
+      appointmentCreated.decodePayload(payload).pipe(
+        Effect.match({
+          onSuccess: () => undefined,
+          onFailure: (rejected) => rejected.error,
+        })
+      )
+    );
+
+  it("accepts the payload the schema describes", () => {
+    expect(
+      gate({
+        event: "created",
+        appointment: { id: "appt_1", priority: "high" },
+      })
+    ).toBeUndefined();
+  });
+
+  // An Event's payload is the host's own message and their senders add fields.
+  // An additive change upstream must not stop intake.
+  it("ignores a key the schema does not declare", () => {
+    expect(
+      gate({
+        event: "created",
+        appointment: { id: "appt_1", priority: "high" },
+        traceId: "trace_9",
+      })
+    ).toBeUndefined();
+  });
+
+  // Drift on a declared field is the half that still fails loudly, and the
+  // message is `formatSchemaFailure`'s: paths and what was expected, with the
+  // rejected value cut down to its kind.
+  it("refuses a declared field of the wrong type, naming its path", () => {
+    expect(gate({ event: 7, appointment: { id: "appt_1" } })).toBe(
+      "event: Expected string; appointment.priority: Missing key"
+    );
+  });
+});
+
+/**
+ * The same gate over a payload schema this project did not write.
+ *
+ * An Event may be described in any Standard Schema library, and the gate then goes
+ * through that library's own `validate` rather than through an Effect decode. The
+ * fixture is hand-rolled rather than Zod or arktype because neither is a
+ * dependency of this package -- `standard-schema-compat.test.ts` in @rova/shared is
+ * where the claim about those two libraries is made -- and what matters here is the
+ * branch: a schema Effect does not recognise takes the other path.
+ */
+describe("the intake gate over a foreign schema", () => {
+  const foreignSchema = {
+    "~standard": {
+      version: 1 as const,
+      vendor: "handwritten",
+      validate: (value: unknown) => {
+        const declared =
+          typeof value === "object" && value !== null && "appointment" in value
+            ? (value as { appointment?: { id?: unknown } }).appointment
+            : undefined;
+
+        return typeof declared?.id === "string"
+          ? { value: { appointment: { id: declared.id } } }
+          : {
+              issues: [
+                {
+                  message: "must be a string, was 7",
+                  path: ["appointment", "id"],
+                },
+              ],
+            };
+      },
+      jsonSchema: {
+        input: () => ({
+          type: "object",
+          properties: {
+            appointment: {
+              type: "object",
+              description: "The appointment this event is about",
+              properties: {
+                id: { type: "string", description: "Appointment ID" },
+              },
+            },
+          },
+        }),
+        output: () => ({ type: "object" }),
+      },
+    },
+  };
+
+  const foreignEvent = defineEvent({
+    name: "app/foreign.event",
+    // The parameter admits any Standard Schema, and a hand-rolled one satisfies
+    // the shape without satisfying the generic's inference.
+    schema: foreignSchema as never,
+    correlationPath: "appointment.id" as never,
+  });
+
+  const gate = (payload: unknown) =>
+    Effect.runSync(
+      foreignEvent.decodePayload(payload).pipe(
+        Effect.match({
+          onSuccess: () => undefined,
+          onFailure: (rejected) => rejected.error,
+        })
+      )
+    );
+
+  it("accepts what the schema describes", () => {
+    expect(gate({ appointment: { id: "appt_1" } })).toBeUndefined();
+  });
+
+  it("ignores a key the schema does not declare", () => {
+    expect(
+      gate({ appointment: { id: "appt_1" }, traceId: "trace_9" })
+    ).toBeUndefined();
+  });
+
+  // Paths only. A foreign library is free to quote the value it rejected -- this
+  // one does, in its own message -- and that message is not what travels.
+  it("refuses a wrong-typed field without passing its message on", () => {
+    const error = gate({ appointment: { id: 7 } });
+
+    expect(error).toBe("Payload does not fit this Event at: appointment.id");
+    expect(error).not.toContain("was 7");
   });
 });

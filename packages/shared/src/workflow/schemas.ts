@@ -25,9 +25,23 @@
 
 import { Schema } from "effect";
 import { listOf, NonEmptyTrimmedString, unknownRest } from "#src/types/schema";
+import { lifecycleRulesSchema } from "#src/workflow/lifecycle-rules";
 import { routingPolicySchema } from "#src/workflow/routing-policy";
 
+/**
+ * What the entry node carries whatever else is on it.
+ *
+ * The entry node is the Lifecycle Node: its Lifecycle Rules are the declaration
+ * the engine reads to decide which Events start a run and what Concurrency does
+ * to the runs already going (ADR-0007). The trigger fields below are the panel's
+ * and nothing on an intake path reads them.
+ */
+const lifecycleNodeFields = {
+  lifecycleRules: Schema.optional(lifecycleRulesSchema),
+};
+
 export const webhookTriggerConfigSchema = Schema.Struct({
+  ...lifecycleNodeFields,
   triggerType: Schema.Literal("Webhook"),
   webhookSchema: Schema.optional(Schema.String),
   webhookOutputSchema: Schema.optional(Schema.String),
@@ -38,6 +52,7 @@ export const webhookTriggerConfigSchema = Schema.Struct({
 });
 
 export const scheduleTriggerConfigSchema = Schema.Struct({
+  ...lifecycleNodeFields,
   triggerType: Schema.Literal("Schedule"),
   scheduleExpression: Schema.optional(Schema.String),
   scheduleCron: Schema.optional(Schema.String),
@@ -58,6 +73,7 @@ export const scheduleTriggerConfigSchema = Schema.Struct({
  */
 export const customTriggerConfigSchema = Schema.StructWithRest(
   Schema.Struct({
+    ...lifecycleNodeFields,
     triggerType: NonEmptyTrimmedString,
     routingPolicy: Schema.optional(routingPolicySchema),
   }),
@@ -142,9 +158,6 @@ export const workflowNodeDataSchema = Schema.Union([
 ]).annotate({
   message: 'Node data needs a type of "trigger", "action", or "add"',
 });
-
-export type WorkflowTriggerConfigInput =
-  typeof workflowTriggerConfigSchema.Type;
 
 export const workflowNodeAttributesSchema = Schema.StructWithRest(
   Schema.Struct({

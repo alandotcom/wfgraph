@@ -11,14 +11,18 @@ const appointmentPayload = Schema.Struct({
   appointment: Schema.Struct({
     id: Schema.String.annotate({ description: "Appointment ID" }),
   }).annotate({ description: "The appointment this event is about" }),
+  kind: Schema.String.annotate({ description: "Which thing happened" }),
 });
 
-function anEvent(name: string, sourceEvent?: string) {
+function anEvent(
+  name: string,
+  source?: { event: string; when?: { path: "kind"; equals: string } }
+) {
   return defineEvent({
     name,
     schema: appointmentPayload,
     correlationPath: "appointment.id",
-    ...(sourceEvent ? { source: { event: sourceEvent } } : {}),
+    ...(source ? { source } : {}),
   });
 }
 
@@ -45,11 +49,11 @@ function anIntegration(type: string): IntegrationMetadata {
 
 describe("assembleExtensions", () => {
   it("assembles an empty surface when the host passes nothing", () => {
-    const { catalog, sourceEventNames } = assembleExtensions({});
+    const { catalog, events } = assembleExtensions({});
 
     expect(catalog.events).toEqual([]);
     expect(catalog.integrations).toEqual([]);
-    expect(sourceEventNames).toEqual([]);
+    expect(events).toEqual([]);
   });
 
   it("puts the four built-in actions in the catalog", () => {
@@ -103,6 +107,11 @@ describe("assembleExtensions", () => {
             description: "Appointment ID",
             type: "string",
           },
+          {
+            path: "kind",
+            description: "Which thing happened",
+            type: "string",
+          },
         ],
       },
     ]);
@@ -126,17 +135,27 @@ describe("assembleExtensions", () => {
     expect(set.eventByName("app/appointment.canceled")).toBeUndefined();
   });
 
-  it("reports each distinct source event once, which is the listener set", () => {
+  // One listener per Event, so what the registry iterates is the Events
+  // themselves. Several may share a source name and each narrows it with its own
+  // filter.
+  it("holds every Event, which is the listener set", () => {
     const set = assembleExtensions({
       events: [
-        anEvent("appointment.created", "app/appointment.updated"),
-        anEvent("appointment.canceled", "app/appointment.updated"),
+        anEvent("appointment.created", {
+          event: "app/appointment.updated",
+          when: { path: "kind", equals: "created" },
+        }),
+        anEvent("appointment.canceled", {
+          event: "app/appointment.updated",
+          when: { path: "kind", equals: "canceled" },
+        }),
         anEvent("billing/payment.settled"),
       ],
     });
 
-    expect(set.sourceEventNames).toEqual([
-      "app/appointment.updated",
+    expect(set.events.map((event) => event.name)).toEqual([
+      "appointment.created",
+      "appointment.canceled",
       "billing/payment.settled",
     ]);
   });
@@ -186,5 +205,49 @@ describe("assembleExtensions checks", () => {
         integrations: [anIntegration("twilio"), anIntegration("twilio")],
       })
     ).toThrow('Two integrations are defined with the type "twilio"');
+  });
+
+  // Two Events on one source have to be told apart by their payloads. Neither
+  // narrowing means both are delivered for every payload: one arrival counted
+  // twice.
+  it("refuses two Events on one source that neither narrows", () => {
+    expect(() =>
+      assembleExtensions({
+        events: [
+          anEvent("appointment.created", { event: "app/appointment.updated" }),
+          anEvent("appointment.canceled", { event: "app/appointment.updated" }),
+        ],
+      })
+    ).toThrow("neither narrows it with source.when");
+  });
+
+  it("accepts two Events on one source when each narrows it", () => {
+    expect(() =>
+      assembleExtensions({
+        events: [
+          anEvent("appointment.created", {
+            event: "app/appointment.updated",
+            when: { path: "kind", equals: "created" },
+          }),
+          anEvent("appointment.canceled", {
+            event: "app/appointment.updated",
+            when: { path: "kind", equals: "canceled" },
+          }),
+        ],
+      })
+    ).not.toThrow();
+  });
+
+  // The listener id is the Event name slugged, so two names differing only in
+  // punctuation are one function to Inngest: it would sync one and drop the other.
+  it("refuses two Events whose names slug to one listener id", () => {
+    expect(() =>
+      assembleExtensions({
+        events: [
+          anEvent("app/appointment.created"),
+          anEvent("app-appointment-created"),
+        ],
+      })
+    ).toThrow("both name the Inngest function");
   });
 });

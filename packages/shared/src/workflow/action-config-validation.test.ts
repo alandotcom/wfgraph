@@ -183,6 +183,7 @@ describe("getNodeMissingRequiredFields", () => {
       node: createActionNode({
         actionType: "Wait",
         waitMode: "event",
+        waitForEvents: ["appointment.created"],
       }),
       resolveActionByType,
     });
@@ -195,6 +196,7 @@ describe("getNodeMissingRequiredFields", () => {
       node: createActionNode({
         actionType: "Wait",
         waitMode: "event",
+        waitForEvents: ["appointment.created"],
         waitDuration: "",
         waitUntil: "",
       }),
@@ -232,10 +234,13 @@ describe("getMissingRequiredFieldsForNodes", () => {
       nodes: [
         createTriggerNode(),
         createActionNode({ actionType: "HTTP Request" }),
+        // A wait mode that parks on an Event has to name one, so this fixture
+        // names one: what the case is about is the trigger node being left out.
         createActionNode(
           {
             actionType: "Wait",
             waitMode: "hook",
+            waitForEvents: ["appointment.created"],
           },
           { id: "action_2" }
         ),
