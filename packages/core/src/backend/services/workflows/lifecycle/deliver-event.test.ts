@@ -24,11 +24,13 @@ const {
   resumeWaitsMatchingEventMock,
   validateWorkflowIntegrationsMock,
   startWithConcurrencyMock,
+  requestCanceledOutletMock,
 } = vi.hoisted(() => ({
   listWaitsForEventMock: vi.fn(),
   resumeWaitsMatchingEventMock: vi.fn(),
   validateWorkflowIntegrationsMock: vi.fn(),
   startWithConcurrencyMock: vi.fn(),
+  requestCanceledOutletMock: vi.fn(),
 }));
 
 vi.mock("#src/backend/services/workflows/lifecycle/resume-waits", () => ({
@@ -39,6 +41,12 @@ vi.mock("#src/backend/services/workflows/lifecycle/resume-waits", () => ({
 // is asked for and what its answer does to the delivery.
 vi.mock("#src/backend/services/workflows/lifecycle/concurrency", () => ({
   startWithConcurrency: startWithConcurrencyMock,
+}));
+
+// The claim and the nudge are `cancel.test.ts`; here it is what the cancel arm
+// asks for and what its answer keeps off the wait delivery.
+vi.mock("#src/backend/services/workflows/lifecycle/cancel", () => ({
+  requestCanceledOutlet: requestCanceledOutletMock,
 }));
 
 vi.mock("#src/backend/lib/workflow-integration-validation", () => ({
@@ -55,6 +63,12 @@ const catalogLayer = stubExtensionCatalog({
       correlationPath: "appointment.id",
       payloadFields: [],
     },
+    {
+      name: "app/appointment.canceled",
+      label: "Appointment canceled",
+      correlationPath: "appointment.id",
+      payloadFields: [],
+    },
   ],
 });
 
@@ -63,11 +77,22 @@ const appointmentCreated = {
   correlationPath: "appointment.id",
 };
 
+const appointmentCanceled = {
+  name: "app/appointment.canceled",
+  correlationPath: "appointment.id",
+};
+
 const payload = { appointment: { id: "appt_8813" } };
 
 const startRules: LifecycleRules = {
   startEvents: ["app/appointment.created"],
   cancelEvents: [],
+  concurrency: "unlimited",
+};
+
+const cancelRules: LifecycleRules = {
+  startEvents: ["app/appointment.created"],
+  cancelEvents: ["app/appointment.canceled"],
   concurrency: "unlimited",
 };
 
@@ -142,6 +167,7 @@ beforeEach(() => {
       failedToSupersede: [],
     })
   );
+  requestCanceledOutletMock.mockReturnValue(Effect.succeed(["exec_running"]));
 });
 
 describe("applyLifecycleRules", () => {
@@ -264,6 +290,98 @@ describe("applyLifecycleRules", () => {
           workflowId: "wf_1",
           reason: "concurrency_first_wins",
         });
+      })
+    );
+
+    it.effect("routes the runs of an entity to the Canceled outlet", () =>
+      Effect.gen(function* () {
+        const outcome = yield* applyLifecycleRules({
+          subscriber: subscriber({ roles: ["cancel"] }),
+          event: appointmentCanceled,
+          payload,
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubWorkflowRepo({
+                findById: () =>
+                  Effect.succeed(createWorkflow({ rules: cancelRules })),
+              }),
+              unreachedRunSeams
+            )
+          )
+        );
+
+        assert.deepStrictEqual(outcome, {
+          kind: "canceled",
+          workflowId: "wf_1",
+          canceledExecutionIds: ["exec_running"],
+        });
+        assert.deepStrictEqual(requestCanceledOutletMock.mock.calls[0]?.[0], {
+          workflowId: "wf_1",
+          runMode: "live",
+          eventName: "app/appointment.canceled",
+          payload,
+          entityValue: "appt_8813",
+        });
+        assert.strictEqual(startWithConcurrencyMock.mock.calls.length, 0);
+      })
+    );
+
+    // A cancel matches by Entity Value and has nothing else to match on, so a
+    // payload carrying none reaches no run at all.
+    it.effect("refuses a cancel whose payload carries no Entity Value", () =>
+      Effect.gen(function* () {
+        const outcome = yield* applyLifecycleRules({
+          subscriber: subscriber({ roles: ["cancel"] }),
+          event: appointmentCanceled,
+          payload: { appointment: {} },
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubWorkflowRepo({
+                findById: () =>
+                  Effect.succeed(createWorkflow({ rules: cancelRules })),
+              }),
+              unreachedRunSeams
+            )
+          )
+        );
+
+        assert.deepStrictEqual(outcome, {
+          kind: "refused",
+          workflowId: "wf_1",
+          reason: "entity_value_missing",
+        });
+        assert.strictEqual(requestCanceledOutletMock.mock.calls.length, 0);
+      })
+    );
+
+    // The role is the graph's, and the rules read here are what it is held to: a
+    // workflow that has since dropped the Event from `cancelEvents` cancels
+    // nothing on it.
+    it.effect("cancels nothing where the rules no longer say to", () =>
+      Effect.gen(function* () {
+        const outcome = yield* applyLifecycleRules({
+          subscriber: subscriber({ roles: ["cancel"] }),
+          event: appointmentCanceled,
+          payload,
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubWorkflowRepo({
+                findById: () =>
+                  Effect.succeed(createWorkflow({ rules: startRules })),
+              }),
+              unreachedRunSeams
+            )
+          )
+        );
+
+        assert.deepStrictEqual(outcome, {
+          kind: "waits_only",
+          workflowId: "wf_1",
+        });
+        assert.strictEqual(requestCanceledOutletMock.mock.calls.length, 0);
       })
     );
 

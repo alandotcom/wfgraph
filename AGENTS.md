@@ -450,10 +450,19 @@ renders it to anyway and what leaves the condition builder operators every paylo
 answer. There is no hand-written shape, output contract or sample left to keep in step
 with the Events.
 
-An edge leaving the Lifecycle Node names its outlet, `started`, from
-`shared/workflow/lifecycle-outlets.ts`: the editor's connect path writes it and
-`validateLifecycleOutletEdges` refuses an edge without it, because the Canceled outlet lands
-in stage 7 and an unnamed edge would then bind by render order.
+An edge leaving the Lifecycle Node names its outlet, `started` or `canceled`, from
+`shared/workflow/lifecycle-outlets.ts`: the editor's connect path writes the name and
+`validateLifecycleOutletEdges` refuses an edge carrying neither, because an unnamed edge
+would bind by render order. Keeping the Canceled branch terminal needs no rule of its own,
+since a node the Started branch reaches already has an incoming edge and
+`validateSingleIncomingEdgePerNode` allows only one.
+
+**A cancellation is that routing and nothing else.** The flag and the canceling payload on
+the execution row are the whole authority, and the engine reads them at each node boundary
+inside a step keyed `lifecycle-check-${nodeId}`, so a replay takes the branch the attempt
+took. A parked run is nudged awake through the wait signal, which closes the wait row and
+decides nothing else. The branch runs inside the same Execution, which ends with status
+`canceled` -- immediately so where the outlet has no edge.
 
 **The editor's runs panel shows what did not run.** `getExecutions` answers three things at
 once, because the panel polls every two seconds and a second procedure would double that: the

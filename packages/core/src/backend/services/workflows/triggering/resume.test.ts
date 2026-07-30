@@ -189,6 +189,7 @@ describe("postWorkflowResume", () => {
             nodeId: "node_wait",
             token: RESUME_TOKEN,
             payload: { approved: true },
+            signalType: "wait-resume",
           },
         ]);
         assert.deepStrictEqual(markWaitStatus.mock.calls, [

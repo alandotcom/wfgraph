@@ -136,6 +136,40 @@ describe("runEventListener", () => {
     ]);
   });
 
+  // A run claimed for the Canceled outlet is on its way out, so waking its wait
+  // would resume a run that is ending.
+  it("keeps the Event off the waits of the runs a cancel claimed", async () => {
+    listEventSubscribersMock.mockReturnValue(
+      Effect.succeed([subscriber({ roles: ["cancel"] })])
+    );
+    applyLifecycleRulesMock.mockReturnValue(
+      Effect.succeed({
+        kind: "canceled",
+        workflowId: "wf_1",
+        canceledExecutionIds: ["exec_running", "exec_parked"],
+      })
+    );
+    const recorder = recordingStep();
+
+    await runEventListener({
+      event: appointmentCreated,
+      payload,
+      arrival: {},
+      runtime: testRuntime(),
+      step: recorder.step,
+    });
+
+    expect(recorder.ids).toEqual([
+      "subscribers-app/appointment.created",
+      "lifecycle-wf_1",
+      "waits-wf_1",
+    ]);
+    expect(deliverToWaitsMock.mock.calls[0]?.[0].excluding).toEqual([
+      "exec_running",
+      "exec_parked",
+    ]);
+  });
+
   // A workflow holding no start role is not worth a lifecycle step: preflight
   // would validate every action and integration in its graph for a delivery that
   // only wakes a wait.

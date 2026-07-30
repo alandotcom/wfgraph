@@ -3,7 +3,7 @@ import {
   isConditionActionNode,
   normalizeConditionBranch,
 } from "@rova/shared/workflow/condition-branch";
-import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/workflow/lifecycle-outlets";
+import { isLifecycleOutlet } from "@rova/shared/workflow/lifecycle-outlets";
 import {
   createGraphFromSerialized,
   getNodeTypeFromSerializedNode,
@@ -72,10 +72,9 @@ function validateConditionBranchEdges(input: {
 /**
  * Every edge leaving the entry node names the outlet it leaves from.
  *
- * The Lifecycle Node has one outlet today and two the moment the Canceled one
- * lands, so an edge that names none would bind by whatever order React Flow
- * happened to render the handles in. Refusing it here is what keeps a graph drawn
- * today unambiguous under a node that grows a second handle tomorrow.
+ * The Lifecycle Node has two outlets, so an edge that names neither would bind
+ * by whatever order React Flow happened to render the handles in, and the engine
+ * follows only an edge naming the outlet the run took.
  */
 function validateLifecycleOutletEdges(input: {
   nodes: WorkflowNode[];
@@ -89,14 +88,21 @@ function validateLifecycleOutletEdges(input: {
       continue;
     }
 
-    if (edge.sourceHandle !== LIFECYCLE_STARTED_HANDLE) {
-      return `Edge "${edge.id}" leaves the Lifecycle Node without naming an outlet. Redraw it from the "Started" handle.`;
+    if (!isLifecycleOutlet(edge.sourceHandle)) {
+      return `Edge "${edge.id}" leaves the Lifecycle Node without naming an outlet. Redraw it from the "Started" or "Canceled" handle.`;
     }
   }
 
   return null;
 }
 
+/**
+ * At most one incoming edge per node.
+ *
+ * This is also what keeps the Canceled branch terminal: a node the Started
+ * branch reaches already has an incoming edge, so an edge from the Canceled
+ * branch back into it is a second one.
+ */
 function validateSingleIncomingEdgePerNode(input: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];

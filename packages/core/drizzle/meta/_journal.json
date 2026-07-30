@@ -8,6 +8,13 @@
       "when": 1785420141549,
       "tag": "0000_new_lord_tyger",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785438823846,
+      "tag": "0001_typical_zaladane",
+      "breakpoints": true
     }
   ]
 }

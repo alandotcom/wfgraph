@@ -102,14 +102,13 @@ export async function sendWorkflowWaitSignal(
     correlationKey?: string;
     // JSON is what survives the send, so the caller supplies JSON.
     payload?: JsonObject;
+    /** Why the run is being woken; the wait's `if` expression admits both. */
+    signalType: "wait-resume" | "lifecycle-cancel";
   }
 ) {
   return await client.send(
-    workflowWaitSignal.create(
-      { ...input, signalType: "wait-resume" },
-      {
-        id: `workflow-wait-signal-${input.executionId}-${input.nodeId}-${Date.now()}`,
-      }
-    )
+    workflowWaitSignal.create(input, {
+      id: `workflow-wait-signal-${input.executionId}-${input.nodeId}-${Date.now()}`,
+    })
   );
 }

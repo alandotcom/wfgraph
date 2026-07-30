@@ -26,6 +26,7 @@ type StoreCallInputs = {
   createWaitState: CreateWaitStateInput;
   markWaitStateStatus: MarkWaitStateStatusInput;
   markExecutionRunning: { executionId: string };
+  readPendingCancel: { executionId: string };
   completeRun: CompleteRunInput;
 };
 
@@ -52,6 +53,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     createWaitState: [],
     markWaitStateStatus: [],
     markExecutionRunning: [],
+    readPendingCancel: [],
     completeRun: [],
   };
 
@@ -106,6 +108,13 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       calls.push({ method: "markExecutionRunning", input });
       byMethod.markExecutionRunning.push(input);
       return Promise.resolve();
+    },
+
+    readPendingCancel(executionId) {
+      const input = { executionId };
+      calls.push({ method: "readPendingCancel", input });
+      byMethod.readPendingCancel.push(input);
+      return Promise.resolve(null);
     },
 
     completeRun(input) {

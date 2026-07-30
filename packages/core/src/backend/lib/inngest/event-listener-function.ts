@@ -45,6 +45,17 @@ function toEventPayload(value: unknown): JsonObject {
   return readJsonObject(value) ?? {};
 }
 
+/** The runs the Lifecycle Rules settled, which the wait half then leaves alone. */
+function settledExecutionIds(outcome: LifecycleDeliveryOutcome): string[] {
+  if (outcome.kind === "started") {
+    return [outcome.executionId, ...outcome.supersededExecutionIds];
+  }
+  if (outcome.kind === "canceled") {
+    return outcome.canceledExecutionIds;
+  }
+  return [];
+}
+
 /** What one workflow's delivery came to, as the function answers Inngest. */
 type WorkflowDelivery = {
   lifecycle: LifecycleDeliveryOutcome;
@@ -110,12 +121,12 @@ export async function runEventListener(input: {
   const workflows: WorkflowDelivery[] = [];
 
   for (const subscriber of subscribers) {
-    // The role says this workflow named the Event as a start somewhere in the graph
-    // it holds now; the rules read inside the step decide whether it still does.
-    // Both checks are wanted: this one keeps a wait-only delivery off the graph
-    // column, and that one is what a start is actually held to.
-    const lifecycle: LifecycleDeliveryOutcome = subscriber.roles.includes(
-      "start"
+    // The role says this workflow named the Event as a start or a cancel somewhere
+    // in the graph it holds now; the rules read inside the step decide whether it
+    // still does. Both checks are wanted: this one keeps a wait-only delivery off
+    // the graph column, and that one is what either role is actually held to.
+    const lifecycle: LifecycleDeliveryOutcome = subscriber.roles.some(
+      (role) => role === "start" || role === "cancel"
     )
       ? // eslint-disable-next-line no-await-in-loop -- one workflow at a time: each is its own retry unit.
         await step.run(
@@ -139,12 +150,9 @@ export async function runEventListener(input: {
       continue;
     }
 
-    // A run this delivery just settled takes no wait: a superseded run is ending,
-    // and the run just started has parked nothing yet.
-    const excluding =
-      lifecycle.kind === "started"
-        ? [lifecycle.executionId, ...lifecycle.supersededExecutionIds]
-        : [];
+    // A run this delivery just settled takes no wait: a superseded or claimed run
+    // is ending, and the run just started has parked nothing yet.
+    const excluding = settledExecutionIds(lifecycle);
 
     // eslint-disable-next-line no-await-in-loop -- sibling of the step above, and sequential for the same reason.
     const waits = await step.run(

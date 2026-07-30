@@ -33,6 +33,8 @@ function createRow(
     cancelledAt: null,
     completedAt: null,
     duration: null,
+    cancelRequestedAt: null,
+    cancelEventName: null,
     ...overrides,
   };
 }

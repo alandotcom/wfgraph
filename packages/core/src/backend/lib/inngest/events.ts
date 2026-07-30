@@ -94,7 +94,11 @@ export const workflowWaitSignal = eventType("workflow/wait.signal", {
       eventType: Schema.optional(Schema.String),
       correlationKey: Schema.optional(Schema.String),
       payload: Schema.optional(jsonObjectSchema),
-      signalType: Schema.Literal("wait-resume"),
+      // One envelope wakes a parked run for either reason. The signal carries
+      // no decision of its own: a `lifecycle-cancel` wake sends the run back to
+      // the flag on its execution row, which is the single answer to whether it
+      // is canceled.
+      signalType: Schema.Literals(["wait-resume", "lifecycle-cancel"]),
     }),
     rejectUnknownKeys
   ),

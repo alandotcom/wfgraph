@@ -9,6 +9,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { JsonObject } from "@rova/shared/types/json";
 import { generateId } from "@rova/shared/utils/id";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
@@ -97,6 +98,13 @@ export const workflowExecutions = pgTable(
     cancelledAt: timestamp("cancelled_at"),
     completedAt: timestamp("completed_at"),
     duration: text("duration"),
+    // The Canceled outlet's authority (ADR-0007). A Cancel Event stamps these
+    // three and the run reads them at its next node boundary, inside a step, so
+    // the answer is memoized and a replay takes the same branch. Nothing kills
+    // the run: it routes to the `canceled` outlet carrying this payload.
+    cancelRequestedAt: timestamp("cancel_requested_at"),
+    cancelEventName: text("cancel_event_name"),
+    cancelPayload: jsonb("cancel_payload").$type<JsonObject>(),
   },
   (table) => [
     uniqueIndex("workflow_executions_workflow_run_id_uidx").on(

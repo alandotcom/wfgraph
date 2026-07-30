@@ -168,8 +168,18 @@ describe("executeWorkflow branch traversal", () => {
         createConditionNode("join_node", true),
       ],
       edges: [
-        { id: "edge_t_s", source: "trigger_1", target: "action_success" },
-        { id: "edge_t_f", source: "trigger_1", target: "action_failure" },
+        {
+          id: "edge_t_s",
+          source: "trigger_1",
+          sourceHandle: "started",
+          target: "action_success",
+        },
+        {
+          id: "edge_t_f",
+          source: "trigger_1",
+          sourceHandle: "started",
+          target: "action_failure",
+        },
         { id: "edge_s_j", source: "action_success", target: "join_node" },
         { id: "edge_f_j", source: "action_failure", target: "join_node" },
       ],
@@ -197,7 +207,12 @@ describe("executeWorkflow branch traversal", () => {
         createConditionNode("false_node", true),
       ],
       edges: [
-        { id: "edge_t_c", source: "trigger_1", target: "condition_node" },
+        {
+          id: "edge_t_c",
+          source: "trigger_1",
+          sourceHandle: "started",
+          target: "condition_node",
+        },
         createConditionBranchEdge({
           id: "edge_c_true",
           source: "condition_node",
@@ -245,7 +260,12 @@ describe("executeWorkflow branch traversal", () => {
         createConditionNode("false_node", true),
       ],
       edges: [
-        { id: "edge_t_c", source: "trigger_1", target: "condition_node" },
+        {
+          id: "edge_t_c",
+          source: "trigger_1",
+          sourceHandle: "started",
+          target: "condition_node",
+        },
         createConditionBranchEdge({
           id: "edge_c_true",
           source: "condition_node",
@@ -292,7 +312,12 @@ describe("executeWorkflow branch traversal", () => {
         createConditionNode("false_node", true),
       ],
       edges: [
-        { id: "edge_t_c", source: "trigger_1", target: "condition_node" },
+        {
+          id: "edge_t_c",
+          source: "trigger_1",
+          sourceHandle: "started",
+          target: "condition_node",
+        },
         createConditionBranchEdge({
           id: "edge_c_true_a",
           source: "condition_node",
@@ -364,7 +389,12 @@ describe("condition context from upstream outputs", () => {
         createConditionNode("false_node", true),
       ],
       edges: [
-        { id: "edge_t_a", source: "trigger_1", target: "action_1" },
+        {
+          id: "edge_t_a",
+          source: "trigger_1",
+          sourceHandle: "started",
+          target: "action_1",
+        },
         { id: "edge_a_c", source: "action_1", target: "condition_node" },
         createConditionBranchEdge({
           id: "edge_c_true",
@@ -454,7 +484,12 @@ describe("timestamp conditions against payload values", () => {
         createConditionNode("false_node", true),
       ],
       edges: [
-        { id: "edge_t_c", source: "trigger_1", target: "condition_node" },
+        {
+          id: "edge_t_c",
+          source: "trigger_1",
+          sourceHandle: "started",
+          target: "condition_node",
+        },
         createConditionBranchEdge({
           id: "edge_c_true",
           source: "condition_node",
@@ -622,7 +657,12 @@ describe("conditions on fields named after CEL type constants", () => {
         createConditionNode("false_node", true),
       ],
       edges: [
-        { id: "edge_t_c", source: "trigger_1", target: "condition_node" },
+        {
+          id: "edge_t_c",
+          source: "trigger_1",
+          sourceHandle: "started",
+          target: "condition_node",
+        },
         createConditionBranchEdge({
           id: "edge_c_true",
           source: "condition_node",

@@ -151,7 +151,12 @@ describe("workflow engine replay safety", () => {
         createActionNode("followup_1", FOLLOWUP_ACTION_ID, "Send Followup"),
       ],
       edges: [
-        { id: "edge_1", source: "trigger_1", target: "email_1" },
+        {
+          id: "edge_1",
+          source: "trigger_1",
+          sourceHandle: "started",
+          target: "email_1",
+        },
         { id: "edge_2", source: "email_1", target: "wait_1" },
         { id: "edge_3", source: "wait_1", target: "followup_1" },
       ],
@@ -250,7 +255,12 @@ describe("workflow engine replay safety", () => {
           createActionNode("right_1", BRANCH_ACTION_ID, "Right Branch"),
         ],
         edges: [
-          { id: "edge_1", source: "trigger_1", target: "fanout_1" },
+          {
+            id: "edge_1",
+            source: "trigger_1",
+            sourceHandle: "started",
+            target: "fanout_1",
+          },
           { id: "edge_2", source: "fanout_1", target: "left_1" },
           { id: "edge_3", source: "fanout_1", target: "right_1" },
         ],
@@ -369,7 +379,12 @@ describe("a Date-bearing step output across a replay", () => {
         createEchoNode("echo_2", "Echo Again"),
       ],
       edges: [
-        { id: "edge_1", source: "trigger_1", target: "clock_1" },
+        {
+          id: "edge_1",
+          source: "trigger_1",
+          sourceHandle: "started",
+          target: "clock_1",
+        },
         { id: "edge_2", source: "clock_1", target: "echo_1" },
         { id: "edge_3", source: "echo_1", target: "wait_1" },
         { id: "edge_4", source: "wait_1", target: "echo_2" },

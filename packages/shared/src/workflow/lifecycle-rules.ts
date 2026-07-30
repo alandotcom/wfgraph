@@ -30,12 +30,7 @@ export type Concurrency = typeof concurrencySchema.Type;
 export const lifecycleRulesSchema = Schema.Struct({
   /** Event names that start a run. */
   startEvents: Schema.Array(NonEmptyTrimmedString),
-  /**
-   * Event names that route in-flight runs to the Canceled outlet.
-   *
-   * The shape carries them and `checkLifecycleRules` refuses a non-empty list,
-   * so the outlet arriving needs no change to what a saved graph holds.
-   */
+  /** Event names that route in-flight runs to the Canceled outlet. */
   cancelEvents: Schema.Array(NonEmptyTrimmedString),
   concurrency: concurrencySchema,
 
@@ -132,15 +127,11 @@ export function manualStartAllowed(rules: LifecycleRules | undefined): boolean {
 }
 
 /**
- * The two interim sentences, said once.
+ * The interim sentence, said once.
  *
- * Both are shown twice over: the panel renders them beside a placeholder, and a
- * save answers with them. Exported so the two copies cannot drift, which they had
- * already begun to.
+ * It is shown twice over: the panel renders it beside a placeholder, and a save
+ * answers with it. Exported so the two copies cannot drift.
  */
-export const CANCEL_EVENTS_INTERIM_MESSAGE =
-  "Cancel Events arrive with the Canceled outlet. Until then a workflow ends its own runs from the canvas or the runs panel.";
-
 export const SCHEDULE_INTERIM_MESSAGE =
   "Nothing in Rova ticks a clock yet, so a run on a timer comes from whatever already schedules work for you, posting an Event.";
 
@@ -265,12 +256,6 @@ export function checkLifecycleRules(input: {
     return refuse(
       "Nothing can start this workflow. Add a Start Event, or allow manual starts."
     );
-  }
-
-  // Last, so a builder configuring cancellation is told about the missing path
-  // or the unknown Event first: those are theirs to fix, and these are not.
-  if (rules.cancelEvents.length > 0) {
-    return refuse(CANCEL_EVENTS_INTERIM_MESSAGE);
   }
 
   return valid;

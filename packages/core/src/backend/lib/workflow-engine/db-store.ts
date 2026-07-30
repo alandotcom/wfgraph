@@ -114,6 +114,9 @@ export function createDbWorkflowStore(runtime: RovaRuntime): WorkflowStore {
       await onRepo((repo) => repo.markRunning(input.executionId));
     },
 
+    readPendingCancel: (executionId) =>
+      onRepo((repo) => repo.findPendingCancel(executionId)),
+
     completeRun,
   };
 }

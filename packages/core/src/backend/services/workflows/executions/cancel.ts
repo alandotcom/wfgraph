@@ -49,9 +49,10 @@ export const postExecutionCancel = Effect.fn("postExecutionCancel")(
       message: "Manual cancellation requested",
     });
 
-    // The one run-ender, which is also what a Cancel Event will reach in B7: the
-    // signal, the row behind its compare-and-set, the wait rows, and the timeline
-    // entry are one thing wherever a run is stopped from outside.
+    // The one run-ender a person reaches: the signal, the row behind its
+    // compare-and-set, the wait rows, and the timeline entry are one thing. A
+    // Cancel Event takes the other path, flagging the run for its Canceled outlet
+    // rather than ending it (`lifecycle/cancel.ts`).
     const ended = yield* cancelInFlightRuns({
       workflowId,
       executionIds: [executionId],

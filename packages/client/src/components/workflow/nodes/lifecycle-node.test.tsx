@@ -1,5 +1,15 @@
+import { render } from "@testing-library/react";
+import { ReactFlowProvider } from "@xyflow/react";
 import { describe, expect, it } from "vitest";
-import { getStartSummary } from "#src/components/workflow/nodes/lifecycle-node";
+import {
+  getStartSummary,
+  LifecycleNode,
+} from "#src/components/workflow/nodes/lifecycle-node";
+import {
+  LIFECYCLE_CANCELED_HANDLE,
+  LIFECYCLE_STARTED_HANDLE,
+} from "@rova/shared/workflow/lifecycle-outlets";
+import type { WorkflowNodeData } from "@rova/shared/workflow/types";
 
 describe("getStartSummary", () => {
   // A workflow the panel has never touched is one the Run button starts, so the
@@ -46,5 +56,57 @@ describe("getStartSummary", () => {
         },
       })
     ).toBe("Nothing starts this yet");
+  });
+});
+
+describe("LifecycleNode handles", () => {
+  // Required NodeProps fields the component itself never reads: the node face
+  // destructures only `data` and `selected`.
+  const requiredNodeProps = {
+    dragging: false,
+    zIndex: 0,
+    selectable: true,
+    deletable: true,
+    draggable: true,
+    isConnectable: true,
+    positionAbsoluteX: 0,
+    positionAbsoluteY: 0,
+  } as const;
+
+  function renderLifecycleNode(data: WorkflowNodeData) {
+    return render(
+      <ReactFlowProvider>
+        <LifecycleNode
+          data={data}
+          id="entry"
+          selected={false}
+          type="trigger"
+          {...requiredNodeProps}
+        />
+      </ReactFlowProvider>
+    );
+  }
+
+  it("renders a source handle for both the Started and Canceled outlets", () => {
+    const view = renderLifecycleNode({
+      label: "",
+      description: "",
+      type: "trigger",
+      config: {},
+      status: "idle",
+    });
+
+    expect(
+      view.container.querySelector(
+        `[data-handleid="${LIFECYCLE_STARTED_HANDLE}"]`
+      )
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector(
+        `[data-handleid="${LIFECYCLE_CANCELED_HANDLE}"]`
+      )
+    ).toBeTruthy();
+    expect(view.getByText("Started")).toBeTruthy();
+    expect(view.getByText("Canceled")).toBeTruthy();
   });
 });

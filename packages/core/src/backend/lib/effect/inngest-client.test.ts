@@ -51,6 +51,7 @@ const waitSignal = {
   executionId: "exec_1",
   nodeId: "node_wait",
   token: "resume_token_1",
+  signalType: "wait-resume" as const,
 };
 
 describe("TestInngestClientLayer", () => {

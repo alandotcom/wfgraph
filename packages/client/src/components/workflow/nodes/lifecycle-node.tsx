@@ -7,12 +7,21 @@ import {
   NodeTitle,
 } from "#src/components/flow-elements/node";
 import { cn } from "@rova/shared/utils";
-import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/workflow/lifecycle-outlets";
+import {
+  LIFECYCLE_CANCELED_HANDLE,
+  LIFECYCLE_STARTED_HANDLE,
+} from "@rova/shared/workflow/lifecycle-outlets";
 import type { WorkflowNodeData } from "@rova/shared/workflow/types";
 import {
   manualStartAllowed,
   readLifecycleRules,
 } from "@rova/shared/workflow/lifecycle-rules";
+
+// Handle offsets mirror the condition-branch pattern on the Action node: two
+// bottom handles split left/right rather than stacked, so both stay reachable
+// for a drag.
+const STARTED_HANDLE_LEFT = "38%";
+const CANCELED_HANDLE_LEFT = "62%";
 
 type LifecycleNodeProps = NodeProps & {
   data?: WorkflowNodeData;
@@ -63,14 +72,28 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
           {
             id: LIFECYCLE_STARTED_HANDLE,
             position: Position.Bottom,
-            style: { width: 12, height: 12 },
+            style: { left: STARTED_HANDLE_LEFT, width: 12, height: 12 },
+          },
+          {
+            id: LIFECYCLE_CANCELED_HANDLE,
+            position: Position.Bottom,
+            style: { left: CANCELED_HANDLE_LEFT, width: 12, height: 12 },
           },
         ],
       }}
       status={status}
     >
-      <div className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none">
+      <div
+        className="pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none"
+        style={{ left: STARTED_HANDLE_LEFT }}
+      >
         Started
+      </div>
+      <div
+        className="pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none"
+        style={{ left: CANCELED_HANDLE_LEFT }}
+      >
+        Canceled
       </div>
 
       <div className="flex flex-col items-center justify-center gap-3 p-6">

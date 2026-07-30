@@ -20,6 +20,12 @@ import {
 } from "@rova/shared/workflow/conditions";
 import { toWorkflowGraphData } from "@rova/shared/workflow/graph";
 import {
+  LIFECYCLE_CANCELED_HANDLE,
+  LIFECYCLE_STARTED_HANDLE,
+  type LifecycleOutlet,
+  nodesBehindOutlet,
+} from "@rova/shared/workflow/lifecycle-outlets";
+import {
   parseTemplate,
   resolveOutputPath,
   type TemplateToken,
@@ -39,7 +45,12 @@ import {
   type WorkflowExecutionRuntime,
 } from "./runtime";
 import { type NodeContext, runWithStepLog } from "./step-log";
-import { noopWorkflowStore, type WorkflowStore } from "./store";
+import {
+  noopWorkflowStore,
+  type PendingCancel,
+  type WorkflowRunAuditEventType,
+  type WorkflowStore,
+} from "./store";
 import { executeWaitAction } from "./wait";
 
 export type { WorkflowActions } from "./actions";
@@ -145,6 +156,34 @@ function getConditionNextNodeIds(input: {
       (edge) => normalizeConditionBranch(edge.sourceHandle) === input.branch
     )
     .map((edge) => edge.target);
+}
+
+/**
+ * The entry-node edges leaving one of the Lifecycle Node's outlets.
+ *
+ * An edge that names neither is followed by no run: the save refuses one, and
+ * binding it by render order is what naming the outlets was meant to stop.
+ */
+function getLifecycleNextNodeIds(input: {
+  edges: WorkflowEdge[];
+  outlet: LifecycleOutlet;
+}): string[] {
+  return input.edges
+    .filter((edge) => edge.sourceHandle === input.outlet)
+    .map((edge) => edge.target);
+}
+
+/** Key a node's output is stored and looked up under. */
+function outputKey(nodeId: string): string {
+  return nodeId.replace(/[^a-zA-Z0-9]/g, "_");
+}
+
+/** Whether this node is the Wait step, which the engine runs itself. */
+function isWaitNode(node: WorkflowNode): boolean {
+  return (
+    node.data.type === "action" &&
+    readConfigString(node.data.config, "actionType") === WAIT_ACTION_TYPE
+  );
 }
 
 /**
@@ -402,8 +441,7 @@ function resolveTemplateToken(
   token: TemplateToken,
   outputs: NodeOutputs
 ): string {
-  // Outputs are keyed by a sanitized node id (see where they are stored below).
-  const output = outputs[token.nodeId.replace(/[^a-zA-Z0-9]/g, "_")];
+  const output = outputs[outputKey(token.nodeId)];
   if (!output) {
     // The token names a node that has not run, so the authored text stays put.
     return token.raw;
@@ -458,16 +496,24 @@ function resolveTemplateString(value: string, outputs: NodeOutputs): string {
 
 type ExecutionLogger = ReturnType<typeof workflowExecutorLogger.with>;
 
+/** How a run that reached the end of its graph is worded on the timeline. */
 function buildRunCompletedMessage(
   runMode: "live" | "test",
-  success: boolean
+  status: TraversalTerminalStatus
 ): string {
+  if (status === "canceled") {
+    return runMode === "test"
+      ? "Test mode canceled at the Canceled outlet"
+      : "Run canceled at the Canceled outlet";
+  }
   if (runMode === "test") {
-    return success
+    return status === "completed"
       ? "Test mode completed successfully"
       : "Test mode completed with errors";
   }
-  return success ? "Run completed successfully" : "Run completed with errors";
+  return status === "completed"
+    ? "Run completed successfully"
+    : "Run completed with errors";
 }
 
 function buildRunFailedMessage(
@@ -485,6 +531,19 @@ function buildRunFailedMessage(
 }
 
 /**
+ * How a run that walked its graph to the end finished. `canceled` is a run that
+ * left the Started branch for the Canceled one, whether or not that branch had
+ * anything to run.
+ */
+type TraversalTerminalStatus = "completed" | "failed" | "canceled";
+
+const RUN_COMPLETED_AUDIT_EVENT = {
+  completed: "run_completed",
+  failed: "run_failed",
+  canceled: "run_cancelled",
+} as const satisfies Record<TraversalTerminalStatus, WorkflowRunAuditEventType>;
+
+/**
  * Writes the terminal record and timeline event for a run that finished its
  * graph. Runs inside a durable step, so it must stay side-effect-idempotent
  * from the caller's point of view: nothing here feeds back into the traversal.
@@ -493,7 +552,7 @@ async function recordRunCompleted(input: {
   store: WorkflowStore;
   executionId: string;
   workflowId: string;
-  status: "completed" | "failed";
+  status: TraversalTerminalStatus;
   output: unknown;
   error?: string;
   startTime: number;
@@ -502,7 +561,6 @@ async function recordRunCompleted(input: {
   runMode: "live" | "test";
   logger: ExecutionLogger;
 }) {
-  const succeeded = input.status === "completed";
   let recorded = true;
 
   try {
@@ -524,8 +582,8 @@ async function recordRunCompleted(input: {
     await input.store.recordAuditEvent({
       workflowId: input.workflowId,
       executionId: input.executionId,
-      eventType: succeeded ? "run_completed" : "run_failed",
-      message: buildRunCompletedMessage(input.runMode, succeeded),
+      eventType: RUN_COMPLETED_AUDIT_EVENT[input.status],
+      message: buildRunCompletedMessage(input.runMode, input.status),
       metadata: {
         duration: input.duration,
         resultCount: input.resultCount,
@@ -684,6 +742,22 @@ async function executeWorkflowInner(
   const inProgressNodes = new Set<string>();
   const downstreamReadyNodes = new Set<string>();
 
+  // Set the moment the run leaves the Started branch for the Canceled one, and
+  // read by every node that finishes after: a run on its way out schedules
+  // nothing more on the branch it was walking.
+  let enteredCanceledBranch = false;
+
+  // Which side of the lifecycle a node sits on is a fact about the graph rather
+  // than about how far this run got, so the boundary read below reaches the same
+  // nodes on a replay as on the attempt. A node inside the Canceled branch is
+  // asked nothing: its run is already canceled, which is what makes a second
+  // Cancel Event a no-op.
+  const canceledBranchNodeIds = nodesBehindOutlet({
+    entryNodeIds: new Set(triggerNodes.map((node) => node.id)),
+    outlet: LIFECYCLE_CANCELED_HANDLE,
+    edges,
+  });
+
   // Helper to get a meaningful node name
   function getNodeName(node: WorkflowNode): string {
     if (node.data.label) {
@@ -731,6 +805,70 @@ async function executeWorkflowInner(
     }
 
     return undefined;
+  }
+
+  /**
+   * Asks whether a Cancel Event has claimed this run, and takes the Canceled
+   * outlet if one has. Answers whether the run has left the Started branch, in
+   * which case the node that just finished schedules nothing more.
+   *
+   * The read sits inside a step, so its answer is memoized per node: a replay
+   * that asked the database again could route one attempt down the Started
+   * branch and the next down the Canceled one, and the memoized node outputs
+   * would then belong to neither.
+   */
+  async function settleCancelBoundary(nodeId: string): Promise<boolean> {
+    if (canceledBranchNodeIds.has(nodeId)) {
+      return false;
+    }
+
+    const pending = await runtime.step(`lifecycle-check-${nodeId}`, () =>
+      store.readPendingCancel(executionId)
+    );
+    if (pending) {
+      await enterCanceledBranch(pending);
+    }
+
+    return enteredCanceledBranch;
+  }
+
+  /**
+   * Routes the run into the Lifecycle Node's Canceled outlet.
+   *
+   * The branch runs inside the same Execution, so every node that already
+   * landed keeps its output; what changes is the entry node's, which becomes
+   * the payload the canceling Event carried. An outlet with no edge leaves
+   * nothing to schedule, and the run ends on the status alone.
+   */
+  async function enterCanceledBranch(pending: PendingCancel) {
+    if (enteredCanceledBranch) {
+      return;
+    }
+    enteredCanceledBranch = true;
+
+    const nextNodes: string[] = [];
+    for (const triggerNode of triggerNodes) {
+      outputs[outputKey(triggerNode.id)] = {
+        label: triggerNode.data.label || triggerNode.id,
+        data: pending.payload,
+      };
+      // The entry node may not have scheduled anything yet, and the branch's
+      // first node waits on it the way any node waits on its source.
+      downstreamReadyNodes.add(triggerNode.id);
+      nextNodes.push(
+        ...getLifecycleNextNodeIds({
+          edges: edgesBySource.get(triggerNode.id) ?? [],
+          outlet: LIFECYCLE_CANCELED_HANDLE,
+        })
+      );
+    }
+
+    executionLogger.info("Entering the Canceled outlet", {
+      cancelEventName: pending.eventName,
+      nextNodeIds: nextNodes,
+    });
+
+    await Promise.all(nextNodes.map((nextNodeId) => executeNode(nextNodeId)));
   }
 
   // Helper to execute a single node
@@ -1002,11 +1140,7 @@ async function executeWorkflowInner(
     nodeName: string,
     namedNodeLogger: ReturnType<typeof executionLogger.with>
   ): Promise<NodeWorkOutcome> {
-    const isWaitNode =
-      node.data.type === "action" &&
-      readConfigString(node.data.config, "actionType") === WAIT_ACTION_TYPE;
-
-    if (isWaitNode || node.data.enabled === false) {
+    if (isWaitNode(node) || node.data.enabled === false) {
       return runNodeWork(node, nodeName, namedNodeLogger);
     }
 
@@ -1049,7 +1183,7 @@ async function executeWorkflowInner(
       // A step's payload arrives as unknown because the dispatch is a dynamic
       // import, so this is where it becomes JSON again for the template
       // resolver and the CEL context to walk.
-      const sanitizedNodeId = nodeId.replace(/[^a-zA-Z0-9]/g, "_");
+      const sanitizedNodeId = outputKey(nodeId);
       const outputData = readJsonValue(result.data);
       if (outputData === null && result.data !== null) {
         namedNodeLogger.warn(
@@ -1068,6 +1202,12 @@ async function executeWorkflowInner(
         haltBranch: result.haltBranch === true,
         error: result.error,
       });
+
+      // A claimed run takes the Canceled outlet instead of whatever came next,
+      // and a node that finishes after that stops where it stands.
+      if (await settleCancelBoundary(nodeId)) {
+        return;
+      }
 
       // Execute next nodes
       if (result.success) {
@@ -1120,10 +1260,18 @@ async function executeWorkflowInner(
             );
           }
         } else if (shouldContinueDownstream) {
-          // For non-condition nodes, execute all next nodes in parallel
-          const nextNodes = (edgesBySource.get(nodeId) || []).map(
-            (edge) => edge.target
-          );
+          // For non-condition nodes, execute all next nodes in parallel. The
+          // entry node is the exception: a normal start leaves by the Started
+          // outlet, and the Canceled outlet's branch is reached only by a run
+          // a Cancel Event claimed.
+          const outgoingEdges = edgesBySource.get(nodeId) || [];
+          const nextNodes =
+            node.data.type === "trigger"
+              ? getLifecycleNextNodeIds({
+                  edges: outgoingEdges,
+                  outlet: LIFECYCLE_STARTED_HANDLE,
+                })
+              : outgoingEdges.map((edge) => edge.target);
           namedNodeLogger.debug("Executing downstream nodes in parallel", {
             nextNodeCount: nextNodes.length,
             nextNodeIds: nextNodes,
@@ -1163,9 +1311,17 @@ async function executeWorkflowInner(
     const finalSuccess = Object.values(results).every((r) => r.success);
     const duration = Date.now() - workflowStartTime;
     const finalOutput = getDeterministicTerminalOutput();
+    // A cancel outranks what the nodes did: the run reached the end of the
+    // Canceled branch, and that is the whole of what it means to be canceled.
+    const terminalStatus: TraversalTerminalStatus = enteredCanceledBranch
+      ? "canceled"
+      : finalSuccess
+        ? "completed"
+        : "failed";
 
     executionLogger.info("Workflow execution completed", {
       success: finalSuccess,
+      status: terminalStatus,
       resultCount: Object.keys(results).length,
       durationMs: duration,
     });
@@ -1177,7 +1333,7 @@ async function executeWorkflowInner(
         store,
         executionId,
         workflowId,
-        status: finalSuccess ? "completed" : "failed",
+        status: terminalStatus,
         output: finalOutput,
         error: Object.values(results).find((r) => !r.success)?.error,
         startTime: workflowStartTime,

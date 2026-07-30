@@ -174,7 +174,12 @@ function graphFor(input: { operator: "before" | "after"; dateTime: string }) {
       },
     ],
     edges: [
-      { id: "edge_t_c", source: "trigger_1", target: "condition_node" },
+      {
+        id: "edge_t_c",
+        source: "trigger_1",
+        sourceHandle: "started",
+        target: "condition_node",
+      },
       {
         id: "edge_c_true",
         source: "condition_node",

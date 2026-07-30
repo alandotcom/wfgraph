@@ -28,6 +28,9 @@ function execution(id: string, status: WorkflowExecution["status"]) {
     cancelledAt: null,
     completedAt: null,
     duration: null,
+    cancelRequestedAt: null,
+    cancelEventName: null,
+    cancelPayload: null,
   };
 }
 

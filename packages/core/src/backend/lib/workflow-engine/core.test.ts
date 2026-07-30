@@ -67,7 +67,14 @@ function createTriggerToActionGraph(actionLabel?: string) {
       createTriggerNode("trigger_1"),
       createHostActionNode("action_1", actionLabel),
     ],
-    edges: [{ id: "edge_1", source: "trigger_1", target: "action_1" }],
+    edges: [
+      {
+        id: "edge_1",
+        source: "trigger_1",
+        sourceHandle: "started",
+        target: "action_1",
+      },
+    ],
   });
 }
 
@@ -212,7 +219,14 @@ describe("host action execution", () => {
               },
             },
           ],
-          edges: [{ id: "edge_1", source: "trigger_1", target: "action_1" }],
+          edges: [
+            {
+              id: "edge_1",
+              source: "trigger_1",
+              sourceHandle: "started",
+              target: "action_1",
+            },
+          ],
         }),
         executionId: "exec_789",
         workflowId: "workflow_1",
@@ -491,7 +505,12 @@ describe("template resolution into action config", () => {
         },
       ],
       edges: [
-        { id: "edge_1", source: "trigger_1", target: "action_1" },
+        {
+          id: "edge_1",
+          source: "trigger_1",
+          sourceHandle: "started",
+          target: "action_1",
+        },
         { id: "edge_2", source: "action_1", target: "action_2" },
       ],
     });

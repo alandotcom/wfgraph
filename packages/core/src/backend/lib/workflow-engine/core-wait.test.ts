@@ -77,7 +77,14 @@ function createWaitNode(
 function createWaitGraph(config: Record<string, unknown>) {
   return createSerializedWorkflowGraph({
     nodes: [createTriggerNode("trigger_1"), createWaitNode("wait_1", config)],
-    edges: [{ id: "edge_1", source: "trigger_1", target: "wait_1" }],
+    edges: [
+      {
+        id: "edge_1",
+        source: "trigger_1",
+        sourceHandle: "started",
+        target: "wait_1",
+      },
+    ],
   });
 }
 
@@ -282,6 +289,35 @@ describe("wait node - event mode", () => {
       waitType: "event",
     });
     expect(store.callsOf("markWaitStateStatus")[0]?.status).toBe("resumed");
+  });
+
+  // A Cancel Event wakes a parked run through the same envelope. The wake closes
+  // the wait as cancelled and hands back no resume payload: the run's verdict is
+  // the flag on its execution row, which the engine reads at its next boundary.
+  it("closes the wait as cancelled when a lifecycle cancel wakes it", async () => {
+    const { runtime, execution } = runWait({
+      config: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      store,
+      resumeEvent: {
+        data: { signalType: "lifecycle-cancel", payload: { reason: "gone" } },
+      },
+    });
+    const result = await execution;
+
+    expect(result.success).toBe(true);
+    expect(waitOutput(result)).toMatchObject({
+      waitType: "event",
+      timedOut: false,
+    });
+    expect(waitOutput(result)).not.toHaveProperty("payload");
+    expect(store.callsOf("markWaitStateStatus")[0]?.status).toBe("cancelled");
+    expect(runtime.waits.at(0)?.options.ifExpression).toContain(
+      'async.data.signalType == "lifecycle-cancel"'
+    );
   });
 
   // A wait with no end is an immortal run, so the timeout the editor writes is

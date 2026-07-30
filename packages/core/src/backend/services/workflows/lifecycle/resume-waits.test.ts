@@ -170,6 +170,7 @@ describe("resumeWaitsMatchingEvent", () => {
       token: "token_1",
       eventType: "event.update",
       payload: { key: "value" },
+      signalType: "wait-resume",
     });
     expect(markWaitStatusMock).toHaveBeenCalledWith({
       waitStateId: "1",

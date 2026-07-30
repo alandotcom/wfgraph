@@ -64,6 +64,11 @@ function createEdge(
   };
 }
 
+/** An edge leaving the entry node's Canceled outlet. */
+function createCanceledOutletEdge(target: string, id: string): WorkflowEdge {
+  return { id, source: "trigger_1", sourceHandle: "canceled", target };
+}
+
 function createConditionEdge(
   source: string,
   target: string,
@@ -250,6 +255,45 @@ describe("validateWorkflowGraph", () => {
     expect(result).toMatchObject({
       valid: false,
       error: expect.stringContaining("without naming an outlet"),
+    });
+  });
+
+  it("accepts an edge drawn from the Canceled outlet", () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createBaseTriggerNode(),
+        createActionNode("action_1"),
+        createActionNode("cleanup_1"),
+      ],
+      edges: [
+        createEdge("trigger_1", "action_1", "edge_started"),
+        createCanceledOutletEdge("cleanup_1", "edge_canceled"),
+      ],
+    });
+
+    expect(validateWorkflowGraph(graph).valid).toBe(true);
+  });
+
+  // The Canceled branch ends the run. An edge back into the Started branch is
+  // the interruptible lifecycle branch ADR-0007 rejected, drawn rather than
+  // declared, and the single-incoming-edge rule is what refuses it.
+  it("rejects an edge from the Canceled branch into the Started branch", () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createBaseTriggerNode(),
+        createActionNode("action_1"),
+        createActionNode("cleanup_1"),
+      ],
+      edges: [
+        createEdge("trigger_1", "action_1", "edge_started"),
+        createCanceledOutletEdge("cleanup_1", "edge_canceled"),
+        createEdge("cleanup_1", "action_1", "edge_rejoin"),
+      ],
+    });
+
+    expect(validateWorkflowGraph(graph)).toMatchObject({
+      valid: false,
+      error: expect.stringContaining("cannot have multiple incoming edges"),
     });
   });
 

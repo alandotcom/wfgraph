@@ -4,6 +4,7 @@ import {
   desc,
   eq,
   inArray,
+  isNull,
   lt,
   ne,
   or,
@@ -13,12 +14,14 @@ import type { Effect } from "effect";
 import { workflowExecutions, workflows } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/workflow/execution-contracts";
+import type { JsonObject } from "@rova/shared/types/json";
 import type {
   ExecutionPageQuery,
   ExecutionStatusRow,
   ExecutionSummary,
   GlobalExecutionRow,
   NewTerminalExecution,
+  PendingCancel,
   WorkflowExecution,
 } from "#src/backend/services/workflows/executions/repo/contracts";
 
@@ -159,6 +162,28 @@ export type RunsRepoMethods = {
     error?: string;
   }) => Effect.Effect<boolean, DatabaseError>;
   /**
+   * Flag every in-flight run of this workflow about this entity for the
+   * Canceled outlet, answering the ids flagged.
+   *
+   * One statement, because the candidate read and the write are the same
+   * decision: a run that reaches a verdict in between must not be flagged, and
+   * the in-flight guard is what says so. A run already flagged is skipped, so
+   * the first Cancel Event owns the payload the Canceled branch runs against.
+   * The rows keep their status -- a cancellation is a routed continuation, so
+   * the run ends itself once it has read the flag at its next node boundary.
+   */
+  readonly requestCancelForEntity: (input: {
+    workflowId: string;
+    entityValue: string;
+    runMode: WorkflowExecution["runMode"];
+    eventName: string;
+    payload: JsonObject;
+  }) => Effect.Effect<string[], DatabaseError>;
+  /** The cancel a run was flagged with, or null when it carries none. */
+  readonly findPendingCancel: (
+    executionId: string
+  ) => Effect.Effect<PendingCancel | null, DatabaseError>;
+  /**
    * Write the run's own terminal row, answering whether this write recorded
    * it. The same in-flight guard as `endInFlight`: a cancel can flip the row
    * while the run is finishing its last step, and the losing completion must
@@ -233,6 +258,8 @@ export function makeRunsMethods(
             cancelledAt: workflowExecutions.cancelledAt,
             completedAt: workflowExecutions.completedAt,
             duration: workflowExecutions.duration,
+            cancelRequestedAt: workflowExecutions.cancelRequestedAt,
+            cancelEventName: workflowExecutions.cancelEventName,
           })
           .from(workflowExecutions)
           .innerJoin(workflows, eq(workflowExecutions.workflowId, workflows.id))
@@ -380,6 +407,55 @@ export function makeRunsMethods(
           .returning({ id: workflowExecutions.id });
 
         return ended.length > 0;
+      }),
+
+    requestCancelForEntity: (input) =>
+      database.query(async (db) => {
+        const flagged = await db
+          .update(workflowExecutions)
+          .set({
+            cancelRequestedAt: new Date(),
+            cancelEventName: input.eventName,
+            cancelPayload: input.payload,
+          })
+          .where(
+            and(
+              eq(workflowExecutions.workflowId, input.workflowId),
+              eq(workflowExecutions.correlationKey, input.entityValue),
+              eq(workflowExecutions.runMode, input.runMode),
+              inArray(workflowExecutions.status, [
+                ...IN_FLIGHT_EXECUTION_STATUSES,
+              ]),
+              // First cancel wins, held on the statement: a second Cancel Event
+              // for the same entity would otherwise overwrite the payload the
+              // Canceled branch is already running against.
+              isNull(workflowExecutions.cancelRequestedAt)
+            )
+          )
+          .returning({ id: workflowExecutions.id });
+
+        return flagged.map((row) => row.id);
+      }),
+
+    findPendingCancel: (executionId) =>
+      database.query(async (db) => {
+        const execution = await db.query.workflowExecutions.findFirst({
+          where: eq(workflowExecutions.id, executionId),
+          columns: {
+            cancelRequestedAt: true,
+            cancelEventName: true,
+            cancelPayload: true,
+          },
+        });
+
+        if (!execution?.cancelRequestedAt) {
+          return null;
+        }
+
+        return {
+          eventName: execution.cancelEventName,
+          payload: execution.cancelPayload,
+        };
       }),
 
     finishRun: (input) =>

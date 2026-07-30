@@ -10,6 +10,7 @@
  */
 
 import { withSpan } from "#src/backend/lib/telemetry";
+import { readJsonObject } from "@rova/shared/types/json";
 import { encodeIsoTimestamp } from "@rova/shared/types/timestamp";
 import { resolveWaitUntil } from "@rova/shared/utils/wait-time";
 import { celStringLiteral } from "@rova/shared/workflow/cel-string-literal";
@@ -64,6 +65,18 @@ function generateWaitToken(): string {
     return globalThis.crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/**
+ * Whether the envelope that woke this wait was a Cancel Event's nudge.
+ *
+ * The signal states no verdict, so this only decides how the wait closes: the
+ * run's own status comes from the flag on its execution row, which the engine
+ * reads at the next node boundary.
+ */
+function isLifecycleCancelSignal(resumeEvent: unknown): boolean {
+  const data = readJsonObject(readJsonObject(resumeEvent)?.data);
+  return data?.signalType === "lifecycle-cancel";
 }
 
 function readWaitGateMode(config: WaitConfig): "require_actual_wait" | "off" {
@@ -509,7 +522,9 @@ async function executeEventWait(
           "async.data.executionId == event.data.executionId",
           `async.data.nodeId == ${celStringLiteral(context.nodeId)}`,
           `async.data.token == ${celStringLiteral(prepared.resumeToken)}`,
-          `async.data.signalType == ${celStringLiteral("wait-resume")}`,
+          // A Cancel Event wakes a parked run through the same envelope, so this
+          // wait admits both signals and the step below tells them apart.
+          `(async.data.signalType == ${celStringLiteral("wait-resume")} || async.data.signalType == ${celStringLiteral("lifecycle-cancel")})`,
         ].join(" && "),
       }
     );
@@ -524,12 +539,16 @@ async function executeEventWait(
     throw error;
   }
 
+  // Derived outside the step for the same reason `timedOut` is: both come off
+  // the memoized `waitForEvent` result, so a replay reads the same verdict.
+  const canceled = !timedOut && isLifecycleCancelSignal(eventPayload);
+
   const resumed = await runtime.step(
     `wait-event-resume-${context.nodeId}`,
     async () => {
       await store.markWaitStateStatus({
         waitStateId: prepared.waitStateId,
-        status: timedOut ? "timed_out" : "resumed",
+        status: canceled ? "cancelled" : timedOut ? "timed_out" : "resumed",
       });
       await store.markExecutionRunning({ executionId });
 
@@ -539,7 +558,9 @@ async function executeEventWait(
         eventType: timedOut ? "run_timed_out" : "run_resumed",
         message: timedOut
           ? `Run timed out in event wait node '${context.nodeName}'`
-          : `Run resumed from event in node '${context.nodeName}'`,
+          : canceled
+            ? `Run woken by a cancel request in node '${context.nodeName}'`
+            : `Run resumed from event in node '${context.nodeName}'`,
         metadata: {
           nodeId: context.nodeId,
           resumeToken: prepared.resumeToken,
@@ -559,9 +580,13 @@ async function executeEventWait(
         timedOut,
         resumedAt: encodeIsoTimestamp(new Date()),
       };
+      // A cancel wake carries no resume payload: the signal is a nudge, and what
+      // the canceling Event sent is on the execution row, which the engine reads
+      // at this node's boundary.
+      const carriesPayload = !(timedOut || canceled);
       const output = skipOnTimeout
         ? { ...base, skipped: true, skippedReason: "timeout_skip" }
-        : { ...base, ...(timedOut ? {} : { payload: eventPayload }) };
+        : { ...base, ...(carriesPayload ? { payload: eventPayload } : {}) };
 
       await closeStepLog(store, startLog, { status: "success", output });
 

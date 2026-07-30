@@ -131,6 +131,7 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
       token: resumeToken,
       eventType,
       payload: input.payload,
+      signalType: "wait-resume",
     });
 
     const waitStateUpdated = yield* repo.markWaitStatus({

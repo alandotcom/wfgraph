@@ -203,6 +203,8 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   markEnqueueFailed: refuse("markEnqueueFailed"),
   markRunning: refuse("markRunning"),
   endInFlight: refuse("endInFlight"),
+  requestCancelForEntity: refuse("requestCancelForEntity"),
+  findPendingCancel: refuse("findPendingCancel"),
   finishRun: refuse("finishRun"),
   recordAuditEvent: refuse("recordAuditEvent"),
   openNodeLog: refuse("openNodeLog"),

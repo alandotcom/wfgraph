@@ -50,11 +50,7 @@ import type {
   WorkflowNode,
   WorkflowNodeType,
 } from "@rova/shared/workflow/types";
-import {
-  isConditionActionNode,
-  normalizeConditionBranch,
-} from "@rova/shared/workflow/condition-branch";
-import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/workflow/lifecycle-outlets";
+import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./connection-handle";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
 import { LifecycleNode } from "./nodes/lifecycle-node";
@@ -366,51 +362,10 @@ export function WorkflowCanvas() {
     [edges]
   );
 
-  const inferConditionBranch = useCallback(
-    (sourceNodeId: string): "true" | "false" => {
-      const outgoing = edges.filter((edge) => edge.source === sourceNodeId);
-      const hasTrue = outgoing.some(
-        (edge) => normalizeConditionBranch(edge.sourceHandle) === "true"
-      );
-      if (!hasTrue) {
-        return "true";
-      }
-
-      const hasFalse = outgoing.some(
-        (edge) => normalizeConditionBranch(edge.sourceHandle) === "false"
-      );
-      if (!hasFalse) {
-        return "false";
-      }
-
-      return "true";
-    },
-    [edges]
-  );
-
   const normalizeSourceHandleForConnection = useCallback(
-    (sourceNodeId: string, sourceHandle: string | null | undefined) => {
-      const explicitBranch = normalizeConditionBranch(sourceHandle);
-      if (explicitBranch) {
-        return explicitBranch;
-      }
-
-      const sourceNode = nodes.find((node) => node.id === sourceNodeId);
-
-      // The Lifecycle Node's outlet is named whichever way the edge was drawn, so
-      // a connection made programmatically says the same thing as one dragged
-      // from the handle. The save refuses an edge from here that names none.
-      if (sourceNode?.data.type === "trigger") {
-        return LIFECYCLE_STARTED_HANDLE;
-      }
-
-      if (!isConditionActionNode(sourceNode)) {
-        return sourceHandle ?? null;
-      }
-
-      return inferConditionBranch(sourceNodeId);
-    },
-    [inferConditionBranch, nodes]
+    (sourceNodeId: string, sourceHandle: string | null | undefined) =>
+      normalizeSourceHandle({ nodes, edges, sourceNodeId, sourceHandle }),
+    [nodes, edges]
   );
 
   const onConnect: OnConnect = useCallback(

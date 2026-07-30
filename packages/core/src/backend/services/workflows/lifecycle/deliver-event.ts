@@ -17,6 +17,7 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import { requestCanceledOutlet } from "#src/backend/services/workflows/lifecycle/cancel";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 import { resumeWaitsMatchingEvent } from "#src/backend/services/workflows/lifecycle/resume-waits";
 import { runWorkflowExecutionPreflight } from "#src/backend/services/workflows/triggering/preflight";
@@ -60,6 +61,16 @@ export type LifecycleDeliveryOutcome =
       kind: "refused";
       workflowId: string;
       reason: "concurrency_first_wins" | "entity_value_missing";
+    }
+  /**
+   * This Event holds the cancel role here; the ids are the runs it claimed. A
+   * claimed run whose last node had already finished ends `completed`, since it
+   * reaches no further boundary to read the flag at.
+   */
+  | {
+      kind: "canceled";
+      workflowId: string;
+      canceledExecutionIds: string[];
     }
   /** This Event holds no start role here, so only its waits are owed anything. */
   | { kind: "waits_only"; workflowId: string }
@@ -115,9 +126,8 @@ export const listEventSubscribers = Effect.fn("listEventSubscribers")(
  * than failed: the Event has other workflows to reach, and a rejected query is the
  * only thing here worth retrying.
  *
- * A cancel arm belongs beside the start arm and arrives with the Canceled outlet.
- * Until then a Cancel Event cannot be saved at all, so an Event reaching here
- * holds the start role or no role.
+ * The two arms below are exclusive: one Event holding both roles in one workflow
+ * is what the save rules refuse, so an arrival either cancels here or starts.
  */
 export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
   function* (input: {
@@ -173,6 +183,39 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     // graph that cannot run: its parked runs still have Events owed to them.
     const rules = preflight.lifecycleRules ?? emptyLifecycleRules;
 
+    const entityValue = readEntityValue({
+      event: input.event,
+      rules,
+      payload: input.payload,
+    });
+
+    if (rules.cancelEvents.includes(input.event.name)) {
+      // A cancel matches by Entity Value and has nothing else to match on, so a
+      // payload carrying none reaches no run. The save rules require a path for
+      // every Cancel Event, which is what makes this the payload's own gap.
+      if (!entityValue) {
+        return {
+          kind: "refused" as const,
+          workflowId: workflow.id,
+          reason: "entity_value_missing" as const,
+        };
+      }
+
+      const canceledExecutionIds = yield* requestCanceledOutlet({
+        workflowId: workflow.id,
+        runMode: workflow.mode,
+        eventName: input.event.name,
+        payload: input.payload,
+        entityValue,
+      });
+
+      return {
+        kind: "canceled" as const,
+        workflowId: workflow.id,
+        canceledExecutionIds,
+      };
+    }
+
     if (!rules.startEvents.includes(input.event.name)) {
       return { kind: "waits_only" as const, workflowId: workflow.id };
     }
@@ -188,11 +231,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
         source: "event",
         eventName: input.event.name,
         deliveryId: input.deliveryId,
-        entityValue: readEntityValue({
-          event: input.event,
-          rules,
-          payload: input.payload,
-        }),
+        entityValue,
       },
       runMode: workflow.mode,
       payload: input.payload,

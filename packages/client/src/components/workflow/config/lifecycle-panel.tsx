@@ -1,4 +1,4 @@
-import { CalendarClock, Copy, Info, TriangleAlert } from "lucide-react";
+import { CalendarClock, Copy, TriangleAlert } from "lucide-react";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
@@ -10,7 +10,6 @@ import { getExtensionCatalog } from "#src/lib/extensions";
 import { buildEventIntakeUrl } from "@rova/shared/workflow/event-intake-url";
 import { cn } from "@rova/shared/utils";
 import {
-  CANCEL_EVENTS_INTERIM_MESSAGE,
   checkLifecycleRules,
   type Concurrency,
   type CorrelationPathRole,
@@ -32,10 +31,9 @@ import type { UpdateNodeConfig } from "./node-config-patch";
  * asked for is how a builder loses the difference between "never configured" and
  * "configured this way".
  *
- * Cancel Events and the schedule are present as placeholders, with no control: a
- * builder can see where each will go, and the sentence beside it is the one a save
- * would answer with. Cancel Events are in the stored shape already; a schedule is
- * not, because nothing can write one.
+ * The schedule is present as a placeholder, with no control: a builder can see
+ * where it will go, and the sentence beside it is the one a save would answer
+ * with. Nothing can write one yet.
  */
 export function LifecyclePanel({
   config,
@@ -47,6 +45,7 @@ export function LifecyclePanel({
   disabled: boolean;
 }) {
   const startEventsLabelId = useId();
+  const cancelEventsLabelId = useId();
   const manualStartId = useId();
   const catalog = getExtensionCatalog();
   const rules = readLifecycleRules(config) ?? initialLifecycleRules;
@@ -66,6 +65,15 @@ export function LifecyclePanel({
       startEvents: rules.startEvents.includes(eventName)
         ? rules.startEvents.filter((entry) => entry !== eventName)
         : [...rules.startEvents, eventName],
+    });
+  };
+
+  const toggleCancelEvent = (eventName: string) => {
+    write({
+      ...rules,
+      cancelEvents: rules.cancelEvents.includes(eventName)
+        ? rules.cancelEvents.filter((entry) => entry !== eventName)
+        : [...rules.cancelEvents, eventName],
     });
   };
 
@@ -90,50 +98,15 @@ export function LifecyclePanel({
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <Label id={startEventsLabelId}>Start Events</Label>
-        {catalog.events.length > 0 ? (
-          <div
-            aria-labelledby={startEventsLabelId}
-            className="flex flex-wrap gap-1.5"
-            role="group"
-          >
-            {catalog.events.map((event) => {
-              const isSelected = rules.startEvents.includes(event.name);
-              return (
-                <button
-                  aria-pressed={isSelected}
-                  className={cn(
-                    "rounded-full border px-2.5 py-1 text-xs transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                    isSelected
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-input text-muted-foreground hover:bg-muted/50",
-                    disabled && "pointer-events-none opacity-50"
-                  )}
-                  disabled={disabled}
-                  key={event.name}
-                  onClick={() => toggleStartEvent(event.name)}
-                  title={event.name}
-                  type="button"
-                >
-                  {event.label}
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-muted-foreground text-xs">
-            This server declares no Events. Whoever runs it passes them to
-            <code className="mx-1 font-mono text-xs">createRovaApp</code>, and
-            they appear here.
-          </p>
-        )}
-        <p className="text-muted-foreground text-xs">
-          Each of these starts a run when it arrives. An Event that starts
-          nothing here can still resume a run parked on it.
-        </p>
-      </div>
+      <EventPicker
+        disabled={disabled}
+        events={catalog.events}
+        help="Each of these starts a run when it arrives. An Event that starts nothing here can still resume a run parked on it."
+        label="Start Events"
+        labelId={startEventsLabelId}
+        onToggle={toggleStartEvent}
+        selected={rules.startEvents}
+      />
 
       {rules.startEvents.length > 0 ? (
         <div className="space-y-2 rounded-md border bg-muted/30 p-3">
@@ -233,15 +206,15 @@ export function LifecyclePanel({
         </div>
       </div>
 
-      <div className="space-y-2 rounded-md border border-dashed p-3 opacity-70">
-        <div className="flex items-center gap-2">
-          <Info className="size-3.5 shrink-0 text-muted-foreground" />
-          <p className="font-medium text-sm">Cancel Events</p>
-        </div>
-        <p className="text-muted-foreground text-xs">
-          {CANCEL_EVENTS_INTERIM_MESSAGE}
-        </p>
-      </div>
+      <EventPicker
+        disabled={disabled}
+        events={catalog.events}
+        help="Each of these routes runs already going to the Canceled outlet."
+        label="Cancel Events"
+        labelId={cancelEventsLabelId}
+        onToggle={toggleCancelEvent}
+        selected={rules.cancelEvents}
+      />
 
       <div className="space-y-2 rounded-md border border-dashed p-3 opacity-70">
         <div className="flex items-center gap-2">
@@ -266,6 +239,73 @@ export function LifecyclePanel({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * A row of toggle buttons over the catalog's Events, shared by the Start and
+ * Cancel pickers: only the selection, the toggle, and the two labels differ
+ * between them.
+ */
+function EventPicker({
+  label,
+  labelId,
+  events,
+  selected,
+  onToggle,
+  disabled,
+  help,
+}: {
+  label: string;
+  labelId: string;
+  events: ReadonlyArray<{ name: string; label: string }>;
+  selected: readonly string[];
+  onToggle: (eventName: string) => void;
+  disabled: boolean;
+  help: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label id={labelId}>{label}</Label>
+      {events.length > 0 ? (
+        <div
+          aria-labelledby={labelId}
+          className="flex flex-wrap gap-1.5"
+          role="group"
+        >
+          {events.map((event) => {
+            const isSelected = selected.includes(event.name);
+            return (
+              <button
+                aria-pressed={isSelected}
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                  isSelected
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-input text-muted-foreground hover:bg-muted/50",
+                  disabled && "pointer-events-none opacity-50"
+                )}
+                disabled={disabled}
+                key={event.name}
+                onClick={() => onToggle(event.name)}
+                title={event.name}
+                type="button"
+              >
+                {event.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-muted-foreground text-xs">
+          This server declares no Events. Whoever runs it passes them to
+          <code className="mx-1 font-mono text-xs">createRovaApp</code>, and
+          they appear here.
+        </p>
+      )}
+      <p className="text-muted-foreground text-xs">{help}</p>
     </div>
   );
 }

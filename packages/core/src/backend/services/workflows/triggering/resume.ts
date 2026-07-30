@@ -48,6 +48,7 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
       nodeId: waitState.nodeId,
       token,
       payload: body,
+      signalType: "wait-resume",
     });
 
     const waitStateUpdated = yield* repo.markWaitStatus({

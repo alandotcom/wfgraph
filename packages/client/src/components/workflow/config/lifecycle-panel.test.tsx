@@ -1,4 +1,10 @@
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  type RenderResult,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { type ReactNode, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -8,7 +14,6 @@ import {
 } from "#src/components/workflow/config/lifecycle-panel";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
 import {
-  CANCEL_EVENTS_INTERIM_MESSAGE,
   type LifecycleRules,
   SCHEDULE_INTERIM_MESSAGE,
 } from "@rova/shared/workflow/lifecycle-rules";
@@ -92,6 +97,23 @@ function rulesOf(config: Record<string, unknown>): LifecycleRules {
   return config.lifecycleRules as LifecycleRules;
 }
 
+// Start Events and Cancel Events render one button per catalog Event, so a
+// label alone no longer picks out one: these scope the lookup to the group
+// the picker belongs to.
+function startEventButton(view: RenderResult, label: string) {
+  return within(view.getByRole("group", { name: "Start Events" })).getByRole(
+    "button",
+    { name: label }
+  );
+}
+
+function cancelEventButton(view: RenderResult, label: string) {
+  return within(view.getByRole("group", { name: "Cancel Events" })).getByRole(
+    "button",
+    { name: label }
+  );
+}
+
 describe("LifecyclePanel", () => {
   // The moment rules exist they are held to the start-source rule, so the first
   // write has to carry a start source or it refuses the save that wrote it.
@@ -105,7 +127,7 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    fireEvent.click(view.getByRole("button", { name: "Appointment created" }));
+    fireEvent.click(startEventButton(view, "Appointment created"));
 
     await waitFor(() => {
       expect(rulesOf(latest)).toEqual({
@@ -132,7 +154,7 @@ describe("LifecyclePanel", () => {
 
     expect(onUpdateConfig).not.toHaveBeenCalled();
 
-    fireEvent.click(view.getByRole("button", { name: "Appointment created" }));
+    fireEvent.click(startEventButton(view, "Appointment created"));
 
     expect(onUpdateConfig).toHaveBeenCalledTimes(1);
   });
@@ -189,7 +211,7 @@ describe("LifecyclePanel", () => {
       expect(rulesOf(latest).allowManualStart).toBe(false);
     });
 
-    fireEvent.click(view.getByRole("button", { name: "Appointment created" }));
+    fireEvent.click(startEventButton(view, "Appointment created"));
     await waitFor(() => {
       expect(rulesOf(latest).startEvents).toEqual([]);
     });
@@ -218,10 +240,70 @@ describe("LifecyclePanel", () => {
 
     expect(view.queryByText(/described by nothing/)).toBeNull();
 
-    fireEvent.click(view.getByRole("button", { name: "Appointment created" }));
+    fireEvent.click(startEventButton(view, "Appointment created"));
 
     await waitFor(() => {
       expect(view.getByText(/described by nothing/)).toBeTruthy();
+    });
+  });
+});
+
+describe("LifecyclePanel Cancel Events", () => {
+  it("writes a cancel Event pick to lifecycleRules.cancelEvents", async () => {
+    let latest: Record<string, unknown> = {
+      lifecycleRules: {
+        startEvents: [],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        allowManualStart: true,
+      },
+    };
+    const view = render(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    fireEvent.click(cancelEventButton(view, "Appointment created"));
+
+    await waitFor(() => {
+      expect(rulesOf(latest).cancelEvents).toEqual(["app/appointment.created"]);
+    });
+  });
+
+  // ADR-0007 refuses one Event holding both roles rather than picking a
+  // winner, and the panel runs that same check.
+  it("shows the shared refusal when a pick gives one Event both roles", async () => {
+    let latest: Record<string, unknown> = {
+      lifecycleRules: {
+        startEvents: ["app/appointment.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        allowManualStart: true,
+      },
+    };
+    const view = render(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    expect(view.queryByText("This will not save")).toBeNull();
+
+    fireEvent.click(cancelEventButton(view, "Appointment created"));
+
+    await waitFor(() => {
+      expect(
+        view.getByText(
+          'Event "app/appointment.created" cannot both start and cancel runs of this workflow. Give it one role, or start on one Event and cancel on another.'
+        )
+      ).toBeTruthy();
     });
   });
 });
@@ -352,6 +434,25 @@ describe("LifecyclePanel Correlation Paths", () => {
     expect(view.queryByLabelText("ops/nightly.swept")).toBeNull();
   });
 
+  // A cancel role matches by entity too, so an Event picked to cancel and
+  // declaring no path owes one exactly as a start pick would.
+  it("asks for a path when a cancel pick owes one, labeled by its role", () => {
+    const view = render(
+      <ControlledPanel
+        initialConfig={{
+          lifecycleRules: {
+            startEvents: [],
+            cancelEvents: ["ops/nightly.swept"],
+            concurrency: "unlimited",
+          },
+        }}
+      />
+    );
+
+    expect(view.getByLabelText("ops/nightly.swept")).toBeTruthy();
+    expect(view.getByText("cancels runs")).toBeTruthy();
+  });
+
   // A Wait Subscription carries its own match expression, so nothing a Wait node
   // parks on is asked about here. The rules answer for start and cancel roles.
   it("asks nothing on account of a Wait node", () => {
@@ -421,11 +522,10 @@ describe("LifecyclePanel refusals", () => {
 });
 
 describe("LifecyclePanel interim placeholders", () => {
-  // Both render the sentence a save answers with, so the two copies cannot drift.
-  it("says why Cancel Events and a schedule are not available yet", () => {
+  // The panel renders the sentence a save answers with, so the two cannot drift.
+  it("says why a schedule is not available yet", () => {
     const view = render(<ControlledPanel />);
 
-    expect(view.getByText(CANCEL_EVENTS_INTERIM_MESSAGE)).toBeTruthy();
     expect(view.getByText(SCHEDULE_INTERIM_MESSAGE)).toBeTruthy();
   });
 });

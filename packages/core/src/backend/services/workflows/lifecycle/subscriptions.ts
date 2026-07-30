@@ -57,9 +57,6 @@ export function deriveEventSubscriptions(input: {
       for (const eventName of rules?.startEvents ?? []) {
         add(eventName, "start");
       }
-      // A cancel row cannot exist yet -- the save rules refuse a non-empty
-      // cancelEvents until the Canceled outlet lands -- and the role is derived
-      // here anyway, so the outlet arriving needs no change to this walk.
       for (const eventName of rules?.cancelEvents ?? []) {
         add(eventName, "cancel");
       }

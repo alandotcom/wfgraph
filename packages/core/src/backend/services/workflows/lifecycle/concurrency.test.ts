@@ -63,6 +63,9 @@ function createExecution(
     cancelledAt: null,
     completedAt: null,
     duration: null,
+    cancelRequestedAt: null,
+    cancelEventName: null,
+    cancelPayload: null,
     ...overrides,
   };
 }

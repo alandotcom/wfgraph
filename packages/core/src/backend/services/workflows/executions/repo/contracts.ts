@@ -76,8 +76,11 @@ export type ExecutionStatusRow = Pick<WorkflowExecution, "id" | "status">;
 /**
  * An execution carrying the two columns of its workflow the cross-workflow runs
  * list shows beside it, which is what the join in `listPage` is for.
+ *
+ * The canceling Event's payload is left out: it is arbitrary host JSON, and no
+ * runs-list row shows it. The engine reads it through `findPendingCancel`.
  */
-export type GlobalExecutionRow = WorkflowExecution & {
+export type GlobalExecutionRow = Omit<WorkflowExecution, "cancelPayload"> & {
   workflowName: string;
   workflowIsPaused: boolean;
 };
@@ -96,6 +99,17 @@ export type EntityStartOutcome =
       supersededExecutionIds: string[];
     }
   | { status: "refused"; inFlightExecutionIds: string[] };
+
+/**
+ * A Cancel Event's request, as the run reads it back at its next node boundary.
+ *
+ * The columns are the whole of the authority: nothing kills the run, so this is
+ * how it learns to route to its Canceled outlet (ADR-0007).
+ */
+export type PendingCancel = {
+  eventName: string | null;
+  payload: JsonObject | null;
+};
 
 /**
  * One audit row.

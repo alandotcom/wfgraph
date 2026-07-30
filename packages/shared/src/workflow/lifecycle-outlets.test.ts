@@ -3,6 +3,8 @@ import {
   entryOutletsReaching,
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
+  type LifecycleOutlet,
+  nodesBehindOutlet,
 } from "#src/workflow/lifecycle-outlets";
 import type { WorkflowEdge } from "#src/workflow/types";
 
@@ -98,5 +100,50 @@ describe("entryOutletsReaching", () => {
         edge({ id: "e3", source: "b", target: "a" }),
       ])
     ).toEqual([LIFECYCLE_STARTED_HANDLE]);
+  });
+});
+
+describe("nodesBehindOutlet", () => {
+  function behind(outlet: LifecycleOutlet, edges = diamond): string[] {
+    return [
+      ...nodesBehindOutlet({
+        entryNodeIds: new Set(["entry"]),
+        outlet,
+        edges,
+      }),
+    ].toSorted();
+  }
+
+  it("collects the branch's own node and everything downstream of it", () => {
+    expect(behind(LIFECYCLE_CANCELED_HANDLE)).toEqual(["join", "on_cancel"]);
+    expect(behind(LIFECYCLE_STARTED_HANDLE)).toEqual(["join", "on_start"]);
+  });
+
+  it("collects nothing for an outlet no edge leaves", () => {
+    expect(
+      behind(LIFECYCLE_CANCELED_HANDLE, [
+        edge({
+          id: "e1",
+          source: "entry",
+          target: "on_start",
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+        }),
+      ])
+    ).toEqual([]);
+  });
+
+  it("terminates on a cycle in the edges it is handed", () => {
+    expect(
+      behind(LIFECYCLE_STARTED_HANDLE, [
+        edge({
+          id: "e1",
+          source: "entry",
+          target: "a",
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+        }),
+        edge({ id: "e2", source: "a", target: "b" }),
+        edge({ id: "e3", source: "b", target: "a" }),
+      ])
+    ).toEqual(["a", "b"]);
   });
 });

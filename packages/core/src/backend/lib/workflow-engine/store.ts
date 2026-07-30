@@ -17,6 +17,8 @@
  * round-trip through the durable runtime's storage.
  */
 
+import type { JsonObject } from "@rova/shared/types/json";
+
 /**
  * Timeline events the engine itself emits. The database accepts a wider set;
  * this union is deliberately limited to what the executor writes so the port
@@ -92,6 +94,16 @@ export type MarkWaitStateStatusInput = {
   status: "resumed" | "timed_out" | "cancelled";
 };
 
+/**
+ * A Cancel Event's request against one run, as the engine reads it back. The
+ * payload is what the canceling Event carried, which the Canceled branch
+ * addresses as the entry node's output.
+ */
+export type PendingCancel = {
+  eventName: string | null;
+  payload: JsonObject | null;
+};
+
 export type CompleteRunInput = {
   executionId: string;
   status: "completed" | "failed" | "canceled";
@@ -121,6 +133,12 @@ export type WorkflowStore = {
   /** Moves an execution back from "waiting" to "running" after a wait. */
   markExecutionRunning(input: { executionId: string }): Promise<void>;
   /**
+   * Whether a Cancel Event has claimed this run, and what it carried. Read at
+   * each node boundary inside a step, so the answer is memoized and a replay
+   * takes the branch the first pass took.
+   */
+  readPendingCancel(executionId: string): Promise<PendingCancel | null>;
+  /**
    * Writes the terminal state of the run. Returns whether this write
    * recorded it — false when a cancellation already made the row terminal,
    * in which case the run's own completion must not be announced either.
@@ -140,5 +158,6 @@ export const noopWorkflowStore: WorkflowStore = {
   createWaitState: () => Promise.resolve({ waitStateId: "" }),
   markWaitStateStatus: () => Promise.resolve(),
   markExecutionRunning: () => Promise.resolve(),
+  readPendingCancel: () => Promise.resolve(null),
   completeRun: () => Promise.resolve(true),
 };

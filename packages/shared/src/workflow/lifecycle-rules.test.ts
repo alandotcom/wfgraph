@@ -179,25 +179,50 @@ describe("checkLifecycleRules", () => {
     );
   });
 
-  // A cancel matches by Entity Value, so a path is what it needs before the
-  // interim refusal below is even reached.
+  it("accepts a workflow cancelling on one Event", () => {
+    expect(
+      checkLifecycleRules({
+        rules: rules({ cancelEvents: ["app/appointment.canceled"] }),
+        catalog,
+      })
+    ).toEqual({ valid: true });
+  });
+
+  // A cancel always matches by Entity Value, whatever Concurrency says, so the
+  // path is owed even where a start would not need one.
   it("refuses a Cancel Event with no Correlation Path", () => {
     const check = checkLifecycleRules({
-      rules: rules({ cancelEvents: ["ops/nightly.swept"] }),
+      rules: rules({
+        cancelEvents: ["ops/nightly.swept"],
+        concurrency: "unlimited",
+      }),
       catalog,
     });
 
     expect(refusalOf(check)).toContain("declares no Correlation Path");
   });
 
-  it("refuses Cancel Events until the Canceled outlet lands", () => {
+  it("accepts the builder's own path for a Cancel Event", () => {
+    expect(
+      checkLifecycleRules({
+        rules: rules({
+          cancelEvents: ["ops/nightly.swept"],
+          concurrency: "unlimited",
+          correlationPaths: { "ops/nightly.swept": "sweep.id" },
+        }),
+        catalog,
+      })
+    ).toEqual({ valid: true });
+  });
+
+  it("names a Cancel Event the catalog does not hold", () => {
     const check = checkLifecycleRules({
-      rules: rules({ cancelEvents: ["app/appointment.canceled"] }),
+      rules: rules({ cancelEvents: ["app/appointment.moved"] }),
       catalog,
     });
 
     expect(refusalOf(check)).toContain(
-      "Cancel Events arrive with the Canceled outlet"
+      'No Event named "app/appointment.moved"'
     );
   });
 
