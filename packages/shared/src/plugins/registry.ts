@@ -285,7 +285,7 @@ function readPluginAction(
   return {
     ...rest,
     outputFields: requireOutputFieldsFromSchema(
-      computeActionId(integrationType, action.slug),
+      `Action "${computeActionId(integrationType, action.slug)}"`,
       output
     ),
   };

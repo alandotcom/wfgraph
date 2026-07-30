@@ -90,16 +90,21 @@ export function outputFieldsFromSchema(
 }
 
 /**
- * The same list for an action that must have one, or a throw naming the action.
+ * The same list for a definition that must have one, or a throw naming it.
  *
- * A plugin's output schema is the only thing standing between a step's payload
- * and the paths the editor offers, so a schema this cannot read is a mistake in
- * the plugin rather than a list to go without. Registration is the moment to say
- * so: it happens on import, so the message reaches whoever wrote the schema
- * instead of reaching a user as autocomplete that quietly lists nothing.
+ * A schema is the only thing standing between a payload and the paths the editor
+ * offers, so a schema this cannot read is a mistake in the definition rather
+ * than a list to go without. An action's output schema and an Event's payload
+ * schema both come through here, which is why `subject` is a phrase rather than
+ * an id: it is what the message names, so it says which kind of thing is at
+ * fault, as `Action "twilio/send-sms"` or `Event "app/appointment.created"`.
+ *
+ * The throw lands at definition, which happens as the host's module graph loads,
+ * so the message reaches whoever wrote the schema instead of reaching a user as
+ * autocomplete that quietly lists nothing.
  */
 export function requireOutputFieldsFromSchema(
-  actionId: string,
+  subject: string,
   schema: OutputSchema<unknown>
 ): ReferenceField[] {
   const jsonSchema = describeSchema(asStandardSchema(schema));
@@ -110,7 +115,7 @@ export function requireOutputFieldsFromSchema(
   const problem = findDerivationProblem(jsonSchema, fields);
   if (problem) {
     throw new Error(
-      `Action "${actionId}" cannot derive its output fields: ${problem}`
+      `${subject} cannot derive the fields the editor offers: ${problem}`
     );
   }
 
@@ -133,7 +138,7 @@ function findDerivationProblem(
   if (!(fields && properties)) {
     // An array root, a union of objects, a bare primitive. A downstream node
     // addresses an output by named path, so there is nothing for it to name.
-    return "its root is not an object with named properties. A step's payload is addressed by path, so the output schema is a struct.";
+    return "its root is not an object with named properties. A payload is addressed by path, so the schema is a struct.";
   }
 
   const declared = Object.keys(properties);

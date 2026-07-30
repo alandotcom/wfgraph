@@ -1,0 +1,139 @@
+/**
+ * The extension surface as JSON: the whole of what the browser learns about it.
+ *
+ * `GET /api/extensions` sends this document and the editor decodes it. That one
+ * channel is what lets a plugin hold everything it needs in one file: the browser
+ * never imports that file, so nothing a plugin reaches for reaches a browser
+ * bundle.
+ *
+ * Everything here is data. An icon and a custom output renderer are React
+ * components, which cannot be serialized, so those stay an explicit browser
+ * import in `plugins/ui-registry.ts` keyed by integration type, and `logoUrl` is
+ * the escape hatch for an integration that only wants an image.
+ *
+ * The lookups are pure functions over a catalog rather than methods on one, so
+ * the server and the browser run a single implementation over the same document.
+ */
+
+import type { ActionConfigField } from "#src/plugins/registry";
+import type { ReferenceField } from "#src/workflow/node-references";
+
+/**
+ * One Event, as the editor lists it.
+ *
+ * An Event carries no lifecycle role here. Which Events start a workflow and
+ * which cancel it is the Workflow Builder's declaration on the Lifecycle Node,
+ * per workflow, so the catalog states vocabulary and nothing else.
+ */
+export type EventMetadata = {
+  readonly name: string;
+  readonly label: string;
+  readonly description?: string;
+  /** Absent when the Event declares none; the Workflow Builder supplies one. */
+  readonly correlationPath?: string;
+  readonly payloadFields: readonly ReferenceField[];
+};
+
+/**
+ * One action, as the editor lists and configures it.
+ *
+ * `outputFields` is derived from the action's output schema on the server, so
+ * there is no hand-written list on either side of the wire to keep in step.
+ */
+export type ActionMetadata = {
+  readonly id: string;
+  readonly label: string;
+  readonly description: string;
+  readonly category: string;
+  /** The integration this action belongs to, absent for a host-defined one. */
+  readonly integration?: string;
+  readonly logoUrl?: string;
+  readonly configFields: readonly ActionConfigField[];
+  readonly outputFields: readonly ReferenceField[];
+};
+
+/** One credential the integrations dialog asks an operator for. */
+export type CredentialFieldMetadata = {
+  readonly id: string;
+  readonly label: string;
+  readonly type: "text" | "password" | "url";
+  readonly placeholder?: string;
+  readonly helpText?: string;
+  readonly helpLink?: { readonly text: string; readonly url: string };
+  /** Which key of the stored integration config the value goes to. */
+  readonly configKey: string;
+  /** The environment variable a handler reads the value as. */
+  readonly envVar?: string;
+};
+
+export type IntegrationMetadata = {
+  readonly type: string;
+  readonly label: string;
+  readonly description: string;
+  readonly credentialFields: readonly CredentialFieldMetadata[];
+  /** Whether "Test connection" has anything to call. */
+  readonly hasTest: boolean;
+};
+
+export type ExtensionCatalog = {
+  readonly events: readonly EventMetadata[];
+  readonly actions: readonly ActionMetadata[];
+  readonly integrations: readonly IntegrationMetadata[];
+};
+
+/**
+ * The surface before anything has been assembled or fetched.
+ *
+ * A host that forgets to pass its integrations gets this, which is why
+ * `createRovaApp` logs what it assembled and the action selector says the
+ * surface is empty rather than drawing nothing.
+ */
+export const emptyExtensionCatalog: ExtensionCatalog = {
+  events: [],
+  actions: [],
+  integrations: [],
+};
+
+export function findEvent(
+  catalog: ExtensionCatalog,
+  name: string
+): EventMetadata | undefined {
+  return catalog.events.find((event) => event.name === name);
+}
+
+export function findAction(
+  catalog: ExtensionCatalog,
+  id: string
+): ActionMetadata | undefined {
+  return catalog.actions.find((action) => action.id === id);
+}
+
+export function findIntegration(
+  catalog: ExtensionCatalog,
+  type: string
+): IntegrationMetadata | undefined {
+  return catalog.integrations.find((integration) => integration.type === type);
+}
+
+/**
+ * The actions grouped for the selector, each group in catalog order.
+ *
+ * The record is mutable and its lists are copies, because the editor sorts and
+ * filters what it is given.
+ */
+export function actionsByCategory(
+  catalog: ExtensionCatalog
+): Record<string, ActionMetadata[]> {
+  const grouped: Record<string, ActionMetadata[]> = {};
+
+  for (const action of catalog.actions) {
+    const group = grouped[action.category];
+    if (group) {
+      group.push(action);
+    } else {
+      grouped[action.category] = [action];
+    }
+  }
+
+  return grouped;
+}

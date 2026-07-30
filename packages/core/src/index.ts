@@ -1,4 +1,13 @@
 export {
+  type AnyEventDefinition,
+  defineEvent,
+  type DefineEventInput,
+  type EventDefinition,
+  type EventStringPath,
+  type InngestEventOptions,
+  type PayloadSchema,
+} from "#src/backend/lib/extensions/define-event";
+export {
   type CreateActionInput,
   type CreateActionInputWithOutput,
   createAction,

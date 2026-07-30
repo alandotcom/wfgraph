@@ -1,6 +1,11 @@
 import { Schema } from "effect";
 import { compact } from "es-toolkit/array";
-import { getBasePath } from "#src/lib/base-path";
+// The catalog's wire schema owns both field shapes, because both halves of this
+// endpoint carry them and one decode contract is what keeps them agreeing.
+import {
+  actionConfigFieldWireSchema,
+  referenceFieldWireSchema,
+} from "@rova/shared/extensions/catalog-wire";
 import type { ActionConfigField } from "@rova/shared/plugins/registry";
 import { readAs } from "@rova/shared/types/schema";
 import {
@@ -30,82 +35,6 @@ export type RuntimeTriggerDefinition = {
 
 const runtimeTriggerRegistry = new Map<string, RuntimeTriggerDefinition>();
 
-let hydrationPromise: Promise<void> | null = null;
-
-const selectOptionSchema = Schema.Struct({
-  value: Schema.String,
-  label: Schema.String,
-});
-
-/**
- * One declarative config field, matching `ActionConfigFieldBase` in the plugin
- * registry. The field types are a closed set because the config renderer
- * switches on them: a field the renderer cannot draw is not a usable field.
- *
- * The list fields are wrapped in `Schema.mutable` because the registry's own
- * types spell them as mutable arrays, and a decoded `readonly` array would not
- * satisfy them.
- */
-const actionConfigFieldBaseSchema = Schema.Struct({
-  key: Schema.String,
-  label: Schema.String,
-  type: Schema.Literals([
-    "template-input",
-    "template-textarea",
-    "text",
-    "number",
-    "select",
-    "schema-builder",
-    "key-value",
-  ]),
-  placeholder: Schema.optionalKey(Schema.String),
-  defaultValue: Schema.optionalKey(Schema.String),
-  example: Schema.optionalKey(Schema.String),
-  options: Schema.optionalKey(Schema.mutable(Schema.Array(selectOptionSchema))),
-  rows: Schema.optionalKey(Schema.Finite),
-  min: Schema.optionalKey(Schema.Finite),
-  required: Schema.optionalKey(Schema.Boolean),
-  showWhen: Schema.optionalKey(
-    Schema.Struct({
-      field: Schema.String,
-      equals: Schema.String,
-    })
-  ),
-});
-
-const actionConfigFieldGroupSchema = Schema.Struct({
-  label: Schema.String,
-  type: Schema.Literal("group"),
-  fields: Schema.mutable(Schema.Array(actionConfigFieldBaseSchema)),
-  defaultExpanded: Schema.optionalKey(Schema.Boolean),
-});
-
-// The annotation is the check: a schema that admits a field the registry's own
-// contract does not have -- a type literal the config renderer cannot draw, say
-// -- stops compiling here.
-const actionConfigFieldSchema: Schema.Codec<ActionConfigField> = Schema.Union([
-  actionConfigFieldGroupSchema,
-  actionConfigFieldBaseSchema,
-]);
-
-const referenceFieldSchema: Schema.Codec<ReferenceField> = Schema.Struct({
-  path: Schema.String,
-  description: Schema.String,
-  type: Schema.optionalKey(
-    Schema.Literals([
-      "string",
-      "number",
-      "boolean",
-      "timestamp",
-      "array",
-      "object",
-    ])
-  ),
-  format: Schema.optionalKey(Schema.Literal("timestamp")),
-  nullable: Schema.optionalKey(Schema.Boolean),
-  enumValues: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
-});
-
 /**
  * An action registered at runtime by the host app, as `/api/extensions` sends it.
  *
@@ -123,10 +52,10 @@ const runtimeActionSchema: Schema.Codec<RuntimeActionMetadata> = Schema.Struct({
   integration: Schema.optionalKey(Schema.String),
   logoUrl: Schema.optionalKey(Schema.String),
   configFields: Schema.optionalKey(
-    Schema.mutable(Schema.Array(actionConfigFieldSchema))
+    Schema.mutable(Schema.Array(actionConfigFieldWireSchema))
   ),
   outputFields: Schema.optionalKey(
-    Schema.mutable(Schema.Array(referenceFieldSchema))
+    Schema.mutable(Schema.Array(referenceFieldWireSchema))
   ),
 });
 
@@ -138,10 +67,10 @@ const runtimeTriggerSchema: Schema.Codec<RuntimeTriggerDefinition> =
     description: Schema.optionalKey(Schema.String),
     logoUrl: Schema.optionalKey(Schema.String),
     configFields: Schema.optionalKey(
-      Schema.mutable(Schema.Array(actionConfigFieldSchema))
+      Schema.mutable(Schema.Array(actionConfigFieldWireSchema))
     ),
     outputFields: Schema.optionalKey(
-      Schema.mutable(Schema.Array(referenceFieldSchema))
+      Schema.mutable(Schema.Array(referenceFieldWireSchema))
     ),
     eventTypes: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
     correlationPath: Schema.optionalKey(Schema.String),
@@ -184,54 +113,28 @@ export function findRuntimeTrigger(
   return runtimeTriggerRegistry.get(type);
 }
 
-export function hydrateRuntimeExtensionsFromApi(): Promise<void> {
-  if (hydrationPromise) {
-    return hydrationPromise;
+/**
+ * Fill both registries from what `/api/extensions` answered.
+ *
+ * The fetch belongs to `lib/extensions.ts`, which hands the whole payload here:
+ * one endpoint answers both halves of the surface, so one request reads it. This
+ * half is a decoder and nothing else, and it goes when the registries do.
+ */
+export function hydrateRuntimeExtensions(payload: unknown): void {
+  const lists = readRuntimeExtensionsPayload(payload);
+
+  clearRuntimeActions();
+  runtimeTriggerRegistry.clear();
+
+  if (!lists) {
+    return;
   }
 
-  hydrationPromise = (async () => {
-    try {
-      // Root-relative, so it has to carry the mount prefix itself: a URL
-      // starting with "/" ignores <base href>, which only governs relative
-      // references. Without this the editor silently comes up with no
-      // host-defined actions when Rova is mounted under a sub-path.
-      const response = await fetch(`${getBasePath()}/api/extensions`, {
-        method: "GET",
-        headers: {
-          accept: "application/json",
-        },
-      });
+  for (const action of keepValidEntries(lists.actions, readRuntimeAction)) {
+    registerRuntimeAction(action);
+  }
 
-      if (!response.ok) {
-        return;
-      }
-
-      const payload = readRuntimeExtensionsPayload(await response.json());
-
-      clearRuntimeActions();
-      runtimeTriggerRegistry.clear();
-
-      if (!payload) {
-        return;
-      }
-
-      for (const action of keepValidEntries(
-        payload.actions,
-        readRuntimeAction
-      )) {
-        registerRuntimeAction(action);
-      }
-
-      for (const trigger of keepValidEntries(
-        payload.triggers,
-        readRuntimeTrigger
-      )) {
-        runtimeTriggerRegistry.set(trigger.type, trigger);
-      }
-    } catch {
-      // Runtime extensions are optional.
-    }
-  })();
-
-  return hydrationPromise;
+  for (const trigger of keepValidEntries(lists.triggers, readRuntimeTrigger)) {
+    runtimeTriggerRegistry.set(trigger.type, trigger);
+  }
 }

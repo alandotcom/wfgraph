@@ -27,6 +27,16 @@ import {
   toMountRelativePath,
 } from "#src/backend/lib/http/mount-path";
 import {
+  clearExtensions,
+  configureExtensions,
+} from "#src/backend/lib/extensions/current";
+import type { AnyEventDefinition } from "#src/backend/lib/extensions/define-event";
+import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import {
+  catalogActionsFromRegistries,
+  catalogIntegrationsFromRegistries,
+} from "#src/backend/lib/extensions/from-registries";
+import {
   configureInngest,
   type RovaInngestConfig,
   reportInngestCallbackExposure,
@@ -35,6 +45,7 @@ import { invalidateInngestFunctionsCache } from "#src/backend/lib/inngest/functi
 import {
   configureAppLogging,
   configureAppLoggingWithBridge,
+  getAppLogger,
 } from "#src/backend/lib/logger";
 import { initializeWorkflowTriggers } from "#src/backend/lib/workflow-trigger-bootstrap";
 import { createRovaRuntime, type RovaRuntime } from "#src/backend/runtime";
@@ -69,6 +80,18 @@ export type PluginConfig = {
   enabled?: boolean;
 };
 
+/**
+ * The extension surface, assembled in one place.
+ *
+ * Events only, for now. A plugin still turns itself on by being imported and a
+ * host action still arrives through `actions` below, so those two halves of the
+ * surface are read out of the registries at startup; they join this option when
+ * `defineIntegration` replaces the registries.
+ */
+export type RovaExtensionOptions = {
+  readonly events?: readonly AnyEventDefinition[];
+};
+
 export type RovaAppOptions = {
   /**
    * Absolute path the host mounted Rova at, for example "/workflows". Defaults
@@ -97,6 +120,7 @@ export type RovaAppOptions = {
   inngest: RovaInngestConfig;
   triggers?: RuntimeExtensionTriggerDefinition[];
   actions?: RuntimeExtensionActionDefinition[];
+  extensions?: RovaExtensionOptions;
   /** Per-plugin configuration (all enabled by default) */
   plugins?: Partial<Record<IntegrationType, PluginConfig>>;
   /**
@@ -225,6 +249,23 @@ async function buildRovaApp(
 
   initializeWorkflowTriggers();
 
+  // After both registration loops and after the host's own imports, so every
+  // half of the surface is in place: a plugin registered itself as this module
+  // graph loaded, and a host action registered a few lines above.
+  const extensions = assembleExtensions({
+    events: options.extensions?.events,
+    actions: catalogActionsFromRegistries(),
+    integrations: catalogIntegrationsFromRegistries(),
+  });
+  configureExtensions(extensions);
+
+  // A host who forgets to import the integrations gets an editor with nothing in
+  // it and no error, so the counts are said out loud where a startup log is read.
+  const { events, actions, integrations } = extensions.catalog;
+  getAppLogger("extensions").info(
+    `Extension surface assembled: ${events.length} events, ${actions.length} actions, ${integrations.length} integrations`
+  );
+
   await runMigrations({
     runOnStartup: options.migrations?.runOnStartup === true,
     migrationsDir: options.migrations?.migrationsDir,
@@ -313,6 +354,8 @@ async function assembleRovaApp(
       unregisterRuntimeAction(actionId);
     }
     registeredActionIds.clear();
+
+    clearExtensions();
 
     // The cached Inngest functions close over this runtime, so they go before
     // it does. Otherwise a `/inngest` request arriving during teardown is

@@ -151,7 +151,45 @@ Paths omit the `data.` prefix, because the schema describes the payload rather t
 wrapper; template variables unwrap it automatically. The schema lives in the plugin's
 `schemas.ts` so that the step and the metadata are typed against the same constant, and
 `output` is required: there is no hand-written list to declare instead, and a schema the
-derivation cannot read throws at registration naming the action.
+derivation cannot read throws naming the offender. `requireOutputFieldsFromSchema` takes
+that name as a phrase rather than an id, because an Event's payload schema comes through
+it too and the message has to say which kind of thing is at fault.
+
+**The extension surface is one JSON catalog, served on one route.** An Event, an action
+and an integration reach the editor as `ExtensionCatalog`
+(`packages/shared/src/extensions/catalog.ts`), which `GET /api/extensions` sends and
+`packages/client/src/lib/extensions.ts` decodes once before the first render, through the
+wire schema in `catalog-wire.ts`. The client holds it as a module value rather than a
+query-cache entry: the surface is fixed for the life of the server process, and the pure
+functions that read it run during render. Every lookup over it (`findAction`, `findEvent`,
+`findIntegration`, `actionsByCategory`) is a pure function in that shared module, so the
+server and the browser run one implementation. That one channel is what will let a plugin
+hold everything it needs in one file: the browser never imports that file. An icon and a
+custom output renderer are React components and cannot be serialized, so those stay an
+explicit browser import in `plugins/ui-registry.ts`.
+
+`createRovaApp` assembles the catalog with `assembleExtensions`
+(`packages/core/src/backend/lib/extensions/extension-set.ts`) and hands it to
+`configureExtensions`, whose module state stage 7 replaces with a service. Assembly is
+where a definition mistake is caught, naming the offender: each of an Event's name, an
+action's id and an integration's type is held to one owner. The four actions the engine
+ships itself are catalog entries in `built-ins.ts`. Actions and integrations are still
+read out of the old registries by `from-registries.ts`, which is the seam that lets the
+catalog exist before `defineIntegration` does, and which goes with them.
+
+**An Event is a `defineEvent` value, and carries no lifecycle role.**
+`packages/core/src/backend/lib/extensions/define-event.ts` takes a name, a payload schema,
+and the Correlation Path where that payload carries its Entity Value. It registers
+nothing: the host passes the value to `createRovaApp` under `extensions.events`. The
+schema crosses the Standard Schema bridge once, there, and `payloadFields` is derived on
+the spot, so a schema that cannot describe itself fails at definition. `EventStringPath`
+admits only a path resolving to a string, which is what an Entity Value is. `source`
+separates identity from transport for an umbrella bus that cannot change its event name.
+Inngest flow control is prefixed and its CEL rewritten at definition, so a bad path fails
+where it was written; Inngest `concurrency` and `batchEvents` are refused, the first
+because Concurrency on the Lifecycle Node owns that question and can write a status.
+Which Events start a run and which cancel it is the Workflow Builder's per-workflow
+declaration, never the Event's (ADR-0007).
 
 **Rova's own events are defined once, with a schema.**
 `packages/core/src/backend/lib/inngest/events.ts` holds the three

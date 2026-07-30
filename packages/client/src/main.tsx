@@ -11,7 +11,7 @@ import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 import "#src/routes/globals.css";
 import { queryClient } from "#src/lib/query-client";
-import { hydrateRuntimeExtensionsFromApi } from "#src/lib/runtime-extensions";
+import { hydrateExtensionsFromApi } from "#src/lib/extensions";
 import { router } from "./router";
 
 declare global {
@@ -82,7 +82,7 @@ const suppressResizeObserverLoopErrors = () => {
 patchResizeObserver();
 suppressResizeObserverLoopErrors();
 
-await hydrateRuntimeExtensionsFromApi();
+await hydrateExtensionsFromApi();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

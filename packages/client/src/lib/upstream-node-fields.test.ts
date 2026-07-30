@@ -300,7 +300,7 @@ describe("upstream-node-fields", () => {
       findRuntimeTrigger: (type: string) =>
         type === "DonorEligibility" ? mockTrigger : undefined,
       getRuntimeTriggers: () => [],
-      hydrateRuntimeExtensionsFromApi: () => Promise.resolve(),
+      hydrateRuntimeExtensions: () => undefined,
     }));
 
     const { getNodeOutputFields: getNodeOutputFieldsMocked } =

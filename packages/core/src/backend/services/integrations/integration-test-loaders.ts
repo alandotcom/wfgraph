@@ -51,6 +51,15 @@ export function unregisterIntegrationTest(type: IntegrationType): void {
   integrationTestLoaders.delete(type);
 }
 
+/**
+ * Whether "Test connection" has anything to call, which is what the catalog says
+ * about an integration. Asking without loading, since the answer is drawn in the
+ * credentials dialog and running the test is a separate press.
+ */
+export function hasIntegrationTest(type: string): boolean {
+  return integrationTestLoaders.has(type);
+}
+
 export async function getIntegrationTestFunction(
   type: IntegrationType
 ): Promise<IntegrationTestFunction | null> {

@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Schema } from "effect";
-import { createTrigger } from "#src/index";
+import { createTrigger, defineEvent } from "#src/index";
 import { createRovaApp, type RovaApp } from "#src/app";
 import { createApiApp, MACHINE_ROUTES } from "#src/backend/api-app";
 import { getInngestFunctions } from "#src/backend/lib/inngest/functions";
@@ -64,7 +64,46 @@ describe("createRovaApp mounted at the root", () => {
       expect(await response.json()).toMatchObject({
         actions: expect.any(Array),
         triggers: expect.any(Array),
+        // The catalog is the one channel the editor learns the surface through,
+        // so an app that starts serves all three of its lists.
+        catalog: {
+          events: expect.any(Array),
+          actions: expect.any(Array),
+          integrations: expect.any(Array),
+        },
       });
+    } finally {
+      await app.dispose();
+    }
+  });
+
+  it("serves the Events the host defined", async () => {
+    const app = await createRovaApp({
+      ...BASE_OPTIONS,
+      extensions: {
+        events: [
+          defineEvent({
+            name: "app/appointment.created",
+            label: "Appointment created",
+            schema: Schema.Struct({
+              appointment: Schema.Struct({
+                id: Schema.String.annotate({ description: "Appointment ID" }),
+              }).annotate({ description: "The appointment" }),
+            }),
+            correlationPath: "appointment.id",
+          }),
+        ],
+      },
+    });
+
+    try {
+      const payload = (await (await get(app, "/api/extensions")).json()) as {
+        catalog: { events: Array<{ name: string }> };
+      };
+
+      expect(payload.catalog.events.map((event) => event.name)).toEqual([
+        "app/appointment.created",
+      ]);
     } finally {
       await app.dispose();
     }

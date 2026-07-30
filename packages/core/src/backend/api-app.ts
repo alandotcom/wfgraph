@@ -2,6 +2,7 @@ import { RPCHandler } from "@orpc/server/fetch";
 import { Effect, Result, Schema, type SchemaAST } from "effect";
 import { Hono } from "hono";
 import { serve as serveInngest } from "inngest/hono";
+import { getExtensions } from "#src/backend/lib/extensions/current";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
 import {
   getInngestClient,
@@ -426,6 +427,10 @@ export function createApiApp(options: CreateApiAppOptions) {
       c.json({
         actions: listRuntimeActions(),
         triggers: listCustomWorkflowTriggers(),
+        // The catalog is the whole surface in one document and the only channel
+        // the editor learns it through. The two members above it are what the old
+        // registries send, and they go when those do.
+        catalog: getExtensions().catalog,
       })
     )
     .all("/auth", (c) => c.json({ error: "Not found" }, 404))
