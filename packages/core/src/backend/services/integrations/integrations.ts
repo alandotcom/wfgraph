@@ -11,9 +11,10 @@ import {
   InvalidInput,
   NotFound,
 } from "#src/backend/lib/effect/failures";
-import { getExtensions } from "#src/backend/lib/extensions/current";
+import { Extensions } from "#src/backend/lib/effect/extensions";
 import {
   credentialsFromConfig,
+  type ExtensionCatalog,
   findIntegration,
 } from "@rova/shared/extensions/catalog";
 import type { IntegrationConfig } from "@rova/shared/types/integration";
@@ -60,15 +61,19 @@ const MISSING_TEST_MESSAGE =
  * that the request was wrong, because the two builds disagreeing is the cause and
  * the list is what shows it.
  */
-function describeUnavailableIntegration(type: string): string {
-  const available = getExtensions()
-    .catalog.integrations.map((integration) => integration.type)
+function describeUnavailableIntegration(
+  catalog: ExtensionCatalog,
+  type: string
+): string {
+  const available = catalog.integrations
+    .map((integration) => integration.type)
     .toSorted();
 
   return `Integration "${type}" is not available on this server. Pass it to createRovaApp under extensions.integrations, or pass builtInIntegrations from "@rova/plugins" for the built-in ones. This server holds: ${available.join(", ")}.`;
 }
 
 function mergeIntegrationConfig(
+  catalog: ExtensionCatalog,
   type: string,
   currentConfig: IntegrationConfig,
   updates?: IntegrationConfig
@@ -77,7 +82,7 @@ function mergeIntegrationConfig(
     return currentConfig;
   }
 
-  const isSecretKey = createSecretConfigKeyTest(type);
+  const isSecretKey = createSecretConfigKeyTest(catalog, type);
   const sanitizedUpdates = omitBy(
     updates,
     (value, key) =>
@@ -112,18 +117,21 @@ function toIntegrationSummary(input: {
   };
 }
 
-function toIntegrationWithConfig(input: {
-  id: string;
-  name: string;
-  type: string;
-  config: IntegrationConfig;
-  isManaged?: boolean | null;
-  createdAt: Date;
-  updatedAt: Date;
-}): IntegrationWithConfig {
+function toIntegrationWithConfig(
+  catalog: ExtensionCatalog,
+  input: {
+    id: string;
+    name: string;
+    type: string;
+    config: IntegrationConfig;
+    isManaged?: boolean | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }
+): IntegrationWithConfig {
   return {
     ...toIntegrationSummary(input),
-    config: maskIntegrationConfig(input.type, input.config),
+    config: maskIntegrationConfig(catalog, input.type, input.config),
   };
 }
 
@@ -206,17 +214,16 @@ const runConnectionTest = Effect.fn("runConnectionTest")(function* (
   const logger = callerLogger.with({ type });
   const attempt = attemptTestStep(logger, describe);
 
-  // The assembled surface is module-level state that stage 7 of ADR-0002 owns,
-  // so it stays a plain function call rather than becoming a service here.
-  const integration = findIntegration(getExtensions().catalog, type);
+  const extensions = yield* Extensions;
+  const integration = findIntegration(extensions.catalog, type);
 
   if (!integration) {
-    const error = describeUnavailableIntegration(type);
+    const error = describeUnavailableIntegration(extensions.catalog, type);
     yield* logger.warn(error);
     return yield* Effect.fail(new InvalidInput({ error }));
   }
 
-  const loadTest = getExtensions().connectionTestFor(type);
+  const loadTest = extensions.connectionTestFor(type);
   if (!loadTest) {
     yield* logger.warn(MISSING_TEST_MESSAGE);
     return yield* Effect.fail(
@@ -283,6 +290,7 @@ export const getIntegration = Effect.fn("getIntegration")(function* (
   integrationId: string
 ) {
   const repo = yield* IntegrationRepo;
+  const { catalog } = yield* Extensions;
   const logger = (yield* AppLogger).get("integrations").with({ integrationId });
 
   const integration = yield* repo
@@ -299,7 +307,7 @@ export const getIntegration = Effect.fn("getIntegration")(function* (
     return yield* Effect.fail(new NotFound({ error: "Integration not found" }));
   }
 
-  return toIntegrationWithConfig(integration);
+  return toIntegrationWithConfig(catalog, integration);
 });
 
 export const putIntegration = Effect.fn("putIntegration")(function* (
@@ -310,6 +318,7 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
   }
 ) {
   const repo = yield* IntegrationRepo;
+  const { catalog } = yield* Extensions;
   const logger = (yield* AppLogger).get("integrations").with({ integrationId });
   const onDatabaseError = internalFailure(
     logger,
@@ -329,6 +338,7 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
   // the stored value has to be merged back in before anything is written.
   const mergedConfig = body.config
     ? mergeIntegrationConfig(
+        catalog,
         existingIntegration.type,
         existingIntegration.config,
         body.config
@@ -352,7 +362,7 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
     return yield* Effect.fail(new NotFound({ error: "Integration not found" }));
   }
 
-  return toIntegrationWithConfig(integration);
+  return toIntegrationWithConfig(catalog, integration);
 });
 
 export const deleteIntegration = Effect.fn("deleteIntegration")(function* (
@@ -436,9 +446,12 @@ export const postIntegrations = Effect.fn("postIntegrations")(function* (body: {
   // Refusing here is what keeps a build gap from turning into credentials stored
   // for an integration this process cannot run, which would then be neither
   // testable nor maskable.
-  if (!findIntegration(getExtensions().catalog, body.type)) {
+  const { catalog } = yield* Extensions;
+  if (!findIntegration(catalog, body.type)) {
     return yield* Effect.fail(
-      new InvalidInput({ error: describeUnavailableIntegration(body.type) })
+      new InvalidInput({
+        error: describeUnavailableIntegration(catalog, body.type),
+      })
     );
   }
 

@@ -5,8 +5,13 @@ import {
   type LogProperties,
 } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
+import {
+  Extensions,
+  makeExtensionsLayer,
+} from "#src/backend/lib/effect/extensions";
 import { InngestFunctions } from "#src/backend/lib/effect/inngest-functions";
-import { configureExtensions } from "#src/backend/lib/extensions/current";
+import type { ExtensionSet } from "#src/backend/lib/extensions/extension-set";
+import type { StepEnvironment } from "#src/backend/lib/steps/step-runner";
 import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
@@ -111,24 +116,46 @@ export function makeRecordingLogger(): {
 /**
  * The assembled surface, for a test whose subject validates against the catalog.
  *
- * `getExtensions()` throws when nothing has been assembled, which is right for a
- * request path and wrong for a test that only wants to save a graph: every save
- * checks the Lifecycle Rules against the catalog, so a test of the save paths has
- * to say what the catalog holds. Call it in a `beforeAll`; the state is module
- * state, and vitest gives each file its own module registry.
+ * Every save checks the Lifecycle Rules against the catalog, so a test of the
+ * save paths has to say what the catalog holds. What it does not say is filled
+ * in with the empty catalog and three lookups answering nothing: a catalog entry
+ * is metadata, and a test that needs a step or a connection test builds the
+ * surface itself with `assembleExtensions`.
  */
-export function configureTestExtensions(
-  catalog: Partial<ExtensionCatalog> = {}
-): void {
-  configureExtensions({
-    catalog: { ...emptyExtensionCatalog, ...catalog },
-    // A catalog entry is metadata, and the three lookups beside it answer with
-    // what a definition carries; a test that needs one builds the surface itself.
+export function stubExtensions(
+  set: Partial<ExtensionSet> = {}
+): Layer.Layer<Extensions> {
+  return makeExtensionsLayer({
+    catalog: emptyExtensionCatalog,
     stepFor: () => undefined,
     connectionTestFor: () => undefined,
     eventByName: () => undefined,
     events: [],
+    ...set,
   });
+}
+
+/** The same, said as the catalog alone, which is what most subjects read. */
+export function stubExtensionCatalog(
+  catalog: Partial<ExtensionCatalog> = {}
+): Layer.Layer<Extensions> {
+  return stubExtensions({ catalog: { ...emptyExtensionCatalog, ...catalog } });
+}
+
+/**
+ * What the app hands a step definition, for a test that calls one directly.
+ *
+ * `implement(id)` answers a factory, so this is its argument: the default runs
+ * the handler's Effect on Effect's own runtime and answers no credentials, which
+ * is what a step belonging to no integration gets in production too.
+ */
+export function stubStepEnvironment(
+  overrides: Partial<StepEnvironment> = {}
+): StepEnvironment {
+  return {
+    credentialsFor: () => Effect.succeed({}),
+    ...overrides,
+  };
 }
 
 const workflowRepoStubs: WorkflowRepo["Service"] = {

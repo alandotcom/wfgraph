@@ -38,7 +38,7 @@ function dedupeByPath(fields: ReferenceField[]): ReferenceField[] {
 }
 
 const DEFAULT_HTTP_OUTPUT_FIELDS: ReferenceField[] = [
-  { path: "data", description: "Response data", type: "object" },
+  { path: "body", description: "Response body", type: "object" },
   {
     path: "status",
     description: "HTTP status code",

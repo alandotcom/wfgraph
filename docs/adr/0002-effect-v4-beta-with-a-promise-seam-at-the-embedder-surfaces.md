@@ -296,6 +296,16 @@ One acceptance narrowing went with the input schemas: a config value of `null` o
 boolean, which the old helpers mapped to absent or themselves, now fails the decode, and
 that applies to all sixteen steps rather than Acuity alone.
 
+**Amendment, 2026-07-30 (stage 7 phase 1b).** `step-registry.ts` and `withStepLogging` are
+deleted, so the sections above that describe either as current describe a mechanism that is
+gone. Dispatch is a port: `WorkflowActions` in `workflow-engine/actions.ts` answers
+`stepFor` off the assembled surface, and `createWorkflowActions` binds it where the
+credential store is in hand. `registerBuiltInStep` went with the file -- both built-ins are
+ordinary `defineStep` values now, and `built-ins.ts` carries them as catalog entries. The
+run log rows moved to the engine, in `workflow-engine/step-log.ts`, which is where
+`withStepLogging`'s job landed; a step author writes none of it. `defineStep`'s remaining
+Promise seam is one `Effect.runPromise` where the engine calls a step.
+
 ## Consequences
 
 - Pinning a beta means upgrades are deliberate work: a bump can break compilation, so read

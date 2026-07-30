@@ -1,5 +1,5 @@
 import { Inngest } from "inngest";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // The registry reads the workflows table to decide which run functions exist.
 // Which ones it builds is beside the point here, so the query answers nothing
@@ -8,7 +8,8 @@ vi.mock("#src/backend/lib/db/index", () => ({
   db: { query: { workflows: { findMany: () => Promise.resolve([]) } } },
 }));
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
-import { configureTestExtensions } from "#src/backend/lib/effect/test-layers";
+import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { noWorkflowActions } from "#src/backend/lib/workflow-engine/actions";
 import { createRovaRuntime } from "#src/backend/runtime";
 import {
   buildWorkflowFunctions,
@@ -17,13 +18,17 @@ import {
 
 // Constructing a client opens nothing; these functions are never invoked.
 const client = new Inngest({ id: "functions-test", isDev: true });
-// A registry builds its event listeners against a runtime. This one runs
-// nothing, so its Layers are never constructed.
-const runtime = createRovaRuntime({
-  client,
-  invalidate: () => {},
-  serve: () => Promise.reject(new Error("not served here")),
-});
+// A registry builds its event listeners against a runtime, and reads the
+// surface off it. This one runs nothing but that read, so no other Layer is
+// constructed.
+const runtime = createRovaRuntime(
+  {
+    client,
+    invalidate: () => {},
+    serve: () => Promise.reject(new Error("not served here")),
+  },
+  assembleExtensions({})
+);
 
 /**
  * The run functions, which are one per saved workflow and keyed on its id.
@@ -34,10 +39,14 @@ const runtime = createRovaRuntime({
  */
 describe("buildWorkflowFunctions", () => {
   it("creates one function per workflow with stable ids", () => {
-    const functions = buildWorkflowFunctions(client, [
-      { id: "workflow_123", name: "Order Updates" },
-      { id: "workflow_999", name: CURRENT_WORKFLOW_NAME },
-    ]);
+    const functions = buildWorkflowFunctions(
+      client,
+      [
+        { id: "workflow_123", name: "Order Updates" },
+        { id: "workflow_999", name: CURRENT_WORKFLOW_NAME },
+      ],
+      noWorkflowActions
+    );
 
     expect(functions).toHaveLength(1);
     expect(functions[0].id()).toBe("workflow-workflow_123");
@@ -47,15 +56,19 @@ describe("buildWorkflowFunctions", () => {
   // The draft has no run of its own: it is what the editor autosaves into, and
   // nothing starts it.
   it("excludes the editor's draft", () => {
-    const functions = buildWorkflowFunctions(client, [
-      { id: "workflow_only_current", name: CURRENT_WORKFLOW_NAME },
-    ]);
+    const functions = buildWorkflowFunctions(
+      client,
+      [{ id: "workflow_only_current", name: CURRENT_WORKFLOW_NAME }],
+      noWorkflowActions
+    );
 
     expect(functions).toHaveLength(0);
   });
 
   it("handles an empty workflow list", () => {
-    expect(buildWorkflowFunctions(client, [])).toHaveLength(0);
+    expect(buildWorkflowFunctions(client, [], noWorkflowActions)).toHaveLength(
+      0
+    );
   });
 });
 
@@ -69,10 +82,6 @@ describe("buildWorkflowFunctions", () => {
  * performs reaches that app's list and no other.
  */
 describe("the function registry's cache", () => {
-  beforeAll(() => {
-    configureTestExtensions();
-  });
-
   it("answers the same list until something invalidates it", async () => {
     const registry = createInngestFunctionRegistry(client);
 

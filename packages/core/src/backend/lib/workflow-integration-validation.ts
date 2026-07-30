@@ -1,8 +1,10 @@
 import { uniq } from "es-toolkit/array";
 import { getIntegrationTypesByIds as getIntegrationTypesByIdsInDb } from "#src/backend/lib/db/integrations";
 import { getAppLogger } from "#src/backend/lib/logger";
-import { getExtensions } from "#src/backend/lib/extensions/current";
-import { findAction } from "@rova/shared/extensions/catalog";
+import {
+  type ExtensionCatalog,
+  findAction,
+} from "@rova/shared/extensions/catalog";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 /** As much of a catalog entry as the checks below read. */
@@ -10,17 +12,15 @@ type ResolvedAction = {
   integration?: string;
 };
 
-export type ResolveActionByType = (
-  actionType: string
-) => ResolvedAction | undefined;
+type ResolveActionByType = (actionType: string) => ResolvedAction | undefined;
 
 /**
- * Where an action's required integration comes from when a caller names no
- * resolver: the assembled catalog, which is what a save reads. A test passes its
- * own to keep off the surface.
+ * Where an action's required integration comes from: the assembled catalog the
+ * caller read off the `Extensions` service.
  */
-const resolveFromCatalog: ResolveActionByType = (actionType) =>
-  findAction(getExtensions().catalog, actionType);
+function resolveFromCatalog(catalog: ExtensionCatalog): ResolveActionByType {
+  return (actionType) => findAction(catalog, actionType);
+}
 
 type ValidationResult = {
   valid: boolean;
@@ -66,7 +66,7 @@ function readConfigString(
 
 function extractRequiredIntegrationRequirements(
   nodes: WorkflowNode[],
-  resolveActionByType: ResolveActionByType = resolveFromCatalog
+  resolveActionByType: ResolveActionByType
 ): IntegrationRequirement[] {
   const requirements: IntegrationRequirement[] = [];
 
@@ -100,14 +100,21 @@ function extractRequiredIntegrationRequirements(
   return requirements;
 }
 
+/**
+ * The integration ids a graph's enabled action nodes name, deduplicated.
+ *
+ * Which of them an action actually needs is the catalog's answer, so a node
+ * carrying a stale id for an action that needs no connection contributes none.
+ */
 export function extractRequiredIntegrationIds(
   nodes: WorkflowNode[],
-  resolveActionByType: ResolveActionByType = resolveFromCatalog
+  catalog: ExtensionCatalog
 ): string[] {
   return uniq(
-    extractRequiredIntegrationRequirements(nodes, resolveActionByType).map(
-      (requirement) => requirement.integrationId
-    )
+    extractRequiredIntegrationRequirements(
+      nodes,
+      resolveFromCatalog(catalog)
+    ).map((requirement) => requirement.integrationId)
   );
 }
 
@@ -154,13 +161,12 @@ async function findInvalidIntegrations(input: {
 
 export async function validateWorkflowIntegrations(
   nodes: WorkflowNode[],
+  catalog: ExtensionCatalog,
   options: {
-    resolveActionByType?: ResolveActionByType;
     getIntegrationTypesByIds?: GetIntegrationTypesByIds;
     strictValidation?: boolean;
   } = {}
 ): Promise<ValidationResult> {
-  const resolveActionByType = options.resolveActionByType ?? resolveFromCatalog;
   const getIntegrationTypesByIds =
     options.getIntegrationTypesByIds ?? getIntegrationTypesByIdsInDb;
   const strictValidationEnabled = shouldEnforceStrictValidation(
@@ -168,7 +174,7 @@ export async function validateWorkflowIntegrations(
   );
   const requirements = extractRequiredIntegrationRequirements(
     nodes,
-    resolveActionByType
+    resolveFromCatalog(catalog)
   );
 
   const { missingIds, mismatchedIds } = await findInvalidIntegrations({

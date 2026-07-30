@@ -34,10 +34,6 @@ import {
   toMountRelativePath,
 } from "#src/backend/lib/http/mount-path";
 import {
-  clearExtensions,
-  configureExtensions,
-} from "#src/backend/lib/extensions/current";
-import {
   assembleExtensions,
   type RovaExtensions,
 } from "#src/backend/lib/extensions/extension-set";
@@ -145,10 +141,10 @@ export type RovaApp = {
 /**
  * One Rova per process.
  *
- * The database handle, the encryption key, and the assembled extension surface
- * are process-global, so a second app with a different database URL silently
- * aliases the first connection. ADR-0002 makes a second app per process
- * undefined behavior rather than a supported arrangement that fails loudly.
+ * The database handle and the encryption key are process-global, so a second app
+ * with a different database URL silently aliases the first connection. ADR-0002
+ * makes a second app per process undefined behavior rather than a supported
+ * arrangement that fails loudly.
  */
 export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
@@ -207,10 +203,10 @@ async function buildRovaApp(
   configureDatabaseRuntime(databaseConfig);
 
   // Everything past this point can fail with the process already holding a
-  // database config and an extension surface, and past `createRovaRuntime` with
-  // whatever the Layers acquired. A failure gives all three back, the same as
-  // dispose does, so a host that catches a startup failure, corrects an option
-  // and calls again is not refused as a rebind.
+  // database config, and past `createRovaRuntime` with whatever the Layers
+  // acquired. A failure gives both back, the same as dispose does, so a host
+  // that catches a startup failure, corrects an option and calls again is not
+  // refused as a rebind.
   let runtime: RovaRuntime | undefined;
   try {
     // One value for the client, the function list and the `/inngest` handler,
@@ -220,7 +216,6 @@ async function buildRovaApp(
     const inngest = createInngestSurface(options.inngest);
 
     const extensions = assembleExtensions(options.extensions ?? {});
-    configureExtensions(extensions);
 
     // A host who forgets to pass its integrations gets an empty editor and no
     // error, so the counts go where a startup log is read.
@@ -245,7 +240,7 @@ async function buildRovaApp(
 
     // The Layer graph this instance owns. Building it is lazy, so an app that
     // never serves a migrated procedure never constructs a service.
-    runtime = createRovaRuntime(inngest);
+    runtime = createRovaRuntime(inngest, extensions);
 
     return await assembleRovaApp(options, {
       basePath,
@@ -254,7 +249,6 @@ async function buildRovaApp(
       inngest,
     });
   } catch (error) {
-    clearExtensions();
     await runtime?.dispose();
     await closeDatabaseRuntime();
     throw error;
@@ -304,8 +298,6 @@ async function assembleRovaApp(
   }
 
   const dispose = async (): Promise<void> => {
-    clearExtensions();
-
     // The cached Inngest functions close over this runtime, so they go before
     // it does. Otherwise a `/inngest` request arriving during teardown is
     // served event listeners that run services on a finalized runtime.

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InngestTestEngine } from "@inngest/test";
 import { Inngest } from "inngest";
+import { noWorkflowActions } from "#src/backend/lib/workflow-engine/actions";
 import { dbWorkflowStore } from "#src/backend/lib/workflow-engine/db-store";
 import type { WorkflowExecutionRuntime } from "#src/backend/lib/workflow-engine/runtime";
 import type { WorkflowStore } from "#src/backend/lib/workflow-engine/store";
@@ -23,6 +24,10 @@ vi.mock("#src/backend/lib/workflow-engine/core", () => ({
   executeWorkflow: executeWorkflowMock,
 }));
 
+// The app builds this from its own surface; the engine underneath is mocked, so
+// identity is all this file needs from it.
+const testActions = noWorkflowActions;
+
 function createTestFunction() {
   return createWorkflowRunRequestedFunction(
     new Inngest({ id: "workflow-function-test", isDev: true }),
@@ -30,6 +35,7 @@ function createTestFunction() {
       id: "workflow-test-function",
       name: "Workflow Test Function",
       workflowId: "workflow_123",
+      actions: testActions,
     }
   );
 }
@@ -86,7 +92,7 @@ describe("workflowRunRequestedFunction", () => {
     expect(workflowRunRequestedFunction.name).toBe("Workflow Test Function");
   });
 
-  it("forwards event data, runtime, and the database store to executeWorkflow", async () => {
+  it("forwards event data, runtime, store and actions to executeWorkflow", async () => {
     const workflowRunRequestedFunction = createTestFunction();
     const workflowInput = {
       graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
@@ -105,10 +111,12 @@ describe("workflowRunRequestedFunction", () => {
     });
 
     expect(executeWorkflowMock).toHaveBeenCalledTimes(1);
-    const [input, runtime, store] = executeWorkflowMock.mock.calls[0] as [
+    const [input, runtime, store, actions] = executeWorkflowMock.mock
+      .calls[0] as [
       typeof workflowInput,
       WorkflowExecutionRuntime,
       WorkflowStore,
+      typeof testActions,
     ];
     expect(input).toEqual(workflowInput);
     expect(runtime).toMatchObject({
@@ -119,6 +127,9 @@ describe("workflowRunRequestedFunction", () => {
     // A live run must be recorded: this handler is the only place that wires
     // the engine's persistence port to the database.
     expect(store).toBe(dbWorkflowStore);
+    // And the dispatch port the app built, which is where an action id becomes
+    // work.
+    expect(actions).toBe(testActions);
     expect(result).toEqual(expectedResult);
   });
 

@@ -1,10 +1,10 @@
 /**
  * How an integration writes a step.
  *
- * Everything a step used to do around its own work is here instead: decoding
- * the config the engine resolved, fetching the integration's credentials,
- * writing the run log rows, and turning what the handler answered into the
- * `StepResult` envelope the engine reads. What is left for an author is the
+ * Everything a step used to do around its own work is here instead: decoding the
+ * config the engine resolved, fetching the integration's credentials, and turning
+ * what the handler answered into the `StepResult` envelope the engine reads. What
+ * is left for an author is the
  * schema of what comes in, the schema of what goes out, the metadata the editor
  * draws the action with, and an `Effect` that gets from one schema to the other.
  *
@@ -31,28 +31,24 @@
  * none of the third kind. On the way out, the encode is a trim as well as a
  * conversion, so a key the output schema does not declare does not survive it.
  *
- * **Stage 7's seam.** The three lines below that reach outside the effect --
- * `withStepLogging`, `fetchCredentials`, and `Effect.runPromise` -- are here
- * because the run engine still calls a step as a Promise and the step logger
- * and credential fetcher still reach the database through module state rather
- * than through a service. Stage 7 of ADR-0002 brings the engine interior
- * across, at which point a step's effect runs inside the app's runtime and
- * these three go away. Nothing above this file's boundary changes when they do:
- * an author writes the same handler either way, which is the reason the seam is
- * here and not in the plugins.
+ * **What runs the handler.** `implement` answers a factory rather than a step,
+ * because the one thing around the handler that belongs to the app is the
+ * credential store a node's integration is read from. The app supplies it where
+ * it builds the engine's action port. The run log rows are the engine's, written
+ * through its store around this call.
  */
 
 import { Effect, Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
-import {
-  fetchCredentials,
-  type WorkflowCredentials,
-} from "#src/backend/lib/credential-fetcher";
+import type { WorkflowCredentials } from "#src/backend/lib/credential-fetcher";
 import {
   readStepContext,
   type StepContext,
-  withStepLogging,
 } from "#src/backend/lib/steps/step-handler";
+import type {
+  StepEnvironment,
+  StepFactory,
+} from "#src/backend/lib/steps/step-runner";
 import { VendorTransport } from "#src/backend/lib/steps/vendor-transport";
 import type {
   ActionConfigField,
@@ -60,10 +56,7 @@ import type {
   ActionConfigFieldGroup,
 } from "@rova/shared/plugins/action-fields";
 import { formatSchemaFailure } from "@rova/shared/types/schema-message";
-import type {
-  StepFunction,
-  StepResult,
-} from "@rova/shared/workflow/step-result";
+import type { StepResult } from "@rova/shared/workflow/step-result";
 
 /**
  * Why a step could not do its work, in the words the run log shows.
@@ -162,7 +155,7 @@ export type ActionStep = {
   /** What the handler answers, which the editor's field list comes from. */
   readonly output: Schema.ConstraintCodec<unknown, unknown>;
   /** The engine's entry point, once the integration has named the action. */
-  readonly implement: (actionId: string) => StepFunction;
+  readonly implement: (actionId: string) => StepFactory;
 };
 
 type StepSchemas<TInput, TOutput> = {
@@ -212,7 +205,7 @@ function buildStep<TInput, TOutput>(
     ActionStepInput<TInput, TOutput>,
     "handler" | "input" | "output"
   >
-): (actionId: string) => StepFunction {
+): (actionId: string) => StepFactory {
   // `errors: "all"` is what `formatSchemaFailure` is written against: it counts
   // the issues it does not spell out, and stopping at the first would make that
   // count always zero.
@@ -226,13 +219,16 @@ function buildStep<TInput, TOutput>(
   );
 
   function runStep(
+    app: StepEnvironment,
     actionId: string,
     rawInput: Record<string, unknown>,
     context: StepContext | undefined
   ): Effect.Effect<StepResult> {
     return Effect.gen(function* () {
       const integrationId = readIntegrationId(rawInput.integrationId);
-      const credentials = yield* Effect.cached(readCredentials(integrationId));
+      const credentials = yield* Effect.cached(
+        readCredentials(app, integrationId)
+      );
 
       const input = yield* decodeInput(rawInput).pipe(
         Effect.mapError(
@@ -278,16 +274,10 @@ function buildStep<TInput, TOutput>(
     );
   }
 
-  return (actionId) => (rawInput) => {
-    const context = readStepContext(rawInput._context);
-
-    // The logger is handed the input as it arrived, not the decoded view of it:
-    // a run log shows what the node was configured with, including the fields
-    // this step does not read.
-    return withStepLogging({ ...rawInput, _context: context }, () =>
-      Effect.runPromise(runStep(actionId, rawInput, context))
+  return (actionId) => (app) => (rawInput) =>
+    Effect.runPromise(
+      runStep(app, actionId, rawInput, readStepContext(rawInput._context))
     );
-  };
 }
 
 /**
@@ -339,19 +329,16 @@ function readIntegrationId(value: unknown): string | undefined {
  * A step with no integration configured gets no credentials rather than an
  * error, which is what lets an action work against a public API or a default
  * from the environment.
- *
- * `Effect.promise`, not `tryPromise`: a credential store that rejects is a
- * defect, and a defect leaves this step by the throw path, where Inngest's
- * function-level retry picks it up and runs the step again minutes later. That
- * is the right answer for a database that was briefly unreachable.
- * `tryPromise` would turn the same rejection into a typed failure this file
- * would have to render as a step error, ending the run on a condition that
- * would have cleared on its own.
  */
 function readCredentials(
+  app: StepEnvironment,
   integrationId: string | undefined
 ): Effect.Effect<WorkflowCredentials> {
+  // `Effect.cached` at the call site is what makes the fetch happen where the
+  // handler yields. `suspend` covers the other half: `credentialsFor` is the
+  // app's function, and wrapping it keeps an impure one from reaching the store
+  // while the step is still being assembled.
   return integrationId === undefined
     ? Effect.succeed({})
-    : Effect.promise(() => fetchCredentials(integrationId));
+    : Effect.suspend(() => app.credentialsFor(integrationId));
 }

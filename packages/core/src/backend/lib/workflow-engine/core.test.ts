@@ -1,17 +1,6 @@
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
-import {
-  clearExtensions,
-  configureExtensions,
-} from "#src/backend/lib/extensions/current";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
 import { Schema } from "effect";
 import {
   createAction,
@@ -81,6 +70,49 @@ function createTriggerToActionGraph(actionLabel?: string) {
   });
 }
 
+// The engine reaches an action's step and its label through the dispatch port
+// the app builds, so every action these cases run is assembled here the way a
+// host's own would be. The built-in four ride in on the same assembly.
+const actions = createWorkflowActions(
+  assembleExtensions({
+    actions: [
+      createAction({
+        id: HOST_ACTION_ID,
+        label: "Test Host Action",
+        description: "A test host action",
+        schema: Schema.Struct({}),
+        execute: executeFn,
+      }),
+      createAction({
+        id: PRODUCER_ACTION_ID,
+        label: "Producer",
+        description: "Produces the output later nodes reference",
+        schema: Schema.Struct({}),
+        execute: () => ({
+          success: true,
+          data: {
+            items: [{ name: "Widget" }, { name: "Gadget" }],
+            customer: { name: "Ada" },
+            count: 2,
+          },
+        }),
+      }),
+      createAction({
+        id: CONSUMER_ACTION_ID,
+        label: "Consumer",
+        description: "Records the config it was handed",
+        // Every case hands this action a config of its own, so the shape stays
+        // open: a declared field list would decode the keys under test away.
+        schema: Schema.StructWithRest(Schema.Struct({}), unknownRest),
+        execute: ({ payload }) => {
+          capturedPayload = payload;
+          return { success: true, data: {} };
+        },
+      }),
+    ],
+  })
+);
+
 describe("host action execution", () => {
   let store: RecordingWorkflowStore;
 
@@ -101,7 +133,8 @@ describe("host action execution", () => {
         workflowId: "workflow_1",
       },
       createInMemoryWorkflowRuntime(),
-      store
+      store,
+      actions
     );
 
     expect(result.success).toBe(true);
@@ -120,7 +153,8 @@ describe("host action execution", () => {
         workflowId: "workflow_1",
       },
       createInMemoryWorkflowRuntime(),
-      store
+      store,
+      actions
     );
 
     expect(executeFn.mock.calls[0]?.[0]).toMatchObject({
@@ -145,62 +179,13 @@ describe("host action execution", () => {
         workflowId: "workflow_1",
       },
       createInMemoryWorkflowRuntime(),
-      store
+      store,
+      actions
     );
 
     expect(result.results.action_1?.success).toBe(false);
     expect(result.results.action_1?.error).toBe("Donor not found");
   });
-});
-
-// The engine reads the assembled surface for an action's step and its label, and
-// `getExtensions` throws outside an app rather than answering nothing, so every
-// action these cases run is assembled here the way a host's own would be. The
-// built-in four ride in on the same assembly.
-beforeAll(() => {
-  configureExtensions(
-    assembleExtensions({
-      actions: [
-        createAction({
-          id: HOST_ACTION_ID,
-          label: "Test Host Action",
-          description: "A test host action",
-          schema: Schema.Struct({}),
-          execute: executeFn,
-        }),
-        createAction({
-          id: PRODUCER_ACTION_ID,
-          label: "Producer",
-          description: "Produces the output later nodes reference",
-          schema: Schema.Struct({}),
-          execute: () => ({
-            success: true,
-            data: {
-              items: [{ name: "Widget" }, { name: "Gadget" }],
-              customer: { name: "Ada" },
-              count: 2,
-            },
-          }),
-        }),
-        createAction({
-          id: CONSUMER_ACTION_ID,
-          label: "Consumer",
-          description: "Records the config it was handed",
-          // Every case hands this action a config of its own, so the shape stays
-          // open: a declared field list would decode the keys under test away.
-          schema: Schema.StructWithRest(Schema.Struct({}), unknownRest),
-          execute: ({ payload }) => {
-            capturedPayload = payload;
-            return { success: true, data: {} };
-          },
-        }),
-      ],
-    })
-  );
-});
-
-afterAll(() => {
-  clearExtensions();
 });
 
 describe("run persistence through the store port", () => {
@@ -220,7 +205,8 @@ describe("run persistence through the store port", () => {
         workflowId: "workflow_success",
       },
       createInMemoryWorkflowRuntime(),
-      store
+      store,
+      actions
     );
 
     const completions = store.callsOf("completeRun");
@@ -233,6 +219,80 @@ describe("run persistence through the store port", () => {
     expect(audits[0]?.eventType).toBe("run_completed");
     expect(audits[0]?.workflowId).toBe("workflow_success");
     expect(audits[0]?.message).toBe("Run completed successfully");
+  });
+
+  // The rows every node leaves behind are the engine's, written through the same
+  // port as the wait's: a plugin's action, a host's action and the entry node all
+  // log the same way, and a step author writes none of it.
+  it("opens and closes a run-log row for every node it runs", async () => {
+    await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph(),
+        triggerInput: { donorId: "d_123" },
+        executionId: "exec_logs",
+        workflowId: "workflow_logs",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions
+    );
+
+    expect(store.callsOf("startStepLog")).toEqual([
+      {
+        executionId: "exec_logs",
+        nodeId: "trigger_1",
+        nodeName: "Trigger",
+        nodeType: "trigger",
+        input: { triggerData: { donorId: "d_123" } },
+      },
+      {
+        executionId: "exec_logs",
+        nodeId: "action_1",
+        nodeName: "Host Action",
+        nodeType: HOST_ACTION_ID,
+        // The three keys the engine's dispatch owns are stripped, so the row
+        // shows what the node was configured with and nothing else.
+        input: {},
+      },
+    ]);
+
+    expect(store.callsOf("completeStepLog")).toEqual([
+      expect.objectContaining({
+        logId: "log_1",
+        status: "success",
+        output: { donorId: "d_123" },
+      }),
+      expect.objectContaining({
+        logId: "log_2",
+        status: "success",
+        output: { ok: true },
+      }),
+    ]);
+  });
+
+  it("closes a failed node's row with the reason it gave", async () => {
+    executeFn.mockImplementation(() => ({
+      success: false as const,
+      error: { message: "Donor not found" },
+    }));
+
+    await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph(),
+        executionId: "exec_log_failure",
+        workflowId: "workflow_log_failure",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions
+    );
+
+    expect(store.callsOf("completeStepLog")[1]).toMatchObject({
+      logId: "log_2",
+      status: "error",
+      output: { message: "Donor not found" },
+      error: "Donor not found",
+    });
   });
 
   it("marks the run failed when a node fails", async () => {
@@ -248,7 +308,8 @@ describe("run persistence through the store port", () => {
         workflowId: "workflow_failure",
       },
       createInMemoryWorkflowRuntime(),
-      store
+      store,
+      actions
     );
 
     const completions = store.callsOf("completeRun");
@@ -266,7 +327,8 @@ describe("run persistence through the store port", () => {
         runMode: "test",
       },
       createInMemoryWorkflowRuntime(),
-      store
+      store,
+      actions
     );
 
     expect(store.callsOf("recordAuditEvent")[0]?.message).toBe(
@@ -274,12 +336,73 @@ describe("run persistence through the store port", () => {
     );
   });
 
-  it("persists nothing when no store is injected", async () => {
-    const result = await executeWorkflow({
-      graph: createTriggerToActionGraph(),
-      executionId: "exec_no_store",
-      workflowId: "workflow_no_store",
+  /**
+   * A store that answers one of its two run-log writes with a rejection, the
+   * way an unreachable database does.
+   */
+  function storeRefusing(
+    method: "startStepLog" | "completeStepLog"
+  ): RecordingWorkflowStore {
+    const refusal = () => Promise.reject(new Error("run log unreachable"));
+    return { ...store, [method]: refusal };
+  }
+
+  // The node's work is an SMS, an email, a POST. This whole call sits inside the
+  // memoized step, so a throw while recording the success would discard the
+  // result the runtime was about to store and send the message a second time to
+  // record the first.
+  it("keeps a node's result when the write closing its row fails", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph(),
+        executionId: "exec_close_refused",
+        workflowId: "workflow_close_refused",
+      },
+      createInMemoryWorkflowRuntime(),
+      storeRefusing("completeStepLog"),
+      actions
+    );
+
+    expect(executeFn).toHaveBeenCalledTimes(1);
+    expect(result.success).toBe(true);
+    expect(result.results.action_1?.data).toEqual({
+      success: true,
+      data: { ok: true },
     });
+    expect(store.callsOf("completeRun")[0]?.status).toBe("completed");
+  });
+
+  // The opposite half of the same policy: nothing has happened when the row is
+  // opened, so a refused write there fails the node and Inngest's retry of it
+  // costs one wasted call.
+  it("fails a node when the write opening its row fails", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph(),
+        executionId: "exec_open_refused",
+        workflowId: "workflow_open_refused",
+      },
+      createInMemoryWorkflowRuntime(),
+      storeRefusing("startStepLog"),
+      actions
+    );
+
+    expect(executeFn).toHaveBeenCalledTimes(0);
+    expect(result.success).toBe(false);
+    expect(result.results.trigger_1?.error).toBe("run log unreachable");
+  });
+
+  it("persists nothing when no store is injected", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph(),
+        executionId: "exec_no_store",
+        workflowId: "workflow_no_store",
+      },
+      undefined,
+      undefined,
+      actions
+    );
 
     // The engine's default store is the noop adapter: the run still executes,
     // it just leaves no trace.
@@ -338,7 +461,8 @@ describe("template resolution into action config", () => {
         workflowId: "workflow_templates",
       },
       createInMemoryWorkflowRuntime(),
-      createRecordingWorkflowStore()
+      createRecordingWorkflowStore(),
+      actions
     );
 
     return capturedPayload;

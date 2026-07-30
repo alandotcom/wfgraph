@@ -10,19 +10,16 @@
  */
 
 import { Effect, Schema, SchemaTransformation } from "effect";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createAction,
   type RuntimeActionResult,
 } from "@rova/shared/workflow/action-registry";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
-import {
-  clearExtensions,
-  configureExtensions,
-} from "#src/backend/lib/extensions/current";
 import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
 import { defineStep } from "#src/backend/lib/steps/define-step";
 import { executeWorkflow } from "./core";
 import {
@@ -30,14 +27,6 @@ import {
   type RecordingWorkflowStore,
 } from "./recording-store";
 import { createInMemoryWorkflowRuntime } from "./runtime";
-
-// Keeps the step wrapper's own run logging off a database.
-vi.mock("#src/backend/lib/workflow-logging", () => ({
-  logStepStartDb: () =>
-    Promise.resolve({ logId: "mock-log-id", startTime: Date.now() }),
-  logStepCompleteDb: () => Promise.resolve(),
-  logWorkflowCompleteDb: () => Promise.resolve(),
-}));
 
 const EMAIL_ACTION_ID = "test/replay-email";
 const FOLLOWUP_ACTION_ID = "test/replay-followup";
@@ -128,28 +117,25 @@ function aHostAction(
 describe("workflow engine replay safety", () => {
   let store: RecordingWorkflowStore;
 
+  // The engine reaches an action's step and its label through the dispatch port
+  // the app builds, so the three host actions these cases run reach the engine
+  // the way a host's own would.
+  const actions = createWorkflowActions(
+    assembleExtensions({
+      actions: [
+        aHostAction(EMAIL_ACTION_ID, "Send Email", emailAction),
+        aHostAction(FOLLOWUP_ACTION_ID, "Send Followup", followupAction),
+        aHostAction(BRANCH_ACTION_ID, "Branch Action", branchAction),
+      ],
+    })
+  );
+
   beforeEach(() => {
-    // The engine reads the assembled surface for an action's step and its label,
-    // and `getExtensions` throws outside an app, so the three host actions these
-    // cases run reach the engine the way a host's own would.
-    configureExtensions(
-      assembleExtensions({
-        actions: [
-          aHostAction(EMAIL_ACTION_ID, "Send Email", emailAction),
-          aHostAction(FOLLOWUP_ACTION_ID, "Send Followup", followupAction),
-          aHostAction(BRANCH_ACTION_ID, "Branch Action", branchAction),
-        ],
-      })
-    );
     store = createRecordingWorkflowStore();
 
     emailAction.mockClear();
     followupAction.mockClear();
     branchAction.mockClear();
-  });
-
-  afterEach(() => {
-    clearExtensions();
   });
 
   // Trigger -> Send Email -> Wait -> Send Followup, the shape that produced
@@ -178,13 +164,15 @@ describe("workflow engine replay safety", () => {
     const first = await executeWorkflow(
       waitGraphInput,
       createReplayRuntime(memo),
-      store
+      store,
+      actions
     );
     // Second pass with the same memo is the replay after the wait resumes.
     const second = await executeWorkflow(
       waitGraphInput,
       createReplayRuntime(memo),
-      store
+      store,
+      actions
     );
 
     expect(first.success).toBe(true);
@@ -197,12 +185,14 @@ describe("workflow engine replay safety", () => {
     await executeWorkflow(
       waitGraphInput,
       createReplayRuntime(new Map<string, unknown>()),
-      store
+      store,
+      actions
     );
     await executeWorkflow(
       waitGraphInput,
       createReplayRuntime(new Map<string, unknown>()),
-      store
+      store,
+      actions
     );
 
     expect(emailAction).toHaveBeenCalledTimes(2);
@@ -211,7 +201,12 @@ describe("workflow engine replay safety", () => {
   it("memoizes each node under its own node id", async () => {
     const memo = new Map<string, unknown>();
 
-    await executeWorkflow(waitGraphInput, createReplayRuntime(memo), store);
+    await executeWorkflow(
+      waitGraphInput,
+      createReplayRuntime(memo),
+      store,
+      actions
+    );
 
     expect(memo.has("node:trigger_1")).toBe(true);
     expect(memo.has("node:email_1")).toBe(true);
@@ -226,8 +221,18 @@ describe("workflow engine replay safety", () => {
   it("creates the wait state and terminal run record exactly once across a replay", async () => {
     const memo = new Map<string, unknown>();
 
-    await executeWorkflow(waitGraphInput, createReplayRuntime(memo), store);
-    await executeWorkflow(waitGraphInput, createReplayRuntime(memo), store);
+    await executeWorkflow(
+      waitGraphInput,
+      createReplayRuntime(memo),
+      store,
+      actions
+    );
+    await executeWorkflow(
+      waitGraphInput,
+      createReplayRuntime(memo),
+      store,
+      actions
+    );
 
     expect(store.callsOf("createWaitState")).toHaveLength(1);
     expect(store.callsOf("completeRun")).toHaveLength(1);
@@ -256,7 +261,8 @@ describe("workflow engine replay safety", () => {
     const first = await executeWorkflow(
       fanOutInput,
       createReplayRuntime(memo),
-      store
+      store,
+      actions
     );
 
     expect(first.success).toBe(true);
@@ -264,7 +270,12 @@ describe("workflow engine replay safety", () => {
     expect(memo.has("node:left_1")).toBe(true);
     expect(memo.has("node:right_1")).toBe(true);
 
-    await executeWorkflow(fanOutInput, createReplayRuntime(memo), store);
+    await executeWorkflow(
+      fanOutInput,
+      createReplayRuntime(memo),
+      store,
+      actions
+    );
 
     expect(branchAction).toHaveBeenCalledTimes(3);
   });
@@ -379,13 +390,12 @@ describe("a Date-bearing step output across a replay", () => {
     };
   }
 
+  const actions = createWorkflowActions(
+    assembleExtensions({ integrations: [clock] })
+  );
+
   beforeEach(() => {
     echoed = [];
-    configureExtensions(assembleExtensions({ integrations: [clock] }));
-  });
-
-  afterEach(() => {
-    clearExtensions();
   });
 
   it("resolves the same ISO string before and after the replay", async () => {
@@ -395,12 +405,14 @@ describe("a Date-bearing step output across a replay", () => {
     const first = await executeWorkflow(
       clockGraphInput,
       createReplayRuntime(memo),
-      store
+      store,
+      actions
     );
     const second = await executeWorkflow(
       clockGraphInput,
       createReplayRuntime(memo),
-      store
+      store,
+      actions
     );
 
     expect(first.success).toBe(true);

@@ -285,7 +285,11 @@ describe("sendSmsHandler", () => {
  * keys the node holds a value for.
  */
 describe("the send-sms step as an integration binds it", () => {
-  const run = twilio.actions["send-sms"].implement("twilio/send-sms");
+  // What the app supplies a step definition: the credential store. This node
+  // names no integration, so nothing is read.
+  const run = twilio.actions["send-sms"].implement("twilio/send-sms")({
+    credentialsFor: () => Effect.succeed({}),
+  });
 
   it("answers the log-only success a default test run expects", async () => {
     const result = await run({

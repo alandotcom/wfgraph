@@ -7,6 +7,7 @@ import {
   defineIntegration,
   type IntegrationDefinition,
 } from "#src/backend/lib/extensions/define-integration";
+import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import { defineStep } from "#src/backend/lib/steps/define-step";
 
@@ -145,7 +146,7 @@ describe("assembleExtensions", () => {
       actions: [anAction("appointments/cancel")],
     });
 
-    const step = set.stepFor("appointments/cancel");
+    const step = set.stepFor("appointments/cancel")?.(stubStepEnvironment());
 
     expect(
       await step?.({
@@ -376,7 +377,9 @@ describe("assembleExtensions and an integration definition", () => {
     const set = assembleExtensions({ integrations: [aDefinition("twilio")] });
 
     expect(
-      await set.stepFor("twilio/send-sms")?.({ to: "+15550001111" })
+      await set.stepFor("twilio/send-sms")?.(stubStepEnvironment())({
+        to: "+15550001111",
+      })
     ).toEqual({
       success: true,
       data: { sid: "SM1" },

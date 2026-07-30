@@ -1,7 +1,7 @@
 import { RPCHandler } from "@orpc/server/fetch";
 import { Effect, Result, Schema, type SchemaAST } from "effect";
 import { Hono } from "hono";
-import { getExtensions } from "#src/backend/lib/extensions/current";
+import { Extensions } from "#src/backend/lib/effect/extensions";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
 import type { InngestSurface } from "#src/backend/lib/inngest/client";
 import { getAppLogger } from "#src/backend/lib/logger";
@@ -423,7 +423,11 @@ export function createApiApp(options: CreateApiAppOptions) {
     // The catalog is the whole surface in one document, and the only channel the
     // editor learns it through: an Event, an action and an integration all reach it
     // here, the four built-ins and a host's own actions included.
-    .get("/extensions", (c) => c.json({ catalog: getExtensions().catalog }))
+    .get("/extensions", async (c) =>
+      c.json({
+        catalog: (await runtime.runPromise(Extensions)).catalog,
+      })
+    )
     .all("/auth", (c) => c.json({ error: "Not found" }, 404))
     .all("/auth/*", (c) => c.json({ error: "Not found" }, 404))
     .all("/og", (c) => c.json({ error: "Not found" }, 404))

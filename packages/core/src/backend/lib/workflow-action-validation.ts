@@ -1,5 +1,7 @@
-import { getExtensions } from "#src/backend/lib/extensions/current";
-import { findAction } from "@rova/shared/extensions/catalog";
+import {
+  type ExtensionCatalog,
+  findAction,
+} from "@rova/shared/extensions/catalog";
 import {
   getMissingRequiredFieldsForNodes,
   type ResolveActionByType,
@@ -12,9 +14,11 @@ export type WorkflowActionValidationResult =
 
 export function validateWorkflowActionConfigs(
   nodes: WorkflowNode[],
-  resolveActionByType: ResolveActionByType = (actionType) =>
-    findAction(getExtensions().catalog, actionType)
+  catalog: ExtensionCatalog
 ): WorkflowActionValidationResult {
+  const resolveActionByType: ResolveActionByType = (actionType) =>
+    findAction(catalog, actionType);
+
   const missingRequiredFields = getMissingRequiredFieldsForNodes({
     nodes,
     resolveActionByType,

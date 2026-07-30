@@ -1,27 +1,18 @@
 import { Effect, Schema } from "effect";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
 import { defineStep } from "#src/backend/lib/steps/define-step";
-import {
-  clearExtensions,
-  configureExtensions,
-} from "#src/backend/lib/extensions/current";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import { validateWorkflowActionConfigs } from "#src/backend/lib/workflow-action-validation";
-import type { ResolveActionByType } from "@rova/shared/workflow/action-config-validation";
+import {
+  emptyExtensionCatalog,
+  type ExtensionCatalog,
+} from "@rova/shared/extensions/catalog";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
-// Every reader of the surface sits inside an app, and `getExtensions` says so by
-// throwing. The default resolver each function below falls back to is one of those
-// readers, so a case that does not pass its own resolver needs a surface; the
-// built-in four ride in on an empty assembly, which is what those cases resolve.
-beforeAll(() => {
-  configureExtensions(assembleExtensions({}));
-});
-
-afterAll(() => {
-  clearExtensions();
-});
+// An action's required fields come from the catalog a save reads, and the
+// built-in four ride in on an empty assembly.
+const builtInCatalog = assembleExtensions({}).catalog;
 
 function createTriggerNode(): WorkflowNode {
   return {
@@ -49,38 +40,44 @@ function createActionNode(config?: Record<string, unknown>): WorkflowNode {
   };
 }
 
-const resolvePluginActionByType: ResolveActionByType = (actionType) => {
-  if (actionType !== "custom/send-message") {
-    return undefined;
-  }
-
-  return {
-    label: "Send Message",
-    configFields: [
-      { key: "channel", label: "Channel", type: "text", required: true },
-      { key: "message", label: "Message", type: "text", required: true },
-    ],
-  };
+const pluginCatalog: ExtensionCatalog = {
+  ...emptyExtensionCatalog,
+  actions: [
+    {
+      id: "custom/send-message",
+      label: "Send Message",
+      description: "Sends a message",
+      category: "Custom",
+      configFields: [
+        { key: "channel", label: "Channel", type: "text", required: true },
+        { key: "message", label: "Message", type: "text", required: true },
+      ],
+      outputFields: [],
+    },
+  ],
 };
 
 describe("validateWorkflowActionConfigs", () => {
   it("accepts action nodes with valid system action config", () => {
-    const result = validateWorkflowActionConfigs([
-      createTriggerNode(),
-      createActionNode({
-        actionType: "HTTP Request",
-        endpoint: "https://example.com/webhook",
-      }),
-    ]);
+    const result = validateWorkflowActionConfigs(
+      [
+        createTriggerNode(),
+        createActionNode({
+          actionType: "HTTP Request",
+          endpoint: "https://example.com/webhook",
+        }),
+      ],
+      builtInCatalog
+    );
 
     expect(result.valid).toBe(true);
   });
 
   it("rejects enabled action nodes without actionType", () => {
-    const result = validateWorkflowActionConfigs([
-      createTriggerNode(),
-      createActionNode({}),
-    ]);
+    const result = validateWorkflowActionConfigs(
+      [createTriggerNode(), createActionNode({})],
+      builtInCatalog
+    );
 
     expect(result.valid).toBe(false);
     if (!result.valid) {
@@ -90,25 +87,28 @@ describe("validateWorkflowActionConfigs", () => {
 
   it("ignores disabled action nodes without actionType", () => {
     const actionNode = createActionNode({});
-    const result = validateWorkflowActionConfigs([
-      createTriggerNode(),
-      {
-        ...actionNode,
-        data: {
-          ...actionNode.data,
-          enabled: false,
+    const result = validateWorkflowActionConfigs(
+      [
+        createTriggerNode(),
+        {
+          ...actionNode,
+          data: {
+            ...actionNode.data,
+            enabled: false,
+          },
         },
-      },
-    ]);
+      ],
+      builtInCatalog
+    );
 
     expect(result.valid).toBe(true);
   });
 
   it("rejects HTTP Request actions without an endpoint", () => {
-    const result = validateWorkflowActionConfigs([
-      createTriggerNode(),
-      createActionNode({ actionType: "HTTP Request" }),
-    ]);
+    const result = validateWorkflowActionConfigs(
+      [createTriggerNode(), createActionNode({ actionType: "HTTP Request" })],
+      builtInCatalog
+    );
 
     expect(result.valid).toBe(false);
     if (!result.valid) {
@@ -118,10 +118,13 @@ describe("validateWorkflowActionConfigs", () => {
   });
 
   it("rejects Wait delay actions without timing configuration", () => {
-    const result = validateWorkflowActionConfigs([
-      createTriggerNode(),
-      createActionNode({ actionType: "Wait", waitMode: "delay" }),
-    ]);
+    const result = validateWorkflowActionConfigs(
+      [
+        createTriggerNode(),
+        createActionNode({ actionType: "Wait", waitMode: "delay" }),
+      ],
+      builtInCatalog
+    );
 
     expect(result.valid).toBe(false);
     if (!result.valid) {
@@ -131,15 +134,18 @@ describe("validateWorkflowActionConfigs", () => {
   });
 
   it("accepts an event Wait without delay fields", () => {
-    const result = validateWorkflowActionConfigs([
-      createTriggerNode(),
-      createActionNode({
-        actionType: "Wait",
-        waitMode: "event",
-        waitFor: [{ event: "appointment.created" }],
-        waitTimeout: "7d",
-      }),
-    ]);
+    const result = validateWorkflowActionConfigs(
+      [
+        createTriggerNode(),
+        createActionNode({
+          actionType: "Wait",
+          waitMode: "event",
+          waitFor: [{ event: "appointment.created" }],
+          waitTimeout: "7d",
+        }),
+      ],
+      builtInCatalog
+    );
 
     expect(result.valid).toBe(true);
   });
@@ -147,10 +153,13 @@ describe("validateWorkflowActionConfigs", () => {
   // A wait that parks on an Event has to name one: an empty list used to mean
   // "any Event for this entity", which the subscription index cannot hold.
   it("rejects a Wait on events that names none", () => {
-    const result = validateWorkflowActionConfigs([
-      createTriggerNode(),
-      createActionNode({ actionType: "Wait", waitMode: "event" }),
-    ]);
+    const result = validateWorkflowActionConfigs(
+      [
+        createTriggerNode(),
+        createActionNode({ actionType: "Wait", waitMode: "event" }),
+      ],
+      builtInCatalog
+    );
 
     expect(result.valid).toBe(false);
     if (!result.valid) {
@@ -158,59 +167,57 @@ describe("validateWorkflowActionConfigs", () => {
     }
   });
 
-  // The default resolver is the assembled catalog, which is where an integration's
-  // actions and their config fields come from once a host has passed it. A node
-  // naming an action the surface does not hold has no fields to be missing, so the
-  // only refusal left is the one for a node with no action at all.
+  // An integration's actions and their config fields reach the check through the
+  // assembled catalog. A node naming an action the surface does not hold has no
+  // fields to be missing, so the only refusal left is the one for a node with no
+  // action at all.
   it("reads an action's required fields off the assembled catalog", () => {
-    configureExtensions(
-      assembleExtensions({
-        integrations: [
-          defineIntegration({
-            type: "twilio",
-            label: "Twilio",
-            description: "Send SMS messages",
-            credentials: [],
-            actions: {
-              "send-sms": defineStep({
-                label: "Send SMS",
-                description: "Sends a message",
-                category: "Twilio",
-                input: Schema.Struct({ smsTo: Schema.String }),
-                output: Schema.Struct({
-                  sid: Schema.String.annotate({ description: "Message SID" }),
-                }),
-                configFields: [
-                  {
-                    key: "smsTo",
-                    label: "To",
-                    type: "template-input",
-                    required: true,
-                  },
-                ],
-                handler: Effect.fn(function* () {
-                  return yield* Effect.succeed({ sid: "SM1" });
-                }),
+    const twilioCatalog = assembleExtensions({
+      integrations: [
+        defineIntegration({
+          type: "twilio",
+          label: "Twilio",
+          description: "Send SMS messages",
+          credentials: [],
+          actions: {
+            "send-sms": defineStep({
+              label: "Send SMS",
+              description: "Sends a message",
+              category: "Twilio",
+              input: Schema.Struct({ smsTo: Schema.String }),
+              output: Schema.Struct({
+                sid: Schema.String.annotate({ description: "Message SID" }),
               }),
-            },
-          }),
-        ],
-      })
-    );
+              configFields: [
+                {
+                  key: "smsTo",
+                  label: "To",
+                  type: "template-input",
+                  required: true,
+                },
+              ],
+              handler: Effect.fn(function* () {
+                return yield* Effect.succeed({ sid: "SM1" });
+              }),
+            }),
+          },
+        }),
+      ],
+    }).catalog;
 
-    const result = validateWorkflowActionConfigs([
-      createTriggerNode(),
-      createActionNode({ actionType: "twilio/send-sms" }),
-    ]);
+    const result = validateWorkflowActionConfigs(
+      [
+        createTriggerNode(),
+        createActionNode({ actionType: "twilio/send-sms" }),
+      ],
+      twilioCatalog
+    );
 
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.error).toContain("missing required fields");
       expect(result.error).toContain("To");
     }
-
-    // Back to the empty surface the rest of the file assembled.
-    configureExtensions(assembleExtensions({}));
   });
 
   it("rejects plugin actions with missing required fields", () => {
@@ -219,7 +226,7 @@ describe("validateWorkflowActionConfigs", () => {
         createTriggerNode(),
         createActionNode({ actionType: "custom/send-message" }),
       ],
-      resolvePluginActionByType
+      pluginCatalog
     );
 
     expect(result.valid).toBe(false);

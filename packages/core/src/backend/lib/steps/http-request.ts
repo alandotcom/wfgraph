@@ -1,32 +1,47 @@
 /**
- * Executable step function for HTTP Request action
+ * HTTP Request: the engine's own action for calling an API a plugin does not
+ * cover.
+ *
+ * Its payload is `{ body, status }` inside the ordinary envelope, which is what
+ * lets `{{@node:HTTP Request.status}}` resolve: a shape with payload keys beside
+ * `success` reads to the template resolver as a plain output, and the status
+ * sitting next to the response was swallowed by the unwrap.
+ *
+ * The response is `body` rather than `data` because `data` is the envelope's own
+ * key: a path starting with it names the wrapper, so a payload field called
+ * `data` is unreachable through a template.
+ *
+ * `body` is `Schema.Unknown` because a response body is whatever the API sent --
+ * a JSON object, an array, or text. A node that knows more says so in its own
+ * output schema, which the editor merges into the paths it offers.
  */
 
+import { Effect, Schema } from "effect";
+import { defineStep, StepFailure } from "#src/backend/lib/steps/define-step";
 import { getErrorMessage } from "@rova/shared/utils";
 import { validateWorkflowOutputAgainstSchema } from "@rova/shared/workflow/schema-validation";
-import type { StepError } from "@rova/shared/workflow/step-result";
-import { type StepInput, withStepLogging } from "./step-handler";
 
-/**
- * `status` sits beside `error` on the failure arm, matching how the success arm
- * carries it beside `data`: it describes the response, and a failure may have no
- * response at all. A 500 reports a status; a request that timed out has none,
- * while both supply a message saying what went wrong.
- */
-type HttpRequestResult =
-  | { success: true; data: unknown; status: number }
-  | { success: false; error: StepError; status?: number };
+export const httpRequestInput = Schema.Struct({
+  endpoint: Schema.optionalKey(Schema.String),
+  httpMethod: Schema.optionalKey(Schema.String),
+  httpHeaders: Schema.optionalKey(Schema.String),
+  httpBody: Schema.optionalKey(Schema.String),
+  httpOutputSchema: Schema.optionalKey(Schema.String),
+});
 
-export type HttpRequestInput = StepInput & {
-  endpoint: string;
-  httpMethod: string;
-  httpHeaders?: string;
-  httpBody?: string;
-  httpOutputSchema?: string;
-};
+export const httpRequestOutput = Schema.Struct({
+  body: Schema.Unknown,
+  status: Schema.Number.annotate({ description: "HTTP status code" }).check(
+    Schema.isFinite()
+  ),
+});
+
+type HttpRequestInput = typeof httpRequestInput.Type;
+type HttpRequestOutput = typeof httpRequestOutput.Type;
 
 const HTTP_REQUEST_TIMEOUT_MS = 15_000;
 const HTTP_REQUEST_MAX_ATTEMPTS = 2;
+const DEFAULT_HTTP_METHOD = "GET";
 
 function parseHeaders(httpHeaders?: string): Record<string, string> {
   if (!httpHeaders) {
@@ -71,7 +86,7 @@ function isTimeoutError(error: unknown): boolean {
 }
 
 async function fetchWithTimeout(
-  input: HttpRequestInput,
+  input: { endpoint: string; httpMethod: string } & HttpRequestInput,
   timeoutMs: number
 ): Promise<Response> {
   const controller = new AbortController();
@@ -91,41 +106,45 @@ async function fetchWithTimeout(
   }
 }
 
-/**
- * HTTP request logic
- */
+type HttpRequestOutcome =
+  | { ok: true; output: HttpRequestOutput }
+  | { ok: false; error: string };
+
 async function httpRequest(
   input: HttpRequestInput
-): Promise<HttpRequestResult> {
-  if (!input.endpoint) {
-    return {
-      success: false,
-      error: { message: "HTTP request failed: URL is required" },
-    };
+): Promise<HttpRequestOutcome> {
+  const endpoint = input.endpoint?.trim();
+  if (!endpoint) {
+    return { ok: false, error: "HTTP request failed: URL is required" };
   }
 
-  const runAttempt = async (attempt: number): Promise<HttpRequestResult> => {
+  const request = {
+    ...input,
+    endpoint,
+    httpMethod: input.httpMethod ?? DEFAULT_HTTP_METHOD,
+  };
+
+  const runAttempt = async (attempt: number): Promise<HttpRequestOutcome> => {
     try {
-      const response = await fetchWithTimeout(input, HTTP_REQUEST_TIMEOUT_MS);
+      const response = await fetchWithTimeout(request, HTTP_REQUEST_TIMEOUT_MS);
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "Unknown error");
 
         if (response.status >= 500 && attempt < HTTP_REQUEST_MAX_ATTEMPTS) {
-          return runAttempt(attempt + 1);
+          return await runAttempt(attempt + 1);
         }
 
         return {
-          success: false,
-          error: {
-            message: `HTTP request failed with status ${response.status}: ${errorText}`,
-          },
-          status: response.status,
+          ok: false,
+          error: `HTTP request failed with status ${response.status}: ${errorText}`,
         };
       }
 
-      const data = await parseResponse(response);
-      const output = { success: true as const, data, status: response.status };
+      const output: HttpRequestOutput = {
+        body: await parseResponse(response),
+        status: response.status,
+      };
       const schemaValidation = validateWorkflowOutputAgainstSchema({
         schemaValue: input.httpOutputSchema,
         output,
@@ -133,30 +152,25 @@ async function httpRequest(
       });
 
       if (!schemaValidation.ok) {
-        return {
-          success: false,
-          error: { message: schemaValidation.error },
-        };
+        return { ok: false, error: schemaValidation.error };
       }
 
-      return output;
+      return { ok: true, output };
     } catch (error) {
       if (attempt < HTTP_REQUEST_MAX_ATTEMPTS) {
-        return runAttempt(attempt + 1);
+        return await runAttempt(attempt + 1);
       }
 
       if (isTimeoutError(error)) {
         return {
-          success: false,
-          error: {
-            message: `HTTP request failed: request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`,
-          },
+          ok: false,
+          error: `HTTP request failed: request timed out after ${HTTP_REQUEST_TIMEOUT_MS}ms`,
         };
       }
 
       return {
-        success: false,
-        error: { message: `HTTP request failed: ${getErrorMessage(error)}` },
+        ok: false,
+        error: `HTTP request failed: ${getErrorMessage(error)}`,
       };
     }
   };
@@ -164,12 +178,24 @@ async function httpRequest(
   return await runAttempt(1);
 }
 
-/**
- * HTTP Request Step
- * Makes an HTTP request to an endpoint
- */
-export function httpRequestStep(
-  input: HttpRequestInput
-): Promise<HttpRequestResult> {
-  return withStepLogging(input, () => httpRequest(input));
-}
+export const httpRequestStep = defineStep({
+  label: "HTTP Request",
+  description: "Make an HTTP request to any API",
+  category: "System",
+  // The editor configures this node through a panel of its own, so there is no
+  // declarative field list to render.
+  configFields: [],
+  input: httpRequestInput,
+  output: httpRequestOutput,
+  handler: (input) =>
+    Effect.flatMap(
+      // The attempt loop, the timeout and the body parsing are all inside this
+      // one Promise: it retries a 5xx once on its own because a node that calls
+      // a flaky API should not spend an Inngest function retry on it.
+      Effect.promise(() => httpRequest(input)),
+      (outcome) =>
+        outcome.ok
+          ? Effect.succeed(outcome.output)
+          : Effect.fail(new StepFailure({ message: outcome.error }))
+    ),
+});

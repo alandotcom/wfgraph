@@ -175,11 +175,22 @@ plugin is that one file beside `client.ts`, `test.ts`, `icon.tsx` and `ui.ts`.
 takes an input schema, an output schema, the metadata the editor draws the action with
 (`label`, `description`, `category`, `configFields`), and a handler returning an
 `Effect<Output, StepFailure, HttpClient>`. It owns everything around that handler: the
-config decode, the credential fetch, the run log rows, and the `StepResult` envelope
+config decode, the credential fetch, and the `StepResult` envelope
 (`{ success: true, data }` or `{ success: false, error: { message } }`, in
 `packages/shared/src/workflow/step-result.ts`) that the engine reads. A handler never
 writes that envelope and never touches a Promise. Each `configFields[].key` is
 `Extract<keyof TInput, string>`, so a field the step cannot read fails to compile.
+
+`implement(actionId)` answers a factory rather than a step, because the one thing around
+the handler that belongs to the app is the credential store a node's integration is read
+from. It arrives as `StepEnvironment` (`backend/lib/steps/step-runner.ts`), which
+`createWorkflowActions` builds off the assembled surface the credential mapping is read
+through. A plugin's own test hands over `{ credentialsFor: () => Effect.succeed({}) }`.
+The handler's own Effect asks for nothing an app provides -- `defineStep` provides the
+vendor transport itself and turns every failure into the envelope -- so it runs on
+`Effect.runPromise` rather than on the app's `ManagedRuntime`. The runtime belongs in that
+record the day a handler may yield an app service, which is the day the type changes
+anyway.
 
 The handler's `context` parameter is typed with the open credential record unless an
 author annotates it, and that is deliberate: a type parameter appearing only inside a
@@ -214,9 +225,16 @@ encode fails the node once as a `StepFailure` naming the field path, since a ret
 spend the budget on a certainty; reaching it takes an `as`, an `any`, or a widened vendor
 type.
 
-`Database Query` and `HTTP Request`, the two the engine ships itself, are the exception to
-all of this: each answers a shape the envelope has no room for, so they stay Promise
-functions behind a registration that `step-registry.ts` keeps to itself.
+`Database Query` and `HTTP Request` are `defineStep` values like any other, in
+`backend/lib/steps/`. Each used to answer a shape the envelope has no room for -- rows
+beside a count, a status beside the response -- and HTTP Request's status was swallowed by
+the template resolver's unwrap for exactly that reason. Their payloads are `{ rows, count }`
+and `{ body, status }` inside the ordinary envelope now. The response is `body` rather than
+`data` because `data` is the envelope's own key: a path starting with it names the wrapper,
+so a payload field called `data` is unreachable through a template. Database Query's fields
+are derived from its output schema the way every other action's are; HTTP Request writes its
+two out in `built-ins.ts`, because `body` is `Schema.Unknown`, which emits no `type` keyword,
+and the derivation refuses a list rather than offer a shorter one than the step returns.
 
 **An action's output fields come from its output schema.** An action declares `output` on
 its `defineStep`, and assembly derives the editor's template-autocomplete paths from it
@@ -231,12 +249,19 @@ it too and the message has to say which kind of thing is at fault.
 
 A host action spells the same thing `outputSchema` on its `createAction`, and derives its
 fields there rather than at assembly, because that call is where any Standard Schema library
-is bridged. The two differ in one way worth knowing before reading `runtime.ts`: only a
-`defineStep` action encodes its answer through the output schema. A `createAction` validates
-its input and hands `execute`'s answer back as it is, so what its output schema buys is the
-handler's return type and the field list, and the dev-mode JSON-safety walk in
-`workflow-engine/runtime.ts` is still what guards it, as it guards the two built-in steps.
-Stage 7 item 5 is what retires that walk.
+is bridged. It encodes on the way out too, through the same canonical JSON codec, so a
+`Date` a host's `execute` answered with leaves as an ISO string; a foreign Standard Schema
+library hands over a validator and a JSON Schema and nothing that runs in that direction, so
+those pass through untouched, which is the same call `output-fields.ts` makes for the field
+list. What a schema cannot say about itself is not said.
+
+That encode is what retired the dev-mode JSON-safety walk the in-memory runtime used to
+perform, and it covers exactly the actions that have an Effect output schema. A
+`createAction` with no `outputSchema`, or one written in arktype or Zod, hands `execute`'s
+answer back as it is: a `Date` in it becomes a string on the replay with nothing said, and
+that is the host's to know. The in-memory runtime still round-trips a memoized value through
+JSON, which models the loss without reporting it, and the walk never ran in production at
+all.
 
 **The extension surface is one JSON catalog, served on one route.** An Event, an action
 and an integration reach the editor as `ExtensionCatalog`
@@ -255,8 +280,8 @@ renderer are React components and cannot be serialized, so those stay an explici
 import in `plugins/ui-registry.ts`.
 
 `createRovaApp` assembles the catalog with `assembleExtensions`
-(`packages/core/src/backend/lib/extensions/extension-set.ts`) and hands it to
-`configureExtensions`, whose module state stage 7 replaces with a service. Assembly is
+(`packages/core/src/backend/lib/extensions/extension-set.ts`) and hands it to the Layer
+graph as the `Extensions` service (`backend/lib/effect/extensions.ts`). Assembly is
 where a definition mistake is caught, naming the offender: each of an Event's name, an
 action's id and an integration's type is held to one owner, an output schema the
 derivation cannot read is refused naming the action, and so is a required config key with
@@ -271,13 +296,14 @@ find.
 The server reads that catalog for everything it used to ask a registry: the credential
 mapping in `credential-fetcher.ts`, the secret-key test in
 `integration-config-masking.ts`, the action labels and step dispatch in
-`step-registry.ts`, and both workflow validators. Each asks `getExtensions()`, which
-throws, because every one of them sits inside an app and a surface that was never
-assembled is a mistake rather than an empty answer: a lenient lookup would have a run
-dispatch nothing, a save pass every check, and a config serve its secrets unmasked. A test
-of one of those stands a surface up, which `configureTestExtensions` in
-`backend/lib/effect/test-layers.ts` does in a line, and an empty assembly still carries the
-built-in four.
+`extensions/workflow-actions.ts`, and both workflow validators. A service yields
+`Extensions`; the pure checks beside it take the catalog as a parameter, so a validator has
+no way to reach a surface of its own. That a surface must exist is the type system's answer
+now rather than a throw: yielding the service puts `Extensions` in a body's `R`, and only a
+runtime carrying one can run it. The alternative a lenient lookup would give is a run that
+dispatches nothing, a save that passes every check, and a config that serves its secrets
+unmasked. A test of one of those provides `stubExtensions` or `stubExtensionCatalog` from
+`backend/lib/effect/test-layers.ts`, and an empty assembly still carries the built-in four.
 
 The browser reads the same catalog and nothing else. `main.tsx` imports
 `@rova/plugins/ui` for the icons a wire cannot carry and nothing from `@rova/plugins`
@@ -533,15 +559,42 @@ that changes which workflows exist drops the list through the `InngestFunctions`
 reach one member of it. The two `backend/lib` helpers that mix a send with wait-state
 bookkeeping, `cancelInFlightRuns` and `resumeWaitsMatchingEvent`, take the one send each
 needs as a parameter, which their caller wraps with `asPromisePort` from the `InngestClient`
-service it already holds. That wrapper is the one deliberate `Effect.runPromise` outside an
-edge, and it goes when the run engine comes onto Effect.
+service it already holds. That wrapper and `defineStep`'s call into a handler are the two
+deliberate `Effect.runPromise`s outside an edge, and both go when the run engine comes onto
+Effect.
 
-The run engine has not moved yet. The `db` proxy and `getDb` survive because the workflow
-function's step store, the step logger, the credential fetcher, and the function registry
-all read them from outside any runtime; stage 7's second half owns their deletion, along
-with `extensions/current.ts` and the Promise seam inside `defineStep`. `callDbModule` and
-`callInngestModule` are the seams a service crosses to reach a `backend/lib` module that
-still speaks Promises, each giving it the tagged error channel its own queries have.
+**The run engine is three ports, and the app fills all three.** `executeWorkflow` takes a
+`WorkflowExecutionRuntime` for durability, a `WorkflowStore` for the run's trace, and a
+`WorkflowActions` for what an action id dispatches to (`workflow-engine/actions.ts`). Every
+default is the honest in-process one -- work runs inline, nothing is persisted, no action is
+implemented -- so a caller that wants a node to do work injects a surface. The Inngest
+adapter in `lib/inngest/workflow-function.ts` is where a live run picks up all three, and
+the third comes from `createWorkflowActions`, built once per function-list rebuild from the
+surface the registry read off the runtime it was handed. The engine module imports neither
+the database nor the assembled surface, the same way it imports neither Inngest nor Drizzle.
+
+The run log rows are the engine's, written through the store by
+`workflow-engine/step-log.ts` around every node it runs: a plugin's action, a host's action,
+the entry node, the Condition node and the Wait node all leave the same trace, and a step
+author writes none of it. The Wait is the one caller that uses the two halves rather than
+`runWithStepLog`, because it opens its row inside a memoized step and closes it from one of
+many branches on the far side of a suspension; that whole node is
+`workflow-engine/wait.ts`.
+
+The two writes have opposite failure policies, and the split is what keeps a node's side
+effect at-most-once. A refused open fails the node, and Inngest's function-level retry of it
+costs one wasted call. A refused close may not, because it sits inside the node's memoized
+step: a throw after the work succeeded discards the result the runtime was about to store
+and re-runs the node, sending a second SMS in order to record the first. The row is left
+open, which the run panel shows.
+
+What is left of the pre-Effect engine is the `db` proxy and `getDb`, which
+`workflow-logging.ts`, `workflow-audit.ts`, `workflow-wait-state.ts` and
+`db/integrations.ts` still query through, and the `globalThis` blocks in `db/index.ts` and
+`db/integrations.ts` behind them. Those four modules are what `callDbModule` and
+`callInngestModule` are the seams to: a service crosses one to reach a `backend/lib` module
+that still speaks Promises, and gets the tagged error channel its own queries have. Moving
+their queries onto a repository is what deletes all of it.
 
 **The database config is checked apart from being recorded.** `db/config.ts` holds
 `DatabaseRuntimeConfig` and `normalizeDatabaseConfig`, a pure function that refuses a

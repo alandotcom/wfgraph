@@ -1,15 +1,12 @@
 // `it` comes from the `layer` callback below, typed with the services that layer
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
-// The lifecycle hooks come from vitest itself; `@effect/vitest` re-exports only
-// the ones its own `layer` block owns.
-import { beforeAll } from "vitest";
 import { Effect, Layer } from "effect";
 import type { Workflow } from "#src/backend/lib/db/schema";
 import { Conflict } from "#src/backend/lib/effect/failures";
 import {
-  configureTestExtensions,
   SilentAppLoggerLayer,
+  stubExtensionCatalog,
   stubInngestFunctions,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
@@ -111,21 +108,21 @@ function nodeConfig(
 
 // Every save checks its Lifecycle Rules against the catalog, and a copy is a
 // save: this is the surface those rules are checked against.
-beforeAll(() => {
-  configureTestExtensions({
-    events: [
-      {
-        name: "app/appointment.created",
-        label: "Appointment created",
-        correlationPath: "appointment.id",
-        payloadFields: [],
-      },
-    ],
-  });
+const catalogLayer = stubExtensionCatalog({
+  events: [
+    {
+      name: "app/appointment.created",
+      label: "Appointment created",
+      correlationPath: "appointment.id",
+      payloadFields: [],
+    },
+  ],
 });
 
 describe("postWorkflowDuplicate", () => {
-  layer(Layer.merge(SilentAppLoggerLayer, stubInngestFunctions()))((it) => {
+  layer(
+    Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, stubInngestFunctions())
+  )((it) => {
     // The integration key is removed rather than blanked. The first-class
     // trigger config schemas are closed, so a `Webhook` config carrying an
     // `integrationId` key with no value still falls out of the webhook branch of
@@ -211,7 +208,9 @@ describe("postWorkflowDuplicate", () => {
   // A copy names the same Start Events as its source, so it subscribes to them
   // from the moment it exists -- under its own id, and paused, because two
   // unpaused workflows on one Event would double every run.
-  layer(Layer.merge(SilentAppLoggerLayer, stubInngestFunctions()))((it) => {
+  layer(
+    Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, stubInngestFunctions())
+  )((it) => {
     it.effect("derives the copy's own subscriptions and pauses it", () =>
       Effect.gen(function* () {
         const repo = makeWorkflowRepo();

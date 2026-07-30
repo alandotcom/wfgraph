@@ -19,9 +19,10 @@ import type {
   IntegrationMetadata,
 } from "@rova/shared/extensions/catalog";
 import type { RuntimeExtensionActionDefinition } from "@rova/shared/workflow/action-registry";
-import type { StepFunction } from "@rova/shared/workflow/step-result";
+import type { StepFactory } from "#src/backend/lib/steps/step-runner";
 import {
   builtInActions,
+  builtInSteps,
   databaseIntegration,
 } from "#src/backend/lib/extensions/built-ins";
 import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
@@ -58,8 +59,14 @@ export type RovaExtensions = {
 export type ExtensionSet = {
   /** The serializable half. This is what /api/extensions sends. */
   readonly catalog: ExtensionCatalog;
-  /** Server-only, keyed by the same action ids the catalog carries. */
-  readonly stepFor: (actionId: string) => StepFunction | undefined;
+  /**
+   * Server-only, keyed by the same action ids the catalog carries.
+   *
+   * A factory rather than a step: a handler's Effect asks for services the app's
+   * runtime carries, and assembly happens before that runtime exists. The engine's
+   * action port is where the two meet.
+   */
+  readonly stepFor: (actionId: string) => StepFactory | undefined;
   readonly connectionTestFor: (
     type: string
   ) => IntegrationTestLoader | undefined;
@@ -204,7 +211,7 @@ function toEventMetadata(event: RegisteredEvent): EventMetadata {
  */
 type Assembly = {
   actions: ActionMetadata[];
-  steps: Map<string, StepFunction>;
+  steps: Map<string, StepFactory>;
   tests: Map<string, IntegrationTestLoader>;
 };
 
@@ -279,7 +286,9 @@ export function assembleExtensions(input: RovaExtensions): ExtensionSet {
   // by the same check as any other collision.
   const into: Assembly = {
     actions: [...builtInActions],
-    steps: new Map(),
+    steps: new Map(
+      builtInSteps.map((entry) => [entry.id, entry.step.implement(entry.id)])
+    ),
     tests: new Map(),
   };
 

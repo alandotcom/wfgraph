@@ -17,6 +17,7 @@
 
 import { Effect } from "effect";
 import { callDbModule } from "#src/backend/lib/effect/database";
+import { Extensions } from "#src/backend/lib/effect/extensions";
 import {
   IntegrationValidationFailed,
   InvalidInput,
@@ -56,6 +57,7 @@ export type PreparedGraphSave = {
  */
 export const prepareGraphSave = Effect.fn("prepareGraphSave")(
   function* (input: { graph: unknown }) {
+    const { catalog } = yield* Extensions;
     const graphValidation = validateWorkflowGraph(input.graph);
     if (!graphValidation.valid) {
       return yield* Effect.fail(
@@ -72,7 +74,7 @@ export const prepareGraphSave = Effect.fn("prepareGraphSave")(
       );
     }
 
-    const lifecycleValidation = validateWorkflowLifecycleRules(nodes);
+    const lifecycleValidation = validateWorkflowLifecycleRules(nodes, catalog);
     if (!lifecycleValidation.valid) {
       return yield* Effect.fail(
         new InvalidInput({ error: lifecycleValidation.error })
@@ -82,7 +84,7 @@ export const prepareGraphSave = Effect.fn("prepareGraphSave")(
     // The only way this fails is the integration rows it reads, so a rejected
     // query arrives here as the same database failure a repository answers with.
     const integrationValidation = yield* callDbModule(() =>
-      validateWorkflowIntegrations(nodes)
+      validateWorkflowIntegrations(nodes, catalog)
     );
     if (!integrationValidation.valid) {
       return yield* Effect.fail(

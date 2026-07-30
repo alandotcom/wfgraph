@@ -6,8 +6,10 @@
  * and the editor is the masking below.
  */
 
-import { getExtensions } from "#src/backend/lib/extensions/current";
-import { findIntegration } from "@rova/shared/extensions/catalog";
+import {
+  type ExtensionCatalog,
+  findIntegration,
+} from "@rova/shared/extensions/catalog";
 import type { IntegrationConfig } from "@rova/shared/types/integration";
 
 export const SECRET_MASK = "********";
@@ -24,9 +26,10 @@ export const SECRET_MASK = "********";
  * defaults to true.
  */
 export function createSecretConfigKeyTest(
+  catalog: ExtensionCatalog,
   type: string
 ): (key: string) => boolean {
-  const integration = findIntegration(getExtensions().catalog, type);
+  const integration = findIntegration(catalog, type);
   if (!integration) {
     return () => true;
   }
@@ -40,10 +43,11 @@ export function createSecretConfigKeyTest(
 }
 
 export function maskIntegrationConfig(
+  catalog: ExtensionCatalog,
   type: string,
   config: IntegrationConfig
 ): IntegrationConfig {
-  const isSecretKey = createSecretConfigKeyTest(type);
+  const isSecretKey = createSecretConfigKeyTest(catalog, type);
   const maskedConfig: IntegrationConfig = { ...config };
 
   for (const key of Object.keys(maskedConfig)) {

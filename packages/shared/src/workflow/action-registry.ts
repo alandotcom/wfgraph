@@ -1,9 +1,14 @@
-import type { Schema } from "effect";
+import { Result, Schema } from "effect";
 import type {
   ActionConfigField,
   ActionConfigFieldBase,
 } from "#src/plugins/action-fields";
-import { asStandardSchema, type StandardSchema } from "#src/types/schema";
+import { formatSchemaFailure } from "#src/types/schema-message";
+import {
+  asStandardSchema,
+  isEffectSchema,
+  type StandardSchema,
+} from "#src/types/schema";
 import type { ReferenceField } from "#src/workflow/node-references";
 import {
   type OutputSchema,
@@ -257,6 +262,66 @@ function getActionErrorMessage(error: unknown): string {
   return "Action execution failed";
 }
 
+/**
+ * The encode a host action's answer passes through on its way out.
+ *
+ * A step result is memoized by the durable runtime and stored as a node output,
+ * so it has to be JSON, and the output schema is the only thing that knows what
+ * this action returns. Encoding through the canonical JSON codec is what turns a
+ * `Date` or an `Option` into JSON rather than leaving it to survive by accident
+ * through `Date.prototype.toJSON` and come back a string on the replay.
+ *
+ * Only an Effect schema has an encoder: a Standard Schema library hands over a
+ * validator and a JSON Schema and nothing that runs in this direction. Those
+ * pass through untouched, which is the same call `output-fields.ts` makes for
+ * the field list -- what the schema cannot say about itself is not said.
+ */
+function outputEncoder(
+  schema: OutputSchema<Record<string, unknown>>
+):
+  | ((value: unknown) => Result.Result<unknown, Schema.SchemaError>)
+  | undefined {
+  if (!isEffectSchema<Record<string, unknown>, never>(schema)) {
+    return undefined;
+  }
+
+  // `errors: "all"` is what `formatSchemaFailure` is written against: it counts
+  // the issues it does not spell out, and stopping at the first would make that
+  // count always zero.
+  return Schema.encodeUnknownResult(Schema.toCodecJson(schema), {
+    errors: "all",
+  });
+}
+
+/**
+ * The payload of a successful result, encoded, or the node failed once.
+ *
+ * A handler answering with something its output schema cannot encode will answer
+ * with it again on every attempt, so this fails rather than spending the retry
+ * budget on a certainty. `defineStep` treats the same mistake the same way.
+ */
+function encodeResult(
+  actionId: string,
+  encode: (value: unknown) => Result.Result<unknown, Schema.SchemaError>,
+  result: RuntimeActionResult
+): RuntimeActionResult {
+  if (!result.success) {
+    return result;
+  }
+
+  const encoded = encode(result.data);
+  if (Result.isFailure(encoded)) {
+    return {
+      success: false,
+      error: {
+        message: `Action "${actionId}" returned a value its output schema cannot encode: ${formatSchemaFailure(encoded.failure.issue)}`,
+      },
+    };
+  }
+
+  return { success: true, data: encoded.success };
+}
+
 function mergeOutputFields(
   derived: ReferenceField[],
   manual: ReferenceField[]
@@ -318,11 +383,15 @@ export function createAction<TPayload extends Record<string, unknown>>(
   const derivedConfigFields = configFieldsFromInputSchema(schema);
 
   let resolvedOutputFields = input.outputFields;
+  let encodeOutput:
+    | ((value: unknown) => Result.Result<unknown, Schema.SchemaError>)
+    | undefined;
   if ("outputSchema" in input && input.outputSchema) {
     const derived = outputFieldsFromSchema(input.outputSchema);
     resolvedOutputFields = input.outputFields
       ? mergeOutputFields(derived, input.outputFields)
       : derived;
+    encodeOutput = outputEncoder(input.outputSchema);
   }
 
   const execute: RuntimeActionExecute = async ({ payload, context }) => {
@@ -338,7 +407,13 @@ export function createAction<TPayload extends Record<string, unknown>>(
     }
 
     try {
-      return await input.execute({ payload: validatedPayload, context });
+      const result = await input.execute({
+        payload: validatedPayload,
+        context,
+      });
+      return encodeOutput
+        ? encodeResult(input.id, encodeOutput, result)
+        : result;
     } catch (error) {
       return {
         success: false,

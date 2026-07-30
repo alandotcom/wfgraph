@@ -19,7 +19,7 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InvalidInput, NotFound } from "#src/backend/lib/effect/failures";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { statedInternalFailure } from "#src/backend/lib/effect/internal-failure";
-import { getExtensions } from "#src/backend/lib/extensions/current";
+import { Extensions } from "#src/backend/lib/effect/extensions";
 import { validateApiKey } from "#src/backend/services/api-keys/auth";
 import type { JsonObject } from "@rova/shared/types/json";
 import { generateId } from "@rova/shared/utils/id";
@@ -57,7 +57,7 @@ export const postEventIntake = Effect.fn("postEventIntake")(
     // and this route is reachable without a session by design.
     const { keyId } = yield* validateApiKey(input.authHeader);
 
-    const event = getExtensions().eventByName(input.eventName);
+    const event = (yield* Extensions).eventByName(input.eventName);
     if (!event) {
       return yield* Effect.fail(
         new NotFound({

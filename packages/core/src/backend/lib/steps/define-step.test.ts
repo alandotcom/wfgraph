@@ -1,25 +1,13 @@
 import { Effect, Schema, SchemaTransformation } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import { defineStep, StepFailure } from "#src/backend/lib/steps/define-step";
 
-// The two things the constructor does that reach outside the effect: the run
-// log and the credential fetch. Both are the database in production, so both
-// are the seam a test for this file replaces.
-const mocks = vi.hoisted(() => ({
-  fetchCredentials: vi.fn(),
-  logStepStartDb: vi.fn(),
-  logStepCompleteDb: vi.fn(),
-}));
-
-vi.mock("#src/backend/lib/credential-fetcher", () => ({
-  fetchCredentials: mocks.fetchCredentials,
-}));
-
-vi.mock("#src/backend/lib/workflow-logging", () => ({
-  logStepStartDb: mocks.logStepStartDb,
-  logStepCompleteDb: mocks.logStepCompleteDb,
-  logWorkflowCompleteDb: vi.fn(),
-}));
+// The one thing a step asks the app for is its integration's credentials, which
+// reach a database in production. That is the seam this file replaces; the run
+// log rows belong to the engine and are pinned there.
+const credentialsFor = vi.fn(() => Effect.succeed({ API_KEY: "k" }));
+const runner = stubStepEnvironment({ credentialsFor });
 
 const input = Schema.Struct({
   to: Schema.String,
@@ -46,10 +34,7 @@ const CONTEXT = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  mocks.fetchCredentials.mockResolvedValue({ API_KEY: "k" });
-  mocks.logStepStartDb.mockResolvedValue({ logId: "log_1", startTime: 10 });
-  mocks.logStepCompleteDb.mockResolvedValue(undefined);
+  credentialsFor.mockClear();
 });
 
 describe("defineStep", () => {
@@ -75,7 +60,7 @@ describe("defineStep", () => {
 
   // The id is the integration's to give, so this is the same binding
   // `assembleExtensions` makes when it reads the record key the step sits under.
-  const run = step.implement("demo/send");
+  const run = step.implement("demo/send")(runner);
 
   it("answers the envelope the engine reads, carrying the handler's payload", async () => {
     const result = await run({
@@ -102,14 +87,14 @@ describe("defineStep", () => {
   it("fetches the integration's credentials once, however often they are read", async () => {
     await run({ to: "someone", integrationId: "int_1", _context: CONTEXT });
 
-    expect(mocks.fetchCredentials).toHaveBeenCalledTimes(1);
-    expect(mocks.fetchCredentials).toHaveBeenCalledWith("int_1");
+    expect(credentialsFor).toHaveBeenCalledTimes(1);
+    expect(credentialsFor).toHaveBeenCalledWith("int_1");
   });
 
   it("fetches nothing for a step no integration was configured for", async () => {
     const result = await run({ to: "someone", _context: CONTEXT });
 
-    expect(mocks.fetchCredentials).toHaveBeenCalledTimes(0);
+    expect(credentialsFor).toHaveBeenCalledTimes(0);
     expect(result).toEqual({
       success: false,
       error: { message: "API_KEY is not configured." },
@@ -127,13 +112,13 @@ describe("defineStep", () => {
       }),
     });
 
-    await quiet.implement("demo/quiet")({
+    await quiet.implement("demo/quiet")(runner)({
       to: "someone",
       integrationId: "int_1",
       _context: CONTEXT,
     });
 
-    expect(mocks.fetchCredentials).toHaveBeenCalledTimes(0);
+    expect(credentialsFor).toHaveBeenCalledTimes(0);
   });
 
   // The config a step receives is data: it came out of a jsonb column and
@@ -176,50 +161,8 @@ describe("defineStep", () => {
     });
   });
 
-  it("logs the input as it arrived, without the fields the engine added", async () => {
-    await run({
-      to: "someone",
-      unread: "kept",
-      actionType: "demo/send",
-      integrationId: "int_1",
-      _context: CONTEXT,
-    });
-
-    expect(mocks.logStepStartDb).toHaveBeenCalledWith({
-      executionId: "exec_1",
-      nodeId: "n1",
-      nodeName: "Send",
-      nodeType: "action",
-      input: { to: "someone", unread: "kept" },
-    });
-  });
-
-  it("logs a success with its payload and a failure with its reason", async () => {
-    await run({ to: "someone", integrationId: "int_1", _context: CONTEXT });
-
-    expect(mocks.logStepCompleteDb).toHaveBeenCalledWith({
-      logId: "log_1",
-      startTime: 10,
-      status: "success",
-      output: { id: "k-1", sentTo: "someone" },
-      error: undefined,
-    });
-
-    vi.clearAllMocks();
-    mocks.logStepStartDb.mockResolvedValue({ logId: "log_2", startTime: 20 });
-
-    await run({ to: "someone", _context: CONTEXT });
-
-    expect(mocks.logStepCompleteDb).toHaveBeenCalledWith({
-      logId: "log_2",
-      startTime: 20,
-      status: "error",
-      output: { message: "API_KEY is not configured." },
-      error: "API_KEY is not configured.",
-    });
-  });
-
-  it("tells the handler which mode the run is in, defaulting to live", async () => {
+  /** A step that records the run mode each call reached its handler with. */
+  function makeReportingStep(actionId: string) {
     const modes: string[] = [];
     const reporting = defineStep({
       ...METADATA,
@@ -230,7 +173,13 @@ describe("defineStep", () => {
         modes.push(context.runMode);
         return yield* Effect.succeed({ id: "x", sentTo: config.to });
       }),
-    }).implement("demo/mode");
+    }).implement(actionId)(runner);
+
+    return { reporting, modes };
+  }
+
+  it("tells the handler which mode the run is in, defaulting to live", async () => {
+    const { reporting, modes } = makeReportingStep("demo/mode");
 
     // The three ways a mode reaches a handler: named, named as an empty key,
     // and absent along with the rest of the context. Only the last two default.
@@ -246,19 +195,15 @@ describe("defineStep", () => {
   // fail the decode, which threw the whole context away: the run stopped
   // logging, and a test run read as a live one.
   it("keeps the run context when a field arrives as an empty key", async () => {
-    await run({
+    const { reporting, modes } = makeReportingStep("demo/empty-key");
+
+    await reporting({
       to: "someone",
       integrationId: "int_1",
       _context: { ...CONTEXT, runMode: undefined },
     });
 
-    expect(mocks.logStepStartDb).toHaveBeenCalledWith({
-      executionId: "exec_1",
-      nodeId: "n1",
-      nodeName: "Send",
-      nodeType: "action",
-      input: { to: "someone" },
-    });
+    expect(modes).toEqual(["live"]);
   });
 });
 
@@ -299,7 +244,7 @@ describe("defineStep and the JSON codec", () => {
       }),
     });
 
-    const result = await step.implement("demo/urls")({ urls: "a,b,c" });
+    const result = await step.implement("demo/urls")(runner)({ urls: "a,b,c" });
 
     expect(received).toEqual(["a", "b", "c"]);
     expect(result).toEqual({ success: true, data: { count: 3 } });
@@ -316,7 +261,7 @@ describe("defineStep and the JSON codec", () => {
       }),
     });
 
-    const result = await step.implement("demo/clock")({});
+    const result = await step.implement("demo/clock")(runner)({});
 
     expect(result).toEqual({
       success: true,
@@ -341,7 +286,7 @@ describe("defineStep and the JSON codec", () => {
       }),
     });
 
-    const result = await step.implement("demo/clock")({});
+    const result = await step.implement("demo/clock")(runner)({});
 
     expect(result).toEqual({
       success: false,
@@ -378,7 +323,7 @@ describe("defineStep and an optional config field", () => {
       handler: Effect.fn(function* (decoded) {
         return yield* Effect.succeed({ note: decoded.note ?? "blank" });
       }),
-    }).implement("demo/optional")(config);
+    }).implement("demo/optional")(runner)(config);
   }
 
   it("takes an absent key as a field left blank", async () => {
@@ -430,7 +375,7 @@ describe("defineStep and the shape of what it answers", () => {
       }),
     });
 
-    expect(await step.implement("demo/vendor")({})).toEqual({
+    expect(await step.implement("demo/vendor")(runner)({})).toEqual({
       success: true,
       data: { id: "1" },
     });
@@ -452,7 +397,7 @@ describe("defineStep and the shape of what it answers", () => {
       }),
     });
 
-    expect(await step.implement("demo/optional-out")({})).toEqual({
+    expect(await step.implement("demo/optional-out")(runner)({})).toEqual({
       success: true,
       data: { id: "1", from: null },
     });

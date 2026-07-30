@@ -1,12 +1,13 @@
 /**
  * The entry node's Lifecycle Rules, held to the rules a save is refused by.
  *
- * The vocabulary they are checked against is the assembled catalog, so this runs
- * where a graph is written and again before a run: an Event a workflow names has
- * to be one the app still defines.
+ * The vocabulary they are checked against is the assembled catalog, which the
+ * caller reads off the `Extensions` service, so this runs where a graph is
+ * written and again before a run: an Event a workflow names has to be one the
+ * app still defines.
  */
 
-import { getExtensions } from "#src/backend/lib/extensions/current";
+import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
 import {
   checkLifecycleRules,
   readLifecycleRules,
@@ -23,10 +24,9 @@ export type WorkflowLifecycleValidationResult =
  * screen that can add them.
  */
 export function validateWorkflowLifecycleRules(
-  nodes: readonly WorkflowNode[]
+  nodes: readonly WorkflowNode[],
+  catalog: ExtensionCatalog
 ): WorkflowLifecycleValidationResult {
-  const catalog = getExtensions().catalog;
-
   for (const node of nodes) {
     if (node.data.type !== "trigger") {
       continue;

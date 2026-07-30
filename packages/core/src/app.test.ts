@@ -9,6 +9,7 @@ import { defineStep } from "#src/backend/lib/steps/define-step";
 import { createRovaApp, type RovaApp } from "#src/app";
 import { createApiApp, MACHINE_ROUTES } from "#src/backend/api-app";
 import { getQueryClient } from "#src/backend/lib/db/index";
+import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
 import { createRovaRuntime } from "#src/backend/runtime";
 
@@ -302,7 +303,7 @@ describe("createRovaApp with an auth predicate", () => {
     // first Effect it runs and this app never serves a request, so this one is
     // disposed having built nothing.
     const inngest = createInngestSurface(BASE_OPTIONS.inngest);
-    const runtime = createRovaRuntime(inngest);
+    const runtime = createRovaRuntime(inngest, assembleExtensions({}));
     try {
       const app = createApiApp({
         basePath: "/rova/api",

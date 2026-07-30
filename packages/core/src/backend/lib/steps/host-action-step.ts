@@ -2,26 +2,27 @@
  * A host's own action, as the engine calls a step.
  *
  * `createAction` already validates the resolved config against the author's
- * schema and turns a throw into a failed envelope, so what is left is the two
- * things the engine asks of every step: the run log rows, and reading `_context`
- * out of the input record. `defineStep` does both for an integration's action, and
- * a great deal more that a host action has no schemas to support.
+ * schema, encodes what `execute` answered through the output schema when there
+ * is an Effect one, and turns a throw into a failed envelope. What is left is
+ * reading `_context` out of the input record. The run log rows are the engine's,
+ * written through its store around this call, and the runner a `defineStep`
+ * action needs has no use here: a host's `execute` is a Promise and asks Rova
+ * for no services.
  */
 
 import {
   readStepContext,
   stripInternalFields,
-  withStepLogging,
 } from "#src/backend/lib/steps/step-handler";
+import type { StepFactory } from "#src/backend/lib/steps/step-runner";
 import type { RuntimeActionDefinition } from "@rova/shared/workflow/action-registry";
-import type { StepFunction } from "@rova/shared/workflow/step-result";
 
 function readIntegrationId(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
 
-export function hostActionStep(action: RuntimeActionDefinition): StepFunction {
-  return async (rawInput) => {
+export function hostActionStep(action: RuntimeActionDefinition): StepFactory {
+  return () => async (rawInput) => {
     const context = readStepContext(rawInput._context);
 
     // Every node the engine runs carries its context, so an input without one is
@@ -37,18 +38,14 @@ export function hostActionStep(action: RuntimeActionDefinition): StepFunction {
       };
     }
 
-    return await withStepLogging({ ...rawInput, _context: context }, () =>
-      Promise.resolve(
-        action.execute({
-          // The same three keys a run log leaves out: `execute` is told about the
-          // connection and the action through its context instead.
-          payload: stripInternalFields(rawInput),
-          context: {
-            ...context,
-            integrationId: readIntegrationId(rawInput.integrationId),
-          },
-        })
-      )
-    );
+    return await action.execute({
+      // The same three keys a run log leaves out: `execute` is told about the
+      // connection and the action through its context instead.
+      payload: stripInternalFields(rawInput),
+      context: {
+        ...context,
+        integrationId: readIntegrationId(rawInput.integrationId),
+      },
+    });
   };
 }

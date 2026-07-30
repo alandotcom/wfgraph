@@ -1,12 +1,11 @@
 /**
  * What a workflow step hands back, written down once.
  *
- * A step reaches the engine through a dynamic import keyed by an export name
- * recorded at registration time, so the compiler cannot follow the dispatch by
- * itself. The single place that lookup happens (`loadStepFunction` in
- * `step-registry`) states the contract in terms of these types. From there the
- * engine, the step logging wrapper, and the template resolver all read this one
- * declaration, so none of them has to re-derive the shape at run time.
+ * A step reaches the engine through `WorkflowActions.stepFor`, which answers by
+ * action id off the assembled surface, so nothing on that path carries the
+ * step's own types. This declaration is what the two ends agree on: `defineStep`
+ * builds the envelope, and the engine and the template resolver read it, so none
+ * of them has to re-derive the shape at run time.
  */
 
 /**
@@ -40,10 +39,10 @@ export type StepResult<TData = unknown> =
  * A step as the engine calls it.
  *
  * The input is an open record rather than a JSON object, because the engine
- * builds it as a node's resolved config plus `_context`, the logging handle the
- * step wrapper needs. The config half is JSON, having come from a jsonb column;
- * the context half is a live object. Each step narrows the record to the fields
- * it declares.
+ * builds it as a node's resolved config plus `_context`, which tells the step
+ * which node and which run it is part of. The config half is JSON, having come
+ * from a jsonb column; the context half is a live object. Each step narrows the
+ * record to the fields it declares.
  */
 export type StepFunction = (
   input: Record<string, unknown>

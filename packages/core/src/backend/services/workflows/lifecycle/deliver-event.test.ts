@@ -8,6 +8,7 @@ import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
+  stubExtensionCatalog,
   stubInngestClient,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
@@ -53,24 +54,18 @@ vi.mock("#src/backend/lib/workflow-integration-validation", () => ({
   validateWorkflowIntegrations: validateWorkflowIntegrationsMock,
 }));
 
-// The catalog the save rules are checked against, which preflight reaches for
-// through the module `createRovaApp` configures.
-vi.mock("#src/backend/lib/extensions/current", () => ({
-  getExtensions: () => ({
-    catalog: {
-      events: [
-        {
-          name: "app/appointment.created",
-          label: "Appointment created",
-          correlationPath: "appointment.id",
-          payloadFields: [],
-        },
-      ],
-      actions: [],
-      integrations: [],
+// The catalog the save rules are checked against, which preflight reads off the
+// runtime the delivery runs on.
+const catalogLayer = stubExtensionCatalog({
+  events: [
+    {
+      name: "app/appointment.created",
+      label: "Appointment created",
+      correlationPath: "appointment.id",
+      payloadFields: [],
     },
-  }),
-}));
+  ],
+});
 
 const appointmentCreated = {
   name: "app/appointment.created",
@@ -157,7 +152,7 @@ beforeEach(() => {
 });
 
 describe("applyLifecycleRules", () => {
-  layer(SilentAppLoggerLayer)((it) => {
+  layer(Layer.merge(SilentAppLoggerLayer, catalogLayer))((it) => {
     it.effect("starts a run where the Event holds the start role", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
@@ -369,7 +364,9 @@ describe("applyLifecycleRules", () => {
 });
 
 describe("deliverToWaits", () => {
-  layer(Layer.merge(SilentAppLoggerLayer, stubInngestClient()))((it) => {
+  layer(
+    Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, stubInngestClient())
+  )((it) => {
     // Candidates are found by Event name, and each row's own compiled match
     // decides. Nothing here reads a Correlation Path, which is what lets a run
     // park on an Event that has no entity of its own.

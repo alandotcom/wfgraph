@@ -9,21 +9,10 @@
  */
 
 import { Effect, Schema } from "effect";
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { defineEvent } from "#src/backend/lib/extensions/define-event";
-import {
-  clearExtensions,
-  configureExtensions,
-} from "#src/backend/lib/extensions/current";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
 import { createAction } from "@rova/shared/workflow/action-registry";
 import { dateField, timestampField } from "@rova/shared/types/timestamp";
 import {
@@ -40,15 +29,6 @@ import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
 } from "#src/backend/lib/workflow-engine/recording-store";
-
-// A step logs its own run rows through step-handler, which is not behind the store
-// port; this stub keeps that path off a database.
-vi.mock("#src/backend/lib/workflow-logging", () => ({
-  logStepStartDb: () =>
-    Promise.resolve({ logId: "mock-log-id", startTime: Date.now() }),
-  logStepCompleteDb: () => Promise.resolve(),
-  logWorkflowCompleteDb: () => Promise.resolve(),
-}));
 
 /**
  * A node that answers with the config it was handed, which is how a case reads
@@ -72,16 +52,11 @@ const echoAction = createAction({
   }),
 });
 
-// The engine reads the assembled surface for an action's step, and `getExtensions`
-// throws outside an app rather than answering nothing, so the host action these
-// cases run reaches the engine the way a host's would.
-beforeAll(() => {
-  configureExtensions(assembleExtensions({ actions: [echoAction] }));
-});
-
-afterAll(() => {
-  clearExtensions();
-});
+// The engine reaches an action's step through the dispatch port the app builds,
+// so the host action these cases run reaches the engine the way a host's would.
+const actions = createWorkflowActions(
+  assembleExtensions({ actions: [echoAction] })
+);
 
 const appointmentBooked = defineEvent({
   name: "app/appointment.booked",
@@ -321,7 +296,8 @@ describe("an Event's datetime field, end to end", () => {
         triggerInput: bookedPayload(),
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     // JSON carries no date type, and CEL compares a Timestamp to a Timestamp, so
@@ -344,7 +320,8 @@ describe("an Event's datetime field, end to end", () => {
         triggerInput: bookedPayload(),
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.results.true_node).toBeUndefined();
@@ -365,7 +342,8 @@ describe("an Event's datetime field, end to end", () => {
         triggerInput: bookedPayload(),
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.results.trigger_1?.data).toEqual(bookedPayload());
@@ -387,7 +365,8 @@ describe("an Event's datetime field, end to end", () => {
         triggerInput: bookedPayload(),
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.results.echo_node?.data).toEqual({
@@ -441,7 +420,8 @@ describe("an Event's datetime field, end to end", () => {
         workflowId: "workflow_event_timestamp",
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.results.trigger_1?.success).toBe(true);

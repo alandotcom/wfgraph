@@ -1,17 +1,6 @@
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
-import {
-  clearExtensions,
-  configureExtensions,
-} from "#src/backend/lib/extensions/current";
+import { beforeEach, describe, expect, it } from "vitest";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
 import { checkCelBooleanExpression } from "#src/backend/lib/cel/environment";
 import { createAction } from "@rova/shared/workflow/action-registry";
 import { Schema } from "effect";
@@ -28,15 +17,6 @@ import {
   type RecordingWorkflowStore,
 } from "./recording-store";
 
-// A step logs its own run rows through step-handler, which is not behind the store
-// port; this stub keeps that path off a database.
-vi.mock("#src/backend/lib/workflow-logging", () => ({
-  logStepStartDb: () =>
-    Promise.resolve({ logId: "mock-log-id", startTime: Date.now() }),
-  logStepCompleteDb: () => Promise.resolve(),
-  logWorkflowCompleteDb: () => Promise.resolve(),
-}));
-
 const WRAPPED_ACTION_ID = "test/wrapped-output-action";
 
 const wrappedOutputAction = createAction({
@@ -47,17 +27,12 @@ const wrappedOutputAction = createAction({
   execute: () => ({ success: true, data: { donorId: "abc" } }),
 });
 
-// The engine reads the assembled surface for an action's step and its label, and
-// `getExtensions` throws outside an app rather than answering nothing, so the host
-// action these cases run reaches the engine the way a host's would. The built-in
-// four ride in on the same assembly.
-beforeAll(() => {
-  configureExtensions(assembleExtensions({ actions: [wrappedOutputAction] }));
-});
-
-afterAll(() => {
-  clearExtensions();
-});
+// The engine reaches an action's step and its label through the dispatch port
+// the app builds, so the host action these cases run reaches the engine the way
+// a host's would. The built-in four ride in on the same assembly.
+const actions = createWorkflowActions(
+  assembleExtensions({ actions: [wrappedOutputAction] })
+);
 
 function createTriggerNode(id: string): WorkflowNode {
   return {
@@ -200,7 +175,8 @@ describe("executeWorkflow branch traversal", () => {
     const result = await executeWorkflow(
       { graph, executionId: "exec_join", workflowId: "workflow_join" },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.success).toBe(false);
@@ -241,7 +217,8 @@ describe("executeWorkflow branch traversal", () => {
         workflowId: "workflow_condition",
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.success).toBe(true);
@@ -288,7 +265,8 @@ describe("executeWorkflow branch traversal", () => {
         workflowId: "workflow_condition",
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.success).toBe(true);
@@ -340,7 +318,8 @@ describe("executeWorkflow branch traversal", () => {
         workflowId: "workflow_condition",
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.success).toBe(true);
@@ -408,7 +387,8 @@ describe("condition context from upstream outputs", () => {
         workflowId: "workflow_wrapped_condition",
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.results.condition_node?.success).toBe(true);
@@ -424,7 +404,8 @@ describe("condition context from upstream outputs", () => {
         workflowId: "workflow_wrapped_condition",
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.results.true_node).toBeUndefined();
@@ -441,7 +422,8 @@ describe("condition context from upstream outputs", () => {
         triggerInput: { plan: "premium" },
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.results.true_node?.success).toBe(true);
@@ -505,7 +487,8 @@ describe("timestamp conditions against payload values", () => {
         triggerInput: { appointment: { startsAt: isoDaysFromNow(1) } },
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.results.condition_node?.success).toBe(true);
@@ -525,7 +508,8 @@ describe("timestamp conditions against payload values", () => {
         triggerInput: { appointment: { startsAt: isoDaysFromNow(30) } },
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.results.true_node).toBeUndefined();
@@ -547,7 +531,8 @@ describe("timestamp conditions against payload values", () => {
         triggerInput: { appointment: { startsAt: isoDaysFromNow(1) } },
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.results.true_node).toBeUndefined();
@@ -566,7 +551,8 @@ describe("timestamp conditions against payload values", () => {
         triggerInput: { plan: "premium" },
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.results.true_node).toBeUndefined();
@@ -659,7 +645,8 @@ describe("conditions on fields named after CEL type constants", () => {
         triggerInput: { type: "appointment.created" },
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.results.condition_node?.success).toBe(true);
@@ -676,7 +663,8 @@ describe("conditions on fields named after CEL type constants", () => {
         triggerInput: { type: "appointment.cancelled" },
       },
       undefined,
-      store
+      store,
+      actions
     );
 
     expect(result.results.true_node).toBeUndefined();

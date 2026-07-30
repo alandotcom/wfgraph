@@ -5,23 +5,14 @@
 
 import { evaluateCompiledCondition } from "#src/backend/lib/cel/condition-payload";
 import { getAppLogger } from "#src/backend/lib/logger";
-import {
-  getActionLabel,
-  getStepFunction,
-  getSystemActionTypes,
-} from "#src/backend/lib/step-registry";
-import type { StepContext } from "#src/backend/lib/steps/step-handler";
-import { triggerStep } from "#src/backend/lib/steps/trigger";
+import { stripInternalFields } from "#src/backend/lib/steps/step-handler";
 import { withSpan } from "#src/backend/lib/telemetry";
-import { encodeIsoTimestamp } from "@rova/shared/types/timestamp";
 import {
   type JsonObject,
   type JsonValue,
   readJsonValue,
 } from "@rova/shared/types/json";
 import { getErrorMessageAsync } from "@rova/shared/utils";
-import { resolveWaitUntil } from "@rova/shared/utils/wait-time";
-import { celStringLiteral } from "@rova/shared/workflow/cel-string-literal";
 import { normalizeConditionBranch } from "@rova/shared/workflow/condition-branch";
 import {
   collectTimestampFieldPaths,
@@ -35,24 +26,23 @@ import {
   unwrapStepOutput,
 } from "@rova/shared/workflow/node-references";
 import type { StepResult } from "@rova/shared/workflow/step-result";
-import {
-  DEFAULT_WAIT_TIMEOUT,
-  readWaitConfig,
-  type WaitConfig,
-} from "@rova/shared/workflow/wait-subscription";
 import type {
   ConditionBranch,
   SerializedWorkflowGraph,
   WorkflowEdge,
   WorkflowNode,
 } from "@rova/shared/workflow/types";
+import { noWorkflowActions, type WorkflowActions } from "./actions";
+import { isCancellationError } from "./errors";
 import {
   createInMemoryWorkflowRuntime,
   type WorkflowExecutionRuntime,
 } from "./runtime";
+import { type NodeContext, runWithStepLog } from "./step-log";
 import { noopWorkflowStore, type WorkflowStore } from "./store";
-import { compileWaitSubscriptions, type ResolveTemplates } from "./wait-match";
+import { executeWaitAction } from "./wait";
 
+export type { WorkflowActions } from "./actions";
 export type { WorkflowExecutionRuntime } from "./runtime";
 export type { WorkflowStore } from "./store";
 
@@ -64,7 +54,12 @@ export type { WorkflowStore } from "./store";
  */
 const WAIT_ACTION_TYPE = "Wait";
 
-type ExecutionResult = {
+/**
+ * What one node left behind, as the traversal reads it. `haltBranch` is how a
+ * node that succeeded says nothing below it should run, which is what a skipped
+ * Wait answers with.
+ */
+export type ExecutionResult = {
   success: boolean;
   data?: unknown;
   error?: string;
@@ -275,17 +270,25 @@ type ActionStepOutcome = {
   conditionValue?: boolean;
 };
 
-/**
- * Execute a single action step with logging via stepHandler
- * IMPORTANT: Steps receive only the integration ID as a reference to fetch credentials.
- * This prevents credentials from being logged in Vercel's workflow observability.
- */
-function executeActionStep(input: {
+/** Everything the dispatch below needs from the run it is part of. */
+type ActionStepInput = {
   actionType: string;
   config: Record<string, unknown>;
   outputs: NodeOutputs;
-  context: StepContext;
-}): Promise<ActionStepOutcome> {
+  context: NodeContext;
+  store: WorkflowStore;
+  actions: WorkflowActions;
+};
+
+/**
+ * Execute a single action step, with the run log rows around it.
+ *
+ * A step is handed the integration id and never the credentials themselves, so
+ * nothing that writes this input down -- the run log below, Inngest's own
+ * observability -- has a secret to write. The step fetches what it needs by that
+ * id, in memory.
+ */
+function executeActionStep(input: ActionStepInput): Promise<ActionStepOutcome> {
   return withSpan(
     "rova.workflow.action.execute",
     {
@@ -297,26 +300,20 @@ function executeActionStep(input: {
   );
 }
 
-async function executeActionStepInner(input: {
-  actionType: string;
-  config: Record<string, unknown>;
-  outputs: NodeOutputs;
-  context: StepContext;
-}): Promise<ActionStepOutcome> {
-  const { actionType, config, outputs, context } = input;
+async function executeActionStepInner(
+  input: ActionStepInput
+): Promise<ActionStepOutcome> {
+  const { actionType, config, outputs, context, store, actions } = input;
 
-  // Build step input WITHOUT credentials, but WITH integrationId reference and logging context
   const stepInput: Record<string, unknown> = {
     ...config,
     _context: context,
   };
 
   // The Condition action evaluates its expression here, against the outputs of
-  // the nodes upstream. The step it calls records the decision in the run log,
-  // and the boolean travels back beside that record for the traversal to route
-  // on.
+  // the nodes upstream. The decision is what the run log records and what the
+  // traversal routes on, so it is computed once and travels both ways.
   if (actionType === "Condition") {
-    const { conditionStep } = await import("#src/backend/lib/steps/condition");
     const originalExpression = stepInput.condition;
     const { result: evaluatedCondition } = evaluateConditionExpression(
       originalExpression,
@@ -327,36 +324,49 @@ async function executeActionStepInner(input: {
       evaluatedCondition,
     });
 
+    const result = await runWithStepLog(
+      {
+        store,
+        context,
+        input: {
+          condition: evaluatedCondition,
+          ...(typeof originalExpression === "string"
+            ? { expression: originalExpression }
+            : {}),
+        },
+      },
+      () =>
+        Promise.resolve({
+          success: true,
+          data: { condition: evaluatedCondition },
+        })
+    );
+
+    return { result, conditionValue: evaluatedCondition };
+  }
+
+  const stepFunction = actions.stepFor(actionType);
+  if (!stepFunction) {
+    // No row is written for an action nothing implements: there is no node work
+    // to record, and the failure is reported by the traversal instead.
     return {
-      result: await conditionStep({
-        condition: evaluatedCondition,
-        // Include original expression for step logs.
-        expression:
-          typeof originalExpression === "string"
-            ? originalExpression
-            : undefined,
-        _context: context,
-      }),
-      conditionValue: evaluatedCondition,
+      result: {
+        success: false,
+        error: {
+          message: `Unknown action type: "${actionType}". No action with this id was assembled: no integration, no host action, and none of the built-ins, which are ${actions.systemActionIds.join(", ")}.`,
+        },
+      },
     };
   }
 
-  // Look up the action's implementation: an integration's step, a host's own
-  // action, or one of the two the engine ships.
-  const stepFunction = getStepFunction(actionType);
-  if (stepFunction) {
-    return { result: await stepFunction(stepInput) };
-  }
+  const result = await runWithStepLog(
+    // The rows carry the input as the node was configured, minus the three keys
+    // the engine's own dispatch owns.
+    { store, context, input: stripInternalFields(stepInput) },
+    () => Promise.resolve(stepFunction(stepInput))
+  );
 
-  // Fallback for unknown action types
-  return {
-    result: {
-      success: false,
-      error: {
-        message: `Unknown action type: "${actionType}". No action with this id was assembled: no integration, no host action, and none of the built-ins, which are ${getSystemActionTypes().join(", ")}.`,
-      },
-    },
-  };
+  return { result };
 }
 
 /**
@@ -444,608 +454,6 @@ function resolveTemplateString(value: string, outputs: NodeOutputs): string {
         : resolveTemplateToken(segment.token, outputs)
     )
     .join("");
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
-
-function generateWaitToken(): string {
-  if (
-    typeof globalThis.crypto !== "undefined" &&
-    typeof globalThis.crypto.randomUUID === "function"
-  ) {
-    return globalThis.crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function isCancellationError(error: unknown): boolean {
-  const message = getErrorMessage(error).toLowerCase();
-  return (
-    message.includes("cancel") ||
-    message.includes("cancelled") ||
-    message.includes("canceled")
-  );
-}
-
-type WaitActionInput = {
-  config: Record<string, unknown>;
-  context: StepContext;
-  runtime: WorkflowExecutionRuntime;
-  store: WorkflowStore;
-  executionId: string;
-  workflowId: string;
-  workflowRunId?: string;
-  /** See `WaitBranchContext.resolveTemplates`. */
-  resolveTemplates: ResolveTemplates;
-};
-
-/**
- * Wait context shared by the delay and event branches.
- */
-type WaitBranchContext = {
-  config: WaitConfig;
-  context: StepContext;
-  runtime: WorkflowExecutionRuntime;
-  store: WorkflowStore;
-  executionId: string;
-  workflowId: string;
-  runId: string;
-  /**
-   * Resolves the `{{@nodeId:Label.field}}` references inside a match, which the
-   * config-wide template pass does not reach: it walks the config's own string
-   * values, and a match sits one level down inside `waitFor`.
-   */
-  resolveTemplates: ResolveTemplates;
-  /** Memoized "step started" log row reused by every branch below. */
-  startLog: { logId: string; startTime: number };
-};
-
-function readWaitGateMode(config: WaitConfig): "require_actual_wait" | "off" {
-  return config.waitGateMode === "require_actual_wait"
-    ? "require_actual_wait"
-    : "off";
-}
-
-function readAllowedHoursConfig(config: WaitConfig) {
-  return {
-    waitAllowedHoursMode: config.waitAllowedHoursMode,
-    waitAllowedStartTime: config.waitAllowedStartTime,
-    waitAllowedEndTime: config.waitAllowedEndTime,
-  };
-}
-
-function executeWaitAction(input: WaitActionInput): Promise<ExecutionResult> {
-  const waitType = input.config.waitMode === "event" ? "event" : "delay";
-
-  return withSpan(
-    "rova.workflow.wait",
-    {
-      "rova.wait.type": waitType,
-      "rova.node.id": input.context.nodeId,
-      "rova.node.name": input.context.nodeName,
-    },
-    () => executeWaitActionInner(input)
-  );
-}
-
-async function executeWaitActionInner(
-  input: WaitActionInput
-): Promise<ExecutionResult> {
-  const {
-    context,
-    runtime,
-    store,
-    executionId,
-    workflowId,
-    workflowRunId,
-    resolveTemplates,
-  } = input;
-
-  const runId = workflowRunId || runtime.runId || executionId;
-
-  // The first schema this node has ever had, so a config written against the
-  // retired shape stops the run here rather than parking on a wait nothing can
-  // reach. Both log rows are one durable unit, so a replay does not duplicate.
-  const read = readWaitConfig(input.config);
-  if (!read.valid) {
-    const errorMessage = `Wait node configuration is invalid: ${read.error}`;
-    await runtime.step(`wait-invalid-config-${context.nodeId}`, async () => {
-      const earlyLog = await store.startStepLog({
-        executionId,
-        nodeId: context.nodeId,
-        nodeName: context.nodeName,
-        nodeType: "Wait",
-        input: {},
-      });
-      await store.completeStepLog({
-        logId: earlyLog.logId,
-        startTime: earlyLog.startTime,
-        status: "error",
-        error: errorMessage,
-      });
-      return { logged: true };
-    });
-
-    return { success: false, error: errorMessage };
-  }
-
-  const config = read.config;
-
-  // The "step started" row is written once and its id is replayed from the
-  // memoized step return, so the branches below always close the same row.
-  const startLog = await runtime.step(`wait-start-log-${context.nodeId}`, () =>
-    store.startStepLog({
-      executionId,
-      nodeId: context.nodeId,
-      nodeName: context.nodeName,
-      nodeType: "Wait",
-      input: {
-        waitMode: read.waitMode,
-        waitDuration: config.waitDuration,
-        waitUntil: config.waitUntil,
-        waitOffset: config.waitOffset,
-        waitTimezone: config.waitTimezone,
-        waitGateMode: readWaitGateMode(config),
-        ...readAllowedHoursConfig(config),
-        waitFor: config.waitFor?.map((subscription) => subscription.event),
-        waitTimeout: config.waitTimeout,
-      },
-    })
-  );
-
-  const branch: WaitBranchContext = {
-    config,
-    context,
-    runtime,
-    store,
-    executionId,
-    workflowId,
-    runId,
-    resolveTemplates,
-    startLog,
-  };
-
-  if (read.waitMode === "delay") {
-    return await executeDelayWait(branch);
-  }
-  return await executeEventWait(branch);
-}
-
-/**
- * Outcome of the persistence work that happens before a delay wait suspends
- * the run. Crosses a step boundary, so every field is JSON-safe.
- */
-type DelayWaitPreparation =
-  | { status: "error"; error: string }
-  | { status: "skipped"; output: Record<string, unknown> }
-  | {
-      status: "ready";
-      waitStateId: string;
-      waitUntilIso: string;
-      plannedWaitMs: number;
-    };
-
-async function prepareDelayWait(
-  branch: WaitBranchContext
-): Promise<DelayWaitPreparation> {
-  const { config, context, store, executionId, workflowId, runId, startLog } =
-    branch;
-
-  const waitTimezone = config.waitTimezone;
-  const waitGateMode = readWaitGateMode(config);
-
-  const resolved = resolveWaitUntil({
-    waitDuration: config.waitDuration,
-    waitUntil: config.waitUntil,
-    waitOffset: config.waitOffset,
-    waitTimezone,
-    ...readAllowedHoursConfig(config),
-  });
-
-  if (!resolved.waitUntil) {
-    const errorMessage =
-      resolved.error ||
-      "Wait could not determine a target timestamp from waitUntil/waitDuration.";
-    await store.completeStepLog({
-      logId: startLog.logId,
-      startTime: startLog.startTime,
-      status: "error",
-      error: errorMessage,
-    });
-    return { status: "error", error: errorMessage };
-  }
-
-  const waitUntilIso = encodeIsoTimestamp(resolved.waitUntil);
-  const plannedWaitMs = resolved.waitUntil.getTime() - Date.now();
-  const didActuallyWait = plannedWaitMs > 0;
-
-  // Gate mode treats an already-passed target as "nothing to wait for" and
-  // stops the branch instead of falling through to a zero-length sleep.
-  if (waitGateMode === "require_actual_wait" && !didActuallyWait) {
-    const output = {
-      waitType: "delay",
-      waitUntil: waitUntilIso,
-      waitGateMode,
-      skipped: true,
-      skippedReason: "past_due_no_wait",
-      plannedWaitMs,
-      didActuallyWait,
-      resumedAt: encodeIsoTimestamp(new Date()),
-    };
-
-    await store.recordAuditEvent({
-      workflowId,
-      executionId,
-      eventType: "run_skipped",
-      message: `Skipped delay branch in node '${context.nodeName}' (target already passed)`,
-      metadata: {
-        nodeId: context.nodeId,
-        waitType: "delay",
-        waitUntil: waitUntilIso,
-        plannedWaitMs,
-        reason: "past_due_no_wait",
-      },
-    });
-
-    await store.completeStepLog({
-      logId: startLog.logId,
-      startTime: startLog.startTime,
-      status: "success",
-      output,
-    });
-
-    return { status: "skipped", output };
-  }
-
-  const waitState = await store.createWaitState({
-    executionId,
-    workflowId,
-    runId,
-    nodeId: context.nodeId,
-    nodeName: context.nodeName,
-    waitType: "delay",
-    waitUntilIso,
-    metadata: {
-      waitGateMode,
-      waitTimezone,
-    },
-  });
-
-  if (!waitState) {
-    // A policy cancel flipped the execution terminal between the last step
-    // and this park; Inngest is already killing the run.
-    const cancelledMessage =
-      "Execution was cancelled before the wait was registered";
-    await store.completeStepLog({
-      logId: startLog.logId,
-      startTime: startLog.startTime,
-      status: "error",
-      error: cancelledMessage,
-    });
-    return { status: "error", error: cancelledMessage };
-  }
-
-  await store.recordAuditEvent({
-    workflowId,
-    executionId,
-    eventType: "run_waiting",
-    message: `Run waiting in delay node '${context.nodeName}'`,
-    metadata: {
-      nodeId: context.nodeId,
-      waitType: "delay",
-      waitUntil: waitUntilIso,
-      waitGateMode,
-    },
-  });
-
-  return {
-    status: "ready",
-    waitStateId: waitState.waitStateId,
-    waitUntilIso,
-    plannedWaitMs,
-  };
-}
-
-async function executeDelayWait(
-  branch: WaitBranchContext
-): Promise<ExecutionResult> {
-  const { context, runtime, store, executionId, workflowId, startLog } = branch;
-
-  // Everything before the sleep is one durable step: a replay must not resolve
-  // a fresh target time or insert a second wait-state row.
-  const prepared = await runtime.step(
-    `wait-delay-prepare-${context.nodeId}`,
-    () => prepareDelayWait(branch)
-  );
-
-  if (prepared.status === "error") {
-    return { success: false, error: prepared.error };
-  }
-
-  if (prepared.status === "skipped") {
-    return { success: true, data: prepared.output, haltBranch: true };
-  }
-
-  try {
-    await runtime.sleep(
-      `wait-delay-${context.nodeId}`,
-      Math.max(prepared.plannedWaitMs, 0)
-    );
-  } catch (error) {
-    // Failure here means the run is unwinding (cancellation surfaces this way),
-    // so the closing log row is written directly rather than as a new step.
-    await store.completeStepLog({
-      logId: startLog.logId,
-      startTime: startLog.startTime,
-      status: "error",
-      error: getErrorMessage(error),
-    });
-    throw error;
-  }
-
-  const output = await runtime.step(
-    `wait-delay-resume-${context.nodeId}`,
-    async () => {
-      await store.markWaitStateStatus({
-        waitStateId: prepared.waitStateId,
-        status: "resumed",
-      });
-      await store.markExecutionRunning({ executionId });
-
-      await store.recordAuditEvent({
-        workflowId,
-        executionId,
-        eventType: "run_resumed",
-        message: `Run resumed after delay in node '${context.nodeName}'`,
-        metadata: {
-          nodeId: context.nodeId,
-        },
-      });
-
-      const resumeOutput = {
-        waitType: "delay",
-        waitUntil: prepared.waitUntilIso,
-        resumedAt: encodeIsoTimestamp(new Date()),
-      };
-
-      await store.completeStepLog({
-        logId: startLog.logId,
-        startTime: startLog.startTime,
-        status: "success",
-        output: resumeOutput,
-      });
-
-      return resumeOutput;
-    }
-  );
-
-  return { success: true, data: output };
-}
-
-/**
- * Outcome of the persistence work that happens before an event wait suspends the
- * run. Everything a resumed run needs is here rather than read from the config
- * again: this crosses a memoized step boundary, so it is what the run parked
- * with, and a graph edited while the run was parked cannot reach it.
- */
-type EventWaitPreparation =
-  | { status: "error"; error: string }
-  | {
-      status: "ready";
-      waitStateId: string;
-      resumeToken: string;
-      timeoutMs?: number;
-      timeoutBehavior: "continue" | "skip";
-    };
-
-async function prepareEventWait(
-  branch: WaitBranchContext
-): Promise<EventWaitPreparation> {
-  const {
-    config,
-    context,
-    store,
-    executionId,
-    workflowId,
-    runId,
-    resolveTemplates,
-    startLog,
-  } = branch;
-
-  const failWith = async (error: string): Promise<EventWaitPreparation> => {
-    await store.completeStepLog({
-      logId: startLog.logId,
-      startTime: startLog.startTime,
-      status: "error",
-      error,
-    });
-    return { status: "error", error };
-  };
-
-  // The timeout is what keeps a parked run mortal, so a wait that names none is
-  // held to the default the editor writes rather than parking forever.
-  const timeout = config.waitTimeout?.trim() || DEFAULT_WAIT_TIMEOUT;
-  const waitTimeoutResolution = resolveWaitUntil({ waitDuration: timeout });
-  if (waitTimeoutResolution.error || !waitTimeoutResolution.waitUntil) {
-    return await failWith(
-      waitTimeoutResolution.error ??
-        "Wait could not determine a timeout from waitTimeout."
-    );
-  }
-
-  const compiled = compileWaitSubscriptions({
-    subscriptions: config.waitFor ?? [],
-    resolveTemplates,
-  });
-  if (!compiled.valid) {
-    return await failWith(compiled.error);
-  }
-
-  const resumeToken = generateWaitToken();
-  const waitUntilIso = encodeIsoTimestamp(waitTimeoutResolution.waitUntil);
-  const timeoutBehavior = config.waitTimeoutBehavior ?? "continue";
-
-  const waitState = await store.createWaitState({
-    executionId,
-    workflowId,
-    runId,
-    nodeId: context.nodeId,
-    nodeName: context.nodeName,
-    waitType: "event",
-    resumeToken,
-    waitUntilIso,
-    subscribedEvents: compiled.subscriptions.map(
-      (subscription) => subscription.event
-    ),
-    // Everything here crosses the JSONB column and Inngest's memoization, so a
-    // compiled string and a literal are what the match is reduced to.
-    metadata: {
-      waitTimeout: timeout,
-      waitTimeoutBehavior: timeoutBehavior,
-      waitFor: compiled.subscriptions,
-    },
-  });
-
-  if (!waitState) {
-    // A policy cancel flipped the execution terminal between the last step
-    // and this park; Inngest is already killing the run.
-    return await failWith(
-      "Execution was cancelled before the wait was registered"
-    );
-  }
-
-  await store.recordAuditEvent({
-    workflowId,
-    executionId,
-    eventType: "run_waiting",
-    message: `Run waiting on event in node '${context.nodeName}'`,
-    metadata: {
-      nodeId: context.nodeId,
-      resumeToken,
-      waitFor: compiled.subscriptions.map((subscription) => subscription.event),
-      timeoutAt: waitUntilIso,
-    },
-  });
-
-  return {
-    status: "ready",
-    waitStateId: waitState.waitStateId,
-    resumeToken,
-    timeoutMs: Math.max(
-      waitTimeoutResolution.waitUntil.getTime() - Date.now(),
-      0
-    ),
-    timeoutBehavior,
-  };
-}
-
-async function executeEventWait(
-  branch: WaitBranchContext
-): Promise<ExecutionResult> {
-  const { context, runtime, store, executionId, workflowId, startLog } = branch;
-
-  const prepared = await runtime.step(
-    `wait-event-prepare-${context.nodeId}`,
-    () => prepareEventWait(branch)
-  );
-
-  if (prepared.status === "error") {
-    return { success: false, error: prepared.error };
-  }
-
-  let timedOut = false;
-  let eventPayload: unknown;
-
-  try {
-    // Inngest waits on Rova's own signal envelope rather than on the business
-    // Event: which runs an arrival concerns is decided by resume matching, in
-    // Rova code, before this signal is ever sent.
-    const resumeEvent = await runtime.waitForEvent(
-      `wait-event-${context.nodeId}`,
-      {
-        event: "workflow/wait.signal",
-        timeoutMs: prepared.timeoutMs,
-        ifExpression: [
-          "async.data.executionId == event.data.executionId",
-          `async.data.nodeId == ${celStringLiteral(context.nodeId)}`,
-          `async.data.token == ${celStringLiteral(prepared.resumeToken)}`,
-          `async.data.signalType == ${celStringLiteral("wait-resume")}`,
-        ].join(" && "),
-      }
-    );
-    timedOut = resumeEvent === null;
-    eventPayload = resumeEvent;
-  } catch (error) {
-    // Same reasoning as the delay branch: the run is unwinding, so no new step.
-    await store.completeStepLog({
-      logId: startLog.logId,
-      startTime: startLog.startTime,
-      status: "error",
-      error: getErrorMessage(error),
-    });
-    throw error;
-  }
-
-  const resumed = await runtime.step(
-    `wait-event-resume-${context.nodeId}`,
-    async () => {
-      await store.markWaitStateStatus({
-        waitStateId: prepared.waitStateId,
-        status: timedOut ? "timed_out" : "resumed",
-      });
-      await store.markExecutionRunning({ executionId });
-
-      await store.recordAuditEvent({
-        workflowId,
-        executionId,
-        eventType: timedOut ? "run_timed_out" : "run_resumed",
-        message: timedOut
-          ? `Run timed out in event wait node '${context.nodeName}'`
-          : `Run resumed from event in node '${context.nodeName}'`,
-        metadata: {
-          nodeId: context.nodeId,
-          resumeToken: prepared.resumeToken,
-        },
-      });
-
-      // A wait configured to skip on timeout stops its branch instead of letting
-      // downstream nodes run without the awaited Event. The behaviour comes off
-      // the preparation, which is what this run parked with: a wait can outlive
-      // several edits to the node it parked on, and none of them may change how
-      // this run treats a timeout it is already counting down.
-      const skipOnTimeout = timedOut && prepared.timeoutBehavior === "skip";
-
-      const base = {
-        waitType: "event",
-        resumeToken: prepared.resumeToken,
-        timedOut,
-        resumedAt: encodeIsoTimestamp(new Date()),
-      };
-      const output = skipOnTimeout
-        ? { ...base, skipped: true, skippedReason: "timeout_skip" }
-        : { ...base, ...(timedOut ? {} : { payload: eventPayload }) };
-
-      await store.completeStepLog({
-        logId: startLog.logId,
-        startTime: startLog.startTime,
-        status: "success",
-        output,
-      });
-
-      return { output, skipOnTimeout };
-    }
-  );
-
-  if (resumed.skipOnTimeout) {
-    return { success: true, data: resumed.output, haltBranch: true };
-  }
-
-  return { success: true, data: resumed.output };
 }
 
 type ExecutionLogger = ReturnType<typeof workflowExecutorLogger.with>;
@@ -1178,17 +586,20 @@ async function recordRunFailed(input: {
 /**
  * Main workflow executor function.
  *
- * Both dependencies are ports the caller supplies: `runtime` decides how work
- * is made durable, `store` decides where the run's trace is written. The
- * defaults are the honest in-process choices - work runs inline, nothing is
- * persisted - so a caller that wants a run recorded must inject a store that
- * records. The Inngest adapter in lib/inngest/workflow-function.ts is where a
- * real run picks up `dbWorkflowStore`.
+ * All three dependencies are ports the caller supplies: `runtime` decides how
+ * work is made durable, `store` decides where the run's trace is written, and
+ * `actions` decides what an action id dispatches to. The defaults are the honest
+ * in-process choices - work runs inline, nothing is persisted, no action is
+ * implemented - so a caller that wants a run recorded must inject a store that
+ * records, and one that wants a node to do work must inject a surface. The
+ * Inngest adapter in lib/inngest/workflow-function.ts is where a real run picks
+ * up all three.
  */
 export function executeWorkflow(
   input: WorkflowExecutionInput,
   runtime: WorkflowExecutionRuntime = createInMemoryWorkflowRuntime(),
-  store: WorkflowStore = noopWorkflowStore
+  store: WorkflowStore = noopWorkflowStore,
+  actions: WorkflowActions = noWorkflowActions
 ) {
   return withSpan(
     "rova.workflow.execution",
@@ -1198,14 +609,15 @@ export function executeWorkflow(
       "rova.workflow.name": input.workflowName,
       "rova.execution.run_mode": input.runMode ?? "live",
     },
-    () => executeWorkflowInner(input, runtime, store)
+    () => executeWorkflowInner(input, runtime, store, actions)
   );
 }
 
 async function executeWorkflowInner(
   input: WorkflowExecutionInput,
   runtime: WorkflowExecutionRuntime,
-  store: WorkflowStore
+  store: WorkflowStore,
+  actions: WorkflowActions
 ) {
   const {
     graph,
@@ -1282,7 +694,7 @@ async function executeWorkflowInner(
       if (actionType) {
         // The label comes from the assembled catalog, so a run log names an action
         // the way the editor does.
-        const label = getActionLabel(actionType);
+        const label = actions.labelFor(actionType);
         if (label) {
           return label;
         }
@@ -1417,19 +829,23 @@ async function executeWorkflowInner(
       // name.
       const triggerData: JsonObject = triggerInput ?? {};
 
-      const triggerContext: StepContext = {
+      const triggerContext: NodeContext = {
         executionId,
         nodeId: node.id,
         nodeName,
         nodeType: node.data.type,
       };
 
-      // The step logs its own run rows, which is why the payload passes through
-      // one rather than being written straight into the outputs.
-      const triggerResult = await triggerStep({
-        triggerData,
-        _context: triggerContext,
-      });
+      // The entry node does no work, and its row exists so that a run's timeline
+      // opens with the payload it started from.
+      const triggerResult = await runWithStepLog(
+        {
+          store,
+          context: triggerContext,
+          input: { triggerData },
+        },
+        () => Promise.resolve({ success: true as const, data: triggerData })
+      );
 
       result = {
         success: triggerResult.success,
@@ -1489,17 +905,13 @@ async function executeWorkflowInner(
         }
       }
 
-      // Build step context for logging (stepHandler will handle the logging)
-      const stepContext: StepContext = {
+      const stepContext: NodeContext = {
         executionId,
         nodeId: node.id,
         nodeName: getNodeName(node),
         nodeType: actionType,
         runMode,
       };
-      // Execute the action step with stepHandler (logging is handled inside)
-      // IMPORTANT: We pass integrationId via config, not actual credentials
-      // Steps fetch credentials internally using fetchCredentials(integrationId)
       actionLogger.debug("Calling executeActionStep");
 
       // The Wait action is the one action the engine runs itself, so its result
@@ -1511,7 +923,6 @@ async function executeWorkflowInner(
           context: stepContext,
           runtime,
           store,
-          executionId,
           workflowId,
           workflowRunId: currentWorkflowRunId,
           resolveTemplates: (value) => resolveTemplateString(value, outputs),
@@ -1537,6 +948,8 @@ async function executeWorkflowInner(
           config: processedConfig,
           outputs,
           context: stepContext,
+          store,
+          actions,
         });
 
         // Set by a Condition node and by nothing else, which is what the
@@ -1736,8 +1149,9 @@ async function executeWorkflowInner(
       };
       results[nodeId] = errorResult;
       completedNodes.add(nodeId);
-      // Note: stepHandler already logged the error for action steps
-      // Trigger steps don't throw, so this catch is mainly for unexpected errors
+      // The node's own row was already closed with this error on its way out of
+      // `runWithStepLog`, so what is left here is recording the failure for the
+      // traversal.
     }
   }
 

@@ -3,16 +3,18 @@
  *
  * It is the only place that knows both the engine's persistence port and the
  * database helpers behind it, which is what keeps the engine module free of db
- * imports. Everything here is a thin translation - no policy, no branching on
- * run state.
+ * imports. Every method is a thin translation, with one exception: `completeRun`
+ * decides what a failed write means to a caller, since the port answers whether
+ * this write recorded the terminal status.
  */
 
-import { logWorkflowComplete } from "#src/backend/lib/steps/step-handler";
+import { getAppLogger } from "#src/backend/lib/logger";
 import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
 import {
   logStepCompleteDb,
   logStepStartDb,
+  logWorkflowCompleteDb,
 } from "#src/backend/lib/workflow-logging";
 import {
   createWaitState,
@@ -20,7 +22,43 @@ import {
   markWaitStateStatus,
 } from "#src/backend/lib/workflow-wait-state";
 import { decodeIsoTimestampOrThrow } from "@rova/shared/types/timestamp";
-import type { WorkflowStore } from "./store";
+import type { CompleteRunInput, WorkflowStore } from "./store";
+
+const storeLogger = getAppLogger("workflow", "db-store");
+
+/**
+ * Writes the run's terminal row, and says whether this write is the one that
+ * recorded it.
+ *
+ * A transient write failure says nothing about who owns the terminal status, so
+ * the caller still announces its own outcome; a row already terminal is a
+ * cancellation that won the race, and that one the caller must not overwrite in
+ * the timeline either.
+ */
+async function completeRun(input: CompleteRunInput): Promise<boolean> {
+  try {
+    const recorded = await logWorkflowCompleteDb({
+      ...input,
+      output: redactSensitiveData(input.output),
+    });
+
+    if (!recorded) {
+      storeLogger.info(
+        "Run completion superseded by an earlier terminal status",
+        { executionId: input.executionId, status: input.status }
+      );
+    }
+
+    return recorded;
+  } catch (error) {
+    storeLogger.warn("Failed to log workflow completion", {
+      executionId: input.executionId,
+      status: input.status,
+      error,
+    });
+    return true;
+  }
+}
 
 export const dbWorkflowStore: WorkflowStore = {
   // Step payloads can carry secrets pulled in through templates, so they are
@@ -58,5 +96,5 @@ export const dbWorkflowStore: WorkflowStore = {
     await markExecutionRunning(input.executionId);
   },
 
-  completeRun: (input) => logWorkflowComplete(input),
+  completeRun,
 };

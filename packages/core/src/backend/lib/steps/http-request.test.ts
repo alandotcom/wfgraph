@@ -1,22 +1,35 @@
 import { describe, expect, it } from "vitest";
+import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import { httpRequestStep } from "./http-request";
+
+const runHttpRequest = httpRequestStep.implement("HTTP Request")(
+  stubStepEnvironment()
+);
+
+function stubJsonResponse(body: unknown): () => void {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as unknown as typeof fetch;
+
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
+}
 
 describe("httpRequestStep", () => {
   it("returns an error when configured output schema does not match", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ id: "evt_123" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      })) as unknown as typeof fetch;
+    const restore = stubJsonResponse({ id: "evt_123" });
 
     try {
-      const result = await httpRequestStep({
+      const result = await runHttpRequest({
         endpoint: "https://example.com/events",
         httpMethod: "GET",
         httpOutputSchema: JSON.stringify([
           { name: "status", type: "string" },
-          { name: "data", type: "object" },
+          { name: "body", type: "object" },
         ]),
       });
 
@@ -27,25 +40,22 @@ describe("httpRequestStep", () => {
         );
       }
     } finally {
-      globalThis.fetch = originalFetch;
+      restore();
     }
   });
 
-  it("accepts matching output schema for HTTP response payload", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ id: "evt_123" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      })) as unknown as typeof fetch;
+  // The status sits beside the body inside the envelope's payload, which is what
+  // `{{@node:HTTP Request.status}}` resolves against once the wrapper is unwrapped.
+  it("answers the status beside the response body", async () => {
+    const restore = stubJsonResponse({ id: "evt_123" });
 
     try {
-      const result = await httpRequestStep({
+      const result = await runHttpRequest({
         endpoint: "https://example.com/events",
         httpMethod: "GET",
         httpOutputSchema: JSON.stringify([
           {
-            name: "data",
+            name: "body",
             type: "object",
             fields: [{ name: "id", type: "string" }],
           },
@@ -53,12 +63,12 @@ describe("httpRequestStep", () => {
         ]),
       });
 
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.status).toBe(200);
-      }
+      expect(result).toEqual({
+        success: true,
+        data: { body: { id: "evt_123" }, status: 200 },
+      });
     } finally {
-      globalThis.fetch = originalFetch;
+      restore();
     }
   });
 });

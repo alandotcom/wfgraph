@@ -1,5 +1,6 @@
 import type { Inngest, InngestFunction } from "inngest";
 import { celStringLiteral } from "@rova/shared/workflow/cel-string-literal";
+import type { WorkflowActions } from "#src/backend/lib/workflow-engine/actions";
 import {
   executeWorkflow,
   type WorkflowExecutionInput,
@@ -34,8 +35,10 @@ export function createWorkflowTriggerExpression(workflowId: string): string {
 async function workflowRunRequestedHandler({
   event,
   step,
+  actions,
 }: {
   event: { data: typeof workflowExecutionInputSchema.Type };
+  actions: WorkflowActions;
   step: {
     sleep: (id: string, durationMs: number) => Promise<void>;
     waitForEvent: (
@@ -68,8 +71,9 @@ async function workflowRunRequestedHandler({
   };
 
   // This handler is the composition root for a live run: the engine persists
-  // nothing on its own, so the Postgres-backed store is wired in here.
-  const result = await executeWorkflow(data, runtime, dbWorkflowStore);
+  // nothing and implements nothing on its own, so the Postgres-backed store and
+  // the app's dispatch port are wired in here.
+  const result = await executeWorkflow(data, runtime, dbWorkflowStore, actions);
   if ("success" in result && !result.success) {
     let message = "Workflow execution failed";
     if (typeof result.error === "string") {
@@ -99,6 +103,8 @@ export function createWorkflowRunRequestedFunction(
     id: string;
     name?: string;
     workflowId: string;
+    /** Where an action id becomes work, built by the app from its own surface. */
+    actions: WorkflowActions;
   }
 ): InngestFunction.Any {
   return client.createFunction(
@@ -130,6 +136,7 @@ export function createWorkflowRunRequestedFunction(
         },
       ],
     },
-    workflowRunRequestedHandler
+    async (context) =>
+      await workflowRunRequestedHandler({ ...context, actions: input.actions })
   );
 }

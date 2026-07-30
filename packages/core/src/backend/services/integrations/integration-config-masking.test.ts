@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { clearExtensions } from "#src/backend/lib/extensions/current";
-import { configureTestExtensions } from "#src/backend/lib/effect/test-layers";
+import { describe, expect, it } from "vitest";
+import {
+  emptyExtensionCatalog,
+  type ExtensionCatalog,
+} from "@rova/shared/extensions/catalog";
 import { maskIntegrationConfig } from "./integration-config-masking";
 
 const slackLike = {
@@ -14,16 +16,15 @@ const slackLike = {
   ],
 } as const;
 
-afterEach(() => {
-  clearExtensions();
-});
+const withSlack: ExtensionCatalog = {
+  ...emptyExtensionCatalog,
+  integrations: [slackLike],
+};
 
 describe("masking an integration config on its way to the browser", () => {
   it("masks the fields the integration declared as secrets", () => {
-    configureTestExtensions({ integrations: [slackLike] });
-
     expect(
-      maskIntegrationConfig("slack", {
+      maskIntegrationConfig(withSlack, "slack", {
         apiKey: "xoxb-real-token",
         team: "acme",
       })
@@ -34,10 +35,8 @@ describe("masking an integration config on its way to the browser", () => {
   // declaration to read, every value is treated as a secret; the alternative
   // served a live API token to the browser.
   it("masks everything when the catalog does not hold the integration", () => {
-    configureTestExtensions({});
-
     expect(
-      maskIntegrationConfig("slack", {
+      maskIntegrationConfig(emptyExtensionCatalog, "slack", {
         apiKey: "xoxb-real-token",
         team: "acme",
       })

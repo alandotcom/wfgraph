@@ -11,10 +11,6 @@
  * know about database rows, and nothing there may know about replay.
  */
 
-import { getAppLogger } from "#src/backend/lib/logger";
-
-const runtimeLogger = getAppLogger("workflow", "runtime");
-
 export type WaitForEventOptions = {
   event: string;
   timeoutMs?: number;
@@ -44,88 +40,6 @@ export type WorkflowExecutionRuntime = {
   step: <T>(stepId: string, fn: () => Promise<T>) => Promise<T>;
   runId?: string;
 };
-
-/** Types that either throw or silently change shape on a JSON round-trip. */
-function describeLossyType(value: object): string | undefined {
-  if (value instanceof Date) {
-    return "Date";
-  }
-  if (value instanceof Map) {
-    return "Map";
-  }
-  if (value instanceof Set) {
-    return "Set";
-  }
-  if (ArrayBuffer.isView(value)) {
-    return "binary data";
-  }
-
-  return undefined;
-}
-
-/**
- * Names the first value inside `value` that would not survive the JSON
- * round-trip a durable runtime performs, or undefined when it is clean.
- */
-function findNonJsonSafeValue(
-  value: unknown,
-  path = "<root>",
-  seen = new Set<object>()
-): string | undefined {
-  if (typeof value === "bigint" || typeof value === "function") {
-    return `${path} (${typeof value})`;
-  }
-
-  if (typeof value !== "object" || value === null) {
-    return undefined;
-  }
-
-  const lossyType = describeLossyType(value);
-  if (lossyType) {
-    return `${path} (${lossyType})`;
-  }
-
-  if (seen.has(value)) {
-    return `${path} (circular reference)`;
-  }
-  seen.add(value);
-
-  if (Array.isArray(value)) {
-    for (const [index, item] of value.entries()) {
-      const found = findNonJsonSafeValue(item, `${path}[${index}]`, seen);
-      if (found) {
-        return found;
-      }
-    }
-    return undefined;
-  }
-
-  for (const [key, item] of Object.entries(value)) {
-    const found = findNonJsonSafeValue(item, `${path}.${key}`, seen);
-    if (found) {
-      return found;
-    }
-  }
-
-  return undefined;
-}
-
-/** Production builds skip the walk entirely; it exists to catch mistakes early. */
-const shouldCheckStepResults = process.env.NODE_ENV !== "production";
-
-function warnIfStepResultIsNotJsonSafe(stepId: string, value: unknown) {
-  if (!shouldCheckStepResults) {
-    return;
-  }
-
-  const offender = findNonJsonSafeValue(value);
-  if (offender) {
-    runtimeLogger.warn(
-      `Step "${stepId}" returned a value that will not survive a durable replay: ${offender}`,
-      { stepId, offender }
-    );
-  }
-}
 
 export type InMemoryRuntimeOptions = {
   /**
@@ -196,7 +110,6 @@ export function createInMemoryWorkflowRuntime(
       }
 
       const value = await fn();
-      warnIfStepResultIsNotJsonSafe(stepId, value);
 
       memo.set(stepId, JSON.parse(JSON.stringify(value ?? null)));
 

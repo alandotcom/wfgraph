@@ -238,11 +238,18 @@ export type StandardSchema<T> = StandardSchemaV1<unknown, T> &
  * The guard Effect exports answers `Top`, which loses the `T` the caller is
  * holding: the bridge below would be left with a schema of no particular
  * payload, and a decode built from one would ask for services no schema needs.
- * Exported because the intake gate picks its path on the same question.
+ *
+ * `REncode` is what a caller that means to encode through the schema has to say.
+ * The default is `ConstraintDecoder`'s open encode-direction service parameter,
+ * which `encodeUnknownResult` refuses; every Effect schema carries both
+ * directions at run time, so `isEffectSchema<T, never>` is how a caller states
+ * the half it is holding. Neither parameter is a finding of the check, which
+ * cannot tell one payload type from another. Exported because the intake gate
+ * and the action registry's encoder pick their path on this same question.
  */
-export function isEffectSchema<T>(
+export function isEffectSchema<T, REncode = unknown>(
   schema: unknown
-): schema is Schema.ConstraintDecoder<T> {
+): schema is Schema.ConstraintCodec<T, unknown, never, REncode> {
   return Schema.isSchema(schema);
 }
 

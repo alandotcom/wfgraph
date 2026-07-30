@@ -1,9 +1,6 @@
 // `it` comes from the `layer` callback below, typed with the services that layer
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
-// The mocks API has to be the one vitest itself exports; reaching it through the
-// `@effect/vitest` re-export leaves it unable to find the module registry.
-import { vi } from "vitest";
 import { hash } from "bcryptjs";
 import { Effect, Layer, Schema } from "effect";
 import {
@@ -14,6 +11,7 @@ import {
 import {
   SilentAppLoggerLayer,
   stubApiKeyRepo,
+  stubExtensions,
   stubInngestClient,
 } from "#src/backend/lib/effect/test-layers";
 import { defineEvent } from "#src/backend/lib/extensions/define-event";
@@ -50,19 +48,15 @@ const appointmentCanceled = defineEvent({
 /** Which Events this app declares, and a recorder for what was looked up. */
 const catalogLookups: string[] = [];
 
-vi.mock("#src/backend/lib/extensions/current", () => ({
-  getExtensions: () => ({
-    eventByName: (name: string) => {
-      catalogLookups.push(name);
-      if (name === appointmentCreated.name) {
-        return appointmentCreated;
-      }
-      return name === appointmentCanceled.name
-        ? appointmentCanceled
-        : undefined;
-    },
-  }),
-}));
+const catalogLayer = stubExtensions({
+  eventByName: (name) => {
+    catalogLookups.push(name);
+    if (name === appointmentCreated.name) {
+      return appointmentCreated;
+    }
+    return name === appointmentCanceled.name ? appointmentCanceled : undefined;
+  },
+});
 
 /**
  * The seams intake crosses: the key check, which is the real one over a stored
@@ -93,7 +87,7 @@ async function storedKey(): Promise<ApiKeyCandidate[]> {
 }
 
 describe("postEventIntake", () => {
-  layer(SilentAppLoggerLayer)((it) => {
+  layer(Layer.merge(SilentAppLoggerLayer, catalogLayer))((it) => {
     // Credentials before the lookup: answering "not found" to an unauthenticated
     // caller would tell them which Events exist. The recorder proves the catalog
     // was never consulted.

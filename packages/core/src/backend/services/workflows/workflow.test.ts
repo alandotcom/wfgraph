@@ -1,12 +1,9 @@
 import { assert, describe, layer } from "@effect/vitest";
-// The lifecycle hooks come from vitest itself; `@effect/vitest` re-exports only
-// the ones its own `layer` block owns.
-import { beforeAll } from "vitest";
 import { Effect, Layer } from "effect";
 import type { Workflow } from "#src/backend/lib/db/schema";
 import {
-  configureTestExtensions,
   SilentAppLoggerLayer,
+  stubExtensionCatalog,
   stubInngestFunctions,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
@@ -15,23 +12,21 @@ import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type { LifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
 
-beforeAll(() => {
-  configureTestExtensions({
-    events: [
-      {
-        name: "app/appointment.created",
-        label: "Appointment created",
-        correlationPath: "appointment.id",
-        payloadFields: [],
-      },
-      {
-        name: "app/appointment.canceled",
-        label: "Appointment canceled",
-        correlationPath: "appointment.id",
-        payloadFields: [],
-      },
-    ],
-  });
+const catalogLayer = stubExtensionCatalog({
+  events: [
+    {
+      name: "app/appointment.created",
+      label: "Appointment created",
+      correlationPath: "appointment.id",
+      payloadFields: [],
+    },
+    {
+      name: "app/appointment.canceled",
+      label: "Appointment canceled",
+      correlationPath: "appointment.id",
+      payloadFields: [],
+    },
+  ],
 });
 
 function graphWith(rules: LifecycleRules): Workflow["graph"] {
@@ -89,7 +84,9 @@ function makeRepo() {
 }
 
 describe("patchWorkflow", () => {
-  layer(Layer.merge(SilentAppLoggerLayer, stubInngestFunctions()))((it) => {
+  layer(
+    Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, stubInngestFunctions())
+  )((it) => {
     // The index is derived from the graph being written, so removing a Start Event
     // has to shrink it in the same call. A stale row would keep delivering an
     // Event the workflow no longer names.

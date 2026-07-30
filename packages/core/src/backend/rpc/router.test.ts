@@ -5,6 +5,7 @@ import { NotFound } from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
   stubApiKeyRepo,
+  stubExtensions,
   stubExecutionRepo,
   stubIntegrationRepo,
   stubInngestClient,
@@ -31,6 +32,7 @@ function createStubRuntime(): RovaRuntime {
   return ManagedRuntime.make(
     Layer.mergeAll(
       SilentAppLoggerLayer,
+      stubExtensions(),
       stubApiKeyRepo(),
       stubIntegrationRepo(),
       stubWorkflowRepo(),

@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { callDbModule } from "#src/backend/lib/effect/database";
+import { Extensions } from "#src/backend/lib/effect/extensions";
 import {
   IntegrationValidationFailed,
   InvalidInput,
@@ -47,6 +48,7 @@ export const runWorkflowExecutionPreflight = Effect.fn(
   "runWorkflowExecutionPreflight"
 )(function* (input: { workflow: WorkflowForPreflight }) {
   const { workflow } = input;
+  const { catalog } = yield* Extensions;
 
   const graphValidation = validateWorkflowGraph(workflow.graph);
   if (!graphValidation.valid) {
@@ -55,7 +57,10 @@ export const runWorkflowExecutionPreflight = Effect.fn(
     );
   }
 
-  const actionValidation = validateWorkflowActionConfigs(graphValidation.nodes);
+  const actionValidation = validateWorkflowActionConfigs(
+    graphValidation.nodes,
+    catalog
+  );
   if (!actionValidation.valid) {
     return yield* Effect.fail(
       new InvalidInput({ error: actionValidation.error })
@@ -72,7 +77,8 @@ export const runWorkflowExecutionPreflight = Effect.fn(
   }
 
   const lifecycleValidation = validateWorkflowLifecycleRules(
-    graphValidation.nodes
+    graphValidation.nodes,
+    catalog
   );
   if (!lifecycleValidation.valid) {
     return yield* Effect.fail(
@@ -84,7 +90,7 @@ export const runWorkflowExecutionPreflight = Effect.fn(
   // query arrives here as the same database failure a repository answers with.
   // It is last because it is the one check that costs a query.
   const integrationValidation = yield* callDbModule(() =>
-    validateWorkflowIntegrations(graphValidation.nodes)
+    validateWorkflowIntegrations(graphValidation.nodes, catalog)
   );
   if (!integrationValidation.valid) {
     return yield* Effect.fail(

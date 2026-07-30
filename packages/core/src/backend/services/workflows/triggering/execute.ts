@@ -1,8 +1,8 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { callDbModule } from "#src/backend/lib/effect/database";
+import { Extensions } from "#src/backend/lib/effect/extensions";
 import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
-import { getExtensions } from "#src/backend/lib/extensions/current";
 import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 import { loadWorkflowForRun } from "#src/backend/services/workflows/triggering/preflight";
@@ -10,7 +10,10 @@ import {
   buildIgnoredRunAuditMessage,
   recordPausedRunIgnored,
 } from "#src/backend/services/workflows/triggering/run-lifecycle";
-import { findEvent } from "@rova/shared/extensions/catalog";
+import {
+  type ExtensionCatalog,
+  findEvent,
+} from "@rova/shared/extensions/catalog";
 import type { JsonObject } from "@rova/shared/types/json";
 import { asNonEmptyString } from "@rova/shared/types/string";
 import { getValueByPath } from "@rova/shared/utils/object-path";
@@ -44,8 +47,9 @@ function readManualEntityValue(input: {
   workflowId: string;
   rules: LifecycleRules;
   payload: JsonObject;
+  catalog: ExtensionCatalog;
 }): string {
-  const catalog = getExtensions().catalog;
+  const { catalog } = input;
 
   for (const eventName of input.rules.startEvents) {
     const path = resolveCorrelationPath({
@@ -160,7 +164,12 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
       concurrency: rules.concurrency,
       start: {
         source: "manual",
-        entityValue: readManualEntityValue({ workflowId, rules, payload }),
+        entityValue: readManualEntityValue({
+          workflowId,
+          rules,
+          payload,
+          catalog: (yield* Extensions).catalog,
+        }),
       },
       runMode,
       payload,

@@ -335,6 +335,19 @@ describe("resolveOutputPath", () => {
     expect(resolveOutputPath(output, "appointment.id")).toBe("appt_1");
   });
 
+  // The HTTP Request step files its status beside the body inside the payload,
+  // rather than beside `success`, where the unwrap swallowed it and
+  // `{{@n1:HTTP Request.status}}` resolved to nothing.
+  it("reaches the status an HTTP Request filed beside its body", () => {
+    const output = {
+      success: true,
+      data: { body: { id: "evt_1" }, status: 201 },
+    };
+
+    expect(resolveOutputPath(output, "status")).toBe(201);
+    expect(resolveOutputPath(output, "body.id")).toBe("evt_1");
+  });
+
   it("reads the wrapper itself when the path names one of its own keys", () => {
     const output = { success: true, data: { id: "cus_1" } };
 

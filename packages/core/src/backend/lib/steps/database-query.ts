@@ -1,38 +1,37 @@
 /**
- * Executable step function for Database Query action
+ * Database Query: the engine's own action for reading a host's own database.
  *
- * SECURITY PATTERN - External Secret Store:
- * Step fetches credentials using an integration ID reference
+ * The connection comes from the `database` integration a node names, so the URL
+ * is fetched by id at run time and never travels in the node's config. The
+ * payload is `{ rows, count }`, which is what the editor's picker offers and
+ * what a downstream template addresses.
  */
 
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { Effect, Schema } from "effect";
 import postgres, { type Sql } from "postgres";
-import { fetchCredentials } from "#src/backend/lib/credential-fetcher";
+import { defineStep, StepFailure } from "#src/backend/lib/steps/define-step";
 import { validateWorkflowOutputAgainstSchema } from "@rova/shared/workflow/schema-validation";
-import type { StepError } from "@rova/shared/workflow/step-result";
-import { type StepInput, withStepLogging } from "./step-handler";
 
-type DatabaseQueryResult =
-  | { success: true; rows: unknown; count: number }
-  | { success: false; error: StepError };
+export const databaseQueryInput = Schema.Struct({
+  dbQuery: Schema.optionalKey(Schema.String),
+  /** What the editor's older panel wrote the SQL under. */
+  query: Schema.optionalKey(Schema.String),
+  dbOutputSchema: Schema.optionalKey(Schema.String),
+});
 
-export type DatabaseQueryInput = StepInput & {
-  integrationId?: string;
-  dbQuery?: string;
-  query?: string;
-  dbOutputSchema?: string;
-};
+export const databaseQueryOutput = Schema.Struct({
+  rows: Schema.Array(Schema.Unknown).annotate({
+    description: "Query result rows",
+  }),
+  count: Schema.Number.annotate({ description: "Number of rows" }).check(
+    Schema.isFinite()
+  ),
+});
 
-function resolveQueryString(
-  input: DatabaseQueryInput
-): { ok: true; queryString: string } | { ok: false; error: string } {
-  const queryString = input.dbQuery ?? input.query;
-  if (!queryString || queryString.trim() === "") {
-    return { ok: false, error: "SQL query is required" };
-  }
-  return { ok: true, queryString };
-}
+type DatabaseQueryInput = typeof databaseQueryInput.Type;
+type DatabaseQueryOutput = typeof databaseQueryOutput.Type;
 
 function createDatabaseClient(databaseUrl: string): Sql {
   return postgres(databaseUrl, {
@@ -40,14 +39,6 @@ function createDatabaseClient(databaseUrl: string): Sql {
     connect_timeout: 10,
     idle_timeout: 20,
   });
-}
-
-async function executeQuery(
-  client: Sql,
-  queryString: string
-): Promise<unknown> {
-  const db = drizzle(client);
-  return await db.execute(sql.raw(queryString));
 }
 
 function getDatabaseErrorMessage(error: unknown): string {
@@ -73,55 +64,72 @@ function getDatabaseErrorMessage(error: unknown): string {
   return errorMessage;
 }
 
-async function cleanupClient(client: Sql | null): Promise<void> {
-  if (client) {
-    try {
-      await client.end();
-    } catch {
-      // Ignore errors during cleanup
-    }
+/**
+ * Runs the query on a connection of its own and gives the socket back.
+ *
+ * The pool is opened per call rather than kept: this reaches whichever database
+ * the node's integration names, which is not the one Rova's own tables live in
+ * and may differ from node to node.
+ */
+async function runQuery(
+  databaseUrl: string,
+  queryString: string
+): Promise<readonly unknown[]> {
+  const client = createDatabaseClient(databaseUrl);
+
+  try {
+    const result = await drizzle(client).execute(sql.raw(queryString));
+    // postgres.js answers with an array subclass carrying its own fields, which
+    // JSONB and Inngest's memoization would drop; the spread is what makes the
+    // rows a plain array before either sees them.
+    return Array.isArray(result) ? [...result] : [];
+  } finally {
+    await client.end().catch(() => undefined);
   }
 }
 
-/**
- * Database query logic
- */
-async function databaseQuery(
-  input: DatabaseQueryInput
-): Promise<DatabaseQueryResult> {
-  const queryResult = resolveQueryString(input);
-  if (!queryResult.ok) {
-    return { success: false, error: { message: queryResult.error } };
-  }
+function readQueryString(input: DatabaseQueryInput): string | undefined {
+  const queryString = (input.dbQuery ?? input.query ?? "").trim();
+  return queryString || undefined;
+}
 
-  const credentials = input.integrationId
-    ? await fetchCredentials(input.integrationId)
-    : {};
+export const databaseQueryStep = defineStep({
+  label: "Database Query",
+  description: "Query your database",
+  category: "System",
+  // The editor configures this node through a panel of its own, so there is no
+  // declarative field list to render.
+  configFields: [],
+  input: databaseQueryInput,
+  output: databaseQueryOutput,
+  handler: Effect.fn(function* (input, context) {
+    const queryString = readQueryString(input);
+    if (!queryString) {
+      return yield* Effect.fail(
+        new StepFailure({ message: "SQL query is required" })
+      );
+    }
 
-  const databaseUrl = credentials.DATABASE_URL;
+    const credentials = yield* context.credentials;
+    const databaseUrl = credentials.DATABASE_URL;
+    if (!databaseUrl) {
+      return yield* Effect.fail(
+        new StepFailure({
+          message:
+            "DATABASE_URL is not configured. Please add it in Project Integrations.",
+        })
+      );
+    }
 
-  if (!databaseUrl) {
-    return {
-      success: false,
-      error: {
-        message:
-          "DATABASE_URL is not configured. Please add it in Project Integrations.",
-      },
-    };
-  }
+    const rows = yield* Effect.tryPromise({
+      try: () => runQuery(databaseUrl, queryString),
+      catch: (error) =>
+        new StepFailure({
+          message: `Database query failed: ${getDatabaseErrorMessage(error)}`,
+        }),
+    });
 
-  let client: Sql | null = null;
-
-  try {
-    client = createDatabaseClient(databaseUrl);
-    const result = await executeQuery(client, queryResult.queryString);
-    await client.end();
-
-    const output = {
-      success: true as const,
-      rows: result,
-      count: Array.isArray(result) ? result.length : 0,
-    };
+    const output: DatabaseQueryOutput = { rows, count: rows.length };
     const schemaValidation = validateWorkflowOutputAgainstSchema({
       schemaValue: input.dbOutputSchema,
       output,
@@ -129,34 +137,11 @@ async function databaseQuery(
     });
 
     if (!schemaValidation.ok) {
-      return {
-        success: false,
-        error: { message: schemaValidation.error },
-      };
+      return yield* Effect.fail(
+        new StepFailure({ message: schemaValidation.error })
+      );
     }
 
-    return {
-      success: output.success,
-      rows: output.rows,
-      count: output.count,
-    };
-  } catch (error) {
-    await cleanupClient(client);
-    return {
-      success: false,
-      error: {
-        message: `Database query failed: ${getDatabaseErrorMessage(error)}`,
-      },
-    };
-  }
-}
-
-/**
- * Database Query Step
- * Executes a SQL query against a PostgreSQL database
- */
-export function databaseQueryStep(
-  input: DatabaseQueryInput
-): Promise<DatabaseQueryResult> {
-  return withStepLogging(input, () => databaseQuery(input));
-}
+    return output;
+  }),
+});

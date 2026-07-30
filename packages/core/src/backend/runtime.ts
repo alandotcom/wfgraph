@@ -2,6 +2,10 @@ import { Layer, ManagedRuntime } from "effect";
 import { AppLogger, AppLoggerLayer } from "#src/backend/lib/effect/app-logger";
 import { DatabaseLayer } from "#src/backend/lib/effect/database";
 import {
+  Extensions,
+  makeExtensionsLayer,
+} from "#src/backend/lib/effect/extensions";
+import {
   InngestClient,
   makeInngestClientLayer,
 } from "#src/backend/lib/effect/inngest-client";
@@ -9,6 +13,7 @@ import {
   InngestFunctions,
   makeInngestFunctionsLayer,
 } from "#src/backend/lib/effect/inngest-functions";
+import type { ExtensionSet } from "#src/backend/lib/extensions/extension-set";
 import type { InngestSurface } from "#src/backend/lib/inngest/client";
 import {
   ApiKeyRepo,
@@ -30,14 +35,17 @@ import {
 /**
  * Everything a service may ask for.
  *
- * `Database` is deliberately absent. A repository is the only thing allowed to
- * run a query, and leaving `Database` out of this union is what enforces that:
+ * `Extensions` is the assembled surface, which a service reads for the
+ * vocabulary its checks are made against. `Database` is deliberately absent. A
+ * repository is the only thing allowed to run a query, and leaving `Database`
+ * out of this union is what enforces that:
  * a service body that writes `yield* Database` puts `Database` in its own `R`,
  * which no longer matches the `R` this runtime satisfies, so the procedure that
  * runs it stops compiling.
  */
 export type RovaServices =
   | AppLogger
+  | Extensions
   | ApiKeyRepo
   | IntegrationRepo
   | WorkflowRepo
@@ -60,9 +68,13 @@ const WorkflowsLayer = Layer.provide(
   DatabaseLayer
 );
 
-function buildRovaLayer(inngest: InngestSurface): Layer.Layer<RovaServices> {
+function buildRovaLayer(
+  inngest: InngestSurface,
+  extensions: ExtensionSet
+): Layer.Layer<RovaServices> {
   return Layer.mergeAll(
     AppLoggerLayer,
+    makeExtensionsLayer(extensions),
     ApiKeysLayer,
     IntegrationRepoLayer,
     WorkflowsLayer,
@@ -84,6 +96,9 @@ function buildRovaLayer(inngest: InngestSurface): Layer.Layer<RovaServices> {
  */
 export type RovaRuntime = ManagedRuntime.ManagedRuntime<RovaServices, never>;
 
-export function createRovaRuntime(inngest: InngestSurface): RovaRuntime {
-  return ManagedRuntime.make(buildRovaLayer(inngest));
+export function createRovaRuntime(
+  inngest: InngestSurface,
+  extensions: ExtensionSet
+): RovaRuntime {
+  return ManagedRuntime.make(buildRovaLayer(inngest, extensions));
 }

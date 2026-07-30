@@ -12,41 +12,80 @@
  * empty: none of them renders through the declarative field list a plugin action
  * declares.
  *
- * `outputFields` states the shape each one always offers. Database Query and HTTP
- * Request also let a workflow declare a richer output schema on the node itself,
- * and the editor adds those fields to these.
+ * Two of the four have a step: HTTP Request and Database Query are `defineStep`
+ * values like any integration's action, so their config is decoded and their
+ * payload encoded through their own schemas. The other two are the engine's own
+ * work -- Condition evaluates its expression during the traversal, Wait suspends
+ * the run -- so they reach the editor as metadata and nothing dispatches to them.
+ *
+ * Database Query's output fields are derived from its schema the way every other
+ * action's are. HTTP Request writes its two out below, because `body` is
+ * `Schema.Unknown`, which emits no `type` keyword: the derivation drops the
+ * property and then refuses the whole list, since a list shorter than what the
+ * step returns is worse than none. Annotating it puts no keyword back. The
+ * `object` that hand-written entry gives `body` covers the common case; a
+ * response with a non-JSON content type arrives as text, and a node that knows
+ * its shape declares its own output schema, which the editor merges into the
+ * paths it offers.
+ *
+ * `database-query.ts` imports `postgres` and `drizzle-orm` at module scope, so
+ * both load with this module and therefore with the package. Both are core
+ * dependencies already.
  */
 
 import {
   credentialFields,
   defineIntegration,
 } from "#src/backend/lib/extensions/define-integration";
+import type { ActionStep } from "#src/backend/lib/steps/define-step";
+import { databaseQueryStep } from "#src/backend/lib/steps/database-query";
+import { httpRequestStep } from "#src/backend/lib/steps/http-request";
 import type { ActionMetadata } from "@rova/shared/extensions/catalog";
+import type { ReferenceField } from "@rova/shared/workflow/node-references";
+import { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fields";
 
-export const builtInActions: readonly ActionMetadata[] = [
+/** A built-in that the engine dispatches to, in both halves the catalog needs. */
+type BuiltInStepEntry = {
+  readonly id: string;
+  readonly step: ActionStep;
+  /** Written out only where the output schema cannot describe itself. */
+  readonly outputFields?: readonly ReferenceField[];
+  /** The connection form the node asks for, where the action needs one. */
+  readonly integration?: string;
+};
+
+export const builtInSteps: readonly BuiltInStepEntry[] = [
   {
     id: "HTTP Request",
-    label: "HTTP Request",
-    description: "Make an HTTP request to any API",
-    category: "System",
-    configFields: [],
+    step: httpRequestStep,
     outputFields: [
-      { path: "data", description: "Response data", type: "object" },
+      { path: "body", description: "Response body", type: "object" },
       { path: "status", description: "HTTP status code", type: "number" },
     ],
   },
   {
     id: "Database Query",
-    label: "Database Query",
-    description: "Query your database",
-    category: "System",
+    step: databaseQueryStep,
     integration: "database",
-    configFields: [],
-    outputFields: [
-      { path: "rows", description: "Query result rows", type: "array" },
-      { path: "count", description: "Number of rows", type: "number" },
-    ],
   },
+];
+
+function toBuiltInActionMetadata(entry: BuiltInStepEntry): ActionMetadata {
+  return {
+    id: entry.id,
+    label: entry.step.label,
+    description: entry.step.description,
+    category: entry.step.category,
+    ...(entry.integration ? { integration: entry.integration } : {}),
+    configFields: entry.step.configFields,
+    outputFields:
+      entry.outputFields ??
+      requireOutputFieldsFromSchema(`Action "${entry.id}"`, entry.step.output),
+  };
+}
+
+export const builtInActions: readonly ActionMetadata[] = [
+  ...builtInSteps.map(toBuiltInActionMetadata),
   {
     id: "Condition",
     label: "Condition",

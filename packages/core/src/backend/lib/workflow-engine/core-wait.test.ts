@@ -8,7 +8,7 @@
  * persistence segments around those boundaries. That is what these tests pin.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { JsonObject } from "@rova/shared/types/json";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
@@ -19,13 +19,31 @@ import {
 } from "./recording-store";
 import { createInMemoryWorkflowRuntime } from "./runtime";
 
-// Keeps step-handler's own logging (used by the trigger step) off a database.
-vi.mock("#src/backend/lib/workflow-logging", () => ({
-  logStepStartDb: () =>
-    Promise.resolve({ logId: "mock-log-id", startTime: Date.now() }),
-  logStepCompleteDb: () => Promise.resolve(),
-  logWorkflowCompleteDb: () => Promise.resolve(),
-}));
+/**
+ * The Wait node's own run-log rows.
+ *
+ * Every node's rows go through the store, the entry node's included, so a wait's
+ * rows are the ones opened against the wait node.
+ */
+function waitStepLogs(store: RecordingWorkflowStore) {
+  const opened = store
+    .callsOf("startStepLog")
+    .filter((call) => call.nodeType === "Wait");
+  const waitLogIds = new Set(
+    store
+      .callsOf("startStepLog")
+      .map((call, index) => ({ call, logId: `log_${index + 1}` }))
+      .filter(({ call }) => call.nodeType === "Wait")
+      .map(({ logId }) => logId)
+  );
+
+  return {
+    opened,
+    closed: store
+      .callsOf("completeStepLog")
+      .filter((call) => waitLogIds.has(call.logId)),
+  };
+}
 
 function createTriggerNode(id: string): WorkflowNode {
   return {
@@ -167,11 +185,10 @@ describe("wait node - delay mode", () => {
       .map((c) => c.eventType);
     expect(auditTypes).toEqual(["run_waiting", "run_resumed", "run_completed"]);
 
-    const stepLogs = store.callsOf("startStepLog");
-    expect(stepLogs).toHaveLength(1);
-    expect(stepLogs[0]?.nodeType).toBe("Wait");
-    expect(store.callsOf("completeStepLog")).toEqual([
-      expect.objectContaining({ logId: "log_1", status: "success" }),
+    const stepLogs = waitStepLogs(store);
+    expect(stepLogs.opened).toHaveLength(1);
+    expect(stepLogs.closed).toEqual([
+      expect.objectContaining({ status: "success" }),
     ]);
   });
 
@@ -206,10 +223,7 @@ describe("wait node - delay mode", () => {
 
     expect(result.results.wait_1?.success).toBe(false);
     expect(store.callsOf("createWaitState")).toHaveLength(0);
-    expect(store.callsOf("completeStepLog")[0]).toMatchObject({
-      logId: "log_1",
-      status: "error",
-    });
+    expect(waitStepLogs(store).closed[0]).toMatchObject({ status: "error" });
   });
 
   it("reuses the memoized wait state and step log across a replay", async () => {
@@ -220,7 +234,7 @@ describe("wait node - delay mode", () => {
     await runWait({ config, store, memo }).execution;
 
     expect(store.callsOf("createWaitState")).toHaveLength(1);
-    expect(store.callsOf("startStepLog")).toHaveLength(1);
+    expect(waitStepLogs(store).opened).toHaveLength(1);
     expect(store.callsOf("completeRun")).toHaveLength(1);
   });
 });
@@ -452,7 +466,7 @@ describe("wait node - event mode", () => {
 
     expect(result.results.wait_1?.success).toBe(false);
     expect(store.callsOf("createWaitState")).toHaveLength(0);
-    expect(store.callsOf("completeStepLog")[0]?.status).toBe("error");
+    expect(waitStepLogs(store).closed[0]?.status).toBe("error");
   });
 
   // The retired third mode has no fallback path: a saved node holding it fails
@@ -468,7 +482,7 @@ describe("wait node - event mode", () => {
     expect(result.results.wait_1?.error).toContain("configuration is invalid");
     expect(runtime.waits).toHaveLength(0);
     expect(store.callsOf("createWaitState")).toHaveLength(0);
-    expect(store.callsOf("completeStepLog")[0]?.status).toBe("error");
+    expect(waitStepLogs(store).closed[0]?.status).toBe("error");
   });
 
   it("parks with no Correlation Path in sight", async () => {

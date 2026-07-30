@@ -1,6 +1,9 @@
 import type { Inngest, InngestFunction } from "inngest";
 import { db } from "#src/backend/lib/db/index";
-import { getExtensions } from "#src/backend/lib/extensions/current";
+import { Extensions } from "#src/backend/lib/effect/extensions";
+import type { ExtensionSet } from "#src/backend/lib/extensions/extension-set";
+import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
+import type { WorkflowActions } from "#src/backend/lib/workflow-engine/actions";
 import type { RovaRuntime } from "#src/backend/runtime";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 // Static, now that the id helper the app assembly needs has moved to a leaf of
@@ -30,7 +33,8 @@ function toFunctionId(workflowId: string): string {
 
 export function buildWorkflowFunctions(
   client: Inngest,
-  workflowDefinitions: WorkflowDefinition[]
+  workflowDefinitions: WorkflowDefinition[],
+  actions: WorkflowActions
 ): WorkflowFunction[] {
   return workflowDefinitions
     .filter((workflow) => workflow.name !== CURRENT_WORKFLOW_NAME)
@@ -39,6 +43,7 @@ export function buildWorkflowFunctions(
         id: toFunctionId(workflow.id),
         name: workflow.name,
         workflowId: workflow.id,
+        actions,
       })
     );
 }
@@ -52,9 +57,10 @@ export function buildWorkflowFunctions(
  */
 function buildEventListenerFunctions(
   client: Inngest,
-  runtime: RovaRuntime
+  runtime: RovaRuntime,
+  extensions: ExtensionSet
 ): WorkflowFunction[] {
-  return getExtensions().events.map((event) =>
+  return extensions.events.map((event) =>
     createInngestEventListenerFunction({ client, event, runtime })
   );
 }
@@ -97,11 +103,18 @@ export function createInngestFunctionRegistry(
       columns: { id: true, name: true },
     });
 
+    // The surface comes off the runtime the route handed over rather than from
+    // a parameter, because the Layer graph is built from it: asking the runtime
+    // is what keeps the surface and the functions that dispatch against it the
+    // same app's.
+    const extensions = await runtime.runPromise(Extensions);
+    const actions = createWorkflowActions(extensions);
+
     // The draft is filtered inside `buildWorkflowFunctions`, which is where the
     // rule is tested.
     return [
-      ...buildWorkflowFunctions(client, workflowDefinitions),
-      ...buildEventListenerFunctions(client, runtime),
+      ...buildWorkflowFunctions(client, workflowDefinitions, actions),
+      ...buildEventListenerFunctions(client, runtime, extensions),
     ];
   }
 

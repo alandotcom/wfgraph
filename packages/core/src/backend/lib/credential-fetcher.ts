@@ -1,25 +1,19 @@
 /**
- * Credential Fetcher
+ * An integration's stored secrets, fetched by id at the moment a step needs them.
  *
- * SECURITY: Steps should fetch credentials at runtime using only an integration ID reference.
- * This ensures:
- * 1. Credentials are never passed as step parameters (not logged in observability)
- * 2. Credentials are reconstructed in secure, non-persisted contexts (in-memory only)
- * 3. Works for both production and test runs
- *
- * Pattern:
- * - Step input: { integrationId: "abc123", ...otherParams }  ← Safe to log
- * - Step fetches: credentials = await fetchCredentials(integrationId)  ← Not logged
- * - Step uses: apiClient.call(credentials.apiKey)  ← In memory only
- * - Step returns: { result: data }  ← Safe to log (no credentials)
+ * A step is configured with an integration id and never with the secrets
+ * themselves, so nothing that logs a step's input -- the run log, Inngest's own
+ * observability -- has them to write down. The fetch happens inside the
+ * handler's Effect and what it produces is thrown away with the step.
  */
 
+import { Effect } from "effect";
 import {
   credentialsFromConfig,
   findIntegration,
 } from "@rova/shared/extensions/catalog";
+import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
 import type { IntegrationConfig } from "@rova/shared/types/integration";
-import { getExtensions } from "./extensions/current";
 import { getIntegrationById } from "./db/integrations";
 import { getAppLogger } from "./logger";
 
@@ -27,6 +21,8 @@ const credentialFetcherLogger = getAppLogger("credentials", "fetcher");
 
 /** A handler's own credential vocabulary, which its integration declares. */
 export type WorkflowCredentials = Record<string, string | undefined>;
+
+const NO_CREDENTIALS: WorkflowCredentials = {};
 
 /**
  * The stored config as the environment-variable names a handler reads it by.
@@ -37,45 +33,53 @@ export type WorkflowCredentials = Record<string, string | undefined>;
  * catalog entry like any other.
  */
 function mapIntegrationConfig(
+  catalog: ExtensionCatalog,
   integrationType: string,
   config: IntegrationConfig
 ): WorkflowCredentials {
   return credentialsFromConfig(
-    findIntegration(getExtensions().catalog, integrationType),
+    findIntegration(catalog, integrationType),
     config
   );
 }
 
 /**
- * Fetch credentials for an integration by ID
+ * An integration's credentials, or nothing when no row carries that id.
  *
- * @param integrationId - The ID of the integration to fetch credentials for
- * @returns WorkflowCredentials object with the integration's credentials
+ * `Effect.promise`, not `tryPromise`: a credential store that rejects is a
+ * defect, and a defect leaves the step by the throw path, where Inngest's
+ * function-level retry runs the step again minutes later. That is the right
+ * answer for a database that was briefly unreachable. A typed failure would end
+ * the run on a condition that clears on its own.
  */
-export async function fetchCredentials(
+export function fetchCredentials(
+  catalog: ExtensionCatalog,
   integrationId: string
-): Promise<WorkflowCredentials> {
-  const logger = credentialFetcherLogger.with({ integrationId });
-  logger.debug("Fetching integration credentials");
+): Effect.Effect<WorkflowCredentials> {
+  return Effect.gen(function* () {
+    const logger = credentialFetcherLogger.with({ integrationId });
+    logger.debug("Fetching integration credentials");
 
-  const integration = await getIntegrationById(integrationId);
+    const integration = yield* Effect.promise(() =>
+      getIntegrationById(integrationId)
+    );
 
-  if (!integration) {
-    logger.debug("Integration not found");
-    return {};
-  }
+    if (!integration) {
+      logger.debug("Integration not found");
+      return NO_CREDENTIALS;
+    }
 
-  logger.debug("Integration found", { integrationType: integration.type });
+    const credentials = mapIntegrationConfig(
+      catalog,
+      integration.type,
+      integration.config
+    );
 
-  const credentials = mapIntegrationConfig(
-    integration.type,
-    integration.config
-  );
+    logger.debug("Mapped integration credentials", {
+      integrationType: integration.type,
+      credentialKeys: Object.keys(credentials),
+    });
 
-  logger.debug("Mapped integration credentials", {
-    integrationType: integration.type,
-    credentialKeys: Object.keys(credentials),
+    return credentials;
   });
-
-  return credentials;
 }

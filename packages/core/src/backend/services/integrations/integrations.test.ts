@@ -1,22 +1,19 @@
 // `it` comes from the `layer` callback below, typed with the services that layer
 // provides, so nothing here imports the bare one.
-import { afterEach, assert, describe, layer } from "@effect/vitest";
+import { assert, describe, layer } from "@effect/vitest";
 import { Effect } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
+import { makeExtensionsLayer } from "#src/backend/lib/effect/extensions";
 import {
   InternalFailure,
   InvalidInput,
 } from "#src/backend/lib/effect/failures";
-import {
-  clearExtensions,
-  configureExtensions,
-} from "#src/backend/lib/extensions/current";
 import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
 import type { IntegrationTestLoader } from "#src/backend/lib/extensions/integration-test";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import {
-  configureTestExtensions,
   SilentAppLoggerLayer,
+  stubExtensionCatalog,
   stubIntegrationRepo,
 } from "#src/backend/lib/effect/test-layers";
 import {
@@ -32,9 +29,7 @@ import type { IntegrationConfig } from "@rova/shared/types/integration";
 /**
  * Which config keys count as secrets is read from the assembled catalog, so these
  * tests assemble one holding a real integration rather than stubbing the module
- * that answers for it. The surface is process-wide state that stage 7 of ADR-0002
- * owns; until then, clearing it after each test is what keeps it from leaking into
- * another file's run.
+ * that answers for it, and provide it as the Layer the service reads it through.
  */
 const slackLike: IntegrationMetadata = {
   type: "slack",
@@ -135,19 +130,23 @@ function makeIntegrationRepo(stored: StoredIntegration) {
   return { layer: repoLayer, calls };
 }
 
-describe("integration service secret handling", () => {
-  afterEach(() => {
-    clearExtensions();
-  });
+/** The surface a masking case reads its secret-key declarations from. */
+const slackCatalog = stubExtensionCatalog({ integrations: [slackLike] });
 
+/** The same integration as a full assembly, which carries its connection test. */
+const assembledSlack = makeExtensionsLayer(
+  assembleExtensions({ integrations: [slackDefinition()] })
+);
+
+describe("integration service secret handling", () => {
   layer(SilentAppLoggerLayer)((it) => {
     it.effect("masks secret fields in the integration it returns", () =>
       Effect.gen(function* () {
-        configureTestExtensions({ integrations: [slackLike] });
         const repo = makeIntegrationRepo(storedSlackIntegration);
 
         const integration = yield* getIntegration("int_1").pipe(
-          Effect.provide(repo.layer)
+          Effect.provide(repo.layer),
+          Effect.provide(slackCatalog)
         );
 
         assert.strictEqual(integration.config.apiKey, "********");
@@ -159,7 +158,6 @@ describe("integration service secret handling", () => {
       "preserves masked secrets and merges partial config updates",
       () =>
         Effect.gen(function* () {
-          configureTestExtensions({ integrations: [slackLike] });
           const repo = makeIntegrationRepo(storedSlackIntegration);
 
           const integration = yield* putIntegration("int_1", {
@@ -168,7 +166,7 @@ describe("integration service secret handling", () => {
               apiKey: "********",
               teamId: "team-new",
             },
-          }).pipe(Effect.provide(repo.layer));
+          }).pipe(Effect.provide(repo.layer), Effect.provide(slackCatalog));
 
           assert.deepStrictEqual(repo.calls.updates, [
             {
@@ -190,14 +188,13 @@ describe("integration service secret handling", () => {
 
     it.effect("replaces the secret when a new value is provided", () =>
       Effect.gen(function* () {
-        configureTestExtensions({ integrations: [slackLike] });
         const repo = makeIntegrationRepo(storedSlackIntegration);
 
         yield* putIntegration("int_1", {
           config: {
             apiKey: "new-secret",
           },
-        }).pipe(Effect.provide(repo.layer));
+        }).pipe(Effect.provide(repo.layer), Effect.provide(slackCatalog));
 
         assert.deepStrictEqual(repo.calls.updates, [
           {
@@ -234,16 +231,12 @@ const unreadableIntegrationRepo = stubIntegrationRepo({
  * and only that message tells them what to change.
  */
 describe("integration connection test failures", () => {
-  afterEach(() => {
-    clearExtensions();
-  });
-
   layer(SilentAppLoggerLayer)((it) => {
     it.effect("answers with what the vendor's test function threw", () =>
       Effect.gen(function* () {
         // A vendor SDK that throws instead of answering, which is the case the
         // loader and the vendor call are both wrapped for.
-        configureExtensions(
+        const throwingSlack = makeExtensionsLayer(
           assembleExtensions({
             integrations: [
               slackDefinition(() =>
@@ -258,6 +251,7 @@ describe("integration connection test failures", () => {
 
         const failure = yield* postIntegrationTest("int_1").pipe(
           Effect.provide(repo.layer),
+          Effect.provide(throwingSlack),
           Effect.flip
         );
 
@@ -270,13 +264,11 @@ describe("integration connection test failures", () => {
     // test an integration does not declare arrives only when the two disagree.
     it.effect("refuses a test an integration does not declare", () =>
       Effect.gen(function* () {
-        configureExtensions(
-          assembleExtensions({ integrations: [slackDefinition()] })
-        );
         const repo = makeIntegrationRepo(storedSlackIntegration);
 
         const failure = yield* postIntegrationTest("int_1").pipe(
           Effect.provide(repo.layer),
+          Effect.provide(assembledSlack),
           Effect.flip
         );
 
@@ -291,6 +283,7 @@ describe("integration connection test failures", () => {
         Effect.gen(function* () {
           const failure = yield* postIntegrationTest("int_1").pipe(
             Effect.provide(unreadableIntegrationRepo),
+            Effect.provide(assembledSlack),
             Effect.flip
           );
 
@@ -313,21 +306,13 @@ describe("integration connection test failures", () => {
  * process can neither test nor mask.
  */
 describe("an integration this server does not hold", () => {
-  afterEach(() => {
-    clearExtensions();
-  });
-
   layer(SilentAppLoggerLayer)((it) => {
     it.effect("refuses to test it", () =>
       Effect.gen(function* () {
-        configureExtensions(
-          assembleExtensions({ integrations: [slackDefinition()] })
-        );
-
         const failure = yield* postIntegrationsTest({
           type: "notion",
           config: { apiKey: "secret" },
-        }).pipe(Effect.flip);
+        }).pipe(Effect.provide(assembledSlack), Effect.flip);
 
         assert.instanceOf(failure, InvalidInput);
         assert.include(failure.error, "extensions.integrations");
@@ -338,16 +323,17 @@ describe("an integration this server does not hold", () => {
 
     it.effect("refuses to store credentials for it, naming the option", () =>
       Effect.gen(function* () {
-        configureExtensions(
-          assembleExtensions({ integrations: [slackDefinition()] })
-        );
         const repo = makeIntegrationRepo(storedSlackIntegration);
 
         const failure = yield* postIntegrations({
           name: "Notion",
           type: "notion",
           config: { apiKey: "secret" },
-        }).pipe(Effect.provide(repo.layer), Effect.flip);
+        }).pipe(
+          Effect.provide(repo.layer),
+          Effect.provide(assembledSlack),
+          Effect.flip
+        );
 
         assert.instanceOf(failure, InvalidInput);
         assert.include(failure.error, "extensions.integrations");
@@ -358,14 +344,16 @@ describe("an integration this server does not hold", () => {
     // connection to it stores like any other and needs nothing passed by a host.
     it.effect("stores a database connection, which Rova ships", () =>
       Effect.gen(function* () {
-        configureExtensions(assembleExtensions({}));
         const repo = makeIntegrationRepo(storedSlackIntegration);
 
         const created = yield* postIntegrations({
           name: "Warehouse",
           type: "database",
           config: { url: "postgresql://localhost:5432/app" },
-        }).pipe(Effect.provide(repo.layer));
+        }).pipe(
+          Effect.provide(repo.layer),
+          Effect.provide(makeExtensionsLayer(assembleExtensions({})))
+        );
 
         assert.strictEqual(created.name, "Warehouse");
       })
