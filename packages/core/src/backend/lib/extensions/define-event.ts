@@ -44,8 +44,9 @@ import { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fiel
  *
  * `TPayload` is an Effect schema's **encoded** side, which is the payload as it
  * arrives and the shape every path in an Event definition addresses. A schema may
- * therefore carry a transform: `dateField` decodes to a `Date` and still declares
- * a JSON payload, and the Correlation Path still names the string on the wire.
+ * therefore carry a transform: a codec reading an ISO string into a `Date` still
+ * declares a JSON payload, and the Correlation Path still names the string on the
+ * wire.
  * Nothing consumes the decoded value -- the gate discards it and the raw JSON
  * travels -- so a transform buys validation precision and derivation, and the
  * decoded type it produces has no reader to serve. `OutputSchema` in
@@ -265,9 +266,9 @@ export type DefineEventInput<TPayload extends JsonObject> = {
  * is derived from it on the spot: an Event's field list is fixed the moment it is
  * defined, so nothing later derives it again or holds a hand-written copy.
  *
- * Every payload path needs a description annotation, nested objects included,
- * because the editor shows that text beside the path. A bare field throws here
- * naming the Event.
+ * A description annotation is decoration: the editor shows that text beside the
+ * path and falls back to the title-cased key. A schema the derivation cannot
+ * read at all throws here naming the Event.
  */
 export function defineEvent<TPayload extends JsonObject>(
   input: DefineEventInput<TPayload>

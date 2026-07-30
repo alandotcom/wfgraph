@@ -1,6 +1,6 @@
 import { Schema, SchemaTransformation } from "effect";
 import { describe, expect, it } from "vitest";
-import { dateField } from "#src/types/timestamp";
+import type { StandardSchema } from "#src/types/schema";
 import {
   outputFieldsFromSchema,
   requireOutputFieldsFromSchema,
@@ -33,50 +33,131 @@ describe("outputFieldsFromSchema", () => {
   });
 });
 
-describe("requireOutputFieldsFromSchema and the codec hint", () => {
-  // The refusal an author meets when a field carries no description the derivation
-  // can read. Both shapes below are annotated as far as their author is concerned,
-  // which is why the message has to name the reason rather than repeat the demand.
-  const CODEC_HINT = "A codec's own annotations do not reach its JSON Schema";
+/**
+ * A Standard Schema answering one fixed JSON Schema document, or refusing to
+ * describe itself at all.
+ *
+ * The two refusals it covers below are documents no Effect schema produces, and
+ * the derivation meets both from a foreign library.
+ */
+function describingItselfAs(
+  document: Record<string, unknown> | "nothing"
+): StandardSchema<unknown> {
+  const answer = () => {
+    if (document === "nothing") {
+      throw new Error("this library publishes no JSON Schema");
+    }
+    return document;
+  };
 
-  it("refuses a bare Schema.Date and names the spelling that works", () => {
-    expect(() =>
-      requireOutputFieldsFromSchema(
-        'Action "test/dated"',
-        Schema.Struct({ at: Schema.Date })
-      )
-    ).toThrow(/use `dateField` instead/);
-  });
+  return {
+    "~standard": {
+      version: 1,
+      vendor: "test",
+      validate: (value: unknown) => ({ value }),
+      jsonSchema: { input: answer, output: answer },
+    },
+  };
+}
 
-  it("refuses an annotated codec with the same hint", () => {
-    // The case the hint was written for: `.annotate()` on a transformation lands
-    // on its decoded side, and the derivation compiles the encoded one, so the
-    // description never arrives and the author is told they wrote none.
-    expect(() =>
+describe("requireOutputFieldsFromSchema", () => {
+  it("derives a schema that annotates nothing, labelling each key", () => {
+    // Validation is the author's job and presentation is Rova's, so a schema
+    // written in any library derives without being edited to serve the editor.
+    expect(
       requireOutputFieldsFromSchema(
-        'Action "test/dated"',
+        'Action "test/plain"',
         Schema.Struct({
-          at: Schema.String.pipe(
-            Schema.decodeTo(Schema.Date, SchemaTransformation.dateFromString)
-          ).annotate({ description: "When it happened" }),
+          appointmentId: Schema.String,
+          attendeeCount: Schema.Finite,
         })
       )
-    ).toThrow(CODEC_HINT);
+    ).toEqual([
+      { path: "appointmentId", description: "Appointment Id", type: "string" },
+      { path: "attendeeCount", description: "Attendee Count", type: "number" },
+    ]);
   });
 
-  it("accepts the same field written with dateField", () => {
+  it("derives a bare Schema.Date as an undescribed string", () => {
+    // Effect publishes no `format: "date-time"` for either of its date schemas,
+    // so the field arrives as the plain string the encoded side holds. Any
+    // library that does publish the keyword is read as a timestamp.
     expect(
       requireOutputFieldsFromSchema(
         'Action "test/dated"',
-        Schema.Struct({ at: dateField("When it happened") })
+        Schema.Struct({ cancelledAt: Schema.Date })
+      )
+    ).toEqual([
+      { path: "cancelledAt", description: "Cancelled At", type: "string" },
+    ]);
+  });
+
+  it("reads a codec's encoded annotation and not its decoded one", () => {
+    // `.annotate()` on a transformation lands on its decoded side, which the
+    // derivation never compiles, so only the encoded description arrives.
+    expect(
+      requireOutputFieldsFromSchema(
+        'Action "test/dated"',
+        Schema.Struct({
+          startsAt: Schema.String.annotate({
+            description: "When it starts",
+            format: "date-time",
+          }).pipe(
+            Schema.decodeTo(Schema.Date, SchemaTransformation.dateFromString)
+          ),
+          endsAt: Schema.String.pipe(
+            Schema.decodeTo(Schema.Date, SchemaTransformation.dateFromString)
+          ).annotate({ description: "When it ends" }),
+        })
       )
     ).toEqual([
       {
-        path: "at",
-        description: "When it happened",
+        path: "startsAt",
+        description: "When it starts",
         type: "timestamp",
         format: "timestamp",
       },
+      { path: "endsAt", description: "Ends At", type: "string" },
     ]);
+  });
+
+  it("refuses a root that is not an object with named properties", () => {
+    expect(() =>
+      requireOutputFieldsFromSchema(
+        'Action "test/listed"',
+        Schema.Array(Schema.String)
+      )
+    ).toThrow(/its root is not an object with named properties/);
+  });
+
+  it("refuses a property the derivation could not read, naming it", () => {
+    // `Schema.Number` admits NaN and the two infinities, which JSON Schema
+    // cannot express, so Effect describes it as a union of a number and three
+    // string literals and the reader keeps no field. `Schema.Finite` is the
+    // spelling that survives.
+    expect(() =>
+      requireOutputFieldsFromSchema(
+        'Action "test/counted"',
+        Schema.Struct({ attendeeCount: Schema.Number })
+      )
+    ).toThrow(/attendeeCount did not survive the derivation/);
+  });
+
+  it("refuses an object that declares no properties", () => {
+    expect(() =>
+      requireOutputFieldsFromSchema(
+        'Event "app/empty"',
+        describingItselfAs({ type: "object", properties: {} })
+      )
+    ).toThrow(/declares no properties/);
+  });
+
+  it("refuses a schema that describes itself as no JSON Schema at all", () => {
+    expect(() =>
+      requireOutputFieldsFromSchema(
+        'Event "app/opaque"',
+        describingItselfAs("nothing")
+      )
+    ).toThrow(/neither an output nor an input JSON Schema/);
   });
 });

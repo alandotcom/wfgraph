@@ -132,7 +132,8 @@ Four things in it exist only because the host API was written in Effect:
 
 - "Zod is a test fixture, nothing more." The example is a real consumer now.
 - The `format: "date-time"` paragraph explaining `timestampField` and `dateField`.
-- "Annotate the base type before any check."
+- "Annotate the base type before any check." [Diverged: this rule stayed — the
+  hand-written `format` annotation this plan introduces depends on it.]
 - The note on `Schema.Date` being refused at registration.
 
 The package list at the top gains `@rova/example-app`.

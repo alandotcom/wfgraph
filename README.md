@@ -29,7 +29,8 @@ React SPA served as a static bundle.
 - Editor: React SPA on TanStack Router, TanStack Query for server state, Jotai for
   UI state
 
-This is a pnpm workspace monorepo with four packages:
+This is a pnpm workspace monorepo with four packages under `packages/`, beside
+`@rova/example-app`:
 
 ```
 packages/
@@ -37,6 +38,8 @@ packages/
   core/      @rova/core     Library entrypoints and backend
   client/    @rova/client   The workflow editor SPA
   plugins/   @rova/plugins  Built-in integrations (Acuity, Clerk, Linear, Resend, Slack, Twilio)
+
+examples/    @rova/example-app  The host app this repo runs (private)
 ```
 
 `examples/app.ts` is the repo's only server. It is an adopter's app written the way
@@ -55,9 +58,9 @@ surface an app has, and a line there is what turns each half on.
 
 ```ts
 import { createServer } from "node:http";
-import { Schema } from "effect";
+import { z } from "zod";
 import { clientBundle } from "@rova/client";
-import { createAction, defineEvent, timestampField } from "@rova/core";
+import { createAction, defineEvent } from "@rova/core";
 import { createRovaApp } from "@rova/core/app";
 import { createRequestListener } from "@rova/core/node";
 import { builtInIntegrations } from "@rova/plugins";
@@ -67,11 +70,11 @@ const appointmentCreated = defineEvent({
   name: "app/appointment.created",
   label: "Appointment created",
   description: "Raised when a new appointment is booked.",
-  schema: Schema.Struct({
-    appointment: Schema.Struct({
-      id: Schema.String.annotate({ description: "Appointment ID" }),
-      startsAt: timestampField("When the appointment starts, ISO 8601"),
-    }).annotate({ description: "The appointment this event is about" }),
+  schema: z.object({
+    appointment: z.object({
+      id: z.string().describe("Appointment ID"),
+      startsAt: z.iso.datetime(),
+    }),
   }),
   correlationPath: "appointment.id",
 });
@@ -82,21 +85,19 @@ const cancelAppointment = createAction({
   label: "Cancel Appointment",
   description: "Cancels an appointment and records the reason.",
   category: "Appointments",
-  // The config form is derived from this schema. A field's label comes from its
-  // `description` annotation, which goes on the base type before any check: a
-  // check would otherwise own the annotation and the derivation cannot see it.
-  schema: Schema.Struct({
-    appointmentId: Schema.String.annotate({ description: "Appointment ID" }),
-    reason: Schema.String.annotate({
-      description: "Cancellation reason",
-    }).check(Schema.isMinLength(1)),
+  // The config form is derived from this schema. A field's label is the
+  // title-cased key ("Appointment Id"), and a description replaces it, so a
+  // description earns its place where the key alone reads badly.
+  schema: z.object({
+    appointmentId: z.string().describe("Appointment ID"),
+    reason: z.string().min(1),
   }),
   // What `execute` answers with. The editor's template autocomplete is derived
   // from this schema, so there is no field list to write out beside it.
-  outputSchema: Schema.Struct({
-    appointmentId: Schema.String.annotate({ description: "Appointment ID" }),
-    status: Schema.String.annotate({ description: "Cancellation status" }),
-    cancelledAt: timestampField("ISO timestamp of cancellation"),
+  outputSchema: z.object({
+    appointmentId: z.string().describe("Appointment ID"),
+    status: z.string(),
+    cancelledAt: z.iso.datetime(),
   }),
   execute({ payload }) {
     return {
@@ -320,19 +321,17 @@ It carries no lifecycle role: which workflow starts on it and which cancels on i
 is each Workflow Builder's declaration in the editor (see `docs/adr/0007`).
 
 ```ts
-import { defineEvent, timestampField } from "@rova/core";
-import { Schema } from "effect";
+import { defineEvent } from "@rova/core";
+import { z } from "zod";
 
 const paymentSettled = defineEvent({
   name: "billing/payment.settled",
   label: "Payment settled",
   description: "Raised by the billing service when a charge clears.",
-  schema: Schema.Struct({
-    appointmentId: Schema.String.annotate({ description: "Appointment ID" }),
-    amountCents: Schema.Number.annotate({
-      description: "Amount settled, in cents",
-    }).check(Schema.isFinite()),
-    settledAt: timestampField("When the payment settled, ISO 8601"),
+  schema: z.object({
+    appointmentId: z.string().describe("Appointment ID"),
+    amountCents: z.number().describe("Amount settled, in cents"),
+    settledAt: z.iso.datetime(),
   }),
   correlationPath: "appointmentId",
 });
@@ -352,10 +351,11 @@ object: the validate half checks an arriving payload, and the JSON Schema half i
 where the editor's field list comes from, so a library that describes only how to
 validate cannot define an Event.
 
-**Every payload path needs a `description` annotation**, nested objects included.
-The editor lists `appointment.startsAt` as its own entry in the template picker and
-shows that text beside it, so a bare field reads as the word "string" to whoever is
-building the workflow. A missing annotation throws at definition, naming the Event.
+**A `description` on a path is decoration.** The editor lists
+`appointment.startsAt` as its own entry in the template picker and labels it from
+the key, as "Starts At". A description replaces that label, so it earns its place
+where the key alone reads badly. A schema the field derivation cannot read at all,
+one whose root is not an object, throws at definition naming the Event.
 
 **`correlationPath` names where the Entity Value sits.** It is typed against the
 payload and admits only a path resolving to a string, which is what an Entity Value
@@ -366,13 +366,16 @@ why `appointmentId` above agrees with `appointment.id` on an appointment Event. 
 path is optional: an imported Event may have none its author knew to declare, and
 the Workflow Builder supplies one in the Lifecycle panel.
 
-**A datetime field says so with `timestampField`.** That is what annotates it as a
-date-time on the encoded side, which gives the field before/after operators in the
-condition builder and ranks it to the top of a menu asking for a date. `dateField`
-is the same wire form with a `Date` in a handler, which an Event has no use for,
-since an Event's decoded payload is discarded and the JSON the sender wrote is what
-travels. A bare `Schema.Date` is refused, because a declaration has no encoding
-chain to annotate and its description never reaches the JSON Schema.
+**A datetime field says so with `format: "date-time"`**, the JSON Schema keyword
+the field derivation reads off the encoded side. It gives the field before/after
+operators in the condition builder and ranks it to the top of a menu asking for a
+date. Zod emits it from `z.iso.datetime()`, and arktype from
+`type("string.date.iso").configure({ format: "date-time" })`. Effect emits it for
+no date schema of its own
+([Effect-TS/effect#6790](https://github.com/Effect-TS/effect/issues/6790)), so an
+Event in Effect Schema writes `Schema.String.annotate({ format: "date-time" })`
+itself. That keyword buys the editor's treatment and refuses nothing, so a field
+that should turn a malformed value away adds `.check(Schema.isPattern(...))`.
 
 ### The umbrella source
 
@@ -489,8 +492,7 @@ An Execution ends with exactly one status: `completed`, `canceled`, `superseded`
 `@rova/plugins` builds against `@rova/core/plugin` and nothing else, so an outside
 package can be written the same way. That surface exports `defineIntegration`,
 `credentialFields`, `CredentialsOf`, `checkIntegration`, `defineStep`, `StepFailure`,
-`StepRunContext`, `IntegrationTestResult`, `VendorTransport`, and the two datetime
-spellings `timestampField` and `dateField`.
+`StepRunContext`, `IntegrationTestResult`, and `VendorTransport`.
 
 An integration is one `defineIntegration` value holding its credential form, a
 `defineStep` per action, and a loader for its connection test.
@@ -607,8 +609,8 @@ at boot rather than one run failing.
 **`checkIntegration` is the assembly check, exported for your own suite.** Assembly
 calls it for every integration a host passes, so a bad definition fails the app that
 turned it on. Calling it in the defining package's tests moves that failure to where
-the author reads it, and it is what catches a missing annotation before review sees
-a green run.
+the author reads it, so an output schema the derivation cannot read, or a required
+config key with no field behind it, is caught before review sees a green run.
 
 **Describe the wire, not the SDK.** An SDK's types are its own promise about somebody
 else's JSON, and a typed client casting a response without validating it is not
@@ -622,7 +624,7 @@ vendor HTTP layer, the config field types, and the testing pattern.
 ## Package exports
 
 - `@rova/core` is what a host authors vocabulary with: `defineEvent`,
-  `createAction`, `timestampField`, `dateField`, and their types.
+  `createAction`, and their types.
 - `@rova/core/app` is `createRovaApp`, `RovaAppOptions`, `RovaApp`, and the
   re-exported config types.
 - `@rova/core/node` is `createRequestListener`, for hosts on Express, Fastify, or

@@ -228,9 +228,9 @@ step's environment, settled in `define-step.ts`, not a type parameter widened he
 
 Assembly reads the output schema and refuses one it cannot use, naming the action.
 The root is a `Schema.Struct`, since a downstream node addresses a payload by named
-path. Every path the editor lists carries a `description` annotation, nested objects
-and their leaves included, because that annotation is what an operator reads beside
-the path.
+path. A `description` annotation on a path is what an operator reads beside it, and
+it replaces the label the editor derives from the key, so it earns its place wherever
+the key alone reads badly.
 
 **A nested field that drops out does so in silence.** The count is taken at the root,
 so a leaf inside an object or a list can vanish and assembly still succeeds. Two
@@ -241,16 +241,15 @@ describes itself as a number or one of the strings `"Infinity"`, `"-Infinity"` a
 `"NaN"`, so a numeric field is
 `Schema.Number.annotate({ ... }).check(Schema.isFinite())`.
 
-**A moment in time says so with `timestampField` or `dateField`**, both exported from
-`@rova/core/plugin`. Each takes the field's description and carries
-`format: "date-time"` on the encoded side, which is the whole of how the editor learns
-a field is a time: it is what gives the field before/after operators in the condition
-builder and what ranks it to the top of a menu asking for a date. `timestampField` is
-an ISO string on both sides and `dateField` hands the handler a `Date`, which the
-output codec encodes back to that string. A bare `Schema.Date` is refused at
-registration, because a declaration has no encoding chain to annotate and its
-description never reaches the JSON Schema the derivation reads. A pattern alone says
-nothing, whatever the regex looks like.
+**A moment in time says so with `format: "date-time"`** on the encoded side, which is the
+whole of how the editor learns a field is a time: it gives the field before/after
+operators in the condition builder and ranks it to the top of a menu asking for a date.
+Effect emits it for no date schema of its own, `Schema.Date` included
+([effect#6790](https://github.com/Effect-TS/effect/issues/6790)), so a step's schema
+writes `isoTimestampString` from `@rova/shared/types/timestamp`, which annotates the base
+type and checks the ISO pattern after it. The keyword alone draws the field and refuses
+nothing. A handler that wants a `Date` decodes to one from there, and the output codec
+encodes it back to the string.
 
 **What the schema is checked against.** The handler's return type comes from it, so a
 payload that drops a field or renames one fails to compile; the schemas are the

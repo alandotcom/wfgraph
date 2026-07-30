@@ -133,13 +133,21 @@ describe("defineEvent payload fields", () => {
     ]);
   });
 
-  it("refuses a field carrying no description, naming the Event", () => {
-    expect(() =>
-      defineEvent({
-        name: "app/fields.bare",
-        schema: Schema.Struct({ id: Schema.String }),
-      })
-    ).toThrow('Event "app/fields.bare" cannot derive the fields the editor');
+  it("labels a field carrying no description with its key", () => {
+    // A host's payload schema is written for validation, and describing every
+    // path is Rova's job rather than theirs.
+    const event = defineEvent({
+      name: "app/fields.bare",
+      schema: Schema.Struct({ appointmentId: Schema.String }),
+    });
+
+    expect(event.payloadFields).toEqual([
+      {
+        path: "appointmentId",
+        description: "Appointment Id",
+        type: "string",
+      },
+    ]);
   });
 
   it("refuses a payload whose root is not an object", () => {

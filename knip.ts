@@ -23,11 +23,11 @@ const config: KnipConfig = {
   // knip 6.29 documents a built-in `.css` compiler but ships none, so setting
   // `css: true` crashes; this hands it the function the docs print.
   //
-  // A compiler is global in knip 6.29 while stylesheets live in packages/core
-  // alone, so each of the other three workspaces prints one standing
-  // "Compiled extension excluded by project" hint. Hints are informational and
-  // leave the exit code at 0, and giving those workspaces a `**/*.css` glob
-  // only trades the hint for a "no matches" one.
+  // A compiler is global in knip 6.29 while the one stylesheet lives in
+  // packages/client, so every workspace whose project glob names no stylesheet
+  // prints one standing "Compiled extension excluded by project" hint. Hints are
+  // informational and leave the exit code at 0, and giving those workspaces a
+  // `**/*.css` glob only trades the hint for a "no matches" one.
   compilers: {
     css: (text: string) =>
       [...text.matchAll(/(?<=@)import[^;]+/g)].map(([m]) => m).join("\n"),
@@ -49,20 +49,28 @@ const config: KnipConfig = {
         // place by being imported.
         //
         // knip already reads the "scripts" block of package.json and treats a
-        // file a script runs as an entry, which covers examples/app.ts through
-        // "start", and scripts/migrate.ts and scripts/unqualify-migrations.ts
-        // through the two db: scripts. Listing such a file here draws a
-        // "redundant entry pattern" hint. What remains is the one it cannot see.
+        // file a script runs as an entry, which covers scripts/migrate.ts and
+        // scripts/unqualify-migrations.ts through the two db: scripts. Listing
+        // such a file here draws a "redundant entry pattern" hint. What remains
+        // is the one it cannot see.
         //
         // Run by the afterFileEdit hook in .cursor/hooks.json:
         "scripts/format-edited-file.ts",
       ],
-      project: ["*.ts", "examples/**/*.ts", "scripts/**/*.ts"],
+      project: ["*.ts", "scripts/**/*.ts"],
 
       // drizzle-kit is a root dev dependency, so knip looks for the Drizzle
       // config beside the root manifest. This repo keeps it with the schema it
       // points at.
       drizzle: { config: ["packages/core/drizzle.config.ts"] },
+    },
+
+    examples: {
+      // app.ts is found rather than named: knip reads the "dev" and "start"
+      // scripts in this package's manifest and takes the file they run as the
+      // entry.
+      entry: [],
+      project: ["*.ts"],
     },
 
     "packages/shared": {

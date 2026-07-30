@@ -438,9 +438,14 @@ describe("assembleExtensions and an integration definition", () => {
                 description: "Sends a message",
                 category: "Twilio",
                 input: Schema.Struct({ to: Schema.String }),
-                // No description on the field, so the editor would list a path
-                // with nothing to say about it.
-                output: Schema.Struct({ sid: Schema.String }),
+                // `Schema.Number` admits NaN and the two infinities, which JSON
+                // Schema cannot express, so the field is dropped from the
+                // derived list and the editor would offer a shorter one than
+                // the step returns.
+                output: Schema.Struct({
+                  sid: Schema.String,
+                  attempts: Schema.Number,
+                }),
                 configFields: [
                   {
                     key: "to",
@@ -449,7 +454,7 @@ describe("assembleExtensions and an integration definition", () => {
                     required: true,
                   },
                 ],
-                handler: sendSmsHandler,
+                handler: () => Effect.succeed({ sid: "SM1", attempts: 1 }),
               }),
             },
           }),

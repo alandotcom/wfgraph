@@ -15,7 +15,10 @@ import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
 import { createAction } from "@rova/shared/workflow/action-registry";
-import { dateField, timestampField } from "@rova/shared/types/timestamp";
+import {
+  isoTimestampString,
+  isoTimestampToDate,
+} from "@rova/shared/types/timestamp";
 import {
   compileConditionModel,
   type ConditionModel,
@@ -31,6 +34,16 @@ import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
 } from "#src/backend/lib/workflow-engine/recording-store";
+
+/**
+ * The datetime field where a handler wants a `Date`. Piping the shared string
+ * spelling into the codec keeps the wire form an ISO string on both sides.
+ */
+function isoTimestampToDateField(description: string) {
+  return isoTimestampString(description).pipe(
+    Schema.decodeTo(isoTimestampToDate)
+  );
+}
 
 /**
  * A node that answers with the config it was handed, which is how a case reads
@@ -69,9 +82,9 @@ const appointmentBooked = defineEvent({
       id: Schema.String.annotate({ description: "Appointment ID" }),
       // The two spellings an author may reach for: a `Date` in a handler, and a
       // string on both sides. Either way the wire form is an ISO string.
-      startsAt: dateField("When the appointment starts"),
+      startsAt: isoTimestampToDateField("When the appointment starts"),
     }).annotate({ description: "The appointment" }),
-    occurredAt: timestampField("When the event was raised"),
+    occurredAt: isoTimestampString("When the event was raised"),
   }),
   correlationPath: "appointment.id",
 });
@@ -256,7 +269,7 @@ describe("an Event's datetime field, end to end", () => {
     );
   });
 
-  it("addresses a dateField by its path on the wire", () => {
+  it("addresses a Date-valued field by its path on the wire", () => {
     // This compiles only because a definition's paths address the payload as it
     // arrives: `startsAt` is a string there and a `Date` only after a decode,
     // and a Correlation Path is a path to a string.
@@ -264,7 +277,7 @@ describe("an Event's datetime field, end to end", () => {
       name: "app/appointment.booked.by-time",
       label: "Appointment booked, keyed on its time",
       schema: Schema.Struct({
-        startsAt: dateField("When the appointment starts"),
+        startsAt: isoTimestampToDateField("When the appointment starts"),
       }),
       correlationPath: "startsAt",
     });
@@ -385,8 +398,8 @@ describe("an Event's datetime field, end to end", () => {
   });
 
   it("refuses a payload whose timestamp field carries no zone", () => {
-    // The gate is the Event's schema, and `timestampField` requires a zone: a
-    // string without one names a different instant on every machine that reads it.
+    // The gate is the Event's schema, and its ISO codec requires a zone: a string
+    // without one names a different instant on every machine that reads it.
     // The message names the path and quotes no value, because it is persisted as a
     // run error and answered over HTTP.
     const error = gateRejection({
@@ -408,6 +421,19 @@ describe("an Event's datetime field, end to end", () => {
         occurredAt: "2026-03-01T12:00:00Z",
       })
     ).toContain("appointment.startsAt");
+  });
+
+  it("refuses a malformed value on a field that stays a string", () => {
+    // `occurredAt` never becomes a `Date`, so its own check is the only thing
+    // between the sender and the field: `format: "date-time"` tells the editor how
+    // to draw the field and refuses nothing.
+    const error = gateRejection({
+      appointment: { id: "appt_1", startsAt: "2026-03-10T09:00:00-05:00" },
+      occurredAt: "banana",
+    });
+
+    expect(error).toContain("occurredAt");
+    expect(error).not.toContain("banana");
   });
 
   it("accepts a payload whose timestamps carry a zone", () => {

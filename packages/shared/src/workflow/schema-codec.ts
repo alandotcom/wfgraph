@@ -275,10 +275,10 @@ function normalizeSchemaFormat(
  * well: an author who annotated inside a check still gets the field read as a
  * timestamp.
  *
- * A schema that wants its dates recognised has to carry the keyword, and
- * `timestampField` / `dateField` in `#src/types/timestamp` are how an author
- * writes one. `Schema.Date` and `Schema.DateFromString` each arrive as a bare
- * `{ type: "string" }`, because Effect derives no `format` for either.
+ * A schema that wants its dates recognised has to carry the keyword. Zod emits
+ * it from `z.iso.datetime()` and arktype through the `fallback.date` option
+ * above; Effect emits none, for `Schema.Date` and `Schema.DateFromString` alike,
+ * so an Effect author annotates the string themselves (Effect-TS/effect#6790).
  */
 function isTimestampString(prop: JsonSchemaNode): boolean {
   if (normalizeSchemaFormat(prop.format) === "timestamp") {
@@ -704,10 +704,15 @@ function deriveConfigFieldType(
   }
 }
 
-function deriveConfigFieldLabel(key: string, property: JsonSchemaNode): string {
-  return property.description?.trim()
-    ? property.description.trim()
-    : startCase(key);
+/**
+ * What a key is called on screen: the author's description, or the key itself
+ * title-cased when they wrote none.
+ *
+ * Every surface that names a schema key reads this one rule, so a key with no
+ * description reads the same on a config field as it does in the template picker.
+ */
+export function labelFromKey(key: string, description?: string): string {
+  return description?.trim() ? description.trim() : startCase(key);
 }
 
 function deriveSelectOptions(
@@ -734,7 +739,7 @@ function jsonSchemaPropertyToConfigField(
 
   const field: ActionConfigFieldBase = {
     key,
-    label: deriveConfigFieldLabel(key, property),
+    label: labelFromKey(key, property.description),
     type: fieldType,
   };
 

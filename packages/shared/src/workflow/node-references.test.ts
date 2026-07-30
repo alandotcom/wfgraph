@@ -18,7 +18,31 @@ describe("flattenSchemaToReferenceFields", () => {
 
     expect(fields).toEqual([
       { path: "email", description: "Contact email", type: "string" },
-      { path: "age", description: "number", type: "number" },
+      { path: "age", description: "Age", type: "number" },
+    ]);
+  });
+
+  it("labels an undescribed field with its title-cased key", () => {
+    // A host writes their schema for validation, so a description is optional
+    // and most keys arrive without one. The key is what a builder recognises;
+    // the type name is the same word on every field of that type.
+    const fields = flattenSchemaToReferenceFields([
+      {
+        name: "appointment",
+        type: "object",
+        fields: [
+          { name: "patientName", type: "string" },
+          { name: "startsAt", type: "timestamp" },
+          { name: "mediaUrls", type: "array", itemType: "string" },
+        ],
+      },
+    ]);
+
+    expect(fields.map(({ path, description }) => [path, description])).toEqual([
+      ["appointment", "Appointment"],
+      ["appointment.patientName", "Patient Name"],
+      ["appointment.startsAt", "Starts At"],
+      ["appointment.mediaUrls", "Media Urls"],
     ]);
   });
 
@@ -60,11 +84,11 @@ describe("flattenSchemaToReferenceFields", () => {
     ]);
 
     expect(fields).toEqual([
-      { path: "items", description: "object[]", type: "array" },
-      { path: "items[0].sku", description: "string", type: "string" },
+      { path: "items", description: "Items", type: "array" },
+      { path: "items[0].sku", description: "Sku", type: "string" },
       {
         path: "items[0].shippedAt",
-        description: "timestamp",
+        description: "Shipped At",
         type: "timestamp",
         format: "timestamp",
       },
@@ -77,7 +101,7 @@ describe("flattenSchemaToReferenceFields", () => {
     ]);
 
     expect(fields).toEqual([
-      { path: "tags", description: "string[]", type: "array" },
+      { path: "tags", description: "Tags", type: "array" },
     ]);
   });
 
@@ -94,7 +118,7 @@ describe("flattenSchemaToReferenceFields", () => {
     expect(fields).toEqual([
       {
         path: "status",
-        description: "string",
+        description: "Status",
         type: "string",
         nullable: true,
         enumValues: ["open", "closed"],
@@ -119,7 +143,7 @@ describe("flattenSchemaToReferenceFields", () => {
     ]);
 
     expect(fields).toEqual([
-      { path: "metadata", description: "object", type: "object" },
+      { path: "metadata", description: "Metadata", type: "object" },
     ]);
   });
 

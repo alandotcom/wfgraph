@@ -1,13 +1,10 @@
 import { Exit, Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import { requireOutputFieldsFromSchema } from "#src/workflow/output-fields";
 import {
-  dateField,
   decodeIsoTimestamp,
   decodeIsoTimestampOrThrow,
   encodeIsoTimestamp,
   isoTimestampToDate,
-  timestampField,
 } from "#src/types/timestamp";
 
 const decode = Schema.decodeSync(isoTimestampToDate);
@@ -89,77 +86,5 @@ describe("isoTimestampToDate", () => {
     // RangeError at best, and elsewhere yields the literal text "Invalid Date".
     expect(() => encodeIsoTimestamp(new Date("not a date"))).toThrow();
     expect(Exit.isFailure(encodeExit(new Date(Number.NaN)))).toBe(true);
-  });
-});
-
-describe("the two field spellings", () => {
-  const struct = Schema.Struct({
-    startsAt: dateField("When it starts"),
-    occurredAt: timestampField("When it happened"),
-  });
-
-  it("is read as a timestamp through the optional rendering", () => {
-    // `Schema.optional` renders as `anyOf: [T, null]`, so the keyword sits on a
-    // member rather than on the property. Deriving from the schema itself is the
-    // point: a hand-written document would keep passing if Effect moved where it
-    // puts the keyword.
-    expect(
-      requireOutputFieldsFromSchema(
-        "Probe",
-        Schema.Struct({
-          startsAt: Schema.optional(dateField("When it starts")),
-        })
-      )
-    ).toEqual([
-      {
-        path: "startsAt",
-        description: "When it starts",
-        type: "timestamp",
-        format: "timestamp",
-        nullable: true,
-      },
-    ]);
-  });
-
-  it("gives a handler a Date for one and a string for the other", () => {
-    const decoded = Schema.decodeUnknownSync(struct)({
-      startsAt: "2026-03-01T10:00:00Z",
-      occurredAt: "2026-03-01T10:00:00Z",
-    });
-
-    expect(decoded.startsAt).toEqual(new Date("2026-03-01T10:00:00Z"));
-    expect(decoded.occurredAt).toBe("2026-03-01T10:00:00Z");
-  });
-
-  it("writes both back out as ISO strings", () => {
-    // The wire form is what a step result, a JSONB column, and a template all
-    // hold, so a `Date` in a handler leaves as text again.
-    expect(
-      Schema.encodeUnknownSync(struct)({
-        startsAt: new Date("2026-03-01T10:00:00Z"),
-        occurredAt: "2026-03-01T10:00:00Z",
-      })
-    ).toEqual({
-      startsAt: "2026-03-01T10:00:00.000Z",
-      occurredAt: "2026-03-01T10:00:00Z",
-    });
-  });
-
-  it("holds both to the same contract as every other timestamp here", () => {
-    // The description is a parameter because the annotations sit on the base
-    // type: put on the checked schema they would land on the check, and the
-    // check is what turns this text away.
-    expect(() =>
-      Schema.decodeUnknownSync(struct)({
-        startsAt: "tomorrow",
-        occurredAt: "2026-03-01T10:00:00Z",
-      })
-    ).toThrow();
-    expect(() =>
-      Schema.decodeUnknownSync(struct)({
-        startsAt: "2026-03-01T10:00:00Z",
-        occurredAt: "2026-02-30T10:00:00Z",
-      })
-    ).toThrow();
   });
 });

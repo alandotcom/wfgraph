@@ -5,6 +5,7 @@
 
 packages:
   - "packages/*"
+  - "examples"
 
 # One version per shared dependency, referenced from a package's own manifest as
 # `"effect": "catalog:"`. pnpm rewrites those specifiers to the real range during
@@ -37,10 +38,12 @@ catalog:
   postgres: ^3.4.9
   react: 19.2.4
   react-dom: 19.2.4
+  tsx: ^4.23.1
   vite: ^8.1.5
-  # Test-only: the foreign Standard Schema library the registry tests are
-  # written against, beside arktype. Nothing at runtime imports it.
-  zod: ^4.3.6
+  # The example app writes its Events and its custom action in it, and
+  # packages/shared's registry tests use it as the foreign Standard Schema
+  # library, beside arktype.
+  zod: ^4.4.3
 
 # Pins one React copy through the whole graph, including transitive peers. The
 # catalog protocol is how pnpm keeps an override and the catalog entry from

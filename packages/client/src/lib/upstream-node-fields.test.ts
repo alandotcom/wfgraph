@@ -10,12 +10,12 @@ import {
   emptyExtensionCatalog,
   type EventMetadata,
 } from "@rova/shared/extensions/catalog";
-import { dateField, timestampField } from "@rova/shared/types/timestamp";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
 } from "@rova/shared/workflow/lifecycle-outlets";
 import type { LifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
+import { isoTimestampString } from "@rova/shared/types/timestamp";
 import { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fields";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 
@@ -218,15 +218,15 @@ describe("upstream-node-fields", () => {
   });
 
   it("offers a Start Event's datetime fields as timestamps", () => {
-    // The acceptance case for the condition builder: a field an Event declared
-    // with `dateField` or `timestampField` arrives typed `timestamp`, which is
-    // what gets it the before/after operators rather than string ones.
+    // The acceptance case for the condition builder: a field an Event declared as
+    // a moment in time arrives typed `timestamp`, which is what gets it the
+    // before/after operators rather than string ones.
     surface.events = [
       anEvent({
         name: "app/appointment.created",
         schema: Schema.Struct({
-          startsAt: dateField("When the appointment starts"),
-          occurredAt: timestampField("When the event was raised"),
+          startsAt: isoTimestampString("When the appointment starts"),
+          occurredAt: isoTimestampString("When the event was raised"),
           patientName: Schema.String.annotate({ description: "Patient name" }),
         }),
       }),
@@ -275,15 +275,15 @@ describe("upstream-node-fields", () => {
       anEvent({
         name: "app/appointment.created",
         schema: Schema.Struct({
-          occurredAt: timestampField("When the event was raised"),
+          occurredAt: isoTimestampString("When the event was raised"),
           patientName: Schema.String.annotate({ description: "Patient name" }),
         }),
       }),
       anEvent({
         name: "app/appointment.rescheduled",
         schema: Schema.Struct({
-          occurredAt: timestampField("When the event was raised"),
-          previousStartsAt: timestampField("The time it moved from"),
+          occurredAt: isoTimestampString("When the event was raised"),
+          previousStartsAt: isoTimestampString("The time it moved from"),
         }),
       }),
     ];
@@ -322,14 +322,14 @@ describe("upstream-node-fields", () => {
       anEvent({
         name: "app/appointment.created",
         schema: Schema.Struct({
-          occurredAt: timestampField("When the event was raised"),
+          occurredAt: isoTimestampString("When the event was raised"),
           bookedBy: Schema.String.annotate({ description: "Who booked it" }),
         }),
       }),
       anEvent({
         name: "app/appointment.canceled",
         schema: Schema.Struct({
-          occurredAt: timestampField("When the event was raised"),
+          occurredAt: isoTimestampString("When the event was raised"),
           reason: Schema.String.annotate({
             description: "Why it was called off",
           }),
@@ -398,7 +398,7 @@ describe("upstream-node-fields", () => {
       anEvent({
         name: "app/appointment.created",
         schema: Schema.Struct({
-          occurredAt: timestampField("When the event was raised"),
+          occurredAt: isoTimestampString("When the event was raised"),
           patientName: Schema.String.annotate({ description: "Patient name" }),
         }),
       }),
@@ -451,7 +451,7 @@ describe("upstream-node-fields", () => {
       anEvent({
         name: "app/appointment.created",
         schema: Schema.Struct({
-          occurredAt: timestampField("When the event was raised"),
+          occurredAt: isoTimestampString("When the event was raised"),
         }),
       }),
       anEvent({
@@ -499,7 +499,7 @@ describe("upstream-node-fields", () => {
       anEvent({
         name: "app/appointment.created",
         schema: Schema.Struct({
-          occurredAt: timestampField("When the event was raised"),
+          occurredAt: isoTimestampString("When the event was raised"),
         }),
       }),
     ];

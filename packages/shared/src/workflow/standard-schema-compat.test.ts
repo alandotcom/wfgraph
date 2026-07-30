@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 import { type } from "arktype";
 import { z } from "zod";
 import { extractSchemaKeys, toStandardSchema } from "#src/types/schema";
-import { timestampField } from "#src/types/timestamp";
 import { requireOutputFieldsFromSchema } from "#src/workflow/output-fields";
 import { createAction } from "./action-registry";
 import { rewriteCelExpression } from "./inngest-event-data";
@@ -358,11 +357,10 @@ describe("createAction bridges the schema it is given", () => {
     ]);
   });
 
-  // The two ways a schema can describe an action while offering the editor
-  // nothing usable. Both used to be silent: the derivation answered an empty
-  // list for the first and a list of type names for the second, and an action
-  // with no autocomplete looks the same to a user as one whose fields have not
-  // loaded yet.
+  // A schema that describes the action while offering the editor nothing it can
+  // address. This used to be silent: the derivation answered an empty list, and
+  // an action with no autocomplete looks the same to a user as one whose fields
+  // have not loaded yet.
   it("refuses an output schema the editor cannot address by path", () => {
     expect(() =>
       requireOutputFieldsFromSchema(
@@ -372,33 +370,29 @@ describe("createAction bridges the schema it is given", () => {
     ).toThrow(/"twilio\/compat-array".+root is not an object/);
   });
 
-  it("refuses an output field that carries no description", () => {
-    expect(() =>
+  it("labels an undescribed field with its key, at any depth", () => {
+    // A description is decoration a host adds where the key reads badly. The
+    // rule reaches every path the editor lists, so a leaf two levels down is
+    // labelled from its own key rather than from the object it sits in.
+    expect(
       requireOutputFieldsFromSchema(
         'Action "twilio/compat-bare"',
         Schema.Struct({
-          sid: Schema.String.annotate({ description: "Message SID" }),
           status: Schema.String,
+          message: Schema.Struct({ sentAt: Schema.String }).annotate({
+            description: "The message that was sent",
+          }),
         })
       )
-    ).toThrow(/"twilio\/compat-bare".+status carry no description/);
-  });
-
-  it("refuses a nested output field that carries no description", () => {
-    // The rule reaches every path the editor lists, so a leaf two levels down
-    // is named by its dotted path rather than by the object it sits in.
-    expect(() =>
-      requireOutputFieldsFromSchema(
-        'Action "twilio/compat-bare-nested"',
-        Schema.Struct({
-          message: Schema.Struct({
-            sid: Schema.String,
-          }).annotate({ description: "The message that was sent" }),
-        })
-      )
-    ).toThrow(
-      /"twilio\/compat-bare-nested".+message\.sid carry no description/
-    );
+    ).toEqual([
+      { path: "status", description: "Status", type: "string" },
+      {
+        path: "message",
+        description: "The message that was sent",
+        type: "object",
+      },
+      { path: "message.sentAt", description: "Sent At", type: "string" },
+    ]);
   });
 
   // A field whose JSON Schema this reader cannot use disappears from the list
@@ -541,12 +535,18 @@ describe("createAction with Effect schemas", () => {
     ).toBe(false);
   });
 
-  it("surfaces a timestampField as a described timestamp", () => {
-    // What an Effect author writes for a datetime field. The annotations sit on
-    // the base type and the check's pattern lands under `allOf`, so the keyword
-    // the derivation reads is flat on the property where every library writes it.
+  it("surfaces a hand-annotated Effect string as a described timestamp", () => {
+    // Effect derives no `format` for any of its date schemas, so an Effect author
+    // writes the keyword themselves. It goes on the base type, before any check:
+    // annotations on a checked schema land on the check, which renders under
+    // `allOf`, and the derivation reads the flat property.
     const schema = toStandardSchema(
-      Schema.Struct({ createdAt: timestampField("When it was created") })
+      Schema.Struct({
+        createdAt: Schema.String.annotate({
+          description: "When it was created",
+          format: "date-time",
+        }).check(Schema.isPattern(/Z$/)),
+      })
     );
     const jsonSchema = schema["~standard"].jsonSchema.output({
       target: "draft-2020-12",
@@ -557,6 +557,34 @@ describe("createAction with Effect schemas", () => {
         name: "createdAt",
         type: "timestamp",
         description: "When it was created",
+      },
+    ]);
+  });
+
+  it("reads the keyword through Effect's own optional rendering", () => {
+    // `Schema.optional` renders as `anyOf: [T, null]`, so the keyword sits on a
+    // member rather than on the property. Deriving from the schema itself is the
+    // point: the hand-written document beside this one would keep passing if
+    // Effect moved where it puts the keyword.
+    expect(
+      requireOutputFieldsFromSchema(
+        "Probe",
+        Schema.Struct({
+          startsAt: Schema.optional(
+            Schema.String.annotate({
+              description: "When it starts",
+              format: "date-time",
+            })
+          ),
+        })
+      )
+    ).toEqual([
+      {
+        path: "startsAt",
+        description: "When it starts",
+        type: "timestamp",
+        format: "timestamp",
+        nullable: true,
       },
     ]);
   });
@@ -824,7 +852,7 @@ describe("createAction with Arktype schemas", () => {
     // The derivation compiles the encoded side, and the encoded side of an Arktype
     // date morph is its ISO string, which carries a pattern and no keyword.
     // `.configure({ format })` is how an Arktype author says the string is a
-    // moment in time, the same one keyword `timestampField` writes in Effect.
+    // moment in time, the same one keyword every other library carries.
     const action = createAction({
       id: "arktype/output-date-test",
       label: "Arktype Output Date Test",

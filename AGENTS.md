@@ -1,6 +1,7 @@
 # Agent Instructions
 
-Rova Workflow Builder: a pnpm workspace monorepo with four packages under `packages/`.
+Rova Workflow Builder: a pnpm workspace monorepo with four packages under `packages/`,
+beside `@rova/example-app` (`examples/`), the host app `pnpm run dev` runs.
 
 - `@rova/shared` (`packages/shared`) runtime-agnostic types, workflow contracts, utilities
 - `@rova/core` (`packages/core`) library entrypoints and the backend
@@ -136,28 +137,25 @@ prints the value in full, and the strings this project builds from a failure are
 as run errors, written to the log, and answered over HTTP. Use it wherever a decode failure
 becomes text a person reads.
 
-**Zod is a test fixture, nothing more.** It is a devDependency of `packages/shared` alone,
-used by `action-registry.test.ts` and `standard-schema-compat.test.ts` as the foreign
-Standard Schema library `createAction` claims to accept, beside arktype. Nothing at runtime
-imports it and no published manifest names it. Do not reach for it in new code.
+**Zod is the example app's schema library, and a test fixture inside `packages/`.**
+`@rova/example-app` is written in it, which is what makes "an adopter needs no Effect"
+enforceable rather than promised. In `packages/` it stays a devDependency of
+`packages/shared`, used by `action-registry.test.ts` and `standard-schema-compat.test.ts`
+beside arktype, and no published manifest names it.
 
 **Timestamps cross through a codec.** `packages/shared/src/types/timestamp.ts` owns the
 one ISO-string-to-`Date` conversion, as a checked `Schema.decodeTo` pair. Do not hand-roll `new Date(x)` or
 `.toISOString()` for a value crossing the wire.
 
-The same module holds the two spellings a schema author writes for a datetime field, both
-re-exported from `@rova/core` and `@rova/core/plugin`: `timestampField(description)` is an
-ISO string on both sides, and `dateField(description)` is that string on the wire with a
-`Date` in a handler. Either one carries `format: "date-time"` on the encoded side, which is
-the whole of how the editor learns a field is a moment in time -- it is what gives the field
-before/after operators in the condition builder, and what ranks it to the top of the menu at
-a field asking for a date. `Schema.Date` is refused at registration: a declaration has no
-encoding chain to annotate, so its description never reaches the JSON Schema the derivation
-reads.
-
-The keyword is the only route, and a foreign library takes it too: arktype writes it as
-`type("string.date.iso").configure({ format: "date-time" })`, and Zod's `z.iso.datetime()`
-emits it already. A pattern alone says nothing, whatever the regex looks like.
+A datetime field says so with `format: "date-time"` on the encoded side, which is the whole
+of how the editor learns a field is a moment in time: it gives the field before/after
+operators in the condition builder and ranks it to the top of a menu asking for a date. A
+foreign library emits the keyword itself, arktype through
+`type("string.date.iso").configure({ format: "date-time" })` and Zod through
+`z.iso.datetime()`. Effect emits it for no date schema of its own
+([effect#6790](https://github.com/Effect-TS/effect/issues/6790)), so a schema here annotates
+by hand and carries its own check: the keyword buys the editor's treatment and refuses
+nothing. `isoTimestampString` in `@rova/shared/types/timestamp` is that pair.
 
 **An integration is one `defineIntegration` value.**
 `packages/core/src/backend/lib/extensions/define-integration.ts` takes a type, a label, a
@@ -734,8 +732,8 @@ start` is the other arrangement and one process: the built bundle goes to `creat
 `client`, and Rova serves the editor, the assets, and the API itself.
 
 **Eight published entry points, across three packages.** `@rova/core` is what a host
-authors vocabulary with (`defineEvent`, `createAction`, `timestampField`, `dateField`),
-`@rova/core/app` is `createRovaApp`, `@rova/core/node` the Node mount adapter,
+authors vocabulary with (`defineEvent` and `createAction`), `@rova/core/app` is
+`createRovaApp`, `@rova/core/node` the Node mount adapter,
 `@rova/core/plugin` the names an integration package may use, and `@rova/core/migrate`
 applies the migrations without building an app. `@rova/client` is the editor,
 `@rova/plugins` the built-in integrations as values, and

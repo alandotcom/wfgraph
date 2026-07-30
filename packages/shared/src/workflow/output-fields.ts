@@ -23,7 +23,6 @@ import {
 import {
   flattenSchemaToReferenceFields,
   type ReferenceField,
-  walkSchemaFields,
 } from "#src/workflow/node-references";
 import {
   jsonSchemaLibraryOptions,
@@ -143,16 +142,6 @@ export function requiredKeysFromSchema(
 }
 
 /**
- * The sentence for the author who did annotate and is being told they did not.
- *
- * A field derivation compiles the encoded side of a schema, and `.annotate()` on
- * a codec annotates its decoded side, so an annotated codec derives as bare as an
- * unannotated one. Without this, the message reads as a bug in Rova.
- */
-const CODEC_ANNOTATION_HINT =
-  'A codec\'s own annotations do not reach its JSON Schema (see SCHEMA.md, "Annotating the Encoded Side of a Transformation"). Annotate the encoded side with `Schema.annotateEncoded`, or use `timestampField` / `dateField`. `Schema.Date` cannot be described at all; use `dateField` instead.';
-
-/**
  * Why this schema cannot become an autocomplete list, in the words the message
  * ends with, or undefined when it can.
  */
@@ -180,17 +169,6 @@ function findDerivationProblem(
   const dropped = declared.filter((name) => !derived.has(name));
   if (dropped.length > 0) {
     return `${dropped.join(", ")} did not survive the derivation, so the editor would offer a shorter list than the step returns.`;
-  }
-
-  // Every path the editor offers, nested ones included, since each one is a
-  // separate line in the picker and each one needs to say what it is. A nested
-  // object is offered alongside its leaves -- a template can name the whole
-  // object -- so the object's own annotation is required too.
-  const unannotated = walkSchemaFields(fields)
-    .filter(({ field }) => !field.description?.trim())
-    .map(({ path }) => path);
-  if (unannotated.length > 0) {
-    return `${unannotated.join(", ")} carry no description annotation. The editor shows the annotation beside the path, and the type name it falls back to tells a user nothing. ${CODEC_ANNOTATION_HINT}`;
   }
 
   return undefined;

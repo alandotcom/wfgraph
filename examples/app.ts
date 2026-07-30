@@ -18,17 +18,15 @@
  * editor on.
  */
 
-// First, so the rest of the graph loads with .env already applied.
-import "../load-env";
 import { createServer } from "node:http";
-import { createAction, defineEvent, timestampField } from "@rova/core";
+import { createAction, defineEvent } from "@rova/core";
 import { createRovaApp } from "@rova/core/app";
 import { createRequestListener } from "@rova/core/node";
 // The built-in integrations, as values. Nothing registers on import, so the line
 // that passes them to `createRovaApp` below is what turns them on and dropping it
 // is what turns them off.
 import { builtInIntegrations } from "@rova/plugins";
-import { Schema } from "effect";
+import { z } from "zod";
 
 const DEFAULT_PORT = 4017;
 const DEFAULT_DATABASE_URL =
@@ -36,30 +34,20 @@ const DEFAULT_DATABASE_URL =
 
 const isProduction = process.env.NODE_ENV === "production";
 
-// An annotation is what a field's label comes from: the editor renders
-// `description` off the JSON Schema, so the same annotation that documents a
-// field here is what an operator reads beside the input. It goes on the base
-// type before any check, because a check would otherwise own it.
-const appointmentIdSchema = Schema.String.annotate({
-  description: "Appointment ID",
-});
+// Rova reads a schema through Standard Schema and asks nothing else of it. The
+// editor labels a path from its key ("Patient Name" from `patientName`), and
+// `z.iso.datetime()` emits `format: "date-time"`, which is what gives the field
+// before/after operators in the condition builder and admits it to the Wait
+// node's date field. A `.describe()` replaces the derived label, so it earns its
+// place only where the key reads badly alone.
+const appointmentIdSchema = z.string().describe("Appointment ID");
 
-// Every field is annotated, nested ones included: the editor lists
-// `appointment.startsAt` as its own entry in the template picker and shows this
-// text beside it, so a field left bare reads as the word "string" to whoever is
-// building the workflow.
-//
-// A datetime field says so with `timestampField`, which annotates it as a
-// date-time. That is what gets the field before/after operators in the condition
-// builder and admits it to the Wait node's date field. `dateField` is the same
-// wire form with a `Date` in a handler, which an Event has no use for: an Event's
-// decoded payload is discarded, and what travels is the JSON the sender sent.
-const appointmentSchema = Schema.Struct({
+const appointmentSchema = z.object({
   id: appointmentIdSchema,
-  startsAt: timestampField("When the appointment starts, ISO 8601"),
-  patientName: Schema.String.annotate({ description: "Patient name" }),
-  status: Schema.String.annotate({ description: "Appointment status" }),
-}).annotate({ description: "The appointment this event is about" });
+  startsAt: z.iso.datetime(),
+  patientName: z.string(),
+  status: z.string(),
+});
 
 /**
  * The Events this app raises: a name, a payload shape, and where the payload
@@ -75,13 +63,13 @@ const appointmentSchema = Schema.Struct({
  *
  *   POST /api/events/app%2Fappointment.created
  */
-const occurredAt = timestampField("When the event was raised, ISO 8601");
+const occurredAt = z.iso.datetime();
 
 const appointmentCreated = defineEvent({
   name: "app/appointment.created",
   label: "Appointment created",
   description: "Raised when a new appointment is booked.",
-  schema: Schema.Struct({ appointment: appointmentSchema, occurredAt }),
+  schema: z.object({ appointment: appointmentSchema, occurredAt }),
   correlationPath: "appointment.id",
 });
 
@@ -89,10 +77,10 @@ const appointmentRescheduled = defineEvent({
   name: "app/appointment.rescheduled",
   label: "Appointment rescheduled",
   description: "Raised when an appointment moves to a new time.",
-  schema: Schema.Struct({
+  schema: z.object({
     appointment: appointmentSchema,
     occurredAt,
-    previousStartsAt: timestampField("The time it was moved from, ISO 8601"),
+    previousStartsAt: z.iso.datetime(),
   }),
   correlationPath: "appointment.id",
 });
@@ -101,10 +89,10 @@ const appointmentCanceled = defineEvent({
   name: "app/appointment.canceled",
   label: "Appointment canceled",
   description: "Raised when an appointment is called off.",
-  schema: Schema.Struct({
+  schema: z.object({
     appointment: appointmentSchema,
     occurredAt,
-    reason: Schema.String.annotate({ description: "Why it was canceled" }),
+    reason: z.string().describe("Why it was canceled"),
   }),
   correlationPath: "appointment.id",
 });
@@ -126,12 +114,10 @@ const paymentSettled = defineEvent({
   name: "billing/payment.settled",
   label: "Payment settled",
   description: "Raised by the billing service when a charge clears.",
-  schema: Schema.Struct({
+  schema: z.object({
     appointmentId: appointmentIdSchema,
-    amountCents: Schema.Number.annotate({
-      description: "Amount settled, in cents",
-    }).check(Schema.isFinite()),
-    settledAt: timestampField("When the payment settled, ISO 8601"),
+    amountCents: z.number().describe("Amount settled, in cents"),
+    settledAt: z.iso.datetime(),
   }),
   correlationPath: "appointmentId",
 });
@@ -141,24 +127,17 @@ const cancelAppointmentAction = createAction({
   label: "Cancel Appointment",
   description: "Cancels an appointment and records the cancellation reason.",
   category: "Appointments",
-  // What the action returns, described the same way its input is. The editor's
-  // template picker is derived from this, so the list that used to be written
-  // out beside it -- and had already fallen a field behind what `execute`
-  // answers with -- is gone. Every field is annotated for the same reason the
-  // input's are: the annotation is what an operator reads beside the path.
-  outputSchema: Schema.Struct({
-    appointmentId: appointmentIdSchema.annotate({
-      description: "Cancelled appointment ID",
-    }),
-    status: Schema.String.annotate({ description: "Cancellation status" }),
-    reason: Schema.String.annotate({ description: "Cancellation reason" }),
-    cancelledAt: timestampField("ISO timestamp of cancellation"),
-  }),
-  schema: Schema.Struct({
+  // What the action returns. The editor derives its template picker from this,
+  // so a downstream node addresses exactly the fields `execute` answers with.
+  outputSchema: z.object({
     appointmentId: appointmentIdSchema,
-    reason: Schema.String.annotate({
-      description: "Cancellation reason",
-    }).check(Schema.isMinLength(1)),
+    status: z.string(),
+    reason: z.string(),
+    cancelledAt: z.iso.datetime(),
+  }),
+  schema: z.object({
+    appointmentId: appointmentIdSchema,
+    reason: z.string().min(1),
   }),
   execute({ payload }) {
     return {
