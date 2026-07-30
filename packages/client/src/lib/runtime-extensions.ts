@@ -80,18 +80,6 @@ const readRuntimeAction = readAs(runtimeActionSchema);
 const readRuntimeTrigger = readAs(runtimeTriggerSchema);
 
 /**
- * The envelope only has to be an object holding two lists. Each entry stays
- * `unknown` here so that one unusable definition does not sink the list it sits
- * in; `keepValidEntries` reads them one at a time below.
- */
-const readRuntimeExtensionsPayload = readAs(
-  Schema.Struct({
-    actions: Schema.optionalKey(Schema.Array(Schema.Unknown)),
-    triggers: Schema.optionalKey(Schema.Array(Schema.Unknown)),
-  })
-);
-
-/**
  * Validates entries one at a time, keeping the ones that pass. A definition the
  * editor cannot use costs only itself: the rest of the host app's actions and
  * triggers still reach the selector.
@@ -114,27 +102,29 @@ export function findRuntimeTrigger(
 }
 
 /**
- * Fill both registries from what `/api/extensions` answered.
+ * Fill both registries from the two legacy members `/api/extensions` answered.
  *
- * The fetch belongs to `lib/extensions.ts`, which hands the whole payload here:
- * one endpoint answers both halves of the surface, so one request reads it. This
- * half is a decoder and nothing else, and it goes when the registries do.
+ * The fetch and the envelope decode belong to `lib/extensions.ts`, which hands
+ * the decoded envelope here: one endpoint answers both halves of the surface, so
+ * one request reads it, and the envelope's own schema is what establishes that
+ * these two members are lists. This half is a decoder and nothing else, and it
+ * goes when the registries do.
  */
-export function hydrateRuntimeExtensions(payload: unknown): void {
-  const lists = readRuntimeExtensionsPayload(payload);
-
+export function hydrateRuntimeExtensions(envelope: {
+  readonly actions?: readonly unknown[];
+  readonly triggers?: readonly unknown[];
+}): void {
   clearRuntimeActions();
   runtimeTriggerRegistry.clear();
 
-  if (!lists) {
-    return;
-  }
-
-  for (const action of keepValidEntries(lists.actions, readRuntimeAction)) {
+  for (const action of keepValidEntries(envelope.actions, readRuntimeAction)) {
     registerRuntimeAction(action);
   }
 
-  for (const trigger of keepValidEntries(lists.triggers, readRuntimeTrigger)) {
+  for (const trigger of keepValidEntries(
+    envelope.triggers,
+    readRuntimeTrigger
+  )) {
     runtimeTriggerRegistry.set(trigger.type, trigger);
   }
 }

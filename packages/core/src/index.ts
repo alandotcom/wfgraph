@@ -3,10 +3,12 @@ export {
   defineEvent,
   type DefineEventInput,
   type EventDefinition,
-  type EventStringPath,
-  type InngestEventOptions,
   type PayloadSchema,
 } from "#src/backend/lib/extensions/define-event";
+export type { InngestEventOptions } from "#src/backend/lib/extensions/inngest-options";
+// The Event-facing name for a payload path resolving to a string, which is what a
+// Correlation Path may be. The type is the shared one the trigger surface uses.
+export type { StringPath as EventStringPath } from "@rova/shared/types/payload-path";
 export {
   type CreateActionInput,
   type CreateActionInputWithOutput,

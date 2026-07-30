@@ -17,7 +17,10 @@ import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
 } from "@rova/shared/extensions/catalog";
-import { readExtensionCatalog } from "@rova/shared/extensions/catalog-wire";
+import {
+  readExtensionCatalog,
+  readExtensionsResponse,
+} from "@rova/shared/extensions/catalog-wire";
 
 let catalog: ExtensionCatalog = emptyExtensionCatalog;
 
@@ -29,8 +32,9 @@ export function getExtensionCatalog(): ExtensionCatalog {
  * Fetch the surface and decode it, before the first render.
  *
  * The endpoint answers the catalog beside what the registries send, so this owns
- * the one request and hands the payload to `hydrateRuntimeExtensions` too. That
- * call goes when those registries do.
+ * the one request: the envelope is decoded once here and each member handed to
+ * the reader that owns it. The `hydrateRuntimeExtensions` call goes when those
+ * registries do.
  *
  * Calling this twice re-reads the surface, which is why nothing memoizes: a
  * memoized promise would answer the second caller with the first call's document.
@@ -41,6 +45,10 @@ export function getExtensionCatalog(): ExtensionCatalog {
  * document repairs.
  */
 export async function hydrateExtensionsFromApi(): Promise<void> {
+  let payload: unknown;
+
+  // The try covers the request and nothing after it, so that a mistake in the
+  // decoding below is thrown rather than read as an unreachable server.
   try {
     // Root-relative, so it has to carry the mount prefix itself: a URL starting
     // with "/" ignores <base href>, which only governs relative references.
@@ -53,26 +61,22 @@ export async function hydrateExtensionsFromApi(): Promise<void> {
       return;
     }
 
-    const payload: unknown = await response.json();
-
-    const decoded = readExtensionCatalog(readCatalogMember(payload));
-    if (decoded) {
-      catalog = decoded;
-    } else {
-      console.warn(
-        "The extension catalog from /api/extensions did not fit the wire schema in @rova/shared/extensions/catalog-wire, so the editor is drawing from the catalog it had. The server serving it is most likely a different build of Rova."
-      );
-    }
-
-    hydrateRuntimeExtensions(payload);
+    payload = await response.json();
   } catch {
     // An unreachable server costs the editor its surface, not its render.
+    return;
   }
-}
 
-/** The `catalog` member of whatever arrived, or `undefined` if there is none. */
-function readCatalogMember(payload: unknown): unknown {
-  return typeof payload === "object" && payload !== null && "catalog" in payload
-    ? payload.catalog
-    : undefined;
+  const envelope = readExtensionsResponse(payload);
+
+  const decoded = readExtensionCatalog(envelope?.catalog);
+  if (decoded) {
+    catalog = decoded;
+  } else {
+    console.warn(
+      "The extension catalog from /api/extensions did not fit the wire schema in @rova/shared/extensions/catalog-wire, so the editor is drawing from the catalog it had. The server serving it is most likely a different build of Rova."
+    );
+  }
+
+  hydrateRuntimeExtensions(envelope ?? {});
 }

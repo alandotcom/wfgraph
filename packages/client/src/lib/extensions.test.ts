@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
+import {
+  emptyExtensionCatalog,
+  type ExtensionCatalog,
+} from "@rova/shared/extensions/catalog";
 import {
   getExtensionCatalog,
   hydrateExtensionsFromApi,
@@ -65,11 +68,16 @@ function respondWith(body: unknown, status = 200): void {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  // The catalog is module state, so a case that wants an unhydrated one imports
+  // the module again rather than reading the one above.
+  vi.resetModules();
 });
 
 describe("hydrateExtensionsFromApi", () => {
-  it("holds the empty catalog before anything is fetched", () => {
-    expect(getExtensionCatalog().actions).toEqual([]);
+  it("holds the empty catalog before anything is fetched", async () => {
+    const fresh = await import("#src/lib/extensions");
+
+    expect(fresh.getExtensionCatalog()).toEqual(emptyExtensionCatalog);
   });
 
   it("decodes the catalog the server assembled", async () => {

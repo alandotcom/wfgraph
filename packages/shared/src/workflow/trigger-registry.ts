@@ -1,10 +1,14 @@
-import { parse as parseCel } from "@marcbachmann/cel-js";
 import type { StandardJSONSchemaV1 } from "@standard-schema/spec";
 import { Schema } from "effect";
 import type { ActionConfigField } from "#src/plugins/registry";
 import type { JsonObject } from "#src/types/json";
-import { asStandardSchema } from "#src/types/schema";
+import type { PayloadPath, StringPath } from "#src/types/payload-path";
+import { asStandardSchema, extractSchemaKeys } from "#src/types/schema";
 import { getValueByPath } from "#src/utils/object-path";
+import {
+  prefixKeyField,
+  rewriteCelExpression,
+} from "#src/workflow/inngest-event-data";
 import type { InputSchema } from "#src/workflow/action-registry";
 import {
   flattenSchemaToReferenceFields,
@@ -94,52 +98,6 @@ export type TriggerPayloadSchema<TPayload> =
   | TriggerSchemaStandard<TPayload>
   | Schema.ConstraintDecoder<TPayload>;
 
-type TriggerPathNonTraversable =
-  | string
-  | number
-  | boolean
-  | bigint
-  | symbol
-  | null
-  | undefined
-  | Date
-  | RegExp
-  | ((...args: never[]) => unknown)
-  | readonly unknown[];
-
-type TriggerPayloadPath<TPayload> = TPayload extends JsonObject
-  ? {
-      [Key in Extract<
-        keyof TPayload,
-        string
-      >]: TPayload[Key] extends TriggerPathNonTraversable
-        ? Key
-        : TPayload[Key] extends JsonObject
-          ? Key | `${Key}.${TriggerPayloadPath<TPayload[Key]>}`
-          : Key;
-    }[Extract<keyof TPayload, string>]
-  : never;
-
-type TriggerPayloadValueAtPath<
-  TPayload,
-  TPath extends string,
-> = TPath extends `${infer Head}.${infer Tail}`
-  ? Head extends keyof TPayload
-    ? TriggerPayloadValueAtPath<TPayload[Head], Tail>
-    : never
-  : TPath extends keyof TPayload
-    ? TPayload[TPath]
-    : never;
-
-type TriggerStringPath<TPayload> = {
-  [Path in TriggerPayloadPath<TPayload>]: Extract<
-    TriggerPayloadValueAtPath<TPayload, Path>,
-    string
-  > extends never
-    ? never
-    : Path;
-}[TriggerPayloadPath<TPayload>];
-
 type InngestConcurrencyOption =
   | number
   | { limit: number; key?: string; scope?: "fn" | "env" | "account" }
@@ -204,7 +162,7 @@ type CreateTriggerInputBase<TPayload extends JsonObject> = {
    * The schema that validates incoming payloads. Write it in Effect Schema,
    * Zod, or arktype -- whichever, it is passed as it is, with no wrapping.
    * Payloads that fail validation classify as `invalid_payload` and are ignored.
-   * The schema's shape also drives `TriggerPayloadPath` autocomplete on path fields
+   * The schema's shape also drives `PayloadPath` autocomplete on path fields
    * like `correlationIdPath`, `eventTypePath`, `concurrency.key`, and `inngest.*.key`.
    */
   schema: TriggerPayloadSchema<TPayload>;
@@ -216,7 +174,7 @@ type CreateTriggerInputBase<TPayload extends JsonObject> = {
    * Used for correlation: replace/cancel actions and wait resumption match against
    * in-flight executions that share the same correlation key.
    */
-  correlationIdPath: TriggerStringPath<TPayload>;
+  correlationIdPath: StringPath<TPayload>;
 
   /**
    * Dot-path into the validated payload that names the Event Type (e.g.
@@ -226,7 +184,7 @@ type CreateTriggerInputBase<TPayload extends JsonObject> = {
    * Inngest event name the Event Type; required in webhook mode, which has
    * no event name to fall back on.
    */
-  eventTypePath?: TriggerStringPath<TPayload>;
+  eventTypePath?: StringPath<TPayload>;
 
   /** Optional description shown beneath the trigger label in the editor. */
   description?: string;
@@ -252,7 +210,7 @@ type CreateTriggerInputBase<TPayload extends JsonObject> = {
 type CreateTriggerInputWebhook<TPayload extends JsonObject> =
   CreateTriggerInputBase<TPayload> & {
     event?: undefined;
-    eventTypePath: TriggerStringPath<TPayload>;
+    eventTypePath: StringPath<TPayload>;
     concurrency?: never;
     inngest?: never;
   };
@@ -268,7 +226,7 @@ type TypedConcurrencyOption<TPayload extends JsonObject> =
       /** Maximum number of concurrent executions. */
       limit: number;
       /** Schema-relative dot-path to partition concurrency by (e.g. `"appointment.id"`). */
-      key?: TriggerPayloadPath<TPayload>;
+      key?: PayloadPath<TPayload>;
       /** Concurrency scope: per-function, per-environment, or per-account. */
       scope?: "fn" | "env" | "account";
     }
@@ -276,7 +234,7 @@ type TypedConcurrencyOption<TPayload extends JsonObject> =
       /** Maximum number of concurrent executions. */
       limit: number;
       /** Schema-relative dot-path to partition concurrency by (e.g. `"appointment.id"`). */
-      key?: TriggerPayloadPath<TPayload>;
+      key?: PayloadPath<TPayload>;
       /** Concurrency scope: per-function, per-environment, or per-account. */
       scope?: "fn" | "env" | "account";
     }>;
@@ -304,7 +262,7 @@ type TypedInngestFunctionOptions<TPayload extends JsonObject> = {
     /** Time window (e.g. `"1m"`, `"1h"`). */
     period: string;
     /** Schema-relative dot-path to partition the rate limit by. */
-    key?: TriggerPayloadPath<TPayload>;
+    key?: PayloadPath<TPayload>;
   };
   /**
    * Limit execution throughput over a rolling window.
@@ -316,7 +274,7 @@ type TypedInngestFunctionOptions<TPayload extends JsonObject> = {
     /** Rolling window duration (e.g. `"1h"`). */
     period: string;
     /** Schema-relative dot-path to partition the throttle by. */
-    key?: TriggerPayloadPath<TPayload>;
+    key?: PayloadPath<TPayload>;
     /** Number of burst executions allowed above the steady-state limit. */
     burst?: number;
   };
@@ -328,7 +286,7 @@ type TypedInngestFunctionOptions<TPayload extends JsonObject> = {
     /** Debounce window (e.g. `"5s"`, `"1m"`). */
     period: string;
     /** Schema-relative dot-path to partition the debounce by. */
-    key?: TriggerPayloadPath<TPayload>;
+    key?: PayloadPath<TPayload>;
     /** Maximum time to wait before forcing execution (e.g. `"1h"`). */
     timeout?: string;
   };
@@ -505,17 +463,6 @@ function validateTriggerPayload<TPayload extends JsonObject>(
   return parsed.value;
 }
 
-function prefixEventDataPath(path: string): string {
-  return `event.data.${path}`;
-}
-
-function prefixKeyField<T extends { key?: string }>(obj: T): T {
-  if (!obj.key) {
-    return obj;
-  }
-  return { ...obj, key: prefixEventDataPath(obj.key) };
-}
-
 function prefixConcurrency(
   concurrency: TypedConcurrencyOption<JsonObject>
 ): InngestConcurrencyOption {
@@ -528,145 +475,6 @@ function prefixConcurrency(
   }
 
   return prefixKeyField(concurrency);
-}
-
-type CelAstNode = {
-  readonly op: string;
-  readonly args: unknown;
-  readonly pos: number;
-};
-
-function isCelAstNode(value: unknown): value is CelAstNode {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "op" in value &&
-    "pos" in value &&
-    typeof value.op === "string" &&
-    typeof value.pos === "number"
-  );
-}
-
-function collectCelIdentifiers(
-  root: CelAstNode
-): Array<{ name: string; pos: number }> {
-  const results: Array<{ name: string; pos: number }> = [];
-
-  function walk(value: unknown): void {
-    if (!isCelAstNode(value)) {
-      if (Array.isArray(value)) {
-        for (const item of value) {
-          walk(item);
-        }
-      }
-      return;
-    }
-
-    if (value.op === "id" && typeof value.args === "string") {
-      results.push({ name: value.args, pos: value.pos });
-      return;
-    }
-
-    walk(value.args);
-  }
-
-  walk(root);
-  return results;
-}
-
-/**
- * The top-level field names a payload schema declares, read off the object the
- * schema library exposes rather than off its JSON Schema.
- *
- * None of the property names below is Standard Schema, which is why this
- * answers `undefined` rather than throwing for a library that publishes none of
- * them -- the callers treat that as "no names known" and leave a CEL expression
- * or a reference list as they found it.
- */
-function fieldNamesOf(declared: unknown): string[] | undefined {
-  return typeof declared === "object" && declared !== null
-    ? Object.keys(declared)
-    : undefined;
-}
-
-/**
- * Three property names, because two libraries and two Effect shapes. Zod calls
- * it `shape`; `Schema.Struct` calls it `fields`; `Schema.StructWithRest` -- the
- * shape an open payload schema has -- carries neither, and exposes the struct it
- * wraps as `schema`, whose own `fields` are the names wanted here.
- *
- * Each check falls through rather than answering, because a property being
- * present says nothing about it holding an object of field names: a payload
- * schema is free to declare a field literally called `shape`.
- */
-function extractSchemaKeys(schema: unknown): string[] | undefined {
-  // An Effect schema is callable, so `typeof` answers "function" for every one
-  // of them. Testing for an object alone would put both Effect branches below
-  // out of reach; `isStandardSchema` above admits both for the same reason.
-  if (
-    (typeof schema !== "object" && typeof schema !== "function") ||
-    schema === null
-  ) {
-    return undefined;
-  }
-
-  if ("shape" in schema) {
-    const names = fieldNamesOf(schema.shape);
-    if (names) {
-      return names;
-    }
-  }
-
-  if ("fields" in schema) {
-    const names = fieldNamesOf(schema.fields);
-    if (names) {
-      return names;
-    }
-  }
-
-  return "schema" in schema ? extractSchemaKeys(schema.schema) : undefined;
-}
-
-function rewriteCelExpression(
-  expression: string,
-  schemaKeys: string[] | undefined
-): string {
-  let ast: CelAstNode;
-  try {
-    const parsed = parseCel(expression);
-    ast = parsed.ast;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Invalid CEL expression in priority.run: ${message}`, {
-      cause: error,
-    });
-  }
-
-  const identifiers = collectCelIdentifiers(ast);
-
-  if (identifiers.length === 0) {
-    return expression;
-  }
-
-  if (schemaKeys) {
-    const keySet = new Set(schemaKeys);
-    for (const id of identifiers) {
-      if (!keySet.has(id.name)) {
-        throw new Error(
-          `Invalid identifier "${id.name}" in priority.run CEL expression — must be a top-level schema key (${schemaKeys.join(", ")})`
-        );
-      }
-    }
-  }
-
-  const sorted = identifiers.toSorted((a, b) => b.pos - a.pos);
-
-  let result = expression;
-  for (const { pos } of sorted) {
-    result = `${result.slice(0, pos)}event.data.${result.slice(pos)}`;
-  }
-
-  return result;
 }
 
 function prefixInngestOptions<TPayload extends JsonObject>(

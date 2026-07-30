@@ -139,3 +139,25 @@ export const extensionCatalogSchema: Schema.Codec<ExtensionCatalog> =
   });
 
 export const readExtensionCatalog = readAs(extensionCatalogSchema);
+
+/**
+ * The envelope `GET /api/extensions` answers, which is where the catalog sits.
+ *
+ * The two legacy lists are lists here, and their entries are `Unknown` so that
+ * one unusable definition does not sink the list it sits in; the client's
+ * runtime-extensions module reads them one at a time. `catalog` stays `Unknown`
+ * so that a catalog which does not fit is answered by `readExtensionCatalog`
+ * above, which reads it all-or-nothing and lets the editor say so, rather than
+ * failing this decode and taking the two lists down with it.
+ *
+ * The route builds the response out of typed values rather than encoding through
+ * this schema, so the members are named in both places and this one is the
+ * contract the browser holds.
+ */
+export const readExtensionsResponse = readAs(
+  Schema.Struct({
+    catalog: Schema.optionalKey(Schema.Unknown),
+    actions: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+    triggers: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+  })
+);

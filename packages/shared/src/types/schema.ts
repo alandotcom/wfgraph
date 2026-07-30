@@ -3,7 +3,8 @@
  * belong in one place: reading a field off a document nobody validated, the one
  * string shape half the contracts are built from, the decode options the strict
  * schemas are read with, the two object shapes every wire schema is built from,
- * and handing a schema to the parts of the codebase that speak Standard Schema.
+ * reading the field names a schema of any library declares, and handing a schema
+ * to the parts of the codebase that speak Standard Schema.
  */
 
 import type {
@@ -167,6 +168,58 @@ export function toStandardSchema<S extends Schema.ConstraintDecoder<unknown>>(
   return Schema.toStandardJSONSchemaV1(
     Schema.toStandardSchemaV1(schema, { parseOptions })
   );
+}
+
+/**
+ * The top-level field names a schema declares, read off the object the schema
+ * library exposes rather than off its JSON Schema.
+ *
+ * None of the three property names is Standard Schema, which is why this answers
+ * `undefined` rather than throwing for a library that publishes none of them --
+ * a caller treats that as "no names known" and leaves a CEL expression or a
+ * reference list as it found it.
+ *
+ * Three names, because two libraries and two Effect shapes. Zod calls it
+ * `shape`; `Schema.Struct` calls it `fields`; `Schema.StructWithRest` -- the
+ * shape an open payload schema has -- carries neither, and exposes the struct it
+ * wraps as `schema`, whose own `fields` are the names wanted here. Each check
+ * falls through rather than answering, because a property being present says
+ * nothing about it holding an object of field names: a payload schema is free to
+ * declare a field literally called `shape`.
+ */
+export function extractSchemaKeys(schema: unknown): string[] | undefined {
+  // An Effect schema is callable, so `typeof` answers "function" for every one
+  // of them. Testing for an object alone would put both Effect branches below
+  // out of reach.
+  if (
+    (typeof schema !== "object" && typeof schema !== "function") ||
+    schema === null
+  ) {
+    return undefined;
+  }
+
+  if ("shape" in schema) {
+    const names = fieldNamesOf(schema.shape);
+    if (names) {
+      return names;
+    }
+  }
+
+  if ("fields" in schema) {
+    const names = fieldNamesOf(schema.fields);
+    if (names) {
+      return names;
+    }
+  }
+
+  return "schema" in schema ? extractSchemaKeys(schema.schema) : undefined;
+}
+
+/** The keys of a field container, or `undefined` if it is not one. */
+function fieldNamesOf(declared: unknown): string[] | undefined {
+  return typeof declared === "object" && declared !== null
+    ? Object.keys(declared)
+    : undefined;
 }
 
 /**

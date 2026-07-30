@@ -159,14 +159,17 @@ it too and the message has to say which kind of thing is at fault.
 and an integration reach the editor as `ExtensionCatalog`
 (`packages/shared/src/extensions/catalog.ts`), which `GET /api/extensions` sends and
 `packages/client/src/lib/extensions.ts` decodes once before the first render, through the
-wire schema in `catalog-wire.ts`. The client holds it as a module value rather than a
-query-cache entry: the surface is fixed for the life of the server process, and the pure
-functions that read it run during render. Every lookup over it (`findAction`, `findEvent`,
-`findIntegration`, `actionsByCategory`) is a pure function in that shared module, so the
-server and the browser run one implementation. That one channel is what will let a plugin
-hold everything it needs in one file: the browser never imports that file. An icon and a
-custom output renderer are React components and cannot be serialized, so those stay an
-explicit browser import in `plugins/ui-registry.ts`.
+wire schema in `catalog-wire.ts`. That module owns the response envelope as well
+(`readExtensionsResponse`), so the client names no member of the answer by hand: the
+catalog is read all-or-nothing, and the two legacy registry lists beside it go to
+`hydrateRuntimeExtensions`, which reads them entry at a time. The client holds the catalog
+as a module value rather than a query-cache entry: the surface is fixed for the life of the
+server process, and the pure functions that read it run during render. Every lookup over it
+(`findAction`, `findEvent`, `findIntegration`, `actionsByCategory`) is a pure function in
+that shared module, so the server and the browser run one implementation. That one channel
+is what will let a plugin hold everything it needs in one file: the browser never imports
+that file. An icon and a custom output renderer are React components and cannot be
+serialized, so those stay an explicit browser import in `plugins/ui-registry.ts`.
 
 `createRovaApp` assembles the catalog with `assembleExtensions`
 (`packages/core/src/backend/lib/extensions/extension-set.ts`) and hands it to
@@ -182,12 +185,19 @@ catalog exist before `defineIntegration` does, and which goes with them.
 and the Correlation Path where that payload carries its Entity Value. It registers
 nothing: the host passes the value to `createRovaApp` under `extensions.events`. The
 schema crosses the Standard Schema bridge once, there, and `payloadFields` is derived on
-the spot, so a schema that cannot describe itself fails at definition. `EventStringPath`
-admits only a path resolving to a string, which is what an Entity Value is. `source`
-separates identity from transport for an umbrella bus that cannot change its event name.
-Inngest flow control is prefixed and its CEL rewritten at definition, so a bad path fails
-where it was written; Inngest `concurrency` and `batchEvents` are refused, the first
-because Concurrency on the Lifecycle Node owns that question and can write a status.
+the spot, so a schema that cannot describe itself fails at definition. A Correlation Path
+is typed as `StringPath` (`packages/shared/src/types/payload-path.ts`), which admits only a
+path resolving to a string, which is what an Entity Value is; the trigger surface types its
+own paths from the same module, and `@rova/core` publishes the name as `EventStringPath`.
+`source` separates identity from transport for an umbrella bus that cannot change its event
+name. Inngest flow control is authored against the payload and translated by
+`rewriteInngestOptions` (`packages/core/src/backend/lib/extensions/inngest-options.ts`),
+which prefixes each `key` and rewrites `priority.run`, so a bad path fails where it was
+written; Inngest `concurrency` and `batchEvents` are refused there, the first because
+Concurrency on the Lifecycle Node owns that question and can write a status. The prefixing
+and the CEL rewrite are `packages/shared/src/workflow/inngest-event-data.ts`, which both an
+Event and a trigger translate through, and `extractSchemaKeys` in `types/schema.ts` is
+where the field names a CEL identifier is checked against come from.
 Which Events start a run and which cancel it is the Workflow Builder's per-workflow
 declaration, never the Event's (ADR-0007).
 
