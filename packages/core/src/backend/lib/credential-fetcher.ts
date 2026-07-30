@@ -29,9 +29,7 @@ const NO_CREDENTIALS: WorkflowCredentials = {};
  * The stored config as the environment-variable names a handler reads it by.
  *
  * Every mapping an integration has is in its credential fields, which the
- * assembled catalog carries, so that is where this reads it -- the database
- * connection the engine's own Database Query action uses included, since it is a
- * catalog entry like any other.
+ * assembled catalog carries, so that is where this reads it.
  */
 function mapIntegrationConfig(
   catalog: ExtensionCatalog,

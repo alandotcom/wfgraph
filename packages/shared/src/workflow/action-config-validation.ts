@@ -215,29 +215,6 @@ function getSystemMissingRequiredFields(input: {
   const { actionType, config } = input;
 
   switch (actionType) {
-    case "HTTP Request": {
-      return isFieldEmpty(config.endpoint)
-        ? [
-            {
-              fieldKey: "endpoint",
-              fieldLabel: "URL",
-            },
-          ]
-        : [];
-    }
-    case "Database Query": {
-      const hasDbQuery = !isFieldEmpty(config.dbQuery);
-      const hasLegacyQuery = !isFieldEmpty(config.query);
-
-      return hasDbQuery || hasLegacyQuery
-        ? []
-        : [
-            {
-              fieldKey: "dbQuery",
-              fieldLabel: "SQL Query",
-            },
-          ];
-    }
     case "Condition": {
       return isFieldEmpty(config.condition)
         ? [

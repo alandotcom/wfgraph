@@ -31,8 +31,8 @@ function readConfigString(
 
 /**
  * The kind of connection an action needs, which is the catalog's answer for every
- * action alike: the engine's own Database Query names "database" there the same
- * way a plugin action names the integration it belongs to.
+ * action alike: a plugin action names the integration it belongs to, and a host's
+ * own does the same when it has one.
  */
 export function requiredIntegrationType(
   actionType: string

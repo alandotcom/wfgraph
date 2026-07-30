@@ -135,18 +135,6 @@ describe("getNodeMissingRequiredFields", () => {
     expect(result).toBeNull();
   });
 
-  it("accepts database query action using legacy query key", () => {
-    const result = getNodeMissingRequiredFields({
-      node: createActionNode({
-        actionType: "Database Query",
-        query: "select 1",
-      }),
-      resolveActionByType,
-    });
-
-    expect(result).toBeNull();
-  });
-
   it("respects showWhen on required plugin fields", () => {
     const hiddenRequiredField = getNodeMissingRequiredFields({
       node: createActionNode({
@@ -240,18 +228,29 @@ describe("getNodeMissingRequiredFields", () => {
     expect(result).toBeNull();
   });
 
+  it("requires a condition expression", () => {
+    const result = getNodeMissingRequiredFields({
+      node: createActionNode({ actionType: "Condition" }),
+      resolveActionByType,
+    });
+
+    expect(result?.missingFields).toEqual([
+      { fieldKey: "condition", fieldLabel: "Condition" },
+    ]);
+  });
+
   it("ignores disabled action nodes", () => {
     const result = getNodeMissingRequiredFields({
       node: createActionNode(
         {
-          actionType: "HTTP Request",
+          actionType: "Condition",
         },
         {
           data: {
             label: "Action Step",
             type: "action",
             enabled: false,
-            config: { actionType: "HTTP Request" },
+            config: { actionType: "Condition" },
           },
         }
       ),
@@ -267,7 +266,7 @@ describe("getMissingRequiredFieldsForNodes", () => {
     const result = getMissingRequiredFieldsForNodes({
       nodes: [
         createTriggerNode(),
-        createActionNode({ actionType: "HTTP Request" }),
+        createActionNode({ actionType: "Condition" }),
         // A wait mode that parks on an Event has to name one, so this fixture
         // names one: what the case is about is the trigger node being left out.
         createActionNode(
@@ -289,8 +288,8 @@ describe("getMissingRequiredFieldsForNodes", () => {
         nodeLabel: "Action Step",
         missingFields: [
           {
-            fieldKey: "endpoint",
-            fieldLabel: "URL",
+            fieldKey: "condition",
+            fieldLabel: "Condition",
           },
         ],
       },

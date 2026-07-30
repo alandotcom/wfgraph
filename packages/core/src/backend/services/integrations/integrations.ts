@@ -69,7 +69,12 @@ function describeUnavailableIntegration(
     .map((integration) => integration.type)
     .toSorted();
 
-  return `Integration "${type}" is not available on this server. Pass it to createRovaApp under extensions.integrations, or pass builtInIntegrations from "@rova/plugins" for the built-in ones. This server holds: ${available.join(", ")}.`;
+  const holds =
+    available.length > 0
+      ? `This server holds: ${available.join(", ")}.`
+      : "This server holds no integration at all.";
+
+  return `Integration "${type}" is not available on this server. Pass it to createRovaApp under extensions.integrations, or pass builtInIntegrations from "@rova/plugins" for the built-in ones. ${holds}`;
 }
 
 function mergeIntegrationConfig(

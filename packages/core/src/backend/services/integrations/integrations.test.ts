@@ -317,7 +317,7 @@ describe("an integration this server does not hold", () => {
         assert.instanceOf(failure, InvalidInput);
         assert.include(failure.error, "extensions.integrations");
         // The list is what shows the cause: this build and the editor's disagree.
-        assert.include(failure.error, "This server holds: database, slack.");
+        assert.include(failure.error, "This server holds: slack.");
       })
     );
 
@@ -340,23 +340,27 @@ describe("an integration this server does not hold", () => {
       })
     );
 
-    // The database connection is a catalog entry the engine assembles itself, so a
-    // connection to it stores like any other and needs nothing passed by a host.
-    it.effect("stores a database connection, which Rova ships", () =>
-      Effect.gen(function* () {
-        const repo = makeIntegrationRepo(storedSlackIntegration);
+    // An empty assembly is the default a host gets by passing no integrations at
+    // all, so the sentence has to read as a sentence rather than trail off after
+    // "This server holds:" with nothing listed.
+    it.effect(
+      "says it holds none, rather than trailing off, on an empty assembly",
+      () =>
+        Effect.gen(function* () {
+          const failure = yield* postIntegrationsTest({
+            type: "notion",
+            config: { apiKey: "secret" },
+          }).pipe(
+            Effect.provide(makeExtensionsLayer(assembleExtensions({}))),
+            Effect.flip
+          );
 
-        const created = yield* postIntegrations({
-          name: "Warehouse",
-          type: "database",
-          config: { url: "postgresql://localhost:5432/app" },
-        }).pipe(
-          Effect.provide(repo.layer),
-          Effect.provide(makeExtensionsLayer(assembleExtensions({})))
-        );
-
-        assert.strictEqual(created.name, "Warehouse");
-      })
+          assert.instanceOf(failure, InvalidInput);
+          assert.include(
+            failure.error,
+            "This server holds no integration at all."
+          );
+        })
     );
   });
 });

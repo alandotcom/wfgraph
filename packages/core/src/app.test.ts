@@ -160,10 +160,9 @@ describe("createRovaApp mounted at the root", () => {
         };
       };
 
-      // The database connection Rova ships is in the catalog beside it, so what a
-      // host passed is one entry of the list rather than the whole of it.
+      // The engine ships no integration of its own, so the catalog holds exactly
+      // what this host passed under extensions.integrations.
       expect(payload.catalog.integrations).toEqual([
-        expect.objectContaining({ type: "database", hasTest: true }),
         expect.objectContaining({ type: "twilio", hasTest: false }),
       ]);
       // The id is computed from the type and the record key, and the field list

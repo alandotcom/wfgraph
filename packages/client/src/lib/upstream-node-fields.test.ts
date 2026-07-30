@@ -143,23 +143,32 @@ describe("upstream-node-fields", () => {
         }),
       }),
     ];
+    surface.actions = [
+      anAction({
+        id: "custom/call-api",
+        outputFields: [
+          { path: "status", description: "Response status", type: "number" },
+          {
+            path: "result",
+            description: "Response body",
+            type: "object",
+          },
+          {
+            path: "result.total",
+            description: "Total count",
+            type: "number",
+          },
+        ],
+      }),
+    ];
 
     const nodes: WorkflowNode[] = [
       anEntryNode({ startEvents: ["app/appointment.created"] }),
       createNode({
-        id: "http-1",
+        id: "call-1",
         type: "action",
-        label: "HTTP",
-        config: {
-          actionType: "HTTP Request",
-          httpOutputSchema: JSON.stringify([
-            {
-              name: "data",
-              type: "object",
-              fields: [{ name: "total", type: "number" }],
-            },
-          ]),
-        },
+        label: "Call API",
+        config: { actionType: "custom/call-api" },
       }),
       createNode({
         id: "wait-1",
@@ -180,9 +189,9 @@ describe("upstream-node-fields", () => {
         id: "e1",
         source: "trigger-1",
         sourceHandle: LIFECYCLE_STARTED_HANDLE,
-        target: "http-1",
+        target: "call-1",
       }),
-      createEdge({ id: "e2", source: "http-1", target: "wait-1" }),
+      createEdge({ id: "e2", source: "call-1", target: "wait-1" }),
       createEdge({ id: "e3", source: "wait-1", target: "condition-1" }),
     ];
 
@@ -193,7 +202,7 @@ describe("upstream-node-fields", () => {
     });
     expect(upstreamNodes.map((node) => node.id)).toEqual([
       "trigger-1",
-      "http-1",
+      "call-1",
       "wait-1",
     ]);
 
@@ -204,7 +213,7 @@ describe("upstream-node-fields", () => {
     });
 
     expect(fields.some((field) => field.path === "data.id")).toBe(true);
-    expect(fields.some((field) => field.path === "data.total")).toBe(true);
+    expect(fields.some((field) => field.path === "result.total")).toBe(true);
     expect(fields.some((field) => field.path === "status")).toBe(true);
   });
 
@@ -292,7 +301,7 @@ describe("upstream-node-fields", () => {
           id: "action-1",
           type: "action",
           label: "Send SMS",
-          config: { actionType: "HTTP Request" },
+          config: { actionType: "custom/send-sms" },
         }),
       ],
       edges: [
@@ -337,13 +346,13 @@ describe("upstream-node-fields", () => {
         id: "on-cancel",
         type: "action",
         label: "Apologise",
-        config: { actionType: "HTTP Request" },
+        config: { actionType: "custom/notify" },
       }),
       createNode({
         id: "either-way",
         type: "action",
         label: "Log it",
-        config: { actionType: "HTTP Request" },
+        config: { actionType: "custom/notify" },
       }),
     ];
 
@@ -598,7 +607,7 @@ describe("upstream-node-fields", () => {
         id: "action-2",
         type: "action",
         label: "Cancel Appointment",
-        config: { actionType: "HTTP Request" },
+        config: { actionType: "custom/notify" },
       }),
     ];
 
@@ -626,7 +635,45 @@ describe("upstream-node-fields", () => {
     ]);
   });
 
+  it("offers nothing from an upstream node whose action type the catalog cannot find", () => {
+    // A stale graph naming a plugin action this build no longer ships. There is
+    // no schema to read fields from, so the picker offers nothing rather than a
+    // placeholder that resolves to nothing at run time.
+    const nodes: WorkflowNode[] = [
+      createNode({
+        id: "action-1",
+        type: "action",
+        label: "Removed Action",
+        config: { actionType: "custom/gone" },
+      }),
+      createNode({
+        id: "action-2",
+        type: "action",
+        label: "Condition",
+        config: { actionType: "Condition" },
+      }),
+    ];
+
+    const fields = getUpstreamFields({
+      currentNodeId: "action-2",
+      nodes,
+      edges: [createEdge({ id: "e1", source: "action-1", target: "action-2" })],
+    });
+
+    expect(fields).toEqual([]);
+  });
+
   it("includes only condition-compatible primitive fields", () => {
+    surface.actions = [
+      anAction({
+        id: "custom/list-items",
+        outputFields: [
+          { path: "items", description: "The items found", type: "array" },
+          { path: "count", description: "Number of items", type: "number" },
+        ],
+      }),
+    ];
+
     const nodes: WorkflowNode[] = [
       createNode({
         id: "trigger-1",
@@ -635,10 +682,10 @@ describe("upstream-node-fields", () => {
         config: {},
       }),
       createNode({
-        id: "db-1",
+        id: "list-1",
         type: "action",
-        label: "DB",
-        config: { actionType: "Database Query" },
+        label: "List",
+        config: { actionType: "custom/list-items" },
       }),
       createNode({
         id: "condition-1",
@@ -649,8 +696,8 @@ describe("upstream-node-fields", () => {
     ];
 
     const edges: WorkflowEdge[] = [
-      createEdge({ id: "e1", source: "trigger-1", target: "db-1" }),
-      createEdge({ id: "e2", source: "db-1", target: "condition-1" }),
+      createEdge({ id: "e1", source: "trigger-1", target: "list-1" }),
+      createEdge({ id: "e2", source: "list-1", target: "condition-1" }),
     ];
 
     const fields = getUpstreamConditionFields({
@@ -660,6 +707,6 @@ describe("upstream-node-fields", () => {
     });
 
     expect(fields.some((field) => field.path === "count")).toBe(true);
-    expect(fields.some((field) => field.path === "rows")).toBe(false);
+    expect(fields.some((field) => field.path === "items")).toBe(false);
   });
 });

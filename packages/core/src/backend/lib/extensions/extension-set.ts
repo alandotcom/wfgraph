@@ -20,11 +20,7 @@ import type {
 } from "@rova/shared/extensions/catalog";
 import type { RuntimeExtensionActionDefinition } from "@rova/shared/workflow/action-registry";
 import type { StepFactory } from "#src/backend/lib/steps/step-runner";
-import {
-  builtInActions,
-  builtInSteps,
-  databaseIntegration,
-} from "#src/backend/lib/extensions/built-ins";
+import { builtInActions } from "#src/backend/lib/extensions/built-ins";
 import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
 import type { AnyEventDefinition } from "#src/backend/lib/extensions/define-event";
 import {
@@ -284,19 +280,17 @@ export function assembleExtensions(input: RovaExtensions): ExtensionSet {
 
   // The built-ins go in first, so anything colliding with one of them is caught
   // by the same check as any other collision.
+  // Neither carries a step: the engine dispatches to Condition and Wait itself
+  // during traversal, so `stepFor` never needs an entry for them and the map
+  // starts empty.
   const into: Assembly = {
     actions: [...builtInActions],
-    steps: new Map(
-      builtInSteps.map((entry) => [entry.id, entry.step.implement(entry.id)])
-    ),
+    steps: new Map(),
     tests: new Map(),
   };
 
-  // The database goes in first for the same reason the built-in actions do, and it
-  // is what makes a host integration typed "database" a collision rather than a
-  // silent replacement of the engine's own connection form.
-  const integrations = [databaseIntegration, ...(input.integrations ?? [])].map(
-    (integration) => readIntegration(integration, into)
+  const integrations = (input.integrations ?? []).map((integration) =>
+    readIntegration(integration, into)
   );
 
   for (const action of input.actions ?? []) {

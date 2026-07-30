@@ -66,7 +66,11 @@ function actionNode(id: string): WorkflowNode {
     id,
     type: "action",
     position: { x: 0, y: 0 },
-    data: { label: id, type: "action", config: { actionType: "HTTP Request" } },
+    data: {
+      label: id,
+      type: "action",
+      config: { actionType: "custom/send-message" },
+    },
   };
 }
 

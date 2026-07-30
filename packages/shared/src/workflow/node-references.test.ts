@@ -335,10 +335,10 @@ describe("resolveOutputPath", () => {
     expect(resolveOutputPath(output, "appointment.id")).toBe("appt_1");
   });
 
-  // The HTTP Request step files its status beside the body inside the payload,
-  // rather than beside `success`, where the unwrap swallowed it and
-  // `{{@n1:HTTP Request.status}}` resolved to nothing.
-  it("reaches the status an HTTP Request filed beside its body", () => {
+  // A step's data can carry several sibling fields beside the main payload --
+  // a status code beside a response body, a count beside a list -- and each is
+  // reached the same way a lone field is: through the unwrap, not around it.
+  it("reaches a field a step filed beside another one", () => {
     const output = {
       success: true,
       data: { body: { id: "evt_1" }, status: 201 },

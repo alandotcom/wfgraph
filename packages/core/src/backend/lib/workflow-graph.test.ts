@@ -28,7 +28,7 @@ function createActionNode(id = "action_1"): WorkflowNode {
     data: {
       label: "Action",
       type: "action",
-      config: { actionType: "HTTP Request" },
+      config: { actionType: "custom/send-message" },
     },
   };
 }

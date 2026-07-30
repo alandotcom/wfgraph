@@ -280,8 +280,7 @@ function getMissingIntegrations(
       continue;
     }
 
-    // The catalog says which integration an action needs, the engine's own
-    // Database Query included.
+    // The catalog says which integration an action needs.
     const action = findAction(getExtensionCatalog(), actionType);
     const requiredIntegrationType = action?.integration;
 

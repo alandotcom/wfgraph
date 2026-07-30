@@ -23,6 +23,6 @@ describe("condition-branch helpers", () => {
     expect(isConditionActionType("Condition")).toBe(true);
     expect(isConditionActionType(" condition ")).toBe(true);
     expect(isConditionActionType("CONDITION")).toBe(true);
-    expect(isConditionActionType("HTTP Request")).toBe(false);
+    expect(isConditionActionType("twilio/send-sms")).toBe(false);
   });
 });

@@ -73,7 +73,8 @@ function createTriggerToActionGraph(actionLabel?: string) {
 
 // The engine reaches an action's step and its label through the dispatch port
 // the app builds, so every action these cases run is assembled here the way a
-// host's own would be. The built-in four ride in on the same assembly.
+// host's own would be. The built-in two, Condition and Wait, ride in on the
+// same assembly.
 const actions = createWorkflowActions(
   assembleExtensions({
     actions: [
@@ -187,6 +188,45 @@ describe("host action execution", () => {
 
     expect(result.results.action_1?.success).toBe(false);
     expect(result.results.action_1?.error).toBe("Donor not found");
+  });
+
+  // A stored graph naming an action nothing assembled -- an id from a deleted
+  // integration, a typo, a build served by a different Rova than the one that
+  // saved it -- fails the node by name rather than the run. The message lists
+  // the built-ins the surface still ships, which is Condition and Wait now that
+  // neither HTTP nor database work rides in on an empty assembly.
+  it("fails a node naming an action nothing assembled", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createSerializedWorkflowGraph({
+          nodes: [
+            createTriggerNode("trigger_1"),
+            {
+              id: "action_1",
+              type: "action",
+              position: { x: 100, y: 100 },
+              data: {
+                label: "Ghost Action",
+                type: "action",
+                config: { actionType: "nobody/knows" },
+              },
+            },
+          ],
+          edges: [{ id: "edge_1", source: "trigger_1", target: "action_1" }],
+        }),
+        executionId: "exec_789",
+        workflowId: "workflow_1",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions
+    );
+
+    expect(result.results.action_1?.success).toBe(false);
+    expect(result.results.action_1?.error).toContain(
+      'Unknown action type: "nobody/knows"'
+    );
+    expect(result.results.action_1?.error).toContain("Condition, Wait");
   });
 });
 

@@ -30,7 +30,8 @@ const wrappedOutputAction = createAction({
 
 // The engine reaches an action's step and its label through the dispatch port
 // the app builds, so the host action these cases run reaches the engine the way
-// a host's would. The built-in four ride in on the same assembly.
+// a host's would. The built-in two, Condition and Wait, ride in on the same
+// assembly.
 const actions = createWorkflowActions(
   assembleExtensions({ actions: [wrappedOutputAction] }),
   stubRovaRuntime()

@@ -118,8 +118,8 @@ export function createWorkflowRunRequestedFunction(
       // step that failed instead of replaying the graph from the trigger. That
       // is what makes retrying safe here, and it is why this is not 0: without
       // it a single transient fault - a provider 502, a blip writing a step log
-      // - ends the whole run with no second attempt. Only HTTP Request carries
-      // its own attempt loop; every plugin action depends on this.
+      // - ends the whole run with no second attempt. Every plugin action
+      // depends on this.
       //
       // The residual risk is a non-idempotent step that fails *after* its side
       // effect landed (a send that times out waiting for the response): the

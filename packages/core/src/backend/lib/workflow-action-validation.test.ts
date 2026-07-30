@@ -11,7 +11,7 @@ import {
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 // An action's required fields come from the catalog a save reads, and the
-// built-in four ride in on an empty assembly.
+// built-in two, Condition and Wait, ride in on an empty assembly.
 const builtInCatalog = assembleExtensions({}).catalog;
 
 function createTriggerNode(): WorkflowNode {
@@ -63,8 +63,8 @@ describe("validateWorkflowActionConfigs", () => {
       [
         createTriggerNode(),
         createActionNode({
-          actionType: "HTTP Request",
-          endpoint: "https://example.com/webhook",
+          actionType: "Condition",
+          condition: "true",
         }),
       ],
       builtInCatalog
@@ -104,16 +104,16 @@ describe("validateWorkflowActionConfigs", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("rejects HTTP Request actions without an endpoint", () => {
+  it("rejects Condition actions without a condition", () => {
     const result = validateWorkflowActionConfigs(
-      [createTriggerNode(), createActionNode({ actionType: "HTTP Request" })],
+      [createTriggerNode(), createActionNode({ actionType: "Condition" })],
       builtInCatalog
     );
 
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.error).toContain("missing required fields");
-      expect(result.error).toContain("URL");
+      expect(result.error).toContain("Condition");
     }
   });
 

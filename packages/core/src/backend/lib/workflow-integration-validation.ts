@@ -89,9 +89,8 @@ function extractRequiredIntegrationRequirements(
     }
 
     const actionType = readConfigString(node.data.config, "actionType");
-    // Which integration an action needs is the catalog's answer, the engine's own
-    // Database Query included: it names "database" in `built-ins.ts` the same way a
-    // plugin action names the integration it belongs to.
+    // Which integration an action needs is the catalog's answer, the same for a
+    // plugin action and a host's own.
     const requiredType = actionType
       ? resolveActionByType(actionType)?.integration
       : undefined;

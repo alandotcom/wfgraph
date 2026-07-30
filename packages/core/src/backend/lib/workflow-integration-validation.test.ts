@@ -11,10 +11,10 @@ import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 // Which integration an action needs is the catalog's answer, and the built-in
-// four ride in on an empty assembly.
+// two ride in on an empty assembly.
 const builtInCatalog = assembleExtensions({}).catalog;
 
-/** The built-ins beside a host action that names a connection of its own. */
+/** The built-ins beside two host actions, each naming a connection of its own. */
 const slackCatalog: ExtensionCatalog = {
   ...builtInCatalog,
   actions: [
@@ -25,6 +25,15 @@ const slackCatalog: ExtensionCatalog = {
       description: "Sends a message",
       category: "Custom",
       integration: "slack",
+      configFields: [],
+      outputFields: [],
+    },
+    {
+      id: "custom/send-sms",
+      label: "Send SMS",
+      description: "Sends an SMS",
+      category: "Custom",
+      integration: "twilio",
       configFields: [],
       outputFields: [],
     },
@@ -74,8 +83,8 @@ describe("extractRequiredIntegrationIds", () => {
     const ids = extractRequiredIntegrationIds(
       [
         createActionNode({
-          actionType: "Database Query",
-          integrationId: "db_1",
+          actionType: "custom/send-sms",
+          integrationId: "sms_1",
         }),
         {
           ...createActionNode({
@@ -88,14 +97,14 @@ describe("extractRequiredIntegrationIds", () => {
       slackCatalog
     );
 
-    expect(ids).toEqual(["db_1", "slack_1"]);
+    expect(ids).toEqual(["sms_1", "slack_1"]);
   });
 
   it("ignores integration IDs on actions that do not require integrations", () => {
     const ids = extractRequiredIntegrationIds(
       [
         createActionNode({
-          actionType: "HTTP Request",
+          actionType: "Condition",
           integrationId: "stale_integration_id",
         }),
         {
@@ -114,8 +123,8 @@ describe("extractRequiredIntegrationIds", () => {
 
   it("ignores disabled nodes and empty values", () => {
     const disabledNode = createActionNode({
-      actionType: "Database Query",
-      integrationId: "db_1",
+      actionType: "custom/send-message",
+      integrationId: "slack_1",
     });
 
     const ids = extractRequiredIntegrationIds(
@@ -128,14 +137,14 @@ describe("extractRequiredIntegrationIds", () => {
           },
         },
         createActionNode({
-          actionType: "Database Query",
+          actionType: "custom/send-message",
           integrationId: "   ",
         }),
         createActionNode({
-          actionType: "Database Query",
+          actionType: "custom/send-message",
         }),
       ],
-      builtInCatalog
+      slackCatalog
     );
 
     expect(ids).toEqual([]);
@@ -145,25 +154,25 @@ describe("extractRequiredIntegrationIds", () => {
 describe("validateWorkflowIntegrations", () => {
   it("deduplicates integration ids before the one read it makes", async () => {
     const getIntegrationTypesByIds = vi.fn(() =>
-      Effect.succeed({ shared_integration: "database" })
+      Effect.succeed({ shared_integration: "slack" })
     );
 
     const result = await Effect.runPromise(
       validateWorkflowIntegrations(
         [
           createActionNode({
-            actionType: "Database Query",
+            actionType: "custom/send-message",
             integrationId: "shared_integration",
           }),
           {
             ...createActionNode({
-              actionType: "Database Query",
+              actionType: "custom/send-message",
               integrationId: "shared_integration",
             }),
             id: "action_2",
           },
         ],
-        builtInCatalog,
+        slackCatalog,
         getIntegrationTypesByIds
       )
     );
@@ -182,8 +191,8 @@ describe("validateWorkflowIntegrations", () => {
       validateWorkflowIntegrations(
         [
           createActionNode({
-            actionType: "Database Query",
-            integrationId: "db_1",
+            actionType: "custom/send-sms",
+            integrationId: "sms_1",
           }),
           {
             ...createActionNode({
@@ -198,7 +207,7 @@ describe("validateWorkflowIntegrations", () => {
       )
     );
 
-    expect(result).toEqual({ valid: false, invalidIds: ["db_1"] });
+    expect(result).toEqual({ valid: false, invalidIds: ["sms_1"] });
   });
 
   // The catalog is what a save reads. An action it holds carries the integration
@@ -225,12 +234,12 @@ describe("validateWorkflowIntegrations", () => {
       validateWorkflowIntegrations(
         [
           createActionNode({
-            actionType: "Database Query",
+            actionType: "custom/send-message",
             integrationId: "int_1",
           }),
         ],
-        builtInCatalog,
-        () => Effect.succeed({ int_1: "slack" })
+        slackCatalog,
+        () => Effect.succeed({ int_1: "twilio" })
       )
     );
 
@@ -244,18 +253,18 @@ describe("validateWorkflowIntegrations", () => {
       validateWorkflowIntegrations(
         [
           createActionNode({
-            actionType: "Database Query",
+            actionType: "custom/send-message",
             integrationId: "missing_1",
           }),
           {
             ...createActionNode({
-              actionType: "Database Query",
+              actionType: "custom/send-sms",
               integrationId: "wrong_type_1",
             }),
             id: "action_2",
           },
         ],
-        builtInCatalog,
+        slackCatalog,
         () => Effect.succeed({ wrong_type_1: "slack" })
       )
     );
@@ -270,7 +279,7 @@ describe("validateWorkflowIntegrations", () => {
 
     const result = await Effect.runPromise(
       validateWorkflowIntegrations(
-        [createActionNode({ actionType: "HTTP Request" })],
+        [createActionNode({ actionType: "Condition" })],
         builtInCatalog,
         getIntegrationTypesByIds
       )
@@ -285,11 +294,11 @@ describe("validateWorkflowIntegrations", () => {
       validateWorkflowIntegrations(
         [
           createActionNode({
-            actionType: "Database Query",
+            actionType: "custom/send-message",
             integrationId: "missing_1",
           }),
         ],
-        builtInCatalog,
+        slackCatalog,
         () => Effect.succeed({}),
         { strictValidation: false }
       )

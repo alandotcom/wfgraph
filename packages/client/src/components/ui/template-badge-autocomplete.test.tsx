@@ -7,6 +7,7 @@ import {
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
 import {
+  type ActionMetadata,
   emptyExtensionCatalog,
   type EventMetadata,
 } from "@rova/shared/extensions/catalog";
@@ -15,15 +16,20 @@ import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 import { TemplateBadgeInput } from "./template-badge-input";
 import { TemplateBadgeTextarea } from "./template-badge-textarea";
 
-// The entry node offers the payload fields of the Events its rules start on, so a
-// case that wants a field from it says what the app declares. `vi.hoisted` is what
-// lets the mock factory below read this.
-const surface = vi.hoisted(() => ({ events: [] as EventMetadata[] }));
+// The entry node offers the payload fields of the Events its rules start on, and
+// an action node offers its own catalog entry's output fields, so a case that
+// wants either says what the app declares. `vi.hoisted` is what lets the mock
+// factory below read this.
+const surface = vi.hoisted(() => ({
+  events: [] as EventMetadata[],
+  actions: [] as ActionMetadata[],
+}));
 
 vi.mock("#src/lib/extensions", () => ({
   getExtensionCatalog: () => ({
     ...emptyExtensionCatalog,
     events: surface.events,
+    actions: surface.actions,
   }),
 }));
 
@@ -45,7 +51,18 @@ const APPOINTMENT_CREATED: EventMetadata = {
 };
 
 const TRIGGER_TEMPLATE = "{{@trigger_1:Webhook.occurredAt}}";
-const HTTP_STATUS_TEMPLATE = "{{@http_1:HTTP Request.status}}";
+const SEND_MESSAGE_STATUS_TEMPLATE = "{{@action_1:Send Message.status}}";
+
+const SEND_MESSAGE_ACTION: ActionMetadata = {
+  id: "custom/send-message",
+  label: "Send Message",
+  description: "Sends a message",
+  category: "Custom",
+  configFields: [],
+  outputFields: [
+    { path: "status", description: "Delivery status", type: "number" },
+  ],
+};
 
 function seedTemplateContext(selectedNodeId = "wait_1") {
   const store = getDefaultStore();
@@ -332,6 +349,7 @@ describe("Template badge autocomplete", () => {
   });
 
   it("uses currentNodeId for autocomplete when no node is selected in the canvas", async () => {
+    surface.actions = [SEND_MESSAGE_ACTION];
     const store = getDefaultStore();
     const nodes: WorkflowNode[] = [
       {
@@ -343,12 +361,12 @@ describe("Template badge autocomplete", () => {
         },
       },
       {
-        id: "http_1",
+        id: "action_1",
         position: { x: 240, y: 0 },
         data: {
-          label: "HTTP Request",
+          label: "Send Message",
           type: "action",
-          config: { actionType: "HTTP Request" },
+          config: { actionType: "custom/send-message" },
         },
       },
       {
@@ -362,8 +380,8 @@ describe("Template badge autocomplete", () => {
       },
     ];
     const edges: WorkflowEdge[] = [
-      { id: "edge_1", source: "trigger_1", target: "http_1" },
-      { id: "edge_2", source: "http_1", target: "condition_1" },
+      { id: "edge_1", source: "trigger_1", target: "action_1" },
+      { id: "edge_2", source: "action_1", target: "condition_1" },
     ];
 
     store.set(loadWorkflowGraphAtom, { nodes, edges });
@@ -382,15 +400,15 @@ describe("Template badge autocomplete", () => {
     typeAtSymbol(textbox);
 
     const option = await waitFor(() =>
-      findAutocompleteOptionByText("HTTP Request.status")
+      findAutocompleteOptionByText("Send Message.status")
     );
     fireEvent.mouseDown(option);
 
     await waitFor(() => {
-      expect(latestValue).toBe(HTTP_STATUS_TEMPLATE);
+      expect(latestValue).toBe(SEND_MESSAGE_STATUS_TEMPLATE);
       const badge = textbox.querySelector("[data-template]");
       expect(badge).toBeTruthy();
-      expect(badge?.textContent).toBe("HTTP Request.status");
+      expect(badge?.textContent).toBe("Send Message.status");
     });
   });
 });

@@ -5,14 +5,7 @@ import {
 } from "@xyflow/react";
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
-import {
-  AlertTriangle,
-  Database,
-  EyeOff,
-  GitBranch,
-  Hourglass,
-  Zap,
-} from "lucide-react";
+import { AlertTriangle, EyeOff, GitBranch, Hourglass, Zap } from "lucide-react";
 import { Schema } from "effect";
 import { memo, useMemo, useState } from "react";
 import {
@@ -317,9 +310,8 @@ const getModelDisplayName = (modelId: string): string => {
 };
 
 // The badge over an action node: the integration it belongs to, by the label that
-// integration goes by. An action belonging to none reads as "System", which is the
-// engine's own -- and Database Query is not one of those, because it names the
-// database connection it runs against.
+// integration goes by. An action belonging to none reads as "System", which is
+// the engine's own: Condition and Wait, neither of which names a connection.
 const getIntegrationFromActionType = (actionType: string): string => {
   const catalog = getExtensionCatalog();
   const integrationType = findAction(catalog, actionType)?.integration;
@@ -330,7 +322,7 @@ const getIntegrationFromActionType = (actionType: string): string => {
 };
 
 // Whether this action needs a connection, which the catalog answers for every
-// action alike: the engine's own Database Query names "database" there too.
+// action alike.
 const requiresIntegration = (actionType: string): boolean =>
   Boolean(findAction(getExtensionCatalog(), actionType)?.integration);
 
@@ -338,10 +330,6 @@ const requiresIntegration = (actionType: string): boolean =>
 const getProviderLogo = (actionType: string) => {
   // Check for system actions first (non-plugin)
   switch (actionType) {
-    case "HTTP Request":
-      return <Zap className="size-12 text-amber-300" strokeWidth={1.5} />;
-    case "Database Query":
-      return <Database className="size-12 text-blue-300" strokeWidth={1.5} />;
     case "Condition":
       return <GitBranch className="size-12 text-pink-300" strokeWidth={1.5} />;
     case "Wait":

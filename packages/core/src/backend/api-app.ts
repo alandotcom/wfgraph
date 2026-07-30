@@ -422,7 +422,7 @@ export function createApiApp(options: CreateApiAppOptions) {
     })
     // The catalog is the whole surface in one document, and the only channel the
     // editor learns it through: an Event, an action and an integration all reach it
-    // here, the four built-ins and a host's own actions included.
+    // here, the built-in Condition and Wait and a host's own actions included.
     .get("/extensions", async (c) =>
       c.json({
         catalog: (await runtime.runPromise(Extensions)).catalog,

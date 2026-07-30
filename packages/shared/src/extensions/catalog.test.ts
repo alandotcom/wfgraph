@@ -33,13 +33,13 @@ const catalog: ExtensionCatalog = {
   ],
   actions: [
     {
-      id: "HTTP Request",
-      label: "HTTP Request",
-      description: "Make an HTTP request to any API",
+      id: "Log Event",
+      label: "Log Event",
+      description: "Write an entry to the run log",
       category: "System",
       configFields: [],
       outputFields: [
-        { path: "status", description: "HTTP status code", type: "number" },
+        { path: "status", description: "Log write status", type: "number" },
       ],
     },
     {
@@ -118,7 +118,7 @@ describe("actionsByCategory", () => {
   it("groups every action under its own category, in catalog order", () => {
     expect(actionsByCategory(catalog)).toEqual({
       System: [
-        findAction(catalog, "HTTP Request"),
+        findAction(catalog, "Log Event"),
         findAction(catalog, "Condition"),
       ],
       Twilio: [findAction(catalog, "twilio/send-sms")],

@@ -1,11 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { HelpCircle, Plus, Settings, Zap } from "lucide-react";
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo } from "react";
 import { ConfigureConnectionOverlay } from "#src/components/overlays/add-connection-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { Button } from "#src/components/ui/button";
-import { CodeEditor } from "#src/components/ui/code-editor";
 import { Input } from "#src/components/ui/input";
 import { IntegrationIcon } from "#src/components/ui/integration-icon";
 import { IntegrationSelector } from "#src/components/ui/integration-selector";
@@ -18,12 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "#src/components/ui/select";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "#src/components/ui/tabs";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import { TimezoneSelect } from "#src/components/ui/timezone-select";
 import {
@@ -41,15 +34,9 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { actionsByCategory, findAction } from "@rova/shared/extensions/catalog";
 import { DEFAULT_WAIT_TIMEOUT } from "@rova/shared/workflow/wait-subscription";
-import {
-  parseWorkflowSchemaFieldsOrJsonSchema,
-  parseWorkflowSchemaFieldsString,
-  workflowSchemaFieldsToJsonSchemaDocument,
-} from "@rova/shared/workflow/schema-codec";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";
-import { SchemaBuilder } from "./schema-builder";
 import { WaitEventSelect } from "./wait-event-select";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 
@@ -67,8 +54,6 @@ type CategoryActionOption = {
   integration?: string;
 };
 
-type SchemaEditorMode = "builder" | "json";
-
 function readConfigString(
   config: Record<string, unknown> | undefined,
   key: string,
@@ -76,18 +61,6 @@ function readConfigString(
 ): string {
   const value = config?.[key];
   return typeof value === "string" ? value : fallback;
-}
-
-function isSchemaEditorMode(value: string): value is SchemaEditorMode {
-  return value === "builder" || value === "json";
-}
-
-function readOutputSchema(
-  config: Record<string, unknown>,
-  key: "dbOutputSchema" | "httpOutputSchema"
-): string {
-  const schema = config[key];
-  return typeof schema === "string" ? schema : "";
 }
 
 function OptionLogo({
@@ -114,267 +87,6 @@ function OptionLogo({
       src={normalizedLogoUrl}
       width={16}
     />
-  );
-}
-
-function OutputSchemaEditor({
-  config,
-  outputSchemaKey,
-  onUpdateConfig,
-  disabled,
-}: {
-  config: Record<string, unknown>;
-  outputSchemaKey: "dbOutputSchema" | "httpOutputSchema";
-  onUpdateConfig: UpdateNodeConfig;
-  disabled: boolean;
-}) {
-  const [schemaEditorMode, setSchemaEditorMode] =
-    useState<SchemaEditorMode>("builder");
-  const schemaValue = readOutputSchema(config, outputSchemaKey);
-  const schema = useMemo(
-    () => parseWorkflowSchemaFieldsString(schemaValue),
-    [schemaValue]
-  );
-  const schemaJsonValue = useMemo(
-    () =>
-      JSON.stringify(workflowSchemaFieldsToJsonSchemaDocument(schema), null, 2),
-    [schema]
-  );
-  const [schemaJsonDraft, setSchemaJsonDraft] = useState(schemaJsonValue);
-  const [schemaJsonError, setSchemaJsonError] = useState("");
-
-  const handleSchemaJsonChange = (nextValue: string) => {
-    setSchemaJsonDraft(nextValue);
-
-    if (!nextValue.trim()) {
-      onUpdateConfig({ [outputSchemaKey]: "" });
-      setSchemaJsonError("");
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(nextValue);
-      const parsedSchema = parseWorkflowSchemaFieldsOrJsonSchema(parsed);
-
-      if (!parsedSchema) {
-        setSchemaJsonError(
-          "Schema must be either a field array or a JSON Schema object with top-level properties."
-        );
-        return;
-      }
-
-      onUpdateConfig({ [outputSchemaKey]: JSON.stringify(parsedSchema) });
-      setSchemaJsonError("");
-    } catch {
-      setSchemaJsonError("Schema is not valid JSON.");
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      <Label>Output Schema (Optional)</Label>
-      <Tabs
-        onValueChange={(value) => {
-          if (!isSchemaEditorMode(value)) {
-            return;
-          }
-
-          setSchemaEditorMode(value);
-          if (value === "json") {
-            setSchemaJsonDraft(schemaJsonValue);
-            setSchemaJsonError("");
-          }
-        }}
-        value={schemaEditorMode}
-      >
-        <TabsList className="grid w-full max-w-[280px] grid-cols-2">
-          <TabsTrigger value="builder">Builder</TabsTrigger>
-          <TabsTrigger value="json">JSON Schema</TabsTrigger>
-        </TabsList>
-        <TabsContent className="space-y-3" value="builder">
-          <SchemaBuilder
-            disabled={disabled}
-            onChange={(nextSchema) =>
-              onUpdateConfig({ [outputSchemaKey]: JSON.stringify(nextSchema) })
-            }
-            schema={schema}
-          />
-        </TabsContent>
-        <TabsContent className="space-y-3" value="json">
-          <div className="overflow-hidden rounded-md border">
-            <CodeEditor
-              defaultLanguage="json"
-              height="230px"
-              onChange={(value) => handleSchemaJsonChange(value || "")}
-              options={{
-                minimap: { enabled: false },
-                lineNumbers: "on",
-                scrollBeyondLastLine: false,
-                fontSize: 12,
-                readOnly: disabled,
-                wordWrap: "on",
-              }}
-              value={schemaJsonDraft}
-            />
-          </div>
-          <div className="min-h-5">
-            {schemaJsonError ? (
-              <p className="text-destructive text-xs">{schemaJsonError}</p>
-            ) : (
-              <p className="text-muted-foreground text-xs">
-                Changes auto-apply when JSON is valid. Supports top-level JSON
-                Schema <code>properties</code>.
-              </p>
-            )}
-          </div>
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
-
-// Database Query fields component
-function DatabaseQueryFields({
-  config,
-  onUpdateConfig,
-  disabled,
-}: {
-  config: Record<string, unknown>;
-  onUpdateConfig: UpdateNodeConfig;
-  disabled: boolean;
-}) {
-  return (
-    <>
-      <div className="space-y-2">
-        <Label htmlFor="dbQuery">SQL Query</Label>
-        <div className="overflow-hidden rounded-md border">
-          <CodeEditor
-            defaultLanguage="sql"
-            height="150px"
-            id="dbQuery"
-            onChange={(value) => onUpdateConfig({ dbQuery: value || "" })}
-            options={{
-              minimap: { enabled: false },
-              lineNumbers: "on",
-              scrollBeyondLastLine: false,
-              fontSize: 12,
-              readOnly: disabled,
-              wordWrap: "off",
-            }}
-            value={readConfigString(config, "dbQuery")}
-          />
-        </div>
-        <p className="text-muted-foreground text-xs">
-          The DATABASE_URL from your project integrations will be used to
-          execute this query.
-        </p>
-      </div>
-      <OutputSchemaEditor
-        config={config}
-        disabled={disabled}
-        onUpdateConfig={onUpdateConfig}
-        outputSchemaKey="dbOutputSchema"
-      />
-    </>
-  );
-}
-
-// HTTP Request fields component
-function HttpRequestFields({
-  config,
-  onUpdateConfig,
-  disabled,
-}: {
-  config: Record<string, unknown>;
-  onUpdateConfig: UpdateNodeConfig;
-  disabled: boolean;
-}) {
-  return (
-    <>
-      <div className="space-y-2">
-        <Label htmlFor="httpMethod">HTTP Method</Label>
-        <Select
-          disabled={disabled}
-          onValueChange={(value) => onUpdateConfig({ httpMethod: value })}
-          value={readConfigString(config, "httpMethod", "POST")}
-        >
-          <SelectTrigger className="w-full" id="httpMethod">
-            <SelectValue placeholder="Select method" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="GET">GET</SelectItem>
-            <SelectItem value="POST">POST</SelectItem>
-            <SelectItem value="PUT">PUT</SelectItem>
-            <SelectItem value="PATCH">PATCH</SelectItem>
-            <SelectItem value="DELETE">DELETE</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="endpoint">URL</Label>
-        <TemplateBadgeInput
-          disabled={disabled}
-          id="endpoint"
-          onChange={(value) => onUpdateConfig({ endpoint: value })}
-          placeholder="https://api.example.com/endpoint or {{NodeName.url}}"
-          value={readConfigString(config, "endpoint")}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="httpHeaders">Headers (JSON)</Label>
-        <div className="overflow-hidden rounded-md border">
-          <CodeEditor
-            defaultLanguage="json"
-            height="100px"
-            id="httpHeaders"
-            onChange={(value) => onUpdateConfig({ httpHeaders: value || "{}" })}
-            options={{
-              minimap: { enabled: false },
-              lineNumbers: "off",
-              scrollBeyondLastLine: false,
-              fontSize: 12,
-              readOnly: disabled,
-              wordWrap: "off",
-            }}
-            value={readConfigString(config, "httpHeaders", "{}")}
-          />
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="httpBody">Body (JSON)</Label>
-        <div
-          className={`overflow-hidden rounded-md border ${config?.httpMethod === "GET" ? "opacity-50" : ""}`}
-        >
-          <CodeEditor
-            defaultLanguage="json"
-            height="120px"
-            id="httpBody"
-            onChange={(value) => onUpdateConfig({ httpBody: value || "{}" })}
-            options={{
-              minimap: { enabled: false },
-              lineNumbers: "off",
-              scrollBeyondLastLine: false,
-              fontSize: 12,
-              readOnly: config?.httpMethod === "GET" || disabled,
-              domReadOnly: config?.httpMethod === "GET" || disabled,
-              wordWrap: "off",
-            }}
-            value={readConfigString(config, "httpBody", "{}")}
-          />
-        </div>
-        {config?.httpMethod === "GET" && (
-          <p className="text-muted-foreground text-xs">
-            Body is disabled for GET requests
-          </p>
-        )}
-      </div>
-      <OutputSchemaEditor
-        config={config}
-        disabled={disabled}
-        onUpdateConfig={onUpdateConfig}
-        outputSchemaKey="httpOutputSchema"
-      />
-    </>
   );
 }
 
@@ -786,22 +498,6 @@ function SystemActionFields({
   disabled: boolean;
 }) {
   switch (actionType) {
-    case "HTTP Request":
-      return (
-        <HttpRequestFields
-          config={config}
-          disabled={disabled}
-          onUpdateConfig={onUpdateConfig}
-        />
-      );
-    case "Database Query":
-      return (
-        <DatabaseQueryFields
-          config={config}
-          disabled={disabled}
-          onUpdateConfig={onUpdateConfig}
-        />
-      );
     case "Condition":
       return (
         <ConditionFields
@@ -826,9 +522,9 @@ function SystemActionFields({
 /**
  * Every category the selector offers, and the actions in each.
  *
- * The built-in four are catalog entries in the "System" category like any other
- * action, so this reads one list: an editor served by a different build than its
- * server offers what that server can run.
+ * Condition and Wait are catalog entries in the "System" category like any
+ * other action, so this reads one list: an editor served by a different build
+ * than its server offers what that server can run.
  */
 function useCategoryData(): Record<string, CategoryActionOption[]> {
   return useMemo(() => {
@@ -892,8 +588,8 @@ export function ActionConfig({
     ? findAction(getExtensionCatalog(), actionType)
     : undefined;
 
-  // Which connection this action needs, which the catalog answers for every action
-  // alike: the engine's own Database Query names "database" there too.
+  // Which connection this action needs, which the catalog answers for every
+  // action alike.
   const integrationType = catalogAction?.integration;
 
   // Check if there are existing connections for this integration type
@@ -1077,8 +773,8 @@ export function ActionConfig({
         onUpdateConfig={onUpdateConfig}
       />
 
-      {/* Declarative config fields. The built-in four declare none: each is drawn
-          by a panel of its own above, written against the shape it has. */}
+      {/* Declarative config fields. Condition and Wait declare none: each is
+          drawn by a panel of its own above, written against the shape it has. */}
       {catalogAction && catalogAction.configFields.length > 0 && (
         <ActionConfigRenderer
           config={config}

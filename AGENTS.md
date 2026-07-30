@@ -225,24 +225,16 @@ encode fails the node once as a `StepFailure` naming the field path, since a ret
 spend the budget on a certainty; reaching it takes an `as`, an `any`, or a widened vendor
 type.
 
-`Database Query` and `HTTP Request` are `defineStep` values like any other, in
-`backend/lib/steps/`. Each used to answer a shape the envelope has no room for -- rows
-beside a count, a status beside the response -- and HTTP Request's status was swallowed by
-the template resolver's unwrap for exactly that reason. Their payloads are `{ rows, count }`
-and `{ body, status }` inside the ordinary envelope now. The response is `body` rather than
-`data` because `data` is the envelope's own key: a path starting with it names the wrapper,
-so a payload field called `data` is unreachable through a template. Database Query's fields
-are derived from its output schema the way every other action's are; HTTP Request writes its
-two out in `built-ins.ts`, because `body` is `Schema.Unknown`, which emits no `type` keyword,
-and the derivation refuses a list rather than offer a shorter one than the step returns.
-
 **An action's output fields come from its output schema.** An action declares `output` on
 its `defineStep`, and assembly derives the editor's template-autocomplete paths from it
 (`packages/shared/src/workflow/output-fields.ts`).
 Paths omit the `data.` prefix, because the schema describes the payload rather than the
-wrapper; template variables unwrap it automatically. The schema sits beside the handler it
-types, and `output` is required: there is no hand-written list to declare instead, and a
-schema the derivation cannot read throws naming the offender.
+wrapper; template variables unwrap it automatically. That unwrap is also why a schema must
+not declare a top-level `data` field of its own: `data` is the envelope's own key, so a path
+starting with it addresses the wrapper instead, and a payload field by that name is
+unreachable through a template. Nothing refuses the declaration at definition time. The
+schema sits beside the handler it types, and `output` is required: there is no hand-written
+list to declare instead, and a schema the derivation cannot read throws naming the offender.
 `requireOutputFieldsFromSchema` takes
 that name as a phrase rather than an id, because an Event's payload schema comes through
 it too and the message has to say which kind of thing is at fault.
@@ -287,11 +279,12 @@ action's id and an integration's type is held to one owner, an output schema the
 derivation cannot read is refused naming the action, and so is a required config key with
 no field for a builder to fill in. It is also where an integration definition's actions
 get their ids and their derived field lists, and where `stepFor` and `connectionTestFor`
-come from, since a definition carries both. The four actions the engine ships itself are
-catalog entries in `built-ins.ts`, beside the `database` integration one of them runs
-against, and a host's own actions arrive as `extensions.actions` -- `createAction` values,
-which carry their `execute` into the same `stepFor`, so dispatch has one kind of thing to
-find.
+come from, since a definition carries both. Condition and Wait are the two actions the
+engine ships itself, catalog entries in `built-ins.ts` with no step of their own -- the
+engine dispatches to both during the traversal rather than through `stepFor` -- and a
+host's own actions arrive as `extensions.actions` -- `createAction` values, which carry
+their `execute` into the same `stepFor`, so dispatch has one kind of thing to find. HTTP
+and database work are a host's to build with `createAction`; the engine ships neither.
 
 The server reads that catalog for everything it used to ask a registry: the credential
 mapping in `credential-fetcher.ts`, the secret-key test in
@@ -303,7 +296,8 @@ now rather than a throw: yielding the service puts `Extensions` in a body's `R`,
 runtime carrying one can run it. The alternative a lenient lookup would give is a run that
 dispatches nothing, a save that passes every check, and a config that serves its secrets
 unmasked. A test of one of those provides `stubExtensions` or `stubExtensionCatalog` from
-`backend/lib/effect/test-layers.ts`, and an empty assembly still carries the built-in four.
+`backend/lib/effect/test-layers.ts`, and an empty assembly still carries the built-in two,
+Condition and Wait; a host naming no integration of its own gets none.
 
 The browser reads the same catalog and nothing else. `main.tsx` imports
 `@rova/plugins/ui` for the icons a wire cannot carry and nothing from `@rova/plugins`

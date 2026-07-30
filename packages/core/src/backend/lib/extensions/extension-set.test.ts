@@ -87,47 +87,24 @@ describe("assembleExtensions", () => {
 
     expect(catalog.events).toEqual([]);
     expect(events).toEqual([]);
+    // No integration is a built-in any more: a host naming none gets none.
+    expect(catalog.integrations).toEqual([]);
   });
 
-  // The database connection the engine's own Database Query action runs against is
-  // a catalog entry, so the connections dialog reads it from the same place it
-  // reads every other integration and nothing spells it out twice.
-  it("puts the database integration in the catalog", () => {
-    const { catalog, connectionTestFor } = assembleExtensions({});
-
-    expect(catalog.integrations).toEqual([
-      expect.objectContaining({
-        type: "database",
-        label: "Database",
-        hasTest: true,
-      }),
-    ]);
-    expect(connectionTestFor("database")).toBeDefined();
-  });
-
-  // The URL is what a Database Query step reads as DATABASE_URL, and it is marked a
-  // password so the masking layer treats a stored connection string as a secret.
-  it("declares the database URL as a secret credential field", () => {
-    const { catalog } = assembleExtensions({});
-
-    expect(catalog.integrations[0]?.credentialFields).toEqual([
-      expect.objectContaining({
-        configKey: "url",
-        envVar: "DATABASE_URL",
-        type: "password",
-      }),
-    ]);
-  });
-
-  it("puts the four built-in actions in the catalog", () => {
+  it("puts the two built-in actions in the catalog", () => {
     const { catalog } = assembleExtensions({});
 
     expect(catalog.actions.map((action) => action.id)).toEqual([
-      "HTTP Request",
-      "Database Query",
       "Condition",
       "Wait",
     ]);
+  });
+
+  it("has no step for either built-in, since the engine dispatches to them itself", () => {
+    const { stepFor } = assembleExtensions({});
+
+    expect(stepFor("Condition")).toBeUndefined();
+    expect(stepFor("Wait")).toBeUndefined();
   });
 
   it("lists a host's own actions after the built-ins", () => {

@@ -109,7 +109,7 @@ export function formatActionId(integration: string, slug: string): string {
 /**
  * The integration and slug halves of an action id, or null when it is not one.
  *
- * A built-in action's id is a bare label ("HTTP Request"), and a host's own may be
+ * A built-in action's id is a bare label ("Condition"), and a host's own may be
  * anything it wrote, so a caller that needs the integration half asks and handles
  * the null.
  */

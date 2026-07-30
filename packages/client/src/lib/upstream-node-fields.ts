@@ -15,45 +15,12 @@ import {
   LIFECYCLE_STARTED_HANDLE,
 } from "@rova/shared/workflow/lifecycle-outlets";
 import { readLifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
-import {
-  flattenSchemaToReferenceFields,
-  type ReferenceField,
-  type UpstreamField,
+import type {
+  ReferenceField,
+  UpstreamField,
 } from "@rova/shared/workflow/node-references";
-import { parseWorkflowSchemaFieldsString } from "@rova/shared/workflow/schema-codec";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 import { upstreamNodeIds } from "@rova/shared/workflow/upstream-nodes";
-
-/** First declaration of a path wins, so defaults stay ahead of schema extras. */
-function dedupeByPath(fields: ReferenceField[]): ReferenceField[] {
-  const fieldsByPath = new Map<string, ReferenceField>();
-
-  for (const field of fields) {
-    if (!fieldsByPath.has(field.path)) {
-      fieldsByPath.set(field.path, field);
-    }
-  }
-
-  return Array.from(fieldsByPath.values());
-}
-
-const DEFAULT_HTTP_OUTPUT_FIELDS: ReferenceField[] = [
-  { path: "body", description: "Response body", type: "object" },
-  {
-    path: "status",
-    description: "HTTP status code",
-    type: "number",
-  },
-];
-
-const DEFAULT_DATABASE_OUTPUT_FIELDS: ReferenceField[] = [
-  { path: "rows", description: "Query result rows", type: "array" },
-  {
-    path: "count",
-    description: "Number of rows",
-    type: "number",
-  },
-];
 
 export type ConditionSelectableField = ConditionFieldDefinition & {
   description: string;
@@ -70,47 +37,6 @@ function readConfigString(
 ): string | undefined {
   const value = config?.[key];
   return typeof value === "string" ? value : undefined;
-}
-
-function readSchemaFields(schemaString: string | undefined): ReferenceField[] {
-  if (!schemaString) {
-    return [];
-  }
-
-  const schema = parseWorkflowSchemaFieldsString(schemaString);
-  if (schema.length === 0) {
-    return [];
-  }
-
-  return flattenSchemaToReferenceFields(schema);
-}
-
-function getHttpRequestOutputFields(
-  config: Record<string, unknown> | undefined
-): ReferenceField[] {
-  const outputSchemaFields = readSchemaFields(
-    readConfigString(config, "httpOutputSchema")
-  );
-
-  if (outputSchemaFields.length === 0) {
-    return DEFAULT_HTTP_OUTPUT_FIELDS;
-  }
-
-  return dedupeByPath([...DEFAULT_HTTP_OUTPUT_FIELDS, ...outputSchemaFields]);
-}
-
-function getDatabaseQueryOutputFields(
-  config: Record<string, unknown> | undefined
-): ReferenceField[] {
-  const outputSchemaFields = readSchemaFields(
-    readConfigString(config, "dbOutputSchema")
-  );
-
-  if (outputSchemaFields.length > 0) {
-    return outputSchemaFields;
-  }
-
-  return DEFAULT_DATABASE_OUTPUT_FIELDS;
 }
 
 /**
@@ -234,7 +160,7 @@ export function getNodeDisplayName(node: WorkflowNode): string {
       }
     }
 
-    return actionType || "HTTP Request";
+    return actionType || "Action";
   }
 
   if (node.data.type === "trigger") {
@@ -262,14 +188,6 @@ export function getNodeOutputFields(
 ): ReferenceField[] {
   const actionType = readConfigString(node.data.config, "actionType");
 
-  if (actionType === "HTTP Request") {
-    return getHttpRequestOutputFields(node.data.config);
-  }
-
-  if (actionType === "Database Query") {
-    return getDatabaseQueryOutputFields(node.data.config);
-  }
-
   if (actionType) {
     const pluginFields = getPluginActionOutputFields(actionType);
     if (pluginFields.length > 0) {
@@ -285,7 +203,10 @@ export function getNodeOutputFields(
     });
   }
 
-  return [{ path: "data", description: "Output data" }];
+  // An action type the catalog cannot find -- a stale graph naming a plugin
+  // action this build no longer ships -- has no declared schema to read fields
+  // from, so there is nothing addressable to offer.
+  return [];
 }
 
 /** The nodes a run passed through before this one, in canvas order. */
