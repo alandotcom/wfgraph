@@ -338,15 +338,19 @@ development, because the option takes a built bundle and development has none. `
 start` is the other arrangement and one process: the built bundle goes to `createRovaApp` as
 `client`, and Rova serves the editor, the assets, and the API itself.
 
-**Four published surfaces.** `@rova/core` is the backend, `@rova/core/plugin` the names an
-integration package may use, `@rova/client` the editor, `@rova/plugins` the
-built-in integrations. `@rova/plugins` peer-depends on `@rova/core`, because a second
-copy would mean a second database handle. `@rova/shared` stays private and is inlined
-into whichever bundle needs it.
+**Five published surfaces.** `@rova/core` is the backend, `@rova/core/plugin` the names an
+integration package may use, `@rova/core/migrate` applies the migrations without building an
+app, `@rova/client` the editor, `@rova/plugins` the built-in integrations. `@rova/plugins`
+peer-depends on `@rova/core`, because a second copy would mean a second database handle.
+`@rova/shared` stays private and is inlined into whichever bundle needs it.
 
 **The published package is not the dev tree.** `packages/core` has no `private` field, so
-it publishes. Its `files` is scoped, `@rova/shared` is inlined into the build so it never appears as a dependency,
-and there is no published server wrapper: `createRovaApp` returns a fetch handler, which
+it publishes. Its `files` is scoped, and `@rova/shared` is inlined into the build so it never
+appears as a dependency. `@rova/core/migrate` is there because the shipped SQL names no
+schema and only Rova's migrator carries the `search_path` that decides which one it builds,
+so an adopter with no Rova app running had no way to apply it; `scripts/migrate.ts` runs that
+same entry, which is what keeps the repo's daily path and an adopter's CI job one code path.
+There is no published server wrapper: `createRovaApp` returns a fetch handler, which
 `Bun.serve` and `Deno.serve` take directly and `@rova/core/node` translates for Express and
 Fastify. The one `node:http` server in the tree, `examples/app.ts`, sits outside
 `packages/core` and reaches the fetch handler through `createRequestListener` from

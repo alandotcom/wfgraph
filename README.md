@@ -104,6 +104,38 @@ RUN_DB_MIGRATIONS=true pnpm run dev
 RUN_DB_MIGRATIONS=true MIGRATIONS_DIR=packages/core/drizzle pnpm run dev
 ```
 
+## Migrating From CI Or A Release Step
+
+Startup migrations are one way in; the other is `@rova/core/migrate`, for a CI job or a
+release step that runs before any instance boots.
+
+```ts
+import { migrateRovaDatabase } from "@rova/core/migrate";
+
+await migrateRovaDatabase({
+  url: process.env.DATABASE_URL!,
+  // Or the discrete fields, and `schema` if Rova is not in `_workflows`.
+});
+```
+
+It takes the same connection fields `createRovaApp`'s `database` option does, flat, with
+`migrationsDir` beside them rather than under a `migrations` key. It holds the same advisory
+lock and closes its connection on the way out, so the process exits when it returns, and
+running it from several places at once is safe: the ones that lose the race wait, then find
+nothing to do.
+
+Calling it inside a process that already built an app works, on one condition. The config is
+compared field by field, `maxConnections` and `ssl` included, so pass the same object the app
+was given; a config differing anywhere reads as a second database and is refused.
+
+`@rova/core/migrate` exists because nothing else can apply the shipped SQL correctly. Those
+files name no schema, and the `search_path` that decides which schema they build rides on the
+connection Rova opens, so `psql` or another migration tool would put the tables in `public`.
+The same connection requirement described under Environment Variables applies here.
+
+This repo's own `pnpm run db:migrate` is that entry with the environment read in front of it
+(`scripts/migrate.ts`), so the command used here daily is the one an adopter's CI job runs.
+
 ## Local Development
 
 ```bash
@@ -279,6 +311,7 @@ A step is a `defineStep` over an input schema, an output schema, and a handler t
 - `@rova/core/app` -- `createRovaApp` factory, `RovaAppOptions`, `RovaApp`, and re-exported config types.
 - `@rova/core/node` -- `createRequestListener`, for hosts on Express, Fastify, or `node:http`.
 - `@rova/core/plugin` -- what an integration package builds against.
+- `@rova/core/migrate` -- `migrateRovaDatabase`, for applying migrations without building an app.
 - `@rova/client` -- `clientBundle`, the built editor, passed to `createRovaApp` as `client`.
 - `@rova/plugins` -- the built-in integrations, and `@rova/plugins/server` for their step and connection-test registrations.
 

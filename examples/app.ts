@@ -149,7 +149,7 @@ const rova = await createRovaApp({
   database: {
     // One URL, or the discrete host/port/user/password/database fields a
     // platform hands out separately.
-    url: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
+    url: process.env.DATABASE_URL?.trim() || DEFAULT_DATABASE_URL,
     // Rova keeps its tables in "_workflows" unless told otherwise. This is read
     // here because `pnpm run db:migrate` reads the same variable, and an app
     // querying one schema while the migrator creates another is a bad afternoon.

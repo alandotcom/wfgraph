@@ -83,8 +83,10 @@ const config: KnipConfig = {
     },
 
     "packages/core": {
-      // src/index.ts, src/app.ts, and src/node.ts come from the tsdown plugin,
-      // which reads them out of tsdown.config.ts.
+      // The entries come from the tsdown plugin, which reads them out of
+      // tsdown.config.ts, so this list cannot drift from what the build emits.
+      // Whether the "exports" map names those same files is a separate question,
+      // and the comment in tsdown.config.ts is where it is answered.
       entry: [],
       project: ["src/**/*.{ts,tsx}"],
 

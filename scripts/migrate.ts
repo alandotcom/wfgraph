@@ -1,12 +1,20 @@
-// First, so DATABASE_URL and DATABASE_SCHEMA are in place before the module
-// below is evaluated and reads them.
+// First, so the variables below are in place before anything reads them.
 import "../load-env";
-import { closeMigrationClient } from "@rova/core/backend/lib/db/index";
-import { runMigrations } from "@rova/core/backend/lib/db/migrations";
+import { migrateRovaDatabase } from "@rova/core/migrate";
 
-// Rova's own migrator, both for `pnpm run db:migrate` against the dev database
-// and by hand against a deployed one. drizzle-kit's migrate command cannot stand
-// in for it: the generated SQL names no schema, and the search_path that decides
-// which schema the tables go in rides on the connection Rova opens.
-await runMigrations({ migrationsDir: process.env.MIGRATIONS_DIR?.trim() });
-await closeMigrationClient();
+// `pnpm run db:migrate` against the dev database, and the same command by hand
+// against a deployed one. It goes through the published entry rather than
+// reaching into the migrator, so the path this repo exercises daily is the one an
+// adopter's CI job takes.
+//
+// Reading the environment is this file's job rather than the library's, which is
+// why the dev default sits here beside the variables: an adopter names their
+// database in whatever their platform hands them.
+const DEV_DATABASE_URL =
+  "postgresql://workflow:workflow@localhost:55437/workflow_builder";
+
+await migrateRovaDatabase({
+  url: process.env.DATABASE_URL?.trim() || DEV_DATABASE_URL,
+  schema: process.env.DATABASE_SCHEMA?.trim() || undefined,
+  migrationsDir: process.env.MIGRATIONS_DIR?.trim(),
+});

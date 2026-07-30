@@ -4,7 +4,6 @@ import { Hono } from "hono";
 import { createApiApp } from "#src/backend/api-app";
 import {
   assertDatabaseConfig,
-  closeMigrationClient,
   configureDatabaseRuntime,
   type DatabaseRuntimeConfig,
   describeConnection,
@@ -284,15 +283,9 @@ async function buildRovaApp(
   );
 
   if (options.database.migrations?.runOnStartup === true) {
-    try {
-      await runMigrations({
-        migrationsDir: options.database.migrations.migrationsDir,
-      });
-    } finally {
-      // Nothing migrates twice in one process, so the pool goes back rather than
-      // sitting idle for the life of the app.
-      await closeMigrationClient();
-    }
+    await runMigrations({
+      migrationsDir: options.database.migrations.migrationsDir,
+    });
   }
 
   // The Layer graph this instance owns. Building it is lazy, so an app that

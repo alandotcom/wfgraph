@@ -6,6 +6,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import type { Sql } from "postgres";
 import {
+  closeMigrationClient,
   describeConnection,
   getDatabaseSchema,
   getMigrationClient,
@@ -94,6 +95,10 @@ async function resolveExistingMigrationsDir(
  * that same schema rather than one of its own: everything Rova owns then sits
  * inside the one name a host can drop.
  *
+ * The pool goes back before this returns, whether the migration worked or not.
+ * Nothing migrates twice in one process, and a one-shot migration process would
+ * otherwise sit on an idle socket rather than exiting.
+ *
  * The advisory lock is what makes several instances starting together safe.
  * Postgres does not serialize concurrent `CREATE SCHEMA` or `CREATE TABLE` of the
  * same name; it fails the losers on a unique violation in `pg_namespace` or
@@ -120,14 +125,18 @@ export async function runMigrations(
   // other. hashtext turns it into the integer the lock functions take.
   const lockName = `rova:migrations:${schema}`;
 
-  await lockMigrations(client, lockName);
   try {
-    await applyMigrations(client, { migrationsFolder, schema });
-  } finally {
-    await client`select pg_advisory_unlock(hashtext(${lockName}))`;
-  }
+    await lockMigrations(client, lockName);
+    try {
+      await applyMigrations(client, { migrationsFolder, schema });
+    } finally {
+      await client`select pg_advisory_unlock(hashtext(${lockName}))`;
+    }
 
-  logger.info("Database migrations completed");
+    logger.info("Database migrations completed");
+  } finally {
+    await closeMigrationClient();
+  }
 }
 
 async function lockMigrations(client: Sql, lockName: string): Promise<void> {
