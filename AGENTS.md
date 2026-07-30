@@ -226,14 +226,22 @@ schema the derivation cannot read throws naming the offender.
 that name as a phrase rather than an id, because an Event's payload schema comes through
 it too and the message has to say which kind of thing is at fault.
 
+A host action spells the same thing `outputSchema` on its `createAction`, and derives its
+fields there rather than at assembly, because that call is where any Standard Schema library
+is bridged. The two differ in one way worth knowing before reading `runtime.ts`: only a
+`defineStep` action encodes its answer through the output schema. A `createAction` validates
+its input and hands `execute`'s answer back as it is, so what its output schema buys is the
+handler's return type and the field list, and the dev-mode JSON-safety walk in
+`workflow-engine/runtime.ts` is still what guards it, as it guards the two built-in steps.
+Stage 7 item 5 is what retires that walk.
+
 **The extension surface is one JSON catalog, served on one route.** An Event, an action
 and an integration reach the editor as `ExtensionCatalog`
 (`packages/shared/src/extensions/catalog.ts`), which `GET /api/extensions` sends and
 `packages/client/src/lib/extensions.ts` decodes once before the first render, through the
 wire schema in `catalog-wire.ts`. That module owns the response envelope as well
-(`readExtensionsResponse`), so the client names no member of the answer by hand: the
-catalog is read all-or-nothing, and the two legacy registry lists beside it go to
-`hydrateRuntimeExtensions`, which reads them entry at a time. The client holds the catalog
+(`readExtensionsResponse`), which carries the catalog and nothing beside it, so the client
+names no member of the answer by hand and reads it all-or-nothing. The client holds the catalog
 as a module value rather than a query-cache entry: the surface is fixed for the life of the
 server process, and the pure functions that read it run during render. Every lookup over it
 (`findAction`, `findEvent`, `findIntegration`, `credentialsFromConfig`) is a pure function
@@ -287,16 +295,16 @@ nothing: the host passes the value to `createRovaApp` under `extensions.events`.
 schema crosses the Standard Schema bridge once, there, and `payloadFields` is derived on
 the spot, so a schema that cannot describe itself fails at definition. A Correlation Path
 is typed as `StringPath` (`packages/shared/src/types/payload-path.ts`), which admits only a
-path resolving to a string, which is what an Entity Value is; the trigger surface types its
-own paths from the same module, and `@rova/core` publishes the name as `EventStringPath`.
+path resolving to a string, which is what an Entity Value is, and `@rova/core` publishes
+that name as `EventStringPath`.
 `source` separates identity from transport for an umbrella bus that cannot change its event
 name. Inngest flow control is authored against the payload and translated by
 `rewriteInngestOptions` (`packages/core/src/backend/lib/extensions/inngest-options.ts`),
 which prefixes each `key` and rewrites `priority.run`, so a bad path fails where it was
 written; Inngest `concurrency` and `batchEvents` are refused there, the first because
 Concurrency on the Lifecycle Node owns that question and can write a status. The prefixing
-and the CEL rewrite are `packages/shared/src/workflow/inngest-event-data.ts`, which both an
-Event and a trigger translate through, and `extractSchemaKeys` in `types/schema.ts` is
+and the CEL rewrite are `packages/shared/src/workflow/inngest-event-data.ts`, which every
+Event translates through, and `extractSchemaKeys` in `types/schema.ts` is
 where the field names a CEL identifier is checked against come from.
 Which Events start a run and which cancel it is the Workflow Builder's per-workflow
 declaration, never the Event's (ADR-0007).
@@ -343,6 +351,40 @@ the payload again -- a host may send to the bus directly -- and then runs two si
 workflow, the Lifecycle Rules and the wait delivery, so a retry resumes at the workflow that
 failed without replaying a start.
 
+**A Wait node has two modes, and its subscription carries its own matcher.** `delay` waits
+on the clock and `event` waits on an arrival. The third mode, "wait for webhook event", is
+gone: it ran the same prepare and execute path as `event`, wrote the same row and suspended
+on the same envelope, so the three differences it had were two defects and a field rather
+than a mechanism. `waitConfigSchema` in `packages/shared/src/workflow/wait-subscription.ts`
+is the first schema this node has had, both modes in one struct, and every key is
+`Schema.optional` because the engine resolves templates into every declared config key and a
+field left blank arrives present and holding `undefined`.
+
+A timeout is required on an event wait, and the save rule is what requires it rather than
+the key's optionality; the editor writes `7d` when the mode is first chosen. A wait without
+one is an immortal Execution, holding a row, an Inngest function and a place in the run list
+until somebody notices. `waitTimeoutBehavior` defaults to `continue` and is honored in both
+modes.
+
+A subscription names an Event and carries an optional `match`, which is the serialized
+`ConditionModel` the Condition node already builds, evaluated against the arriving payload
+rather than against merged node outputs and so rooted at `payload`. The stored predicate is
+the whole of the runtime rule, which is what keeps CONTEXT.md's "equal Entity Values, whatever
+the paths" working: the editor pre-fills the match by comparing the arriving payload at that
+Event's Correlation Path against the run's Entity Value, and a subscription with no match
+resumes on the next occurrence of the Event. At park time the run-side values inside the
+match are resolved to literals and compiled to a CEL string on the row, because a compiled
+string and a literal both survive the JSONB round trip and Inngest's memoization where a
+re-resolved template would not.
+
+`POST /api/workflows/waits/:token/resume` survives as a resume path and stops being a wait
+mode. Every event wait gets a generated `resume_token`, since Inngest's `ifExpression`
+matches on it, and the endpoint looks a wait up by that token with no event-type and no
+correlation check, so a run parked on an Event that will never arrive stays unparkable
+otherwise. The design-time token a builder used to write is deleted: it is decided once, the
+index over it is unique, and two runs parked at the same node either collide on insert or
+leave one row unfindable.
+
 **The Lifecycle panel is the one screen that writes the rules.**
 `packages/client/src/components/workflow/config/lifecycle-panel.tsx` writes the whole
 `lifecycleRules` object on every edit and reads it back through `readLifecycleRules`, falling
@@ -357,15 +399,23 @@ Cancel Events and the schedule are present as placeholders, with no control, eac
 the exported interim sentence a save would answer with. A schedule is not in the stored shape
 at all: nothing can write one.
 
-The entry node has no type. `workflowTriggerConfigSchema` is one closed struct holding the
-rules and three fields describing the payload -- shape, narrowed output contract, sample -- which
-B5 replaces with the Start Events' `payloadFields`. Everything the panel stopped writing is
-gone from the schema with it, and a stored graph carrying any of these keys fails to decode,
-which is the strict contract this repo keeps: `triggerType` first, which every graph saved
-before this batch carries, then `routingPolicy`, `webhookEventPath`,
-`webhookCorrelationPath`, and the `Schedule` arm's three schedule fields. The `Schedule`
-trigger definition went with them. The trigger registry still resolves a definition for the
-engine's payload guard, and nothing in the editor picks one.
+The entry node has no type, and no registry answers for one. `workflowTriggerConfigSchema`
+is one closed struct holding `lifecycleRules` and nothing else, so a stored graph carrying
+any key the panel stopped writing fails to decode, which is the strict contract this repo
+keeps: `triggerType` first, which every graph saved before this batch carries, then
+`routingPolicy`, `webhookEventPath`, `webhookCorrelationPath`, the `Schedule` arm's three
+schedule fields, and the three that used to describe the payload by hand. The trigger
+registry and the `Schedule` definition went with them.
+
+What a downstream node may address comes from the Start Events instead.
+`packages/client/src/lib/upstream-node-fields.ts` reads each named Event's `payloadFields`
+off the catalog and intersects them, because a node has to cope with whichever start the
+run arrived through, and one intersection covers both sources of multiplicity: several
+Start Events, and the two outlets `entryOutletsReaching` says can reach the node. A path
+the Events declare with different types is offered as text, which is what a template
+renders it to anyway and what leaves the condition builder operators every payload can
+answer. There is no hand-written shape, output contract or sample left to keep in step
+with the Events.
 
 An edge leaving the Lifecycle Node names its outlet, `started`, from
 `shared/workflow/lifecycle-outlets.ts`: the editor's connect path writes it and
@@ -416,7 +466,7 @@ HTTP status.
 `rpcEffectHandler` in `backend/rpc/router.ts` runs a procedure's Effect on the runtime
 carried by `RpcContext`, logs a failure once, and fails with the oRPC error. `runPromise`
 squashes that down to the error itself, which is the object oRPC catches. The two plain
-Hono routes (event intake, wait-hook resume) run theirs the same way and build a
+Hono routes (event intake, wait resume) run theirs the same way and build a
 `Response` from the failure.
 
 **The backend runs on Effect.** ADR-0002 has the plan and ADR-0005 the data layer.
@@ -515,7 +565,7 @@ the package's `exports` to a stale `dist`.
 
 **The repo has no server of its own.** The one server is the example app,
 `examples/app.ts`, which is the adopter path written out and nothing more: options from the
-environment, a custom trigger and action, a `node:http` mount through
+environment, four Events and a custom action, a `node:http` mount through
 `createRequestListener`. ADR-0006 has the reasoning, and the bar for a line in that file is
 whether an adopter would write it.
 
@@ -528,9 +578,12 @@ development, because the option takes a built bundle and development has none. `
 start` is the other arrangement and one process: the built bundle goes to `createRovaApp` as
 `client`, and Rova serves the editor, the assets, and the API itself.
 
-**Six published surfaces.** `@rova/core` is the backend, `@rova/core/plugin` the names an
-integration package may use, `@rova/core/migrate` applies the migrations without building an
-app, `@rova/client` the editor, `@rova/plugins` the built-in integrations as values, and
+**Eight published entry points, across three packages.** `@rova/core` is what a host
+authors vocabulary with (`defineEvent`, `createAction`, `timestampField`, `dateField`),
+`@rova/core/app` is `createRovaApp`, `@rova/core/node` the Node mount adapter,
+`@rova/core/plugin` the names an integration package may use, and `@rova/core/migrate`
+applies the migrations without building an app. `@rova/client` is the editor,
+`@rova/plugins` the built-in integrations as values, and
 `@rova/plugins/ui` their icons for the browser. `@rova/plugins`
 peer-depends on `@rova/core`, because a second copy would mean a second database handle.
 `@rova/shared` stays private and is inlined into whichever bundle needs it.

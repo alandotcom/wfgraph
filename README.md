@@ -1,215 +1,120 @@
 # Rova Workflow Builder
 
-A visual workflow automation platform with a node-based editor, typed API routes, and plugin-driven integrations. Inspired by [Vercel's AI Workflow Builder](https://workflow-builder.dev/).
+Rova is a workflow engine a developer embeds in their app, with a visual editor
+handed to the people who build workflows on top of it. The host app declares the
+vocabulary in code: the Events it raises, the actions it offers, the integrations
+it turns on. The person in the editor assembles a workflow out of that vocabulary
+and declares how its runs live and die.
 
-## Runtime Overview
+Two roles share the system and the whole design keeps them apart.
 
-The backend is a Hono API that runs on any JavaScript runtime with `Request` and `Response`. This repo develops and deploys on Node 24. The frontend is a standalone React SPA.
+- The **Event Author** is the developer embedding the library. They define Events:
+  names, payload shapes, and where each payload carries the value that identifies
+  the entity a run is about.
+- The **Workflow Builder** works in the editor. They assemble the graph and declare
+  its Lifecycle Rules, which is every lifecycle decision for that workflow.
+
+`CONTEXT.md` holds the full vocabulary. This file is the developer's path through
+it, in the order you meet it.
+
+## Runtime
+
+The backend is a Hono API that runs on any JavaScript runtime with `Request` and
+`Response`. This repo develops and deploys on Node 24. The editor is a standalone
+React SPA served as a static bundle.
 
 - API: Hono (`packages/core/src/backend/api-app.ts`)
-- Database: PostgreSQL via postgres.js + Drizzle ORM
-- Async execution/events: Inngest
-- Frontend: React SPA + TanStack Router (`packages/client/src/main.tsx`, `packages/client/src/router.tsx`)
-- State: Jotai
-- Data fetching/cache: TanStack Query
-- Dev server: Vite in `packages/client`, proxying `/api` to the example app
-
-## Project Structure
+- Database: PostgreSQL through postgres.js and Drizzle ORM
+- Durable execution and events: Inngest
+- Editor: React SPA on TanStack Router, TanStack Query for server state, Jotai for
+  UI state
 
 This is a pnpm workspace monorepo with four packages:
 
 ```
 packages/
-  shared/    @rova/shared   Runtime-agnostic types, schemas, contracts
+  shared/    @rova/shared   Runtime-agnostic types, schemas, contracts (private)
   core/      @rova/core     Library entrypoints and backend
   client/    @rova/client   The workflow editor SPA
-  plugins/   @rova/plugins  Integration plugins (Acuity, Clerk, Linear, Resend, Slack, Twilio)
+  plugins/   @rova/plugins  Built-in integrations (Acuity, Clerk, Linear, Resend, Slack, Twilio)
 ```
 
-- `examples/app.ts` -- the repo's only server, for development and production. It is an adopter's app: options from the environment, a custom trigger and action, a `node:http` mount. See `docs/adr/0006`.
-- `packages/client/vite.config.ts` -- the SPA's dev server and build
-- `scripts/` -- standalone scripts and the shared Vite alias module
-
-## Integrations
-
-Supported integration types:
-
-- Acuity
-- Clerk
-- Database
-- Linear
-- Resend
-- Slack
-- Twilio
-
-Plugin definitions and steps are under `packages/plugins/src`.
-
-## Prerequisites
-
-- Node 24+
-- pnpm 11+ (the exact version is in the root `package.json`'s `packageManager` field; run `corepack enable` to have Node use it)
-- PostgreSQL 15+ (local or remote)
-- Docker (optional, for local Postgres via `docker compose`)
-
-## Environment Variables
-
-Create `.env.local` (or `.env`) with at least:
-
-```env
-DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder
-```
-
-Common optional variables:
-
-```env
-PORT=4017
-HOST=127.0.0.1
-INNGEST_BASE_URL=http://localhost:8288
-RUN_DB_MIGRATIONS=false
-MIGRATIONS_DIR=packages/core/drizzle
-DATABASE_SCHEMA=_workflows
-```
-
-`DATABASE_SCHEMA` names the Postgres schema Rova keeps its tables in. Both paths read it
-here: `pnpm run db:migrate` applies migrations without building an app, and `examples/app.ts`
-passes it to `database.schema`. An embedding app sets `database.schema` directly.
-
-Rova sends that schema as a `search_path` startup parameter, so the connection has to keep
-one. Behind PgBouncer that means `track_extra_parameters=search_path` (1.22+), not
-`ignore_startup_parameters`, which drops the value instead of passing it on; a session-mode or
-direct connection also works. Migrations read `current_schema()` back and fail naming both
-schemas rather than quietly building the tables in `public`.
-
-Integration-specific credentials can be provided via the integrations UI and/or environment variables, depending on plugin.
-
-## Database Migrations At Startup
-
-The server can run Drizzle migrations automatically during startup.
-
-- The option is `database.migrations.runOnStartup` (default `false`); this repo's example app
-  reads `RUN_DB_MIGRATIONS` into it
-- Migration folder defaults to the `drizzle/` directory `@rova/core` ships, found relative
-  to the running code. `MIGRATIONS_DIR` overrides it and is resolved from the working
-  directory. Nothing is guessed from the working directory otherwise, so an embedder's own
-  `./drizzle` is never mistaken for Rova's.
-- Startup migrations run before the HTTP server starts (`examples/app.ts`)
-
-Examples:
-
-```bash
-# Run migrations at app startup
-RUN_DB_MIGRATIONS=true pnpm run dev
-
-# Use a custom migration directory, resolved from the working directory
-RUN_DB_MIGRATIONS=true MIGRATIONS_DIR=packages/core/drizzle pnpm run dev
-```
-
-## Migrating From CI Or A Release Step
-
-Startup migrations are one way in; the other is `@rova/core/migrate`, for a CI job or a
-release step that runs before any instance boots.
-
-```ts
-import { migrateRovaDatabase } from "@rova/core/migrate";
-
-await migrateRovaDatabase({
-  url: process.env.DATABASE_URL!,
-  // Or the discrete fields, and `schema` if Rova is not in `_workflows`.
-});
-```
-
-It takes the same connection fields `createRovaApp`'s `database` option does, flat, with
-`migrationsDir` beside them rather than under a `migrations` key. It holds the same advisory
-lock and closes its connection on the way out, so the process exits when it returns, and
-running it from several places at once is safe: the ones that lose the race wait, then find
-nothing to do.
-
-Calling it inside a process that already built an app works, on one condition. The config is
-compared field by field, `maxConnections` and `ssl` included, so pass the same object the app
-was given; a config differing anywhere reads as a second database and is refused.
-
-`@rova/core/migrate` exists because nothing else can apply the shipped SQL correctly. Those
-files name no schema, and the `search_path` that decides which schema they build rides on the
-connection Rova opens, so `psql` or another migration tool would put the tables in `public`.
-The same connection requirement described under Environment Variables applies here.
-
-This repo's own `pnpm run db:migrate` is that entry with the environment read in front of it
-(`scripts/migrate.ts`), so the command used here daily is the one an adopter's CI job runs.
-
-## Local Development
-
-```bash
-# Install dependencies
-pnpm install
-
-# Optional: start local Postgres
-docker compose up -d
-
-# Apply schema
-pnpm run db:migrate
-
-# Start the app, the client dev server, and the inngest dev process
-pnpm run dev
-```
-
-Editor URL: `http://localhost:5173`. The Vite dev server compiles the SPA and forwards
-`/api` to the app, which listens on `http://localhost:4017` and answers the API there.
-
-The webhook URL a trigger panel offers for copying carries the editor's port, so when you
-hand it to a sender outside the browser, a tunnel or a third-party service, substitute the
-app's port (4017).
+`examples/app.ts` is the repo's only server. It is an adopter's app written the way
+an adopter writes one, and `pnpm run dev` and `pnpm run start` both run it. See
+`docs/adr/0006`.
 
 ## Embedding
 
-Rova Workflow Builder mounts into a host app as a single fetch handler. Import `@rova/core/app` for the `createRovaApp` factory, and `@rova/core` for the `defineEvent`/`createAction` helpers. The handler has the shape `(request: Request) => Promise<Response>`, so Bun, Deno, Cloudflare Workers, and Node 18+ consume it directly.
+`createRovaApp` returns a fetch handler with the shape
+`(request: Request) => Promise<Response>`, so Bun, Deno, Cloudflare Workers, and
+Node 18+ consume it directly. Import `@rova/core/app` for the factory and
+`@rova/core` for the authoring helpers.
+
+Nothing in Rova registers itself on import. The `extensions` option is the whole
+surface an app has, and a line there is what turns each half on.
 
 ```ts
 import { createServer } from "node:http";
 import { Schema } from "effect";
 import { clientBundle } from "@rova/client";
-import { createAction, defineEvent } from "@rova/core";
+import { createAction, defineEvent, timestampField } from "@rova/core";
 import { createRovaApp } from "@rova/core/app";
 import { createRequestListener } from "@rova/core/node";
+import { builtInIntegrations } from "@rova/plugins";
 
-const action = createAction({
-  id: "custom/send-message",
-  label: "Send Message",
-  description: "Sends a custom message",
-  category: "Custom",
-  logoUrl: "https://cdn.example.com/logos/custom-action.svg",
-  // The config form is derived from this schema, and a `description`
-  // annotation names each field. Annotate the base type before adding a
-  // check: a message on a checked schema lands on the check instead.
+// An Event your app raises. Section "Defining an Event" below covers the parts.
+const appointmentCreated = defineEvent({
+  name: "app/appointment.created",
+  label: "Appointment created",
+  description: "Raised when a new appointment is booked.",
   schema: Schema.Struct({
-    text: Schema.String.annotate({ description: "Text" }).check(
-      Schema.isMinLength(1)
-    ),
+    appointment: Schema.Struct({
+      id: Schema.String.annotate({ description: "Appointment ID" }),
+      startsAt: timestampField("When the appointment starts, ISO 8601"),
+    }).annotate({ description: "The appointment this event is about" }),
   }),
-  async execute({ payload }) {
-    return { success: true, data: { echoed: payload.text } };
-  },
+  correlationPath: "appointment.id",
 });
 
-// An Event is a named payload shape your app raises: a name, a schema, and where
-// the payload carries the value identifying the entity a run tracks. It holds no
-// lifecycle role. Which workflow starts on it, which cancels on it, and how many
-// runs one entity may have at once are each Workflow Builder's declaration in the
-// editor's Lifecycle panel.
-const entityCreated = defineEvent({
-  name: "app/entity.created",
-  label: "Entity created",
-  description: "Raised when an entity is first stored.",
+// An action of your own, beside the ones the built-in integrations bring.
+const cancelAppointment = createAction({
+  id: "appointments/cancel",
+  label: "Cancel Appointment",
+  description: "Cancels an appointment and records the reason.",
+  category: "Appointments",
+  // The config form is derived from this schema. A field's label comes from its
+  // `description` annotation, which goes on the base type before any check: a
+  // check would otherwise own the annotation and the derivation cannot see it.
   schema: Schema.Struct({
-    entity: Schema.Struct({
-      id: Schema.String.annotate({ description: "Entity ID" }),
-    }).annotate({ description: "The entity this event is about" }),
+    appointmentId: Schema.String.annotate({ description: "Appointment ID" }),
+    reason: Schema.String.annotate({
+      description: "Cancellation reason",
+    }).check(Schema.isMinLength(1)),
   }),
-  correlationPath: "entity.id",
+  // What `execute` answers with. The editor's template autocomplete is derived
+  // from this schema, so there is no field list to write out beside it.
+  outputSchema: Schema.Struct({
+    appointmentId: Schema.String.annotate({ description: "Appointment ID" }),
+    status: Schema.String.annotate({ description: "Cancellation status" }),
+    cancelledAt: timestampField("ISO timestamp of cancellation"),
+  }),
+  execute({ payload }) {
+    return {
+      success: true,
+      data: {
+        appointmentId: payload.appointmentId,
+        status: "cancelled",
+        cancelledAt: new Date().toISOString(),
+      },
+    };
+  },
 });
 
 const rova = await createRovaApp({
   database: {
     url: process.env.DATABASE_URL!,
+    // Rova keeps its tables in "_workflows" unless this names another schema.
+    schema: process.env.DATABASE_SCHEMA,
     migrations: { runOnStartup: true },
   },
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
@@ -221,12 +126,11 @@ const rova = await createRovaApp({
     eventKey: process.env.INNGEST_EVENT_KEY,
     signingKey: process.env.INNGEST_SIGNING_KEY,
   },
-  // The whole extension surface, in one place. Nothing registers itself, so this
-  // is what turns each half on: `builtInIntegrations` from `@rova/plugins` goes
-  // under `integrations` beside them.
+  // The whole extension surface, in one place.
   extensions: {
-    events: [entityCreated],
-    actions: [action],
+    events: [appointmentCreated],
+    actions: [cancelAppointment],
+    integrations: builtInIntegrations,
   },
 });
 
@@ -236,9 +140,12 @@ const rova = await createRovaApp({
 createServer(createRequestListener(rova)).listen(3000);
 ```
 
+`examples/app.ts` is this same call with four Events and one custom action, and it
+is the canonical copy. Anything here that disagrees with that file is wrong.
+
 ### Mounting
 
-`rova.fetch` has the shape `(request: Request) => Promise<Response>`, so a fetch-native runtime takes it directly:
+A fetch-native runtime takes `rova.fetch` as it is:
 
 ```ts
 Bun.serve({ port: 3000, fetch: rova.fetch }); // Bun
@@ -246,7 +153,9 @@ Deno.serve({ port: 3000 }, rova.fetch); // Deno
 export default { fetch: rova.fetch }; // Cloudflare Workers
 ```
 
-Express and Fastify sit on Node's `http` module, which speaks `IncomingMessage`/`ServerResponse`. `@rova/core/node` translates between the two. It needs Node 20 or newer.
+Express and Fastify sit on Node's `http` module, whose currency is
+`IncomingMessage` and `ServerResponse`. `@rova/core/node` does that translation and
+needs Node 20 or newer.
 
 ```ts
 import express from "express";
@@ -258,7 +167,8 @@ app.use("/workflows", createRequestListener(rova));
 app.use(express.json());
 ```
 
-Fastify reaches connect-style middleware through `@fastify/middie`, which runs it in the `onRequest` hook, before Fastify parses the body:
+Fastify reaches connect-style middleware through `@fastify/middie`, which runs it
+in the `onRequest` hook, ahead of Fastify's body parsing:
 
 ```ts
 import Fastify from "fastify";
@@ -270,14 +180,18 @@ await app.register(middie);
 app.use("/workflows", createRequestListener(rova));
 ```
 
-Two things about a Node mount are worth knowing, and the adapter handles both:
-
-- Express rewrites `req.url` to strip the path it matched on, so a listener mounted at `/workflows` sees `/api/extensions` where the browser asked for `/workflows/api/extensions`. The adapter reads `req.originalUrl`, which is where the full path survives.
-- A body parser mounted ahead of Rova drains the request, so every POST would arrive empty. Rova cannot re-create the original bytes, and the Inngest callback verifies a signature over them, so a drained request gets a 500 that names the fix rather than a silent empty body.
+The adapter handles the two ways a Node mount goes wrong. Express rewrites
+`req.url` to strip the path it matched on, so a listener mounted at `/workflows`
+sees `/api/extensions` where the browser asked for `/workflows/api/extensions`; the
+adapter reads `req.originalUrl`, where the full path survives, and logs once when
+the host's mount path and `basePath` disagree. A body parser mounted ahead of Rova
+drains the request, and Rova cannot re-create the original bytes that the Inngest
+callback verifies a signature over, so such a request gets a 500 naming the fix.
 
 ### The editor
 
-`@rova/core` serves an API and nothing else. The editor lives in `@rova/client`, and a host that wants it hands it over:
+`@rova/core` serves an API. The editor lives in `@rova/client`, and handing it over
+is what turns it on:
 
 ```ts
 import { clientBundle } from "@rova/client";
@@ -285,11 +199,15 @@ import { clientBundle } from "@rova/client";
 const rova = await createRovaApp({ client: clientBundle, ... });
 ```
 
-Passing it is the switch. Leave it out and Rova answers 404 outside `/api`, which is what an adopter embedding the editor elsewhere, or driving workflows by webhook alone, wants. Nothing depends on `@rova/client` in either direction: `createRovaApp` takes a directory to serve, so a custom build of the editor is the same call with a different `dir`.
+Leave `client` out and Rova answers 404 outside `/api`, which suits a host
+embedding the editor elsewhere or driving workflows by Event alone. The option
+takes a directory holding an `index.html`, so a custom build of the editor is the
+same call with a different bundle. Neither package depends on the other.
 
 ### Built-in integrations
 
-`@rova/core` carries no vendor SDKs. The built-in integrations (Acuity, Clerk, Linear, Resend, Slack, Twilio) live in `@rova/plugins` as values, and passing them is what turns them on:
+`@rova/core` carries no vendor SDKs. The built-in integrations live in
+`@rova/plugins` as values, and passing them is what turns them on:
 
 ```ts
 import { builtInIntegrations } from "@rova/plugins";
@@ -300,160 +218,519 @@ const rova = await createRovaApp({
 });
 ```
 
-Import two of the six by name instead, and the rest are tree-shaken out. `examples/app.ts` in this repo passes the array. `@rova/plugins` peer-depends on `@rova/core`: a second copy would mean a second database handle, which is what one-Rova-per-process exists to prevent.
+Import two of the six by name instead and the rest are tree-shaken out. The editor
+lists whatever the server assembled, so an integration a host left out is absent
+from the action selector and can have no connection stored for it. Its SDK stays
+out of the process too, because each handler's module is imported the first time
+one of its actions runs.
 
-The editor lists whatever the server assembled, so an integration a host did not pass does not appear and cannot have a connection stored for it. Its SDK never enters the process either, since each handler's module is imported the first time its action runs.
+`@rova/plugins` peer-depends on `@rova/core`. A second copy would mean a second
+database handle, which is what one-Rova-per-process exists to prevent.
 
-### Writing your own integration package
+### The database options
 
-`@rova/plugins` is built against `@rova/core/plugin` and nothing else, so an outside package can be written the same way. That surface exports what an integration is written with: `defineIntegration`, `credentialFields`, `CredentialsOf`, `defineStep`, `StepFailure`, `StepRunContext`, `IntegrationTestResult`, and `VendorTransport`.
+`database` takes one `url` or the discrete fields, and the two arms are exclusive.
+A mixed literal fails to compile and the same mixture is refused at runtime. The
+fields reach postgres.js as fields, so a database name holding a space, an IPv6 or
+unix-socket host, and `ssl` all work.
 
-An integration is one `defineIntegration` value: its credential form, a `defineStep` per action, and a loader for its connection test. A step is an input schema, an output schema, the metadata the editor draws the action with, and a handler that returns an `Effect`; `defineStep` owns the config decode, the credential fetch, the run log, and the `StepResult` envelope, so the handler never writes that envelope and never touches a Promise. Nothing registers on import: a host passes the values to `createRovaApp`. `VendorTransport` is the HTTP layer a connection test provides when it runs its own effect outside `defineStep`. See `packages/plugins/src/AGENTS.md` for the worked example.
-
-### Package exports
-
-- `@rova/core` -- `defineEvent`, `createAction`, and related types.
-- `@rova/core/app` -- `createRovaApp` factory, `RovaAppOptions`, `RovaApp`, and re-exported config types.
-- `@rova/core/node` -- `createRequestListener`, for hosts on Express, Fastify, or `node:http`.
-- `@rova/core/plugin` -- what an integration package builds against.
-- `@rova/core/migrate` -- `migrateRovaDatabase`, for applying migrations without building an app.
-- `@rova/client` -- `clientBundle`, the built editor, passed to `createRovaApp` as `client`.
-- `@rova/plugins` -- the built-in integrations as values, and `@rova/plugins/ui` for their icons, which only the browser imports.
-
-The first two run on any runtime with `Request` and `Response`. There is no published server wrapper: once `createRovaApp` returns a fetch handler, a wrapper saves a consumer two lines and charges an options type that reaccumulates every parameter the host's own server takes. This repo has no server of its own; `examples/app.ts` is an app written the way an adopter writes one, and running it is how the mount above stays exercised.
-
-### Linking for development
-
-To use `@rova/core` from another project during development:
-
-```bash
-# From the consumer project, point at this repo's core package by path.
-# pnpm 11 takes a path here; the `--global` form of earlier versions is gone.
-cd /path/to/consumer && pnpm link /path/to/rova/packages/core
+```ts
+database: {
+  host: "db.internal",
+  port: 5432,
+  user: "rova",
+  password: process.env.PGPASSWORD!,
+  database: "app",
+  schema: "_workflows",
+  maxConnections: 10,
+  ssl: "require",
+  migrations: { runOnStartup: false },
+}
 ```
 
-A linked consumer resolves through the `"exports"` map to `packages/core/dist`, so build the package before linking it and rebuild after changing it.
+`database.schema` names the Postgres schema Rova lives in, `_workflows` unless a
+host says otherwise. The tables are declared unqualified and the connection's
+`search_path` is what puts them there, so the schema name is a runtime option
+rather than a build-time one. Dropping that one schema removes Rova from the
+database, migration journal included.
+
+Two consequences follow, and both fail loudly rather than quietly.
+
+- A schema name has to be an unquoted lowercase identifier of at most 63
+  characters. `search_path` would fold anything else to lowercase, or Postgres
+  would truncate it, and the tables would then live somewhere other than the name
+  says.
+- A `url` may not carry a `search_path` query parameter. That parameter reaches the
+  startup packet and outranks the option, so the two would disagree about where the
+  tables are.
+
+The connection has to keep the `search_path` startup parameter. Behind PgBouncer
+that means `track_extra_parameters=search_path` (1.22 or newer);
+`ignore_startup_parameters` is the wrong knob, since it drops the value rather than
+passing it on. A session-mode or direct connection works as well. Migrations read
+`current_schema()` back before applying anything and fail naming both schemas, so a
+pooler that swallowed the parameter cannot migrate `public` by accident.
+
+### Migrations
+
+Two ways in, and they run the same migrator.
+
+**At startup.** `database.migrations.runOnStartup` (default `false`) applies pending
+migrations before the HTTP server starts. `database.migrations.migrationsDir`
+overrides where they are read from and is resolved from the working directory; the
+default is the `drizzle/` directory `@rova/core` ships, found relative to the
+running code. Nothing else is guessed from the working directory, so an embedder's
+own `./drizzle` is never mistaken for Rova's.
+
+**From CI or a release step**, before any instance boots:
+
+```ts
+import { migrateRovaDatabase } from "@rova/core/migrate";
+
+await migrateRovaDatabase({
+  url: process.env.DATABASE_URL!,
+  // Or the discrete fields, and `schema` when Rova is not in `_workflows`.
+  // `migrationsDir` sits here, flat, rather than under a `migrations` key.
+});
+```
+
+It takes the same connection fields the `database` option does. The connection is
+given back on the way out, so a one-shot process exits when it resolves. Running it
+from several places at once is safe: it holds a session-scoped advisory lock, and
+the callers that lose the race wait and then find nothing to do. Postgres does not
+serialize concurrent `CREATE SCHEMA` or `CREATE TABLE` of one name, so replicas
+starting together would otherwise fail all but the first on a unique violation.
+
+Calling it inside a process that already built an app works on one condition: the
+config is compared field by field, `maxConnections` and `ssl` included, so pass the
+object the app was given. A config differing anywhere reads as a second database
+and is refused.
+
+`@rova/core/migrate` exists because nothing else can apply the shipped SQL
+correctly. Those files name no schema, and the `search_path` that decides which
+schema they build rides on the connection Rova opens, so `psql` or another
+migration tool would put the tables in `public`. This repo's `pnpm run db:migrate`
+is that same entry with the environment read in front of it (`scripts/migrate.ts`),
+which keeps the command used here daily and an adopter's CI job on one code path.
+
+## Defining an Event
+
+An Event is a named payload shape your app raises. It carries a name, a label, a
+payload schema, and the Correlation Path where that payload holds its Entity Value.
+It carries no lifecycle role: which workflow starts on it and which cancels on it
+is each Workflow Builder's declaration in the editor (see `docs/adr/0007`).
+
+```ts
+import { defineEvent, timestampField } from "@rova/core";
+import { Schema } from "effect";
+
+const paymentSettled = defineEvent({
+  name: "billing/payment.settled",
+  label: "Payment settled",
+  description: "Raised by the billing service when a charge clears.",
+  schema: Schema.Struct({
+    appointmentId: Schema.String.annotate({ description: "Appointment ID" }),
+    amountCents: Schema.Number.annotate({
+      description: "Amount settled, in cents",
+    }).check(Schema.isFinite()),
+    settledAt: timestampField("When the payment settled, ISO 8601"),
+  }),
+  correlationPath: "appointmentId",
+});
+```
+
+`defineEvent` registers nothing. The value goes to `createRovaApp` under
+`extensions.events`, and assembly is where a mistake is caught, naming the Event.
+
+**`name` is the Event's identity**, and one Event covers one thing that happened.
+An app declares `appointment.created` and `appointment.canceled` separately rather
+than one umbrella Event with a subtype field, because the lifecycle model states
+its rules over Event names.
+
+**`schema` describes the payload as it arrives.** Write it in Effect Schema, Zod, or
+arktype and pass it as it is. Both halves of Standard Schema are needed from one
+object: the validate half checks an arriving payload, and the JSON Schema half is
+where the editor's field list comes from, so a library that describes only how to
+validate cannot define an Event.
+
+**Every payload path needs a `description` annotation**, nested objects included.
+The editor lists `appointment.startsAt` as its own entry in the template picker and
+shows that text beside it, so a bare field reads as the word "string" to whoever is
+building the workflow. A missing annotation throws at definition, naming the Event.
+
+**`correlationPath` names where the Entity Value sits.** It is typed against the
+payload and admits only a path resolving to a string, which is what an Entity Value
+is. Runs sharing that value are about the same entity, which is what Concurrency,
+Cancel Events, and a Wait node's match act on. Two Events describe one entity when
+their Entity Values are equal, even when their Correlation Paths differ, which is
+why `appointmentId` above agrees with `appointment.id` on an appointment Event. The
+path is optional: an imported Event may have none its author knew to declare, and
+the Workflow Builder supplies one in the Lifecycle panel.
+
+**A datetime field says so with `timestampField`.** That is what annotates it as a
+date-time on the encoded side, which gives the field before/after operators in the
+condition builder and ranks it to the top of a menu asking for a date. `dateField`
+is the same wire form with a `Date` in a handler, which an Event has no use for,
+since an Event's decoded payload is discarded and the JSON the sender wrote is what
+travels. A bare `Schema.Date` is refused, because a declaration has no encoding
+chain to annotate and its description never reaches the JSON Schema.
+
+### The umbrella source
+
+`source` separates an Event's identity from its transport, for an existing bus that
+sends one name and cannot change. Identity stays the Rova name, so the lifecycle
+model is untouched, and `when` becomes the listener's filter:
+
+```ts
+const invoicePaid = defineEvent({
+  name: "billing/invoice.paid",
+  label: "Invoice paid",
+  schema: Schema.Struct({
+    type: Schema.String.annotate({ description: "Subtype" }),
+    invoiceId: Schema.String.annotate({ description: "Invoice ID" }),
+  }),
+  correlationPath: "invoiceId",
+  source: { event: "billing/webhook", when: { path: "type", equals: "paid" } },
+});
+```
+
+Each listener carries its filter as its Inngest trigger's `if`, so the bus decides
+which Event a payload is and a subtype nothing declared costs no invocation. The
+filter is compiled at definition, so an expression that cannot be built fails in the
+build of whoever wrote it. Two Events on one source that both omit `when` are
+refused at assembly.
+
+### The intake gate
+
+An Event reaches Rova two ways. Send it with an Inngest client:
+
+```ts
+inngest.send({ name: "app/appointment.created", data: { appointment } });
+```
+
+Or post it, which needs no Inngest client:
+
+```
+POST /api/events/app%2Fappointment.created
+Authorization: Bearer <api key>
+Content-Type: application/json
+```
+
+The route accepts and enqueues. It does not fan out inside the request, because
+that would tie a run's durability to an HTTP connection, so the payload goes onto
+the bus and the Event's own listener does the delivery. The answer names the Event
+and a delivery id and says nothing about the workflows behind it, since this
+endpoint answers third parties across origins. It sits outside the `auth` predicate
+and checks an API key instead, and it answers `OPTIONS` with CORS headers for a
+browser sender.
+
+**The gate is open, on purpose.** Declared fields are validated and a key the schema
+never heard of is ignored rather than refused. An Event's payload is the host's own
+message and senders add fields routinely, so an additive change upstream must not
+stop intake. This is the one boundary in the repo that decodes this way, and the
+consequence is worth stating: drift on a declared field fails loudly, and drift by
+addition is silent by choice. A refusal reaches an HTTP sender as a 400 naming the
+paths that did not fit, and reaches the Inngest listener as a logged failure with no
+retry, because a malformed payload does not improve on a second attempt.
+
+What the gate decodes to is discarded, and the raw JSON travels on. Nothing
+downstream consumes a typed value: the lifecycle reads a string at the Correlation
+Path, a wait match evaluates over JSON, templates resolve strings, and JSONB holds
+JSON. A transform would rewrite what the sender sent, and a `Date` round trip alone
+is enough to break a wait match comparing a literal captured at park time.
+
+## The Lifecycle model
+
+This is what a Workflow Builder declares in the editor's Lifecycle panel, and what
+an Event Author should understand about how their vocabulary gets used. The
+Lifecycle Node is the workflow's entry node on the canvas. It carries the
+**Lifecycle Rules** and two outlets, Started and Canceled. An unconnected outlet
+ends the run quietly.
+
+**Start Events** are the Events the rules list as starting a run. When one arrives,
+Concurrency applies first, and then a new Execution enters through the Started
+outlet carrying the payload. Manual starts are the other start source: the Run
+button and the execute route, allowed or refused by the same rules.
+
+**Cancel Events** are the Events the rules list as canceling runs. When one arrives,
+every in-flight Execution with an equal Entity Value jumps to the Canceled outlet at
+its next step boundary. The Canceled outlet is not drawn yet, so the rules refuse a
+non-empty Cancel Event list at save and the panel says so. Until it lands, a
+workflow ends its own runs from the canvas or the runs panel.
+
+**Concurrency** is how many Executions may exist per Entity Value: one at a time
+with newest wins, one at a time with first wins, or unlimited. Newest wins is how a
+reschedule replaces a run. A start with no payload, which is a manual run, uses the
+workflow itself as its entity, so Concurrency stays meaningful there.
+
+**Superseded** is how an Execution ends when newest-wins Concurrency lets a newer
+start take its place. It is quiet: no outlet fires, and run history records the
+status.
+
+**A Refused Start** is a start that opened no Execution. Three things cause one:
+first-wins Concurrency found a run for the entity already going, the payload carried
+nothing at the Correlation Path Concurrency needs, or a manual start was not
+allowed. Each is recorded as an audit row with no Execution behind it, and the
+editor's runs panel lists them beside the runs.
+
+**Precedence** is one fixed order when an Event arrives. The Lifecycle Rules apply
+first, and then the Event reaches the Wait Subscriptions of the runs that survived
+them. There is no other ordering rule: a start always starts, and Concurrency
+resolves multiplicity.
+
+A Wait node's subscription is independent of all of this. It names any Event, with
+an optional match over the arriving payload, and an Event needs no lifecycle role to
+wake a wait.
+
+An Execution ends with exactly one status: `completed`, `canceled`, `superseded`, or
+`failed`.
+
+## Writing an integration
+
+`@rova/plugins` builds against `@rova/core/plugin` and nothing else, so an outside
+package can be written the same way. That surface exports `defineIntegration`,
+`credentialFields`, `CredentialsOf`, `checkIntegration`, `defineStep`, `StepFailure`,
+`StepRunContext`, `IntegrationTestResult`, `VendorTransport`, and the two datetime
+spellings `timestampField` and `dateField`.
+
+An integration is one `defineIntegration` value holding its credential form, a
+`defineStep` per action, and a loader for its connection test.
+
+```ts
+import {
+  credentialFields,
+  type CredentialsOf,
+  defineIntegration,
+  defineStep,
+  StepFailure,
+} from "@rova/core/plugin";
+import { Effect, Schema } from "effect";
+// Your own vendor client. It answers an Effect, which the handler yields directly.
+import { createThing } from "#src/my-service/client";
+
+// `credentialFields` is an identity function with a `const` type parameter. It
+// exists so each `envVar` stays a literal type, which is the vocabulary below.
+const myServiceCredentials = credentialFields([
+  {
+    label: "API Key",
+    type: "password",
+    configKey: "apiKey", // where the value is stored
+    envVar: "MY_SERVICE_API_KEY", // what a handler reads it as
+  },
+]);
+
+/** The keys a handler may read. A misspelled one fails to compile. */
+export type MyServiceCredentials = CredentialsOf<typeof myServiceCredentials>;
+
+export const myService = defineIntegration({
+  type: "my-service", // prefixes every action id
+  label: "My Service",
+  description: "What this integration does",
+  credentials: myServiceCredentials,
+  // The test reaches the vendor, so it stays behind a dynamic import until
+  // someone presses "Test connection".
+  test: async () => (await import("#src/my-service/test")).testMyService,
+  // The record key is the action slug, and the only place it exists: the action
+  // id "my-service/do-something" is computed at assembly.
+  actions: {
+    "do-something": defineStep({
+      label: "Do Something",
+      description: "What this action does",
+      category: "My Service",
+      input: Schema.Struct({ text: Schema.String }),
+      output: Schema.Struct({
+        id: Schema.String.annotate({ description: "Item ID" }),
+      }),
+      // Each `key` is checked against the input schema, so a field the step
+      // cannot read fails to compile.
+      configFields: [
+        { key: "text", label: "Text", type: "template-input", required: true },
+      ],
+      handler: Effect.fn(function* (input, context) {
+        // Credentials arrive as an effect, so a step that decides it has nothing
+        // to do never reads them. Yielding it twice fetches once.
+        const credentials = yield* context.credentials;
+        const apiKey = credentials.MY_SERVICE_API_KEY;
+
+        if (!apiKey) {
+          return yield* Effect.fail(
+            new StepFailure({
+              message: "MY_SERVICE_API_KEY is not configured.",
+            })
+          );
+        }
+
+        return { id: yield* createThing(apiKey, input.text) };
+      }),
+    }),
+  },
+});
+```
+
+**`defineStep` owns everything around the handler**: the config decode, the
+credential fetch, the run log rows, and the `StepResult` envelope the engine reads.
+A handler answers a value or fails with a `StepFailure`. It writes no envelope and
+touches no Promise, and it may ask for `HttpClient.HttpClient` and nothing else.
+
+The handler's `context` is typed with the open credential record, where every key is
+`string | undefined`. A handler wanting its integration's own vocabulary annotates
+the parameter as `context: StepRunContext<MyServiceCredentials>`, and a misspelled key
+then fails to compile. The vocabulary is not inferred for you, because a type
+parameter appearing only inside a context-sensitive argument would cost an inline
+handler both parameter types and leave the whole handler unchecked.
+
+**Both directions cross through the schema's canonical JSON codec.** A step boundary
+is JSON on both sides, so what runs is `Schema.toCodecJson(schema)`, built once at
+definition. That is what lets an input schema carry a transform: a comma-separated
+text field decodes to a list on the way in, and a `Date` in an output encodes to an
+ISO string on the way out. A handler answering with something its output schema
+cannot encode fails the node once, naming the field path, rather than spending
+retries on a certainty.
+
+**The output encode is a trim.** A key the output schema does not declare does not
+survive it, so a step handing back a vendor object whole has to describe every field
+it means to pass on. `Schema.StructWithRest` over a `Schema.Record` rest is the other
+spelling, for a shape that is genuinely open.
+
+**Which optional spelling, on which side.** The codec rewrites `optional(X)` to
+`optionalKey(NullOr(X))`. An input field takes `optionalKey(X)`, because the engine
+sends an absent key for a field a builder left blank and never sends a null. A
+vendor-derived output field takes `optionalKey(NullOr(X))`, the one spelling that
+survives both a key the vendor omitted and a null it sent.
+
+**A handler either sits inline or arrives through `load`.** Exactly one of `handler`
+and `load` is written, and a value carrying both fails to compile. `load` is a loader
+for the handler's own module, and it earns its place two ways: a module importing a
+vendor SDK stays out of a process that never runs one of its actions, and an
+integration with eight actions is not a file anybody reads.
+
+```ts
+"do-something": defineStep({
+  // ... the same metadata and the same two schemas
+  load: async () =>
+    (await import("#src/my-service/steps/do-something")).doSomethingHandler,
+}),
+```
+
+**`checkIntegration` is the assembly check, exported for your own suite.** Assembly
+calls it for every integration a host passes, so a bad definition fails the app that
+turned it on. Calling it in the defining package's tests moves that failure to where
+the author reads it, and it is what catches a missing annotation before review sees
+a green run.
+
+**Describe the wire, not the SDK.** An SDK's types are its own promise about somebody
+else's JSON, and a typed client casting a response without validating it is not
+evidence. Model what a recorded response contains, keep the fields a handler cannot
+work without required, and make the rest tolerant. Acuity is the worked example, and
+that lesson cost five actions.
+
+`packages/plugins/src/AGENTS.md` is the full guide, with the file layout, the
+vendor HTTP layer, the config field types, and the testing pattern.
+
+## Package exports
+
+- `@rova/core` is what a host authors vocabulary with: `defineEvent`,
+  `createAction`, `timestampField`, `dateField`, and their types.
+- `@rova/core/app` is `createRovaApp`, `RovaAppOptions`, `RovaApp`, and the
+  re-exported config types.
+- `@rova/core/node` is `createRequestListener`, for hosts on Express, Fastify, or
+  `node:http`.
+- `@rova/core/plugin` is what an integration package builds against.
+- `@rova/core/migrate` is `migrateRovaDatabase`, for applying migrations without
+  building an app.
+- `@rova/client` is `clientBundle`, the built editor, passed to `createRovaApp` as
+  `client`.
+- `@rova/plugins` is the built-in integrations as values, by name and as
+  `builtInIntegrations`.
+- `@rova/plugins/ui` is their icons and output renderers, which only the browser
+  imports. A React component cannot be serialized, so it is the one thing that
+  cannot travel with the rest of the catalog over `/api/extensions`.
+
+`@rova/shared` stays private and is inlined into whichever bundle needs it.
+
+Everything except `@rova/core/node` runs on any runtime with `Request` and
+`Response`. There is no published server wrapper: once `createRovaApp` returns a
+fetch handler, a wrapper saves a consumer two lines and charges an options type that
+reaccumulates every parameter the host's own server takes.
 
 ### createRovaApp options
 
-| Option                              | Required | Description                                                      |
-| ----------------------------------- | -------- | ---------------------------------------------------------------- |
-| `basePath`                          | No       | Path the host mounted Rova at (default `/`)                      |
-| `database.url`                      | Yes¹     | PostgreSQL connection string                                     |
-| `database.host` and co.             | Yes¹     | `host`, `port`, `user`, `password`, `database`, instead of a URL |
-| `database.schema`                   | No       | Postgres schema Rova keeps its tables in (default `_workflows`)  |
-| `database.maxConnections`           | No       | Connections the query pool may open (default 10)                 |
-| `database.ssl`                      | No       | `true`, `"require"`, `"allow"`, `"prefer"` or `"verify-full"`    |
-| `database.migrations.runOnStartup`  | No       | Apply pending migrations at startup (default `false`)            |
-| `database.migrations.migrationsDir` | No       | Custom migrations directory                                      |
-| `encryption.key`                    | Yes      | 64-character hex string; encrypts integration secrets            |
-| `auth`                              | Yes      | Predicate deciding who reaches the editor, or `"external"`       |
-| `inngest.id`                        | Yes      | Inngest application ID                                           |
-| `inngest.*`                         | No       | baseUrl, eventKey, env, isDev, signingKey, serveOrigin           |
-| `logger`                            | No       | Custom logger conforming to `RovaLogger` interface               |
-| `configureLogging`                  | No       | Enable built-in structured logging (default `true`)              |
-| `triggers`                          | No       | Array of custom trigger definitions                              |
-| `actions`                           | No       | Array of custom action definitions                               |
-| `client`                            | No       | The editor bundle to serve, from `@rova/client`                  |
+| Option                              | Required | Description                                                       |
+| ----------------------------------- | -------- | ----------------------------------------------------------------- |
+| `basePath`                          | No       | Path the host mounted Rova at (default `/`)                       |
+| `auth`                              | Yes      | Predicate deciding who reaches the editor, or `"external"`        |
+| `database.url`                      | Yes¹     | PostgreSQL connection string                                      |
+| `database.host` and co.             | Yes¹     | `host`, `port`, `user`, `password`, `database`, instead of a URL  |
+| `database.schema`                   | No       | Postgres schema Rova keeps its tables in (default `_workflows`)   |
+| `database.maxConnections`           | No       | Connections the query pool may open (default 10)                  |
+| `database.ssl`                      | No       | `true`, `"require"`, `"allow"`, `"prefer"` or `"verify-full"`     |
+| `database.migrations.runOnStartup`  | No       | Apply pending migrations at startup (default `false`)             |
+| `database.migrations.migrationsDir` | No       | Custom migrations directory                                       |
+| `encryption.key`                    | Yes      | 64-character hex string; encrypts integration secrets             |
+| `inngest.id`                        | Yes      | Inngest application ID                                            |
+| `inngest.*`                         | No       | baseUrl, eventKey, env, isDev, signingKey, serveOrigin, servePath |
+| `extensions.events`                 | No       | `defineEvent` values                                              |
+| `extensions.actions`                | No       | `createAction` values                                             |
+| `extensions.integrations`           | No       | `defineIntegration` values                                        |
+| `logger`                            | No       | Custom logger conforming to `RovaLogger`                          |
+| `configureLogging`                  | No       | Enable built-in structured logging (default `true`)               |
+| `client`                            | No       | The editor bundle to serve, from `@rova/client`                   |
 
-¹ `database` takes either arm, never both: one `url`, or the discrete fields. `schema`, `maxConnections`, `ssl` and `migrations` are valid on both. The fields reach the driver as fields, so a database name or password needing escaping in a URL is fine as-is, and an IPv6 or unix-socket host works. A `url` may not carry a `search_path`: `database.schema` names the schema, and a query parameter would outrank it.
+¹ `database` takes either arm, never both. `schema`, `maxConnections`, `ssl` and
+`migrations` are valid on both.
 
-### Notes
+Notes worth reading once:
 
-- The consumer is responsible for running Inngest (either self-hosted or cloud). Rova does not spawn `inngest-cli`.
-- For local development in this repo, `pnpm run dev` starts Inngest CLI as a separate process.
-- `createRovaApp` returns `{ fetch, dispose }`. Call `dispose()` to unregister runtime triggers/actions.
-- `auth` decides who reaches the editor. Rova refuses to start in production without it, because the failure it prevents is the quiet one: an editor reachable from the internet, running registered actions with credentials decrypted out of the `integrations` table.
-  - Pass a predicate `(request: Request) => boolean | Promise<boolean>` reading whatever session your app already uses. It covers the RPC, REST, OpenAPI, extensions, and SPA routes.
-  - The Inngest callback and the webhook and resume paths are deliberately left out. Those callers are machines carrying a signing key, an API key, or a hook token, and a session check would break all three. Which of Rova's routes are which is Rova's knowledge, which is why the predicate is an option rather than middleware you wrap the mount in.
-  - Pass `"external"` when something in front of Rova already gates it.
-- **Set `inngest.signingKey` on any deployment.** `/api/inngest` sits outside the `auth` gate because Inngest signs its callbacks, and that holds only with a signing key configured. Without one the Inngest SDK runs in dev mode and skips signature verification, so an anonymous POST to that path can execute a workflow function with a payload of its choosing. Rova logs an error at startup when no key is set.
-- Mounting under a sub-path means passing `basePath`. Rova builds its API prefix, the SPA's `<base href>`, and every asset URL from it, so the host states the mount point once rather than Rova deducing it per request. A host that mounts at `/workflows` and omits `basePath` gets a client that requests its assets from the root.
-- `rova.fetch` answers API routes under `/api/*` and serves the SPA under `/*`. Hand it straight to `Bun.serve`, `Deno.serve`, or a Workers `export default`; on Node, pass it through `createRequestListener` from `@rova/core/node` first.
-- Action extensions are strict-schema actions via `createAction(...)`:
-  - `schema` validates resolved action input at runtime. Write it in Effect Schema, Zod, or arktype and pass it as it is — `createAction` takes each in the form its library produces.
-  - `execute({ payload, context })` receives typed payload validated by `schema`.
-  - `id`, `label`, `description`, `category`, `logoUrl`, `configFields`, and `outputFields` define action metadata.
-- Events are declared with `defineEvent(...)` and passed under `extensions.events`:
-  - `name` is the Event's identity in Rova, and by default the name it arrives under. `source` separates the two for an existing bus that sends one umbrella name.
-  - `schema` validates an arriving payload, in whichever library you wrote it. A payload that fails is refused at intake, and the sender is told why.
-  - `correlationPath` names where the payload carries its Entity Value, typed from the schema (`string` fields only). Runs sharing that value are about the same entity: Concurrency and Cancel act on them, and a Wait resumes on them.
-  - What a workflow does when an Event arrives is that workflow's own declaration: the Lifecycle panel names the Events that start a run, the Events that cancel one, the Concurrency between runs of one entity, and whether manual runs are allowed. An Event says nothing about any of it.
-- `logoUrl` is optional; when provided, it is rendered in the action selector.
+- **`auth` decides who reaches the editor**, and Rova refuses to start without it.
+  The failure it prevents is the quiet one: an editor reachable from the internet,
+  running actions with credentials decrypted out of the `integrations` table. Pass a
+  predicate `(request: Request) => boolean | Promise<boolean>` reading whatever
+  session your app already uses, or `"external"` when something in front of Rova
+  already gates it. It covers the RPC, REST, OpenAPI, extensions, and SPA routes.
+- **Three routes sit outside that gate**: the Inngest callback, the Event intake
+  path, and the wait resume path. Those callers are machines carrying a signing key,
+  an API key, or a resume token, and a session check would break all three. Which of
+  Rova's routes are which is Rova's knowledge, which is why the predicate is an
+  option rather than middleware wrapped around the mount.
+- **Set `inngest.signingKey` on any deployment.** `/api/inngest` sits outside the
+  gate because Inngest signs its callbacks, and that holds only with a signing key
+  configured. Without one the Inngest SDK runs in dev mode and skips signature
+  verification, so an anonymous POST to that path can execute a workflow function
+  with a payload of its choosing. Rova logs an error at startup when no key is set.
+- **Mounting under a sub-path means passing `basePath`.** Rova builds its API
+  prefix, the SPA's `<base href>`, and every asset URL from it. A host that mounts at
+  `/workflows` and omits it gets a client requesting its assets from the root.
+- **Running Inngest is the consumer's job**, self-hosted or cloud. Rova does not
+  spawn `inngest-cli`. This repo's `pnpm run dev` starts it as a separate process.
+- `createRovaApp` returns `{ fetch, basePath, dispose }`. Awaiting `dispose()` waits
+  for the Effect runtime's layers to finalize.
+- One Rova per process is the only supported arrangement. The database handle, the
+  Inngest client, the encryption key, and the assembled extension surface are
+  process-global, so a second app with a different database URL silently aliases the
+  first connection.
 
-## Run In Production
+## API endpoints
 
-Build every package, then start the same `examples/app.ts` the dev loop runs. `NODE_ENV=production` is what makes it hand the built client to `createRovaApp`, so one process serves the editor, its assets, and the API. There is no Vite dev server in this mode.
+Base path is `/api`, under whatever `basePath` names.
 
-```bash
-pnpm run build
-pnpm run start
-```
+**Extensions and docs**
 
-Point it at a database and give it an encryption key:
+- `GET /api/extensions` the whole extension surface as one JSON catalog, which the
+  editor reads once before its first render
+- `GET /api/openapi.json`, `GET /api/docs`
 
-```bash
-PORT=4017 DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder INTEGRATION_ENCRYPTION_KEY=$INTEGRATION_ENCRYPTION_KEY pnpm run start
-```
+**Events**
 
-Run it with startup migrations:
+- `OPTIONS /api/events/:eventName`
+- `POST /api/events/:eventName`
 
-```bash
-RUN_DB_MIGRATIONS=true PORT=4017 DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder INTEGRATION_ENCRYPTION_KEY=$INTEGRATION_ENCRYPTION_KEY pnpm run start
-```
-
-## Docker Build And Run
-
-The `Dockerfile` is out of date: it still targets Bun and a single-package `src/` layout, so `docker build` fails. Tracked in [#5](https://github.com/alandotcom/rova/issues/5). Use the `pnpm run build && pnpm run start` path above until it is rebuilt.
-
-Build image:
-
-```bash
-docker build -t rova-workflow-builder .
-```
-
-Run container:
-
-```bash
-docker run --rm \
-  -p 4017:4017 \
-  -e DATABASE_URL=postgresql://workflow:workflow@host.docker.internal:55437/workflow_builder \
-  -e RUN_DB_MIGRATIONS=true \
-  rova-workflow-builder
-```
-
-## Scripts
-
-- `pnpm run dev` - run the app, the client dev server, and the inngest dev process together
-- `pnpm run dev:inngest` - run only the inngest dev process
-- `pnpm run build` - `pnpm -r build`; each package builds itself, in workspace-graph order
-- `pnpm --filter @rova/client dev` - run only the client dev server (Vite, proxying `/api` to port 4017)
-- `pnpm --filter @rova/client build` - build `@rova/client` alone: the entry via tsdown, then the SPA via Vite into `packages/client/dist/client/`
-- `pnpm run start` - run the app in production mode (`examples/app.ts` with `NODE_ENV=production`)
-- `pnpm run test` - run the vitest suite once
-- `pnpm run test:watch` - run vitest in watch mode
-- `pnpm run type-check` - run TypeScript checks
-- `pnpm run lint` - run oxlint with type-aware rules
-- `pnpm run knip` - report unused files, exports, and dependencies
-- `pnpm run check` - format check (oxfmt --check)
-- `pnpm run fix` - format auto-fix (oxfmt)
-- `pnpm run db:generate` - generate the migration for a schema change
-- `pnpm run db:migrate` - apply pending migrations to `DATABASE_URL`, through Rova's own
-  migrator. Safe to run from several instances at once; it holds an advisory lock. A database
-  built before the tables were unqualified needs its old journal reconciled, or its schema
-  dropped, before this will apply the current baseline.
-
-## API Endpoints
-
-Base path: `/api`
-
-### API Keys
+**API keys**
 
 - `GET /api/api-keys`
 - `POST /api/api-keys`
 - `DELETE /api/api-keys/:keyId`
 
-### Integrations
+**Integrations**
 
 - `GET /api/integrations`
 - `POST /api/integrations`
@@ -463,9 +740,8 @@ Base path: `/api`
 - `DELETE /api/integrations/:integrationId`
 - `POST /api/integrations/:integrationId/test`
 
-### Workflows
+**Workflows**
 
-- `POST /api/workflow/:workflowId/execute`
 - `GET /api/workflows`
 - `POST /api/workflows/create`
 - `GET /api/workflows/current`
@@ -474,46 +750,110 @@ Base path: `/api`
 - `PATCH /api/workflows/:workflowId`
 - `DELETE /api/workflows/:workflowId`
 - `POST /api/workflows/:workflowId/duplicate`
+- `POST /api/workflows/bulk-lifecycle`
+- `POST /api/workflow/:workflowId/execute`
+
+**Runs**
+
+- `GET /api/workflows/executions`
 - `GET /api/workflows/:workflowId/executions`
 - `DELETE /api/workflows/:workflowId/executions`
-- `GET /api/workflows/:workflowId/events`
-- `OPTIONS /api/events/:eventName`
-- `POST /api/events/:eventName`
 - `GET /api/workflows/executions/:executionId/status`
 - `GET /api/workflows/executions/:executionId/logs`
 - `GET /api/workflows/executions/:executionId/events`
 - `POST /api/workflows/executions/:executionId/cancel`
-- `POST /api/workflows/hooks/:token/resume`
+- `POST /api/workflows/waits/:token/resume`
 
-### Inngest
+**Inngest**
 
-- `GET /api/inngest`
-- `POST /api/inngest`
-- `PUT /api/inngest`
+- `GET /api/inngest`, `POST /api/inngest`, `PUT /api/inngest`
 
-## Typed Client
+## Developing this repo
 
-Reads and writes in the SPA both go through `orpcQuery`, which wraps the RPC contract for TanStack Query so a query key is derived from the contract path:
+### Prerequisites
 
-```ts
-import { orpcQuery } from "#src/lib/rpc-query";
+- Node 24 or newer
+- pnpm 11 or newer, at the version the root `package.json`'s `packageManager` field
+  names. Run `corepack enable` to have Node use it.
+- PostgreSQL 15 or newer, local or remote
+- Docker, optionally, for local Postgres through `docker compose`
+
+### Environment
+
+Create `.env.local` or `.env` with at least:
+
+```env
+DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder
 ```
 
-`packages/client/src/lib/rpc-client.ts` holds what sits underneath: the raw `rpc` client, `ApiError`, and the `toSavedWorkflow`/`toSavedWorkflows` codecs.
+The optional ones the example app reads:
 
-## Database Tables
+```env
+PORT=4017
+HOST=127.0.0.1
+INTEGRATION_ENCRYPTION_KEY=<64 hex characters>
+RUN_DB_MIGRATIONS=false
+MIGRATIONS_DIR=packages/core/drizzle
+DATABASE_SCHEMA=_workflows
+```
 
-Defined in `packages/core/src/backend/lib/db/schema.ts`:
+`pnpm run dev` sets `NODE_ENV`, `HOST` and `INNGEST_BASE_URL` itself, pointing the
+last at the Inngest CLI it starts on port 8388.
 
-- `workflows`
-- `integrations`
-- `workflow_executions`
-- `workflow_execution_logs`
-- `workflow_wait_states`
-- `workflow_execution_events`
-- `api_keys`
+`DATABASE_SCHEMA` is read by both paths. `pnpm run db:migrate` creates that schema
+and `examples/app.ts` passes it to `database.schema`, so the app and the migrator
+cannot disagree about where the tables are. Integration credentials are supplied
+through the integrations UI, or through environment variables, depending on the
+plugin.
 
-## Quality Gates
+### Running it
+
+```bash
+pnpm install
+docker compose up -d   # optional, local Postgres
+pnpm run db:migrate
+pnpm run dev
+```
+
+The editor is at `http://localhost:5173`. `pnpm run dev` is three processes: the app
+on 4017, Vite's dev server in `packages/client`, and the Inngest CLI. Vite compiles
+the SPA and forwards `/api` to the app. Development hands `createRovaApp` no client,
+because the option takes a built bundle.
+
+`pnpm run start` is the other arrangement and one process. `NODE_ENV=production` is
+what makes the example app hand the built bundle over, so Rova serves the editor,
+its assets, and the API itself.
+
+```bash
+pnpm run build
+PORT=4017 \
+  DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder \
+  INTEGRATION_ENCRYPTION_KEY=$INTEGRATION_ENCRYPTION_KEY \
+  pnpm run start
+```
+
+A URL you hand to a sender outside the browser, a tunnel or a third-party service,
+carries the app's port (4017) rather than the editor's.
+
+### Scripts
+
+- `pnpm run dev` the app, the client dev server, and the Inngest dev process
+- `pnpm run dev:inngest` the Inngest dev process alone
+- `pnpm run build` `pnpm -r build`, each package building itself in graph order
+- `pnpm --filter @rova/client dev` the client dev server alone
+- `pnpm --filter @rova/client build` `@rova/client` alone: the entry through tsdown,
+  then the SPA through Vite into `packages/client/dist/client/`
+- `pnpm run start` the app in production mode
+- `pnpm run test` the vitest suite once, `pnpm run test:watch` in watch mode
+- `pnpm run type-check` TypeScript
+- `pnpm run lint` oxlint with type-aware rules
+- `pnpm run knip` unused files, exports, and dependencies
+- `pnpm run check` and `pnpm run fix` oxfmt, checking and fixing
+- `pnpm run db:generate` the migration for a schema change
+- `pnpm run db:migrate` pending migrations against `DATABASE_URL`, through Rova's
+  own migrator
+
+### Quality gates
 
 Before committing:
 
@@ -525,6 +865,39 @@ pnpm run knip
 pnpm run fix
 pnpm run build
 ```
+
+### Linking for development
+
+To use `@rova/core` from another project:
+
+```bash
+# From the consumer project, point at this repo's core package by path.
+# pnpm 11 takes a path here; the `--global` form of earlier versions is gone.
+cd /path/to/consumer && pnpm link /path/to/rova/packages/core
+```
+
+A linked consumer resolves through the `"exports"` map to `packages/core/dist`, so
+build the package before linking it and rebuild after changing it.
+
+### Database tables
+
+Defined in `packages/core/src/backend/lib/db/schema.ts`:
+
+- `workflows`
+- `integrations`
+- `workflow_executions`
+- `workflow_event_subscriptions`
+- `workflow_execution_logs`
+- `workflow_wait_states`
+- `workflow_execution_events`
+- `api_keys`
+
+### Docker
+
+The `Dockerfile` is out of date. It still targets Bun and a single-package `src/`
+layout, so `docker build` fails. Tracked in
+[#5](https://github.com/alandotcom/rova/issues/5). Use the
+`pnpm run build && pnpm run start` path above until it is rebuilt.
 
 ## Roadmap
 

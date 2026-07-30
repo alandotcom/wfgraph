@@ -1,7 +1,7 @@
 import { defineConfig } from "tsdown";
 
 // Builds the publishable @rova/core library: `src/index.ts` is the small
-// createAction/createTrigger surface, `src/app.ts` is the mountable fetch
+// createAction and defineIntegration surface, `src/app.ts` is the mountable fetch
 // handler, `src/node.ts` translates that handler for hosts on node:http,
 // `src/plugin.ts` is what a package of integrations builds against, and
 // `src/migrate.ts` applies the migrations without building an app. Every one is

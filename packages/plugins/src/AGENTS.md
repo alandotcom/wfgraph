@@ -269,6 +269,17 @@ describes itself as a number or one of the strings `"Infinity"`, `"-Infinity"` a
 `"NaN"`, so a numeric field is
 `Schema.Number.annotate({ ... }).check(Schema.isFinite())`.
 
+**A moment in time says so with `timestampField` or `dateField`**, both exported from
+`@rova/core/plugin`. Each takes the field's description and carries
+`format: "date-time"` on the encoded side, which is the whole of how the editor learns
+a field is a time: it is what gives the field before/after operators in the condition
+builder and what ranks it to the top of a menu asking for a date. `timestampField` is
+an ISO string on both sides and `dateField` hands the handler a `Date`, which the
+output codec encodes back to that string. A bare `Schema.Date` is refused at
+registration, because a declaration has no encoding chain to annotate and its
+description never reaches the JSON Schema the derivation reads. A pattern alone says
+nothing, whatever the regex looks like.
+
 **What the schema is checked against.** The handler's return type comes from it, so a
 payload that drops a field or renames one fails to compile; the schemas are the
 source of truth, and a handler's own types never widen them. Optionality is not part
@@ -314,7 +325,10 @@ through `vendor-http.ts`.
 
 The connection test the credentials UI runs. It is a Promise all the way out, because
 that is the shape the UI calls it with, so it is where `runVendorCall` enters the
-runtime and provides the transport.
+runtime and provides `VendorTransport`, the layer a `defineStep` handler already runs
+with. That layer is exported from `@rova/core/plugin` rather than rebuilt per package,
+because the `Context.Reference` caching it works around is the kind of thing that gets
+fixed in one copy and not the other.
 
 ```ts
 export async function testMyService(credentials: Record<string, string>) {
@@ -394,8 +408,15 @@ that counts its reads and the vendor client as the stubbed seam. That file also 
 the assembled step through `implement`, which is the whole path a run takes: the
 config decode, the handler, and the envelope.
 
-`index.test.ts` beside it asserts what the definition contributes: the credential
-vocabulary, the action slugs, and the field list
+`[name]/index.test.ts` beside it asserts what the definition contributes: the
+credential vocabulary, the action slugs, and the field list
 `requireOutputFieldsFromSchema` derives from each output schema. What `defineStep`
 itself does around a handler is covered once, in
 `packages/core/src/backend/lib/steps/define-step.test.ts`.
+
+`src/index.test.ts` runs `checkIntegration` over all six at module level, which is
+every check `assembleExtensions` runs, so a bad definition fails that file's
+collection. A host otherwise meets it as a startup crash, and a description missing
+from one field of one output schema would reach a reviewer as a green suite. An
+outside integration package should do the same with its own values: `checkIntegration`
+is exported from `@rova/core/plugin` for it.
