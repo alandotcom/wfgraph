@@ -1,20 +1,20 @@
+import { eq, inArray } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
-// Aliased on the way in: the service file above exports `getIntegration`,
-// `getIntegrations` and `deleteIntegration` too, and those are the domain
-// operations. These are the rows underneath them.
-import {
-  createIntegration,
-  type DecryptedIntegration,
-  deleteIntegration as deleteIntegrationRow,
-  getIntegration as getIntegrationRow,
-  getIntegrations as listIntegrationRows,
-  updateIntegration,
-} from "#src/backend/lib/db/integrations";
-import {
-  callDbModule,
-  type DatabaseError,
-} from "#src/backend/lib/effect/database";
+import { integrations, type NewIntegration } from "#src/backend/lib/db/schema";
+import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
+import type { IntegrationCipher } from "#src/backend/services/integrations/cipher";
 import type { IntegrationConfig } from "@rova/shared/types/integration";
+
+/** One `integrations` row, with its config opened out of the AES envelope. */
+export type DecryptedIntegration = {
+  id: string;
+  name: string;
+  type: string;
+  config: IntegrationConfig;
+  isManaged: boolean | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 /**
  * Every database question the integration services ask.
@@ -34,6 +34,15 @@ export class IntegrationRepo extends Context.Service<
     readonly findById: (
       integrationId: string
     ) => Effect.Effect<DecryptedIntegration | null, DatabaseError>;
+    /**
+     * The type of each id named, keyed by id, leaving out the ids no row
+     * carries. One read answers both questions a graph asks about its
+     * integrations: whether each exists, and whether it is the type its action
+     * needs.
+     */
+    readonly typesByIds: (
+      integrationIds: string[]
+    ) => Effect.Effect<Record<string, string>, DatabaseError>;
     readonly insert: (input: {
       name: string;
       type: string;
@@ -54,43 +63,113 @@ export class IntegrationRepo extends Context.Service<
 /**
  * The live repository.
  *
- * Unlike the API key repository, these methods delegate to
- * `backend/lib/db/integrations` rather than writing Drizzle inline, because that
- * module also owns the AES envelope every config passes through on its way in
- * and out, and `workflow-integration-validation.ts` still reads from it. Since
- * that module holds its own handle, this layer takes no `Database` service:
- * `callDbModule` supplies the one thing the delegation still needs, which is the
- * typed error channel. What the seam buys is that channel and a place for a test
- * to stand, rather than the query builder.
- *
- * Stage 7 is what changes this: `backend/lib/db/integrations.ts` has to run its
- * queries on the handle the Layer owns before `getDb` can be deleted, and these
- * methods go back to `database.query` when it does. It waits that long because
- * the run engine reads the same module for a step's credentials, from outside
- * any runtime.
- *
- * Delegating also means an encryption failure arrives as a `DatabaseError`,
- * which is the mapping the pre-Effect code had: both a refused query and an
- * unreadable ciphertext were caught by the same `try` and reported as
- * "internal".
+ * The cipher is a parameter because the encryption key belongs to the app, the
+ * same way the database handle does: `createRovaApp` builds one from its
+ * `encryption` option and the Layer graph carries it here. An unreadable
+ * ciphertext answers an empty config rather than failing the read, which is what
+ * lets the editor show a connection whose secrets a rotated key can no longer
+ * open.
  */
-export const IntegrationRepoLayer: Layer.Layer<IntegrationRepo> = Layer.succeed(
-  IntegrationRepo,
-  {
-    listByType: (type) => callDbModule(() => listIntegrationRows(type)),
+export function makeIntegrationRepoLayer(
+  cipher: IntegrationCipher
+): Layer.Layer<IntegrationRepo, never, Database> {
+  return Layer.effect(
+    IntegrationRepo,
+    Effect.gen(function* () {
+      const database = yield* Database;
 
-    findById: (integrationId) =>
-      callDbModule(() => getIntegrationRow(integrationId)),
+      const decrypted = (row: typeof integrations.$inferSelect) => ({
+        ...row,
+        config: cipher.open(row.config),
+      });
 
-    insert: (input) =>
-      callDbModule(() =>
-        createIntegration(input.name, input.type, input.config)
-      ),
+      return {
+        listByType: (type) =>
+          database.query(async (db) => {
+            const rows = await (type
+              ? db
+                  .select()
+                  .from(integrations)
+                  .where(eq(integrations.type, type))
+              : db.select().from(integrations));
 
-    update: (integrationId, updates) =>
-      callDbModule(() => updateIntegration(integrationId, updates)),
+            return rows.map(decrypted);
+          }),
 
-    deleteById: (integrationId) =>
-      callDbModule(() => deleteIntegrationRow(integrationId)),
-  }
-);
+        findById: (integrationId) =>
+          database.query(async (db) => {
+            const [row] = await db
+              .select()
+              .from(integrations)
+              .where(eq(integrations.id, integrationId))
+              .limit(1);
+
+            return row ? decrypted(row) : null;
+          }),
+
+        typesByIds: (integrationIds) =>
+          database.query(async (db) => {
+            if (integrationIds.length === 0) {
+              return {};
+            }
+
+            const rows = await db
+              .select({ id: integrations.id, type: integrations.type })
+              .from(integrations)
+              .where(inArray(integrations.id, integrationIds));
+
+            return Object.fromEntries(rows.map((row) => [row.id, row.type]));
+          }),
+
+        insert: (input) =>
+          database.query(async (db) => {
+            const [row] = await db
+              .insert(integrations)
+              .values({
+                name: input.name,
+                type: input.type,
+                config: cipher.seal(input.config),
+              })
+              .returning();
+
+            // The config the caller handed over, rather than a round trip
+            // through the envelope that would answer the same thing.
+            return { ...row, config: input.config };
+          }),
+
+        update: (integrationId, updates) =>
+          database.query(async (db) => {
+            const updateData: Partial<NewIntegration> = {
+              updatedAt: new Date(),
+            };
+
+            if (updates.name !== undefined) {
+              updateData.name = updates.name;
+            }
+
+            if (updates.config !== undefined) {
+              updateData.config = cipher.seal(updates.config);
+            }
+
+            const [row] = await db
+              .update(integrations)
+              .set(updateData)
+              .where(eq(integrations.id, integrationId))
+              .returning();
+
+            return row ? decrypted(row) : null;
+          }),
+
+        deleteById: (integrationId) =>
+          database.query(async (db) => {
+            const removed = await db
+              .delete(integrations)
+              .where(eq(integrations.id, integrationId))
+              .returning({ id: integrations.id });
+
+            return removed.length > 0;
+          }),
+      };
+    })
+  );
+}

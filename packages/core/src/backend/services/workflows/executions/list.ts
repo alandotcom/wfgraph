@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
+import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type {
   WorkflowExecutionStartSource,

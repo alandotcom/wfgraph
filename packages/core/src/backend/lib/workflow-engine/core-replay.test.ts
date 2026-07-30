@@ -19,6 +19,7 @@ import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
 import { defineStep } from "#src/backend/lib/steps/define-step";
 import { executeWorkflow } from "./core";
@@ -127,7 +128,8 @@ describe("workflow engine replay safety", () => {
         aHostAction(FOLLOWUP_ACTION_ID, "Send Followup", followupAction),
         aHostAction(BRANCH_ACTION_ID, "Branch Action", branchAction),
       ],
-    })
+    }),
+    stubRovaRuntime()
   );
 
   beforeEach(() => {
@@ -391,7 +393,8 @@ describe("a Date-bearing step output across a replay", () => {
   }
 
   const actions = createWorkflowActions(
-    assembleExtensions({ integrations: [clock] })
+    assembleExtensions({ integrations: [clock] }),
+    stubRovaRuntime()
   );
 
   beforeEach(() => {

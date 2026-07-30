@@ -2,25 +2,50 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { createAction, defineEvent } from "#src/index";
 import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
 import { defineStep } from "#src/backend/lib/steps/define-step";
 import { createRovaApp, type RovaApp } from "#src/app";
 import { createApiApp, MACHINE_ROUTES } from "#src/backend/api-app";
-import { getQueryClient } from "#src/backend/lib/db/index";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
 import { createRovaRuntime } from "#src/backend/runtime";
+import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
+import { createDatabaseSurface } from "#src/backend/lib/db/index";
+import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
+
+// Every method a caller reaching this app could ask for, refused. The mock
+// below fills in the one the function registry needs; the rest dying is what
+// keeps a query nobody meant to run from reading a fake empty answer. Written
+// out rather than taken from `test-layers`, because importing that module from
+// inside the factory would have vitest resolving the module it is mocking.
+const { emptyWorkflowRepo } = vi.hoisted(() => ({
+  emptyWorkflowRepo: new Proxy({} as Record<string, unknown>, {
+    get: (_target, method: string) => () => {
+      throw new Error(`${method} is not part of this test`);
+    },
+  }),
+}));
 
 // The function registry reads the workflows table to decide which Inngest
 // functions exist. Which functions it builds is beside the point here, so the
 // query answers nothing and the connection is never opened; vitest scopes a
 // mock to the file that declares it.
-vi.mock("#src/backend/lib/db/index", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("#src/backend/lib/db/index")>()),
-  db: { query: { workflows: { findMany: () => Promise.resolve([]) } } },
-}));
+vi.mock("#src/backend/services/workflows/repo", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("#src/backend/services/workflows/repo")
+    >();
+
+  return {
+    ...actual,
+    WorkflowRepoLayer: Layer.succeed(actual.WorkflowRepo, {
+      ...(emptyWorkflowRepo as typeof actual.WorkflowRepo.Service),
+      listIdentities: () => Effect.succeed([]),
+    }),
+  };
+});
 
 // createRovaApp opens no connections: the database client is lazy and
 // migrations only run when asked. Every route exercised below answers from
@@ -303,7 +328,15 @@ describe("createRovaApp with an auth predicate", () => {
     // first Effect it runs and this app never serves a request, so this one is
     // disposed having built nothing.
     const inngest = createInngestSurface(BASE_OPTIONS.inngest);
-    const runtime = createRovaRuntime(inngest, assembleExtensions({}));
+    const database = createDatabaseSurface(
+      normalizeDatabaseConfig(BASE_OPTIONS.database)
+    );
+    const runtime = createRovaRuntime({
+      inngest,
+      extensions: assembleExtensions({}),
+      database,
+      cipher: createIntegrationCipher(BASE_OPTIONS.encryption),
+    });
     try {
       const app = createApiApp({
         basePath: "/rova/api",
@@ -324,6 +357,7 @@ describe("createRovaApp with an auth predicate", () => {
       ];
     } finally {
       await runtime.dispose();
+      await database.close();
     }
   }
 
@@ -333,8 +367,10 @@ describe("createRovaApp with an auth predicate", () => {
   }
 
   it("refuses every non-machine path when the host says no", async () => {
-    const app = await createGuardedApp(false);
+    // Read first and on its own: the route table comes from a second app, and one
+    // Rova per process means it cannot be open beside the guarded one.
     const paths = await listGatedPaths();
+    const app = await createGuardedApp(false);
 
     try {
       expect(paths.length).toBeGreaterThan(8);
@@ -499,15 +535,17 @@ describe("createRovaApp configuration", () => {
 
   // Dispose gives the process back, pools included: postgres.js holds an idle
   // socket open per pool, so a host that shuts Rova down and never exits would
-  // otherwise keep them. Nothing configured is what an unconfigured runtime
-  // says, and it is the only observable the pools leave behind.
+  // otherwise keep them. A second app naming a different database is what says
+  // the claim went with them, since a live one would refuse it.
   it("gives the database runtime back when an app is disposed", async () => {
     const app = await createTestApp();
     await app.dispose();
 
-    expect(() => getQueryClient()).toThrow(
-      "The database runtime has not been configured"
-    );
+    const elsewhere = await createRovaApp({
+      ...BASE_OPTIONS,
+      database: { url: "postgresql://rova:rova@127.0.0.1:3/rova_elsewhere" },
+    });
+    await elsewhere.dispose();
   });
 
   // A host that catches a startup failure, corrects the option and calls again

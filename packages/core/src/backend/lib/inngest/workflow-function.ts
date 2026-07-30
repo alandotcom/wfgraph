@@ -5,8 +5,8 @@ import {
   executeWorkflow,
   type WorkflowExecutionInput,
 } from "#src/backend/lib/workflow-engine/core";
-import { dbWorkflowStore } from "#src/backend/lib/workflow-engine/db-store";
 import type { WorkflowExecutionRuntime } from "#src/backend/lib/workflow-engine/runtime";
+import type { WorkflowStore } from "#src/backend/lib/workflow-engine/store";
 import {
   workflowExecutionInputSchema,
   workflowRunCancelRequested,
@@ -36,9 +36,11 @@ async function workflowRunRequestedHandler({
   event,
   step,
   actions,
+  store,
 }: {
   event: { data: typeof workflowExecutionInputSchema.Type };
   actions: WorkflowActions;
+  store: WorkflowStore;
   step: {
     sleep: (id: string, durationMs: number) => Promise<void>;
     waitForEvent: (
@@ -70,10 +72,9 @@ async function workflowRunRequestedHandler({
     step: (stepId, fn) => step.run(stepId, fn),
   };
 
-  // This handler is the composition root for a live run: the engine persists
-  // nothing and implements nothing on its own, so the Postgres-backed store and
-  // the app's dispatch port are wired in here.
-  const result = await executeWorkflow(data, runtime, dbWorkflowStore, actions);
+  // The engine persists nothing and implements nothing on its own: the store
+  // and the dispatch port are the app's, built where the function was.
+  const result = await executeWorkflow(data, runtime, store, actions);
   if ("success" in result && !result.success) {
     let message = "Workflow execution failed";
     if (typeof result.error === "string") {
@@ -105,6 +106,8 @@ export function createWorkflowRunRequestedFunction(
     workflowId: string;
     /** Where an action id becomes work, built by the app from its own surface. */
     actions: WorkflowActions;
+    /** Where a run's rows go, built by the app from its own runtime. */
+    store: WorkflowStore;
   }
 ): InngestFunction.Any {
   return client.createFunction(
@@ -137,6 +140,10 @@ export function createWorkflowRunRequestedFunction(
       ],
     },
     async (context) =>
-      await workflowRunRequestedHandler({ ...context, actions: input.actions })
+      await workflowRunRequestedHandler({
+        ...context,
+        actions: input.actions,
+        store: input.store,
+      })
   );
 }

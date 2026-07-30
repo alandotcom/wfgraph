@@ -13,7 +13,6 @@ import {
   type DatabaseRuntimeConfig,
   normalizeDatabaseConfig,
 } from "#src/backend/lib/db/config";
-import { configureDatabaseRuntime } from "#src/backend/lib/db/index";
 import {
   type MigrationsOptions,
   runMigrations,
@@ -37,11 +36,9 @@ export type RovaMigrateOptions = DatabaseRuntimeConfig &
  * Migrates the database the options name, then gives the connection back.
  *
  * Safe to run from several places at once: the migrator holds an advisory lock,
- * so a second caller waits and then finds nothing to do. Safe to run in a process
- * that already built an app too, on the same terms as anything else that
- * configures the database: a config equal field for field is reused, and one
- * differing anywhere is refused rather than quietly opening a second connection
- * beside the app's.
+ * so a second caller waits and then finds nothing to do. The connection is this
+ * call's own and nothing else in the process shares it, so running this beside a
+ * live app costs one short-lived connection and takes no claim on the database.
  *
  * `runMigrations` gives the connection back on its way out, so a one-shot process
  * exits when this resolves.
@@ -49,6 +46,7 @@ export type RovaMigrateOptions = DatabaseRuntimeConfig &
 export async function migrateRovaDatabase(
   options: RovaMigrateOptions
 ): Promise<void> {
-  configureDatabaseRuntime(normalizeDatabaseConfig(options));
-  await runMigrations({ migrationsDir: options.migrationsDir });
+  await runMigrations(normalizeDatabaseConfig(options), {
+    migrationsDir: options.migrationsDir,
+  });
 }

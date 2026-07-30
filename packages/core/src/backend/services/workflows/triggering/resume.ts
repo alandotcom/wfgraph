@@ -1,16 +1,10 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { callDbModule } from "#src/backend/lib/effect/database";
 import { statedSeamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { Conflict, NotFound } from "#src/backend/lib/effect/failures";
-import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
-import {
-  markExecutionRunning,
-  markWaitStateStatus,
-} from "#src/backend/lib/workflow-wait-state";
 import { validateApiKey } from "#src/backend/services/api-keys/auth";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
+import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
 import type { JsonObject } from "@rova/shared/types/json";
 
 type WorkflowResumeSuccess = {
@@ -56,9 +50,10 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
       payload: body,
     });
 
-    const waitStateUpdated = yield* callDbModule(() =>
-      markWaitStateStatus({ waitStateId: waitState.id, status: "resumed" })
-    );
+    const waitStateUpdated = yield* repo.markWaitStatus({
+      waitStateId: waitState.id,
+      status: "resumed",
+    });
     if (!waitStateUpdated) {
       yield* logger.warn("Wait changed state before resume update");
       return yield* Effect.fail(
@@ -66,19 +61,17 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
       );
     }
 
-    yield* callDbModule(() => markExecutionRunning(waitState.executionId));
+    yield* repo.markRunning(waitState.executionId);
 
-    yield* callDbModule(() =>
-      logWorkflowAuditEvent({
-        workflowId: waitState.workflowId,
-        executionId: waitState.executionId,
-        eventType: "run_resumed",
-        message: `Run resumed from ${input.source}`,
-        metadata: {
-          token,
-        },
-      })
-    );
+    yield* repo.recordAuditEvent({
+      workflowId: waitState.workflowId,
+      executionId: waitState.executionId,
+      eventType: "run_resumed",
+      message: `Run resumed from ${input.source}`,
+      metadata: {
+        token,
+      },
+    });
 
     const resumed: WorkflowResumeSuccess = {
       success: true,

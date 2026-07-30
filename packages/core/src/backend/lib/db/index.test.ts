@@ -1,14 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   type DatabaseRuntimeConfig,
   normalizeDatabaseConfig,
 } from "#src/backend/lib/db/config";
 import {
-  closeDatabaseRuntime,
-  configureDatabaseRuntime,
-  getDatabaseSchema,
-  getMigrationClient,
-  getQueryClient,
+  createDatabaseSurface,
+  createMigrationClient,
+  type DatabaseSurface,
 } from "#src/backend/lib/db/index";
 
 const URL_CONFIG = {
@@ -23,122 +21,118 @@ const DISCRETE_CONFIG = {
   database: "rova_config_test",
 } as const;
 
-/** The pair every entry point makes: check the host's words, then record them. */
-function configure(config: DatabaseRuntimeConfig): void {
-  configureDatabaseRuntime(normalizeDatabaseConfig(config));
+// The claim on the database is process-wide and vitest shares a worker between
+// files, so a surface left open is what the next file's first surface is refused
+// by.
+const opened: DatabaseSurface[] = [];
+
+afterEach(async () => {
+  await Promise.all(opened.splice(0).map(async (surface) => surface.close()));
+});
+
+/** The pair every entry point makes: check the host's words, then open a pool. */
+function open(config: DatabaseRuntimeConfig): DatabaseSurface {
+  const surface = createDatabaseSurface(normalizeDatabaseConfig(config));
+  opened.push(surface);
+  return surface;
 }
 
-// The runtime state is process-global and vitest shares a worker between files,
-// so a config left behind is the one the next file's configure call refuses to
-// rebind.
-beforeEach(closeDatabaseRuntime);
-afterEach(closeDatabaseRuntime);
+function migrationClientFor(config: DatabaseRuntimeConfig) {
+  return createMigrationClient(normalizeDatabaseConfig(config));
+}
 
-describe("the pools the runtime opens", () => {
+describe("the pools an app opens", () => {
   it("size the query pool from the config", () => {
-    configure({ ...URL_CONFIG, maxConnections: 4 });
-
-    expect(getQueryClient().options.max).toBe(4);
+    expect(open({ ...URL_CONFIG, maxConnections: 4 }).client.options.max).toBe(
+      4
+    );
   });
 
   it("hand the discrete fields to postgres.js as fields", () => {
-    configure(DISCRETE_CONFIG);
-
-    const options = getMigrationClient().options;
+    const { options } = migrationClientFor(DISCRETE_CONFIG);
 
     expect(options.host).toEqual(["db.internal"]);
     expect(options.port).toEqual([6432]);
     expect(options.user).toBe("rova");
     expect(options.database).toBe("rova_config_test");
-    // One connection, and not the host's business: the migrator runs its
-    // statements in order and holds its lock on that one session.
-    expect(options.max).toBe(1);
+  });
+
+  // Not the host's business: the advisory lock runMigrations takes is
+  // session-scoped, so the migrator's pool stays at the one connection that puts
+  // the lock and the statements it guards on the same session.
+  it("keep the migration pool at one connection whatever the host asked for", () => {
+    expect(
+      migrationClientFor({ ...URL_CONFIG, maxConnections: 8 }).options.max
+    ).toBe(1);
   });
 
   it("carry a database name a URL would have to escape", () => {
-    configure({ ...DISCRETE_CONFIG, database: "rova test" });
-
-    expect(getQueryClient().options.database).toBe("rova test");
+    expect(
+      open({ ...DISCRETE_CONFIG, database: "rova test" }).client.options
+        .database
+    ).toBe("rova test");
   });
 
   it("leave the port to Postgres when the host does not say", () => {
-    configure({
+    const { options } = migrationClientFor({
       host: "db.internal",
       user: "rova",
       database: "rova_config_test",
     });
 
-    expect(getMigrationClient().options.port).toEqual([5432]);
+    expect(options.port).toEqual([5432]);
   });
 
   it("put the configured schema on every connection", () => {
-    configure({ ...URL_CONFIG, schema: "tenant_alpha" });
+    const surface = open({ ...URL_CONFIG, schema: "tenant_alpha" });
 
-    expect(getDatabaseSchema()).toBe("tenant_alpha");
-    expect(getQueryClient().options.connection.search_path).toBe(
-      "tenant_alpha"
-    );
-    expect(getMigrationClient().options.connection.search_path).toBe(
-      "tenant_alpha"
-    );
+    expect(surface.schema).toBe("tenant_alpha");
+    expect(surface.client.options.connection.search_path).toBe("tenant_alpha");
+    expect(
+      migrationClientFor({ ...URL_CONFIG, schema: "tenant_alpha" }).options
+        .connection.search_path
+    ).toBe("tenant_alpha");
   });
 });
 
-// Every entry point configures before it connects, so an unset config means a
-// caller reached a pool from outside one. Guessing from the environment instead
-// is how a process ends up querying a database nobody named.
-describe("reaching a connection before anything configured one", () => {
-  it("refuses to name a schema", () => {
-    expect(() => getDatabaseSchema()).toThrow(
-      "The database runtime has not been configured"
+// One Rova per process (ADR-0002): a second surface would open a pool beside the
+// first one's, and the two would then sit under one claim.
+describe("opening a second surface", () => {
+  it("refuses one, whatever it names", () => {
+    open(URL_CONFIG);
+
+    expect(() => open(URL_CONFIG)).toThrow("already open in this process");
+    expect(() => open({ ...DISCRETE_CONFIG, database: "elsewhere" })).toThrow(
+      "already open in this process"
     );
   });
 
-  it("refuses to open a pool", () => {
-    expect(() => getQueryClient()).toThrow(
-      "The database runtime has not been configured"
-    );
-  });
-});
+  it("takes the claim back when the first surface closes", async () => {
+    await open(URL_CONFIG).close();
 
-describe("configuring the runtime twice", () => {
-  it("accepts the same configuration again", () => {
-    configure(URL_CONFIG);
-
-    expect(() => configure(URL_CONFIG)).not.toThrow();
+    expect(() => open({ ...URL_CONFIG, schema: "tenant_alpha" })).not.toThrow();
   });
 
-  it("accepts the same discrete configuration again", () => {
-    configure(DISCRETE_CONFIG);
+  // A host that disposes an app twice: the second close has no claim of its own
+  // left to give back, and taking the live one would let a third surface in.
+  it("leaves the live claim alone when a closed surface closes again", async () => {
+    const first = open(URL_CONFIG);
+    await first.close();
+    open(URL_CONFIG);
 
-    expect(() => configure({ ...DISCRETE_CONFIG })).not.toThrow();
+    await first.close();
+
+    expect(() => open(URL_CONFIG)).toThrow("already open in this process");
   });
 
-  it("refuses a second database, whichever arm names it", () => {
-    configure(URL_CONFIG);
-
+  // postgres.js checks its options in the constructor, and an unsupported
+  // target_session_attrs is one it refuses there. Nothing was returned, so
+  // nothing could release a claim taken before that throw.
+  it("takes no claim when the pool cannot be built", () => {
     expect(() =>
-      configure({ ...DISCRETE_CONFIG, database: "elsewhere" })
-    ).toThrow("already configured with a different configuration");
-  });
+      open({ url: `${URL_CONFIG.url}?target_session_attrs=bogus` })
+    ).toThrow("target_session_attrs");
 
-  // The schema is part of what identifies the database a service will query, so
-  // the same server under a second schema is a second database as far as the
-  // guard is concerned.
-  it("refuses a second schema on the same server", () => {
-    configure(URL_CONFIG);
-
-    expect(() => configure({ ...URL_CONFIG, schema: "tenant_alpha" })).toThrow(
-      "already configured with a different configuration"
-    );
-  });
-
-  it("refuses a different configuration once a pool is open", () => {
-    configure(URL_CONFIG);
-    getQueryClient();
-
-    expect(() => configure({ ...URL_CONFIG, maxConnections: 4 })).toThrow(
-      "already configured with a different configuration"
-    );
+    expect(() => open(URL_CONFIG)).not.toThrow();
   });
 });

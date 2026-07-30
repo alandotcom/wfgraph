@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InngestTestEngine } from "@inngest/test";
 import { Inngest } from "inngest";
 import { noWorkflowActions } from "#src/backend/lib/workflow-engine/actions";
-import { dbWorkflowStore } from "#src/backend/lib/workflow-engine/db-store";
 import type { WorkflowExecutionRuntime } from "#src/backend/lib/workflow-engine/runtime";
-import type { WorkflowStore } from "#src/backend/lib/workflow-engine/store";
+import {
+  noopWorkflowStore,
+  type WorkflowStore,
+} from "#src/backend/lib/workflow-engine/store";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import {
   createWorkflowRunRequestedFunction,
@@ -24,9 +26,10 @@ vi.mock("#src/backend/lib/workflow-engine/core", () => ({
   executeWorkflow: executeWorkflowMock,
 }));
 
-// The app builds this from its own surface; the engine underneath is mocked, so
-// identity is all this file needs from it.
+// The app builds both of these from what it owns; the engine underneath is
+// mocked, so identity is all this file needs from either.
 const testActions = noWorkflowActions;
+const testStore = noopWorkflowStore;
 
 function createTestFunction() {
   return createWorkflowRunRequestedFunction(
@@ -36,6 +39,7 @@ function createTestFunction() {
       name: "Workflow Test Function",
       workflowId: "workflow_123",
       actions: testActions,
+      store: testStore,
     }
   );
 }
@@ -124,9 +128,9 @@ describe("workflowRunRequestedFunction", () => {
       waitForEvent: expect.any(Function),
       step: expect.any(Function),
     });
-    // A live run must be recorded: this handler is the only place that wires
-    // the engine's persistence port to the database.
-    expect(store).toBe(dbWorkflowStore);
+    // A live run must be recorded: the handler runs on the store the app built
+    // for it rather than on one of its own.
+    expect(store).toBe(testStore);
     // And the dispatch port the app built, which is where an action id becomes
     // work.
     expect(actions).toBe(testActions);

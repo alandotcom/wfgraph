@@ -13,25 +13,22 @@ import type {
   EntityStartOutcome,
   ExecutionRepo,
   WorkflowExecution,
-} from "#src/backend/services/workflows/executions/repo";
+} from "#src/backend/services/workflows/executions/repo/index";
 import { startWithConcurrency } from "./concurrency";
 
-// The audit rows and the Inngest signals go through modules holding their own
-// database handle and client, so both are replaced for this file.
-const { logWorkflowAuditEventMock, announceSupersededRunsMock } = vi.hoisted(
-  () => ({
-    logWorkflowAuditEventMock: vi.fn(),
-    announceSupersededRunsMock: vi.fn(),
-  })
-);
-
-vi.mock("#src/backend/lib/workflow-audit", () => ({
-  logWorkflowAuditEvent: logWorkflowAuditEventMock,
+// Announcing a supersede has its own cases in `end-runs.test.ts`; here it is the
+// call that matters, so the neighbour is replaced for this file.
+const { announceSupersededRunsMock } = vi.hoisted(() => ({
+  announceSupersededRunsMock: vi.fn(),
 }));
 
-vi.mock("#src/backend/lib/workflow-cancellation", () => ({
+vi.mock("#src/backend/services/workflows/executions/end-runs", () => ({
   announceSupersededRuns: announceSupersededRunsMock,
 }));
+
+const recordAuditEventMock = vi.fn<
+  ExecutionRepo["Service"]["recordAuditEvent"]
+>(() => Effect.void);
 
 const workflow = {
   id: "wf_1",
@@ -88,6 +85,7 @@ function stubStart(outcome: EntityStartOutcome) {
             return outcome;
           }),
         setRunId: () => Effect.void,
+        recordAuditEvent: recordAuditEventMock,
       }),
       stubInngestClient({
         sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
@@ -104,8 +102,10 @@ const startedOutcome: EntityStartOutcome = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  logWorkflowAuditEventMock.mockResolvedValue(undefined);
-  announceSupersededRunsMock.mockResolvedValue({ failedExecutionIds: [] });
+  recordAuditEventMock.mockImplementation(() => Effect.void);
+  announceSupersededRunsMock.mockReturnValue(
+    Effect.succeed({ failedExecutionIds: [] })
+  );
 });
 
 describe("startWithConcurrency", () => {
@@ -160,13 +160,13 @@ describe("startWithConcurrency", () => {
           inFlightExecutionIds: ["exec_running"],
         });
 
-        const audit = logWorkflowAuditEventMock.mock.calls[0]?.[0];
-        assert.strictEqual(audit.eventType, "run_not_started");
-        assert.strictEqual(audit.metadata.reason, "concurrency_first_wins");
+        const audit = recordAuditEventMock.mock.calls[0]?.[0];
+        assert.strictEqual(audit?.eventType, "run_not_started");
+        assert.strictEqual(audit?.metadata?.reason, "concurrency_first_wins");
         // One arrival can reach many workflows, so the row says which arrival it
         // was: an operator reading a refusal finds the delivery behind it.
-        assert.strictEqual(audit.metadata.deliveryId, "dlv_4021");
-        assert.include(audit.message, "Concurrency is first-wins");
+        assert.strictEqual(audit?.metadata?.deliveryId, "dlv_4021");
+        assert.include(audit?.message, "Concurrency is first-wins");
         assert.deepStrictEqual(recorder.infoLines, [
           {
             message: "Start refused",
@@ -195,7 +195,10 @@ describe("startWithConcurrency", () => {
           logger: makeRecordingLogger().logger,
         }).pipe(
           Effect.provide(
-            Layer.mergeAll(stubExecutionRepo(), stubInngestClient())
+            Layer.mergeAll(
+              stubExecutionRepo({ recordAuditEvent: recordAuditEventMock }),
+              stubInngestClient()
+            )
           )
         );
 
@@ -205,7 +208,7 @@ describe("startWithConcurrency", () => {
           inFlightExecutionIds: [],
         });
         assert.strictEqual(
-          logWorkflowAuditEventMock.mock.calls[0]?.[0].metadata.reason,
+          recordAuditEventMock.mock.calls[0]?.[0]?.metadata?.reason,
           "entity_value_missing"
         );
       })
@@ -236,10 +239,12 @@ describe("startWithConcurrency", () => {
     it.effect("announces the runs the transaction superseded", () =>
       Effect.gen(function* () {
         const order: string[] = [];
-        announceSupersededRunsMock.mockImplementation(() => {
-          order.push("announce");
-          return Promise.resolve({ failedExecutionIds: [] });
-        });
+        announceSupersededRunsMock.mockImplementation(() =>
+          Effect.sync(() => {
+            order.push("announce");
+            return { failedExecutionIds: [] };
+          })
+        );
 
         const outcome = yield* startWithConcurrency({
           workflow,
@@ -262,6 +267,7 @@ describe("startWithConcurrency", () => {
                     };
                   }),
                 setRunId: () => Effect.void,
+                recordAuditEvent: recordAuditEventMock,
               }),
               stubInngestClient({
                 sendRunRequested: () =>
@@ -292,9 +298,9 @@ describe("startWithConcurrency", () => {
     // the caller hears about it rather than reading one clean new run.
     it.effect("carries a half-failed supersede back to the caller", () =>
       Effect.gen(function* () {
-        announceSupersededRunsMock.mockResolvedValue({
-          failedExecutionIds: ["exec_old"],
-        });
+        announceSupersededRunsMock.mockReturnValue(
+          Effect.succeed({ failedExecutionIds: ["exec_old"] })
+        );
 
         const outcome = yield* startWithConcurrency({
           workflow,

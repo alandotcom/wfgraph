@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import { getDb, type RovaDatabase } from "#src/backend/lib/db/index";
+import type { RovaDatabase } from "#src/backend/lib/db/index";
 
 /**
  * A query did not reach the database, or the database refused it.
@@ -35,45 +35,18 @@ export class Database extends Context.Service<
 >()("Database") {}
 
 /**
- * The live database.
+ * The live database, over the handle the app built.
  *
- * `getDb()` is called per query rather than once here, which keeps two
- * properties the app relies on: the connection pool is still opened on first use
- * rather than at startup, and this Layer shares one pool with the services that
- * have not migrated and still import the `db` proxy directly.
- *
- * Stage 7 of the Effect migration builds the handle inside this Layer from the
- * options `createRovaApp` receives and deletes `getDb` along with the
- * `globalThis` state behind it. It outlives stage 3b because the run engine
- * reads the same handle from outside any runtime: the workflow function's step
- * store, the step logger, and the credential fetcher all import the `db` proxy,
- * and none of them is reached through an Effect yet.
+ * The handle is a parameter rather than a module lookup, so which connection a
+ * repository queries on is decided by the app that owns it, and a second app in
+ * the same process cannot reach the first one's rows.
  */
-export const DatabaseLayer: Layer.Layer<Database> = Layer.succeed(Database, {
-  query: (run) =>
-    Effect.tryPromise({
-      try: () => run(getDb()),
-      catch: (cause) => new DatabaseError({ cause }),
-    }),
-});
-
-/**
- * Run a call into one of the `backend/lib` modules that holds its own database
- * handle, and give it the same typed error channel a query gets.
- *
- * Those modules query through the `db` proxy rather than through this service,
- * so a caller that delegates to one needs the `DatabaseError` mapping without
- * needing the `Database` service. A repository that writes its own Drizzle takes
- * `Database` instead. A helper that mixes queries with an Inngest send is not
- * one of these; `callInngestModule` is its seam.
- *
- * This goes away with `getDb`, in stage 7: once those modules run their queries
- * on the handle the Layer owns, their callers go back to `database.query`.
- */
-export const callDbModule = <A>(
-  run: () => Promise<A>
-): Effect.Effect<A, DatabaseError> =>
-  Effect.tryPromise({
-    try: run,
-    catch: (cause) => new DatabaseError({ cause }),
+export function makeDatabaseLayer(db: RovaDatabase): Layer.Layer<Database> {
+  return Layer.succeed(Database, {
+    query: (run) =>
+      Effect.tryPromise({
+        try: () => run(db),
+        catch: (cause) => new DatabaseError({ cause }),
+      }),
   });
+}

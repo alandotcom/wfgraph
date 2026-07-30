@@ -8,16 +8,15 @@ import {
   type NormalizedDatabaseConfig,
 } from "#src/backend/lib/db/config";
 import {
-  closeDatabaseRuntime,
-  configureDatabaseRuntime,
+  createDatabaseSurface,
+  type DatabaseSurface,
   describeConnection,
-  getQueryClient,
 } from "#src/backend/lib/db/index";
 import {
-  configureEncryptionKey,
-  type EncryptionRuntimeConfig,
   assertValidEncryptionKey,
-} from "#src/backend/lib/db/integrations";
+  createIntegrationCipher,
+  type EncryptionRuntimeConfig,
+} from "#src/backend/services/integrations/cipher";
 import {
   type MigrationsOptions,
   runMigrations,
@@ -52,7 +51,7 @@ import type { RovaLogger } from "@rova/shared/types/logger";
 
 export type { DatabaseRuntimeConfig } from "#src/backend/lib/db/config";
 export type { MigrationsOptions } from "#src/backend/lib/db/migrations";
-export type { EncryptionRuntimeConfig } from "#src/backend/lib/db/integrations";
+export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
 export type { RovaInngestConfig } from "#src/backend/lib/inngest/client";
 export type { RovaAuth } from "#src/backend/lib/http/authorize";
 export type { RovaLogger } from "@rova/shared/types/logger";
@@ -141,16 +140,16 @@ export type RovaApp = {
 /**
  * One Rova per process.
  *
- * The database handle and the encryption key are process-global, so a second app
- * with a different database URL silently aliases the first connection. ADR-0002
- * makes a second app per process undefined behavior rather than a supported
- * arrangement that fails loudly.
+ * Everything an app holds is its own, but the arrangement is still the only
+ * supported one (ADR-0002): a second app naming a different database is refused
+ * where the pool is claimed, and the parts of Rova that a host reaches through
+ * the module graph have never been written for two.
  */
 export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const authorize = resolveAuthorize(options.auth);
 
-  // Normalized here rather than inside `configureDatabaseRuntime` a few steps
+  // Normalized here rather than inside `createDatabaseSurface` a few steps
   // later, so a config naming no database is refused before this call has
   // changed anything about the process.
   const databaseConfig = normalizeDatabaseConfig(options.database);
@@ -198,15 +197,15 @@ async function buildRovaApp(
     configureAppLogging();
   }
 
-  configureEncryptionKey(options.encryption);
+  const cipher = createIntegrationCipher(options.encryption);
 
-  configureDatabaseRuntime(databaseConfig);
+  // The pool, and this process's claim on the database it points at.
+  const database = createDatabaseSurface(databaseConfig);
 
-  // Everything past this point can fail with the process already holding a
-  // database config, and past `createRovaRuntime` with whatever the Layers
-  // acquired. A failure gives both back, the same as dispose does, so a host
-  // that catches a startup failure, corrects an option and calls again is not
-  // refused as a rebind.
+  // Everything past this point can fail with the pool already open, and past
+  // `createRovaRuntime` with whatever the Layers acquired. A failure gives both
+  // back, the same as dispose does, so a host that catches a startup failure,
+  // corrects an option and calls again is not refused as a rebind.
   let runtime: RovaRuntime | undefined;
   try {
     // One value for the client, the function list and the `/inngest` handler,
@@ -229,28 +228,29 @@ async function buildRovaApp(
     // is otherwise a guess made from an empty editor.
     getAppLogger("database").info(
       "Database configured",
-      describeConnection(getQueryClient())
+      describeConnection(database.client, database.schema)
     );
 
     if (options.database.migrations?.runOnStartup === true) {
-      await runMigrations({
+      await runMigrations(databaseConfig, {
         migrationsDir: options.database.migrations.migrationsDir,
       });
     }
 
     // The Layer graph this instance owns. Building it is lazy, so an app that
     // never serves a migrated procedure never constructs a service.
-    runtime = createRovaRuntime(inngest, extensions);
+    runtime = createRovaRuntime({ inngest, extensions, database, cipher });
 
     return await assembleRovaApp(options, {
       basePath,
       authorize,
       runtime,
       inngest,
+      database,
     });
   } catch (error) {
     await runtime?.dispose();
-    await closeDatabaseRuntime();
+    await database.close();
     throw error;
   }
 }
@@ -263,9 +263,10 @@ async function assembleRovaApp(
     authorize: Authorize;
     runtime: RovaRuntime;
     inngest: InngestSurface;
+    database: DatabaseSurface;
   }
 ): Promise<RovaApp> {
-  const { basePath, authorize, runtime, inngest } = startup;
+  const { basePath, authorize, runtime, inngest, database } = startup;
 
   const apiApp = createApiApp({
     basePath: `${basePath}/api`,
@@ -305,10 +306,10 @@ async function assembleRovaApp(
 
     await runtime.dispose();
 
-    // Last, because a Layer finalizer is free to run a closing query. Both pools
-    // go: postgres.js holds an idle socket open per pool, and a host that
-    // migrated on the way up opened a second one.
-    await closeDatabaseRuntime();
+    // Last, because a Layer finalizer is free to run a closing query. postgres.js
+    // holds an idle socket open per pool, so a host that shuts Rova down gets its
+    // process back only once this has run.
+    await database.close();
   };
 
   return {

@@ -12,6 +12,7 @@ import { Effect, Schema } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import { defineEvent } from "#src/backend/lib/extensions/define-event";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
 import { createAction } from "@rova/shared/workflow/action-registry";
 import { dateField, timestampField } from "@rova/shared/types/timestamp";
@@ -55,7 +56,8 @@ const echoAction = createAction({
 // The engine reaches an action's step through the dispatch port the app builds,
 // so the host action these cases run reaches the engine the way a host's would.
 const actions = createWorkflowActions(
-  assembleExtensions({ actions: [echoAction] })
+  assembleExtensions({ actions: [echoAction] }),
+  stubRovaRuntime()
 );
 
 const appointmentBooked = defineEvent({

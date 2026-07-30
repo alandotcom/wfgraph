@@ -10,7 +10,7 @@ import {
 import type {
   ExecutionPageQuery,
   GlobalExecutionRow,
-} from "#src/backend/services/workflows/executions/repo";
+} from "#src/backend/services/workflows/executions/repo/index";
 import { getWorkflowExecutionsGlobal } from "#src/backend/services/workflows/executions/global";
 
 function createRow(

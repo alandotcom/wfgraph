@@ -16,7 +16,7 @@
  */
 
 import { Effect } from "effect";
-import { callDbModule } from "#src/backend/lib/effect/database";
+import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import {
   IntegrationValidationFailed,
@@ -83,14 +83,17 @@ export const prepareGraphSave = Effect.fn("prepareGraphSave")(
 
     // The only way this fails is the integration rows it reads, so a rejected
     // query arrives here as the same database failure a repository answers with.
-    const integrationValidation = yield* callDbModule(() =>
-      validateWorkflowIntegrations(nodes, catalog)
+    const integrations = yield* IntegrationRepo;
+    const integrationValidation = yield* validateWorkflowIntegrations(
+      nodes,
+      catalog,
+      integrations.typesByIds
     );
     if (!integrationValidation.valid) {
       return yield* Effect.fail(
         new IntegrationValidationFailed({
           error: "Invalid integration references in workflow",
-          invalidIntegrationIds: integrationValidation.invalidIds ?? [],
+          invalidIntegrationIds: integrationValidation.invalidIds,
         })
       );
     }

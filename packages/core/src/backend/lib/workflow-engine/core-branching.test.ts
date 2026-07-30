@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
 import { checkCelBooleanExpression } from "#src/backend/lib/cel/environment";
 import { createAction } from "@rova/shared/workflow/action-registry";
@@ -31,7 +32,8 @@ const wrappedOutputAction = createAction({
 // the app builds, so the host action these cases run reaches the engine the way
 // a host's would. The built-in four ride in on the same assembly.
 const actions = createWorkflowActions(
-  assembleExtensions({ actions: [wrappedOutputAction] })
+  assembleExtensions({ actions: [wrappedOutputAction] }),
+  stubRovaRuntime()
 );
 
 function createTriggerNode(id: string): WorkflowNode {

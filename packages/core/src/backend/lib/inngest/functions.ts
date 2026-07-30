@@ -1,9 +1,11 @@
+import { Effect } from "effect";
 import type { Inngest, InngestFunction } from "inngest";
-import { db } from "#src/backend/lib/db/index";
 import { Extensions } from "#src/backend/lib/effect/extensions";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { ExtensionSet } from "#src/backend/lib/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
 import type { WorkflowActions } from "#src/backend/lib/workflow-engine/actions";
+import { createDbWorkflowStore } from "#src/backend/lib/workflow-engine/db-store";
 import type { RovaRuntime } from "#src/backend/runtime";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 // Static, now that the id helper the app assembly needs has moved to a leaf of
@@ -33,9 +35,15 @@ function toFunctionId(workflowId: string): string {
 
 export function buildWorkflowFunctions(
   client: Inngest,
+  runtime: RovaRuntime,
   workflowDefinitions: WorkflowDefinition[],
   actions: WorkflowActions
 ): WorkflowFunction[] {
+  // One store for every run handler this build produces: it holds nothing but
+  // the runtime, and the rows it writes are addressed by the run each call
+  // names.
+  const store = createDbWorkflowStore(runtime);
+
   return workflowDefinitions
     .filter((workflow) => workflow.name !== CURRENT_WORKFLOW_NAME)
     .map((workflow) =>
@@ -44,6 +52,7 @@ export function buildWorkflowFunctions(
         name: workflow.name,
         workflowId: workflow.id,
         actions,
+        store,
       })
     );
 }
@@ -96,24 +105,20 @@ export function createInngestFunctionRegistry(
   let inflightBuild: Promise<WorkflowFunction[]> | null = null;
 
   async function build(runtime: RovaRuntime): Promise<WorkflowFunction[]> {
-    // Ids and names only: a run function is keyed on the id and labelled with
-    // the name, and the listener set comes from the catalog, so nothing here
-    // reads a graph.
-    const workflowDefinitions = await db.query.workflows.findMany({
-      columns: { id: true, name: true },
-    });
-
-    // The surface comes off the runtime the route handed over rather than from
-    // a parameter, because the Layer graph is built from it: asking the runtime
-    // is what keeps the surface and the functions that dispatch against it the
-    // same app's.
+    // The surface and the workflow list both come off the runtime the route
+    // handed over rather than from a parameter, because the Layer graph is built
+    // from it: asking the runtime is what keeps the surface, the rows, and the
+    // functions that dispatch against them the same app's.
     const extensions = await runtime.runPromise(Extensions);
-    const actions = createWorkflowActions(extensions);
+    const workflowDefinitions = await runtime.runPromise(
+      Effect.flatMap(WorkflowRepo, (repo) => repo.listIdentities())
+    );
+    const actions = createWorkflowActions(extensions, runtime);
 
     // The draft is filtered inside `buildWorkflowFunctions`, which is where the
     // rule is tested.
     return [
-      ...buildWorkflowFunctions(client, workflowDefinitions, actions),
+      ...buildWorkflowFunctions(client, runtime, workflowDefinitions, actions),
       ...buildEventListenerFunctions(client, runtime, extensions),
     ];
   }

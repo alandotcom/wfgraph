@@ -1,0 +1,403 @@
+import {
+  and,
+  count,
+  desc,
+  eq,
+  inArray,
+  lt,
+  ne,
+  or,
+  type SQL,
+} from "drizzle-orm";
+import type { Effect } from "effect";
+import { workflowExecutions, workflows } from "#src/backend/lib/db/schema";
+import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/workflow/execution-contracts";
+import type {
+  ExecutionPageQuery,
+  ExecutionStatusRow,
+  ExecutionSummary,
+  GlobalExecutionRow,
+  NewTerminalExecution,
+  WorkflowExecution,
+} from "#src/backend/services/workflows/executions/repo/contracts";
+
+/** The most recent runs one workflow's panel shows. */
+const WORKFLOW_EXECUTIONS_LIMIT = 50;
+
+/**
+ * The compare-and-set every write that ends or parks a run from outside it
+ * carries: only a run that has not reached a verdict may be moved.
+ *
+ * Shared with `waits.ts`, whose `startWait` parks a run behind the same guard.
+ */
+export function inFlightExecution(executionId: string): SQL | undefined {
+  return and(
+    eq(workflowExecutions.id, executionId),
+    inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES])
+  );
+}
+
+function buildPageFilters(query: ExecutionPageQuery): SQL[] {
+  const filters: SQL[] = [];
+
+  if (query.workflowIds && query.workflowIds.length > 0) {
+    filters.push(inArray(workflowExecutions.workflowId, query.workflowIds));
+  }
+
+  if (query.statuses && query.statuses.length > 0) {
+    filters.push(inArray(workflowExecutions.status, query.statuses));
+  }
+
+  if (query.cursor) {
+    // Ordering is by start time and then id, so resuming after a row means
+    // everything older, plus the ties that sort below it.
+    const cursorFilter = or(
+      lt(workflowExecutions.startedAt, query.cursor.startedAt),
+      and(
+        eq(workflowExecutions.startedAt, query.cursor.startedAt),
+        lt(workflowExecutions.id, query.cursor.id)
+      )
+    );
+    if (cursorFilter) {
+      filters.push(cursorFilter);
+    }
+  }
+
+  return filters;
+}
+
+/** The `workflow_executions` slice of `ExecutionRepo`. */
+export type RunsRepoMethods = {
+  /**
+   * One workflow's most recent runs, newest first.
+   *
+   * Superseded runs are left out unless asked for: a newest-wins workflow
+   * supersedes a run on every reschedule, and those rows would crowd the ones
+   * the panel was opened for out of the row cap. The panel's toggle is what
+   * asks, and `countSuperseded` is what labels it.
+   */
+  readonly listByWorkflow: (input: {
+    workflowId: string;
+    includeSuperseded: boolean;
+  }) => Effect.Effect<WorkflowExecution[], DatabaseError>;
+  /** How many runs of this workflow a newer start displaced. */
+  readonly countSuperseded: (
+    workflowId: string
+  ) => Effect.Effect<number, DatabaseError>;
+  /**
+   * One page of runs across every workflow, newest first, each row carrying
+   * the name and paused flag of the workflow it belongs to.
+   */
+  readonly listPage: (
+    query: ExecutionPageQuery
+  ) => Effect.Effect<GlobalExecutionRow[], DatabaseError>;
+  /** One run without its routing columns, which is what the logs view shows. */
+  readonly findSummaryById: (
+    executionId: string
+  ) => Effect.Effect<ExecutionSummary | null, DatabaseError>;
+  /** Where one run got to, the smallest answer the status poll can be given. */
+  readonly findStatusById: (
+    executionId: string
+  ) => Effect.Effect<ExecutionStatusRow | null, DatabaseError>;
+  /** Whether the run is there at all, for the paths that only report absence. */
+  readonly existsById: (
+    executionId: string
+  ) => Effect.Effect<boolean, DatabaseError>;
+  /**
+   * Which workflow a run belongs to, which is all the cancel path needs of the
+   * run itself before it starts writing audit rows against the workflow.
+   */
+  readonly findWorkflowIdById: (
+    executionId: string
+  ) => Effect.Effect<string | null, DatabaseError>;
+  /** Record a run that never started, already in its terminal status. */
+  readonly insertTerminal: (
+    input: NewTerminalExecution
+  ) => Effect.Effect<WorkflowExecution, DatabaseError>;
+  /** Attach the Inngest event id once the enqueue has answered with one. */
+  readonly setRunId: (input: {
+    executionId: string;
+    runId: string | null;
+  }) => Effect.Effect<void, DatabaseError>;
+  /**
+   * Close a run whose enqueue was refused, answering whether a row was
+   * written. Without it the row sits in "running" with nothing behind it that
+   * could ever finish it.
+   *
+   * A rejected send is ambiguous: Inngest may have accepted the event and
+   * failed on the way back, in which case the run is already executing. The
+   * in-flight guard is what makes the ambiguity safe, since the compensation
+   * can then only touch a run that has not reached a verdict, and a `false`
+   * answer means the run got there first. The event carries an idempotency
+   * key, so retrying a send later stays free whenever we decide to.
+   */
+  readonly markEnqueueFailed: (input: {
+    executionId: string;
+    error: string;
+  }) => Effect.Effect<boolean, DatabaseError>;
+  /**
+   * Move a run back from "waiting" to "running", answering whether a waiting
+   * row was there to move.
+   */
+  readonly markRunning: (
+    executionId: string
+  ) => Effect.Effect<boolean, DatabaseError>;
+  /**
+   * End a run from outside it, answering whether this write is the one that
+   * made the row terminal.
+   *
+   * Compare-and-set, because a running execution routinely completes between a
+   * candidate query and this write and the finished row keeps its own status.
+   * `canceled` is an operator or a Cancel Event stopping the run, so it stamps
+   * `cancelledAt`; `superseded` is newest-wins Concurrency letting a newer
+   * start take this run's place, which is routine and not a cancellation.
+   */
+  readonly endInFlight: (input: {
+    executionId: string;
+    status: "canceled" | "superseded";
+    error?: string;
+  }) => Effect.Effect<boolean, DatabaseError>;
+  /**
+   * Write the run's own terminal row, answering whether this write recorded
+   * it. The same in-flight guard as `endInFlight`: a cancel can flip the row
+   * while the run is finishing its last step, and the losing completion must
+   * not resurrect it.
+   */
+  readonly finishRun: (input: {
+    executionId: string;
+    status: "completed" | "failed" | "canceled";
+    output?: unknown;
+    error?: string;
+    durationMs: number;
+  }) => Effect.Effect<boolean, DatabaseError>;
+};
+
+/** Builds the `workflow_executions` slice of `ExecutionRepo` over one database. */
+export function makeRunsMethods(
+  database: Database["Service"]
+): RunsRepoMethods {
+  return {
+    listByWorkflow: ({ workflowId, includeSuperseded }) =>
+      database.query((db) =>
+        db.query.workflowExecutions.findMany({
+          // `and` drops an undefined member, so the toggle is one condition
+          // that is there or is not.
+          where: and(
+            eq(workflowExecutions.workflowId, workflowId),
+            includeSuperseded
+              ? undefined
+              : ne(workflowExecutions.status, "superseded")
+          ),
+          orderBy: [desc(workflowExecutions.startedAt)],
+          limit: WORKFLOW_EXECUTIONS_LIMIT,
+        })
+      ),
+
+    countSuperseded: (workflowId) =>
+      database.query(async (db) => {
+        const [row] = await db
+          .select({ total: count() })
+          .from(workflowExecutions)
+          .where(
+            and(
+              eq(workflowExecutions.workflowId, workflowId),
+              eq(workflowExecutions.status, "superseded")
+            )
+          );
+
+        return row?.total ?? 0;
+      }),
+
+    listPage: (query) =>
+      database.query((db) => {
+        const filters = buildPageFilters(query);
+
+        return db
+          .select({
+            id: workflowExecutions.id,
+            workflowId: workflowExecutions.workflowId,
+            workflowName: workflows.name,
+            workflowIsPaused: workflows.isPaused,
+            status: workflowExecutions.status,
+            startSource: workflowExecutions.startSource,
+            runMode: workflowExecutions.runMode,
+            triggerEventType: workflowExecutions.triggerEventType,
+            correlationKey: workflowExecutions.correlationKey,
+            workflowRunId: workflowExecutions.workflowRunId,
+            input: workflowExecutions.input,
+            output: workflowExecutions.output,
+            error: workflowExecutions.error,
+            startedAt: workflowExecutions.startedAt,
+            waitingAt: workflowExecutions.waitingAt,
+            cancelledAt: workflowExecutions.cancelledAt,
+            completedAt: workflowExecutions.completedAt,
+            duration: workflowExecutions.duration,
+          })
+          .from(workflowExecutions)
+          .innerJoin(workflows, eq(workflowExecutions.workflowId, workflows.id))
+          .where(filters.length > 0 ? and(...filters) : undefined)
+          .orderBy(
+            desc(workflowExecutions.startedAt),
+            desc(workflowExecutions.id)
+          )
+          .limit(query.limit);
+      }),
+
+    findSummaryById: (executionId) =>
+      database.query(async (db) => {
+        const execution = await db.query.workflowExecutions.findFirst({
+          where: eq(workflowExecutions.id, executionId),
+          columns: {
+            id: true,
+            workflowId: true,
+            status: true,
+            input: true,
+            output: true,
+            error: true,
+            startedAt: true,
+            completedAt: true,
+            duration: true,
+          },
+        });
+
+        return execution ?? null;
+      }),
+
+    findStatusById: (executionId) =>
+      database.query(async (db) => {
+        const execution = await db.query.workflowExecutions.findFirst({
+          where: eq(workflowExecutions.id, executionId),
+          columns: { id: true, status: true },
+        });
+
+        return execution ?? null;
+      }),
+
+    existsById: (executionId) =>
+      database.query(async (db) => {
+        const execution = await db.query.workflowExecutions.findFirst({
+          where: eq(workflowExecutions.id, executionId),
+          columns: { id: true },
+        });
+
+        return execution !== undefined;
+      }),
+
+    findWorkflowIdById: (executionId) =>
+      database.query(async (db) => {
+        const execution = await db.query.workflowExecutions.findFirst({
+          where: eq(workflowExecutions.id, executionId),
+          columns: { workflowId: true },
+        });
+
+        return execution?.workflowId ?? null;
+      }),
+
+    insertTerminal: (input) =>
+      database.query(async (db) => {
+        const now = new Date();
+        const [execution] = await db
+          .insert(workflowExecutions)
+          .values({
+            workflowId: input.workflowId,
+            status: input.status,
+            startSource: input.startSource,
+            runMode: input.runMode,
+            triggerEventType: input.triggerEventType,
+            correlationKey: input.correlationKey,
+            input: input.input,
+            output: input.output,
+            error: input.error,
+            startedAt: now,
+            completedAt: now,
+            cancelledAt: input.status === "canceled" ? now : null,
+          })
+          .returning();
+
+        return execution;
+      }),
+
+    setRunId: (input) =>
+      database.query(async (db) => {
+        await db
+          .update(workflowExecutions)
+          .set({ workflowRunId: input.runId })
+          .where(eq(workflowExecutions.id, input.executionId));
+      }),
+
+    markEnqueueFailed: (input) =>
+      database.query(async (db) => {
+        const closed = await db
+          .update(workflowExecutions)
+          .set({
+            status: "failed",
+            error: input.error,
+            completedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(workflowExecutions.id, input.executionId),
+              inArray(workflowExecutions.status, [
+                ...IN_FLIGHT_EXECUTION_STATUSES,
+              ])
+            )
+          )
+          .returning({ id: workflowExecutions.id });
+
+        return closed.length > 0;
+      }),
+
+    markRunning: (executionId) =>
+      database.query(async (db) => {
+        const moved = await db
+          .update(workflowExecutions)
+          .set({ status: "running", waitingAt: null })
+          .where(
+            and(
+              eq(workflowExecutions.id, executionId),
+              eq(workflowExecutions.status, "waiting")
+            )
+          )
+          .returning({ id: workflowExecutions.id });
+
+        return moved.length > 0;
+      }),
+
+    endInFlight: (input) =>
+      database.query(async (db) => {
+        const now = new Date();
+        const ended = await db
+          .update(workflowExecutions)
+          .set({
+            status: input.status,
+            waitingAt: null,
+            cancelledAt: input.status === "canceled" ? now : null,
+            completedAt: now,
+            error: input.error,
+          })
+          .where(inFlightExecution(input.executionId))
+          .returning({ id: workflowExecutions.id });
+
+        return ended.length > 0;
+      }),
+
+    finishRun: (input) =>
+      database.query(async (db) => {
+        const finished = await db
+          .update(workflowExecutions)
+          .set({
+            status: input.status,
+            output: input.output,
+            error: input.error,
+            waitingAt: null,
+            completedAt: new Date(),
+            duration: input.durationMs.toString(),
+          })
+          .where(inFlightExecution(input.executionId))
+          .returning({ id: workflowExecutions.id });
+
+        return finished.length > 0;
+      }),
+  };
+}

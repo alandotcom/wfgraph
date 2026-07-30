@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, ManagedRuntime } from "effect";
 import {
   AppLogger,
   type EffectLogger,
@@ -18,8 +18,9 @@ import {
 } from "@rova/shared/extensions/catalog";
 import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
+import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import type { RovaServices } from "#src/backend/runtime";
 
 /**
  * The Layers a backend test stands on.
@@ -160,6 +161,7 @@ export function stubStepEnvironment(
 
 const workflowRepoStubs: WorkflowRepo["Service"] = {
   listNewestFirst: refuse("listNewestFirst"),
+  listIdentities: refuse("listIdentities"),
   findById: refuse("findById"),
   existsById: refuse("existsById"),
   hasWithName: refuse("hasWithName"),
@@ -199,6 +201,16 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   insertTerminal: refuse("insertTerminal"),
   setRunId: refuse("setRunId"),
   markEnqueueFailed: refuse("markEnqueueFailed"),
+  markRunning: refuse("markRunning"),
+  endInFlight: refuse("endInFlight"),
+  finishRun: refuse("finishRun"),
+  recordAuditEvent: refuse("recordAuditEvent"),
+  openNodeLog: refuse("openNodeLog"),
+  closeNodeLog: refuse("closeNodeLog"),
+  startWait: refuse("startWait"),
+  markWaitStatus: refuse("markWaitStatus"),
+  cancelWaits: refuse("cancelWaits"),
+  listWaitsForEvent: refuse("listWaitsForEvent"),
   findWaitingStateByToken: refuse("findWaitingStateByToken"),
   listWaitingStates: refuse("listWaitingStates"),
   listLogs: refuse("listLogs"),
@@ -231,6 +243,7 @@ export function stubApiKeyRepo(
 const integrationRepoStubs: IntegrationRepo["Service"] = {
   listByType: refuse("listByType"),
   findById: refuse("findById"),
+  typesByIds: refuse("typesByIds"),
   insert: refuse("insert"),
   update: refuse("update"),
   deleteById: refuse("deleteById"),
@@ -277,4 +290,40 @@ export function stubInngestFunctions(
     invalidate: Effect.void,
     ...overrides,
   });
+}
+
+/**
+ * A whole `RovaRuntime`, for a test standing up something the app builds from
+ * its own.
+ *
+ * Three things take the runtime rather than a service: the engine's Postgres
+ * store, the dispatch port's credential fetch, and the Inngest function
+ * registry. Each is a Promise boundary the run engine sits behind, so a test of
+ * one has no Effect to provide Layers to and needs the runtime itself.
+ *
+ * Every repository dies on an unnamed method, the same as the stub Layers do, so
+ * a subject that reaches a query the test did not account for fails loudly.
+ */
+export function stubRovaRuntime(
+  overrides: {
+    extensions?: Partial<ExtensionSet>;
+    workflowRepo?: Partial<WorkflowRepo["Service"]>;
+    executionRepo?: Partial<ExecutionRepo["Service"]>;
+    integrationRepo?: Partial<IntegrationRepo["Service"]>;
+    apiKeyRepo?: Partial<ApiKeyRepo["Service"]>;
+    inngestClient?: Partial<InngestClient["Service"]>;
+  } = {}
+): ManagedRuntime.ManagedRuntime<RovaServices, never> {
+  return ManagedRuntime.make(
+    Layer.mergeAll(
+      SilentAppLoggerLayer,
+      stubExtensions(overrides.extensions),
+      stubWorkflowRepo(overrides.workflowRepo),
+      stubExecutionRepo(overrides.executionRepo),
+      stubIntegrationRepo(overrides.integrationRepo),
+      stubApiKeyRepo(overrides.apiKeyRepo),
+      stubInngestClient(overrides.inngestClient),
+      stubInngestFunctions()
+    )
+  );
 }

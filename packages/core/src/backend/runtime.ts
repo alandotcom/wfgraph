@@ -1,6 +1,7 @@
 import { Layer, ManagedRuntime } from "effect";
+import type { DatabaseSurface } from "#src/backend/lib/db/index";
 import { AppLogger, AppLoggerLayer } from "#src/backend/lib/effect/app-logger";
-import { DatabaseLayer } from "#src/backend/lib/effect/database";
+import { makeDatabaseLayer } from "#src/backend/lib/effect/database";
 import {
   Extensions,
   makeExtensionsLayer,
@@ -19,14 +20,15 @@ import {
   ApiKeyRepo,
   ApiKeyRepoLayer,
 } from "#src/backend/services/api-keys/repo";
+import type { IntegrationCipher } from "#src/backend/services/integrations/cipher";
 import {
   IntegrationRepo,
-  IntegrationRepoLayer,
+  makeIntegrationRepoLayer,
 } from "#src/backend/services/integrations/repo";
 import {
   ExecutionRepo,
   ExecutionRepoLayer,
-} from "#src/backend/services/workflows/executions/repo";
+} from "#src/backend/services/workflows/executions/repo/index";
 import {
   WorkflowRepo,
   WorkflowRepoLayer,
@@ -53,31 +55,33 @@ export type RovaServices =
   | InngestClient
   | InngestFunctions;
 
-// A repository that writes its own Drizzle is composed against the database
-// here, so the graph reads as a list of subsystems rather than one nested
-// expression. `DatabaseLayer` is named rather than rebuilt per domain: Layers
-// are memoized by reference, so one value used in every position means one
-// database service, however many domains provide it to. The integration
-// repository delegates to `backend/lib/db/integrations`, which holds its own
-// handle, so it stands on its own until stage 7 moves that module onto this
-// Layer.
-const ApiKeysLayer = Layer.provide(ApiKeyRepoLayer, DatabaseLayer);
+/** Everything the app hands the Layer graph, as the app itself holds it. */
+export type RovaRuntimeParts = {
+  inngest: InngestSurface;
+  extensions: ExtensionSet;
+  database: DatabaseSurface;
+  /** The AES envelope an integration's stored config passes through. */
+  cipher: IntegrationCipher;
+};
 
-const WorkflowsLayer = Layer.provide(
-  Layer.mergeAll(WorkflowRepoLayer, ExecutionRepoLayer),
-  DatabaseLayer
-);
+// Every repository is composed against the database here, so the graph reads as
+// a list of subsystems rather than one nested expression. The database Layer is
+// named rather than rebuilt per domain: Layers are memoized by reference, so one
+// value used in every position means one database service, however many domains
+// provide it to.
+function buildRovaLayer(parts: RovaRuntimeParts): Layer.Layer<RovaServices> {
+  const { inngest } = parts;
+  const database = makeDatabaseLayer(parts.database.db);
 
-function buildRovaLayer(
-  inngest: InngestSurface,
-  extensions: ExtensionSet
-): Layer.Layer<RovaServices> {
   return Layer.mergeAll(
     AppLoggerLayer,
-    makeExtensionsLayer(extensions),
-    ApiKeysLayer,
-    IntegrationRepoLayer,
-    WorkflowsLayer,
+    makeExtensionsLayer(parts.extensions),
+    Layer.provide(ApiKeyRepoLayer, database),
+    Layer.provide(makeIntegrationRepoLayer(parts.cipher), database),
+    Layer.provide(
+      Layer.mergeAll(WorkflowRepoLayer, ExecutionRepoLayer),
+      database
+    ),
     makeInngestClientLayer(inngest.client),
     makeInngestFunctionsLayer(inngest)
   );
@@ -96,9 +100,6 @@ function buildRovaLayer(
  */
 export type RovaRuntime = ManagedRuntime.ManagedRuntime<RovaServices, never>;
 
-export function createRovaRuntime(
-  inngest: InngestSurface,
-  extensions: ExtensionSet
-): RovaRuntime {
-  return ManagedRuntime.make(buildRovaLayer(inngest, extensions));
+export function createRovaRuntime(parts: RovaRuntimeParts): RovaRuntime {
+  return ManagedRuntime.make(buildRovaLayer(parts));
 }

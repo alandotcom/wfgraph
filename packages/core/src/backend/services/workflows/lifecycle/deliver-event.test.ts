@@ -10,6 +10,7 @@ import {
   stubExecutionRepo,
   stubExtensionCatalog,
   stubInngestClient,
+  stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
@@ -17,31 +18,21 @@ import type { LifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
 import type { EventSubscriber } from "#src/backend/services/workflows/repo";
 import { applyLifecycleRules, deliverToWaits } from "./deliver-event";
 
-// The modules holding their own database handle, replaced for this file.
+// The two neighbours whose own cases live elsewhere, replaced for this file.
 const {
-  logWorkflowAuditEventMock,
+  listWaitsForEventMock,
   resumeWaitsMatchingEventMock,
-  listWaitingMock,
   validateWorkflowIntegrationsMock,
   startWithConcurrencyMock,
 } = vi.hoisted(() => ({
-  logWorkflowAuditEventMock: vi.fn(),
+  listWaitsForEventMock: vi.fn(),
   resumeWaitsMatchingEventMock: vi.fn(),
-  listWaitingMock: vi.fn(),
   validateWorkflowIntegrationsMock: vi.fn(),
   startWithConcurrencyMock: vi.fn(),
 }));
 
-vi.mock("#src/backend/lib/workflow-audit", () => ({
-  logWorkflowAuditEvent: logWorkflowAuditEventMock,
-}));
-
-vi.mock("#src/backend/lib/workflow-wait-resume", () => ({
+vi.mock("#src/backend/services/workflows/lifecycle/resume-waits", () => ({
   resumeWaitsMatchingEvent: resumeWaitsMatchingEventMock,
-}));
-
-vi.mock("#src/backend/lib/workflow-wait-state", () => ({
-  listWorkflowWaitsForEvent: listWaitingMock,
 }));
 
 // Concurrency's own cases are `concurrency.test.ts`; what matters here is what it
@@ -131,15 +122,17 @@ function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {
 /** The run seams, left refusing: the start path is replaced above them. */
 const unreachedRunSeams = Layer.mergeAll(
   stubExecutionRepo(),
-  stubInngestClient()
+  stubInngestClient(),
+  stubIntegrationRepo()
 );
 
 beforeEach(() => {
   vi.clearAllMocks();
-  logWorkflowAuditEventMock.mockResolvedValue(undefined);
-  listWaitingMock.mockResolvedValue([]);
-  resumeWaitsMatchingEventMock.mockResolvedValue(0);
-  validateWorkflowIntegrationsMock.mockResolvedValue({ valid: true });
+  listWaitsForEventMock.mockReturnValue(Effect.succeed([]));
+  resumeWaitsMatchingEventMock.mockReturnValue(Effect.succeed(0));
+  validateWorkflowIntegrationsMock.mockReturnValue(
+    Effect.succeed({ valid: true })
+  );
   startWithConcurrencyMock.mockReturnValue(
     Effect.succeed({
       status: "started",
@@ -365,17 +358,22 @@ describe("applyLifecycleRules", () => {
 
 describe("deliverToWaits", () => {
   layer(
-    Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, stubInngestClient())
+    Layer.mergeAll(
+      SilentAppLoggerLayer,
+      catalogLayer,
+      stubInngestClient(),
+      stubExecutionRepo({ listWaitsForEvent: listWaitsForEventMock })
+    )
   )((it) => {
     // Candidates are found by Event name, and each row's own compiled match
     // decides. Nothing here reads a Correlation Path, which is what lets a run
     // park on an Event that has no entity of its own.
     it.effect("offers the Event to the runs parked on its name", () =>
       Effect.gen(function* () {
-        listWaitingMock.mockResolvedValueOnce([
-          { id: "wait_1", executionId: "exec_parked" },
-        ]);
-        resumeWaitsMatchingEventMock.mockResolvedValueOnce(1);
+        listWaitsForEventMock.mockReturnValueOnce(
+          Effect.succeed([{ id: "wait_1", executionId: "exec_parked" }])
+        );
+        resumeWaitsMatchingEventMock.mockReturnValueOnce(Effect.succeed(1));
 
         const outcome = yield* deliverToWaits({
           subscriber: subscriber({ roles: ["wait"] }),
@@ -388,7 +386,7 @@ describe("deliverToWaits", () => {
           workflowId: "wf_1",
           resumedWaits: 1,
         });
-        assert.deepStrictEqual(listWaitingMock.mock.calls[0], [
+        assert.deepStrictEqual(listWaitsForEventMock.mock.calls[0], [
           {
             workflowId: "wf_1",
             eventName: "app/appointment.created",
@@ -402,9 +400,9 @@ describe("deliverToWaits", () => {
     // parked nothing yet.
     it.effect("leaves out the runs the lifecycle just settled", () =>
       Effect.gen(function* () {
-        listWaitingMock.mockResolvedValueOnce([
-          { id: "wait_1", executionId: "exec_superseded" },
-        ]);
+        listWaitsForEventMock.mockReturnValueOnce(
+          Effect.succeed([{ id: "wait_1", executionId: "exec_superseded" }])
+        );
 
         const outcome = yield* deliverToWaits({
           subscriber: subscriber(),
@@ -422,10 +420,10 @@ describe("deliverToWaits", () => {
     // parked run at all, whatever the Wait node had asked for.
     it.effect("reaches parked runs with no Correlation Path in sight", () =>
       Effect.gen(function* () {
-        listWaitingMock.mockResolvedValueOnce([
-          { id: "wait_1", executionId: "exec_parked" },
-        ]);
-        resumeWaitsMatchingEventMock.mockResolvedValueOnce(1);
+        listWaitsForEventMock.mockReturnValueOnce(
+          Effect.succeed([{ id: "wait_1", executionId: "exec_parked" }])
+        );
+        resumeWaitsMatchingEventMock.mockReturnValueOnce(Effect.succeed(1));
 
         const outcome = yield* deliverToWaits({
           subscriber: subscriber({ roles: ["wait"] }),
@@ -435,7 +433,7 @@ describe("deliverToWaits", () => {
         }).pipe(Effect.provide(stubWorkflowRepo({})));
 
         assert.strictEqual(outcome.resumedWaits, 1);
-        assert.deepStrictEqual(listWaitingMock.mock.calls[0], [
+        assert.deepStrictEqual(listWaitsForEventMock.mock.calls[0], [
           {
             workflowId: "wf_1",
             eventName: "ops/nightly.swept",
@@ -450,7 +448,7 @@ describe("deliverToWaits", () => {
     it.effect("reads no graph on the way to a parked run", () =>
       Effect.gen(function* () {
         const findById = vi.fn(() => Effect.succeed(null));
-        listWaitingMock.mockResolvedValueOnce([]);
+        listWaitsForEventMock.mockReturnValueOnce(Effect.succeed([]));
 
         yield* deliverToWaits({
           subscriber: subscriber({ roles: ["wait"] }),
@@ -465,7 +463,7 @@ describe("deliverToWaits", () => {
 
     it.effect("wakes nothing when no run is parked on the Event", () =>
       Effect.gen(function* () {
-        listWaitingMock.mockResolvedValueOnce([]);
+        listWaitsForEventMock.mockReturnValueOnce(Effect.succeed([]));
 
         const outcome = yield* deliverToWaits({
           subscriber: subscriber({ roles: ["wait"] }),

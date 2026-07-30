@@ -1,5 +1,6 @@
+import { Effect } from "effect";
 import { uniq } from "es-toolkit/array";
-import { getIntegrationTypesByIds as getIntegrationTypesByIdsInDb } from "#src/backend/lib/db/integrations";
+import type { DatabaseError } from "#src/backend/lib/effect/database";
 import { getAppLogger } from "#src/backend/lib/logger";
 import {
   type ExtensionCatalog,
@@ -22,21 +23,33 @@ function resolveFromCatalog(catalog: ExtensionCatalog): ResolveActionByType {
   return (actionType) => findAction(catalog, actionType);
 }
 
-type ValidationResult = {
-  valid: boolean;
-  invalidIds?: string[];
-};
-
 type IntegrationTypeMap = Record<string, string>;
 
+/**
+ * `IntegrationRepo.typesByIds`, taken as a parameter.
+ *
+ * A parameter rather than an import, because this module sits in `backend/lib`
+ * and the repository is a service above it. Each caller already holds the
+ * repository the check should read through.
+ */
 export type GetIntegrationTypesByIds = (
   integrationIds: string[]
-) => Promise<IntegrationTypeMap>;
+) => Effect.Effect<IntegrationTypeMap, DatabaseError>;
 
 type IntegrationRequirement = {
   integrationId: string;
   requiredType: string;
 };
+
+/**
+ * What `validateWorkflowIntegrations` answers: whether the graph's integration
+ * references check out, and the ids at fault when they do not. Named so a
+ * caller reads `.invalidIds` off a declared contract rather than off whatever
+ * TypeScript happened to infer from the three return statements below.
+ */
+export type IntegrationValidation =
+  | { valid: true }
+  | { valid: false; invalidIds: string[] };
 
 const integrationValidationLogger = getAppLogger("workflow", "integration");
 const STRICT_VALIDATION_ENV = "WORKFLOW_STRICT_INTEGRATION_VALIDATION";
@@ -127,48 +140,48 @@ export function extractRequiredIntegrationIds(
  * for different columns, on a path a delivered Event runs per subscribing
  * workflow.
  */
-async function findInvalidIntegrations(input: {
-  requirements: IntegrationRequirement[];
-  getIntegrationTypesByIds: GetIntegrationTypesByIds;
-}): Promise<{ missingIds: string[]; mismatchedIds: string[] }> {
-  const { requirements, getIntegrationTypesByIds } = input;
-  if (requirements.length === 0) {
-    return { missingIds: [], mismatchedIds: [] };
-  }
-
-  const integrationTypeById = await getIntegrationTypesByIds(
-    uniq(requirements.map((requirement) => requirement.integrationId))
-  );
-  const missingIds = new Set<string>();
-  const mismatchedIds = new Set<string>();
-
-  for (const requirement of requirements) {
-    const actualType = integrationTypeById[requirement.integrationId];
-    if (!actualType) {
-      missingIds.add(requirement.integrationId);
-      continue;
+const findInvalidIntegrations = Effect.fn("findInvalidIntegrations")(
+  function* (input: {
+    requirements: IntegrationRequirement[];
+    getIntegrationTypesByIds: GetIntegrationTypesByIds;
+  }) {
+    const { requirements, getIntegrationTypesByIds } = input;
+    if (requirements.length === 0) {
+      return { missingIds: [] as string[], mismatchedIds: [] as string[] };
     }
-    if (actualType !== requirement.requiredType) {
-      mismatchedIds.add(requirement.integrationId);
+
+    const integrationTypeById = yield* getIntegrationTypesByIds(
+      uniq(requirements.map((requirement) => requirement.integrationId))
+    );
+    const missingIds = new Set<string>();
+    const mismatchedIds = new Set<string>();
+
+    for (const requirement of requirements) {
+      const actualType = integrationTypeById[requirement.integrationId];
+      if (!actualType) {
+        missingIds.add(requirement.integrationId);
+        continue;
+      }
+      if (actualType !== requirement.requiredType) {
+        mismatchedIds.add(requirement.integrationId);
+      }
     }
+
+    return {
+      missingIds: Array.from(missingIds),
+      mismatchedIds: Array.from(mismatchedIds),
+    };
   }
+);
 
-  return {
-    missingIds: Array.from(missingIds),
-    mismatchedIds: Array.from(mismatchedIds),
-  };
-}
-
-export async function validateWorkflowIntegrations(
+export const validateWorkflowIntegrations = Effect.fn(
+  "validateWorkflowIntegrations"
+)(function* (
   nodes: WorkflowNode[],
   catalog: ExtensionCatalog,
-  options: {
-    getIntegrationTypesByIds?: GetIntegrationTypesByIds;
-    strictValidation?: boolean;
-  } = {}
-): Promise<ValidationResult> {
-  const getIntegrationTypesByIds =
-    options.getIntegrationTypesByIds ?? getIntegrationTypesByIdsInDb;
+  getIntegrationTypesByIds: GetIntegrationTypesByIds,
+  options: { strictValidation?: boolean } = {}
+) {
   const strictValidationEnabled = shouldEnforceStrictValidation(
     options.strictValidation
   );
@@ -177,13 +190,15 @@ export async function validateWorkflowIntegrations(
     resolveFromCatalog(catalog)
   );
 
-  const { missingIds, mismatchedIds } = await findInvalidIntegrations({
+  const { missingIds, mismatchedIds } = yield* findInvalidIntegrations({
     requirements,
     getIntegrationTypesByIds,
   });
 
+  const valid: IntegrationValidation = { valid: true };
+
   if (missingIds.length === 0 && mismatchedIds.length === 0) {
-    return { valid: true };
+    return valid;
   }
 
   if (!strictValidationEnabled) {
@@ -196,13 +211,14 @@ export async function validateWorkflowIntegrations(
         strictValidationEnv: STRICT_VALIDATION_ENV,
       }
     );
-    return { valid: true };
+    return valid;
   }
 
   // A missing integration comes first: an id nothing carries is a different fix
   // from an id carrying the wrong type, and naming both at once helps nobody.
-  return {
+  const invalid: IntegrationValidation = {
     valid: false,
     invalidIds: missingIds.length > 0 ? missingIds : mismatchedIds,
   };
-}
+  return invalid;
+});

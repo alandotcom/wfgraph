@@ -306,7 +306,7 @@ Addresses findings 8 and 9.
    enforce it at the door. A second call differing in database URL, encryption key, or
    Inngest client id fails with one error naming the constraint, raised from `createRovaApp`
    itself rather than from whichever `configure*` call happens to notice first.
-   `configureDatabaseRuntime` (`db/index.ts:145`) already throws on a differing config;
+   `createDatabaseSurface` (`db/index.ts:130`) already throws on any second surface;
    extend the same check to the others and surface it in one place. Make `dispose` genuinely
    release registrations so sequential instances in one test process keep working.
 

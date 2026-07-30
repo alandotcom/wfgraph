@@ -2,7 +2,7 @@
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
-import type { WorkflowExecution } from "#src/backend/services/workflows/executions/repo";
+import type { WorkflowExecution } from "#src/backend/services/workflows/executions/repo/index";
 import {
   SilentAppLoggerLayer,
   stubExecutionRepo,

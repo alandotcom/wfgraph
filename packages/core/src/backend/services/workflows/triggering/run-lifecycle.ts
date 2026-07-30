@@ -1,12 +1,8 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { callDbModule } from "#src/backend/lib/effect/database";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
-import {
-  logWorkflowAuditEvent,
-  type RunScopedAuditEventType,
-} from "#src/backend/lib/workflow-audit";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
+import type { RunScopedAuditEventType } from "#src/backend/lib/workflow-audit";
+import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
 import type { JsonObject } from "@rova/shared/types/json";
 import type {
   WorkflowExecutionIgnoredReason,
@@ -214,26 +210,24 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
     runId: run.eventId ?? null,
   });
 
-  yield* callDbModule(() =>
-    logWorkflowAuditEvent({
-      workflowId: workflow.id,
-      executionId: execution.id,
-      eventType: "run_started",
-      message: buildRunStartedAuditMessage({
-        startSource: start.source,
-        runMode,
-        eventName: start.eventName,
-      }),
-      metadata: {
-        startSource: start.source,
-        runMode,
-        eventName: start.eventName,
-        entityValue: start.entityValue,
-        deliveryId: start.deliveryId,
-        runId: run.eventId,
-      },
-    })
-  );
+  yield* repo.recordAuditEvent({
+    workflowId: workflow.id,
+    executionId: execution.id,
+    eventType: "run_started",
+    message: buildRunStartedAuditMessage({
+      startSource: start.source,
+      runMode,
+      eventName: start.eventName,
+    }),
+    metadata: {
+      startSource: start.source,
+      runMode,
+      eventName: start.eventName,
+      entityValue: start.entityValue,
+      deliveryId: start.deliveryId,
+      runId: run.eventId,
+    },
+  });
 
   const started: StartedWorkflowRun = {
     executionId: execution.id,
@@ -268,15 +262,13 @@ export const recordTerminalWorkflowRun = Effect.fn("recordTerminalWorkflowRun")(
       error: input.error,
     });
 
-    yield* callDbModule(() =>
-      logWorkflowAuditEvent({
-        workflowId: input.workflowId,
-        executionId: execution.id,
-        eventType: input.audit.eventType,
-        message: input.audit.message,
-        metadata: input.audit.metadata,
-      })
-    );
+    yield* repo.recordAuditEvent({
+      workflowId: input.workflowId,
+      executionId: execution.id,
+      eventType: input.audit.eventType,
+      message: input.audit.message,
+      metadata: input.audit.metadata,
+    });
 
     return execution;
   }

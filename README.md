@@ -301,10 +301,9 @@ the callers that lose the race wait and then find nothing to do. Postgres does n
 serialize concurrent `CREATE SCHEMA` or `CREATE TABLE` of one name, so replicas
 starting together would otherwise fail all but the first on a unique violation.
 
-Calling it inside a process that already built an app works on one condition: the
-config is compared field by field, `maxConnections` and `ssl` included, so pass the
-object the app was given. A config differing anywhere reads as a second database
-and is refused.
+Calling it inside a process that already built an app works, and takes no
+condition: the connection is the call's own and takes no claim on the database, so
+an app running beside it keeps its pool and neither notices the other.
 
 `@rova/core/migrate` exists because nothing else can apply the shipped SQL
 correctly. Those files name no schema, and the `search_path` that decides which

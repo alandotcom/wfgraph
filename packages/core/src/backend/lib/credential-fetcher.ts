@@ -14,7 +14,8 @@ import {
 } from "@rova/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
 import type { IntegrationConfig } from "@rova/shared/types/integration";
-import { getIntegrationById } from "./db/integrations";
+import { IntegrationRepo } from "#src/backend/services/integrations/repo";
+import type { RovaRuntime } from "#src/backend/runtime";
 import { getAppLogger } from "./logger";
 
 const credentialFetcherLogger = getAppLogger("credentials", "fetcher");
@@ -54,14 +55,20 @@ function mapIntegrationConfig(
  */
 export function fetchCredentials(
   catalog: ExtensionCatalog,
+  runtime: RovaRuntime,
   integrationId: string
 ): Effect.Effect<WorkflowCredentials> {
   return Effect.gen(function* () {
     const logger = credentialFetcherLogger.with({ integrationId });
     logger.debug("Fetching integration credentials");
 
+    // A step's Effect asks for nothing but an HTTP client, so the repository is
+    // reached by running the app's runtime rather than by widening what a
+    // handler requires.
     const integration = yield* Effect.promise(() =>
-      getIntegrationById(integrationId)
+      runtime.runPromise(
+        Effect.flatMap(IntegrationRepo, (repo) => repo.findById(integrationId))
+      )
     );
 
     if (!integration) {

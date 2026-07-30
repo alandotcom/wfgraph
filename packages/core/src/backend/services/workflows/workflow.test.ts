@@ -5,6 +5,7 @@ import {
   SilentAppLoggerLayer,
   stubExtensionCatalog,
   stubInngestFunctions,
+  stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { patchWorkflow } from "#src/backend/services/workflows/workflow";
@@ -85,7 +86,12 @@ function makeRepo() {
 
 describe("patchWorkflow", () => {
   layer(
-    Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, stubInngestFunctions())
+    Layer.mergeAll(
+      SilentAppLoggerLayer,
+      catalogLayer,
+      stubInngestFunctions(),
+      stubIntegrationRepo()
+    )
   )((it) => {
     // The index is derived from the graph being written, so removing a Start Event
     // has to shrink it in the same call. A stale row would keep delivering an

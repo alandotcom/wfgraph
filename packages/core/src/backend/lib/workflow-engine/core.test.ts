@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
 import { Schema } from "effect";
 import {
@@ -110,7 +111,8 @@ const actions = createWorkflowActions(
         },
       }),
     ],
-  })
+  }),
+  stubRovaRuntime()
 );
 
 describe("host action execution", () => {

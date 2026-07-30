@@ -16,15 +16,9 @@
 
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { callDbModule } from "#src/backend/lib/effect/database";
-import {
-  asPromisePort,
-  callInngestModule,
-  InngestClient,
-} from "#src/backend/lib/effect/inngest-client";
-import { resumeWaitsMatchingEvent } from "#src/backend/lib/workflow-wait-resume";
-import { listWorkflowWaitsForEvent } from "#src/backend/lib/workflow-wait-state";
+import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
+import { resumeWaitsMatchingEvent } from "#src/backend/services/workflows/lifecycle/resume-waits";
 import { runWorkflowExecutionPreflight } from "#src/backend/services/workflows/triggering/preflight";
 import {
   type EventSubscriber,
@@ -247,13 +241,12 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
     resumedWaits: 0,
   };
 
-  const waitStates = yield* callDbModule(() =>
-    listWorkflowWaitsForEvent({
-      workflowId: input.subscriber.id,
-      eventName: input.event.name,
-      runMode: input.subscriber.mode,
-    })
-  );
+  const repo = yield* ExecutionRepo;
+  const waitStates = yield* repo.listWaitsForEvent({
+    workflowId: input.subscriber.id,
+    eventName: input.event.name,
+    runMode: input.subscriber.mode,
+  });
 
   const candidates = waitStates.filter(
     (state) => !input.excluding.includes(state.executionId)
@@ -262,16 +255,12 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
     return nothing;
   }
 
-  const inngest = yield* InngestClient;
-  const resumedWaits = yield* callInngestModule(() =>
-    resumeWaitsMatchingEvent({
-      sendWaitSignal: asPromisePort(inngest.sendWaitSignal),
-      workflowId: input.subscriber.id,
-      eventType: input.event.name,
-      payload: input.payload,
-      waitStates: candidates,
-    })
-  );
+  const resumedWaits = yield* resumeWaitsMatchingEvent({
+    workflowId: input.subscriber.id,
+    eventType: input.event.name,
+    payload: input.payload,
+    waitStates: candidates,
+  });
 
   return { workflowId: input.subscriber.id, resumedWaits };
 });

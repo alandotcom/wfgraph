@@ -1,5 +1,9 @@
-import { db } from "#src/backend/lib/db/index";
-import { workflowExecutionEvents } from "#src/backend/lib/db/schema";
+/**
+ * The audit event types, as the two scopes they divide into.
+ *
+ * The rows themselves are written and read through `ExecutionRepo`; this module
+ * is the vocabulary both halves are held to.
+ */
 
 /**
  * The audit rows that belong to a run: everything a run does between opening and
@@ -37,30 +41,3 @@ export type RunScopedAuditEventType =
 
 export type WorkflowScopedAuditEventType =
   (typeof WORKFLOW_SCOPED_AUDIT_EVENT_TYPES)[number];
-
-/**
- * Writes one audit row.
- *
- * The two arms are what keep the scope honest: a run-scoped type has to name its
- * Execution, and a workflow-scoped one has none to name. The reader for each is
- * keyed on that -- the run timeline by execution id, the Refused Starts panel by
- * this list -- so a row written into the wrong arm would be a row nothing shows.
- */
-export async function logWorkflowAuditEvent(
-  input: {
-    workflowId: string;
-    message: string;
-    metadata?: Record<string, unknown>;
-  } & (
-    | { eventType: RunScopedAuditEventType; executionId: string }
-    | { eventType: WorkflowScopedAuditEventType; executionId?: undefined }
-  )
-) {
-  await db.insert(workflowExecutionEvents).values({
-    workflowId: input.workflowId,
-    executionId: input.executionId ?? null,
-    eventType: input.eventType,
-    message: input.message,
-    metadata: input.metadata,
-  });
-}

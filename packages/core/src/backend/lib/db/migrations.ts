@@ -5,11 +5,10 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import type { Sql } from "postgres";
+import type { NormalizedDatabaseConfig } from "#src/backend/lib/db/config";
 import {
-  closeMigrationClient,
+  createMigrationClient,
   describeConnection,
-  getDatabaseSchema,
-  getMigrationClient,
 } from "#src/backend/lib/db/index";
 import { getAppLogger } from "#src/backend/lib/logger";
 
@@ -95,9 +94,10 @@ async function resolveExistingMigrationsDir(
  * that same schema rather than one of its own: everything Rova owns then sits
  * inside the one name a host can drop.
  *
- * The pool goes back before this returns, whether the migration worked or not.
- * Nothing migrates twice in one process, and a one-shot migration process would
- * otherwise sit on an idle socket rather than exiting.
+ * The connection is this call's own, and it goes back before this returns whether
+ * the migration worked or not. An app that migrates on the way up therefore holds
+ * no second pool once it starts serving, and a one-shot migration process exits
+ * rather than sitting on an idle socket.
  *
  * The advisory lock is what makes several instances starting together safe.
  * Postgres does not serialize concurrent `CREATE SCHEMA` or `CREATE TABLE` of the
@@ -108,17 +108,18 @@ async function resolveExistingMigrationsDir(
  * through that one client, which is that one session.
  */
 export async function runMigrations(
+  config: NormalizedDatabaseConfig,
   options: Pick<MigrationsOptions, "migrationsDir"> = {}
 ): Promise<void> {
   const migrationsFolder = await resolveExistingMigrationsDir(
     options.migrationsDir?.trim()
   );
-  const schema = getDatabaseSchema();
-  const client = getMigrationClient();
+  const { schema } = config;
+  const client = createMigrationClient(config);
 
   logger.info("Running database migrations", {
     migrationsFolder,
-    ...describeConnection(client),
+    ...describeConnection(client, schema),
   });
 
   // One lock name per schema, so two Rovas sharing a database do not wait on each
@@ -135,7 +136,7 @@ export async function runMigrations(
 
     logger.info("Database migrations completed");
   } finally {
-    await closeMigrationClient();
+    await client.end();
   }
 }
 

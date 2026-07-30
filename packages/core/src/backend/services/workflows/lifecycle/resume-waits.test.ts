@@ -1,18 +1,17 @@
+import { Effect, Layer } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resumeWaitsMatchingEvent } from "./workflow-wait-resume";
+import {
+  InngestError,
+  type InngestClient,
+} from "#src/backend/lib/effect/inngest-client";
+import {
+  stubExecutionRepo,
+  stubInngestClient,
+} from "#src/backend/lib/effect/test-layers";
+import type { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import { resumeWaitsMatchingEvent } from "./resume-waits";
 
-const {
-  sendWorkflowWaitSignalMock,
-  logWorkflowAuditEventMock,
-  markExecutionRunningMock,
-  markWaitStateStatusMock,
-  loggerErrorMock,
-  loggerWarnMock,
-} = vi.hoisted(() => ({
-  sendWorkflowWaitSignalMock: vi.fn(),
-  logWorkflowAuditEventMock: vi.fn(),
-  markExecutionRunningMock: vi.fn(),
-  markWaitStateStatusMock: vi.fn(),
+const { loggerErrorMock, loggerWarnMock } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
   loggerWarnMock: vi.fn(),
 }));
@@ -28,19 +27,25 @@ vi.mock("#src/backend/lib/logger", () => ({
   }),
 }));
 
-vi.mock("#src/backend/lib/workflow-audit", () => ({
-  logWorkflowAuditEvent: logWorkflowAuditEventMock,
-}));
+type Repo = ExecutionRepo["Service"];
 
-vi.mock("#src/backend/lib/workflow-wait-state", () => ({
-  markExecutionRunning: markExecutionRunningMock,
-  markWaitStateStatus: markWaitStateStatusMock,
-  markExecutionCancelled: vi.fn(),
-  markWaitingStatesCancelled: vi.fn(),
-  createWaitState: vi.fn(),
-  listExecutionWaitingStates: vi.fn(),
-  listWorkflowWaitsForEvent: vi.fn(),
-}));
+const sendWaitSignalMock = vi.fn<InngestClient["Service"]["sendWaitSignal"]>(
+  () => Effect.void
+);
+const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
+const markRunningMock = vi.fn<Repo["markRunning"]>(() => Effect.succeed(true));
+const markWaitStatusMock = vi.fn<Repo["markWaitStatus"]>(() =>
+  Effect.succeed(true)
+);
+
+const services = Layer.mergeAll(
+  stubExecutionRepo({
+    recordAuditEvent: recordAuditEventMock,
+    markRunning: markRunningMock,
+    markWaitStatus: markWaitStatusMock,
+  }),
+  stubInngestClient({ sendWaitSignal: sendWaitSignalMock })
+);
 
 type Subscription = {
   event: string;
@@ -77,27 +82,26 @@ function createWaitState(
 }
 
 /**
- * The subject with its one port filled in.
+ * The subject on its stub services.
  *
- * Every case sends through the same stub, so only what varies is written at a
- * call site.
+ * Every case sends and writes through the same stubs, so only what varies is
+ * written at a call site.
  */
 function resumeWaits(
-  input: Omit<Parameters<typeof resumeWaitsMatchingEvent>[0], "sendWaitSignal">
+  input: Parameters<typeof resumeWaitsMatchingEvent>[0]
 ): Promise<number> {
-  return resumeWaitsMatchingEvent({
-    sendWaitSignal: sendWorkflowWaitSignalMock,
-    ...input,
-  });
+  return Effect.runPromise(
+    resumeWaitsMatchingEvent(input).pipe(Effect.provide(services))
+  );
 }
 
 describe("resumeWaitsMatchingEvent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    sendWorkflowWaitSignalMock.mockResolvedValue(undefined);
-    markWaitStateStatusMock.mockResolvedValue(true);
-    markExecutionRunningMock.mockResolvedValue(undefined);
-    logWorkflowAuditEventMock.mockResolvedValue(undefined);
+    sendWaitSignalMock.mockImplementation(() => Effect.void);
+    markWaitStatusMock.mockImplementation(() => Effect.succeed(true));
+    markRunningMock.mockImplementation(() => Effect.succeed(true));
+    recordAuditEventMock.mockImplementation(() => Effect.void);
   });
 
   it("returns 0 when eventType is undefined", async () => {
@@ -109,7 +113,7 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
   });
 
   it("returns 0 when eventType is empty string", async () => {
@@ -121,7 +125,7 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
   });
 
   it("returns 0 for empty waitStates array", async () => {
@@ -147,7 +151,7 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
   });
 
   it("resumes a match-free subscription on the next occurrence", async () => {
@@ -159,20 +163,20 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(1);
-    expect(sendWorkflowWaitSignalMock).toHaveBeenCalledTimes(1);
-    expect(sendWorkflowWaitSignalMock).toHaveBeenCalledWith({
+    expect(sendWaitSignalMock).toHaveBeenCalledTimes(1);
+    expect(sendWaitSignalMock).toHaveBeenCalledWith({
       executionId: "exec_1",
       nodeId: "node_1",
       token: "token_1",
       eventType: "event.update",
       payload: { key: "value" },
     });
-    expect(markWaitStateStatusMock).toHaveBeenCalledWith({
+    expect(markWaitStatusMock).toHaveBeenCalledWith({
       waitStateId: "1",
       status: "resumed",
     });
-    expect(markExecutionRunningMock).toHaveBeenCalledWith("exec_1");
-    expect(logWorkflowAuditEventMock).toHaveBeenCalledTimes(1);
+    expect(markRunningMock).toHaveBeenCalledWith("exec_1");
+    expect(recordAuditEventMock).toHaveBeenCalledTimes(1);
   });
 
   it("resumes multiple wait states and returns total count", async () => {
@@ -188,9 +192,9 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(3);
-    expect(sendWorkflowWaitSignalMock).toHaveBeenCalledTimes(3);
-    expect(markWaitStateStatusMock).toHaveBeenCalledTimes(3);
-    expect(markExecutionRunningMock).toHaveBeenCalledTimes(3);
+    expect(sendWaitSignalMock).toHaveBeenCalledTimes(3);
+    expect(markWaitStatusMock).toHaveBeenCalledTimes(3);
+    expect(markRunningMock).toHaveBeenCalledTimes(3);
   });
 
   it("wakes nothing for a row whose metadata holds no subscriptions", async () => {
@@ -205,7 +209,7 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
   });
 
   // A candidate row reached the matcher because its own `subscribed_events`
@@ -225,14 +229,14 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
+    expect(sendWaitSignalMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledWith(
       "Parked wait holds subscriptions that will not decode"
     );
   });
 
-  it("returns 0 for a wait state when markWaitStateStatus returns false", async () => {
-    markWaitStateStatusMock.mockResolvedValue(false);
+  it("returns 0 for a wait state when the wait row had already moved on", async () => {
+    markWaitStatusMock.mockImplementation(() => Effect.succeed(false));
 
     const result = await resumeWaits({
       workflowId: "workflow_1",
@@ -242,17 +246,19 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(0);
-    expect(sendWorkflowWaitSignalMock).toHaveBeenCalledTimes(1);
-    expect(markWaitStateStatusMock).toHaveBeenCalledTimes(1);
-    expect(markExecutionRunningMock).not.toHaveBeenCalled();
-    expect(logWorkflowAuditEventMock).not.toHaveBeenCalled();
+    expect(sendWaitSignalMock).toHaveBeenCalledTimes(1);
+    expect(markWaitStatusMock).toHaveBeenCalledTimes(1);
+    expect(markRunningMock).not.toHaveBeenCalled();
+    expect(recordAuditEventMock).not.toHaveBeenCalled();
   });
 
   it("counts 0 for failed resumes and continues processing others", async () => {
-    sendWorkflowWaitSignalMock
-      .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error("signal failed"))
-      .mockResolvedValueOnce(undefined);
+    sendWaitSignalMock
+      .mockImplementationOnce(() => Effect.void)
+      .mockImplementationOnce(() =>
+        Effect.fail(new InngestError({ cause: "signal failed" }))
+      )
+      .mockImplementationOnce(() => Effect.void);
 
     const result = await resumeWaits({
       workflowId: "workflow_1",
@@ -266,13 +272,13 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     expect(result).toBe(2);
-    expect(sendWorkflowWaitSignalMock).toHaveBeenCalledTimes(3);
+    expect(sendWaitSignalMock).toHaveBeenCalledTimes(3);
   });
 
   it("counts partial successes when some markWaitStateStatus return false", async () => {
-    markWaitStateStatusMock
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(false);
+    markWaitStatusMock
+      .mockImplementationOnce(() => Effect.succeed(true))
+      .mockImplementationOnce(() => Effect.succeed(false));
 
     const result = await resumeWaits({
       workflowId: "workflow_1",
@@ -299,7 +305,7 @@ describe("resumeWaitsMatchingEvent", () => {
       ],
     });
 
-    expect(logWorkflowAuditEventMock).toHaveBeenCalledWith({
+    expect(recordAuditEventMock).toHaveBeenCalledWith({
       workflowId: "workflow_audit",
       executionId: "exec_1",
       eventType: "run_resumed",
@@ -337,8 +343,8 @@ describe("resumeWaitsMatchingEvent", () => {
       });
 
       expect(result).toBe(1);
-      expect(sendWorkflowWaitSignalMock).toHaveBeenCalledTimes(1);
-      expect(sendWorkflowWaitSignalMock).toHaveBeenCalledWith(
+      expect(sendWaitSignalMock).toHaveBeenCalledTimes(1);
+      expect(sendWaitSignalMock).toHaveBeenCalledWith(
         expect.objectContaining({ executionId: "exec_1" })
       );
     });
@@ -364,7 +370,7 @@ describe("resumeWaitsMatchingEvent", () => {
       });
 
       expect(result).toBe(0);
-      expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
+      expect(sendWaitSignalMock).not.toHaveBeenCalled();
     });
 
     // A free-entered Event the catalog never heard of parks and wakes the same
@@ -415,7 +421,7 @@ describe("resumeWaitsMatchingEvent", () => {
       expect(before).toBe(1);
 
       vi.clearAllMocks();
-      markWaitStateStatusMock.mockResolvedValue(true);
+      markWaitStatusMock.mockImplementation(() => Effect.succeed(true));
 
       const after = await resumeWaits({
         workflowId: "workflow_1",
@@ -449,7 +455,7 @@ describe("resumeWaitsMatchingEvent", () => {
       });
 
       expect(result).toBe(0);
-      expect(sendWorkflowWaitSignalMock).not.toHaveBeenCalled();
+      expect(sendWaitSignalMock).not.toHaveBeenCalled();
     });
 
     it("reads only the subscriptions naming the arriving Event", async () => {

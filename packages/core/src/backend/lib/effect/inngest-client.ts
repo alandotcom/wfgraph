@@ -89,36 +89,3 @@ export function makeInngestClientLayer(
     sendHostEvent: (input) => send(() => sendHostEvent(client, input)),
   });
 }
-
-/**
- * Run a call into one of the `backend/lib/workflow-*` helpers that drives runs
- * through Inngest, and give it the same typed error channel a send gets.
- *
- * `cancelInFlightRuns` and `resumeWaitsMatchingEvent` each mix a send with the
- * wait-state bookkeeping around it, so neither belongs behind a repository. Each
- * takes the one send it needs as a parameter, which its caller builds from this
- * service; what it still cannot do is fail with anything but a rejection, which
- * is what this seam converts. It mirrors `callDbModule` for the modules that
- * only query, and goes when the run engine itself comes onto Effect.
- */
-export const callInngestModule = <A>(
-  run: () => Promise<A>
-): Effect.Effect<A, InngestError> => send(run);
-
-/**
- * One of this service's sends, as the Promise function a `backend/lib` helper
- * takes for its port.
- *
- * The deliberate escape hatch out of the app's `ManagedRuntime`, and the only
- * one outside an edge: `cancelInFlightRuns` and `resumeWaitsMatchingEvent` call
- * their port from inside a `Promise.all` a service cannot see into, so the
- * Effect has to be run rather than composed. Naming it once keeps the count at
- * three call sites, all of which go when the run engine comes onto Effect.
- *
- * A rejection carries the `InngestError` itself, which each helper catches and
- * logs; nothing downstream reads its message.
- */
-export const asPromisePort =
-  <I>(sendEffect: (input: I) => Effect.Effect<void, InngestError>) =>
-  (input: I): Promise<void> =>
-    Effect.runPromise(sendEffect(input));

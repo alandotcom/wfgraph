@@ -1,7 +1,7 @@
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres, { type Sql } from "postgres";
-import { areConfigsEquivalent, type NormalizedDatabaseConfig } from "./config";
+import type { NormalizedDatabaseConfig } from "./config";
 import {
   apiKeys,
   integrations,
@@ -88,105 +88,78 @@ function createSqlClient(
   });
 }
 
-type DatabaseRuntimeState = {
-  /** Normalized on the way in, so two configs compare field by field. */
-  config: NormalizedDatabaseConfig | null;
-  queryClient: Sql | null;
-  migrationClient: Sql | null;
-  db: PostgresJsDatabase<typeof tables> | null;
-};
-
-declare global {
-  var __rovaDatabaseState: DatabaseRuntimeState | undefined;
-}
-
-const databaseState: DatabaseRuntimeState = globalThis.__rovaDatabaseState ?? {
-  config: null,
-  queryClient: null,
-  migrationClient: null,
-  db: null,
-};
-
-globalThis.__rovaDatabaseState = databaseState;
-
-/**
- * The config the clients are built from.
- *
- * Every entry point configures the runtime before reaching a client: an app
- * through `createRovaApp`, a migration job through `migrateRovaDatabase`. So an
- * unset config means a caller reached a pool outside either, and the throw names
- * that rather than opening a connection to whatever `DATABASE_URL` happened to
- * hold. Where the dev database is belongs to the script that runs against it,
- * which is why `scripts/migrate.ts` carries that default.
- */
-function resolveDatabaseConfig(): NormalizedDatabaseConfig {
-  if (!databaseState.config) {
-    throw new Error(
-      "The database runtime has not been configured. createRovaApp and migrateRovaDatabase each do it, so reaching a connection without one means neither ran."
-    );
-  }
-
-  return databaseState.config;
+/** The one connection a migration run holds its advisory lock on. */
+export function createMigrationClient(config: NormalizedDatabaseConfig): Sql {
+  return createSqlClient(config, {
+    max: MIGRATION_CONNECTIONS,
+    applicationName: "rova-migrations",
+  });
 }
 
 /**
- * Record where the database is, or refuse a second app that says somewhere else.
+ * The pool an app runs its queries on, and the Drizzle handle over it.
  *
- * A config already recorded is a claim on the process whether or not a pool has
- * been opened against it yet: overwriting one would let the first app's services
- * query the second app's database the moment something opens the pool.
- * `closeDatabaseRuntime` is what gives the claim back, which is why a host that
- * disposes an app can build another.
+ * `createRovaApp` builds one of these and hands the handle to the `Database`
+ * Layer, so which connection a service queries on is decided by the app that owns
+ * it rather than by whichever module happened to be imported first.
  */
-export function configureDatabaseRuntime(
-  normalizedConfig: NormalizedDatabaseConfig
-): void {
-  const currentConfig = databaseState.config;
+export type DatabaseSurface = {
+  /** The schema holding Rova's tables, which is what the migrator creates. */
+  readonly schema: string;
+  /** What every repository query runs on. */
+  readonly db: RovaDatabase;
+  /** The pool underneath, for the startup log line. */
+  readonly client: Sql;
+  /** Gives the pool back and releases this process's claim on the database. */
+  close: () => Promise<void>;
+};
 
-  if (currentConfig) {
-    if (areConfigsEquivalent(currentConfig, normalizedConfig)) {
-      return;
-    }
+/**
+ * The surface a live app holds, or null when nothing does.
+ *
+ * One Rova per process (ADR-0002), and this is the guard that says so: while one
+ * surface is open a second is refused, whatever it names. Letting an equivalent
+ * config through would put two pools under one claim, and the first app disposed
+ * would hand the claim back while the second was still querying, so a third app
+ * naming somewhere else would be let in beside it. `close` gives the claim back,
+ * which is what lets a host dispose an app and build another, and what keeps a
+ * startup failure that already opened a pool from reading as a rebind.
+ */
+let claimedSurface: DatabaseSurface | null = null;
 
+export function createDatabaseSurface(
+  config: NormalizedDatabaseConfig
+): DatabaseSurface {
+  if (claimedSurface) {
     throw new Error(
-      "Database runtime is already configured with a different configuration. Restart the process to apply a new database config."
+      "A Rova database surface is already open in this process. Dispose the app holding it before creating another, or restart the process."
     );
   }
 
-  databaseState.config = normalizedConfig;
-}
-
-/** The schema holding Rova's tables, which is what the migrator creates. */
-export function getDatabaseSchema(): string {
-  return resolveDatabaseConfig().schema;
-}
-
-/** The pool every query the app runs goes through. */
-export function getQueryClient(): Sql {
-  if (databaseState.queryClient) {
-    return databaseState.queryClient;
-  }
-
-  const config = resolveDatabaseConfig();
-  databaseState.queryClient = createSqlClient(config, {
+  // The pool is built before the claim is taken: postgres.js checks its options in
+  // the constructor, and a claim taken first would survive a throw with no surface
+  // left to release it.
+  const client = createSqlClient(config, {
     max: config.maxConnections,
     applicationName: "rova",
   });
 
-  return databaseState.queryClient;
-}
+  const surface: DatabaseSurface = {
+    schema: config.schema,
+    db: drizzle(client, { schema: tables }),
+    client,
+    close: async () => {
+      // Only this surface's own claim: a host that disposes an app twice would
+      // otherwise release the claim of whichever app it built in between.
+      if (claimedSurface === surface) {
+        claimedSurface = null;
+      }
+      await client.end();
+    },
+  };
 
-export function getMigrationClient(): Sql {
-  if (databaseState.migrationClient) {
-    return databaseState.migrationClient;
-  }
-
-  databaseState.migrationClient = createSqlClient(resolveDatabaseConfig(), {
-    max: MIGRATION_CONNECTIONS,
-    applicationName: "rova-migrations",
-  });
-
-  return databaseState.migrationClient;
+  claimedSurface = surface;
+  return surface;
 }
 
 /**
@@ -195,7 +168,10 @@ export function getMigrationClient(): Sql {
  * actually resolved to. The URL itself is never among them: it carries the
  * password.
  */
-export function describeConnection(client: Sql): {
+export function describeConnection(
+  client: Sql,
+  schema: string
+): {
   schema: string;
   host: string;
   port: string;
@@ -205,65 +181,10 @@ export function describeConnection(client: Sql): {
   const { options } = client;
 
   return {
-    schema: getDatabaseSchema(),
+    schema,
     host: options.host.join(","),
     port: options.port.join(","),
     database: options.database,
     user: options.user,
   };
 }
-
-export function getDb(): PostgresJsDatabase<typeof tables> {
-  if (databaseState.db) {
-    return databaseState.db;
-  }
-
-  databaseState.db = drizzle(getQueryClient(), { schema: tables });
-
-  return databaseState.db;
-}
-
-/**
- * Gives the migration pool back. A one-shot migration process has to do this to
- * exit at all, since postgres.js keeps an idle socket open, and an app that
- * migrated on the way up has no further use for the pool.
- */
-export async function closeMigrationClient(): Promise<void> {
-  const client = databaseState.migrationClient;
-  databaseState.migrationClient = null;
-  await client?.end();
-}
-
-/**
- * Back to nothing configured, both pools closed.
- *
- * `createRovaApp`'s dispose calls this, which is what lets a host that shuts Rova
- * down get its process back: postgres.js keeps an idle socket open per pool, and
- * a migration on the way up leaves a second one behind. A test stands on the same
- * function, because the state below is process-global and vitest shares a worker
- * between files, so a config left behind is the one the next file's
- * `configureDatabaseRuntime` refuses to rebind.
- */
-export async function closeDatabaseRuntime(): Promise<void> {
-  const clients = [databaseState.queryClient, databaseState.migrationClient];
-
-  databaseState.config = null;
-  databaseState.queryClient = null;
-  databaseState.migrationClient = null;
-  databaseState.db = null;
-
-  await Promise.all(clients.map(async (client) => await client?.end()));
-}
-
-const dbProxy: PostgresJsDatabase<typeof tables> = new Proxy(
-  Object.create(null),
-  {
-    get(_target, property, receiver) {
-      const instance = getDb();
-      const value = Reflect.get(instance, property, receiver);
-      return typeof value === "function" ? value.bind(instance) : value;
-    },
-  }
-);
-
-export const db: PostgresJsDatabase<typeof tables> = dbProxy;

@@ -220,21 +220,3 @@ export function normalizeDatabaseConfig(
     ssl: config.ssl,
   };
 }
-
-/** Whether two normalized configs name the same database on the same terms. */
-export function areConfigsEquivalent(
-  left: NormalizedDatabaseConfig,
-  right: NormalizedDatabaseConfig
-): boolean {
-  return (
-    left.url === right.url &&
-    left.host === right.host &&
-    left.port === right.port &&
-    left.user === right.user &&
-    left.password === right.password &&
-    left.database === right.database &&
-    left.ssl === right.ssl &&
-    left.schema === right.schema &&
-    left.maxConnections === right.maxConnections
-  );
-}

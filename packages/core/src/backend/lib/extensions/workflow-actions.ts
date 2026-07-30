@@ -13,18 +13,20 @@ import { builtInActions } from "#src/backend/lib/extensions/built-ins";
 import type { ExtensionSet } from "#src/backend/lib/extensions/extension-set";
 import type { StepEnvironment } from "#src/backend/lib/steps/step-runner";
 import type { WorkflowActions } from "#src/backend/lib/workflow-engine/actions";
+import type { RovaRuntime } from "#src/backend/runtime";
 
 const systemActionIds = builtInActions.map((action) => action.id);
 
 export function createWorkflowActions(
-  extensions: ExtensionSet
+  extensions: ExtensionSet,
+  runtime: RovaRuntime
 ): WorkflowActions {
   const app: StepEnvironment = {
     // Which stored key holds which credential is the integration's own
     // declaration, which the catalog carries, so the surface a node was
     // assembled with is the one its secrets are read through.
     credentialsFor: (integrationId) =>
-      fetchCredentials(extensions.catalog, integrationId),
+      fetchCredentials(extensions.catalog, runtime, integrationId),
   };
 
   return {

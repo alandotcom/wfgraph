@@ -15,34 +15,16 @@ import {
   stubInngestClient,
 } from "#src/backend/lib/effect/test-layers";
 import type { ApiKeyCandidate } from "#src/backend/services/api-keys/repo";
-import type { WorkflowWaitState } from "#src/backend/services/workflows/executions/repo";
+import type {
+  ExecutionRepo,
+  WorkflowWaitState,
+} from "#src/backend/services/workflows/executions/repo/index";
 import { postWorkflowResume } from "#src/backend/services/workflows/triggering/resume";
 
-/**
- * Waking a wait means a send plus the bookkeeping around it, and the
- * bookkeeping still runs through modules holding their own database handle.
- * Those two writes are replaced here so the assertions can read them; vitest
- * scopes a mock to the file that declares it.
- */
-const waitStateWrites = vi.hoisted(() => ({
-  markWaitStateStatus: vi.fn(
-    (_input: { waitStateId: string; status: string }) => Promise.resolve(true)
-  ),
-  markExecutionRunning: vi.fn((_executionId: string) =>
-    Promise.resolve(undefined)
-  ),
-}));
-
-vi.mock("#src/backend/lib/workflow-wait-state", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("#src/backend/lib/workflow-wait-state")
-  >()),
-  ...waitStateWrites,
-}));
-
-vi.mock("#src/backend/lib/workflow-audit", () => ({
-  logWorkflowAuditEvent: () => Promise.resolve(undefined),
-}));
+/** Waking a wait means a send plus the three writes around it. */
+const markWaitStatus = vi.fn<ExecutionRepo["Service"]["markWaitStatus"]>(() =>
+  Effect.succeed(true)
+);
 
 const RESUME_TOKEN = "resume_token_1";
 
@@ -95,6 +77,9 @@ function makeResumeSeams(input: {
             calls.tokenLookups.push(hookToken);
             return input.waitState ?? null;
           }),
+        markWaitStatus,
+        markRunning: () => Effect.succeed(true),
+        recordAuditEvent: () => Effect.void,
       }),
       // Left refusing unless a test supplies one, so a send from a request that
       // should never have got this far kills the test.
@@ -171,7 +156,7 @@ describe("postWorkflowResume", () => {
 
     it.effect("wakes the waiting node and marks the wait resumed", () =>
       Effect.gen(function* () {
-        waitStateWrites.markWaitStateStatus.mockClear();
+        markWaitStatus.mockClear();
         const key = "wfb_valid_key";
         const signals: Array<
           Parameters<InngestClient["Service"]["sendWaitSignal"]>[0]
@@ -206,7 +191,7 @@ describe("postWorkflowResume", () => {
             payload: { approved: true },
           },
         ]);
-        assert.deepStrictEqual(waitStateWrites.markWaitStateStatus.mock.calls, [
+        assert.deepStrictEqual(markWaitStatus.mock.calls, [
           [{ waitStateId: "wait_1", status: "resumed" }],
         ]);
       })

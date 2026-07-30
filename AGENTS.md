@@ -466,7 +466,8 @@ once, because the panel polls every two seconds and a second procedure would dou
 runs, `supersededCount` (answered whether or not the rows were asked for, since it labels the
 toggle), and the Refused Starts. Those are the `run_not_started` rows, which
 `workflow-audit.ts` keeps in `WORKFLOW_SCOPED_AUDIT_EVENT_TYPES` -- the scope is what the type
-means, and `logWorkflowAuditEvent` requires an execution id for every other type. A refusal is
+means, and `NewAuditEvent` in `executions/repo/contracts.ts` requires an execution id for every
+other type. A refusal is
 first-wins Concurrency finding a run already going, a payload with nothing at the Correlation
 Path, or a manual start the rules disallow; a paused workflow is not one of them, because that
 path writes a terminal Execution and shows up in the runs list.
@@ -534,8 +535,8 @@ A service takes its database questions from the repository service for its aggre
 (`services/api-keys/repo.ts` is the smallest worked example), never from `Database`
 directly, and the type system holds it to that: `RovaServices` in `runtime.ts` leaves
 `Database` out, so a service body that writes `yield* Database` needs a service the runtime
-does not provide and fails to type-check where it is run. `DatabaseLayer` is provided into
-the repository layers instead. The repository is the seam a test stands on: hand
+does not provide and fails to type-check where it is run. `makeDatabaseLayer(db)`, built from
+the app's own handle, is provided into the repository layers instead. The repository is the seam a test stands on: hand
 `stubWorkflowRepo({ findById: ... })` the one method the subject asks for, and the service
 needs no database and no `vi.mock`. Those factories live in
 `backend/lib/effect/test-layers.ts`, together with `SilentAppLoggerLayer` and
@@ -556,12 +557,12 @@ Inngest nowhere except that one route. The registry belonging to the app is what
 cached functions from outliving the runtime their event listeners close over, and a service
 that changes which workflows exist drops the list through the `InngestFunctions` service --
 `invalidateInngestFunctions` is that whole call, so no service body yields the service to
-reach one member of it. The two `backend/lib` helpers that mix a send with wait-state
-bookkeeping, `cancelInFlightRuns` and `resumeWaitsMatchingEvent`, take the one send each
-needs as a parameter, which their caller wraps with `asPromisePort` from the `InngestClient`
-service it already holds. That wrapper and `defineStep`'s call into a handler are the two
-deliberate `Effect.runPromise`s outside an edge, and both go when the run engine comes onto
-Effect.
+reach one member of it. The two helpers that mix a send with wait-state bookkeeping,
+`cancelInFlightRuns` (`services/workflows/executions/end-runs.ts`) and
+`resumeWaitsMatchingEvent` (`services/workflows/lifecycle/resume-waits.ts`), are Effects
+over `InngestClient` and `ExecutionRepo` like any other service. `defineStep`'s call into a
+handler is the one deliberate `Effect.runPromise` left outside an edge, and it goes when the
+run engine comes onto Effect.
 
 **The run engine is three ports, and the app fills all three.** `executeWorkflow` takes a
 `WorkflowExecutionRuntime` for durability, a `WorkflowStore` for the run's trace, and a
@@ -588,23 +589,28 @@ step: a throw after the work succeeded discards the result the runtime was about
 and re-runs the node, sending a second SMS in order to record the first. The row is left
 open, which the run panel shows.
 
-What is left of the pre-Effect engine is the `db` proxy and `getDb`, which
-`workflow-logging.ts`, `workflow-audit.ts`, `workflow-wait-state.ts` and
-`db/integrations.ts` still query through, and the `globalThis` blocks in `db/index.ts` and
-`db/integrations.ts` behind them. Those four modules are what `callDbModule` and
-`callInngestModule` are the seams to: a service crosses one to reach a `backend/lib` module
-that still speaks Promises, and gets the tagged error channel its own queries have. Moving
-their queries onto a repository is what deletes all of it.
+Nothing reaches the database outside a repository. The `db` proxy, `getDb`, the
+two `globalThis` blocks, and the `callDbModule` / `callInngestModule` seams are all gone:
+the run log, the audit rows and the wait rows are `ExecutionRepo` methods, the integration
+reads are `IntegrationRepo`'s, and `createDbWorkflowStore(runtime)` in
+`workflow-engine/db-store.ts` is where the engine's Promise-shaped store meets them. The
+run engine still speaks Promises, so three adapters run an Effect on the app's runtime
+rather than composing one: that store, the credential fetch behind `createWorkflowActions`,
+and the Inngest function registry's workflow-list read.
 
-**The database config is checked apart from being recorded.** `db/config.ts` holds
+**The database config is checked apart from the pool being opened.** `db/config.ts` holds
 `DatabaseRuntimeConfig` and `normalizeDatabaseConfig`, a pure function that refuses a
 config naming no database, a URL carrying its own `search_path`, and a schema name Postgres
-would not read back as written. `db/index.ts` owns the pools and takes an already
-normalized config, which is what lets `createRovaApp` refuse a bad one before it has
-changed anything about the process. Nothing falls back to the environment: reaching a pool
-without configuring one throws, and where the dev database is belongs to
-`scripts/migrate.ts`. `closeDatabaseRuntime` gives both pools back, on the app's dispose
-path and in a test's teardown.
+would not read back as written. `createDatabaseSurface` in `db/index.ts` takes an already
+normalized config and answers the pool and the Drizzle handle the app owns, which is what
+lets `createRovaApp` refuse a bad one before it has changed anything about the process.
+Nothing falls back to the environment, and where the dev database is belongs to
+`scripts/migrate.ts`. The surface's `close` gives the pool back on the app's dispose path
+and in a test's teardown, and with it this process's claim on the database: one Rova per
+process is enforced there, so a second app naming somewhere else is refused rather than left
+to open a pool beside the first. `runMigrations` takes the config and opens its own single
+connection, so migrating claims nothing and a CI job, a release step and a live app may all
+run it.
 
 **Third-party libraries.** Check official usage with Context7 or Exa before writing
 against a library, and never take a version from memory. Prefer latest stable, and verify

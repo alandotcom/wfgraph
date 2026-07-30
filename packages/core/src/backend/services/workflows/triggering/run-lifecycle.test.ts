@@ -1,12 +1,9 @@
 import { assert, describe, expect, it, layer } from "@effect/vitest";
-// The mocks API has to be the one vitest itself exports; reaching it through the
-// `@effect/vitest` re-export leaves it unable to find the module registry.
-import { vi } from "vitest";
 import { Effect, Layer } from "effect";
 import type {
   ExecutionRepo,
   WorkflowExecution,
-} from "#src/backend/services/workflows/executions/repo";
+} from "#src/backend/services/workflows/executions/repo/index";
 import { InngestError } from "#src/backend/lib/effect/inngest-client";
 import {
   makeRecordingLogger,
@@ -20,14 +17,6 @@ import {
   enqueueStartedRun,
   recordPausedRunIgnored,
 } from "./run-lifecycle";
-
-// Both entrypoints below write a timeline entry through the audit module, which
-// holds its own database handle. The rows are not what these tests are about, so
-// the module is replaced for this file; vitest scopes a mock to the file that
-// declares it.
-vi.mock("#src/backend/lib/workflow-audit", () => ({
-  logWorkflowAuditEvent: () => Promise.resolve(undefined),
-}));
 
 function createExecution(
   overrides: Partial<WorkflowExecution> = {}
@@ -158,6 +147,7 @@ describe("enqueueStartedRun", () => {
                   Effect.sync(() => {
                     calls.runIds.push(input);
                   }),
+                recordAuditEvent: () => Effect.void,
               }),
               stubInngestClient({
                 sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
@@ -335,6 +325,7 @@ describe("recordPausedRunIgnored", () => {
                     status: "completed",
                   });
                 }),
+              recordAuditEvent: () => Effect.void,
             })
           )
         );

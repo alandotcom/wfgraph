@@ -1,21 +1,13 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { callDbModule } from "#src/backend/lib/effect/database";
 import {
   Conflict,
   InternalFailure,
   NotFound,
 } from "#src/backend/lib/effect/failures";
-import {
-  asPromisePort,
-  callInngestModule,
-  InngestClient,
-} from "#src/backend/lib/effect/inngest-client";
-import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
-import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
-import { cancelInFlightRuns } from "#src/backend/lib/workflow-cancellation";
-import { listExecutionWaitingStates } from "#src/backend/lib/workflow-wait-state";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
+import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
+import { cancelInFlightRuns } from "#src/backend/services/workflows/executions/end-runs";
+import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
 
 type CancelExecutionSuccess = {
   success: true;
@@ -41,9 +33,7 @@ export const postExecutionCancel = Effect.fn("postExecutionCancel")(
       return yield* Effect.fail(new NotFound({ error: "Execution not found" }));
     }
 
-    const waitingStates = yield* callDbModule(() =>
-      listExecutionWaitingStates(executionId)
-    );
+    const waitingStates = yield* repo.listWaitingStates(executionId);
 
     if (waitingStates.length === 0) {
       yield* logger.warn("Execution is not waiting and cannot be cancelled");
@@ -52,31 +42,25 @@ export const postExecutionCancel = Effect.fn("postExecutionCancel")(
       );
     }
 
-    yield* callDbModule(() =>
-      logWorkflowAuditEvent({
-        workflowId,
-        executionId,
-        eventType: "run_cancel_requested",
-        message: "Manual cancellation requested",
-      })
-    );
+    yield* repo.recordAuditEvent({
+      workflowId,
+      executionId,
+      eventType: "run_cancel_requested",
+      message: "Manual cancellation requested",
+    });
 
     // The one run-ender, which is also what a Cancel Event will reach in B7: the
     // signal, the row behind its compare-and-set, the wait rows, and the timeline
     // entry are one thing wherever a run is stopped from outside.
-    const inngest = yield* InngestClient;
-    const ended = yield* callInngestModule(() =>
-      cancelInFlightRuns({
-        requestCancel: asPromisePort(inngest.sendCancelRequested),
-        workflowId,
-        executionIds: [executionId],
-        waitStates: waitingStates.map((state) => ({
-          id: state.id,
-          executionId,
-        })),
-        reason: "Cancelled manually",
-      })
-    );
+    const ended = yield* cancelInFlightRuns({
+      workflowId,
+      executionIds: [executionId],
+      waitStates: waitingStates.map((state) => ({
+        id: state.id,
+        executionId,
+      })),
+      reason: "Cancelled manually",
+    });
 
     if (ended.failedExecutionIds.length > 0) {
       yield* logger.warn("Cancel signal did not reach the run");
@@ -100,9 +84,12 @@ export const postExecutionCancel = Effect.fn("postExecutionCancel")(
     return cancelled;
   },
   (effect, executionId) =>
+    // One seam left: `cancelInFlightRuns` answers with the ids a send failed on
+    // rather than failing, so the only way out of this body is a refused query.
     effect.pipe(
-      Effect.catchTags(
-        seamFailureHandlers(
+      Effect.catchTag(
+        "DatabaseError",
+        internalFailureRelayingCause(
           loggerFor(executionId),
           "Failed to cancel execution"
         )

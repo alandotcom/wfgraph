@@ -1,9 +1,8 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { callDbModule } from "#src/backend/lib/effect/database";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
-import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
+import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 import { loadWorkflowForRun } from "#src/backend/services/workflows/triggering/preflight";
 import {
@@ -125,21 +124,20 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
       // A Refused Start, recorded the way the other two are: this one is the
       // workflow's own checkbox declining, and the panel that lists refusals has
       // to hold for the case a builder created themselves.
-      yield* callDbModule(() =>
-        logWorkflowAuditEvent({
-          workflowId,
-          eventType: "run_not_started",
-          message: buildIgnoredRunAuditMessage({
-            startSource: "manual",
-            reason: "manual_start_not_allowed",
-          }),
-          metadata: {
-            reason: "manual_start_not_allowed",
-            startSource: "manual",
-            runMode,
-          },
-        })
-      );
+      const repo = yield* ExecutionRepo;
+      yield* repo.recordAuditEvent({
+        workflowId,
+        eventType: "run_not_started",
+        message: buildIgnoredRunAuditMessage({
+          startSource: "manual",
+          reason: "manual_start_not_allowed",
+        }),
+        metadata: {
+          reason: "manual_start_not_allowed",
+          startSource: "manual",
+          runMode,
+        },
+      });
 
       const response: WorkflowExecuteResponse = {
         status: "ignored",

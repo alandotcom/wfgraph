@@ -14,15 +14,8 @@
 
 import { Effect } from "effect";
 import type { EffectLogger } from "#src/backend/lib/effect/app-logger";
-import { callDbModule } from "#src/backend/lib/effect/database";
-import {
-  asPromisePort,
-  callInngestModule,
-  InngestClient,
-} from "#src/backend/lib/effect/inngest-client";
-import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
-import { announceSupersededRuns } from "#src/backend/lib/workflow-cancellation";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
+import { announceSupersededRuns } from "#src/backend/services/workflows/executions/end-runs";
+import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
 import {
   buildIgnoredRunAuditMessage,
   enqueueStartedRun,
@@ -122,19 +115,15 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
     // those runs to stop and putting the reason on their timelines. A signal that
     // never lands leaves a live run against a superseded row, which is why the ids
     // it failed on travel back to the caller.
-    const inngest = yield* InngestClient;
     const announced =
       opened.supersededExecutionIds.length > 0
-        ? yield* callInngestModule(() =>
-            announceSupersededRuns({
-              requestCancel: asPromisePort(inngest.sendCancelRequested),
-              workflowId: workflow.id,
-              executionIds: opened.supersededExecutionIds,
-              reason: supersededReason(start.eventName),
-              eventName: start.eventName,
-            })
-          )
-        : { failedExecutionIds: [] };
+        ? yield* announceSupersededRuns({
+            workflowId: workflow.id,
+            executionIds: opened.supersededExecutionIds,
+            reason: supersededReason(start.eventName),
+            eventName: start.eventName,
+          })
+        : { failedExecutionIds: [] as string[] };
 
     const started = yield* enqueueStartedRun({
       workflow,
@@ -177,26 +166,26 @@ const refuseStart = Effect.fn("refuseStart")(function* (input: {
   reason: StartRefusalReason;
   inFlightExecutionIds: string[];
 }) {
-  yield* callDbModule(() =>
-    logWorkflowAuditEvent({
-      workflowId: input.workflow.id,
-      eventType: "run_not_started",
-      message: buildIgnoredRunAuditMessage({
-        startSource: input.start.source,
-        reason: input.reason,
-        eventName: input.start.eventName,
-      }),
-      metadata: {
-        reason: input.reason,
-        startSource: input.start.source,
-        eventName: input.start.eventName,
-        entityValue: input.start.entityValue,
-        deliveryId: input.start.deliveryId,
-        inFlightExecutionIds: input.inFlightExecutionIds,
-        runMode: input.runMode,
-      },
-    })
-  );
+  const repo = yield* ExecutionRepo;
+
+  yield* repo.recordAuditEvent({
+    workflowId: input.workflow.id,
+    eventType: "run_not_started",
+    message: buildIgnoredRunAuditMessage({
+      startSource: input.start.source,
+      reason: input.reason,
+      eventName: input.start.eventName,
+    }),
+    metadata: {
+      reason: input.reason,
+      startSource: input.start.source,
+      eventName: input.start.eventName,
+      entityValue: input.start.entityValue,
+      deliveryId: input.start.deliveryId,
+      inFlightExecutionIds: input.inFlightExecutionIds,
+      runMode: input.runMode,
+    },
+  });
 
   yield* input.logger.info("Start refused", {
     reason: input.reason,
