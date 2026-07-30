@@ -3,11 +3,10 @@
  *
  * `/api/extensions` answers from a Hono handler and the Inngest listener set is
  * built outside any Effect runtime, so the set has to be reachable from outside
- * one. Stage 7 of ADR-0002 makes this a service the app's runtime provides and
- * deletes the module state, the way it does for the database handle and the
- * Inngest client.
+ * one. Stage 7 of ADR-0002 turns it into a service the runtime provides, the way
+ * the database handle and the Inngest client go.
  *
- * One Rova per process, so one set. `createRovaApp` configures it at startup and
+ * One Rova per process, so one set: `createRovaApp` configures it at startup and
  * gives it back on dispose.
  */
 
@@ -27,9 +26,9 @@ export function clearExtensions(): void {
  * The set, or a throw.
  *
  * Every reader sits behind a request to an app that configured one at startup, so
- * an unset set is a programming mistake rather than a state to cope with. An
- * empty catalog would answer the editor with a surface that has nothing in it and
- * say nothing about why.
+ * an unset set means something ran outside an app's lifetime. Answering with an
+ * empty catalog instead would give the editor a surface holding nothing and no
+ * account of why.
  */
 export function getExtensions(): ExtensionSet {
   if (!currentExtensions) {

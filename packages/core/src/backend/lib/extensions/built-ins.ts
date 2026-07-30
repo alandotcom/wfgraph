@@ -6,14 +6,14 @@
  * about on its own would be an action selector that disagrees with what the
  * server can run.
  *
- * `configFields` is empty for each of them by design. Every one of the four is
- * configured by a bespoke panel in the editor, written against the shape that
- * built-in has, so none of them renders through the declarative field list a
- * plugin action declares.
+ * Each of the four is configured by a bespoke panel in the editor, written
+ * against the shape that built-in has, which is why every `configFields` below is
+ * empty: none of them renders through the declarative field list a plugin action
+ * declares.
  *
- * `outputFields` states the shape each one always offers. Both Database Query
- * and HTTP Request let a workflow declare a richer output schema on the node
- * itself, and the editor adds those fields to these.
+ * `outputFields` states the shape each one always offers. Database Query and HTTP
+ * Request also let a workflow declare a richer output schema on the node itself,
+ * and the editor adds those fields to these.
  */
 
 import type { ActionMetadata } from "@rova/shared/extensions/catalog";

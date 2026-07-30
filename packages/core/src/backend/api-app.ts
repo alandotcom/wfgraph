@@ -428,8 +428,8 @@ export function createApiApp(options: CreateApiAppOptions) {
         actions: listRuntimeActions(),
         triggers: listCustomWorkflowTriggers(),
         // The catalog is the whole surface in one document and the only channel
-        // the editor learns it through. The two members above it are what the old
-        // registries send, and they go when those do.
+        // the editor learns it through. The two members above it are the
+        // registries' own, and they go when those do.
         catalog: getExtensions().catalog,
       })
     )

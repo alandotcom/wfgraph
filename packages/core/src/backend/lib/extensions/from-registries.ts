@@ -1,15 +1,13 @@
 /**
- * The catalog's actions and integrations, read out of the old registries.
+ * The catalog's actions and integrations, read out of the registries.
  *
- * This file is the seam that lets the catalog exist before the definition
- * functions do. A plugin still fills `plugins/registry.ts` on import and a host's
- * `createAction` still fills `action-registry.ts`, so the surface those two hold
- * is the surface to serve; `defineIntegration` replaces both and this file goes
- * with them.
+ * A plugin fills `plugins/registry.ts` on import and a host's `createAction`
+ * fills `action-registry.ts`, so the surface those two hold is the surface to
+ * serve. `defineIntegration` replaces both, and this file goes with them.
  *
- * Nothing here interprets. Each function maps one registry's shape onto the
- * catalog's, so a field the catalog carries and a registry does not is visible as
- * a line that had to be computed.
+ * Each function maps one registry's shape onto the catalog's and interprets
+ * nothing, so a field the catalog carries and a registry does not is one visible
+ * computed line.
  */
 
 import {

@@ -91,9 +91,8 @@ describe("hydrateExtensionsFromApi", () => {
     );
   });
 
-  // One endpoint answers the catalog beside what the old registries send, so it
-  // is read once. The trigger below proves the second half was filled from the
-  // same response rather than from a request of its own.
+  // One endpoint answers both halves, so it is read once. The trigger is the
+  // second half, and it arrives only if that half read the same response.
   it("fills both halves of the surface from one request", async () => {
     respondWith({
       actions: [],

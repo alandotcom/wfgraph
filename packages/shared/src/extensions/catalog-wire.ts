@@ -4,8 +4,8 @@
  * The document is built on the server out of typed values, so a decode failure
  * here means the two halves of one deployment disagree about the contract. That
  * is not something a per-entry salvage can repair, so the read is
- * all-or-nothing: `readExtensionCatalog` answers `undefined` and the editor
- * keeps the empty catalog.
+ * all-or-nothing: `readExtensionCatalog` answers `undefined` and the editor keeps
+ * the catalog it had.
  *
  * Every field schema is `optionalKey` rather than `optional`, because this shape
  * is only ever read from parsed JSON, which carries no `undefined`.

@@ -1,18 +1,16 @@
 /**
- * The extension surface as JSON: the whole of what the browser learns about it.
+ * The extension surface as JSON, sent by `GET /api/extensions`.
  *
- * `GET /api/extensions` sends this document and the editor decodes it. That one
- * channel is what lets a plugin hold everything it needs in one file: the browser
- * never imports that file, so nothing a plugin reaches for reaches a browser
- * bundle.
+ * That one channel is the whole of what the browser learns about the surface,
+ * which is what lets a plugin hold everything it needs in one file: the browser
+ * never imports that file, so nothing a plugin reaches for reaches a bundle.
  *
- * Everything here is data. An icon and a custom output renderer are React
- * components, which cannot be serialized, so those stay an explicit browser
- * import in `plugins/ui-registry.ts` keyed by integration type, and `logoUrl` is
- * the escape hatch for an integration that only wants an image.
+ * Only data fits, so an icon and a custom output renderer stay an explicit
+ * browser import in `plugins/ui-registry.ts` keyed by integration type, and
+ * `logoUrl` serves an integration that wants no more than an image.
  *
  * The lookups are pure functions over a catalog rather than methods on one, so
- * the server and the browser run a single implementation over the same document.
+ * the server and the browser run one implementation over the same document.
  */
 
 import type { ActionConfigField } from "#src/plugins/registry";
@@ -84,9 +82,8 @@ export type ExtensionCatalog = {
 /**
  * The surface before anything has been assembled or fetched.
  *
- * A host that forgets to pass its integrations gets this, which is why
- * `createRovaApp` logs what it assembled and the action selector says the
- * surface is empty rather than drawing nothing.
+ * A host that forgets to pass its integrations gets this and no error, which is
+ * why `createRovaApp` logs the counts it assembled.
  */
 export const emptyExtensionCatalog: ExtensionCatalog = {
   events: [],

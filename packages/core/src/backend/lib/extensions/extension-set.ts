@@ -1,22 +1,17 @@
 /**
  * The whole extension surface, assembled once.
  *
- * Nothing registers itself. The host passes its Events, actions and integrations
- * to `createRovaApp`, which calls this, and what comes back has two halves: a
- * catalog, which is JSON and crosses the wire, and the lookups the server keeps.
+ * Nothing registers itself: the host hands its definitions to `createRovaApp`,
+ * which calls this. What comes back has a catalog, which is JSON and crosses the
+ * wire, beside the lookups the server keeps.
  *
- * Assembly is where a definition mistake is caught. Each check below throws
- * naming the offender, so the failure lands in the build and the tests of whoever
- * wrote the definition rather than in an editor that quietly lists the wrong
- * thing.
- *
- * Three checks live here, each holding an identifier to one owner: an Event's
- * name, an action's id, an integration's type. Two more belong here and cannot be
- * written yet, because each reads a schema that only a definition carries while
- * the actions arriving here are metadata a registry has already read. An
- * unreadable output schema is caught for now where that registry reads it, in
- * `requireOutputFieldsFromSchema`. An input schema with a required key that no
- * config field fills is caught nowhere. Both land with `defineIntegration`.
+ * Assembly holds each identifier to one owner, throwing named so the failure
+ * lands in the build of whoever wrote the definition rather than in an editor
+ * listing the wrong thing. Two checks the surface wants are missing: an
+ * unreadable output schema is caught in `requireOutputFieldsFromSchema` instead,
+ * and an input schema with a required key no config field fills is caught
+ * nowhere. Both need a schema that only a definition carries, and the actions
+ * arriving here are metadata a registry already read.
  */
 
 import { uniq } from "es-toolkit/array";
@@ -30,20 +25,19 @@ import { builtInActions } from "#src/backend/lib/extensions/built-ins";
 import type { AnyEventDefinition } from "#src/backend/lib/extensions/define-event";
 
 /**
- * An Event as the set holds it.
+ * An Event as the set holds it, which is what `eventByName` answers with.
  *
  * Everything an Event needs is derived at definition, so the registered form is
- * the definition itself, and this alias is what `eventByName` answers with.
+ * the definition itself.
  */
 export type RegisteredEvent = AnyEventDefinition;
 
 /**
  * What a host hands over.
  *
- * `actions` and `integrations` are metadata rather than definitions while the old
- * registries are still the place a plugin's implementation is found. They become
- * definitions carrying their own handlers when `defineIntegration` lands, and the
- * set gains the lookups that reach those.
+ * `actions` and `integrations` are metadata, because a plugin's implementation is
+ * found through the registries rather than through anything passed here. An
+ * implementation reachable from this set is what `defineIntegration` adds.
  */
 export type RovaExtensions = {
   readonly events?: readonly AnyEventDefinition[];

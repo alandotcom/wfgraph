@@ -4,11 +4,11 @@ import { registerIntegration } from "./registry";
 
 /**
  * `requireOutputFieldsFromSchema` names the offender by a phrase its caller
- * passes, because an Event's payload schema comes through it too. This is the
- * action side of that: the phrase has to carry the computed action id, which is
- * the only name that tells a plugin author which of their actions to go and fix.
+ * passes, since an Event's payload schema comes through it too. On the action
+ * side that phrase has to carry the computed id, which is the only name that
+ * tells a plugin author which action to go and fix.
  *
- * The throw happens before the registry is written, so nothing here leaks a
+ * The throw lands before the registry is written, so this leaks no
  * half-registered integration into the files that run after it.
  */
 describe("registerIntegration", () => {

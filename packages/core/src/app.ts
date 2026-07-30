@@ -83,10 +83,9 @@ export type PluginConfig = {
 /**
  * The extension surface, assembled in one place.
  *
- * Events only, for now. A plugin still turns itself on by being imported and a
- * host action still arrives through `actions` below, so those two halves of the
- * surface are read out of the registries at startup; they join this option when
- * `defineIntegration` replaces the registries.
+ * Events only. A plugin turns itself on by being imported and a host action
+ * arrives through `actions` below, so those two halves are read out of the
+ * registries at startup; they join this option with `defineIntegration`.
  */
 export type RovaExtensionOptions = {
   readonly events?: readonly AnyEventDefinition[];
@@ -249,9 +248,9 @@ async function buildRovaApp(
 
   initializeWorkflowTriggers();
 
-  // After both registration loops and after the host's own imports, so every
-  // half of the surface is in place: a plugin registered itself as this module
-  // graph loaded, and a host action registered a few lines above.
+  // The registries have to be full before they are read: a plugin fills its own
+  // as the host's module graph loads, and a host action fills the other in the
+  // loop above.
   const extensions = assembleExtensions({
     events: options.extensions?.events,
     actions: catalogActionsFromRegistries(),
@@ -259,8 +258,8 @@ async function buildRovaApp(
   });
   configureExtensions(extensions);
 
-  // A host who forgets to import the integrations gets an editor with nothing in
-  // it and no error, so the counts are said out loud where a startup log is read.
+  // A host who forgets to import the integrations gets an empty editor and no
+  // error, so the counts go where a startup log is read.
   const { events, actions, integrations } = extensions.catalog;
   getAppLogger("extensions").info(
     `Extension surface assembled: ${events.length} events, ${actions.length} actions, ${integrations.length} integrations`

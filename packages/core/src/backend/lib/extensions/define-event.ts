@@ -415,12 +415,12 @@ function prefixInngestOptions<TPayload extends JsonObject>(
 }
 
 /**
- * Two members of Inngest's option bag are refused rather than ignored.
+ * The two Inngest options an Event may not carry.
  *
  * `batchEvents` changes the handler signature, so a listener cannot honour it.
- * `concurrency` would silently take over the job Concurrency on the Lifecycle
- * Node does, and would do it without a status or a run-history row. Neither is
- * in the type above, so this catches the object that reached here by a spread.
+ * `concurrency` would quietly take over what Concurrency on the Lifecycle Node
+ * does, and do it with no status and no run-history row. The type above declares
+ * neither, so this is here for the object that arrived by a spread.
  */
 function assertNoRetiredInngestOptions(
   eventName: string,
@@ -444,15 +444,11 @@ function assertNoRetiredInngestOptions(
  *
  * The schema crosses the Standard Schema bridge here, once, and `payloadFields`
  * is derived from it on the spot: an Event's field list is fixed the moment it is
- * defined, so nothing later has to derive it again or hold a hand-written copy.
+ * defined, so nothing later derives it again or holds a hand-written copy.
  *
- * Send an Event from your app through Inngest:
- *
- *     inngest.send({ name: "app/appointment.created", data: { ... } });
- *
- * or post it, which needs no Inngest client:
- *
- *     POST /api/events/app%2Fappointment.created
+ * Every payload path needs a description annotation, nested objects included,
+ * because the editor shows that text beside the path. A bare field throws here
+ * naming the Event.
  */
 export function defineEvent<TPayload extends JsonObject>(
   input: DefineEventInput<TPayload>

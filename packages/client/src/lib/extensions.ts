@@ -26,21 +26,19 @@ export function getExtensionCatalog(): ExtensionCatalog {
 }
 
 /**
- * Fetch the surface and decode it, once, before the first render.
+ * Fetch the surface and decode it, before the first render.
  *
- * One request, both halves. The endpoint answers the catalog beside what the old
- * registries send, so this owns the fetch and hands the payload to
- * `hydrateRuntimeExtensions` as well; that call is what goes when those
- * registries do.
+ * The endpoint answers the catalog beside what the registries send, so this owns
+ * the one request and hands the payload to `hydrateRuntimeExtensions` too. That
+ * call goes when those registries do.
  *
- * Nothing here memoizes: `main.tsx` calls it once, and a second call re-reading
- * the surface is the honest answer to being called twice rather than handing back
- * a promise from whenever the first one ran.
+ * Calling this twice re-reads the surface, which is why nothing memoizes: a
+ * memoized promise would answer the second caller with the first call's document.
  *
- * Every failure leaves the last decoded catalog in place. A decode that fails
- * means the editor and the server it is talking to disagree about the contract,
- * which is not something this side can repair by keeping half the document, so it
- * says so instead.
+ * Every failure leaves the last decoded catalog in place, and a decode failure
+ * says so on the console. A catalog that does not fit means the editor and its
+ * server disagree about the contract, which no amount of keeping half the
+ * document repairs.
  */
 export async function hydrateExtensionsFromApi(): Promise<void> {
   try {
@@ -68,7 +66,7 @@ export async function hydrateExtensionsFromApi(): Promise<void> {
 
     hydrateRuntimeExtensions(payload);
   } catch {
-    // The editor renders without a surface rather than not rendering.
+    // An unreachable server costs the editor its surface, not its render.
   }
 }
 
