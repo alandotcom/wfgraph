@@ -15,6 +15,13 @@
       "when": 1785438823846,
       "tag": "0001_typical_zaladane",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785443304717,
+      "tag": "0002_exotic_carmella_unuscione",
+      "breakpoints": true
     }
   ]
 }

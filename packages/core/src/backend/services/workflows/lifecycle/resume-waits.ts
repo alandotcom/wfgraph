@@ -114,10 +114,30 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
   const { waitState, eventType } = input;
   const resumeToken = waitState.resumeToken;
   if (!resumeToken) {
+    // A row with no token can never be woken by an Event, whatever arrives, so
+    // this is a defect in whatever wrote it rather than a routine miss.
+    logger.warn("Parked wait carries no resume token", {
+      workflowId: input.workflowId,
+      eventType,
+      waitStateId: waitState.id,
+      executionId: waitState.executionId,
+      nodeId: waitState.nodeId,
+    });
     return 0;
   }
 
   if (!waitStateMatches({ waitState, eventType, payload: input.payload })) {
+    // "The Event arrived and my run is still parked" is the question this module
+    // exists to answer, and the row's frozen predicate is the only copy of the
+    // rule: nothing can re-derive it from the graph the builder is looking at.
+    logger.debug("Wait match rejected an arrival", {
+      workflowId: input.workflowId,
+      eventType,
+      waitStateId: waitState.id,
+      executionId: waitState.executionId,
+      nodeId: waitState.nodeId,
+      subscribedEvents: waitState.subscribedEvents,
+    });
     return 0;
   }
 

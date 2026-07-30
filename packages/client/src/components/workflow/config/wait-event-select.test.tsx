@@ -1,4 +1,9 @@
-import { fireEvent, render } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  type RenderResult,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
 import { WaitEventSelect } from "#src/components/workflow/config/wait-event-select";
@@ -39,6 +44,9 @@ vi.mock("#src/lib/extensions", () => ({
 
 type Subscription = { event: string; match?: string };
 
+/** An Event name is a path, and a regex over it has to read it literally. */
+const SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
+
 function renderSelect(config: Record<string, unknown>) {
   const onUpdateConfig = vi.fn((_patch: NodeConfigPatch) => undefined);
   const view = render(
@@ -60,24 +68,32 @@ function renderSelect(config: Record<string, unknown>) {
   };
 }
 
+/**
+ * The chip for one Event. A chip reads as its label over its raw name, so the
+ * name alone no longer picks one out by accessible name.
+ */
+function eventChip(view: RenderResult, eventName: string): HTMLElement {
+  return within(view.getByRole("group")).getByRole("button", {
+    name: new RegExp(eventName.replace(SPECIAL_CHARS, "\\$&")),
+  });
+}
+
 describe("WaitEventSelect", () => {
   it("offers every Event the app declares", () => {
     const { view } = renderSelect({ waitFor: [] });
 
-    expect(
-      view.getByRole("button", { name: "billing/payment.settled" })
-    ).toBeTruthy();
-    expect(
-      view.getByRole("button", { name: "ops/nightly.swept" })
-    ).toBeTruthy();
+    expect(eventChip(view, "billing/payment.settled").textContent).toContain(
+      "Payment settled"
+    );
+    expect(eventChip(view, "ops/nightly.swept").textContent).toContain(
+      "Nightly sweep"
+    );
   });
 
   it("adds a subscription with no match when a chip is chosen", () => {
     const { view, lastWaitFor } = renderSelect({ waitFor: [] });
 
-    fireEvent.click(
-      view.getByRole("button", { name: "billing/payment.settled" })
-    );
+    fireEvent.click(eventChip(view, "billing/payment.settled"));
 
     expect(lastWaitFor()).toEqual([{ event: "billing/payment.settled" }]);
   });
@@ -87,7 +103,7 @@ describe("WaitEventSelect", () => {
       waitFor: [{ event: "ops/nightly.swept" }],
     });
 
-    fireEvent.click(view.getByRole("button", { name: "ops/nightly.swept" }));
+    fireEvent.click(eventChip(view, "ops/nightly.swept"));
 
     expect(onUpdateConfig).toHaveBeenCalledTimes(1);
     expect(lastWaitFor()).toEqual([]);
@@ -101,7 +117,7 @@ describe("WaitEventSelect", () => {
       waitFor: [{ event: "vendor/thing.happened" }],
     });
 
-    const chip = view.getByRole("button", { name: "vendor/thing.happened" });
+    const chip = eventChip(view, "vendor/thing.happened");
     expect(chip.getAttribute("aria-pressed")).toBe("true");
     expect(view.getByText(/declares no such Event/)).toBeTruthy();
   });

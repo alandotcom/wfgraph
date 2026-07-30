@@ -1,10 +1,12 @@
-import { CalendarClock, Copy, TriangleAlert } from "lucide-react";
-import { useId, useState } from "react";
+import { CalendarClock, Copy } from "lucide-react";
+import { useId } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
+import { WarningCallout } from "#src/components/ui/callout";
 import { Checkbox } from "#src/components/ui/checkbox";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
+import { Radio, RadioGroup } from "#src/components/ui/radio-group";
 import { getBasePath } from "#src/lib/base-path";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { buildEventIntakeUrl } from "@rova/shared/workflow/event-intake-url";
@@ -19,6 +21,7 @@ import {
   readLifecycleRules,
   SCHEDULE_INTERIM_MESSAGE,
 } from "@rova/shared/workflow/lifecycle-rules";
+import { EventChipGroup } from "./event-chip-group";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 /**
@@ -46,6 +49,7 @@ export function LifecyclePanel({
 }) {
   const startEventsLabelId = useId();
   const cancelEventsLabelId = useId();
+  const concurrencyLabelId = useId();
   const manualStartId = useId();
   const catalog = getExtensionCatalog();
   const rules = readLifecycleRules(config) ?? initialLifecycleRules;
@@ -133,9 +137,7 @@ export function LifecyclePanel({
             <CorrelationPathInput
               disabled={disabled}
               eventName={request.eventName}
-              // The stored value is in the key, so a rules object rewritten
-              // elsewhere re-seeds the draft rather than leaving a stale one.
-              key={`${request.eventName}:${request.suppliedPath ?? ""}`}
+              key={request.eventName}
               onCommit={setCorrelationPath}
               role={request.role}
               storedPath={request.suppliedPath}
@@ -145,31 +147,36 @@ export function LifecyclePanel({
       ) : null}
 
       <div className="space-y-2">
-        <Label>Concurrency</Label>
-        <div className="space-y-1.5">
+        <Label id={concurrencyLabelId}>Concurrency</Label>
+        <RadioGroup
+          aria-labelledby={concurrencyLabelId}
+          disabled={disabled}
+          onValueChange={(value: Concurrency) =>
+            write({ ...rules, concurrency: value })
+          }
+          value={rules.concurrency}
+        >
           {CONCURRENCY_OPTIONS.map((option) => (
-            <button
-              aria-pressed={rules.concurrency === option.value}
+            <label
               className={cn(
-                "w-full rounded-md border p-2 text-left transition-colors",
-                "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                "flex w-full cursor-pointer items-start gap-2 rounded-md border p-2 transition-colors",
                 rules.concurrency === option.value
                   ? "border-primary bg-muted/50"
                   : "border-input hover:bg-muted/30",
                 disabled && "pointer-events-none opacity-50"
               )}
-              disabled={disabled}
               key={option.value}
-              onClick={() => write({ ...rules, concurrency: option.value })}
-              type="button"
             >
-              <p className="font-medium text-sm">{option.label}</p>
-              <p className="text-muted-foreground text-xs">
-                {option.description}
-              </p>
-            </button>
+              <Radio className="mt-0.5" value={option.value} />
+              <div>
+                <p className="font-medium text-sm">{option.label}</p>
+                <p className="text-muted-foreground text-xs">
+                  {option.description}
+                </p>
+              </div>
+            </label>
           ))}
-        </div>
+        </RadioGroup>
         <p className="text-muted-foreground text-xs">
           The entity is the value at the Event's Correlation Path. A start
           carrying no payload uses the workflow itself, so every manual run is
@@ -227,26 +234,17 @@ export function LifecyclePanel({
       </div>
 
       {check.valid ? null : (
-        <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
-          <div className="space-y-0.5">
-            <p className="font-medium text-amber-700 text-xs dark:text-amber-200">
-              This will not save
-            </p>
-            <p className="text-amber-700 text-xs dark:text-amber-200">
-              {check.error}
-            </p>
-          </div>
-        </div>
+        <WarningCallout title="This will not save">
+          {check.error}
+        </WarningCallout>
       )}
     </div>
   );
 }
 
 /**
- * A row of toggle buttons over the catalog's Events, shared by the Start and
- * Cancel pickers: only the selection, the toggle, and the two labels differ
- * between them.
+ * The catalog's Events as chips, shared by the Start and Cancel pickers: only
+ * the selection, the toggle, and the two labels differ between them.
  */
 function EventPicker({
   label,
@@ -269,35 +267,13 @@ function EventPicker({
     <div className="space-y-2">
       <Label id={labelId}>{label}</Label>
       {events.length > 0 ? (
-        <div
-          aria-labelledby={labelId}
-          className="flex flex-wrap gap-1.5"
-          role="group"
-        >
-          {events.map((event) => {
-            const isSelected = selected.includes(event.name);
-            return (
-              <button
-                aria-pressed={isSelected}
-                className={cn(
-                  "rounded-full border px-2.5 py-1 text-xs transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                  isSelected
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-input text-muted-foreground hover:bg-muted/50",
-                  disabled && "pointer-events-none opacity-50"
-                )}
-                disabled={disabled}
-                key={event.name}
-                onClick={() => onToggle(event.name)}
-                title={event.name}
-                type="button"
-              >
-                {event.label}
-              </button>
-            );
-          })}
-        </div>
+        <EventChipGroup
+          choices={events}
+          disabled={disabled}
+          labelId={labelId}
+          onToggle={onToggle}
+          selected={selected}
+        />
       ) : (
         <p className="text-muted-foreground text-xs">
           This server declares no Events. Whoever runs it passes them to
@@ -317,12 +293,14 @@ const ROLE_LABELS: Record<CorrelationPathRole, string> = {
 };
 
 /**
- * One Event's Correlation Path, as a controlled draft committed on blur.
+ * One Event's Correlation Path, written through on every keystroke.
  *
- * Controlled rather than defaulted, because the stored value can change under the
- * input: another edit rewrites the rules object, and an uncontrolled input would
- * keep showing whatever was typed into the last one React reused. The commit
- * trims, so a path is stored the way the payload walker will read it.
+ * Write-through rather than commit-on-blur, because Cmd+S is a capture-phase
+ * listener that a focused field never sees: a blur-committed draft was saved as
+ * whatever the field held before it was typed in, and the refusal that came back
+ * named a path the builder could read on the screen. The autosave is debounced,
+ * so a keystroke costs no request of its own. The write trims, so a path is
+ * stored the way the payload walker will read it.
  */
 function CorrelationPathInput({
   eventName,
@@ -337,7 +315,6 @@ function CorrelationPathInput({
   disabled: boolean;
   onCommit: (eventName: string, path: string) => void;
 }) {
-  const [draft, setDraft] = useState(storedPath ?? "");
   const inputId = useId();
 
   return (
@@ -349,10 +326,9 @@ function CorrelationPathInput({
       <Input
         disabled={disabled}
         id={inputId}
-        onBlur={() => onCommit(eventName, draft)}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => onCommit(eventName, event.target.value)}
         placeholder="appointment.id"
-        value={draft}
+        value={storedPath ?? ""}
       />
     </div>
   );
@@ -384,9 +360,20 @@ function EventUrlRow({ eventName }: { eventName: string }) {
       <Button
         aria-label={`Copy the URL for ${eventName}`}
         className="size-7 shrink-0"
-        onClick={() => {
-          void navigator.clipboard.writeText(url);
-          toast.success(`URL for ${eventName} copied`);
+        // The clipboard is unavailable outside a secure context, which for a
+        // self-hosted tool reached over plain HTTP is the ordinary case. An
+        // unchecked write reports a copy that never happened and the builder
+        // pastes something else into their sender's config.
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(url);
+            toast.success(`URL for ${eventName} copied`);
+          } catch (error) {
+            console.error("Failed to copy the intake URL:", error);
+            toast.error(
+              "Copy failed. The clipboard needs a secure context, so select the URL and copy it by hand."
+            );
+          }
         }}
         size="icon"
         type="button"

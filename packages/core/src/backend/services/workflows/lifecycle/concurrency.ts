@@ -14,8 +14,14 @@
 
 import { Effect } from "effect";
 import type { EffectLogger } from "#src/backend/lib/effect/app-logger";
-import { announceSupersededRuns } from "#src/backend/services/workflows/executions/end-runs";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import {
+  announceReclaimedRuns,
+  announceSupersededRuns,
+} from "#src/backend/services/workflows/executions/end-runs";
+import {
+  ExecutionRepo,
+  UNSENT_RUN_RECLAIM_REASON,
+} from "#src/backend/services/workflows/executions/repo/index";
 import {
   buildIgnoredRunAuditMessage,
   enqueueStartedRun,
@@ -94,6 +100,7 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
         triggerEventType: start.eventName,
         correlationKey: start.entityValue,
         input: payload,
+        deliveryId: start.deliveryId,
       },
       concurrency: input.concurrency,
       entityValue: start.entityValue,
@@ -124,6 +131,22 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
             eventName: start.eventName,
           })
         : { failedExecutionIds: [] as string[] };
+
+    // Rows a crash left between their commit and the send, which this start
+    // closed to get past first-wins. Announced the same way, because the row now
+    // says `failed` and only the signal can make that true of the run.
+    if (opened.reclaimedExecutionIds.length > 0) {
+      yield* logger.info("Closed runs that never reached the bus", {
+        executionIds: opened.reclaimedExecutionIds,
+      });
+
+      yield* announceReclaimedRuns({
+        workflowId: workflow.id,
+        executionIds: opened.reclaimedExecutionIds,
+        reason: UNSENT_RUN_RECLAIM_REASON,
+        eventName: start.eventName,
+      });
+    }
 
     const started = yield* enqueueStartedRun({
       workflow,

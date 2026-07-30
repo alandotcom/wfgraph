@@ -14,6 +14,7 @@ import {
   toExecutionDetail,
   toExecutionEvents,
   toWorkflowExecutions,
+  type WorkflowExecution,
 } from "#src/lib/execution-logs";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
@@ -32,6 +33,15 @@ const RUN_POLL_MS = 2000;
  */
 const EXECUTIONS_PAGE_CAP = 50;
 
+/** The open run, and the position it held in the list when it was opened. */
+type OpenRun = {
+  execution: WorkflowExecution;
+  runNumber: number;
+};
+
+const LEFT_THE_LIST_NOTICE =
+  "This run has left the runs list, so what it shows stops here. A newer start supersedes the runs going for the same entity, and the list holds the newest 50.";
+
 export function WorkflowRuns() {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [selectedExecutionId, setSelectedExecutionId] = useAtom(
@@ -39,8 +49,14 @@ export function WorkflowRuns() {
   );
   const queryClient = useQueryClient();
 
-  // Which run the detail view is showing. Null means the list.
-  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  // Which run the detail view is showing, held as the row itself. Null means the
+  // list.
+  //
+  // The row rather than an id, because the list this panel polls is filtered and
+  // capped: a newest-wins workflow supersedes the open run out of it, and a busy
+  // one pushes it past the newest 50. A detail view that existed only while its
+  // row was in the list closed itself mid-read when either happened.
+  const [openRun, setOpenRun] = useState<OpenRun | null>(null);
   // Superseded runs are the ones a newer start displaced. They are hidden by
   // default because a newest-wins workflow makes one on every reschedule, and a
   // builder opens this panel to see what ran, not what was replaced.
@@ -67,14 +83,18 @@ export function WorkflowRuns() {
   const supersededCount = executionsQuery.data?.supersededCount ?? 0;
   const refusedStarts = executionsQuery.data?.refusedStarts ?? [];
 
+  const activeRunId = openRun?.execution.id ?? null;
+  // The open run's row as the list has it now, or undefined once it has left.
+  const listedRun = executions.find(
+    (execution) => execution.id === activeRunId
+  );
+
   // Both detail queries follow the same run, so they read its status from the
   // same place: the list, which is polling anyway. Deriving it from each
   // query's own payload would give the events poll no way to know it had
-  // finished, since the events endpoint does not report a status.
-  const activeRunStatus = executions.find(
-    (execution) => execution.id === activeRunId
-  )?.status;
-  const detailPollInterval = isRunInProgress(activeRunStatus)
+  // finished, since the events endpoint does not report a status. A run that
+  // has left the list reports no status, which is what stops the polling.
+  const detailPollInterval = isRunInProgress(listedRun?.status)
     ? RUN_POLL_MS
     : false;
 
@@ -117,12 +137,20 @@ export function WorkflowRuns() {
   );
 
   const handleSelectRun = (executionId: string) => {
-    setActiveRunId(executionId);
+    const index = executions.findIndex(
+      (execution) => execution.id === executionId
+    );
+    const execution = executions[index];
+    if (!execution) {
+      return;
+    }
+
+    setOpenRun({ execution, runNumber: executions.length - index });
     setSelectedExecutionId(executionId);
   };
 
   const handleBack = () => {
-    setActiveRunId(null);
+    setOpenRun(null);
     setSelectedExecutionId(null);
   };
 
@@ -156,6 +184,34 @@ export function WorkflowRuns() {
       </div>
     ) : null;
 
+  // Detail view. Ahead of the empty-list branch, because a run being read keeps
+  // its view whether or not the list behind it still holds a row for it.
+  if (openRun) {
+    const execution = listedRun ?? openRun.execution;
+    const runNumber = listedRun
+      ? executions.length - executions.indexOf(listedRun)
+      : openRun.runNumber;
+
+    return (
+      <WorkflowRunDetail
+        events={eventsQuery.data ?? []}
+        execution={execution}
+        isCanceling={
+          cancelExecution.isPending &&
+          cancelExecution.variables?.executionId === execution.id
+        }
+        isResuming={resumeWait.isPending}
+        logs={detailQuery.data?.logs ?? []}
+        notice={listedRun ? undefined : LEFT_THE_LIST_NOTICE}
+        onBack={handleBack}
+        onCancel={(executionId) => cancelExecution.mutate({ executionId })}
+        onResume={(token) => resumeWait.mutate({ token })}
+        runNumber={runNumber}
+        waits={detailQuery.data?.waits ?? []}
+      />
+    );
+  }
+
   if (executions.length === 0) {
     return (
       <div className="space-y-2">
@@ -171,34 +227,6 @@ export function WorkflowRuns() {
           </div>
         </div>
       </div>
-    );
-  }
-
-  // Detail view
-  const activeExecution = activeRunId
-    ? executions.find((e) => e.id === activeRunId)
-    : null;
-
-  if (activeExecution) {
-    const runIndex = executions.indexOf(activeExecution);
-    const runNumber = executions.length - runIndex;
-
-    return (
-      <WorkflowRunDetail
-        events={eventsQuery.data ?? []}
-        execution={activeExecution}
-        isCanceling={
-          cancelExecution.isPending &&
-          cancelExecution.variables?.executionId === activeExecution.id
-        }
-        isResuming={resumeWait.isPending}
-        logs={detailQuery.data?.logs ?? []}
-        onBack={handleBack}
-        onCancel={(executionId) => cancelExecution.mutate({ executionId })}
-        onResume={(token) => resumeWait.mutate({ token })}
-        runNumber={runNumber}
-        waits={detailQuery.data?.waits ?? []}
-      />
     );
   }
 

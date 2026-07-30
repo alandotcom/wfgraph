@@ -16,6 +16,26 @@ describe("getErrorMessage", () => {
     expect(getErrorMessage(withCause)).toBe("Request failed: socket hang up");
   });
 
+  // A `Schema.TaggedErrorClass` declares no message field, so `.message` is ""
+  // and `.name` is the tag. The seam failures the backend answers with are all
+  // of that shape, and what this builds lands on a run-log row.
+  it("names an Error whose own message is empty by its tag", () => {
+    class DatabaseError extends Error {
+      constructor(cause?: unknown) {
+        super("", { cause });
+        this.name = "DatabaseError";
+      }
+    }
+
+    expect(getErrorMessage(new DatabaseError())).toBe("DatabaseError");
+    expect(getErrorMessage(new DatabaseError(new Error("boom")))).toBe(
+      "DatabaseError: boom"
+    );
+
+    const taggedCause = new DatabaseError(new DatabaseError());
+    expect(getErrorMessage(taggedCause)).toBe("DatabaseError: DatabaseError");
+  });
+
   it("passes a thrown string through and names a thrown nothing", () => {
     expect(getErrorMessage("Rate limited")).toBe("Rate limited");
     expect(getErrorMessage(null)).toBe("Unknown error");

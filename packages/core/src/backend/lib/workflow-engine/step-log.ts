@@ -11,8 +11,8 @@
 
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { StepContext } from "#src/backend/lib/steps/step-handler";
+import { getErrorMessage } from "@rova/shared/utils";
 import type { StepResult } from "@rova/shared/workflow/step-result";
-import { getErrorMessage } from "./errors";
 import type { WorkflowStepLogHandle, WorkflowStore } from "./store";
 
 const stepLogLogger = getAppLogger("workflow", "step-log");
@@ -75,14 +75,22 @@ export function closeStepLog(
  */
 async function closeStepLogQuietly(
   store: WorkflowStore,
+  context: NodeContext,
   handle: WorkflowStepLogHandle,
   close: StepLogClose
 ): Promise<void> {
   try {
     await closeStepLog(store, handle, close);
   } catch (error) {
+    // The row is now stuck at `running` and the usual cause is the database
+    // itself, so the line names the run rather than only the row: in an outage
+    // this is a burst, and a row id can only be resolved against the table that
+    // just refused a write.
     stepLogLogger.warn("Could not close a run-log row", {
       logId: handle.logId,
+      executionId: context.executionId,
+      nodeId: context.nodeId,
+      nodeName: context.nodeName,
       status: close.status,
       error,
     });
@@ -108,7 +116,7 @@ export async function runWithStepLog<T extends StepResult>(
   },
   work: () => Promise<T>
 ): Promise<T> {
-  const { store } = target;
+  const { store, context } = target;
   const handle = await openStepLog(target);
 
   try {
@@ -117,12 +125,12 @@ export async function runWithStepLog<T extends StepResult>(
     if (result.success) {
       // A success logs its payload. A step reporting success without one has
       // nothing but the envelope to show.
-      await closeStepLogQuietly(store, handle, {
+      await closeStepLogQuietly(store, context, handle, {
         status: "success",
         output: result.data ?? result,
       });
     } else {
-      await closeStepLogQuietly(store, handle, {
+      await closeStepLogQuietly(store, context, handle, {
         status: "error",
         output: result.error,
         error: result.error.message,
@@ -131,7 +139,7 @@ export async function runWithStepLog<T extends StepResult>(
 
     return result;
   } catch (error) {
-    await closeStepLogQuietly(store, handle, {
+    await closeStepLogQuietly(store, context, handle, {
       status: "error",
       error: getErrorMessage(error),
     });

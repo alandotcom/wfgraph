@@ -58,6 +58,19 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Whether a failure is the server refusing what was sent, rather than failing to
+ * handle it.
+ *
+ * A service's `invalid` failure becomes BAD_REQUEST and lands here as a 400. By
+ * construction the panel that wrote the refused value is rendering the same
+ * sentence inline, so a surface with no caller of its own -- the autosave -- has
+ * this to tell the two apart and stay quiet about the first.
+ */
+export function isRefusal(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 400;
+}
+
 const DEFAULT_RPC_SUFFIX = "/api/rpc";
 const DEFAULT_RPC_ORIGIN = "http://localhost:3000";
 

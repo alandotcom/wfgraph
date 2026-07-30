@@ -37,6 +37,12 @@ export type NewExecution = {
   triggerEventType?: string;
   correlationKey?: string;
   input: JsonObject;
+  /**
+   * The arrival this run answers, which is what makes opening it idempotent. A
+   * start with none is one no retry loop replays, and gets a fresh row every
+   * time it is asked for.
+   */
+  deliveryId?: string;
 };
 
 /**
@@ -97,6 +103,13 @@ export type EntityStartOutcome =
       execution: WorkflowExecution;
       /** Runs this start displaced, already `superseded` in the same transaction. */
       supersededExecutionIds: string[];
+      /**
+       * Runs this start found stuck between their row and the bus, already
+       * `failed` in the same transaction. The caller still signals each one, since
+       * a stamped `enqueued_at` that never landed would otherwise leave a live run
+       * against a failed row.
+       */
+      reclaimedExecutionIds: string[];
     }
   | { status: "refused"; inFlightExecutionIds: string[] };
 

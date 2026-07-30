@@ -2,6 +2,8 @@ import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { Schema } from "effect";
 import { useState } from "react";
 import { Button } from "#src/components/ui/button";
+import { getExtensionCatalog } from "#src/lib/extensions";
+import { findAction } from "@rova/shared/extensions/catalog";
 import type { WorkflowExecutionStatus } from "@rova/shared/workflow/execution-contracts";
 import { readAs } from "@rova/shared/types/schema";
 import { getActionOutputComponent } from "@rova/shared/plugins/ui-registry";
@@ -54,14 +56,31 @@ const DOT_CLASSES: Record<StatusTone, string> = {
   muted: "bg-muted-foreground",
 };
 
-const LABELS: Record<StatusTone, string> = {
-  good: "Success",
-  bad: "Error",
-  info: "Running",
-  pending: "Waiting",
-  quiet: "Cancelled",
-  muted: "Unknown",
-};
+/**
+ * How each status reads, keyed by the status rather than by its tone.
+ *
+ * Colour is shared between the two vocabularies and wording is not: a displaced
+ * run and a cancelled one are both quiet, and calling the first "Cancelled"
+ * sends a builder looking for who cancelled it. Keying the words to the status
+ * makes a new one a compile error here instead of a silent "Unknown".
+ */
+const RUN_STATUS_LABELS = {
+  pending: "Pending",
+  running: "Running",
+  waiting: "Waiting",
+  completed: "Completed",
+  canceled: "Canceled",
+  superseded: "Superseded",
+  failed: "Failed",
+} satisfies Record<WorkflowExecutionStatus, string>;
+
+const NODE_STATUS_LABELS = {
+  pending: "Pending",
+  running: "Running",
+  success: "Success",
+  error: "Error",
+  cancelled: "Cancelled",
+} satisfies Record<NodeStatus, string>;
 
 const BADGE_CLASSES: Record<StatusTone, string> = {
   good: "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300",
@@ -79,10 +98,11 @@ export function getStatusDotClass(status: string): string {
 }
 
 export function getStatusLabel(status: string): string {
-  // Superseded is the one run status whose label is not its tone's: a displaced
-  // run was not cancelled, and a builder reading "Cancelled" would go looking for
-  // who cancelled it.
-  return status === "superseded" ? "Superseded" : LABELS[toneOf(status)];
+  return (
+    (RUN_STATUS_LABELS as Record<string, string | undefined>)[status] ??
+    (NODE_STATUS_LABELS as Record<string, string | undefined>)[status] ??
+    "Unknown"
+  );
 }
 
 export function getStatusBadgeClass(status: string): string {
@@ -245,8 +265,10 @@ export function OutputDisplay({
   // An integration can render its own output with a React component, which it
   // registers from its ui.ts. When one exists it takes precedence over the plain
   // base64 image below, which is keyed on nothing but the shape of the output.
+  // The catalog entry is what names the owning integration; the id is only the
+  // way to find it.
   const CustomComponent = actionType
-    ? getActionOutputComponent(actionType)
+    ? getActionOutputComponent(findAction(getExtensionCatalog(), actionType))
     : undefined;
   const base64Image = CustomComponent ? null : readBase64ImageOutput(output);
 

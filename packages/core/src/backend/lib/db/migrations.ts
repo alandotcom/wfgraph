@@ -1,7 +1,9 @@
+import { existsSync, readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sql } from "drizzle-orm";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import type { Sql } from "postgres";
@@ -16,20 +18,54 @@ const logger = getAppLogger("migrations");
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
-// packages/core/drizzle is the one copy of the migrations. drizzle-kit generates
-// into it, "files" in packages/core/package.json publishes it, and each entry
-// below is that same directory seen from a layout the code can run in.
-// Nothing here is resolved from the working directory: an embedder who runs
-// drizzle-kit themselves has their own ./drizzle beside it, and picking that up
-// would run their migrations on Rova's connection. An operator whose migrations
-// really do sit beside the process says so with database.migrations.migrationsDir.
-const MIGRATIONS_DIR_CANDIDATES = [
-  // Running from source, this file being packages/core/src/backend/lib/db/.
-  resolve(currentDir, "../../../../drizzle"),
-  // Installed as a package, this file being bundled into a chunk in the
-  // package's dist/.
-  resolve(currentDir, "../drizzle"),
-];
+/** The package these migrations belong to, named so the walk-up can recognise it. */
+const OWNING_PACKAGE = "@rova/core";
+
+/** Drizzle's own journal table, which it creates inside `migrationsSchema`. */
+const MIGRATIONS_TABLE = "__drizzle_migrations";
+
+/**
+ * `packages/core/drizzle`, found by walking up from this file to the package that
+ * owns it.
+ *
+ * The one copy of the migrations: drizzle-kit generates into it, and "files" in
+ * packages/core/package.json publishes it. Counting `..` segments instead would
+ * be counting against a layout that only holds before bundling, and in a flat
+ * node_modules the miscount lands on the adopter's own `drizzle/` -- which Rova's
+ * migration connection would then apply into Rova's schema, under Rova's
+ * search_path, with their hashes in Rova's journal. Anchoring on the package name
+ * is what makes that unreachable rather than merely unlikely.
+ *
+ * An operator whose migrations really do sit somewhere else says so with
+ * database.migrations.migrationsDir.
+ */
+export function rovaMigrationsDir(startDir: string = currentDir): string {
+  const findPackageRoot = (dir: string): string => {
+    const manifest = resolve(dir, "package.json");
+
+    if (existsSync(manifest)) {
+      const name: unknown = JSON.parse(readFileSync(manifest, "utf8")).name;
+      if (name === OWNING_PACKAGE) {
+        return dir;
+      }
+
+      throw new Error(
+        `Rova's migrations are published inside ${OWNING_PACKAGE}, but the package holding its code is named ${String(name)}. Pass database.migrations.migrationsDir to createRovaApp to say where the SQL is.`
+      );
+    }
+
+    const parent = dirname(dir);
+    if (parent === dir) {
+      throw new Error(
+        `Could not find the ${OWNING_PACKAGE} package above ${startDir}, so Rova cannot locate the migrations it ships. Pass database.migrations.migrationsDir to createRovaApp.`
+      );
+    }
+
+    return findPackageRoot(parent);
+  };
+
+  return resolve(findPackageRoot(startDir), "drizzle");
+}
 
 export type MigrationsOptions = {
   /**
@@ -51,37 +87,21 @@ export type MigrationsOptions = {
 async function resolveExistingMigrationsDir(
   configuredPath: string | undefined
 ): Promise<string> {
-  const candidates = configuredPath
-    ? [resolve(process.cwd(), configuredPath)]
-    : MIGRATIONS_DIR_CANDIDATES;
+  const folder = configuredPath
+    ? resolve(process.cwd(), configuredPath)
+    : rovaMigrationsDir();
 
-  const findExistingCandidate = async (
-    index: number
-  ): Promise<string | null> => {
-    const candidate = candidates[index];
-    if (!candidate) {
-      return null;
+  try {
+    const stats = await stat(folder);
+    if (stats.isDirectory()) {
+      return folder;
     }
-
-    try {
-      const stats = await stat(candidate);
-      if (stats.isDirectory()) {
-        return candidate;
-      }
-    } catch {
-      // Keep scanning candidates.
-    }
-
-    return findExistingCandidate(index + 1);
-  };
-
-  const existingCandidate = await findExistingCandidate(0);
-  if (existingCandidate) {
-    return existingCandidate;
+  } catch {
+    // Falls through to the same sentence as a path that is not a directory.
   }
 
   throw new Error(
-    `Migrations folder not found. Checked: ${candidates.join(", ")}.` +
+    `Migrations folder not found at ${folder}.` +
       " If needed, pass database.migrations.migrationsDir to createRovaApp."
   );
 }
@@ -170,11 +190,58 @@ async function applyMigrations(
   );
 
   await assertSearchPathHolds(client, target.schema);
+  await assertJournalIsOurs(client, target);
 
   await migrate(migrationDb, {
     migrationsFolder: target.migrationsFolder,
     migrationsSchema: target.schema,
   });
+}
+
+async function assertJournalIsOurs(
+  client: Sql,
+  target: { migrationsFolder: string; schema: string }
+): Promise<void> {
+  const recorded = await client<{ hash: string }[]>`
+    select hash from ${client(target.schema)}.${client(MIGRATIONS_TABLE)}
+  `.catch(() => {
+    // No journal table: this schema has never been migrated, which is the
+    // ordinary first install.
+    return [] as { hash: string }[];
+  });
+
+  assertJournalHashesAreOurs(
+    recorded.map((row) => row.hash),
+    target
+  );
+}
+
+/**
+ * Refuses a database whose journal records migrations this build does not ship.
+ *
+ * Drizzle applies every migration whose folder timestamp is newer than the newest
+ * recorded one and compares no hashes, so a rebaselined migration set re-runs
+ * `CREATE TABLE` against tables that already exist and dies partway through on a
+ * duplicate relation. The same rows appear when another tool's `drizzle/` was
+ * applied here. Both need the schema dropped, and neither is worth learning from
+ * a Postgres error code halfway into a transaction.
+ */
+export function assertJournalHashesAreOurs(
+  recorded: string[],
+  target: { migrationsFolder: string; schema: string }
+): void {
+  const shipped = new Set(
+    readMigrationFiles({ migrationsFolder: target.migrationsFolder }).map(
+      (migration) => migration.hash
+    )
+  );
+  const foreign = recorded.filter((hash) => !shipped.has(hash));
+
+  if (foreign.length > 0) {
+    throw new Error(
+      `The ${target.schema} schema carries ${foreign.length} migration(s) this build of Rova does not ship, so applying the ones it does would re-run statements against objects that already exist. This happens when Rova's migration set was rebaselined, or when another tool's migrations were applied into this schema. Drop the ${target.schema} schema and migrate again.`
+    );
+  }
 }
 
 /**

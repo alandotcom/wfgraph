@@ -49,6 +49,9 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
           ...integration,
           label: catalogEntry?.label ?? integration.type,
           hasTest: catalogEntry?.hasTest === true,
+          // Kept apart from the fallback label so the row can say which of the
+          // two reasons it offers no test.
+          known: catalogEntry !== undefined,
         };
       })
       .filter((integration) => {
@@ -131,6 +134,11 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
               <span className="text-muted-foreground text-sm">
                 {integration.name}
               </span>
+              {integration.known ? null : (
+                <span className="text-muted-foreground text-xs">
+                  Not available in this build
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1">
               {integration.hasTest && (

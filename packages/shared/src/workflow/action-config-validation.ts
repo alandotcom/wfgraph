@@ -1,4 +1,5 @@
 import { asNonEmptyString } from "#src/types/string";
+import { compileSerializedConditionModel } from "#src/workflow/conditions";
 import { readWaitSubscriptions } from "#src/workflow/wait-subscription";
 import { parseTimeOfDayMinutes } from "#src/utils/wait-allowed-hours";
 import type { WorkflowNode } from "#src/workflow/types";
@@ -149,6 +150,25 @@ function getWaitMissingRequiredFields(
         fieldKey: "waitFor",
         fieldLabel: "Wait for these events",
       });
+    }
+
+    // A match with a blank operand compares against the empty string, which no
+    // arrival satisfies: the run would park until its timeout and nothing would
+    // say why. The save rule lets that state through so a half-typed rule does
+    // not refuse an autosave, which makes this the one place it is caught.
+    for (const subscription of readWaitSubscriptions(config)) {
+      const match = asNonEmptyString(subscription.match);
+      if (!match) {
+        continue;
+      }
+
+      const compiled = compileSerializedConditionModel(match);
+      if (!compiled.valid && compiled.incomplete) {
+        eventMissing.push({
+          fieldKey: "waitFor",
+          fieldLabel: `Match value for "${subscription.event}"`,
+        });
+      }
     }
 
     // A wait with no timeout is an immortal Execution, holding a row and a place

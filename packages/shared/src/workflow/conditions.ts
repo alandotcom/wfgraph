@@ -114,9 +114,16 @@ export type ConditionModelParseResult =
   | { valid: true; model: ConditionModel }
   | { valid: false; error: string };
 
+/**
+ * `incomplete` marks the failures that are an operand nobody has typed yet, as
+ * opposed to a model that is broken: a blank text box, a number field holding
+ * nothing, a timestamp with no amount or no date. The builder writes exactly
+ * that state while a rule is half-authored, so a save may let it through where a
+ * run may not.
+ */
 export type ConditionCompileResult =
   | { valid: true; expression: string }
-  | { valid: false; error: string };
+  | { valid: false; error: string; incomplete?: boolean };
 
 export const GROUP_LOGIC_OPTIONS: Array<{
   value: GroupLogic;
@@ -701,6 +708,7 @@ function compileTimestampConditionRule(
       return {
         valid: false,
         error: "Timestamp amount must be a positive integer",
+        incomplete: true,
       };
     }
 
@@ -740,6 +748,7 @@ function compileTimestampConditionRule(
     return {
       valid: false,
       error: "Timestamp absolute operators require a valid date-time",
+      incomplete: true,
     };
   }
 
@@ -764,7 +773,11 @@ function compileStringConditionRule(
   // An unfilled text box is a rule the user has not finished, not a comparison
   // against the empty string. `is_set` and `is_not_set` cover presence.
   if (!rule.value.trim()) {
-    return { valid: false, error: "Text conditions require a value" };
+    return {
+      valid: false,
+      error: "Text conditions require a value",
+      incomplete: true,
+    };
   }
 
   const value = JSON.stringify(rule.value);
@@ -788,6 +801,7 @@ function compileNumberConditionRule(
     return {
       valid: false,
       error: "Number conditions require a finite numeric value",
+      incomplete: true,
     };
   }
 
@@ -906,4 +920,21 @@ export function compileConditionModel(
     valid: true,
     expression: compiledGroups.join(separator),
   };
+}
+
+/**
+ * The same compile for a caller holding the stored string rather than a model.
+ *
+ * A Wait Subscription's match is kept serialized, and both the save rule and the
+ * run-blocking rule have to ask the same question of it.
+ */
+export function compileSerializedConditionModel(
+  serialized: string
+): ConditionCompileResult {
+  const parsed = parseConditionModel(serialized);
+  if (!parsed.valid) {
+    return { valid: false, error: parsed.error };
+  }
+
+  return compileConditionModel(parsed.model);
 }

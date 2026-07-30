@@ -13,6 +13,8 @@ import { WorkflowRunTimeline } from "./workflow-run-timeline";
 type WorkflowRunDetailProps = {
   execution: WorkflowExecution;
   runNumber: number;
+  /** Why this run is no longer in the list behind it, when it has left. */
+  notice?: string;
   logs: ExecutionLog[];
   events: ExecutionEvent[];
   waits: ExecutionWait[];
@@ -26,6 +28,7 @@ type WorkflowRunDetailProps = {
 export function WorkflowRunDetail({
   execution,
   runNumber,
+  notice,
   logs,
   events,
   waits,
@@ -56,6 +59,12 @@ export function WorkflowRunDetail({
             : { type: "spacer" }
         }
       />
+
+      {notice ? (
+        <p className="rounded-md border bg-muted/30 p-2 text-muted-foreground text-xs">
+          {notice}
+        </p>
+      ) : null}
 
       {waits.map((wait) => (
         <div

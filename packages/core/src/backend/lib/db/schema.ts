@@ -87,6 +87,15 @@ export const workflowExecutions = pgTable(
     workflowRunId: text("workflow_run_id"),
     status: text("status").notNull().$type<WorkflowExecutionStatus>(),
     startSource: text("start_source").$type<WorkflowExecutionStartSource>(),
+    // The arrival this run answers, which is what makes opening it idempotent:
+    // the lifecycle step is an Inngest step and a retry re-runs it, so a second
+    // attempt re-claims this row instead of opening a second run for one Event.
+    // Null for a manual or scheduled start, which no retry loop replays.
+    deliveryId: text("delivery_id"),
+    // When the bus was told about this run. Null means the row was opened and
+    // the send has not been confirmed, which is the one window a crash can leave
+    // an in-flight row behind that nothing will ever finish.
+    enqueuedAt: timestamp("enqueued_at"),
     runMode: text("run_mode").notNull().default("live").$type<WorkflowMode>(),
     triggerEventType: text("trigger_event_type"),
     correlationKey: text("correlation_key"),
@@ -109,6 +118,13 @@ export const workflowExecutions = pgTable(
   (table) => [
     uniqueIndex("workflow_executions_workflow_run_id_uidx").on(
       table.workflowRunId
+    ),
+    // One run per arrival per workflow. Postgres treats nulls as distinct in a
+    // unique index, so the manual and scheduled starts that carry no delivery id
+    // are unconstrained by it.
+    uniqueIndex("workflow_executions_workflow_id_delivery_id_uidx").on(
+      table.workflowId,
+      table.deliveryId
     ),
     index("workflow_executions_workflow_id_started_at_idx").on(
       table.workflowId,

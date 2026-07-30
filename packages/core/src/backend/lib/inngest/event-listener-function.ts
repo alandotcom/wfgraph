@@ -102,14 +102,16 @@ export async function runEventListener(input: {
     event.decodePayload(payload).pipe(
       Effect.match({
         onSuccess: () => undefined,
-        onFailure: (rejected) => rejected.error,
+        onFailure: (rejected) => rejected,
       })
     )
   );
   if (rejection) {
-    arrivalLogger.warn("Refused an event payload", { error: rejection });
+    // The thrown sentence reaches Inngest's own run history, which a host can
+    // read, so it takes the answer string; the log line takes the operator's.
+    arrivalLogger.warn("Refused an event payload", { error: rejection.detail });
     throw new NonRetriableError(
-      `Payload refused for Event "${event.name}": ${rejection}`
+      `Payload refused for Event "${event.name}": ${rejection.error}`
     );
   }
 
@@ -167,6 +169,9 @@ export async function runEventListener(input: {
       workflowId: subscriber.id,
       roles: subscriber.roles,
       outcome: lifecycle.kind,
+      // A refusal and a skip each name themselves, so the arrival's own line is
+      // enough to tell a builder's mistake from a payload's gap.
+      reason: "reason" in lifecycle ? lifecycle.reason : undefined,
       resumedWaits: waits.resumedWaits,
     });
 

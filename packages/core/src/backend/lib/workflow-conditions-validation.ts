@@ -1,6 +1,7 @@
 import { checkCelBooleanExpression } from "#src/backend/lib/cel/environment";
 import {
   compileConditionModel,
+  compileSerializedConditionModel,
   parseConditionModel,
 } from "@rova/shared/workflow/conditions";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
@@ -41,6 +42,12 @@ function getNodeLabel(node: WorkflowNode): string {
  * and had nowhere to go. There is no stored expression to compare against here:
  * the wait keeps the model alone, because half of what it compares is a value
  * only the run knows.
+ *
+ * A match whose operands are still blank is skipped, the same carve-out the
+ * Condition node's empty expression gets: "Add a match" seeds a rule with an
+ * empty value, and refusing that would refuse every autosave until the builder
+ * typed one. Running is what requires it -- the action-config pass reports the
+ * node as missing a required field, in preflight and in the editor alike.
  */
 function validateWaitMatches(
   node: WorkflowNode,
@@ -52,16 +59,8 @@ function validateWaitMatches(
       continue;
     }
 
-    const parsed = parseConditionModel(match);
-    if (!parsed.valid) {
-      return {
-        valid: false,
-        error: `Node "${getNodeLabel(node)}" has an invalid match for "${subscription.event}": ${parsed.error}`,
-      };
-    }
-
-    const compiled = compileConditionModel(parsed.model);
-    if (!compiled.valid) {
+    const compiled = compileSerializedConditionModel(match);
+    if (!compiled.valid && !compiled.incomplete) {
       return {
         valid: false,
         error: `Node "${getNodeLabel(node)}" has an invalid match for "${subscription.event}": ${compiled.error}`,

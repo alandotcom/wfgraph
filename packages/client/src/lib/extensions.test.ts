@@ -89,7 +89,7 @@ describe("hydrateExtensionsFromApi", () => {
   it("decodes the catalog the server assembled", async () => {
     respondWith({ catalog: served });
 
-    await hydrateExtensionsFromApi();
+    await expect(hydrateExtensionsFromApi()).resolves.toEqual({ ok: true });
 
     expect(getExtensionCatalog()).toEqual(served);
   });
@@ -118,12 +118,26 @@ describe("hydrateExtensionsFromApi", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     respondWith({ catalog: { events: [], actions: [] } });
 
-    await hydrateExtensionsFromApi();
+    await expect(hydrateExtensionsFromApi()).resolves.toEqual({
+      ok: false,
+      reason: "mismatch",
+    });
 
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("/api/extensions")
     );
     warn.mockRestore();
+  });
+
+  // Each of the three names a different thing to tell the person reading the
+  // screen, and an empty catalog tells them their host declared nothing.
+  it("answers a refused response as a refusal", async () => {
+    respondWith({ error: "Not found" }, 404);
+
+    await expect(hydrateExtensionsFromApi()).resolves.toEqual({
+      ok: false,
+      reason: "refused",
+    });
   });
 
   // Each failure below leaves whatever was decoded last in place, which for a
@@ -158,12 +172,15 @@ describe("hydrateExtensionsFromApi", () => {
     expect(getExtensionCatalog()).toEqual(served);
   });
 
-  it("survives a fetch that never answers", async () => {
+  it("answers a fetch that never returns as unreachable", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() => Promise.reject(new Error("offline")))
     );
 
-    await expect(hydrateExtensionsFromApi()).resolves.toBeUndefined();
+    await expect(hydrateExtensionsFromApi()).resolves.toEqual({
+      ok: false,
+      reason: "unreachable",
+    });
   });
 });

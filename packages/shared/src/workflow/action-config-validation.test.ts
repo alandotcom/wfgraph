@@ -4,6 +4,10 @@ import {
   getNodeMissingRequiredFields,
   type ResolveActionByType,
 } from "./action-config-validation";
+import {
+  createDefaultConditionModel,
+  serializeConditionModel,
+} from "./conditions";
 import type { WorkflowNode } from "./types";
 
 function createTriggerNode(): WorkflowNode {
@@ -210,6 +214,67 @@ describe("getNodeMissingRequiredFields", () => {
     expect(result?.missingFields).toEqual([
       { fieldKey: "waitFor", fieldLabel: "Wait for these events" },
     ]);
+  });
+
+  // The save rule lets a half-typed match through so an autosave is not refused
+  // mid-edit, which makes this the one place a match comparing against nothing
+  // is caught. Left alone it parks the run until its timeout and says nothing.
+  it("refuses an event wait whose match has an untyped operand", () => {
+    const seeded = serializeConditionModel(
+      createDefaultConditionModel({
+        path: "appointment.id",
+        label: "appointment.id",
+        type: "string",
+      })
+    );
+
+    const result = getNodeMissingRequiredFields({
+      node: createActionNode({
+        actionType: "Wait",
+        waitMode: "event",
+        waitFor: [{ event: "appointment.created", match: seeded }],
+        waitTimeout: "7d",
+      }),
+      resolveActionByType,
+    });
+
+    expect(result?.missingFields).toEqual([
+      {
+        fieldKey: "waitFor",
+        fieldLabel: 'Match value for "appointment.created"',
+      },
+    ]);
+  });
+
+  it("accepts an event wait whose match compares against a value", () => {
+    const model = createDefaultConditionModel({
+      path: "appointment.id",
+      label: "appointment.id",
+      type: "string",
+    });
+    model.groups[0].conditions[0] = {
+      ...model.groups[0].conditions[0],
+      fieldType: "string",
+      operator: "equals",
+      value: "appt_1",
+    };
+
+    const result = getNodeMissingRequiredFields({
+      node: createActionNode({
+        actionType: "Wait",
+        waitMode: "event",
+        waitFor: [
+          {
+            event: "appointment.created",
+            match: serializeConditionModel(model),
+          },
+        ],
+        waitTimeout: "7d",
+      }),
+      resolveActionByType,
+    });
+
+    expect(result).toBeNull();
   });
 
   it("does not require delay fields when waitMode is event", () => {

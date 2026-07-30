@@ -74,7 +74,7 @@ export const postEventIntake = Effect.fn("postEventIntake")(
       .pipe(
         Effect.catchTag("PayloadRejected", (rejected) =>
           logger
-            .warn("Refused an event payload", { error: rejected.error })
+            .warn("Refused an event payload", { error: rejected.detail })
             .pipe(
               Effect.andThen(
                 Effect.fail(new InvalidInput({ error: rejected.error }))

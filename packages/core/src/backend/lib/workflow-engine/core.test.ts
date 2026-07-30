@@ -448,6 +448,127 @@ describe("run persistence through the store port", () => {
     expect(result.results.trigger_1?.error).toBe("run log unreachable");
   });
 
+  // Every seam failure the backend answers with is a `Schema.TaggedErrorClass`,
+  // which carries its text on `cause` and leaves `.message` empty. A row closed
+  // with that message alone is a red node with no sentence beside it.
+  it("closes a node's row with a sentence when the error carries an empty message", async () => {
+    class DatabaseError extends Error {
+      constructor(cause: unknown) {
+        super("", { cause });
+        this.name = "DatabaseError";
+      }
+    }
+
+    executeFn.mockImplementation(() => {
+      throw new DatabaseError(new Error("connection terminated"));
+    });
+
+    await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph(),
+        executionId: "exec_tagged_failure",
+        workflowId: "workflow_tagged_failure",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions
+    );
+
+    const closed = store
+      .callsOf("completeStepLog")
+      .find((call) => call.status === "error");
+    expect(closed?.error).toBe("DatabaseError: connection terminated");
+  });
+
+  // The word in an error's text says nothing about why a run ended. A cancel is
+  // the flag on the execution row, which this run never had set.
+  it("records a failure whose text says 'cancelled' as failed", async () => {
+    executeFn.mockImplementation(() => {
+      throw new Error("Subscription cancelled by the provider");
+    });
+
+    const result = await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph(),
+        executionId: "exec_cancel_worded",
+        workflowId: "workflow_cancel_worded",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.results.action_1?.error).toBe(
+      "Subscription cancelled by the provider"
+    );
+    expect(store.callsOf("completeRun")[0]?.status).toBe("failed");
+    expect(
+      store.callsOf("recordAuditEvent").map((call) => call.eventType)
+    ).toContain("run_failed");
+  });
+
+  /**
+   * A runtime that refuses the terminal step, which is what puts a run on the
+   * fatal path where `recordRunFailed` writes.
+   */
+  function runtimeRefusingTerminalStep() {
+    const runtime = createInMemoryWorkflowRuntime();
+    return {
+      ...runtime,
+      step: <T>(stepId: string, fn: () => Promise<T>): Promise<T> =>
+        stepId === "workflow-run-completed"
+          ? Promise.reject(new Error("terminal write refused"))
+          : runtime.step(stepId, fn),
+    };
+  }
+
+  // A superseded run reaches this path, and its row stays `superseded` because
+  // `completeRun` refuses the write. Announcing the failure anyway would put a
+  // last word on the timeline that contradicts the row.
+  it("announces a fatal failure only when the terminal write owned it", async () => {
+    const displaced: RecordingWorkflowStore = {
+      ...store,
+      completeRun: (input) => {
+        store.completeRun(input);
+        return Promise.resolve(false);
+      },
+    };
+
+    await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph(),
+        executionId: "exec_displaced",
+        workflowId: "workflow_displaced",
+      },
+      runtimeRefusingTerminalStep(),
+      displaced,
+      actions
+    );
+
+    expect(store.callsOf("completeRun")).toHaveLength(1);
+    expect(
+      store.callsOf("recordAuditEvent").map((call) => call.eventType)
+    ).not.toContain("run_failed");
+  });
+
+  it("announces a fatal failure that did own the terminal write", async () => {
+    await executeWorkflow(
+      {
+        graph: createTriggerToActionGraph(),
+        executionId: "exec_fatal",
+        workflowId: "workflow_fatal",
+      },
+      runtimeRefusingTerminalStep(),
+      store,
+      actions
+    );
+
+    expect(
+      store.callsOf("recordAuditEvent").map((call) => call.eventType)
+    ).toContain("run_failed");
+  });
+
   it("persists nothing when no store is injected", async () => {
     const result = await executeWorkflow(
       {

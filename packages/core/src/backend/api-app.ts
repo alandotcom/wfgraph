@@ -204,6 +204,12 @@ export type CreateApiAppOptions = {
 };
 
 /**
+ * Where a parked wait is resumed by token. Local to this file, since the editor
+ * resumes over RPC and nothing else addresses the path.
+ */
+const WAIT_RESUME_ROUTE = "/workflows/waits/:token/resume";
+
+/**
  * Routes reached by machines, each carrying a credential of its own: Inngest
  * signs its callback, the event intake path checks an API key, the resume path a
  * resume token. A session check would break all three.
@@ -212,13 +218,17 @@ export type CreateApiAppOptions = {
  * and opening one is an edit here with a reason attached. Listing what to gate
  * instead fails the other way: forgetting it publishes an endpoint silently.
  *
- * Inngest verifies that signature only when a signing key is configured;
- * `reportInngestCallbackExposure` says so at startup when one is not.
+ * Inngest verifies that signature only in cloud mode and with a signing key
+ * configured; `reportInngestCallbackExposure` says so at startup when neither
+ * holds.
+ *
+ * Each path is named rather than spelled out, so the gate and the route
+ * registration below cannot drift apart into a silent 401 for every sender.
  */
 export const MACHINE_ROUTES = [
   "/inngest",
-  "/events/:eventName",
-  "/workflows/waits/:token/resume",
+  EVENT_INTAKE_ROUTE,
+  WAIT_RESUME_ROUTE,
 ] as const;
 
 /**
@@ -483,7 +493,7 @@ export function createApiApp(options: CreateApiAppOptions) {
         )
       );
     })
-    .post("/workflows/waits/:token/resume", async (c) => {
+    .post(WAIT_RESUME_ROUTE, async (c) => {
       const params = readTokenParams(c.req.param());
       if (Result.isFailure(params)) {
         return c.json(

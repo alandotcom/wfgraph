@@ -9,9 +9,11 @@
  * traversal calls.
  */
 
+import { randomUUID } from "node:crypto";
 import { withSpan } from "#src/backend/lib/telemetry";
-import { readJsonObject } from "@rova/shared/types/json";
+import { type JsonObject, readJsonObject } from "@rova/shared/types/json";
 import { encodeIsoTimestamp } from "@rova/shared/types/timestamp";
+import { getErrorMessage } from "@rova/shared/utils";
 import { resolveWaitUntil } from "@rova/shared/utils/wait-time";
 import { celStringLiteral } from "@rova/shared/workflow/cel-string-literal";
 import {
@@ -20,7 +22,6 @@ import {
   type WaitConfig,
 } from "@rova/shared/workflow/wait-subscription";
 import type { ExecutionResult } from "./core";
-import { getErrorMessage } from "./errors";
 import type { WorkflowExecutionRuntime } from "./runtime";
 import { closeStepLog, type NodeContext, openStepLog } from "./step-log";
 import type { WorkflowStepLogHandle, WorkflowStore } from "./store";
@@ -57,26 +58,21 @@ type WaitBranchContext = {
   startLog: WorkflowStepLogHandle;
 };
 
+/** The token addresses a parked run, so it comes from a cryptographic source. */
 function generateWaitToken(): string {
-  if (
-    typeof globalThis.crypto !== "undefined" &&
-    typeof globalThis.crypto.randomUUID === "function"
-  ) {
-    return globalThis.crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return randomUUID();
 }
 
 /**
- * Whether the envelope that woke this wait was a Cancel Event's nudge.
+ * The `workflow/wait.signal` body out of the Inngest event that carried it.
  *
- * The signal states no verdict, so this only decides how the wait closes: the
- * run's own status comes from the flag on its execution row, which the engine
- * reads at the next node boundary.
+ * `waitForEvent` resolves to the whole event object, and the signal is Rova's
+ * own envelope inside it. Reading it once here is what keeps that envelope out
+ * of everything below: a builder addresses the Event's payload, not the
+ * transport it travelled in.
  */
-function isLifecycleCancelSignal(resumeEvent: unknown): boolean {
-  const data = readJsonObject(readJsonObject(resumeEvent)?.data);
-  return data?.signalType === "lifecycle-cancel";
+function readWaitSignal(resumeEvent: unknown) {
+  return readJsonObject(readJsonObject(resumeEvent)?.data);
 }
 
 function readWaitGateMode(config: WaitConfig): "require_actual_wait" | "off" {
@@ -507,7 +503,7 @@ async function executeEventWait(
   }
 
   let timedOut = false;
-  let eventPayload: unknown;
+  let signal: JsonObject | null = null;
 
   try {
     // Inngest waits on Rova's own signal envelope rather than on the business
@@ -529,7 +525,7 @@ async function executeEventWait(
       }
     );
     timedOut = resumeEvent === null;
-    eventPayload = resumeEvent;
+    signal = readWaitSignal(resumeEvent);
   } catch (error) {
     // Same reasoning as the delay branch: the run is unwinding, so no new step.
     await closeStepLog(store, startLog, {
@@ -541,7 +537,7 @@ async function executeEventWait(
 
   // Derived outside the step for the same reason `timedOut` is: both come off
   // the memoized `waitForEvent` result, so a replay reads the same verdict.
-  const canceled = !timedOut && isLifecycleCancelSignal(eventPayload);
+  const canceled = !timedOut && signal?.signalType === "lifecycle-cancel";
 
   const resumed = await runtime.step(
     `wait-event-resume-${context.nodeId}`,
@@ -574,9 +570,11 @@ async function executeEventWait(
       // this run treats a timeout it is already counting down.
       const skipOnTimeout = timedOut && prepared.timeoutBehavior === "skip";
 
+      // The resume token stays off this object: it is a capability addressing
+      // this parked run, node output is template-addressable, and the panel
+      // reads the token off the wait row instead.
       const base = {
         waitType: "event",
-        resumeToken: prepared.resumeToken,
         timedOut,
         resumedAt: encodeIsoTimestamp(new Date()),
       };
@@ -584,9 +582,17 @@ async function executeEventWait(
       // the canceling Event sent is on the execution row, which the engine reads
       // at this node's boundary.
       const carriesPayload = !(timedOut || canceled);
+      // What the arriving Event carried, and nothing of the envelope it came in:
+      // `payload.orderId` is the path a builder writes, and the catalog's field
+      // list for this node promises exactly that.
       const output = skipOnTimeout
         ? { ...base, skipped: true, skippedReason: "timeout_skip" }
-        : { ...base, ...(carriesPayload ? { payload: eventPayload } : {}) };
+        : {
+            ...base,
+            ...(carriesPayload
+              ? { payload: readJsonObject(signal?.payload) ?? {} }
+              : {}),
+          };
 
       await closeStepLog(store, startLog, { status: "success", output });
 

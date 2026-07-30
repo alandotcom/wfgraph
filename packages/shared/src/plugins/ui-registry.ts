@@ -1,4 +1,4 @@
-import { parseActionId } from "#src/extensions/catalog";
+import type { ActionMetadata } from "#src/extensions/catalog";
 
 /**
  * The React half of an integration: its icon, and any custom renderer for a
@@ -54,18 +54,29 @@ export function getIntegrationUi(type: string): IntegrationUi | undefined {
 }
 
 /**
- * Get the custom output renderer for a full action ID such as
- * "clerk/get-user". Returns undefined when the action displays its output as
- * plain JSON.
+ * The custom output renderer for an action, or undefined when its output is
+ * shown as plain JSON.
+ *
+ * Which integration owns an action is the catalog's answer, not the id's. A host
+ * writes whatever id it likes -- `createAction({ id: "slack/notify" })` is a
+ * legal id belonging to no integration -- so reading the owner off the string
+ * would hand that action Slack's renderer for output Slack knows nothing about.
+ * The slug is the other half of the id assembly built with `formatActionId`.
  */
 export function getActionOutputComponent(
-  actionId: string | undefined | null
+  action: ActionMetadata | undefined
 ): React.ComponentType<ResultComponentProps> | undefined {
-  const parsed = parseActionId(actionId);
+  const owner = action?.integration;
+  if (!owner) {
+    return undefined;
+  }
 
-  return parsed
-    ? integrationUiRegistry.get(parsed.integration)?.outputComponents?.[
-        parsed.slug
-      ]
-    : undefined;
+  const prefix = `${owner}/`;
+  if (!action.id.startsWith(prefix)) {
+    return undefined;
+  }
+
+  return integrationUiRegistry.get(owner)?.outputComponents?.[
+    action.id.slice(prefix.length)
+  ];
 }

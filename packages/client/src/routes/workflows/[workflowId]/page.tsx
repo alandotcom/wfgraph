@@ -7,6 +7,7 @@ import { Button } from "#src/components/ui/button";
 import { WorkflowSidebarPanel } from "#src/components/workflow/workflow-sidebar-panel";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { isRunInProgress } from "#src/lib/execution-logs";
+import { isRefusal } from "#src/lib/rpc-client";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
   edgesAtom,
@@ -43,7 +44,7 @@ const WorkflowEditor = () => {
   // A debounced autosave has no caller waiting on it, so a failure would
   // otherwise reach only the console while the editor looked saved.
   useAfterCommit(lastSaveError, () => {
-    if (lastSaveError) {
+    if (lastSaveError && !isRefusal(lastSaveError)) {
       toast.error(lastSaveError.message || "Failed to save workflow");
     }
   });

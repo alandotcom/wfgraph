@@ -2,13 +2,13 @@ import { useAtomValue } from "jotai";
 import { Plus, X } from "lucide-react";
 import { useCallback, useId, useMemo, useState } from "react";
 import { Button } from "#src/components/ui/button";
+import { WarningCallout } from "#src/components/ui/callout";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { getEventConditionFields } from "#src/lib/upstream-node-fields";
 import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { findEvent } from "@rova/shared/extensions/catalog";
-import { cn } from "@rova/shared/utils";
 import {
   createDefaultConditionModel,
   serializeConditionModel,
@@ -18,6 +18,7 @@ import {
   readWaitSubscriptions,
 } from "@rova/shared/workflow/wait-subscription";
 import { ConditionBuilderRow } from "./condition-builder-row";
+import { EventChipGroup } from "./event-chip-group";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 /**
@@ -51,12 +52,18 @@ export function WaitEventSelect({
   const catalog = getExtensionCatalog();
 
   const selectedNames = selected.map((subscription) => subscription.event);
-  const declared = catalog.events.map((event) => event.name);
-  // Every selection is rendered, declared or typed in, so nothing the builder
-  // chose is ever invisible.
-  const options = [
-    ...declared,
-    ...selectedNames.filter((eventName) => !declared.includes(eventName)),
+  const declared = new Set(catalog.events.map((event) => event.name));
+  // Every selection is a chip, declared or typed in, so nothing the builder
+  // chose is ever invisible. A name the catalog does not carry has no label but
+  // its own.
+  const choices = [
+    ...catalog.events.map((event) => ({
+      name: event.name,
+      label: event.label,
+    })),
+    ...selectedNames
+      .filter((eventName) => !declared.has(eventName))
+      .map((eventName) => ({ name: eventName, label: eventName })),
   ];
 
   const write = (next: EventSubscription[]) => {
@@ -98,39 +105,18 @@ export function WaitEventSelect({
       <div className="space-y-2">
         <Label id={chipGroupLabelId}>Resume when the event is</Label>
 
-        {options.length > 0 ? (
-          <div
-            aria-labelledby={chipGroupLabelId}
-            className="flex flex-wrap gap-1.5"
-            role="group"
-          >
-            {options.map((eventName) => {
-              const isSelected = selectedNames.includes(eventName);
-              return (
-                <button
-                  aria-pressed={isSelected}
-                  className={cn(
-                    "rounded-full border px-2.5 py-1 font-mono text-xs transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                    // Selection is one of the graphite system's sanctioned uses
-                    // of contrast: a filled ink chip, unmistakable at a glance.
-                    isSelected
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-input text-muted-foreground hover:bg-muted/50",
-                    disabled && "pointer-events-none opacity-50"
-                  )}
-                  disabled={disabled}
-                  key={eventName}
-                  onClick={() =>
-                    isSelected ? remove(eventName) : add(eventName)
-                  }
-                  type="button"
-                >
-                  {eventName}
-                </button>
-              );
-            })}
-          </div>
+        {choices.length > 0 ? (
+          <EventChipGroup
+            choices={choices}
+            disabled={disabled}
+            labelId={chipGroupLabelId}
+            onToggle={(eventName) =>
+              selectedNames.includes(eventName)
+                ? remove(eventName)
+                : add(eventName)
+            }
+            selected={selectedNames}
+          />
         ) : (
           <p className="text-muted-foreground text-xs">
             This server declares no Events. Name the one this wait parks on
@@ -165,10 +151,10 @@ export function WaitEventSelect({
       </div>
 
       {selected.length === 0 ? (
-        <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-amber-700 text-xs dark:text-amber-200">
+        <WarningCallout>
           Name at least one event. A wait with none cannot be resumed by
           anything, and the workflow will not save.
-        </p>
+        </WarningCallout>
       ) : (
         selected.map((subscription) => (
           <WaitSubscriptionRow
@@ -241,9 +227,12 @@ function WaitSubscriptionRow({
   return (
     <div className="space-y-2 rounded-md border p-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="truncate font-mono text-xs" title={subscription.event}>
-          {subscription.event}
-        </p>
+        <div className="min-w-0" title={subscription.event}>
+          {event ? <p className="truncate text-xs">{event.label}</p> : null}
+          <p className="truncate font-mono text-[10px] text-muted-foreground">
+            {subscription.event}
+          </p>
+        </div>
         <Button
           aria-label={`Remove ${subscription.event}`}
           className="size-7 shrink-0"
@@ -258,11 +247,11 @@ function WaitSubscriptionRow({
       </div>
 
       {event ? null : (
-        <p className="text-amber-700 text-xs dark:text-amber-200">
+        <WarningCallout variant="text">
           This server declares no such Event, so its fields are unknown here.
           The wait still parks on the name, and still wakes on a match if
           something sends it.
-        </p>
+        </WarningCallout>
       )}
 
       {subscription.match ? (

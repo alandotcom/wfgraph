@@ -92,3 +92,65 @@ describe("validateWorkflowConditionConfigs", () => {
     expect(result.valid).toBe(false);
   });
 });
+
+function createWaitNode(subscriptions: unknown): WorkflowNode {
+  return {
+    id: "wait-node",
+    type: "action",
+    position: { x: 0, y: 0 },
+    data: {
+      label: "Wait",
+      type: "action",
+      config: {
+        actionType: "Wait",
+        waitMode: "event",
+        waitTimeout: "7d",
+        waitFor: subscriptions,
+      },
+    },
+  };
+}
+
+/**
+ * The Wait node's match gets the Condition node's mid-edit carve-out, because
+ * "Add a match" seeds a rule whose value is empty and the builder then makes
+ * other edits. Refusing the save would refuse the editor's own default on every
+ * autosave until they typed one.
+ */
+describe("validateWorkflowConditionConfigs over a Wait node's matches", () => {
+  const seededMatch = serializeConditionModel(
+    createDefaultConditionModel({
+      path: "appointment.id",
+      label: "appointment.id",
+      type: "string",
+    })
+  );
+
+  it("accepts a match whose operand the builder has not typed yet", () => {
+    const result = validateWorkflowConditionConfigs([
+      createWaitNode([
+        { event: "app/appointment.updated", match: seededMatch },
+      ]),
+    ]);
+
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts a match with no model at all", () => {
+    const result = validateWorkflowConditionConfigs([
+      createWaitNode([{ event: "app/appointment.updated" }]),
+    ]);
+
+    expect(result.valid).toBe(true);
+  });
+
+  it("refuses a match that is broken rather than unfinished", () => {
+    const result = validateWorkflowConditionConfigs([
+      createWaitNode([
+        { event: "app/appointment.updated", match: "{not json" },
+      ]),
+    ]);
+
+    expect(result.valid).toBe(false);
+  });
+});

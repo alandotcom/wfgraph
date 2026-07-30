@@ -26,6 +26,8 @@ function createRow(
     triggerEventType: null,
     correlationKey: null,
     workflowRunId: null,
+    deliveryId: null,
+    enqueuedAt: null,
     input: null,
     output: null,
     error: null,

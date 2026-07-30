@@ -28,6 +28,20 @@ export function getExtensionCatalog(): ExtensionCatalog {
 }
 
 /**
+ * Why a hydration did not produce a catalog.
+ *
+ * `unreachable` is a fetch that threw, `refused` a response that was not ok, and
+ * `mismatch` a document the wire schema rejected. The three are separate because
+ * only the last one means the editor and its server are different builds, and
+ * the sentence a user reads about it differs.
+ */
+export type CatalogLoadFailure = "unreachable" | "refused" | "mismatch";
+
+export type CatalogLoadResult =
+  | { ok: true }
+  | { ok: false; reason: CatalogLoadFailure };
+
+/**
  * Fetch the surface and decode it, before the first render.
  *
  * The endpoint answers one document, and this owns the one request that reads it.
@@ -35,12 +49,12 @@ export function getExtensionCatalog(): ExtensionCatalog {
  * Calling this twice re-reads the surface, which is why nothing memoizes: a
  * memoized promise would answer the second caller with the first call's document.
  *
- * Every failure leaves the last decoded catalog in place, and a decode failure
- * says so on the console. A catalog that does not fit means the editor and its
- * server disagree about the contract, which no amount of keeping half the
- * document repairs.
+ * Every failure leaves the last decoded catalog in place and is answered as a
+ * result rather than a silent return: an empty catalog and a catalog that never
+ * arrived render the same, and the editor drawn from the first tells a builder
+ * their server declares nothing when the truth is that it was never asked.
  */
-export async function hydrateExtensionsFromApi(): Promise<void> {
+export async function hydrateExtensionsFromApi(): Promise<CatalogLoadResult> {
   let payload: unknown;
 
   // The try covers the request and nothing after it, so that a mistake in the
@@ -54,23 +68,24 @@ export async function hydrateExtensionsFromApi(): Promise<void> {
     });
 
     if (!response.ok) {
-      return;
+      return { ok: false, reason: "refused" };
     }
 
     payload = await response.json();
   } catch {
-    // An unreachable server costs the editor its surface, not its render.
-    return;
+    return { ok: false, reason: "unreachable" };
   }
 
   const envelope = readExtensionsResponse(payload);
 
   const decoded = readExtensionCatalog(envelope?.catalog);
-  if (decoded) {
-    catalog = decoded;
-  } else {
+  if (!decoded) {
     console.warn(
       "The extension catalog from /api/extensions did not fit the wire schema in @rova/shared/extensions/catalog-wire, so the editor is drawing from the catalog it had. The server serving it is most likely a different build of Rova."
     );
+    return { ok: false, reason: "mismatch" };
   }
+
+  catalog = decoded;
+  return { ok: true };
 }

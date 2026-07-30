@@ -118,8 +118,16 @@ export type RunsRepoMethods = {
   readonly insertTerminal: (
     input: NewTerminalExecution
   ) => Effect.Effect<WorkflowExecution, DatabaseError>;
-  /** Attach the Inngest event id once the enqueue has answered with one. */
-  readonly setRunId: (input: {
+  /**
+   * Record that the bus took this run, with the Inngest event id it answered
+   * with.
+   *
+   * The stamp is what separates a run Inngest is executing from a row whose
+   * process died before the send, which is the only thing that makes a stuck
+   * row recoverable: an unstamped row past `UNSENT_RUN_GRACE_MS` is one the
+   * next start for its entity may close.
+   */
+  readonly markEnqueued: (input: {
     executionId: string;
     runId: string | null;
   }) => Effect.Effect<void, DatabaseError>;
@@ -128,12 +136,11 @@ export type RunsRepoMethods = {
    * written. Without it the row sits in "running" with nothing behind it that
    * could ever finish it.
    *
-   * A rejected send is ambiguous: Inngest may have accepted the event and
-   * failed on the way back, in which case the run is already executing. The
-   * in-flight guard is what makes the ambiguity safe, since the compensation
-   * can then only touch a run that has not reached a verdict, and a `false`
-   * answer means the run got there first. The event carries an idempotency
-   * key, so retrying a send later stays free whenever we decide to.
+   * The in-flight guard defers to a terminal status and nothing more, so a run
+   * Inngest accepted and started milliseconds ago is still `running` and this
+   * write would relabel it. What makes the ambiguity safe is the cancel the
+   * caller sends first: a run that did start is stopped, and one that never
+   * started ignores a signal addressed to it.
    */
   readonly markEnqueueFailed: (input: {
     executionId: string;
@@ -249,7 +256,9 @@ export function makeRunsMethods(
             runMode: workflowExecutions.runMode,
             triggerEventType: workflowExecutions.triggerEventType,
             correlationKey: workflowExecutions.correlationKey,
+            deliveryId: workflowExecutions.deliveryId,
             workflowRunId: workflowExecutions.workflowRunId,
+            enqueuedAt: workflowExecutions.enqueuedAt,
             input: workflowExecutions.input,
             output: workflowExecutions.output,
             error: workflowExecutions.error,
@@ -345,11 +354,11 @@ export function makeRunsMethods(
         return execution;
       }),
 
-    setRunId: (input) =>
+    markEnqueued: (input) =>
       database.query(async (db) => {
         await db
           .update(workflowExecutions)
-          .set({ workflowRunId: input.runId })
+          .set({ workflowRunId: input.runId, enqueuedAt: new Date() })
           .where(eq(workflowExecutions.id, input.executionId));
       }),
 

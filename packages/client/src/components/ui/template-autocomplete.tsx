@@ -89,7 +89,9 @@ export function TemplateAutocomplete({
   const [nodes] = useAtom(nodesAtom);
   const [edges] = useAtom(edgesAtom);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const menuRef = useRef<HTMLDivElement>(null);
+  // The scroll box, not the positioned wrapper around it: the rows are its
+  // children, and indexing them is how a highlight below the fold is found.
+  const optionListRef = useRef<HTMLDivElement>(null);
 
   const upstreamNodes = useMemo(() => {
     return getUpstreamNodes({
@@ -202,7 +204,8 @@ export function TemplateAutocomplete({
   // Keyboard navigation can walk the highlight past the edge of the scroll box,
   // and only the DOM knows where that edge is.
   useAfterCommit(selectedOptionIndex, () => {
-    const selectedElement = menuRef.current?.children.item(selectedOptionIndex);
+    const selectedElement =
+      optionListRef.current?.children.item(selectedOptionIndex);
     if (selectedElement instanceof HTMLElement) {
       selectedElement.scrollIntoView({ block: "nearest" });
     }
@@ -225,13 +228,12 @@ export function TemplateAutocomplete({
   const menuContent = (
     <div
       className="fixed z-[9999] w-80 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
-      ref={menuRef}
       style={{
         top: `${adjustedPosition.top}px`,
         left: `${adjustedPosition.left}px`,
       }}
     >
-      <div className="max-h-60 overflow-y-auto">
+      <div className="max-h-60 overflow-y-auto" ref={optionListRef}>
         {filteredOptions.map((option, index) => (
           <div
             className={cn(

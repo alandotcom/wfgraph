@@ -25,16 +25,21 @@ export const RUN_SCOPED_AUDIT_EVENT_TYPES = [
 ] as const;
 
 /**
- * The audit rows that belong to the workflow, because no run was opened.
+ * The audit rows that belong to the workflow, because no run was opened or
+ * reached.
  *
- * `run_not_started` is the whole list: a Refused Start, which is first-wins
- * Concurrency finding a run for the entity already going, a payload carrying
- * nothing at the Correlation Path Concurrency needs, or a manual start a
- * workflow's own rules do not allow. A decision with no row is the class of
- * invisible behaviour ADR-0007 exists to remove, and there is no Execution to
- * hang this one on.
+ * `run_not_started` is a Refused Start: first-wins Concurrency finding a run for
+ * the entity already going, a payload carrying nothing at the Correlation Path
+ * Concurrency needs, or a manual start a workflow's own rules do not allow.
+ * `cancel_not_delivered` is the mirror on the other lifecycle role, an arriving
+ * Cancel Event whose payload carries no Entity Value to match runs by. A
+ * decision with no row is the class of invisible behaviour ADR-0007 exists to
+ * remove, and neither of these has an Execution to hang on.
  */
-export const WORKFLOW_SCOPED_AUDIT_EVENT_TYPES = ["run_not_started"] as const;
+export const WORKFLOW_SCOPED_AUDIT_EVENT_TYPES = [
+  "run_not_started",
+  "cancel_not_delivered",
+] as const;
 
 export type RunScopedAuditEventType =
   (typeof RUN_SCOPED_AUDIT_EVENT_TYPES)[number];

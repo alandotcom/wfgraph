@@ -39,7 +39,6 @@ import type {
   WorkflowNode,
 } from "@rova/shared/workflow/types";
 import { noWorkflowActions, type WorkflowActions } from "./actions";
-import { isCancellationError } from "./errors";
 import {
   createInMemoryWorkflowRuntime,
   type WorkflowExecutionRuntime,
@@ -614,8 +613,10 @@ async function recordRunFailed(input: {
   runMode: "live" | "test";
   logger: ExecutionLogger;
 }) {
+  let recorded = true;
+
   try {
-    await input.store.completeRun({
+    recorded = await input.store.completeRun({
       executionId: input.executionId,
       status: input.status,
       error: input.error,
@@ -627,16 +628,26 @@ async function recordRunFailed(input: {
     });
   }
 
-  await input.store.recordAuditEvent({
-    workflowId: input.workflowId,
-    executionId: input.executionId,
-    eventType: input.cancelled ? "run_cancelled" : "run_failed",
-    message: buildRunFailedMessage(input.runMode, input.cancelled),
-    metadata: {
-      error: input.error,
-      runMode: input.runMode,
-    },
-  });
+  // Same rule as `recordRunCompleted`: a terminal write this run lost must not
+  // announce itself. A superseded run is the case that makes it load-bearing --
+  // its row stays `superseded`, and a "Run cancelled" line on the timeline would
+  // contradict it.
+  if (recorded) {
+    await input.store.recordAuditEvent({
+      workflowId: input.workflowId,
+      executionId: input.executionId,
+      eventType: input.cancelled ? "run_cancelled" : "run_failed",
+      message: buildRunFailedMessage(input.runMode, input.cancelled),
+      metadata: {
+        error: input.error,
+        runMode: input.runMode,
+      },
+    });
+  } else {
+    input.logger.info("Run failure superseded by an earlier terminal status", {
+      status: input.status,
+    });
+  }
 
   return { status: input.status };
 }
@@ -1284,12 +1295,13 @@ async function executeWorkflowInner(
         }
       }
     } catch (error) {
+      // Every error escaping a node is that node's failure, and the run carries
+      // on with its siblings. A cancellation never arrives this way: Rova's own
+      // is the flag `settleCancelBoundary` reads, and Inngest stops calling a
+      // cancelled function rather than throwing into it.
       namedNodeLogger.error("Unexpected error executing node", {
         error,
       });
-      if (isCancellationError(error)) {
-        throw error;
-      }
       const errorMessage = await getErrorMessageAsync(error);
       const errorResult = {
         success: false,
@@ -1355,7 +1367,10 @@ async function executeWorkflowInner(
     });
 
     const errorMessage = await getErrorMessageAsync(error);
-    const cancelled = isCancellationError(error);
+    // The flag is the authority here as it is on the success path: a run is
+    // canceled because a Cancel Event claimed it, never because the text of
+    // whatever died happens to contain the word.
+    const cancelled = enteredCanceledBranch;
     const terminalStatus = cancelled ? "canceled" : "failed";
 
     // Same exactly-once treatment as the success path above.

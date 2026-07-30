@@ -370,11 +370,18 @@ async function executeWorkflowRun({
       const failed = Array.isArray(result.failedToSupersede)
         ? result.failedToSupersede.length
         : 0;
-      toast.message(
-        failed > 0
-          ? `Superseded ${result.supersededExecutions} run${result.supersededExecutions === 1 ? "" : "s"} for this entity and started a new one. ${failed} could not be signalled and may still be running.`
-          : `Superseded ${result.supersededExecutions} run${result.supersededExecutions === 1 ? "" : "s"} for this entity and started a new one.`
-      );
+      const superseded = `Superseded ${result.supersededExecutions} run${result.supersededExecutions === 1 ? "" : "s"} for this entity and started a new one.`;
+
+      if (failed > 0) {
+        // A run the engine could not signal keeps going against the entity the
+        // new one is now working on, which is the duplicate work newest-wins
+        // exists to prevent. It reads as routine in the same tone as the success.
+        toast.error(
+          `${superseded} ${failed} could not be signalled and may still be running. Cancel them from the Runs panel.`
+        );
+      } else {
+        toast.success(superseded);
+      }
     }
 
     // Select the new execution

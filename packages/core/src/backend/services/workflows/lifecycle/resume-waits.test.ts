@@ -11,9 +11,10 @@ import {
 import type { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
 import { resumeWaitsMatchingEvent } from "./resume-waits";
 
-const { loggerErrorMock, loggerWarnMock } = vi.hoisted(() => ({
+const { loggerErrorMock, loggerWarnMock, loggerDebugMock } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
   loggerWarnMock: vi.fn(),
+  loggerDebugMock: vi.fn(),
 }));
 
 // Both this module and `wait-match` log through the app logger, and two of the
@@ -23,7 +24,7 @@ vi.mock("#src/backend/lib/logger", () => ({
     error: loggerErrorMock,
     warn: loggerWarnMock,
     info: vi.fn(),
-    debug: vi.fn(),
+    debug: loggerDebugMock,
   }),
 }));
 
@@ -152,6 +153,13 @@ describe("resumeWaitsMatchingEvent", () => {
 
     expect(result).toBe(0);
     expect(sendWaitSignalMock).not.toHaveBeenCalled();
+    // A row with no token can never be woken by an Event, so it is a defect in
+    // whatever wrote it rather than an arrival this run did not want.
+    expect(loggerWarnMock).toHaveBeenCalledTimes(2);
+    expect(loggerWarnMock.mock.calls[0]?.[1]).toMatchObject({
+      waitStateId: "1",
+      executionId: "exec_1",
+    });
   });
 
   it("resumes a match-free subscription on the next occurrence", async () => {
@@ -372,6 +380,17 @@ describe("resumeWaitsMatchingEvent", () => {
 
       expect(result).toBe(0);
       expect(sendWaitSignalMock).not.toHaveBeenCalled();
+      // The stored predicate is the only copy of the rule, so a rejection that
+      // wrote nothing leaves an operator with a count of zero and no way to tell
+      // it from a row the candidate query never returned.
+      expect(loggerDebugMock).toHaveBeenCalledWith(
+        "Wait match rejected an arrival",
+        expect.objectContaining({
+          waitStateId: "1",
+          executionId: "exec_1",
+          eventType: "billing/payment.settled",
+        })
+      );
     });
 
     // A free-entered Event the catalog never heard of parks and wakes the same

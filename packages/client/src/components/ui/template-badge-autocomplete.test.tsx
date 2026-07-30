@@ -348,6 +348,36 @@ describe("Template badge autocomplete", () => {
     });
   });
 
+  // The menu shows about seven rows and ranking keeps every field in it, so a
+  // highlight arrowed past the fold has to be scrolled to. happy-dom implements
+  // no scrollIntoView, so the stub is both the spy and the implementation.
+  it("scrolls the highlighted row into view as the keyboard walks past it", async () => {
+    const scrollIntoView = vi.fn();
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
+      scrollIntoView
+    );
+
+    const view = render(
+      <ControlledTemplateBadgeInput onValueChange={() => {}} />
+    );
+    typeAtSymbol(view.getByRole("textbox"));
+
+    await waitFor(() => expect(menuRows()).toHaveLength(3));
+
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+
+    await waitFor(() => {
+      const scrolled = scrollIntoView.mock.instances.at(-1);
+      expect(scrolled).toBeInstanceOf(HTMLElement);
+      expect((scrolled as HTMLElement).textContent).toContain(
+        "Webhook.amountCents"
+      );
+    });
+
+    vi.restoreAllMocks();
+  });
+
   it("uses currentNodeId for autocomplete when no node is selected in the canvas", async () => {
     surface.actions = [SEND_MESSAGE_ACTION];
     const store = getDefaultStore();

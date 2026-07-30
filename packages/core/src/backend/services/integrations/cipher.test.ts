@@ -26,6 +26,20 @@ describe("assertValidEncryptionKey", () => {
       "64-character hex string"
     );
   });
+
+  // `Buffer.from(x, "hex")` stops at the first non-hex digit rather than
+  // failing, so a key of the right length and the wrong alphabet would build a
+  // short buffer and throw at the first read, where every stored config reads
+  // back empty.
+  it("refuses a 64-character key that is not hexadecimal", () => {
+    expect(() => assertValidEncryptionKey("z".repeat(64))).toThrow(
+      "64-character hex string"
+    );
+    expect(() => assertValidEncryptionKey(`${"a".repeat(63)}g`)).toThrow(
+      "64-character hex string"
+    );
+    expect(() => assertValidEncryptionKey("A".repeat(64))).not.toThrow();
+  });
 });
 
 describe("sealing and opening a config", () => {

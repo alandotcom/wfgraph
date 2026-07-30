@@ -12,6 +12,7 @@ import { getAppLogger } from "#src/backend/lib/logger";
 import type { IntegrationConfig } from "@rova/shared/types/integration";
 
 const ALGORITHM = "aes-256-gcm";
+const KEY_LENGTH = 32;
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
 const ENCRYPTION_KEY_ENV = "INTEGRATION_ENCRYPTION_KEY";
@@ -48,7 +49,10 @@ export function assertValidEncryptionKey(
     );
   }
 
-  if (trimmed.length !== 64) {
+  // The characters matter as much as the count: `Buffer.from(x, "hex")` stops at
+  // the first non-hex digit, so a 64-character key holding one typo builds a
+  // short buffer, and the throw lands at the first seal or open rather than here.
+  if (!isHex(trimmed, KEY_LENGTH)) {
     throw new Error(
       "createRovaApp's encryption.key must be a 64-character hex string (32 bytes)"
     );

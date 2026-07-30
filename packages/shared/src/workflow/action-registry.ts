@@ -4,6 +4,7 @@ import type {
   ActionConfigFieldBase,
 } from "#src/plugins/action-fields";
 import { formatSchemaFailure } from "#src/types/schema-message";
+import { getErrorMessage } from "#src/utils";
 import {
   asStandardSchema,
   isEffectSchema,
@@ -255,11 +256,17 @@ function normalizeRuntimeActionMetadata(
   };
 }
 
+/**
+ * What an action's throw becomes on the node's run-log row.
+ *
+ * The shared reader is used because a handler's throw is often a seam failure
+ * whose own `.message` is empty -- every `Schema.TaggedErrorClass` in the
+ * backend is one -- and a row closed with that alone is a red node with no
+ * sentence beside it.
+ */
 function getActionErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Action execution failed";
+  const message = getErrorMessage(error);
+  return message === "Unknown error" ? "Action execution failed" : message;
 }
 
 /**

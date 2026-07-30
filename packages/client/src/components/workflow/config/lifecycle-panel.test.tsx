@@ -97,20 +97,21 @@ function rulesOf(config: Record<string, unknown>): LifecycleRules {
   return config.lifecycleRules as LifecycleRules;
 }
 
-// Start Events and Cancel Events render one button per catalog Event, so a
-// label alone no longer picks out one: these scope the lookup to the group
-// the picker belongs to.
+// Start Events and Cancel Events render one chip per catalog Event, so a label
+// alone no longer picks out one: these scope the lookup to the group the picker
+// belongs to. A chip reads as its label over its raw name, hence the prefix
+// match rather than the whole accessible name.
 function startEventButton(view: RenderResult, label: string) {
   return within(view.getByRole("group", { name: "Start Events" })).getByRole(
     "button",
-    { name: label }
+    { name: new RegExp(`^${label}`) }
   );
 }
 
 function cancelEventButton(view: RenderResult, label: string) {
   return within(view.getByRole("group", { name: "Cancel Events" })).getByRole(
     "button",
-    { name: label }
+    { name: new RegExp(`^${label}`) }
   );
 }
 
@@ -179,7 +180,7 @@ describe("LifecyclePanel", () => {
       );
 
       fireEvent.click(
-        view.getByRole("button", { name: new RegExp(`^${label}`) })
+        view.getByRole("radio", { name: new RegExp(`^${label}`) })
       );
 
       await waitFor(() => {
@@ -311,7 +312,7 @@ describe("LifecyclePanel Cancel Events", () => {
 describe("LifecyclePanel Correlation Paths", () => {
   // The Event Author declared no path, so the builder supplies one, trimmed and
   // keyed by the Event it belongs to.
-  it("commits a trimmed path on blur", async () => {
+  it("commits a trimmed path as it is typed", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
         startEvents: ["ops/nightly.swept"],
@@ -328,9 +329,11 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    const input = view.getByLabelText("ops/nightly.swept");
-    fireEvent.change(input, { target: { value: " sweep.id " } });
-    fireEvent.blur(input);
+    // No blur: Cmd+S is a capture-phase listener the focused field never sees,
+    // so a value committed only on blur is a value the save does not carry.
+    fireEvent.change(view.getByLabelText("ops/nightly.swept"), {
+      target: { value: " sweep.id " },
+    });
 
     await waitFor(() => {
       expect(rulesOf(latest).correlationPaths).toEqual({

@@ -20,6 +20,7 @@ import {
 import type { JsonObject } from "@rova/shared/types/json";
 import type { StringPath } from "@rova/shared/types/payload-path";
 import {
+  formatSchemaFailure,
   formatSchemaFailurePaths,
   formatStandardIssuePath,
 } from "@rova/shared/types/schema-message";
@@ -126,12 +127,19 @@ export type AnyEventDefinition = EventDefinition<JsonObject>;
  * One type at the seam whichever library described the payload, so the HTTP
  * route turns it into a 400 and the Inngest listener logs it and answers without
  * retrying: a malformed payload does not improve on a second attempt.
+ *
+ * Two strings for two audiences. `error` travels to the sender, which is a third
+ * party across origins, so it names paths and expectations and quotes nothing of
+ * what arrived. `detail` never leaves the process: it carries the bounded
+ * rendering an operator needs to tell a null from a number, since intake stores
+ * no payload on a refusal and there is no artifact to go back to.
  */
 export class PayloadRejected extends Schema.TaggedErrorClass<PayloadRejected>()(
   "PayloadRejected",
   {
     eventName: Schema.String,
     error: Schema.String,
+    detail: Schema.String,
   }
 ) {}
 
@@ -160,8 +168,8 @@ function buildPayloadGate(
   authored: PayloadSchema<unknown>,
   bridged: StandardSchema<unknown>
 ): (payload: unknown) => Effect.Effect<void, PayloadRejected> {
-  const reject = (error: string) =>
-    Effect.fail(new PayloadRejected({ eventName, error }));
+  const reject = (error: string, detail: string = error) =>
+    Effect.fail(new PayloadRejected({ eventName, error, detail }));
 
   // An Effect schema is decoded directly for the message rather than for the
   // options: the bridge's defaults are these defaults, but `~standard.validate`
@@ -174,15 +182,18 @@ function buildPayloadGate(
       decode(payload).pipe(
         Effect.asVoid,
         Effect.catchTag("SchemaError", (failure) =>
-          reject(formatSchemaFailurePaths(failure.issue))
+          reject(
+            formatSchemaFailurePaths(failure.issue),
+            formatSchemaFailure(failure.issue)
+          )
         )
       );
   }
 
-  // A foreign library's own validate, whose messages are its own. They are joined
-  // by path rather than passed through whole: this string is answered over HTTP
-  // and written to the log, and a library free to quote the value it rejected
-  // would put a payload in both.
+  // A foreign library's own validate, whose messages are its own. The answer is
+  // joined by path rather than passed through whole, because a library free to
+  // quote the value it rejected would put a payload in the reply. The operator's
+  // string keeps each library's own message, since it never leaves the process.
   return (payload) =>
     Effect.suspend<void, PayloadRejected, never>(() => {
       const result = bridged["~standard"].validate(payload);
@@ -200,7 +211,15 @@ function buildPayloadGate(
       const paths = uniq(
         result.issues.map((issue) => formatStandardIssuePath(issue.path))
       ).join(", ");
-      return reject(`Payload does not fit this Event at: ${paths}`);
+      const detail = result.issues
+        .map(
+          (issue) => `${formatStandardIssuePath(issue.path)}: ${issue.message}`
+        )
+        .join("; ");
+      return reject(
+        `Payload does not fit this Event at: ${paths}`,
+        `Payload does not fit this Event: ${detail}`
+      );
     });
 }
 

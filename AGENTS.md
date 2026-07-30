@@ -368,6 +368,25 @@ rows are written by `WorkflowRepo` in the same transaction as the graph, and the
 re-reads a workflow's rules before acting, so a row that outlives the role it was written for
 costs a wasted read and nothing else.
 
+**Opening a run is idempotent per arrival, and the send is the only irreversible step.** The
+lifecycle fan-out runs inside an Inngest step, whose retry re-runs the whole start, so
+`workflow_executions.delivery_id` carries the arrival and a unique index on
+`(workflow_id, delivery_id)` holds it to one row. `startForEntity` answers with the row this
+arrival already opened rather than joining a second beside it, and `sendRunRequested`'s
+`workflow-run-${executionId}` key then makes the re-send a no-op at Inngest. Around that
+send, `enqueueStartedRun` reads in one direction: before it a refused enqueue signals the run
+to stop and closes the row, because the in-flight guard on that close defers to a terminal
+status and would otherwise relabel a run Inngest took a moment ago; after it `markEnqueued`
+and the `run_started` row are bookkeeping, and a refused write is a log line rather than a
+failure, since failing would retry a step that enqueues nothing new.
+
+`enqueued_at` is what that stamp writes, and it is how a row the bus was never told about is
+recognisable. A crash between the commit and the send used to leave first-wins deferring to
+that row for the life of the entity; now the next start for the entity closes any in-flight
+row unstamped for longer than `UNSENT_RUN_GRACE_MS`, records it as `failed` with the reason,
+and signals it through `announceReclaimedRuns`, because the same stamp can go missing on a
+run Inngest really did take.
+
 `listEventSubscribers` asks two questions per arrival: which workflows name this Event as a
 start in the graph they hold now, from that index, and which runs are still parked on it, from
 `workflow_wait_states.subscribed_events` -- the names the row was written with, so an edit to
@@ -409,6 +428,22 @@ resumes on the next occurrence of the Event. At park time the run-side values in
 match are resolved to literals and compiled to a CEL string on the row, because a compiled
 string and a literal both survive the JSONB round trip and Inngest's memoization where a
 re-resolved template would not.
+
+A match whose operands are still blank is held where the Condition node's empty expression is
+held, and for the same reason: "Add a match" seeds a rule with an empty value, so refusing it
+at save would refuse the editor's own default on every autosave until a builder typed one.
+`ConditionCompileResult` carries `incomplete` to name that class of failure --- a blank text
+box, a number field holding nothing, a timestamp with no amount or date ---
+`workflow-conditions-validation.ts` skips it, and `getWaitMissingRequiredFields` in
+`action-config-validation.ts` reports it, which puts the refusal in preflight and the issue on
+the node in the editor. Nothing parks on it: a match comparing against the empty string wakes
+on no arrival, and the run would hold until its timeout with no sentence anywhere.
+
+The Wait node's output is what both modes leave behind (`waitType`, `timedOut`, `resumedAt`)
+plus, for an event wait, the arriving Event's own payload at `payload`. `executeEventWait`
+unwraps the `workflow/wait.signal` envelope `step.waitForEvent` resolves to, so a builder
+writes `payload.orderId` rather than reaching through Rova's transport, and `built-ins.ts` is
+where that list is declared --- the Wait is the one node with no output schema behind it.
 
 `POST /api/workflows/waits/:token/resume` survives as a resume path and stops being a wait
 mode. Every event wait gets a generated `resume_token`, since Inngest's `ifExpression`
@@ -473,7 +508,11 @@ means, and `NewAuditEvent` in `executions/repo/contracts.ts` requires an executi
 other type. A refusal is
 first-wins Concurrency finding a run already going, a payload with nothing at the Correlation
 Path, or a manual start the rules disallow; a paused workflow is not one of them, because that
-path writes a terminal Execution and shows up in the runs list.
+path writes a terminal Execution and shows up in the runs list. `cancel_not_delivered` is the
+other member of that list and the mirror on the cancel role: an arriving Cancel Event whose
+payload carries nothing at the Correlation Path claims no run, and `deliver-event.ts` writes the
+row rather than returning early, because a cancel that reached nothing is exactly as invisible
+as a start that was declined.
 
 **An Execution's statuses live in one list.** `WORKFLOW_EXECUTION_STATUSES` in
 `packages/shared/src/workflow/execution-contracts.ts` is where the column's type, the RPC
@@ -758,6 +797,19 @@ or `CREATE TABLE` of the same name, it fails the losers on a unique violation in
 `pg_namespace` or `pg_type`, so replicas starting together used to crash all but the first.
 The lock is session-scoped, which is why the migration pool is one connection: that is what
 puts the lock and the statements it guards on the same session.
+
+**The SQL is found by package, and the journal is append-only.** `rovaMigrationsDir` walks
+up from `import.meta.url` to the manifest naming `@rova/core` and joins `drizzle` onto it,
+so the answer holds in this tree and in a published `dist/` alike. Counting `..` segments
+used to reach the adopter's own drizzle-kit folder in a flat `node_modules`, and Rova would
+then apply their migrations on the connection carrying its search_path and its advisory
+lock. Before applying anything, `assertJournalHashesAreOurs` holds every hash in
+`<schema>.__drizzle_migrations` to one this build ships: drizzle decides what to run by
+folder timestamp and compares no hashes, so a regenerated baseline would re-run
+`CREATE TABLE` on every database that ran the old one and die on a duplicate relation. The
+guard answers with the remedy instead, which is dropping the schema.
+`db/migrations-sql.test.ts` pins the journal's first two entries so a regeneration is a
+deliberate act rather than a side effect.
 
 Two consequences of unqualified tables, worth knowing before touching this. First, drizzle-kit
 can no longer be told where the tables are: `push` offers to drop whichever schema it was

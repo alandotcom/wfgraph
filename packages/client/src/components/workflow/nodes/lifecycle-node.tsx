@@ -17,11 +17,15 @@ import {
   readLifecycleRules,
 } from "@rova/shared/workflow/lifecycle-rules";
 
-// Handle offsets mirror the condition-branch pattern on the Action node: two
-// bottom handles split left/right rather than stacked, so both stay reachable
-// for a drag.
-const STARTED_HANDLE_LEFT = "38%";
-const CANCELED_HANDLE_LEFT = "62%";
+// Two bottom handles split left/right rather than stacked, so both stay
+// reachable for a drag, and each carries a label chip centred on it.
+//
+// The percentages are of this card's own 192px width (`w-48` below), which is
+// half the Action node's: its 38/62 split leaves 46px between the two centres,
+// and the two chips together measure wider than that. A quarter either side of
+// centre gives them 96px.
+const STARTED_HANDLE_LEFT = "25%";
+const CANCELED_HANDLE_LEFT = "75%";
 
 type LifecycleNodeProps = NodeProps & {
   data?: WorkflowNodeData;

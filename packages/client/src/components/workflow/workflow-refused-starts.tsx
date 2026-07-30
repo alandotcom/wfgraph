@@ -1,5 +1,6 @@
 import { Ban } from "lucide-react";
 import type { RefusedStart } from "#src/lib/execution-logs";
+import { getRelativeTime } from "@rova/shared/utils/time";
 
 /**
  * The Refused Starts: arrivals this workflow declined, which have no run to be
@@ -36,8 +37,14 @@ export function WorkflowRefusedStarts({
             key={refusal.id}
           >
             <p className="text-foreground text-xs">{refusal.message}</p>
-            <p className="shrink-0 text-muted-foreground text-xs tabular-nums">
-              {refusal.createdAt.toLocaleTimeString()}
+            {/* Relative, like the runs listed under this block: refusals are
+                not capped to today, and a bare clock time reads as recent for
+                one that happened last week. */}
+            <p
+              className="shrink-0 text-muted-foreground text-xs tabular-nums"
+              title={refusal.createdAt.toLocaleString()}
+            >
+              {getRelativeTime(refusal.createdAt)}
             </p>
           </div>
         ))}

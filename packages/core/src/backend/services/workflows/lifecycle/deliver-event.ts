@@ -193,7 +193,34 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       // A cancel matches by Entity Value and has nothing else to match on, so a
       // payload carrying none reaches no run. The save rules require a path for
       // every Cancel Event, which is what makes this the payload's own gap.
+      //
+      // The row is what a Refused Start gets for the same reason: without it the
+      // builder watches the runs carry on and finds nothing anywhere saying the
+      // cancel was refused.
       if (!entityValue) {
+        const executionRepo = yield* ExecutionRepo;
+        yield* executionRepo.recordAuditEvent({
+          workflowId: workflow.id,
+          eventType: "cancel_not_delivered",
+          message: `Cancel from ${input.event.name} reached no run: nothing at this workflow's Correlation Path`,
+          metadata: {
+            reason: "entity_value_missing",
+            eventName: input.event.name,
+            correlationPath: resolveCorrelationPath({
+              rules,
+              eventName: input.event.name,
+              declaredPath: input.event.correlationPath,
+            }),
+            deliveryId: input.deliveryId,
+            runMode: workflow.mode,
+          },
+        });
+
+        yield* logger.info("Cancel refused", {
+          reason: "entity_value_missing",
+          deliveryId: input.deliveryId,
+        });
+
         return {
           kind: "refused" as const,
           workflowId: workflow.id,

@@ -328,13 +328,18 @@ describe("applyLifecycleRules", () => {
     );
 
     // A cancel matches by Entity Value and has nothing else to match on, so a
-    // payload carrying none reaches no run at all.
+    // payload carrying none reaches no run at all. The row is what a Refused
+    // Start gets, and for the same reason: without it the builder watches the
+    // runs carry on with nothing anywhere saying the cancel was refused.
     it.effect("refuses a cancel whose payload carries no Entity Value", () =>
       Effect.gen(function* () {
+        const recorded: unknown[] = [];
+
         const outcome = yield* applyLifecycleRules({
           subscriber: subscriber({ roles: ["cancel"] }),
           event: appointmentCanceled,
           payload: { appointment: {} },
+          deliveryId: "evt_arrival",
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
@@ -342,7 +347,14 @@ describe("applyLifecycleRules", () => {
                 findById: () =>
                   Effect.succeed(createWorkflow({ rules: cancelRules })),
               }),
-              unreachedRunSeams
+              stubExecutionRepo({
+                recordAuditEvent: (input) =>
+                  Effect.sync(() => {
+                    recorded.push(input);
+                  }),
+              }),
+              stubInngestClient(),
+              stubIntegrationRepo()
             )
           )
         );
@@ -353,6 +365,21 @@ describe("applyLifecycleRules", () => {
           reason: "entity_value_missing",
         });
         assert.strictEqual(requestCanceledOutletMock.mock.calls.length, 0);
+        assert.deepStrictEqual(recorded, [
+          {
+            workflowId: "wf_1",
+            eventType: "cancel_not_delivered",
+            message:
+              "Cancel from app/appointment.canceled reached no run: nothing at this workflow's Correlation Path",
+            metadata: {
+              reason: "entity_value_missing",
+              eventName: "app/appointment.canceled",
+              correlationPath: "appointment.id",
+              deliveryId: "evt_arrival",
+              runMode: "live",
+            },
+          },
+        ]);
       })
     );
 

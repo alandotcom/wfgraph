@@ -4,6 +4,7 @@ import type {
   ExecutionRepo,
   WorkflowExecution,
 } from "#src/backend/services/workflows/executions/repo/index";
+import { DatabaseError } from "#src/backend/lib/effect/database";
 import { InngestError } from "#src/backend/lib/effect/inngest-client";
 import {
   makeRecordingLogger,
@@ -25,6 +26,8 @@ function createExecution(
     id: "exec_1",
     workflowId: "wf_1",
     workflowRunId: null,
+    deliveryId: null,
+    enqueuedAt: null,
     status: "running",
     startSource: "event",
     runMode: "live",
@@ -146,7 +149,7 @@ describe("enqueueStartedRun", () => {
           Effect.provide(
             Layer.mergeAll(
               stubExecutionRepo({
-                setRunId: (input) =>
+                markEnqueued: (input) =>
                   Effect.sync(() => {
                     calls.runIds.push(input);
                   }),
@@ -178,8 +181,8 @@ describe("enqueueStartedRun", () => {
           closed: [] as Array<{ executionId: string; error: string }>,
         };
 
-        // `setRunId` is left refusing: there is no run id to store, and writing
-        // one would be the bug.
+        // `markEnqueued` is left refusing: no run reached the bus, and stamping
+        // one as though it had would be the bug.
         const failure = yield* enqueueStartedRun({
           workflow: runTarget,
           start: { source: "event" },
@@ -203,6 +206,7 @@ describe("enqueueStartedRun", () => {
                       cause: new Error("inngest dev server unreachable"),
                     })
                   ),
+                sendCancelRequested: () => Effect.succeed({ eventId: "c_1" }),
               })
             )
           ),
@@ -243,6 +247,7 @@ describe("enqueueStartedRun", () => {
                 stubInngestClient({
                   sendRunRequested: () =>
                     Effect.fail(new InngestError({ cause: "connection lost" })),
+                  sendCancelRequested: () => Effect.succeed({ eventId: "c_1" }),
                 })
               )
             ),
@@ -280,6 +285,7 @@ describe("enqueueStartedRun", () => {
                   Effect.fail(
                     new InngestError({ cause: new Error("gateway timeout") })
                   ),
+                sendCancelRequested: () => Effect.succeed({ eventId: "c_1" }),
               }),
               recorder.layer
             )
@@ -295,6 +301,100 @@ describe("enqueueStartedRun", () => {
           },
         ]);
       })
+    );
+
+    // The in-flight guard on the close defers to a terminal status and nothing
+    // more, so a run Inngest accepted a moment ago is `running` and the close
+    // would relabel a live run. The cancel is what makes it true.
+    serviceIt.effect("tells the run to stop before closing its row", () =>
+      Effect.gen(function* () {
+        const order: string[] = [];
+
+        yield* enqueueStartedRun({
+          workflow: runTarget,
+          start: { source: "event", eventName: "app/appointment.created" },
+          executionId: "exec_1",
+          runMode: "live",
+          payload: {},
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubExecutionRepo({
+                markEnqueueFailed: () =>
+                  Effect.sync(() => {
+                    order.push("close");
+                    return true;
+                  }),
+              }),
+              stubInngestClient({
+                sendRunRequested: () =>
+                  Effect.fail(
+                    new InngestError({ cause: new Error("gateway timeout") })
+                  ),
+                sendCancelRequested: () =>
+                  Effect.sync(() => {
+                    order.push("cancel");
+                    return { eventId: "c_1" };
+                  }),
+              })
+            )
+          ),
+          Effect.flip
+        );
+
+        assert.deepStrictEqual(order, ["cancel", "close"]);
+      })
+    );
+
+    // The enqueue is irreversible, so failing here would put the caller's Inngest
+    // step into a retry that enqueues nothing new and re-runs everything around
+    // it -- which is how one arrival used to open two Executions.
+    serviceIt.effect(
+      "reports the run as started when the writes after the send are refused",
+      () =>
+        Effect.gen(function* () {
+          const recorder = makeRecordingLogger();
+
+          const started = yield* enqueueStartedRun({
+            workflow: runTarget,
+            start: { source: "event", deliveryId: "dlv_1" },
+            executionId: "exec_1",
+            runMode: "live",
+            payload: {},
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubExecutionRepo({
+                  markEnqueued: () =>
+                    Effect.fail(
+                      new DatabaseError({ cause: new Error("connection lost") })
+                    ),
+                  recordAuditEvent: () =>
+                    Effect.fail(
+                      new DatabaseError({ cause: new Error("connection lost") })
+                    ),
+                }),
+                stubInngestClient({
+                  sendRunRequested: () => Effect.succeed({ eventId: "evt_1" }),
+                }),
+                recorder.layer
+              )
+            )
+          );
+
+          assert.deepStrictEqual(started, {
+            executionId: "exec_1",
+            runId: "evt_1",
+            runMode: "live",
+          });
+          assert.deepStrictEqual(
+            recorder.lines.map((line) => line.message),
+            [
+              "The run is enqueued, but the database refused to record that the bus took the run",
+              "The run is enqueued, but the database refused to write the run's opening timeline entry",
+            ]
+          );
+        })
     );
   });
 });

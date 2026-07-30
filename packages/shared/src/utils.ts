@@ -93,11 +93,17 @@ export function getErrorMessage(error: unknown): string {
 
   // Handle Error instances (and their subclasses)
   if (error instanceof Error) {
+    // A `Schema.TaggedErrorClass` declares no message field, so its `.message`
+    // is the empty string and its `.name` is the tag. Falling back to the name
+    // is what keeps a run-log row and a terminal record a sentence rather than
+    // a blank, on both sides of the colon.
+    const message = error.message || error.name;
+
     // Some errors have a cause property with more details
-    if (error.cause && error.cause instanceof Error) {
-      return `${error.message}: ${error.cause.message}`;
+    if (error.cause instanceof Error) {
+      return `${message}: ${error.cause.message || error.cause.name}`;
     }
-    return error.message;
+    return message;
   }
 
   // Handle strings

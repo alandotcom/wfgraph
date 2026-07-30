@@ -11,6 +11,11 @@ import "@rova/plugins/ui";
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 import "#src/routes/globals.css";
+import {
+  CatalogLoading,
+  CatalogUnavailable,
+} from "#src/components/catalog-boot";
+import { getBasePath } from "#src/lib/base-path";
 import { queryClient } from "#src/lib/query-client";
 import { hydrateExtensionsFromApi } from "#src/lib/extensions";
 import { router } from "./router";
@@ -83,8 +88,6 @@ const suppressResizeObserverLoopErrors = () => {
 patchResizeObserver();
 suppressResizeObserverLoopErrors();
 
-await hydrateExtensionsFromApi();
-
 const rootElement = document.getElementById("root");
 if (!rootElement) {
   throw new Error("Root element not found");
@@ -92,8 +95,24 @@ if (!rootElement) {
 
 const root = createRoot(rootElement);
 
+// Painted before the catalog request goes out, so the wait for it is a screen
+// rather than a blank document. The editor draws nothing until it knows what a
+// workflow can do, and a failed fetch takes the router's place: an editor drawn
+// from a catalog that never arrived tells a builder their server declares no
+// Events, which is a lie about somebody else's code.
+root.render(<CatalogLoading />);
+
+const catalogLoad = await hydrateExtensionsFromApi();
+
 root.render(
-  <QueryClientProvider client={queryClient}>
-    <RouterProvider router={router} />
-  </QueryClientProvider>
+  catalogLoad.ok ? (
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  ) : (
+    <CatalogUnavailable
+      endpoint={`${getBasePath()}/api/extensions`}
+      reason={catalogLoad.reason}
+    />
+  )
 );

@@ -62,9 +62,11 @@ function createInngestClient(
 
   return new Inngest({
     id,
-    // v4 runs in cloud mode by default and demands a signing key there, so the
-    // dev loop has to say so rather than fall into it.
-    isDev: config.isDev ?? process.env.NODE_ENV !== "production",
+    // Cloud mode is what makes the SDK verify a callback signature at all, so a
+    // host opts into the unsigned dev loop by hand and nothing infers it for
+    // them. Passing the option through undefined leaves the SDK's own
+    // `INNGEST_DEV` fallback reachable, which is the only other way in.
+    isDev: config.isDev,
     baseUrl: config.baseUrl ?? getInngestBaseUrl(),
     eventKey: config.eventKey ?? process.env.INNGEST_EVENT_KEY,
     env: config.env ?? process.env.INNGEST_ENV,
@@ -76,21 +78,35 @@ function createInngestClient(
 
 /**
  * `/api/inngest` sits outside the host's auth gate because Inngest signs its
- * callbacks. That holds only with a signing key configured; without one the SDK
- * runs in dev mode and skips verification, leaving an anonymous POST able to
- * execute a workflow function with a payload of its choosing.
+ * callbacks. The SDK's own gate is the resolved mode: it returns success from
+ * `validateSignature` without a check whenever the client is not in cloud mode,
+ * so dev mode leaves an anonymous POST able to execute a workflow function with
+ * a graph and a payload of its choosing. This reads that same resolved value off
+ * the client rather than re-deriving it, so the warning and the gate cannot
+ * disagree.
  *
  * A log rather than a refusal, because local development legitimately runs
- * unsigned against `inngest dev` and the check that would tell them apart is the
- * same environment-variable guess that made the auth option unreliable.
+ * unsigned against `inngest dev`.
  */
-function reportInngestCallbackExposure(signingKey: string | undefined): void {
+function reportInngestCallbackExposure(
+  mode: Inngest["mode"],
+  signingKey: string | undefined
+): void {
+  const logger = getAppLogger("inngest");
+
+  if (mode === "dev") {
+    logger.error(
+      "The Inngest callback at /api/inngest is unsigned: the client is in dev mode, where the SDK verifies no signature, so the route will execute a request from anyone who can reach it. Leave inngest.isDev unset, and INNGEST_DEV out of the environment, for any deployment that is not a local dev loop."
+    );
+    return;
+  }
+
   if (typeof signingKey === "string" && signingKey.trim()) {
     return;
   }
 
-  getAppLogger("inngest").error(
-    "The Inngest callback at /api/inngest is unsigned: no inngest.signingKey is configured, so it will accept and execute a request from anyone who can reach it. Set a signing key for any deployment that is not a local dev loop."
+  logger.error(
+    "The Inngest callback at /api/inngest has no signing key: in cloud mode the SDK refuses every callback it cannot verify, so no function will run. Set inngest.signingKey or INNGEST_SIGNING_KEY."
   );
 }
 
@@ -126,7 +142,7 @@ export function createInngestSurface(
 ): InngestSurface {
   const signingKey = config.signingKey ?? process.env.INNGEST_SIGNING_KEY;
   const client = createInngestClient(config, signingKey);
-  reportInngestCallbackExposure(signingKey);
+  reportInngestCallbackExposure(client.mode, signingKey);
 
   const registry = createInngestFunctionRegistry(client);
 

@@ -15,6 +15,8 @@ function execution(id: string, status: WorkflowExecution["status"]) {
     id,
     workflowId: "wf_1",
     workflowRunId: null,
+    deliveryId: null,
+    enqueuedAt: null,
     status,
     startSource: "event" as const,
     runMode: "live" as const,

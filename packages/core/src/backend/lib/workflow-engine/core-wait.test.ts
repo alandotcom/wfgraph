@@ -11,6 +11,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { JsonObject } from "@rova/shared/types/json";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
+import { resolveOutputPath } from "@rova/shared/workflow/node-references";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 import { executeWorkflow } from "./core";
 import {
@@ -114,6 +115,27 @@ function matchOn(field: string, value: string): string {
       },
     ],
   });
+}
+
+/**
+ * A resume as `resume-waits.ts` sends it: an Inngest event whose `data` is the
+ * `workflow/wait.signal` envelope, with the arriving Event's payload inside it.
+ * The nesting is what the node's output has to strip.
+ */
+function waitResumeSignal(payload: JsonObject) {
+  return {
+    name: "workflow/wait.signal",
+    id: "evt_signal",
+    ts: 0,
+    data: {
+      executionId: "exec_wait",
+      nodeId: "wait_1",
+      token: "token_1",
+      eventType: "billing/payment.settled",
+      signalType: "wait-resume",
+      payload,
+    },
+  };
 }
 
 /**
@@ -261,7 +283,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      resumeEvent: { data: { approved: true } },
+      resumeEvent: waitResumeSignal({ approved: true }),
     });
     const result = await execution;
 
@@ -269,7 +291,7 @@ describe("wait node - event mode", () => {
     expect(waitOutput(result)).toMatchObject({
       waitType: "event",
       timedOut: false,
-      payload: { data: { approved: true } },
+      payload: { approved: true },
     });
 
     const resumeToken = store.callsOf("createWaitState")[0]?.resumeToken;
@@ -289,6 +311,47 @@ describe("wait node - event mode", () => {
       waitType: "event",
     });
     expect(store.callsOf("markWaitStateStatus")[0]?.status).toBe("resumed");
+  });
+
+  // The node output is the arriving Event's payload and nothing of the signal
+  // envelope that carried it, which is what makes `payload.<field>` the path the
+  // catalog's field list promises rather than `payload.data.payload.<field>`.
+  it("outputs the arriving Event's payload without the signal envelope", async () => {
+    const { execution } = runWait({
+      config: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      store,
+      resumeEvent: waitResumeSignal({ orderId: "ord_7" }),
+    });
+    const result = await execution;
+
+    expect(waitOutput(result).payload).toEqual({ orderId: "ord_7" });
+
+    // The path the catalog offers for this node, walked the way a template and
+    // the condition builder walk it.
+    const nodeOutput = result.outputs.wait_1?.data ?? null;
+    expect(resolveOutputPath(nodeOutput, "payload.orderId")).toBe("ord_7");
+    expect(resolveOutputPath(nodeOutput, "waitType")).toBe("event");
+  });
+
+  // A resume that carried no payload still answers an object, so a template
+  // reaching into it resolves to nothing rather than failing the node.
+  it("outputs an empty payload when the signal carried none", async () => {
+    const { execution } = runWait({
+      config: {
+        waitMode: "event",
+        waitFor: [{ event: "billing/payment.settled" }],
+        waitTimeout: "7d",
+      },
+      store,
+      resumeEvent: { data: { signalType: "wait-resume" } },
+    });
+    const result = await execution;
+
+    expect(waitOutput(result).payload).toEqual({});
   });
 
   // A Cancel Event wakes a parked run through the same envelope. The wake closes

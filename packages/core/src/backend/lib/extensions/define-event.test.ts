@@ -246,6 +246,25 @@ describe("the intake gate", () => {
       "event: Expected string; appointment.priority: Missing key"
     );
   });
+
+  // Intake stores no payload on a refusal, so the operator's only artifact is
+  // the log line. It carries the bounded rendering, which is what tells a null
+  // from a number; the answer to the sender still quotes nothing.
+  it("carries a bounded rendering for the log beside the paths-only answer", () => {
+    const rejected = Effect.runSync(
+      appointmentCreated
+        .decodePayload({ event: 7, appointment: { id: "appt_1" } })
+        .pipe(
+          Effect.match({
+            onSuccess: () => undefined,
+            onFailure: (failure) => failure,
+          })
+        )
+    );
+
+    expect(rejected?.detail).toContain("7");
+    expect(rejected?.error).not.toContain("7");
+  });
 });
 
 /**
@@ -333,5 +352,22 @@ describe("the intake gate over a foreign schema", () => {
 
     expect(error).toBe("Payload does not fit this Event at: appointment.id");
     expect(error).not.toContain("was 7");
+  });
+
+  // The library's own message never leaves the process, so the log keeps it: for
+  // a foreign schema it is the only statement of what was expected.
+  it("keeps the library's own message on the operator-facing string", () => {
+    const rejected = Effect.runSync(
+      foreignEvent.decodePayload({ appointment: { id: 7 } }).pipe(
+        Effect.match({
+          onSuccess: () => undefined,
+          onFailure: (failure) => failure,
+        })
+      )
+    );
+
+    expect(rejected?.detail).toBe(
+      "Payload does not fit this Event: appointment.id: must be a string, was 7"
+    );
   });
 });

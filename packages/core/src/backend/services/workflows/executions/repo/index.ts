@@ -1,5 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
+import { partition } from "es-toolkit";
 import {
   workflowExecutionEvents,
   workflowExecutionLogs,
@@ -34,6 +35,66 @@ import type {
 export * from "#src/backend/services/workflows/executions/repo/contracts";
 
 /**
+ * How long a run may sit with its row committed and `enqueued_at` unstamped
+ * before the next start for its entity treats it as one the bus was never told
+ * about.
+ *
+ * The send follows the commit by milliseconds, so anything still unstamped after
+ * this had its process die in between. The window is generous because the cost of
+ * being wrong is a live run stamped `failed`, which is why the caller signals a
+ * reclaimed run to stop rather than only relabelling it.
+ */
+export const UNSENT_RUN_GRACE_MS = 5 * 60 * 1000;
+
+/** The sentence run history carries for a run that never reached the bus. */
+export const UNSENT_RUN_RECLAIM_REASON =
+  "The run was opened but never reached the bus, so a later start for this entity closed it";
+
+function isStuckBeforeTheBus(row: {
+  enqueuedAt: Date | null;
+  startedAt: Date;
+}): boolean {
+  return (
+    row.enqueuedAt === null &&
+    Date.now() - row.startedAt.getTime() > UNSENT_RUN_GRACE_MS
+  );
+}
+
+/**
+ * Closes the rows a crash left between their commit and the send, answering the
+ * ones this call closed.
+ *
+ * The in-flight guard is what keeps a run that woke up and finished in the
+ * meantime from being overwritten.
+ */
+async function reclaimStuckRuns(
+  tx: RovaTransaction,
+  executionIds: string[]
+): Promise<string[]> {
+  if (executionIds.length === 0) {
+    return [];
+  }
+
+  const reclaimed = await tx
+    .update(workflowExecutions)
+    .set({
+      status: "failed",
+      waitingAt: null,
+      completedAt: new Date(),
+      error: UNSENT_RUN_RECLAIM_REASON,
+    })
+    .where(
+      and(
+        inArray(workflowExecutions.id, executionIds),
+        inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES])
+      )
+    )
+    .returning({ id: workflowExecutions.id });
+
+  return reclaimed.map((row) => row.id);
+}
+
+/**
  * The two methods that touch more than one table in one transaction, which is
  * the reason `ExecutionRepo` is one service rather than four: `startForEntity`
  * writes `workflow_executions` and `workflow_wait_states` inside one advisory
@@ -50,6 +111,10 @@ type CrossTableRepoMethods = {
    * and both start, which the compare-and-set on the displaced rows cannot
    * catch. `unlimited` compares nothing, so it takes no lock and inserts
    * straight away.
+   *
+   * Idempotent per arrival: a row this delivery already opened is answered with
+   * rather than joined by a second, because the caller is an Inngest step whose
+   * retry re-runs this whole call.
    *
    * The Inngest sends stay outside: this answers what the rows now say, and the
    * caller tells the bus about it.
@@ -112,6 +177,24 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
           supersededReason,
         }) =>
           database.query(async (db) => {
+            const findByDelivery = async (
+              tx: RovaDatabase | RovaTransaction
+            ) => {
+              if (!execution.deliveryId) {
+                return undefined;
+              }
+
+              return await tx.query.workflowExecutions.findFirst({
+                where: and(
+                  eq(workflowExecutions.workflowId, execution.workflowId),
+                  eq(workflowExecutions.deliveryId, execution.deliveryId)
+                ),
+              });
+            };
+
+            // Whatever status the arrival's own row is in, it is the answer:
+            // the run may have finished while the step was being retried, and
+            // opening a second one would run the graph twice for one Event.
             const insertRunning = async (
               tx: RovaDatabase | RovaTransaction
             ) => {
@@ -124,18 +207,30 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                   runMode: execution.runMode,
                   triggerEventType: execution.triggerEventType,
                   correlationKey: execution.correlationKey,
+                  deliveryId: execution.deliveryId,
                   input: execution.input,
+                })
+                .onConflictDoNothing({
+                  target: [
+                    workflowExecutions.workflowId,
+                    workflowExecutions.deliveryId,
+                  ],
                 })
                 .returning();
 
-              return row;
+              // The conflict fires when two attempts at one arrival reach here
+              // together, which the advisory lock cannot serialize because
+              // `unlimited` takes none.
+              return row ?? (await findByDelivery(tx));
             };
 
             if (concurrency === "unlimited" || !entityValue) {
+              const opened = await insertRunning(db);
               return {
                 status: "started" as const,
-                execution: await insertRunning(db),
+                execution: opened,
                 supersededExecutionIds: [],
+                reclaimedExecutionIds: [],
               };
             }
 
@@ -151,8 +246,24 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 sql`select pg_advisory_xact_lock(hashtext(${`rova:entity:${execution.workflowId}`}), hashtext(${entityValue}))`
               );
 
+              // Asked before Concurrency is, because this arrival's own row is
+              // not a run to defer to or displace. It is this call's answer.
+              const own = await findByDelivery(tx);
+              if (own) {
+                return {
+                  status: "started" as const,
+                  execution: own,
+                  supersededExecutionIds: [],
+                  reclaimedExecutionIds: [],
+                };
+              }
+
               const inFlight = await tx
-                .select({ id: workflowExecutions.id })
+                .select({
+                  id: workflowExecutions.id,
+                  enqueuedAt: workflowExecutions.enqueuedAt,
+                  startedAt: workflowExecutions.startedAt,
+                })
                 .from(workflowExecutions)
                 .where(
                   and(
@@ -165,16 +276,31 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                   )
                 );
 
+              let reclaimedExecutionIds: string[] = [];
+
               if (inFlight.length > 0 && concurrency === "first-wins") {
-                return {
-                  status: "refused" as const,
-                  inFlightExecutionIds: inFlight.map((row) => row.id),
-                };
+                const [unsent, live] = partition(inFlight, (row) =>
+                  isStuckBeforeTheBus(row)
+                );
+
+                if (live.length > 0) {
+                  return {
+                    status: "refused" as const,
+                    inFlightExecutionIds: live.map((row) => row.id),
+                  };
+                }
+
+                reclaimedExecutionIds = await reclaimStuckRuns(
+                  tx,
+                  unsent.map((row) => row.id)
+                );
               }
 
               let supersededExecutionIds: string[] = [];
 
-              if (inFlight.length > 0) {
+              // Newest-wins only. First-wins either deferred to the runs it
+              // found or reclaimed them above, and displaces nothing.
+              if (inFlight.length > 0 && concurrency !== "first-wins") {
                 const ids = inFlight.map((row) => row.id);
                 const now = new Date();
 
@@ -218,6 +344,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 status: "started" as const,
                 execution: await insertRunning(tx),
                 supersededExecutionIds,
+                reclaimedExecutionIds,
               };
             });
           }),

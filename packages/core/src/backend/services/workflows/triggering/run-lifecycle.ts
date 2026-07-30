@@ -1,7 +1,15 @@
 import { Effect } from "effect";
-import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { InngestClient } from "#src/backend/lib/effect/inngest-client";
+import {
+  AppLogger,
+  type EffectLogger,
+} from "#src/backend/lib/effect/app-logger";
+import type { DatabaseError } from "#src/backend/lib/effect/database";
+import {
+  InngestClient,
+  type InngestError,
+} from "#src/backend/lib/effect/inngest-client";
 import type { RunScopedAuditEventType } from "#src/backend/lib/workflow-audit";
+import { signalRunToStop } from "#src/backend/services/workflows/executions/end-runs";
 import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
 import type { JsonObject } from "@rova/shared/types/json";
 import type {
@@ -151,12 +159,18 @@ const loggerFor = (workflowId: string) =>
 
 /**
  * Tells the bus about a run whose row already exists, and records the timeline
- * entry. A refused enqueue marks the row as errored before the failure travels
- * on, so a run is never left sitting in "running" with nothing behind it.
+ * entry.
  *
  * The row is opened by `ExecutionRepo.startForEntity`, under the lock that makes
  * Concurrency a decision rather than a race, and the send stays out here because
  * a transaction has no business waiting on Inngest.
+ *
+ * The send is the only step here that may fail the caller, and the ordering says
+ * why. Before it, nothing irreversible has happened, so a compensation can close
+ * the row. After it the run exists and this call is bookkeeping, so a refused
+ * write is logged and the run is reported as started: failing would put the
+ * caller's Inngest step into a retry that enqueues nothing new and re-runs
+ * everything around it.
  */
 export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
   input: EnqueueStartedRunInput
@@ -181,53 +195,41 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
         correlationKey: start.entityValue,
       },
     })
-    .pipe(
-      Effect.tapError((failure) =>
-        Effect.gen(function* () {
-          const closed = yield* repo.markEnqueueFailed({
-            executionId: execution.id,
-            error:
-              failure.cause instanceof Error
-                ? failure.cause.message
-                : "Failed to enqueue run",
-          });
+    .pipe(Effect.tapError((failure) => closeRefusedEnqueue(input, failure)));
 
-          if (!closed) {
-            // Inngest took the event and failed on the way back: the run is
-            // already executing and reached a verdict of its own, which the
-            // compensation is not allowed to overwrite.
-            yield* logger.info(
-              "Enqueue reported failure but the run had already left the in-flight statuses",
-              { executionId: execution.id }
-            );
-          }
-        })
-      )
-    );
+  yield* bookkeeping(
+    logger,
+    "record that the bus took the run",
+    execution.id,
+    repo.markEnqueued({
+      executionId: execution.id,
+      runId: run.eventId ?? null,
+    })
+  );
 
-  yield* repo.setRunId({
-    executionId: execution.id,
-    runId: run.eventId ?? null,
-  });
-
-  yield* repo.recordAuditEvent({
-    workflowId: workflow.id,
-    executionId: execution.id,
-    eventType: "run_started",
-    message: buildRunStartedAuditMessage({
-      startSource: start.source,
-      runMode,
-      eventName: start.eventName,
-    }),
-    metadata: {
-      startSource: start.source,
-      runMode,
-      eventName: start.eventName,
-      entityValue: start.entityValue,
-      deliveryId: start.deliveryId,
-      runId: run.eventId,
-    },
-  });
+  yield* bookkeeping(
+    logger,
+    "write the run's opening timeline entry",
+    execution.id,
+    repo.recordAuditEvent({
+      workflowId: workflow.id,
+      executionId: execution.id,
+      eventType: "run_started",
+      message: buildRunStartedAuditMessage({
+        startSource: start.source,
+        runMode,
+        eventName: start.eventName,
+      }),
+      metadata: {
+        startSource: start.source,
+        runMode,
+        eventName: start.eventName,
+        entityValue: start.entityValue,
+        deliveryId: start.deliveryId,
+        runId: run.eventId,
+      },
+    })
+  );
 
   const started: StartedWorkflowRun = {
     executionId: execution.id,
@@ -235,6 +237,74 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
     runMode,
   };
   return started;
+});
+
+/**
+ * Runs a write whose side effect has already landed, so a refusal is a log line.
+ *
+ * The same policy `runWithStepLog` states for a node's closing log row: once the
+ * irreversible thing is done, a bookkeeping failure may not cause it to be done
+ * again.
+ */
+const bookkeeping = <A>(
+  logger: EffectLogger,
+  what: string,
+  executionId: string,
+  write: Effect.Effect<A, DatabaseError>
+) =>
+  write.pipe(
+    Effect.catchTag("DatabaseError", (error) =>
+      logger.error(`The run is enqueued, but the database refused to ${what}`, {
+        executionId,
+        error,
+      })
+    )
+  );
+
+/**
+ * Undoes a start whose send was refused: the run is told to stop, then its row
+ * is closed.
+ *
+ * The order is what makes the close safe. A refused send is ambiguous -- Inngest
+ * may have taken the event and failed on the way back, in which case the run is
+ * already executing -- and the row's in-flight guard cannot tell those apart,
+ * since a run that started a moment ago is `running` like one that never
+ * started. The cancel resolves it: an accepted run is stopped, and a signal for a
+ * run that does not exist is a no-op at Inngest. A cancel that itself fails to
+ * send leaves the row closed anyway and says so on the timeline, which is the
+ * same half-failure `cancelInFlightRuns` reports.
+ */
+const closeRefusedEnqueue = Effect.fn("closeRefusedEnqueue")(function* (
+  input: EnqueueStartedRunInput,
+  failure: InngestError
+) {
+  const repo = yield* ExecutionRepo;
+  const logger = yield* loggerFor(input.workflow.id);
+  const error =
+    failure.cause instanceof Error
+      ? failure.cause.message
+      : "Failed to enqueue run";
+
+  yield* signalRunToStop({
+    workflowId: input.workflow.id,
+    executionId: input.executionId,
+    reason: error,
+    eventName: input.start.eventName,
+  });
+
+  const closed = yield* repo.markEnqueueFailed({
+    executionId: input.executionId,
+    error,
+  });
+
+  if (!closed) {
+    // The run reached a verdict of its own, which the compensation is not
+    // allowed to overwrite.
+    yield* logger.info(
+      "Enqueue reported failure but the run had already left the in-flight statuses",
+      { executionId: input.executionId }
+    );
+  }
 });
 
 /**
