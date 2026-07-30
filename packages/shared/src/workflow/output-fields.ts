@@ -41,30 +41,24 @@ export type OutputSchema<TOutput> =
   | Schema.ConstraintDecoder<TOutput>;
 
 /**
- * The JSON Schema a schema describes itself with, output side.
+ * The JSON Schema a schema describes itself with, encoded side.
  *
- * The output side is what a downstream node reads, so it is asked for first. A
- * library that cannot describe its output side -- an input-only schema, or one
- * whose morph has no JSON form -- is asked for its input side instead, and one
- * that can describe neither has nothing to derive from.
+ * `input()` is the encoded form, and the encoded form is what every wire the
+ * editor addresses actually holds: JSONB, memoized step results, template
+ * paths. Asking for `output()` reads the decoded side, where a codec's target
+ * type may have no JSON form at all and renders as `{}`, silently dropping the
+ * field from the derived list.
  */
 function describeSchema(
   schema: StandardSchema<unknown>
 ): Record<string, unknown> | undefined {
   try {
-    return schema["~standard"].jsonSchema.output({
+    return schema["~standard"].jsonSchema.input({
       target: "draft-2020-12",
       libraryOptions: jsonSchemaLibraryOptions,
     });
   } catch {
-    try {
-      return schema["~standard"].jsonSchema.input({
-        target: "draft-2020-12",
-        libraryOptions: jsonSchemaLibraryOptions,
-      });
-    } catch {
-      return undefined;
-    }
+    return undefined;
   }
 }
 
