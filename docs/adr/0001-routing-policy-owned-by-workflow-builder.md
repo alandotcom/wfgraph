@@ -1,5 +1,9 @@
 # Routing Policy is owned by the Workflow Builder
 
+Superseded by [ADR 0007](0007-lifecycle-rules-replace-the-routing-policy.md),
+which keeps the ownership split (authors supply vocabulary, builders own
+policy) and retires the per-event verb table.
+
 Custom triggers originally routed incoming payloads through author-written
 lifecycle callbacks (`onStart`/`onRestart`/`onStop` on `createTrigger`), while
 the webhook trigger exposed a parallel builder-configured system with different
