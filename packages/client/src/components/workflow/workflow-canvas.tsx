@@ -54,9 +54,10 @@ import {
   isConditionActionNode,
   normalizeConditionBranch,
 } from "@rova/shared/workflow/condition-branch";
+import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/workflow/lifecycle-outlets";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
-import { TriggerNode } from "./nodes/trigger-node";
+import { LifecycleNode } from "./nodes/lifecycle-node";
 import {
   type ContextMenuState,
   useContextMenuHandlers,
@@ -69,9 +70,9 @@ const nodeTemplates = [
     type: "trigger" as WorkflowNodeType,
     label: "",
     description: "",
-    displayLabel: "Trigger",
+    displayLabel: "Lifecycle",
     icon: PlayCircle,
-    defaultConfig: { triggerType: "Webhook" },
+    defaultConfig: {},
   },
   {
     type: "action" as WorkflowNodeType,
@@ -304,7 +305,9 @@ export function WorkflowCanvas() {
 
   const nodeTypes = useMemo(
     () => ({
-      trigger: TriggerNode,
+      // The serialized node type stays "trigger": it is on the wire and in every
+      // stored graph, while what the builder reads is the Lifecycle Node.
+      trigger: LifecycleNode,
       action: ActionNode,
       add: AddNode,
     }),
@@ -393,6 +396,14 @@ export function WorkflowCanvas() {
       }
 
       const sourceNode = nodes.find((node) => node.id === sourceNodeId);
+
+      // The Lifecycle Node's outlet is named whichever way the edge was drawn, so
+      // a connection made programmatically says the same thing as one dragged
+      // from the handle. The save refuses an edge from here that names none.
+      if (sourceNode?.data.type === "trigger") {
+        return LIFECYCLE_STARTED_HANDLE;
+      }
+
       if (!isConditionActionNode(sourceNode)) {
         return sourceHandle ?? null;
       }

@@ -190,10 +190,10 @@ const action = createAction({
   },
 });
 
-// A trigger supplies vocabulary, never policy: the schema, where the
-// correlation key lives, and where the event type lives. What each event
-// type does to a run (Start, Replace, Cancel, Ignore) is the workflow's
-// Routing Policy, configured per workflow in the editor's trigger panel.
+// A trigger describes the payload a run receives: its schema, and where the
+// correlation key lives. What starts a run, and what happens to the runs
+// already going, is the workflow's Lifecycle Rules, written in the editor's
+// Lifecycle panel and named in Events rather than in trigger event types.
 const trigger = createTrigger({
   type: "CustomWebhook",
   label: "Custom Webhook",
@@ -373,9 +373,8 @@ A linked consumer resolves through the `"exports"` map to `packages/core/dist`, 
   - `type` is the stable trigger ID and must be unique.
   - `schema` validates inbound payloads at runtime, in whichever library you wrote it. A payload that fails is ignored as `invalid_payload`.
   - `correlationIdPath` is required and typed from the payload schema (`string` fields only). Runs sharing its value belong to the same entity: Replace and Cancel act on them, and Waits resume on them.
-  - `eventTypePath` names where the event type lives in the payload. Pointing it at an enum gives the editor a closed list for the Routing Policy table and Wait node options. Required in webhook mode; optional in event mode, where omitting it makes the delivering Inngest event name the event type.
-  - Routing lives in the workflow, not the trigger: each workflow maps event types to Start, Replace, Cancel, or Ignore in the editor. Unmapped event types are ignored, though they still resume matching Waits.
-  - Event mode: set `event` to one or more Inngest event names to listen for `inngest.send(...)` instead of webhook calls; this also enables `concurrency` and the `inngest` options block (rateLimit, throttle, debounce, CEL `priority.run`, timeouts, retries), with all dot-path keys schema-relative and auto-prefixed with `event.data.`.
+  - `eventTypePath` names where the event type lives in the payload.
+  - What a workflow does when something arrives is the workflow's own declaration: the Lifecycle panel names the Events that start a run, the Concurrency between runs of one entity, and whether manual runs are allowed. A trigger says nothing about it. Events are declared with `defineEvent` and passed to `createRovaApp`.
   - `label`, `description`, `logoUrl`, and `configFields` control editor metadata.
 - `logoUrl` is optional; when provided, it is rendered in trigger/action selectors.
 
@@ -474,6 +473,7 @@ Base path: `/api`
 - `POST /api/workflows/:workflowId/duplicate`
 - `GET /api/workflows/:workflowId/executions`
 - `DELETE /api/workflows/:workflowId/executions`
+- `GET /api/workflows/:workflowId/events`
 - `OPTIONS /api/events/:eventName`
 - `POST /api/events/:eventName`
 - `GET /api/workflows/executions/:executionId/status`

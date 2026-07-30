@@ -52,7 +52,11 @@ beforeEach(() => {
   queryClient = new QueryClient();
   queryClient.setQueryData(workflowListKey, []);
   queryClient.setQueryData(workflowKey("a"), aWorkflow("a"));
-  queryClient.setQueryData(workflowRunsKey("a"), []);
+  queryClient.setQueryData(workflowRunsKey("a"), {
+    items: [],
+    supersededCount: 0,
+    refusedStarts: [],
+  });
   queryClient.setQueryData(integrationsKey, []);
   for (const statuses of [undefined, ["failed"] satisfies ["failed"]]) {
     queryClient.setQueryData(runHistoryKey(statuses), {
@@ -93,6 +97,8 @@ describe("refreshRunHistory", () => {
     expect(isInvalidated(runHistoryKey(["failed"]))).toBe(true);
   });
 
+  // The refusals ride in the same payload as the runs, so the key that covers one
+  // covers the other.
   it("marks the editor's per-workflow run list stale", async () => {
     await refreshRunHistory(queryClient);
 

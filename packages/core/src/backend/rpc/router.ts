@@ -251,7 +251,12 @@ export const rpcRouter = rpc.router({
       )
     ),
     getExecutions: rpc.workflow.getExecutions.handler(
-      rpcEffectHandler(({ input }) => getWorkflowExecutions(input.workflowId))
+      rpcEffectHandler(({ input }) =>
+        getWorkflowExecutions({
+          workflowId: input.workflowId,
+          includeSuperseded: input.includeSuperseded === true,
+        })
+      )
     ),
     getExecutionsGlobal: rpc.workflow.getExecutionsGlobal.handler(
       rpcEffectHandler(({ input }) =>

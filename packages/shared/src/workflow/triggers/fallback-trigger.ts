@@ -4,7 +4,7 @@ import type {
   TriggerClassification,
   WorkflowTriggerDefinition,
 } from "#src/workflow/trigger-registry";
-import { asNonEmptyString } from "#src/workflow/webhook-routing";
+import { asNonEmptyString } from "#src/types/string";
 
 function classifyDefaultPayload(payload: JsonObject): TriggerClassification {
   return {

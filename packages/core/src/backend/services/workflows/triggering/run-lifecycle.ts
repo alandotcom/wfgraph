@@ -4,7 +4,7 @@ import { callDbModule } from "#src/backend/lib/effect/database";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
   logWorkflowAuditEvent,
-  type WorkflowAuditEventType,
+  type RunScopedAuditEventType,
 } from "#src/backend/lib/workflow-audit";
 import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
 import type { JsonObject } from "@rova/shared/types/json";
@@ -78,9 +78,12 @@ export type RecordTerminalWorkflowRunInput = {
   error?: string;
   output?: Record<string, unknown>;
   audit: {
+    // A row this path writes always has the terminal Execution it just inserted
+    // behind it, which is what keeps `run_not_started` out: that one is the
+    // Refused Start, and a refusal opens no run at all.
     eventType: Extract<
-      WorkflowAuditEventType,
-      "run_cancelled" | "run_ignored" | "run_not_started" | "run_completed"
+      RunScopedAuditEventType,
+      "run_cancelled" | "run_ignored" | "run_completed"
     >;
     message: string;
     metadata?: Record<string, unknown>;
@@ -115,6 +118,11 @@ export function buildRunStartedAuditMessage(input: {
   return `${label}${mode} run started${event}`;
 }
 
+/**
+ * The sentence a Refused Start is recorded with, and the one a paused workflow's
+ * ignored run gets. Both open with the same three words as the panel's heading, so
+ * a builder reading a row knows which list it belongs to.
+ */
 export function buildIgnoredRunAuditMessage(input: {
   startSource: WorkflowExecutionStartSource;
   reason: WorkflowExecutionIgnoredReason;
@@ -129,14 +137,14 @@ export function buildIgnoredRunAuditMessage(input: {
   const named = input.eventName ? `${subject} ${input.eventName}` : subject;
 
   if (input.reason === "concurrency_first_wins") {
-    return `Did not start a run from ${named}: a run for this entity is already going and Concurrency is first-wins`;
+    return `Refused a start from ${named}: a run for this entity is already going and Concurrency is first-wins`;
   }
 
   if (input.reason === "entity_value_missing") {
-    return `Did not start a run from ${named}: nothing at this workflow's Correlation Path, and Concurrency needs an entity to compare`;
+    return `Refused a start from ${named}: nothing at this workflow's Correlation Path, and Concurrency needs an entity to compare`;
   }
 
-  return `Did not start a run from ${named}: this workflow does not list manual runs as a start source`;
+  return `Refused a start from ${named}: this workflow does not list manual runs as a start source`;
 }
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */

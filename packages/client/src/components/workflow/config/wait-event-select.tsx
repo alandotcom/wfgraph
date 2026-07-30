@@ -1,16 +1,13 @@
-import { useSetAtom } from "jotai";
 import { Plus, TriangleAlert, X } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
-import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
-import { cn } from "@rova/shared/utils";
-import { findEvent } from "@rova/shared/extensions/catalog";
-import { readWaitForEvents } from "@rova/shared/workflow/wait-events";
 import { getExtensionCatalog } from "#src/lib/extensions";
+import { findEvent } from "@rova/shared/extensions/catalog";
+import { cn } from "@rova/shared/utils";
+import { readWaitForEvents } from "@rova/shared/workflow/wait-events";
 import type { UpdateNodeConfig } from "./node-config-patch";
-import { useTriggerVocabulary } from "./trigger-vocabulary";
 
 /**
  * The Wait node's "resume on these events" picker.
@@ -20,9 +17,10 @@ import { useTriggerVocabulary } from "./trigger-vocabulary";
  * Node's declaration and the builder reads it there. At least one Event has to be
  * named -- an empty list has no meaning the subscription index can hold.
  *
- * The vocabulary is still the trigger's. The catalog-fed picker lands with the
- * Lifecycle panel; what this reads from the catalog today is the Correlation Path
- * to name in the sentence at the bottom.
+ * The vocabulary is the app's Events rather than the entry node's, which is what
+ * lets a wait park on something the workflow does not start on. An Event the
+ * catalog does not name can still be typed in: a host may send one to the bus that
+ * it never declared, and this panel is not where that is refused.
  */
 export function WaitEventSelect({
   config,
@@ -33,16 +31,8 @@ export function WaitEventSelect({
   onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
 }) {
-  const vocabulary = useTriggerVocabulary();
-  const setSelectedNode = useSetAtom(selectedNodeAtom);
   const chipGroupLabelId = useId();
   const [draftEventType, setDraftEventType] = useState("");
-
-  const openTriggerNode = () => {
-    if (vocabulary.triggerNodeId) {
-      setSelectedNode(vocabulary.triggerNodeId);
-    }
-  };
 
   const selected = readWaitForEvents(config.waitForEvents);
   const catalog = getExtensionCatalog();
@@ -51,30 +41,27 @@ export function WaitEventSelect({
   const correlationPath = selected
     .map((eventName) => findEvent(catalog, eventName)?.correlationPath)
     .find((path) => path !== undefined);
-  const closed = vocabulary.eventTypes !== undefined;
-  // Open vocabularies render every selection as a chip, offered or
-  // free-entered, so nothing the builder chose is ever invisible.
-  const options = closed
-    ? vocabulary.knownEventTypes
-    : [
-        ...vocabulary.knownEventTypes,
-        ...selected.filter(
-          (eventType) => !vocabulary.knownEventTypes.includes(eventType)
-        ),
-      ];
-  const invalidSelections = closed
-    ? selected.filter((eventType) => !options.includes(eventType))
-    : [];
+
+  const declared = catalog.events.map((event) => event.name);
+  // Every selection is rendered, declared or typed in, so nothing the builder
+  // chose is ever invisible.
+  const options = [
+    ...declared,
+    ...selected.filter((eventName) => !declared.includes(eventName)),
+  ];
+  const undeclaredSelections = selected.filter(
+    (eventName) => !declared.includes(eventName)
+  );
 
   const setSelected = (next: string[]) => {
     onUpdateConfig({ waitForEvents: next });
   };
 
-  const toggle = (eventType: string) => {
+  const toggle = (eventName: string) => {
     setSelected(
-      selected.includes(eventType)
-        ? selected.filter((entry) => entry !== eventType)
-        : [...selected, eventType]
+      selected.includes(eventName)
+        ? selected.filter((entry) => entry !== eventName)
+        : [...selected, eventName]
     );
   };
 
@@ -97,8 +84,8 @@ export function WaitEventSelect({
           className="flex flex-wrap gap-1.5"
           role="group"
         >
-          {options.map((eventType) => {
-            const isSelected = selected.includes(eventType);
+          {options.map((eventName) => {
+            const isSelected = selected.includes(eventName);
             return (
               <button
                 aria-pressed={isSelected}
@@ -113,53 +100,43 @@ export function WaitEventSelect({
                   disabled && "pointer-events-none opacity-50"
                 )}
                 disabled={disabled}
-                key={eventType}
-                onClick={() => toggle(eventType)}
+                key={eventName}
+                onClick={() => toggle(eventName)}
                 type="button"
               >
-                {eventType}
+                {eventName}
               </button>
             );
           })}
         </div>
       ) : (
-        <div className="space-y-2">
-          <p className="text-muted-foreground text-xs">
-            No event types are named on the entry node yet. Add one below.
-          </p>
-          {vocabulary.triggerNodeId ? (
-            <Button
-              onClick={openTriggerNode}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              Open trigger
-            </Button>
-          ) : null}
-        </div>
+        <p className="text-muted-foreground text-xs">
+          This server declares no Events. Name the one this wait parks on below,
+          or ask whoever runs it to declare the Event.
+        </p>
       )}
 
-      {invalidSelections.length > 0 ? (
+      {undeclaredSelections.length > 0 ? (
         <div className="space-y-1.5">
-          {invalidSelections.map((eventType) => (
+          {undeclaredSelections.map((eventName) => (
             <div
               className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5"
-              key={eventType}
+              key={eventName}
             >
               <div className="min-w-0 flex-1">
-                <p className="truncate font-mono text-xs" title={eventType}>
-                  {eventType}
+                <p className="truncate font-mono text-xs" title={eventName}>
+                  {eventName}
                 </p>
                 <p className="text-xs text-amber-700 dark:text-amber-200">
-                  This trigger cannot produce this event type. Remove it.
+                  This server declares no such Event, so nothing will arrive
+                  under that name and the wait runs to its timeout.
                 </p>
               </div>
               <Button
-                aria-label={`Remove ${eventType}`}
+                aria-label={`Remove ${eventName}`}
                 className="size-7 shrink-0"
                 disabled={disabled}
-                onClick={() => toggle(eventType)}
+                onClick={() => toggle(eventName)}
                 size="icon"
                 type="button"
                 variant="ghost"
@@ -171,32 +148,30 @@ export function WaitEventSelect({
         </div>
       ) : null}
 
-      {closed ? null : (
-        <div className="flex items-center gap-2">
-          <Input
-            disabled={disabled}
-            onChange={(event) => setDraftEventType(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                handleAddDraft();
-              }
-            }}
-            placeholder="appointment.confirmed"
-            value={draftEventType}
-          />
-          <Button
-            disabled={disabled || !normalizedDraft}
-            onClick={handleAddDraft}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <Plus className="size-3.5" />
-            Add
-          </Button>
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        <Input
+          disabled={disabled}
+          onChange={(event) => setDraftEventType(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              handleAddDraft();
+            }
+          }}
+          placeholder="app/appointment.confirmed"
+          value={draftEventType}
+        />
+        <Button
+          disabled={disabled || !normalizedDraft}
+          onClick={handleAddDraft}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          <Plus className="size-3.5" />
+          Add
+        </Button>
+      </div>
 
       {selected.length === 0 ? (
         <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2">

@@ -79,7 +79,9 @@ describe("withDefaultTriggerNode", () => {
     expect(filled.nodes).toHaveLength(1);
     const node = filled.nodes[0]?.attributes.data;
     expect(node?.type).toBe("trigger");
-    expect(node?.config).toMatchObject({ triggerType: "Webhook" });
+    // The entry node starts with nothing configured: what starts a run is the
+    // Lifecycle Rules the panel writes, and it has not been near this graph yet.
+    expect(node?.config).toEqual({});
     expect(node?.status).toBe("idle");
   });
 

@@ -85,13 +85,7 @@ const startRules: LifecycleRules = {
   concurrency: "unlimited",
 };
 
-/**
- * The entry node, carrying the rules under test.
- *
- * `triggerType` is beside them because the editor's panel still writes it: the
- * rules are what the engine reads, and the trigger field is dead config the
- * graph schema still accepts.
- */
+/** The entry node, carrying the rules under test and nothing else. */
 function lifecycleGraph(rules?: LifecycleRules): Workflow["graph"] {
   return createSerializedWorkflowGraph({
     nodes: [
@@ -102,9 +96,7 @@ function lifecycleGraph(rules?: LifecycleRules): Workflow["graph"] {
         data: {
           label: "Start",
           type: "trigger",
-          config: rules
-            ? { triggerType: "Webhook", lifecycleRules: rules }
-            : { triggerType: "Webhook" },
+          config: rules ? { lifecycleRules: rules } : {},
         },
       },
     ],

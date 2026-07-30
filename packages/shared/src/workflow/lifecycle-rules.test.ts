@@ -70,13 +70,12 @@ describe("lifecycleRulesSchema", () => {
       startEvents: ["app/appointment.created"],
       cancelEvents: [],
       concurrency: "first-wins",
-      schedule: { cron: "0 9 * * *", timezone: "America/Los_Angeles" },
       allowManualStart: true,
       correlationPaths: { "ops/nightly.swept": "sweep.id" },
     });
 
     expect(decoded.concurrency).toBe("first-wins");
-    expect(decoded.schedule?.cron).toBe("0 9 * * *");
+    expect(decoded.allowManualStart).toBe(true);
     expect(decoded.correlationPaths).toEqual({
       "ops/nightly.swept": "sweep.id",
     });
@@ -106,7 +105,6 @@ describe("lifecycleRulesSchema", () => {
 describe("readLifecycleRules", () => {
   it("reads the rules off an entry node's config", () => {
     const read = readLifecycleRules({
-      triggerType: "Webhook",
       lifecycleRules: {
         startEvents: ["app/appointment.created"],
         cancelEvents: [],
@@ -118,7 +116,7 @@ describe("readLifecycleRules", () => {
   });
 
   it("answers undefined for a config carrying none", () => {
-    expect(readLifecycleRules({ triggerType: "Webhook" })).toBeUndefined();
+    expect(readLifecycleRules({ webhookSchema: "[]" })).toBeUndefined();
     expect(readLifecycleRules(undefined)).toBeUndefined();
   });
 
@@ -258,22 +256,13 @@ describe("checkLifecycleRules", () => {
     ).toEqual({ valid: true });
   });
 
-  // Nothing ticks a clock yet, so a schedule is carried in the shape and turned
-  // away here: accepting one would certify a workflow nothing can start.
-  it("refuses a schedule until something can run one", () => {
+  // A clock is not in the shape at all: nothing can write one, so there is no
+  // schedule to refuse, and the panel says where one will come from instead.
+  it("refuses a workflow with no start source at all", () => {
     expect(
       refusalOf(
         checkLifecycleRules({
-          rules: rules({ schedule: { cron: "0 9 * * *" } }),
-          catalog,
-        })
-      )
-    ).toContain("Schedules arrive with the Lifecycle panel");
-
-    expect(
-      refusalOf(
-        checkLifecycleRules({
-          rules: rules({ startEvents: [], schedule: { cron: "0 9 * * *" } }),
+          rules: rules({ startEvents: [], allowManualStart: false }),
           catalog,
         })
       )

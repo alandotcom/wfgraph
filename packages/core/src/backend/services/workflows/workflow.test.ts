@@ -43,7 +43,7 @@ function graphWith(rules: LifecycleRules): Workflow["graph"] {
         data: {
           label: "Start",
           type: "trigger",
-          config: { triggerType: "Webhook", lifecycleRules: rules },
+          config: { lifecycleRules: rules },
         },
       },
     ],

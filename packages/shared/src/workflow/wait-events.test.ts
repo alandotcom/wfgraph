@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { readWaitForEvents, waitMatchesEvent } from "./wait-events";
+import type { WorkflowNode } from "#src/workflow/types";
+import {
+  readWaitEventNames,
+  readWaitForEvents,
+  waitMatchesEvent,
+} from "./wait-events";
 
 describe("readWaitForEvents", () => {
   it("reads a list the editor wrote", () => {
@@ -62,5 +67,32 @@ describe("waitMatchesEvent", () => {
         "appointment.rescheduled"
       )
     ).toBe(false);
+  });
+});
+
+describe("readWaitEventNames", () => {
+  function node(config: Record<string, unknown>): WorkflowNode {
+    return {
+      id: "n1",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: { label: "Node", type: "action", config },
+    };
+  }
+
+  // The rules are checked against these, so a Wait node anywhere in the graph
+  // contributes and anything that is not one contributes nothing.
+  it("names the Events every Wait node parks on", () => {
+    expect(
+      readWaitEventNames([
+        node({ webhookSchema: "[]" }),
+        node({
+          actionType: "Wait",
+          waitForEvents: ["billing/payment.settled"],
+        }),
+        node({ actionType: "Wait", waitForEvents: ["ops/nightly.swept", ""] }),
+        node({ actionType: "Send SMS", waitForEvents: ["ignored"] }),
+      ])
+    ).toEqual(["billing/payment.settled", "ops/nightly.swept"]);
   });
 });

@@ -1,5 +1,17 @@
-import { and, desc, eq, inArray, lt, ne, or, type SQL, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  inArray,
+  lt,
+  ne,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
+import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "#src/backend/lib/workflow-audit";
 import {
   workflowExecutionEvents,
   workflowExecutionLogs,
@@ -125,10 +137,22 @@ export type ExecutionPageQuery = {
 export class ExecutionRepo extends Context.Service<
   ExecutionRepo,
   {
-    /** One workflow's most recent runs, newest first. */
-    readonly listByWorkflow: (
+    /**
+     * One workflow's most recent runs, newest first.
+     *
+     * Superseded runs are left out unless asked for: a newest-wins workflow
+     * supersedes a run on every reschedule, and those rows would crowd the ones
+     * the panel was opened for out of the row cap. The panel's toggle is what
+     * asks, and `countSuperseded` is what labels it.
+     */
+    readonly listByWorkflow: (input: {
+      workflowId: string;
+      includeSuperseded: boolean;
+    }) => Effect.Effect<WorkflowExecution[], DatabaseError>;
+    /** How many runs of this workflow a newer start displaced. */
+    readonly countSuperseded: (
       workflowId: string
-    ) => Effect.Effect<WorkflowExecution[], DatabaseError>;
+    ) => Effect.Effect<number, DatabaseError>;
     /**
      * One page of runs across every workflow, newest first, each row carrying
      * the name and paused flag of the workflow it belongs to.
@@ -229,6 +253,14 @@ export class ExecutionRepo extends Context.Service<
       executionId: string
     ) => Effect.Effect<WorkflowExecutionEvent[], DatabaseError>;
     /**
+     * The Refused Starts: audit rows that belong to the workflow because no run
+     * was opened for them. Nothing else can reach them, because every other
+     * reader is keyed on an execution id and these have none.
+     */
+    readonly listWorkflowEvents: (
+      workflowId: string
+    ) => Effect.Effect<WorkflowExecutionEvent[], DatabaseError>;
+    /**
      * Erase one workflow's run history, answering how many runs went. Logs, wait
      * states, and events go with them, which is why this is one method rather
      * than four: half a deletion leaves rows pointing at a run that is gone.
@@ -244,6 +276,13 @@ const WORKFLOW_EXECUTIONS_LIMIT = 50;
 
 /** How far back the audit trail beside a single run is read. */
 const EXECUTION_EVENTS_LIMIT = 200;
+
+/**
+ * How many Refused Starts the panel is given. Lower than the per-run limit above
+ * because these are read for the whole workflow and a busy first-wins workflow
+ * writes one per arrival it declines.
+ */
+const WORKFLOW_EVENTS_LIMIT = 50;
 
 function buildPageFilters(query: ExecutionPageQuery): SQL[] {
   const filters: SQL[] = [];
@@ -281,21 +320,36 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
       const database = yield* Database;
 
       return {
-        listByWorkflow: (workflowId) =>
+        listByWorkflow: ({ workflowId, includeSuperseded }) =>
           database.query((db) =>
             db.query.workflowExecutions.findMany({
+              // `and` drops an undefined member, so the toggle is one condition
+              // that is there or is not.
               where: and(
                 eq(workflowExecutions.workflowId, workflowId),
-                // A newest-wins workflow supersedes a run on every reschedule, so
-                // these would fill the panel with rows nobody opened it for. The
-                // count and the toggle that shows them arrive with the Lifecycle
-                // panel.
-                ne(workflowExecutions.status, "superseded")
+                includeSuperseded
+                  ? undefined
+                  : ne(workflowExecutions.status, "superseded")
               ),
               orderBy: [desc(workflowExecutions.startedAt)],
               limit: WORKFLOW_EXECUTIONS_LIMIT,
             })
           ),
+
+        countSuperseded: (workflowId) =>
+          database.query(async (db) => {
+            const [row] = await db
+              .select({ total: count() })
+              .from(workflowExecutions)
+              .where(
+                and(
+                  eq(workflowExecutions.workflowId, workflowId),
+                  eq(workflowExecutions.status, "superseded")
+                )
+              );
+
+            return row?.total ?? 0;
+          }),
 
         listPage: (query) =>
           database.query((db) => {
@@ -593,6 +647,23 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
             })
           ),
 
+        listWorkflowEvents: (workflowId) =>
+          database.query((db) =>
+            db.query.workflowExecutionEvents.findMany({
+              // By type rather than by the absent execution id: the scope is what
+              // the type means, and a row is unreadable anywhere else because of
+              // it. A null id is the consequence, not the definition.
+              where: and(
+                eq(workflowExecutionEvents.workflowId, workflowId),
+                inArray(workflowExecutionEvents.eventType, [
+                  ...WORKFLOW_SCOPED_AUDIT_EVENT_TYPES,
+                ])
+              ),
+              orderBy: [desc(workflowExecutionEvents.createdAt)],
+              limit: WORKFLOW_EVENTS_LIMIT,
+            })
+          ),
+
         deleteAllForWorkflow: (workflowId) =>
           database.query(async (db) => {
             const executions = await db.query.workflowExecutions.findMany({
@@ -601,29 +672,31 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
             });
 
             const executionIds = executions.map((execution) => execution.id);
-            if (executionIds.length === 0) {
-              return 0;
-            }
 
-            // One transaction, because the four deletes only make sense
-            // together: a failure between them would leave logs, wait states,
-            // or events pointing at a run that is gone.
+            // One transaction, because the deletes only make sense together: a
+            // failure between them would leave logs, wait states, or audit rows
+            // pointing at a run that is gone.
+            //
+            // The audit rows go by workflow rather than by run, which is what
+            // makes "all runs deleted" true: a Refused Start has no run to be
+            // found through, and a workflow with nothing but refusals has an
+            // empty execution list and history to clear all the same.
             await db.transaction(async (tx) => {
-              await tx
-                .delete(workflowExecutionLogs)
-                .where(
-                  inArray(workflowExecutionLogs.executionId, executionIds)
-                );
+              if (executionIds.length > 0) {
+                await tx
+                  .delete(workflowExecutionLogs)
+                  .where(
+                    inArray(workflowExecutionLogs.executionId, executionIds)
+                  );
 
-              await tx
-                .delete(workflowWaitStates)
-                .where(inArray(workflowWaitStates.executionId, executionIds));
+                await tx
+                  .delete(workflowWaitStates)
+                  .where(inArray(workflowWaitStates.executionId, executionIds));
+              }
 
               await tx
                 .delete(workflowExecutionEvents)
-                .where(
-                  inArray(workflowExecutionEvents.executionId, executionIds)
-                );
+                .where(eq(workflowExecutionEvents.workflowId, workflowId));
 
               await tx
                 .delete(workflowExecutions)

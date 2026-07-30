@@ -66,25 +66,6 @@ describe("resolveWorkflowTriggerDefinition", () => {
   });
 });
 
-describe("createTrigger Event Type vocabulary", () => {
-  it("derives eventTypes from the enum at eventTypePath", () => {
-    const trigger = createTrigger({
-      type: "EnumVocabularyTrigger",
-      label: "Enum Vocabulary Trigger",
-      schema: appointmentSchema,
-      correlationIdPath: "appointment.id",
-      eventTypePath: "event",
-    });
-
-    expect(trigger.ui.eventTypes).toEqual([
-      "appointment.created",
-      "appointment.rescheduled",
-      "appointment.canceled",
-    ]);
-    expect(trigger.ui.correlationPath).toBe("appointment.id");
-  });
-});
-
 describe("registerWorkflowTrigger", () => {
   it("derives outputFields from trigger schema", () => {
     const trigger = createTrigger({

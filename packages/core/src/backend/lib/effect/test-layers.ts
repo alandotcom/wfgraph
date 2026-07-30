@@ -159,6 +159,7 @@ export function stubWorkflowRepo(
 
 const executionRepoStubs: ExecutionRepo["Service"] = {
   listByWorkflow: refuse("listByWorkflow"),
+  countSuperseded: refuse("countSuperseded"),
   listPage: refuse("listPage"),
   findSummaryById: refuse("findSummaryById"),
   findStatusById: refuse("findStatusById"),
@@ -172,6 +173,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   listLogs: refuse("listLogs"),
   listNodeStatuses: refuse("listNodeStatuses"),
   listEvents: refuse("listEvents"),
+  listWorkflowEvents: refuse("listWorkflowEvents"),
   deleteAllForWorkflow: refuse("deleteAllForWorkflow"),
 };
 

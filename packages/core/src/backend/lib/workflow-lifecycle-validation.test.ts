@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  readWaitEventNames,
-  validateWorkflowLifecycleRules,
-} from "#src/backend/lib/workflow-lifecycle-validation";
+import { validateWorkflowLifecycleRules } from "#src/backend/lib/workflow-lifecycle-validation";
 import type { LifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
@@ -33,9 +30,7 @@ function lifecycleNode(rules?: LifecycleRules): WorkflowNode {
     data: {
       label: "Start",
       type: "trigger",
-      config: rules
-        ? { triggerType: "Webhook", lifecycleRules: rules }
-        : { triggerType: "Webhook" },
+      config: rules ? { lifecycleRules: rules } : {},
     },
   };
 }
@@ -52,18 +47,6 @@ function waitNode(waitForEvents: unknown): WorkflowNode {
     },
   };
 }
-
-describe("readWaitEventNames", () => {
-  it("names the Events every Wait node in the graph parks on", () => {
-    expect(
-      readWaitEventNames([
-        lifecycleNode(),
-        waitNode(["billing/payment.settled"]),
-        waitNode(["ops/nightly.swept", ""]),
-      ])
-    ).toEqual(["billing/payment.settled", "ops/nightly.swept"]);
-  });
-});
 
 describe("validateWorkflowLifecycleRules", () => {
   it("accepts rules naming an Event the app declares", () => {
@@ -114,7 +97,6 @@ describe("validateWorkflowLifecycleRules", () => {
   it("passes rules it cannot read, which the graph schema already refused", () => {
     const node = lifecycleNode();
     node.data.config = {
-      triggerType: "Webhook",
       lifecycleRules: { concurrency: "replace" },
     };
 

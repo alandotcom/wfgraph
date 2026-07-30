@@ -11,7 +11,7 @@ function createTriggerNode(): WorkflowNode {
     data: {
       label: "Trigger",
       type: "trigger",
-      config: { triggerType: "Webhook" },
+      config: {},
     },
   };
 }

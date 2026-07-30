@@ -115,7 +115,7 @@ describe("buildIgnoredRunAuditMessage", () => {
         eventName: "app/appointment.created",
       })
     ).toBe(
-      "Did not start a run from event app/appointment.created: a run for this entity is already going and Concurrency is first-wins"
+      "Refused a start from event app/appointment.created: a run for this entity is already going and Concurrency is first-wins"
     );
     expect(
       buildIgnoredRunAuditMessage({
@@ -123,7 +123,7 @@ describe("buildIgnoredRunAuditMessage", () => {
         reason: "concurrency_first_wins",
       })
     ).toBe(
-      "Did not start a run from manual run: a run for this entity is already going and Concurrency is first-wins"
+      "Refused a start from manual run: a run for this entity is already going and Concurrency is first-wins"
     );
   });
 });

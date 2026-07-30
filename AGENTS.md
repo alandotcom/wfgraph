@@ -246,6 +246,45 @@ the payload again -- a host may send to the bus directly -- and then runs two si
 workflow, the Lifecycle Rules and the wait delivery, so a retry resumes at the workflow that
 failed without replaying a start.
 
+**The Lifecycle panel is the one screen that writes the rules.**
+`packages/client/src/components/workflow/config/lifecycle-panel.tsx` writes the whole
+`lifecycleRules` object on every edit and reads it back through `readLifecycleRules`, falling
+back to `initialLifecycleRules` rather than writing on mount: opening a panel is not an edit.
+That fallback carries `allowManualStart: true`, because the moment rules exist they are held to
+the save rules and rules with no start source refuse the save that wrote them. The panel runs
+`checkLifecycleRules` itself, over the same catalog and the same graph the server uses, so a
+builder reads the refusal before a save answers with it, and it renders one Correlation Path
+input per member of `eventsNeedingCorrelationPath` -- the same set the check refuses over, so a
+Wait node parked on a pathless Event has an input rather than being an unsavable dead end.
+Cancel Events and the schedule are present as placeholders, with no control, each rendering
+the exported interim sentence a save would answer with. A schedule is not in the stored shape
+at all: nothing can write one.
+
+The entry node has no type. `workflowTriggerConfigSchema` is one closed struct holding the
+rules and three fields describing the payload -- shape, narrowed output contract, sample -- which
+B5 replaces with the Start Events' `payloadFields`. Everything the panel stopped writing is
+gone from the schema with it, and a stored graph carrying any of these keys fails to decode,
+which is the strict contract this repo keeps: `triggerType` first, which every graph saved
+before this batch carries, then `routingPolicy`, `webhookEventPath`,
+`webhookCorrelationPath`, and the `Schedule` arm's three schedule fields. The `Schedule`
+trigger definition went with them. The trigger registry still resolves a definition for the
+engine's payload guard, and nothing in the editor picks one.
+
+An edge leaving the Lifecycle Node names its outlet, `started`, from
+`shared/workflow/lifecycle-outlets.ts`: the editor's connect path writes it and
+`validateLifecycleOutletEdges` refuses an edge without it, because the Canceled outlet lands
+in stage 7 and an unnamed edge would then bind by render order.
+
+**The editor's runs panel shows what did not run.** `getExecutions` answers three things at
+once, because the panel polls every two seconds and a second procedure would double that: the
+runs, `supersededCount` (answered whether or not the rows were asked for, since it labels the
+toggle), and the Refused Starts. Those are the `run_not_started` rows, which
+`workflow-audit.ts` keeps in `WORKFLOW_SCOPED_AUDIT_EVENT_TYPES` -- the scope is what the type
+means, and `logWorkflowAuditEvent` requires an execution id for every other type. A refusal is
+first-wins Concurrency finding a run already going, a payload with nothing at the Correlation
+Path, or a manual start the rules disallow; a paused workflow is not one of them, because that
+path writes a terminal Execution and shows up in the runs list.
+
 **An Execution's statuses live in one list.** `WORKFLOW_EXECUTION_STATUSES` in
 `packages/shared/src/workflow/execution-contracts.ts` is where the column's type, the RPC
 literals, and the run-history filter come from, and `WORKFLOW_EXECUTION_START_SOURCES` beside

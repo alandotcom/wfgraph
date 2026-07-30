@@ -1,11 +1,6 @@
 import { type JsonObject, readJsonObject } from "#src/types/json";
+import { asNonEmptyString } from "#src/types/string";
 import type { WorkflowTriggerDefinition } from "#src/workflow/trigger-registry";
-import {
-  asNonEmptyString,
-  buildWebhookRoutingConfig,
-  deriveWebhookEventContext,
-  type WebhookRoutingConfig,
-} from "#src/workflow/webhook-routing";
 
 /**
  * Reads the mock request body a user typed into the trigger's editor, stored as
@@ -33,39 +28,20 @@ export function parseWebhookMockInput(
   }
 }
 
-export function resolveWebhookTriggerRuntimeConfig(
-  config: Record<string, unknown> | undefined
-): {
-  routing: WebhookRoutingConfig;
-  mockInput: JsonObject | undefined;
-} {
-  return {
-    routing: buildWebhookRoutingConfig(config),
-    mockInput: parseWebhookMockInput(config),
-  };
-}
-
 /**
- * The webhook trigger classifies payloads by the builder-configured paths; it
- * never validates against a schema (the builder's request schema is editor
- * guidance, and the sending service is outside the builder's control), so
- * classification always succeeds. Routing is the workflow's Routing Policy,
- * resolved by the caller.
+ * The webhook trigger validates nothing: the builder's request schema is editor
+ * guidance, and the service doing the sending is outside the builder's control, so
+ * every payload classifies. It names no Event Type or Correlation Key either --
+ * which Events start a run, and where each carries its Entity Value, is the
+ * Lifecycle Rules' declaration now (ADR-0007).
  */
 export function createWebhookTriggerDefinition(): WorkflowTriggerDefinition {
   return {
     runtime: {
       type: "Webhook",
       executionType: "webhook",
-      evaluate(input) {
-        const { routing } = resolveWebhookTriggerRuntimeConfig(input.config);
-        const context = deriveWebhookEventContext(input.payload, routing);
-
-        return {
-          ok: true,
-          eventType: context.eventType,
-          correlationKey: context.correlationKey,
-        };
+      evaluate() {
+        return { ok: true, eventType: undefined, correlationKey: undefined };
       },
     },
     ui: {

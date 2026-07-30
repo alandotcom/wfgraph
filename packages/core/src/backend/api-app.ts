@@ -32,6 +32,10 @@ import {
 } from "@rova/shared/types/schema";
 import { getErrorMessage } from "@rova/shared/utils";
 import { listRuntimeActions } from "@rova/shared/workflow/action-registry";
+// One app-level route for every Event: an Event is global, so a sender integrates
+// once and every workflow subscribing to it sees what arrives. The editor builds
+// its copyable URL from the same module.
+import { EVENT_INTAKE_ROUTE } from "@rova/shared/workflow/event-intake-url";
 import { listCustomWorkflowTriggers } from "@rova/shared/workflow/trigger-registry";
 
 // A path segment is whatever the sender typed, so the refusal names the field
@@ -222,13 +226,6 @@ export const MACHINE_ROUTES = [
   "/events/:eventName",
   "/workflows/hooks/:token/resume",
 ] as const;
-
-/**
- * One app-level route for every Event. An Event is global, so a sender
- * integrates once and every workflow subscribing to that Event sees what
- * arrives.
- */
-const EVENT_INTAKE_ROUTE = "/events/:eventName";
 
 /**
  * The event intake endpoint is called from browsers and from third-party

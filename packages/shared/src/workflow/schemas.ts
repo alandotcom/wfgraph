@@ -26,80 +26,30 @@
 import { Schema } from "effect";
 import { listOf, NonEmptyTrimmedString, unknownRest } from "#src/types/schema";
 import { lifecycleRulesSchema } from "#src/workflow/lifecycle-rules";
-import { routingPolicySchema } from "#src/workflow/routing-policy";
 
 /**
- * What the entry node carries whatever else is on it.
+ * What the entry node carries.
  *
  * The entry node is the Lifecycle Node: its Lifecycle Rules are the declaration
  * the engine reads to decide which Events start a run and what Concurrency does
- * to the runs already going (ADR-0007). The trigger fields below are the panel's
- * and nothing on an intake path reads them.
+ * to the runs already going (ADR-0007). There is no trigger type here and no
+ * per-type arm, because an entry node no longer has a kind -- what reaches it is
+ * an Event, named in the rules.
+ *
+ * The three schema fields describe the payload a run receives: the shape, the
+ * narrowing of it downstream nodes read, and a sample to try a run against. B5
+ * replaces them with the Start Events' own `payloadFields`, which is where that
+ * shape belongs, and this closed struct is what makes the swap a compile error
+ * rather than a field nobody removed.
  */
-const lifecycleNodeFields = {
+export const workflowTriggerConfigSchema = Schema.Struct({
   lifecycleRules: Schema.optional(lifecycleRulesSchema),
-};
-
-export const webhookTriggerConfigSchema = Schema.Struct({
-  ...lifecycleNodeFields,
-  triggerType: Schema.Literal("Webhook"),
   webhookSchema: Schema.optional(Schema.String),
   webhookOutputSchema: Schema.optional(Schema.String),
-  webhookEventPath: Schema.optional(Schema.String),
-  webhookCorrelationPath: Schema.optional(Schema.String),
-  routingPolicy: Schema.optional(routingPolicySchema),
   webhookMockRequest: Schema.optional(Schema.String),
+}).annotate({
+  message: "Trigger config must be an object",
 });
-
-export const scheduleTriggerConfigSchema = Schema.Struct({
-  ...lifecycleNodeFields,
-  triggerType: Schema.Literal("Schedule"),
-  scheduleExpression: Schema.optional(Schema.String),
-  scheduleCron: Schema.optional(Schema.String),
-  scheduleTimezone: Schema.optional(Schema.String),
-});
-
-/**
- * Every other trigger type, whose fields belong to whoever registered it.
- *
- * The check is what keeps this arm from swallowing a malformed Webhook or
- * Schedule config: without it an open object matches anything, and a webhook
- * config with a typo'd field would decode here instead of failing.
- *
- * Its `triggerType` is an open string, so unlike the two arms above it carries
- * no literal Effect can select on. A decode of a Webhook config therefore tries
- * this arm too, and a failure message mentions its refusal beside the real
- * problem.
- */
-export const customTriggerConfigSchema = Schema.StructWithRest(
-  Schema.Struct({
-    ...lifecycleNodeFields,
-    triggerType: NonEmptyTrimmedString,
-    routingPolicy: Schema.optional(routingPolicySchema),
-  }),
-  unknownRest
-).check(
-  Schema.makeFilter((value) =>
-    value.triggerType === "Webhook" || value.triggerType === "Schedule"
-      ? 'Custom triggerType must not be "Webhook" or "Schedule"'
-      : undefined
-  )
-);
-
-// Annotated for the same reason as the node data union below: a config that is
-// not an object matches no arm, and an unmatched union prints the value it
-// rejected unless a message says otherwise.
-export const workflowTriggerConfigSchema = Schema.Union([
-  webhookTriggerConfigSchema,
-  scheduleTriggerConfigSchema,
-  customTriggerConfigSchema,
-]).annotate({
-  message: "Trigger config must be an object naming a triggerType",
-});
-// When adding a new first-class trigger type (beyond Webhook/Schedule):
-// - Add a dedicated schema here and include it in this union.
-// - Mirror the trigger option + config UI in `src/components/workflow/config/trigger-config.tsx`.
-// Custom trigger configs are still accepted through `customTriggerConfigSchema`.
 
 const workflowNodeDataBaseFields = {
   label: Schema.String,

@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getValueByPath } from "@rova/shared/utils/object-path";
 import {
-  flattenSchemaPathOptions,
   inferPrimitiveType,
   inferSchemaField,
   inferSchemaFromPayload,
@@ -126,89 +124,12 @@ describe("inferSchemaFromPayload", () => {
   });
 });
 
-describe("flattenSchemaPathOptions", () => {
-  it("offers a container alongside every leaf inside it", () => {
-    expect(
-      flattenSchemaPathOptions([
-        { name: "type", type: "string" },
-        {
-          name: "data",
-          type: "object",
-          fields: [{ name: "id", type: "string" }],
-        },
-      ])
-    ).toEqual([
-      { path: "type", type: "string" },
-      { path: "data", type: "object" },
-      { path: "data.id", type: "string" },
-    ]);
-  });
-
-  it("addresses array elements by numeric segment, not by bracket", () => {
-    expect(
-      flattenSchemaPathOptions([
-        {
-          name: "items",
-          type: "array",
-          itemType: "object",
-          fields: [{ name: "sku", type: "string" }],
-        },
-      ])
-    ).toEqual([
-      { path: "items", type: "array" },
-      { path: "items.0.sku", type: "string" },
-    ]);
-  });
-
-  it("stops at an array of primitives, which has no child to name", () => {
-    expect(
-      flattenSchemaPathOptions([
-        { name: "tags", type: "array", itemType: "string" },
-      ])
-    ).toEqual([{ path: "tags", type: "array" }]);
-  });
-
-  it("skips fields whose name is blank", () => {
-    expect(
-      flattenSchemaPathOptions([
-        { name: "   ", type: "string" },
-        { name: "ok", type: "string" },
-      ])
-    ).toEqual([{ path: "ok", type: "string" }]);
-  });
-
-  it("emits paths that routing can actually read back off the payload", () => {
-    // Routing stores these paths in `webhookEventPath` / `webhookCorrelationPath`
-    // and the server resolves them with `getValueByPath`. If the two ever drift,
-    // the selector would offer a path the webhook handler cannot follow.
-    const payload = {
-      type: "appointment.create",
-      data: { id: "appt_123" },
-      items: [{ sku: "S1" }],
-    };
-
-    const resolved = flattenSchemaPathOptions(
-      inferSchemaFromPayload(payload)
-    ).map((option) => getValueByPath(payload, option.path));
-
-    expect(resolved).toEqual([
-      "appointment.create",
-      { id: "appt_123" },
-      "appt_123",
-      [{ sku: "S1" }],
-      "S1",
-    ]);
-  });
-});
-
 describe("config readers", () => {
   it("reads a string value and falls back when the key is missing or mistyped", () => {
-    expect(readConfigString({ triggerType: "Webhook" }, "triggerType")).toBe(
-      "Webhook"
-    );
-    expect(readConfigString({}, "triggerType")).toBe("");
-    expect(readConfigString({ triggerType: 7 }, "triggerType", "Webhook")).toBe(
-      "Webhook"
+    expect(readConfigString({ actionType: "Wait" }, "actionType")).toBe("Wait");
+    expect(readConfigString({}, "actionType")).toBe("");
+    expect(readConfigString({ actionType: 7 }, "actionType", "Wait")).toBe(
+      "Wait"
     );
   });
 

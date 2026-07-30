@@ -22,7 +22,6 @@ function seedTemplateContext(selectedNodeId = "wait_1") {
       data: {
         label: "Webhook",
         type: "trigger",
-        config: { triggerType: "Webhook" },
       },
     },
     {
@@ -244,7 +243,6 @@ describe("Template badge autocomplete", () => {
         data: {
           label: "Webhook",
           type: "trigger",
-          config: { triggerType: "Webhook" },
         },
       },
       {

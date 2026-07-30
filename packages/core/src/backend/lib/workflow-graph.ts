@@ -3,6 +3,7 @@ import {
   isConditionActionNode,
   normalizeConditionBranch,
 } from "@rova/shared/workflow/condition-branch";
+import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/workflow/lifecycle-outlets";
 import {
   createGraphFromSerialized,
   getNodeTypeFromSerializedNode,
@@ -62,6 +63,34 @@ function validateConditionBranchEdges(input: {
 
     if (branch) {
       return `Only Condition nodes can emit true/false branch edges (edge "${edge.id}")`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Every edge leaving the entry node names the outlet it leaves from.
+ *
+ * The Lifecycle Node has one outlet today and two the moment the Canceled one
+ * lands, so an edge that names none would bind by whatever order React Flow
+ * happened to render the handles in. Refusing it here is what keeps a graph drawn
+ * today unambiguous under a node that grows a second handle tomorrow.
+ */
+function validateLifecycleOutletEdges(input: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}): string | null {
+  const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
+
+  for (const edge of input.edges) {
+    const sourceNode = nodeById.get(edge.source);
+    if (sourceNode?.data.type !== "trigger") {
+      continue;
+    }
+
+    if (edge.sourceHandle !== LIFECYCLE_STARTED_HANDLE) {
+      return `Edge "${edge.id}" leaves the Lifecycle Node without naming an outlet. Redraw it from the "Started" handle.`;
     }
   }
 
@@ -212,6 +241,15 @@ export function validateWorkflowGraph(
     return {
       valid: false,
       error: conditionBranchValidationError,
+    };
+  }
+
+  const lifecycleOutletValidationError =
+    validateLifecycleOutletEdges(graphData);
+  if (lifecycleOutletValidationError) {
+    return {
+      valid: false,
+      error: lifecycleOutletValidationError,
     };
   }
 

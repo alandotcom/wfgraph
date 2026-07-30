@@ -46,7 +46,7 @@ import {
   resolveWorkflowTriggerDefinition,
 } from "@rova/shared/workflow/trigger-registry";
 import { readWaitForEvents } from "@rova/shared/workflow/wait-events";
-import { resolveWebhookTriggerRuntimeConfig } from "@rova/shared/workflow/triggers/webhook-trigger";
+import { parseWebhookMockInput } from "@rova/shared/workflow/triggers/webhook-trigger";
 import type {
   ConditionBranch,
   SerializedWorkflowGraph,
@@ -1618,16 +1618,14 @@ async function executeWorkflowInner(
 
       const configRecord = node.data.config ?? {};
       const triggerDefinition = resolveWorkflowTriggerDefinition(configRecord);
-      const webhookRuntimeConfig =
-        triggerDefinition.runtime.executionType === "webhook"
-          ? resolveWebhookTriggerRuntimeConfig(configRecord)
-          : undefined;
+      // The entry node's own sample payload, which stands in when a run was
+      // started with nothing: a test run from the canvas, before any Event.
+      const mockInput = parseWebhookMockInput(configRecord);
       let triggerData: JsonObject = {
         triggered: true,
         timestamp: Date.now(),
       };
 
-      const mockInput = webhookRuntimeConfig?.mockInput;
       if (
         mockInput &&
         (!triggerInput || Object.keys(triggerInput).length === 0)
@@ -1658,7 +1656,6 @@ async function executeWorkflowInner(
           {
             ...triggerData,
             triggered: false,
-            eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
             ignoredReason: triggerClassification.reason,
           },
           isNil
@@ -1666,14 +1663,15 @@ async function executeWorkflowInner(
 
         namedNodeLogger.info("Trigger payload failed the trigger schema", {
           triggerType: triggerDefinition.runtime.type,
-          eventTypePath: webhookRuntimeConfig?.routing.eventTypePath,
           ignoredReason: triggerClassification.reason,
         });
       }
 
       let shouldExecuteTriggerStep = true;
 
-      if (!triggerIgnored && triggerDefinition.runtime.type === "Webhook") {
+      // The output contract is the entry node's narrowing of its payload, so it
+      // is checked for every run rather than for one trigger type.
+      if (!triggerIgnored) {
         const schemaValidation = validateWorkflowOutputAgainstSchema({
           schemaValue: configRecord.webhookOutputSchema,
           output: triggerData,

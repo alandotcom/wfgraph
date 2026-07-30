@@ -77,6 +77,12 @@ reschedule replaces a run; the retired word for that was Replace.
 How an Execution ends when newest-wins Concurrency lets a newer start take
 its place. Quiet: no outlet fires, and run history records the status.
 
+**Refused Start**:
+A start that opened no Execution, because first-wins Concurrency found a run
+for the entity already going, the payload carried nothing at the Correlation
+Path Concurrency needs, or a manual start was not allowed. Recorded as an
+audit row with no Execution behind it.
+
 **Canceled Branch**:
 The branch behind the Canceled outlet. Runs inside the same Execution, so it
 reads the run's earlier node outputs and the canceling payload. Terminal: a

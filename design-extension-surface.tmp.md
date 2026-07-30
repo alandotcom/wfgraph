@@ -1958,6 +1958,14 @@ This is the largest batch and it does not split cleanly. A split that lands the 
 would leave one commit where a builder configures rules nothing reads, which passes every
 check and ships a broken editor. The mid-batch gate is the answer instead.
 
+**One deviation from 4.2, taken in phase 2.** Rule 5 counts a schedule as a start source, and
+the shape carried a `schedule` member for the panel to write into. Neither survived: nothing in
+Rova ticks a clock, so a schedule could only ever be written and refused, and a shape whose one
+writer is a save refusal is a shape with no writer. `lifecycleRules` therefore has no `schedule`
+member, `hasStartSource` counts Start Events and manual starts, and the panel shows a schedule
+placeholder saying where a timed run comes from instead. Whichever batch brings the clock adds
+the member back with the code that reads it.
+
 ### B3. `defineIntegration`, piloted on twilio. No migration. Gate.
 
 The definition shape, `defineStep` gaining metadata and losing its id, twilio ported, and

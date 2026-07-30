@@ -1,6 +1,5 @@
 import { Schema } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { RuntimeTriggerDefinition } from "#src/lib/runtime-extensions";
 import {
   getUpstreamConditionFields,
   getUpstreamFields,
@@ -61,7 +60,6 @@ describe("upstream-node-fields", () => {
         type: "trigger",
         label: "Webhook",
         config: {
-          triggerType: "Webhook",
           webhookOutputSchema: JSON.stringify([
             {
               name: "data",
@@ -134,9 +132,7 @@ describe("upstream-node-fields", () => {
         id: "trigger-1",
         type: "trigger",
         label: "Webhook",
-        config: {
-          triggerType: "Webhook",
-        },
+        config: {},
       }),
       createNode({
         id: "condition-1",
@@ -180,8 +176,8 @@ describe("upstream-node-fields", () => {
       createNode({
         id: "trigger-1",
         type: "trigger",
-        label: "Webhook",
-        config: { triggerType: "Webhook" },
+        label: "Trigger",
+        config: {},
       }),
       createNode({
         id: "action-1",
@@ -279,70 +275,13 @@ describe("upstream-node-fields", () => {
     ]);
   });
 
-  it("surfaces custom trigger schema fields via runtime trigger outputFields", async () => {
-    const mockTrigger: RuntimeTriggerDefinition = {
-      type: "DonorEligibility",
-      label: "Donor Eligibility",
-      executionType: "webhook",
-      outputFields: [
-        { path: "donorUuid", description: "Donor UUID", type: "string" },
-        { path: "status", description: "Eligibility status", type: "string" },
-        { path: "score", description: "Eligibility score", type: "number" },
-      ],
-    };
-
-    // vi.doMock rather than vi.mock: only this case wants the trigger lookup
-    // stubbed, and vi.mock would be hoisted to the top of the file and apply to
-    // every case in it. Resetting the registry first makes the re-import below
-    // evaluate the subject afresh against the stub.
-    vi.resetModules();
-    vi.doMock("#src/lib/runtime-extensions", () => ({
-      findRuntimeTrigger: (type: string) =>
-        type === "DonorEligibility" ? mockTrigger : undefined,
-      getRuntimeTriggers: () => [],
-      hydrateRuntimeExtensions: () => undefined,
-    }));
-
-    const { getNodeOutputFields: getNodeOutputFieldsMocked } =
-      await import("#src/lib/upstream-node-fields");
-
-    const triggerNode = createNode({
-      id: "trigger-1",
-      type: "trigger",
-      label: "DonorEligibility",
-      config: { triggerType: "DonorEligibility" },
-    });
-
-    const fields = getNodeOutputFieldsMocked(triggerNode);
-
-    // Should include default trigger fields
-    expect(fields.some((f: { path: string }) => f.path === "triggered")).toBe(
-      true
-    );
-    expect(fields.some((f: { path: string }) => f.path === "timestamp")).toBe(
-      true
-    );
-    expect(fields.some((f: { path: string }) => f.path === "input")).toBe(true);
-
-    // Should include custom trigger schema fields
-    expect(fields.some((f: { path: string }) => f.path === "donorUuid")).toBe(
-      true
-    );
-    expect(fields.some((f: { path: string }) => f.path === "status")).toBe(
-      true
-    );
-    expect(fields.some((f: { path: string }) => f.path === "score")).toBe(true);
-  });
-
   it("includes only condition-compatible primitive fields", () => {
     const nodes: WorkflowNode[] = [
       createNode({
         id: "trigger-1",
         type: "trigger",
         label: "Webhook",
-        config: {
-          triggerType: "Webhook",
-        },
+        config: {},
       }),
       createNode({
         id: "db-1",

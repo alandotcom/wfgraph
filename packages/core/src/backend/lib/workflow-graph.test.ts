@@ -15,7 +15,7 @@ function createBaseTriggerNode(id = "trigger_1"): WorkflowNode {
     data: {
       label: "Trigger",
       type: "trigger",
-      config: { triggerType: "Webhook" },
+      config: {},
     },
   };
 }
@@ -46,6 +46,11 @@ function createConditionActionNode(id = "condition_1"): WorkflowNode {
   };
 }
 
+/**
+ * An edge, naming the Lifecycle Node's outlet when it leaves one: the save refuses
+ * an edge from the entry node that names none, because a second outlet lands in
+ * stage 7 and an unnamed edge would bind by render order.
+ */
 function createEdge(
   source: string,
   target: string,
@@ -55,6 +60,7 @@ function createEdge(
     id,
     source,
     target,
+    ...(source.startsWith("trigger") ? { sourceHandle: "started" } : {}),
   };
 }
 
@@ -96,7 +102,7 @@ describe("validateWorkflowGraph", () => {
             data: {
               label: "Trigger",
               // missing data.type on purpose
-              config: { triggerType: "Webhook" },
+              config: {},
             },
           },
         },
@@ -229,6 +235,22 @@ describe("validateWorkflowGraph", () => {
     if (!result.valid) {
       expect(result.error).toContain("Only Condition nodes");
     }
+  });
+
+  // A stored graph drawn before the outlet was named fails, which is the strict
+  // contract: there is no stored data to migrate and no second binding to guess.
+  it("rejects an edge that leaves the Lifecycle Node naming no outlet", () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [createBaseTriggerNode(), createActionNode()],
+      edges: [{ id: "edge_1", source: "trigger_1", target: "action_1" }],
+    });
+
+    const result = validateWorkflowGraph(graph);
+
+    expect(result).toMatchObject({
+      valid: false,
+      error: expect.stringContaining("without naming an outlet"),
+    });
   });
 
   it("rejects graphs where a node has more than one incoming edge", () => {

@@ -207,6 +207,14 @@ const executionSummarySchema = Schema.Struct({
   duration: Schema.NullOr(Schema.String),
 });
 
+/** One Refused Start: an audit row with no Execution behind it. */
+const refusedStartSchema = Schema.Struct({
+  id: idSchema,
+  message: Schema.String,
+  metadata: Schema.Unknown,
+  createdAt: Schema.String,
+});
+
 const executionEventSchema = Schema.Struct({
   id: idSchema,
   workflowId: idSchema,
@@ -425,8 +433,35 @@ export const rpcContract = {
       )
       .output(contractSchema(workflowExecuteResponseSchema)),
     getExecutions: route("GET", "/workflows/{workflowId}/executions")
-      .input(contractSchema(Schema.Struct({ workflowId: idSchema })))
-      .output(contractSchema(listOf(workflowExecutionSchema))),
+      .input(
+        contractSchema(
+          Schema.Struct({
+            workflowId: idSchema,
+            /**
+             * Superseded runs are left out by default: a newest-wins workflow
+             * displaces one on every reschedule, and those rows would crowd the
+             * panel. `supersededCount` below is what the toggle asking for them is
+             * labelled with, and it is answered either way.
+             */
+            includeSuperseded: Schema.optionalKey(Schema.Boolean),
+          })
+        )
+      )
+      .output(
+        contractSchema(
+          Schema.Struct({
+            items: listOf(workflowExecutionSchema),
+            supersededCount: Schema.Number,
+            /**
+             * The starts that opened no run: first-wins Concurrency finding a run
+             * for the entity already going, a payload carrying nothing at the
+             * Correlation Path, or a manual start the rules do not allow. They ride
+             * along here because the panel showing them polls with the runs.
+             */
+            refusedStarts: listOf(refusedStartSchema),
+          })
+        )
+      ),
     getExecutionsGlobal: route("GET", "/workflows/executions")
       .input(
         contractSchema(

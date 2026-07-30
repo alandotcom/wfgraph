@@ -37,7 +37,9 @@ import {
 } from "#src/lib/workflow-ui-store";
 import { ActionConfig } from "./config/action-config";
 import { ActionGrid } from "./config/action-grid";
-import { TriggerConfig } from "./config/trigger-config";
+import { Separator } from "#src/components/ui/separator";
+import { LifecyclePanel } from "./config/lifecycle-panel";
+import { LifecycleNodeConfig } from "./config/lifecycle-node-config";
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
 import { WorkflowRuns } from "./workflow-runs";
 
@@ -498,12 +500,21 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
     return (
       <div className="space-y-4 p-4">
         {selectedNode.data.type === "trigger" ? (
-          <TriggerConfig
-            config={selectedNode.data.config || {}}
-            disabled={isGenerating || !isOwner}
-            onUpdateConfig={handleUpdateConfig}
-            workflowId={currentWorkflowId ?? undefined}
-          />
+          <>
+            {/* The rules first: they are what the engine reads. The payload shape
+                below them is the entry node's other half, which B5 replaces. */}
+            <LifecyclePanel
+              config={selectedNode.data.config || {}}
+              disabled={isGenerating || !isOwner}
+              onUpdateConfig={handleUpdateConfig}
+            />
+            <Separator />
+            <LifecycleNodeConfig
+              config={selectedNode.data.config || {}}
+              disabled={isGenerating || !isOwner}
+              onUpdateConfig={handleUpdateConfig}
+            />
+          </>
         ) : null}
 
         {selectedNode.data.type === "action" &&

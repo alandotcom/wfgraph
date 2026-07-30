@@ -11,9 +11,7 @@ function lifecycleNode(rules?: LifecycleRules): WorkflowNode {
     data: {
       label: "Start",
       type: "trigger",
-      config: rules
-        ? { triggerType: "Webhook", lifecycleRules: rules }
-        : { triggerType: "Webhook" },
+      config: rules ? { lifecycleRules: rules } : {},
     },
   };
 }

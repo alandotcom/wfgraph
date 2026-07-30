@@ -44,7 +44,7 @@ function createTriggerNode(id: string): WorkflowNode {
     data: {
       label: "Trigger",
       type: "trigger",
-      config: { triggerType: "Trigger" },
+      config: {},
     },
   };
 }

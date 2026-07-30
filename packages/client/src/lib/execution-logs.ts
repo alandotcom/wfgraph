@@ -53,6 +53,19 @@ export type ExecutionEvent = {
   createdAt: Date;
 };
 
+/**
+ * One Refused Start, which is an arrival that opened no run. It carries no
+ * execution id for the same reason: there is no run to point at.
+ */
+export type RefusedStart = {
+  id: string;
+  message: string;
+  metadata: unknown;
+  createdAt: Date;
+};
+
+type RawRefusedStart = Omit<RefusedStart, "createdAt"> & { createdAt: string };
+
 /** A run status that can still change, and so is still worth polling. */
 export function isRunInProgress(status: string | undefined): boolean {
   return IN_FLIGHT_EXECUTION_STATUSES.some((inFlight) => inFlight === status);
@@ -66,16 +79,33 @@ export function isRunInProgress(status: string | undefined): boolean {
  * feed every node on the canvas: an inline closure would rebuild the whole map
  * on every render and re-render the canvas with it.
  */
-export function toWorkflowExecutions(
-  executions: readonly RawExecution[]
-): WorkflowExecution[] {
-  return executions.map((execution) => ({
-    ...execution,
-    startedAt: new Date(execution.startedAt),
-    waitingAt: execution.waitingAt ? new Date(execution.waitingAt) : null,
-    cancelledAt: execution.cancelledAt ? new Date(execution.cancelledAt) : null,
-    completedAt: execution.completedAt ? new Date(execution.completedAt) : null,
-  }));
+export function toWorkflowExecutions(payload: {
+  readonly items: readonly RawExecution[];
+  readonly supersededCount: number;
+  readonly refusedStarts: readonly RawRefusedStart[];
+}): {
+  executions: WorkflowExecution[];
+  supersededCount: number;
+  refusedStarts: RefusedStart[];
+} {
+  return {
+    supersededCount: payload.supersededCount,
+    refusedStarts: payload.refusedStarts.map((refusal) => ({
+      ...refusal,
+      createdAt: new Date(refusal.createdAt),
+    })),
+    executions: payload.items.map((execution) => ({
+      ...execution,
+      startedAt: new Date(execution.startedAt),
+      waitingAt: execution.waitingAt ? new Date(execution.waitingAt) : null,
+      cancelledAt: execution.cancelledAt
+        ? new Date(execution.cancelledAt)
+        : null,
+      completedAt: execution.completedAt
+        ? new Date(execution.completedAt)
+        : null,
+    })),
+  };
 }
 
 export function toExecutionLogs(payload: RawExecutionLogs): ExecutionLog[] {

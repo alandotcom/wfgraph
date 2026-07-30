@@ -1,46 +1,41 @@
-import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
-import { createStore, Provider as JotaiProvider } from "jotai";
+import { describe, expect, it, vi } from "vitest";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
 import { WaitEventSelect } from "#src/components/workflow/config/wait-event-select";
-import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
-import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 /**
- * The picker takes its selection from the node config it is handed, and its
- * vocabulary from the workflow's trigger node in the graph store. These seed
- * that store directly, the way the editor's loader does.
+ * The picker takes its selection from the node config it is handed and its
+ * vocabulary from the app's catalog, which is what lets a wait park on an Event
+ * the workflow does not start on.
  */
+vi.mock("#src/lib/extensions", () => ({
+  getExtensionCatalog: () => ({
+    events: [
+      {
+        name: "billing/payment.settled",
+        label: "Payment settled",
+        correlationPath: "invoice.id",
+        payloadFields: [],
+      },
+      {
+        name: "ops/nightly.swept",
+        label: "Nightly sweep",
+        payloadFields: [],
+      },
+    ],
+    actions: [],
+    integrations: [],
+  }),
+}));
 
-function webhookTriggerNode(config: Record<string, unknown>): WorkflowNode {
-  return {
-    id: "trigger_1",
-    type: "trigger",
-    position: { x: 0, y: 0 },
-    data: { label: "Trigger", type: "trigger", config },
-  };
-}
-
-function renderSelect(options: {
-  config: Record<string, unknown>;
-  /** The graph the vocabulary is read from; empty means no trigger at all. */
-  nodes?: WorkflowNode[];
-}) {
-  const store = createStore();
-  store.set(loadWorkflowGraphAtom, {
-    nodes: options.nodes ?? [],
-    edges: [],
-  });
-
+function renderSelect(config: Record<string, unknown>) {
   const onUpdateConfig = vi.fn((_patch: NodeConfigPatch) => undefined);
   const view = render(
-    <JotaiProvider store={store}>
-      <WaitEventSelect
-        config={options.config}
-        disabled={false}
-        onUpdateConfig={onUpdateConfig}
-      />
-    </JotaiProvider>
+    <WaitEventSelect
+      config={config}
+      disabled={false}
+      onUpdateConfig={onUpdateConfig}
+    />
   );
 
   return {
@@ -52,46 +47,64 @@ function renderSelect(options: {
   };
 }
 
-describe("WaitEventSelect with an open vocabulary", () => {
-  // The webhook trigger's policy names only the events the builder mapped, so
-  // a selection it does not mention is still a real choice and stays visible.
-  it("renders a selection the trigger's policy never named", () => {
-    const { view } = renderSelect({ config: { waitForEvents: ["x"] } });
+describe("WaitEventSelect", () => {
+  it("offers every Event the app declares", () => {
+    const { view } = renderSelect({ waitForEvents: [] });
 
-    const chip = view.getByRole("button", { name: "x" });
-    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    expect(
+      view.getByRole("button", { name: "billing/payment.settled" })
+    ).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "ops/nightly.swept" })
+    ).toBeTruthy();
+  });
+
+  it("writes an array rather than a joined string when selecting a chip", () => {
+    const { view, lastWaitForEvents } = renderSelect({ waitForEvents: [] });
+
+    fireEvent.click(
+      view.getByRole("button", { name: "billing/payment.settled" })
+    );
+    expect(lastWaitForEvents()).toEqual(["billing/payment.settled"]);
+
+    fireEvent.click(view.getByRole("button", { name: "ops/nightly.swept" }));
+    // The component works from the config it was handed, which has not moved,
+    // so the second click writes its own single-entry list.
+    expect(lastWaitForEvents()).toEqual(["ops/nightly.swept"]);
+    expect(Array.isArray(lastWaitForEvents())).toBe(true);
   });
 
   it("deselects a chip by writing the list without it", () => {
     const { view, onUpdateConfig, lastWaitForEvents } = renderSelect({
-      config: { waitForEvents: ["x"] },
+      waitForEvents: ["ops/nightly.swept"],
     });
 
-    fireEvent.click(view.getByRole("button", { name: "x" }));
+    fireEvent.click(view.getByRole("button", { name: "ops/nightly.swept" }));
 
     expect(onUpdateConfig).toHaveBeenCalledTimes(1);
     expect(lastWaitForEvents()).toEqual([]);
   });
 
-  it("writes an array rather than a joined string when selecting a chip", () => {
-    const { view, lastWaitForEvents } = renderSelect({
-      config: { waitForEvents: [] },
-      nodes: [
-        webhookTriggerNode({
-          triggerType: "Webhook",
-          routingPolicy: { "a.b": "start", "c.d": "start" },
-        }),
-      ],
+  // A host can send the bus an Event it never declared, so a name the catalog
+  // does not carry stays selectable and stays visible -- with the consequence
+  // said out loud, because nothing will arrive under it from this server.
+  it("keeps a selection the catalog does not declare, and says so", () => {
+    const { view } = renderSelect({ waitForEvents: ["vendor/thing.happened"] });
+
+    const chip = view.getByRole("button", { name: "vendor/thing.happened" });
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    expect(view.getByText(/declares no such Event/)).toBeTruthy();
+  });
+
+  it("adds a typed-in Event to the selection", () => {
+    const { view, lastWaitForEvents } = renderSelect({ waitForEvents: [] });
+
+    fireEvent.change(view.getByPlaceholderText("app/appointment.confirmed"), {
+      target: { value: " vendor/thing.happened " },
     });
+    fireEvent.click(view.getByRole("button", { name: "Add" }));
 
-    fireEvent.click(view.getByRole("button", { name: /^a\.b/ }));
-    expect(lastWaitForEvents()).toEqual(["a.b"]);
-
-    fireEvent.click(view.getByRole("button", { name: /^c\.d/ }));
-    // The component works from the config it was handed, which has not moved,
-    // so the second click writes its own single-entry list.
-    expect(lastWaitForEvents()).toEqual(["c.d"]);
-    expect(Array.isArray(lastWaitForEvents())).toBe(true);
+    expect(lastWaitForEvents()).toEqual(["vendor/thing.happened"]);
   });
 });
 
@@ -101,23 +114,14 @@ describe("WaitEventSelect with an open vocabulary", () => {
 // which nothing can wake.
 describe("WaitEventSelect empty selection", () => {
   it("says a wait with no event named cannot be resumed", () => {
-    const { view } = renderSelect({
-      config: { waitForEvents: [] },
-      nodes: [webhookTriggerNode({ triggerType: "Webhook" })],
-    });
+    const { view } = renderSelect({ waitForEvents: [] });
 
     expect(view.getByText(/Name at least one event/)).toBeTruthy();
   });
 
   it("stays quiet once an event is named", () => {
     const { view } = renderSelect({
-      config: { waitForEvents: ["a.b"] },
-      nodes: [
-        webhookTriggerNode({
-          triggerType: "Webhook",
-          routingPolicy: { "a.b": "ignore" },
-        }),
-      ],
+      waitForEvents: ["billing/payment.settled"],
     });
 
     expect(view.queryByText(/Name at least one event/)).toBeNull();

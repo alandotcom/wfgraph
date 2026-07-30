@@ -1,4 +1,3 @@
-import { findRuntimeTrigger } from "#src/lib/runtime-extensions";
 import { findActionById } from "@rova/shared/plugins/registry";
 import type {
   ConditionFieldDefinition,
@@ -122,40 +121,21 @@ function getDatabaseQueryOutputFields(
   return DEFAULT_DATABASE_OUTPUT_FIELDS;
 }
 
+/**
+ * What the entry node offers downstream nodes.
+ *
+ * The narrowed output contract the builder wrote, over the fields every run
+ * carries. There is no per-trigger-type arm: an entry node has one payload shape
+ * now, and B5 replaces the hand-written one with the Start Events' own fields.
+ */
 function getTriggerOutputFields(node: WorkflowNode): ReferenceField[] {
-  const triggerType = readConfigString(node.data.config, "triggerType");
+  const outputSchemaFields = readSchemaFields(
+    readOutputSchemaString(node.data.config, "webhookOutputSchema")
+  );
 
-  // Webhook triggers: use webhookOutputSchema from node config
-  if (triggerType === "Webhook") {
-    const outputSchemaFields = readSchemaFields(
-      readOutputSchemaString(node.data.config, "webhookOutputSchema")
-    );
-
-    if (outputSchemaFields.length === 0) {
-      return DEFAULT_TRIGGER_OUTPUT_FIELDS;
-    }
-
-    return dedupeByPath([
-      ...DEFAULT_TRIGGER_OUTPUT_FIELDS,
-      ...outputSchemaFields,
-    ]);
-  }
-
-  // Custom/runtime triggers: use outputFields from trigger definition
-  if (triggerType) {
-    const runtimeTrigger = findRuntimeTrigger(triggerType);
-    if (
-      runtimeTrigger?.outputFields &&
-      runtimeTrigger.outputFields.length > 0
-    ) {
-      return dedupeByPath([
-        ...DEFAULT_TRIGGER_OUTPUT_FIELDS,
-        ...runtimeTrigger.outputFields,
-      ]);
-    }
-  }
-
-  return DEFAULT_TRIGGER_OUTPUT_FIELDS;
+  return outputSchemaFields.length === 0
+    ? DEFAULT_TRIGGER_OUTPUT_FIELDS
+    : dedupeByPath([...DEFAULT_TRIGGER_OUTPUT_FIELDS, ...outputSchemaFields]);
 }
 
 function getPluginActionOutputFields(actionType: string): ReferenceField[] {
@@ -185,8 +165,7 @@ export function getNodeDisplayName(node: WorkflowNode): string {
   }
 
   if (node.data.type === "trigger") {
-    const triggerType = readConfigString(node.data.config, "triggerType");
-    return triggerType || "Webhook";
+    return "Trigger";
   }
 
   return "Node";

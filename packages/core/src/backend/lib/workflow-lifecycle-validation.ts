@@ -12,23 +12,11 @@ import {
   readLifecycleRules,
 } from "@rova/shared/workflow/lifecycle-rules";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
-import { readWaitForEvents } from "@rova/shared/workflow/wait-events";
+import { readWaitEventNames } from "@rova/shared/workflow/wait-events";
 
 export type WorkflowLifecycleValidationResult =
   | { valid: true }
   | { valid: false; error: string };
-
-/** The action type of the built-in Wait step, which is what parks on an Event. */
-const WAIT_ACTION_TYPE = "Wait";
-
-/** Every Event name the graph's Wait nodes park on, in node order. */
-export function readWaitEventNames(nodes: readonly WorkflowNode[]): string[] {
-  return nodes.flatMap((node) =>
-    node.data.config?.actionType === WAIT_ACTION_TYPE
-      ? readWaitForEvents(node.data.config.waitForEvents)
-      : []
-  );
-}
 
 /**
  * A graph whose entry node carries no rules passes: the panel writes them, and

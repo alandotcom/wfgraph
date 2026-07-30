@@ -75,7 +75,7 @@ export function withDefaultTriggerNode(graph: unknown): unknown {
           label: "",
           description: "",
           type: "trigger",
-          config: { triggerType: "Webhook" },
+          config: {},
           status: "idle",
         },
       },

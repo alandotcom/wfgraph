@@ -1,10 +1,15 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { callDbModule } from "#src/backend/lib/effect/database";
 import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
 import { getExtensions } from "#src/backend/lib/extensions/current";
+import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 import { loadWorkflowForRun } from "#src/backend/services/workflows/triggering/preflight";
-import { recordPausedRunIgnored } from "#src/backend/services/workflows/triggering/run-lifecycle";
+import {
+  buildIgnoredRunAuditMessage,
+  recordPausedRunIgnored,
+} from "#src/backend/services/workflows/triggering/run-lifecycle";
 import { findEvent } from "@rova/shared/extensions/catalog";
 import type { JsonObject } from "@rova/shared/types/json";
 import { asNonEmptyString } from "@rova/shared/types/string";
@@ -112,6 +117,25 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
       yield* logger.info("Refused a manual run", {
         reason: "manual_start_not_allowed",
       });
+
+      // A Refused Start, recorded the way the other two are: this one is the
+      // workflow's own checkbox declining, and the panel that lists refusals has
+      // to hold for the case a builder created themselves.
+      yield* callDbModule(() =>
+        logWorkflowAuditEvent({
+          workflowId,
+          eventType: "run_not_started",
+          message: buildIgnoredRunAuditMessage({
+            startSource: "manual",
+            reason: "manual_start_not_allowed",
+          }),
+          metadata: {
+            reason: "manual_start_not_allowed",
+            startSource: "manual",
+            runMode,
+          },
+        })
+      );
 
       const response: WorkflowExecuteResponse = {
         status: "ignored",

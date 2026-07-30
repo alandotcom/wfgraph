@@ -26,8 +26,6 @@ const sourceGraph = createSerializedWorkflowGraph({
         label: "Appointment",
         type: "trigger",
         config: {
-          triggerType: "Webhook",
-          webhookEventPath: "event",
           lifecycleRules: {
             startEvents: ["app/appointment.created"],
             cancelEvents: [],
@@ -145,8 +143,6 @@ describe("postWorkflowDuplicate", () => {
         // The entry node's config travels whole, Lifecycle Rules included: the
         // copy starts on the same Events as its source.
         assert.deepStrictEqual(nodeConfig(storedGraph, 0), {
-          triggerType: "Webhook",
-          webhookEventPath: "event",
           lifecycleRules: {
             startEvents: ["app/appointment.created"],
             cancelEvents: [],

@@ -9,7 +9,6 @@
  */
 
 import { Schema } from "effect";
-import { uniq } from "es-toolkit/array";
 import { type ExtensionCatalog, findEvent } from "#src/extensions/catalog";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 
@@ -28,16 +27,6 @@ export const concurrencySchema = Schema.Literals([
 
 export type Concurrency = typeof concurrencySchema.Type;
 
-/**
- * A start on a clock. `expression` is the phrase the editor builds and `cron`
- * the five-field form; either resolves to the same schedule.
- */
-export const lifecycleScheduleSchema = Schema.Struct({
-  expression: Schema.optional(Schema.String),
-  cron: Schema.optional(Schema.String),
-  timezone: Schema.optional(Schema.String),
-});
-
 export const lifecycleRulesSchema = Schema.Struct({
   /** Event names that start a run. */
   startEvents: Schema.Array(NonEmptyTrimmedString),
@@ -51,14 +40,12 @@ export const lifecycleRulesSchema = Schema.Struct({
   concurrency: concurrencySchema,
 
   /**
-   * Start sources that are not Events.
+   * The start source that is not an Event: the Run button and the execute route.
    *
-   * `allowManualStart` is what the Run button and the execute route are held to.
-   * `schedule` is carried and refused: nothing in Rova ticks a clock yet, so the
-   * shape is here for the panel to write into and the interim rule below turns
-   * one away rather than accepting a workflow nothing can start.
+   * A clock is the other one the design names, and it is absent rather than
+   * carried-and-refused, because nothing in Rova can write one. It arrives with
+   * whatever ticks it, and the panel says so where a builder looks for it.
    */
-  schedule: Schema.optional(lifecycleScheduleSchema),
   allowManualStart: Schema.optional(Schema.Boolean),
 
   /**
@@ -73,17 +60,32 @@ export const lifecycleRulesSchema = Schema.Struct({
 export type LifecycleRules = typeof lifecycleRulesSchema.Type;
 
 /**
- * The rules a graph that declares none amounts to: nothing starts it.
+ * What the delivery path reads a rules-less graph as: no Event starts it.
  *
- * An entry node carrying no rules is every graph until the Lifecycle panel writes
- * them, and it is not the same thing as a graph that cannot run: an Event still
- * reaches the waits of runs parked inside it, which is what makes this an empty
- * declaration rather than a reason to skip the workflow.
+ * Read by `applyLifecycleRules`, so that an Event still reaches the waits of runs
+ * parked inside such a graph -- an empty declaration rather than a reason to skip
+ * the workflow. It says nothing about manual starts, because the question the
+ * delivery path asks is only which Events start a run; `manualStartAllowed` is
+ * what answers the other one.
  */
 export const emptyLifecycleRules: LifecycleRules = {
   startEvents: [],
   cancelEvents: [],
   concurrency: "unlimited",
+};
+
+/**
+ * What the panel offers a graph that has never had rules.
+ *
+ * Read by the Lifecycle panel and by the canvas summary beside it. Manual starts
+ * are on, which is the whole of the delta: the moment rules exist they are held to
+ * the start-source rule, so rules written with no Start Event yet would refuse the
+ * save that wrote them, and a workflow carrying no rules is one the Run button
+ * already starts.
+ */
+export const initialLifecycleRules: LifecycleRules = {
+  ...emptyLifecycleRules,
+  allowManualStart: true,
 };
 
 const readRules = readAs(lifecycleRulesSchema);
@@ -112,13 +114,7 @@ export function resolveCorrelationPath(input: {
   return input.declaredPath ?? input.rules.correlationPaths?.[input.eventName];
 }
 
-/**
- * Whether anything at all can start a run of this workflow.
- *
- * A schedule does not count: nothing in Rova ticks one yet, so a workflow whose
- * only start source is a schedule is a workflow nothing starts. The interim rule
- * below refuses one outright for the same reason.
- */
+/** Whether anything at all can start a run of this workflow. */
 export function hasStartSource(rules: LifecycleRules): boolean {
   return rules.startEvents.length > 0 || rules.allowManualStart === true;
 }
@@ -135,6 +131,19 @@ export function manualStartAllowed(rules: LifecycleRules | undefined): boolean {
   return rules === undefined || rules.allowManualStart === true;
 }
 
+/**
+ * The two interim sentences, said once.
+ *
+ * Both are shown twice over: the panel renders them beside a placeholder, and a
+ * save answers with them. Exported so the two copies cannot drift, which they had
+ * already begun to.
+ */
+export const CANCEL_EVENTS_INTERIM_MESSAGE =
+  "Cancel Events arrive with the Canceled outlet. Until then a workflow ends its own runs from the canvas or the runs panel.";
+
+export const SCHEDULE_INTERIM_MESSAGE =
+  "Nothing in Rova ticks a clock yet, so a run on a timer comes from whatever already schedules work for you, posting an Event.";
+
 export type LifecycleRulesCheck =
   | { valid: true }
   | { valid: false; error: string };
@@ -145,6 +154,79 @@ const refuse = (error: string): LifecycleRulesCheck => ({
   valid: false,
   error,
 });
+
+/** Which node is asking a builder for an Event's Correlation Path. */
+export type CorrelationPathRole = "start" | "cancel" | "wait";
+
+export type CorrelationPathRequest = {
+  eventName: string;
+  role: CorrelationPathRole;
+  /** What the builder has supplied so far, absent while the path is still owed. */
+  suppliedPath?: string;
+};
+
+/**
+ * The Events this workflow matches by Entity Value whose author declared no path,
+ * so the builder is the one being asked.
+ *
+ * Every role that matches an entity needs a path: a cancel and a wait always do,
+ * and a start does once Concurrency compares, which is why an unlimited workflow
+ * may start on a correlation-free Event. A wait naming an Event the catalog has
+ * never heard of is left out -- the picker admits a free name, and an Event nothing
+ * declares has no author to ask.
+ *
+ * A member whose `suppliedPath` is set is answered, not absent: the panel renders an
+ * input per member so a path can be corrected or cleared, and the save refuses on
+ * the first member still owing one. Filtering the set itself down to the unanswered
+ * ones would make the input vanish the moment it was filled in.
+ */
+export function eventsNeedingCorrelationPath(input: {
+  rules: LifecycleRules;
+  catalog: ExtensionCatalog;
+  waitEvents?: readonly string[];
+}): CorrelationPathRequest[] {
+  const { rules, catalog } = input;
+  const waitEvents = input.waitEvents ?? [];
+
+  const matchByEntityValue: Array<{
+    eventName: string;
+    role: CorrelationPathRole;
+  }> = [
+    ...(rules.concurrency === "unlimited"
+      ? []
+      : rules.startEvents.map((eventName) => ({
+          eventName,
+          role: "start" as const,
+        }))),
+    ...rules.cancelEvents.map((eventName) => ({
+      eventName,
+      role: "cancel" as const,
+    })),
+    ...waitEvents
+      .filter((eventName) => findEvent(catalog, eventName))
+      .map((eventName) => ({ eventName, role: "wait" as const })),
+  ];
+
+  const seen = new Set<string>();
+  const requests: CorrelationPathRequest[] = [];
+
+  for (const entry of matchByEntityValue) {
+    if (
+      seen.has(entry.eventName) ||
+      findEvent(catalog, entry.eventName)?.correlationPath
+    ) {
+      continue;
+    }
+    seen.add(entry.eventName);
+
+    requests.push({
+      ...entry,
+      suppliedPath: rules.correlationPaths?.[entry.eventName],
+    });
+  }
+
+  return requests;
+}
 
 /**
  * What a save is held to, as sentences a builder can be shown.
@@ -184,27 +266,13 @@ export function checkLifecycleRules(input: {
     }
   }
 
-  // Every role that matches by Entity Value needs a path to read one at. A cancel
-  // and a wait always do; a start does once Concurrency compares, and an
-  // unlimited workflow may start on a correlation-free Event. A wait naming an
-  // Event the catalog has never heard of is left out: the picker admits a free
-  // name, and an Event nothing declares has no author to ask for a path.
-  const matchByEntityValue = uniq([
-    ...rules.cancelEvents,
-    ...waitEvents.filter((name) => findEvent(catalog, name)),
-    ...(rules.concurrency === "unlimited" ? [] : rules.startEvents),
-  ]);
-
-  for (const name of matchByEntityValue) {
-    if (
-      !resolveCorrelationPath({
-        rules,
-        eventName: name,
-        declaredPath: findEvent(catalog, name)?.correlationPath,
-      })
-    ) {
-      return refuse(missingCorrelationPathMessage(name));
-    }
+  const owed = eventsNeedingCorrelationPath({
+    rules,
+    catalog,
+    waitEvents,
+  }).find((request) => !request.suppliedPath);
+  if (owed) {
+    return refuse(missingCorrelationPathMessage(owed.eventName));
   }
 
   if (!hasStartSource(rules)) {
@@ -216,15 +284,7 @@ export function checkLifecycleRules(input: {
   // Last, so a builder configuring cancellation is told about the missing path
   // or the unknown Event first: those are theirs to fix, and these are not.
   if (rules.cancelEvents.length > 0) {
-    return refuse(
-      "Cancel Events arrive with the Canceled outlet. Until then a workflow ends its own runs from the canvas."
-    );
-  }
-
-  if (rules.schedule) {
-    return refuse(
-      "Schedules arrive with the Lifecycle panel. Until then a workflow starts from an Event or a manual run."
-    );
+    return refuse(CANCEL_EVENTS_INTERIM_MESSAGE);
   }
 
   return valid;

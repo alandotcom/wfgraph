@@ -269,17 +269,15 @@ describe("registries bridge the schema they are given", () => {
       eventTypePath: "event",
     });
 
-    // Output fields and the closed Event Type vocabulary both come off the
-    // JSON Schema half, so their presence is the bridge having happened.
-    // `order.id` is there because the list descends: the correlation path names
-    // that leaf, and a config field asking for an order id has to be able to.
+    // The output fields come off the JSON Schema half, so their presence is the
+    // bridge having happened. `order.id` is there because the list descends: the
+    // correlation path names that leaf, and a config field asking for an order id
+    // has to be able to.
     expect(trigger.ui.outputFields?.map((field) => field.path)).toEqual([
       "event",
       "order",
       "order.id",
     ]);
-    expect(trigger.ui.eventTypes).toEqual(["order.created", "order.canceled"]);
-
     expect(
       trigger.runtime.evaluate({
         config: undefined,

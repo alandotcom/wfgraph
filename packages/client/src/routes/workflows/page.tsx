@@ -63,20 +63,26 @@ type ConfirmDeleteState = {
 const DELETE_CHALLENGE_THRESHOLD = 3;
 
 /**
- * The statuses this list filters by.
+ * The statuses this list offers as filters, and the ones it asks for when nothing
+ * is ticked.
  *
- * `superseded` is not among them and is filtered out by default below: a
- * newest-wins workflow produces one on every reschedule, and they would bury the
- * rows someone came to read. The count and the toggle that shows them arrive with
- * the Lifecycle panel.
+ * `superseded` is a filter a builder can tick but never part of the default set: a
+ * newest-wins workflow produces one on every reschedule, and unticked they would
+ * bury the rows someone came to read. The editor's own runs panel says how many
+ * there are per workflow.
  */
-const STATUS_OPTIONS: WorkflowExecutionStatus[] = [
+const DEFAULT_STATUS_OPTIONS: WorkflowExecutionStatus[] = [
   "running",
   "waiting",
   "failed",
   "completed",
   "canceled",
   "pending",
+];
+
+const STATUS_OPTIONS: WorkflowExecutionStatus[] = [
+  ...DEFAULT_STATUS_OPTIONS,
+  "superseded",
 ];
 
 function formatDuration(duration: string | null): string {
@@ -203,7 +209,7 @@ export default function WorkflowsPage() {
           statuses:
             statusFilters.size > 0
               ? Array.from(statusFilters).toSorted()
-              : STATUS_OPTIONS.toSorted(),
+              : DEFAULT_STATUS_OPTIONS.toSorted(),
           limit: RUNS_PAGE_SIZE,
         },
         isNil

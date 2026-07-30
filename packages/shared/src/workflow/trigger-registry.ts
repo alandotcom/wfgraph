@@ -20,9 +20,8 @@ import {
   createDefaultTriggerDefinition,
   createUnknownTriggerDefinition,
 } from "#src/workflow/triggers/fallback-trigger";
-import { createScheduleTriggerDefinition } from "#src/workflow/triggers/schedule-trigger";
 import { createWebhookTriggerDefinition } from "#src/workflow/triggers/webhook-trigger";
-import { asNonEmptyString } from "#src/workflow/webhook-routing";
+import { asNonEmptyString } from "#src/types/string";
 
 export type TriggerExecutionType = "manual" | "webhook" | "event";
 
@@ -123,14 +122,6 @@ export type WorkflowTriggerUiDefinition = {
   logoUrl?: string;
   configFields?: ActionConfigField[];
   outputFields?: ReferenceField[];
-  /**
-   * The closed Event Type vocabulary the editor renders as Routing Policy
-   * rows and Wait node options. Undefined when the vocabulary is open (the
-   * webhook trigger, or an `eventTypePath` pointing at a plain string).
-   */
-  eventTypes?: string[];
-  /** The payload path the editor names when explaining correlation. */
-  correlationPath?: string;
 };
 
 export type WorkflowTriggerDefinition = {
@@ -379,17 +370,6 @@ function outputFieldsFromSchemaFields<TPayload extends JsonObject>(
  * This is a lookup rather than a list, so the depth the picker stops at does not
  * apply: the walk goes exactly as deep as the path being looked for.
  */
-function enumValuesAtPath(
-  schemaFields: WorkflowSchemaField[] | undefined,
-  path: string
-): string[] | undefined {
-  if (!schemaFields) {
-    return undefined;
-  }
-  return flattenSchemaToReferenceFields(schemaFields, {
-    maxDepth: path.split(".").length,
-  }).find((field) => field.path === path)?.enumValues;
-}
 
 export function createTrigger<TPayload extends JsonObject>(
   input: CreateTriggerInput<TPayload>
@@ -442,11 +422,6 @@ export function createTrigger<TPayload extends JsonObject>(
   const schemaFields = parseTriggerSchemaFields(schema);
   const outputFields = outputFieldsFromSchemaFields(schemaFields, schema);
 
-  // The closed Event Type vocabulary the editor renders. An eventTypePath
-  // pointing at a schema enum (at any depth) yields its values; a path at a plain
-  // string leaves the vocabulary open.
-  const eventTypes = enumValuesAtPath(schemaFields, eventTypePath);
-
   const definition = normalizeTriggerDefinition({
     runtime: {
       type: triggerType,
@@ -474,8 +449,6 @@ export function createTrigger<TPayload extends JsonObject>(
       logoUrl: input.logoUrl,
       configFields,
       outputFields: outputFields.length > 0 ? outputFields : undefined,
-      eventTypes: eventTypes && eventTypes.length > 0 ? eventTypes : undefined,
-      correlationPath: correlationIdPath,
     },
   });
 
@@ -493,10 +466,6 @@ export type WorkflowTriggerMetadata = WorkflowTriggerUiDefinition & {
 const defaultTrigger = normalizeTriggerDefinition(
   createDefaultTriggerDefinition()
 );
-const scheduleTrigger = normalizeTriggerDefinition(
-  createScheduleTriggerDefinition()
-);
-
 const webhookTrigger = normalizeTriggerDefinition(
   createWebhookTriggerDefinition()
 );
@@ -506,7 +475,6 @@ const webhookTrigger = normalizeTriggerDefinition(
 // each one during startup.
 const triggerRegistry = new Map<string, WorkflowTriggerDefinition>([
   [webhookTrigger.runtime.type, webhookTrigger],
-  [scheduleTrigger.runtime.type, scheduleTrigger],
 ]);
 const builtInTriggerTypes = new Set(triggerRegistry.keys());
 
@@ -538,16 +506,12 @@ export function listWorkflowTriggers(): WorkflowTriggerMetadata[] {
     logoUrl: definition.ui.logoUrl,
     configFields: definition.ui.configFields ?? [],
     outputFields: definition.ui.outputFields,
-    eventTypes: definition.ui.eventTypes,
-    correlationPath: definition.ui.correlationPath,
   }));
 }
 
 export function listCustomWorkflowTriggers(): WorkflowTriggerMetadata[] {
   return listWorkflowTriggers().filter(
-    (definition) =>
-      definition.type !== webhookTrigger.runtime.type &&
-      definition.type !== scheduleTrigger.runtime.type
+    (definition) => definition.type !== webhookTrigger.runtime.type
   );
 }
 

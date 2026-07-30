@@ -80,9 +80,10 @@ export function refreshWorkflowList(queryClient: QueryClient) {
 }
 
 /**
- * Both views of run history: the editor's per-workflow list and the dashboard's
- * combined one. Starting, cancelling, or deleting runs makes both wrong, and
- * whichever one is not on screen is the one that gets forgotten.
+ * Both views of run history: the editor's per-workflow payload, which carries the
+ * Refused Starts with it, and the dashboard's combined list. Starting, cancelling,
+ * or deleting runs makes both wrong, and whichever one is not on screen is the one
+ * that gets forgotten.
  */
 export function refreshRunHistory(queryClient: QueryClient) {
   return Promise.all([

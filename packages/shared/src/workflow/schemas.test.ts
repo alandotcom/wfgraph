@@ -41,7 +41,7 @@ describe("a graph built in process", () => {
         data: {
           label: "Webhook",
           type: "trigger",
-          config: { triggerType: "Webhook", webhookSchema: undefined },
+          config: { webhookSchema: undefined },
         },
       })
     );
@@ -81,23 +81,33 @@ describe("node data failure messages", () => {
   // One literal `type` per union arm is what lets Effect pick the arm the
   // input was aiming at. Without it every arm is tried and every arm
   // complains, so a bad trigger config used to be reported beside a demand
-  // that `type` be "action" or "add".
+  // that `type` be "action" or "add". The entry node's config is one closed
+  // struct now, so its own field is the whole of what a reader is told.
   it("names the trigger arm's own problem and not the other arms", () => {
     const message = messageFor({
       label: "Webhook",
       type: "trigger",
-      config: { triggerType: "Webhook", webhookEventPath: 42 },
+      config: { webhookSchema: 42 },
     });
 
-    expect(message).toContain("config.webhookEventPath");
     expect(message).not.toContain('"action"');
-
-    // What the arm selection cannot remove: the trigger config union's third
-    // arm takes any `triggerType`, so it has no literal to select on and is
-    // tried against every config. Its refusal rides along.
     expect(message).toBe(
-      'config.webhookEventPath: Expected string | undefined, got 42; config: Custom triggerType must not be "Webhook" or "Schedule"'
+      "config.webhookSchema: Expected string | undefined, got 42"
     );
+  });
+
+  // The entry node's config is closed, and `triggerType` is the key every graph
+  // saved before this batch carries: it fails by name, which is what tells a
+  // reader the shape changed rather than the value being wrong.
+  it("names triggerType as the excess key it now is", () => {
+    const message = messageFor({
+      label: "Webhook",
+      type: "trigger",
+      config: { triggerType: "Webhook" },
+    });
+
+    expect(message).toContain("config.triggerType");
+    expect(message).toContain("Unexpected key");
   });
 
   it("keeps the rejected node data out of the message", () => {

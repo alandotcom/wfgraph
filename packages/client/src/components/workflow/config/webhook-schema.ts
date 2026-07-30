@@ -30,12 +30,6 @@ import type { NodeConfigPatch } from "./node-config-patch";
 /** Which editor the user has open for a schema: the field builder or raw JSON. */
 export type SchemaEditorMode = "builder" | "json";
 
-/** One dotted path a routing selector can offer, with the type found there. */
-export type SchemaPathOption = {
-  path: string;
-  type: WorkflowSchemaField["type"] | WorkflowSchemaField["itemType"];
-};
-
 const ISO8601_TIMESTAMP_REGEX =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 
@@ -270,43 +264,4 @@ export function webhookSchemaPatchFromSamplePayload(
   } catch {
     return {};
   }
-}
-
-/**
- * Flatten a schema tree into every path a routing selector can offer.
- *
- * Containers are listed alongside their children so a user can point routing at
- * a whole object. An array of objects contributes `name.0.child`; an array of
- * primitives contributes only itself, since its elements have no names.
- */
-export function flattenSchemaPathOptions(
-  schema: WorkflowSchemaField[],
-  prefix = ""
-): SchemaPathOption[] {
-  const paths: SchemaPathOption[] = [];
-
-  for (const field of schema) {
-    const fieldName = field.name.trim();
-
-    if (!fieldName) {
-      continue;
-    }
-
-    const currentPath = prefix ? `${prefix}.${fieldName}` : fieldName;
-    paths.push({ path: currentPath, type: field.type });
-
-    if (field.type === "object" && field.fields?.length) {
-      paths.push(...flattenSchemaPathOptions(field.fields, currentPath));
-    }
-
-    if (
-      field.type === "array" &&
-      field.itemType === "object" &&
-      field.fields?.length
-    ) {
-      paths.push(...flattenSchemaPathOptions(field.fields, `${currentPath}.0`));
-    }
-  }
-
-  return paths;
 }

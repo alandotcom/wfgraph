@@ -28,9 +28,7 @@ export type RuntimeTriggerDefinition = {
    * Routing Policy rows and the Wait node's event options. Absent means the
    * vocabulary is open and the editor falls back to free-text rows.
    */
-  eventTypes?: string[];
   /** The payload path runs correlate on, shown wherever correlation is explained. */
-  correlationPath?: string;
 };
 
 const runtimeTriggerRegistry = new Map<string, RuntimeTriggerDefinition>();
@@ -72,8 +70,6 @@ const runtimeTriggerSchema: Schema.Codec<RuntimeTriggerDefinition> =
     outputFields: Schema.optionalKey(
       Schema.mutable(Schema.Array(referenceFieldWireSchema))
     ),
-    eventTypes: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
-    correlationPath: Schema.optionalKey(Schema.String),
   });
 
 const readRuntimeAction = readAs(runtimeActionSchema);
@@ -91,14 +87,14 @@ function keepValidEntries<T>(
   return compact(entries?.map(read) ?? []);
 }
 
+/**
+ * The triggers the server registered, which the editor no longer offers: an entry
+ * node has no type to pick and what starts a run is the Lifecycle Rules. The
+ * registry is still filled from the envelope, and reading it back is how the
+ * hydration test proves that; B4 deletes the surface it decodes.
+ */
 export function getRuntimeTriggers(): RuntimeTriggerDefinition[] {
   return Array.from(runtimeTriggerRegistry.values());
-}
-
-export function findRuntimeTrigger(
-  type: string
-): RuntimeTriggerDefinition | undefined {
-  return runtimeTriggerRegistry.get(type);
 }
 
 /**
