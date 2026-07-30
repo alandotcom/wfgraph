@@ -21,6 +21,7 @@ import {
 } from "@rova/shared/types/json";
 import { getErrorMessageAsync } from "@rova/shared/utils";
 import { resolveWaitUntil } from "@rova/shared/utils/wait-time";
+import { celStringLiteral } from "@rova/shared/workflow/cel-string-literal";
 import { normalizeConditionBranch } from "@rova/shared/workflow/condition-branch";
 import {
   collectTimestampFieldPaths,
@@ -460,10 +461,6 @@ function generateWaitToken(): string {
     return globalThis.crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function escapeCelString(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
 }
 
 function isCancellationError(error: unknown): boolean {
@@ -975,9 +972,9 @@ async function executeEventWait(
         timeoutMs: prepared.timeoutMs,
         ifExpression: [
           "async.data.executionId == event.data.executionId",
-          `async.data.nodeId == '${escapeCelString(context.nodeId)}'`,
-          `async.data.token == '${escapeCelString(prepared.resumeToken)}'`,
-          `async.data.signalType == 'wait-resume'`,
+          `async.data.nodeId == ${celStringLiteral(context.nodeId)}`,
+          `async.data.token == ${celStringLiteral(prepared.resumeToken)}`,
+          `async.data.signalType == ${celStringLiteral("wait-resume")}`,
         ].join(" && "),
       }
     );

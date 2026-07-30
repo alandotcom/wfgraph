@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
 import {
+  closeDatabaseRuntime,
   configureDatabaseRuntime,
   getDatabaseSchema,
   getQueryClient,
-  resetDatabaseRuntime,
 } from "#src/backend/lib/db/index";
 import { migrateRovaDatabase } from "#src/migrate";
 
@@ -17,8 +18,8 @@ const CONFIG = {
   migrationsDir: NO_MIGRATIONS,
 } as const;
 
-beforeEach(resetDatabaseRuntime);
-afterEach(resetDatabaseRuntime);
+beforeEach(closeDatabaseRuntime);
+afterEach(closeDatabaseRuntime);
 
 describe("migrateRovaDatabase", () => {
   it("configures the database it was handed, then migrates it", async () => {
@@ -48,7 +49,7 @@ describe("migrateRovaDatabase", () => {
   // makes this take the "already initialized" comparison rather than the
   // recorded-config one.
   it("migrates from a process that already opened a pool", async () => {
-    configureDatabaseRuntime(CONFIG);
+    configureDatabaseRuntime(normalizeDatabaseConfig(CONFIG));
     const queryClient = getQueryClient();
 
     await expect(migrateRovaDatabase(CONFIG)).rejects.toThrow(
@@ -64,7 +65,9 @@ describe("migrateRovaDatabase", () => {
   // the whole config the app was built with. Leaving out a pool size the app set
   // reads as a different database, which is the refusal the README warns about.
   it("refuses a config differing in anything, pool size included", async () => {
-    configureDatabaseRuntime({ ...CONFIG, maxConnections: 4 });
+    configureDatabaseRuntime(
+      normalizeDatabaseConfig({ ...CONFIG, maxConnections: 4 })
+    );
 
     await expect(migrateRovaDatabase(CONFIG)).rejects.toThrow(
       "already configured with a different configuration"

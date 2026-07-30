@@ -1,6 +1,29 @@
-import { describe, expect, it } from "vitest";
+import { Inngest } from "inngest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+
+// The registry reads the workflows table to decide which run functions exist.
+// Which ones it builds is beside the point here, so the query answers nothing
+// and no connection is opened; vitest scopes a mock to the file that declares it.
+vi.mock("#src/backend/lib/db/index", () => ({
+  db: { query: { workflows: { findMany: () => Promise.resolve([]) } } },
+}));
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
-import { buildWorkflowFunctions } from "./functions";
+import { configureTestExtensions } from "#src/backend/lib/effect/test-layers";
+import { createRovaRuntime } from "#src/backend/runtime";
+import {
+  buildWorkflowFunctions,
+  createInngestFunctionRegistry,
+} from "./functions";
+
+// Constructing a client opens nothing; these functions are never invoked.
+const client = new Inngest({ id: "functions-test", isDev: true });
+// A registry builds its event listeners against a runtime. This one runs
+// nothing, so its Layers are never constructed.
+const runtime = createRovaRuntime({
+  client,
+  invalidate: () => {},
+  serve: () => Promise.reject(new Error("not served here")),
+});
 
 /**
  * The run functions, which are one per saved workflow and keyed on its id.
@@ -11,7 +34,7 @@ import { buildWorkflowFunctions } from "./functions";
  */
 describe("buildWorkflowFunctions", () => {
   it("creates one function per workflow with stable ids", () => {
-    const functions = buildWorkflowFunctions([
+    const functions = buildWorkflowFunctions(client, [
       { id: "workflow_123", name: "Order Updates" },
       { id: "workflow_999", name: CURRENT_WORKFLOW_NAME },
     ]);
@@ -24,7 +47,7 @@ describe("buildWorkflowFunctions", () => {
   // The draft has no run of its own: it is what the editor autosaves into, and
   // nothing starts it.
   it("excludes the editor's draft", () => {
-    const functions = buildWorkflowFunctions([
+    const functions = buildWorkflowFunctions(client, [
       { id: "workflow_only_current", name: CURRENT_WORKFLOW_NAME },
     ]);
 
@@ -32,6 +55,49 @@ describe("buildWorkflowFunctions", () => {
   });
 
   it("handles an empty workflow list", () => {
-    expect(buildWorkflowFunctions([])).toHaveLength(0);
+    expect(buildWorkflowFunctions(client, [])).toHaveLength(0);
+  });
+});
+
+/**
+ * The cache, which decides how long a newly saved workflow stays invisible to
+ * Inngest.
+ *
+ * Array identity is the whole test: the registry hands back the same array
+ * while its short TTL holds, and a new one after a write says the list is
+ * stale. Each app owns a registry of its own, so the invalidation a save
+ * performs reaches that app's list and no other.
+ */
+describe("the function registry's cache", () => {
+  beforeAll(() => {
+    configureTestExtensions();
+  });
+
+  it("answers the same list until something invalidates it", async () => {
+    const registry = createInngestFunctionRegistry(client);
+
+    const built = await registry.get(runtime);
+
+    expect(await registry.get(runtime)).toBe(built);
+
+    registry.invalidate();
+
+    expect(await registry.get(runtime)).not.toBe(built);
+  });
+
+  // What holds one app's save to one app's list: the second registry's cache
+  // survives the first's invalidation, so it answers the same array it built.
+  it("gives two registries lists of their own", async () => {
+    const first = createInngestFunctionRegistry(client);
+    const second = createInngestFunctionRegistry(client);
+
+    const firstList = await first.get(runtime);
+    const secondList = await second.get(runtime);
+    expect(secondList).not.toBe(firstList);
+
+    first.invalidate();
+
+    expect(await second.get(runtime)).toBe(secondList);
+    expect(await first.get(runtime)).not.toBe(firstList);
   });
 });

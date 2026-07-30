@@ -369,7 +369,7 @@ describe("applyLifecycleRules", () => {
 });
 
 describe("deliverToWaits", () => {
-  layer(SilentAppLoggerLayer)((it) => {
+  layer(Layer.merge(SilentAppLoggerLayer, stubInngestClient()))((it) => {
     // Candidates are found by Event name, and each row's own compiled match
     // decides. Nothing here reads a Correlation Path, which is what lets a run
     // park on an Event that has no entity of its own.

@@ -8,7 +8,8 @@ import { defineIntegration } from "#src/backend/lib/extensions/define-integratio
 import { defineStep } from "#src/backend/lib/steps/define-step";
 import { createRovaApp, type RovaApp } from "#src/app";
 import { createApiApp, MACHINE_ROUTES } from "#src/backend/api-app";
-import { getInngestFunctions } from "#src/backend/lib/inngest/functions";
+import { getQueryClient } from "#src/backend/lib/db/index";
+import { createInngestSurface } from "#src/backend/lib/inngest/client";
 import { createRovaRuntime } from "#src/backend/runtime";
 
 // The function registry reads the workflows table to decide which Inngest
@@ -300,12 +301,14 @@ describe("createRovaApp with an auth predicate", () => {
     // Only the route table is read here. A runtime builds its Layers on the
     // first Effect it runs and this app never serves a request, so this one is
     // disposed having built nothing.
-    const runtime = createRovaRuntime();
+    const inngest = createInngestSurface(BASE_OPTIONS.inngest);
+    const runtime = createRovaRuntime(inngest);
     try {
       const app = createApiApp({
         basePath: "/rova/api",
         authorize: () => Promise.resolve(true),
         runtime,
+        inngest,
       });
       const machinePaths = new Set(
         MACHINE_ROUTES.map((route) => `/rova/api${route}`)
@@ -493,33 +496,35 @@ describe("createRovaApp configuration", () => {
     ).rejects.toThrow("64-character hex string");
   });
 
-  // The cached Inngest functions close over the runtime the app owns, so a
-  // second app served the first one's array would be running event listeners on
-  // a finalized runtime. Dispose dropping the cache is what prevents it, and
-  // identity is how that shows: a rebuild answers a new array.
-  it("rebuilds the Inngest registry after an app is disposed", async () => {
-    const first = await createTestApp();
-    const firstRuntime = createRovaRuntime();
-    const secondRuntime = createRovaRuntime();
+  // Dispose gives the process back, pools included: postgres.js holds an idle
+  // socket open per pool, so a host that shuts Rova down and never exits would
+  // otherwise keep them. Nothing configured is what an unconfigured runtime
+  // says, and it is the only observable the pools leave behind.
+  it("gives the database runtime back when an app is disposed", async () => {
+    const app = await createTestApp();
+    await app.dispose();
 
-    try {
-      const built = await getInngestFunctions(firstRuntime);
-      // Within its short TTL the registry answers the same array, which is what
-      // makes the comparison below mean something.
-      expect(await getInngestFunctions(firstRuntime)).toBe(built);
+    expect(() => getQueryClient()).toThrow(
+      "The database runtime has not been configured"
+    );
+  });
 
-      await first.dispose();
+  // A host that catches a startup failure, corrects the option and calls again
+  // gets a second app. Leaving the config recorded would have the retry refused
+  // as a rebind, whatever it was corrected to.
+  it("gives the database config back when startup fails", async () => {
+    await expect(
+      createRovaApp({
+        ...BASE_OPTIONS,
+        client: { dir: join(tmpdir(), "rova-no-such-bundle") },
+      })
+    ).rejects.toThrow("does not hold an index.html");
 
-      const second = await createTestApp();
-      try {
-        expect(await getInngestFunctions(secondRuntime)).not.toBe(built);
-      } finally {
-        await second.dispose();
-      }
-    } finally {
-      await firstRuntime.dispose();
-      await secondRuntime.dispose();
-    }
+    const retried = await createRovaApp({
+      ...BASE_OPTIONS,
+      database: { url: "postgresql://rova:rova@127.0.0.1:2/rova_other" },
+    });
+    await retried.dispose();
   });
 
   // A host's own action reaches the editor through the catalog like any other, and

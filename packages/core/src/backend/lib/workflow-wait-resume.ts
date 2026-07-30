@@ -1,6 +1,5 @@
 import type { JsonObject } from "@rova/shared/types/json";
 import { evaluateCompiledCondition } from "#src/backend/lib/cel/condition-payload";
-import { sendWorkflowWaitSignal } from "#src/backend/lib/inngest/runtime-events";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
 import {
@@ -64,7 +63,23 @@ function waitStateMatches(input: {
   });
 }
 
+/**
+ * Waking one parked node, as the caller's own send.
+ *
+ * A port rather than an import, for the reason `RequestRunCancel` gives: this
+ * module mixes the send with the wait-state bookkeeping around it, so the send
+ * comes from the `InngestClient` service its caller holds.
+ */
+export type SendWaitSignal = (input: {
+  executionId: string;
+  nodeId: string;
+  token?: string | null;
+  eventType?: string;
+  payload?: JsonObject;
+}) => Promise<void>;
+
 export async function resumeWaitsMatchingEvent(input: {
+  sendWaitSignal: SendWaitSignal;
   workflowId: string;
   eventType?: string;
   payload: JsonObject;
@@ -87,7 +102,7 @@ export async function resumeWaitsMatchingEvent(input: {
       }
 
       try {
-        await sendWorkflowWaitSignal({
+        await input.sendWaitSignal({
           executionId: waitState.executionId,
           nodeId: waitState.nodeId,
           token: resumeToken,

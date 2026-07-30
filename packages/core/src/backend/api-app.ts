@@ -1,15 +1,9 @@
 import { RPCHandler } from "@orpc/server/fetch";
 import { Effect, Result, Schema, type SchemaAST } from "effect";
 import { Hono } from "hono";
-import type { InngestFunction } from "inngest";
-import { serve as serveInngest } from "inngest/hono";
 import { getExtensions } from "#src/backend/lib/extensions/current";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
-import {
-  getInngestClient,
-  getInngestServeConfig,
-} from "#src/backend/lib/inngest/client";
-import { getInngestFunctions } from "#src/backend/lib/inngest/functions";
+import type { InngestSurface } from "#src/backend/lib/inngest/client";
 import { getAppLogger } from "#src/backend/lib/logger";
 import {
   type Authorize,
@@ -205,6 +199,8 @@ export type CreateApiAppOptions = {
    * procedure whose service has been migrated can run its Effect on it.
    */
   runtime: RovaRuntime;
+  /** The app's own Inngest surface, which is all the `/inngest` route serves with. */
+  inngest: InngestSurface;
 };
 
 /**
@@ -241,36 +237,8 @@ type ApiEnv = {
   Variables: { rovaMachineRoute?: true; rovaEventIntakeRoute?: true };
 };
 
-/**
- * The Inngest serve handler, rebuilt only when the function list changes.
- *
- * Every callback and every sync hits this route, and building a handler means
- * Inngest walking each function to describe it. The list is a stable array while
- * the registry's cache holds, so identity is the whole test.
- */
-function makeServeHandlerCache() {
-  let cachedFor: InngestFunction.Any[] | undefined;
-  let handler: ReturnType<typeof serveInngest> | undefined;
-
-  return (functions: InngestFunction.Any[]) => {
-    if (!handler || cachedFor !== functions) {
-      handler = serveInngest({
-        client: getInngestClient(),
-        functions,
-        // Spread of a typed pair, so a serve option Inngest renames stops
-        // compiling rather than being silently dropped on the floor.
-        ...getInngestServeConfig(),
-      });
-      cachedFor = functions;
-    }
-
-    return handler;
-  };
-}
-
 export function createApiApp(options: CreateApiAppOptions) {
-  const { basePath, authorize, runtime } = options;
-  const serveInngestFunctions = makeServeHandlerCache();
+  const { basePath, authorize, runtime, inngest } = options;
   const app = new Hono<ApiEnv>().basePath(basePath);
   const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
 
@@ -461,10 +429,12 @@ export function createApiApp(options: CreateApiAppOptions) {
     .all("/og", (c) => c.json({ error: "Not found" }, 404))
     .all("/og/*", (c) => c.json({ error: "Not found" }, 404))
     .on(["GET", "POST", "PUT"], "/inngest", async (c) => {
-      // The registry is where this app's runtime reaches the event listeners it
-      // builds: they run migrated services, and nothing there may reach for a
+      // The surface is where this app's runtime reaches the event listeners it
+      // serves: they run migrated services, and nothing there may reach for a
       // runtime of its own.
-      return await serveInngestFunctions(await getInngestFunctions(runtime))(c);
+      return await (
+        await inngest.serve(runtime)
+      )(c);
     })
     .options(EVENT_INTAKE_ROUTE, () =>
       Response.json({}, { headers: eventIntakeCorsHeaders })

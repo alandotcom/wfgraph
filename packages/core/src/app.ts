@@ -3,9 +3,13 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { createApiApp } from "#src/backend/api-app";
 import {
-  assertDatabaseConfig,
-  configureDatabaseRuntime,
   type DatabaseRuntimeConfig,
+  normalizeDatabaseConfig,
+  type NormalizedDatabaseConfig,
+} from "#src/backend/lib/db/config";
+import {
+  closeDatabaseRuntime,
+  configureDatabaseRuntime,
   describeConnection,
   getQueryClient,
 } from "#src/backend/lib/db/index";
@@ -38,11 +42,10 @@ import {
   type RovaExtensions,
 } from "#src/backend/lib/extensions/extension-set";
 import {
-  configureInngest,
+  createInngestSurface,
+  type InngestSurface,
   type RovaInngestConfig,
-  reportInngestCallbackExposure,
 } from "#src/backend/lib/inngest/client";
-import { invalidateInngestFunctionsCache } from "#src/backend/lib/inngest/functions";
 import {
   configureAppLogging,
   configureAppLoggingWithBridge,
@@ -51,7 +54,7 @@ import {
 import { createRovaRuntime, type RovaRuntime } from "#src/backend/runtime";
 import type { RovaLogger } from "@rova/shared/types/logger";
 
-export type { DatabaseRuntimeConfig } from "#src/backend/lib/db/index";
+export type { DatabaseRuntimeConfig } from "#src/backend/lib/db/config";
 export type { MigrationsOptions } from "#src/backend/lib/db/migrations";
 export type { EncryptionRuntimeConfig } from "#src/backend/lib/db/integrations";
 export type { RovaInngestConfig } from "#src/backend/lib/inngest/client";
@@ -142,17 +145,19 @@ export type RovaApp = {
 /**
  * One Rova per process.
  *
- * The database handle, the Inngest client, the encryption key, and the assembled
- * extension surface are process-global, so a second app with a different database
- * URL silently aliases the first connection. ADR-0002 makes a second app per
- * process undefined behavior rather than a supported arrangement that fails
- * loudly.
+ * The database handle, the encryption key, and the assembled extension surface
+ * are process-global, so a second app with a different database URL silently
+ * aliases the first connection. ADR-0002 makes a second app per process
+ * undefined behavior rather than a supported arrangement that fails loudly.
  */
 export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const authorize = resolveAuthorize(options.auth);
 
-  assertDatabaseConfig(options.database);
+  // Normalized here rather than inside `configureDatabaseRuntime` a few steps
+  // later, so a config naming no database is refused before this call has
+  // changed anything about the process.
+  const databaseConfig = normalizeDatabaseConfig(options.database);
 
   if (!options.inngest.id?.trim()) {
     throw new Error("createRovaApp requires inngest.id");
@@ -160,7 +165,7 @@ export async function createRovaApp(options: RovaAppOptions): Promise<RovaApp> {
 
   assertValidEncryptionKey(options.encryption.key);
 
-  return await buildRovaApp(options, { basePath, authorize });
+  return await buildRovaApp(options, { basePath, authorize, databaseConfig });
 }
 
 /**
@@ -186,9 +191,10 @@ async function buildRovaApp(
   startup: {
     basePath: "" | `/${string}`;
     authorize: Authorize;
+    databaseConfig: NormalizedDatabaseConfig;
   }
 ): Promise<RovaApp> {
-  const { basePath, authorize } = startup;
+  const { basePath, authorize, databaseConfig } = startup;
 
   if (options.logger) {
     configureAppLoggingWithBridge(options.logger);
@@ -198,68 +204,80 @@ async function buildRovaApp(
 
   configureEncryptionKey(options.encryption);
 
-  configureDatabaseRuntime(options.database);
-  configureInngest(options.inngest);
-  reportInngestCallbackExposure();
+  configureDatabaseRuntime(databaseConfig);
 
-  const extensions = assembleExtensions(options.extensions ?? {});
-  configureExtensions(extensions);
-
-  // A host who forgets to pass its integrations gets an empty editor and no
-  // error, so the counts go where a startup log is read.
-  const { events, actions, integrations } = extensions.catalog;
-  getAppLogger("extensions").info(
-    `Extension surface assembled: ${events.length} events, ${actions.length} actions, ${integrations.length} integrations`
-  );
-
-  // Where the tables are is a startup fact worth one line: Rova lives in a schema
-  // of a database the host chose, and "it is reading the wrong schema" is
-  // otherwise a guess made from an empty editor.
-  getAppLogger("database").info(
-    "Database configured",
-    describeConnection(getQueryClient())
-  );
-
-  if (options.database.migrations?.runOnStartup === true) {
-    await runMigrations({
-      migrationsDir: options.database.migrations.migrationsDir,
-    });
-  }
-
-  // The Layer graph this instance owns. Building it is lazy, so an app that
-  // never serves a migrated procedure never constructs a service.
-  const runtime = createRovaRuntime();
-
+  // Everything past this point can fail with the process already holding a
+  // database config and an extension surface, and past `createRovaRuntime` with
+  // whatever the Layers acquired. A failure gives all three back, the same as
+  // dispose does, so a host that catches a startup failure, corrects an option
+  // and calls again is not refused as a rebind.
+  let runtime: RovaRuntime | undefined;
   try {
-    return await assembleRovaApp(options, { basePath, authorize, runtime });
+    // One value for the client, the function list and the `/inngest` handler,
+    // built before the runtime because the Layer graph takes it: a workflow save
+    // invalidates the list through a service, and the listeners in it run on
+    // whichever runtime the route hands them.
+    const inngest = createInngestSurface(options.inngest);
+
+    const extensions = assembleExtensions(options.extensions ?? {});
+    configureExtensions(extensions);
+
+    // A host who forgets to pass its integrations gets an empty editor and no
+    // error, so the counts go where a startup log is read.
+    const { events, actions, integrations } = extensions.catalog;
+    getAppLogger("extensions").info(
+      `Extension surface assembled: ${events.length} events, ${actions.length} actions, ${integrations.length} integrations`
+    );
+
+    // Where the tables are is a startup fact worth one line: Rova lives in a
+    // schema of a database the host chose, and "it is reading the wrong schema"
+    // is otherwise a guess made from an empty editor.
+    getAppLogger("database").info(
+      "Database configured",
+      describeConnection(getQueryClient())
+    );
+
+    if (options.database.migrations?.runOnStartup === true) {
+      await runMigrations({
+        migrationsDir: options.database.migrations.migrationsDir,
+      });
+    }
+
+    // The Layer graph this instance owns. Building it is lazy, so an app that
+    // never serves a migrated procedure never constructs a service.
+    runtime = createRovaRuntime(inngest);
+
+    return await assembleRovaApp(options, {
+      basePath,
+      authorize,
+      runtime,
+      inngest,
+    });
   } catch (error) {
-    // Nothing else holds this runtime yet, so a failure from here on leaves it
-    // to be finalized by whoever created it, which is this function.
-    await runtime.dispose();
+    clearExtensions();
+    await runtime?.dispose();
+    await closeDatabaseRuntime();
     throw error;
   }
 }
 
-/**
- * Everything after the runtime exists, split out so the `catch` above has a
- * whole function to guard: a bad `client.dir` throws from in here, and the
- * runtime built a few lines earlier has to be finalized rather than left holding
- * whatever its Layers acquired.
- */
+/** Everything after the runtime exists: the routes, the editor, and dispose. */
 async function assembleRovaApp(
   options: RovaAppOptions,
   startup: {
     basePath: "" | `/${string}`;
     authorize: Authorize;
     runtime: RovaRuntime;
+    inngest: InngestSurface;
   }
 ): Promise<RovaApp> {
-  const { basePath, authorize, runtime } = startup;
+  const { basePath, authorize, runtime, inngest } = startup;
 
   const apiApp = createApiApp({
     basePath: `${basePath}/api`,
     authorize,
     runtime,
+    inngest,
   });
   const fullApp = new Hono();
 
@@ -291,9 +309,14 @@ async function assembleRovaApp(
     // The cached Inngest functions close over this runtime, so they go before
     // it does. Otherwise a `/inngest` request arriving during teardown is
     // served event listeners that run services on a finalized runtime.
-    invalidateInngestFunctionsCache();
+    inngest.invalidate();
 
     await runtime.dispose();
+
+    // Last, because a Layer finalizer is free to run a closing query. Both pools
+    // go: postgres.js holds an idle socket open per pool, and a host that
+    // migrated on the way up opened a second one.
+    await closeDatabaseRuntime();
   };
 
   return {

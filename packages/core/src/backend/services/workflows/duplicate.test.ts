@@ -4,12 +4,13 @@ import { assert, describe, layer } from "@effect/vitest";
 // The lifecycle hooks come from vitest itself; `@effect/vitest` re-exports only
 // the ones its own `layer` block owns.
 import { beforeAll } from "vitest";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import type { Workflow } from "#src/backend/lib/db/schema";
 import { Conflict } from "#src/backend/lib/effect/failures";
 import {
   configureTestExtensions,
   SilentAppLoggerLayer,
+  stubInngestFunctions,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { postWorkflowDuplicate } from "#src/backend/services/workflows/duplicate";
@@ -124,7 +125,7 @@ beforeAll(() => {
 });
 
 describe("postWorkflowDuplicate", () => {
-  layer(SilentAppLoggerLayer)((it) => {
+  layer(Layer.merge(SilentAppLoggerLayer, stubInngestFunctions()))((it) => {
     // The integration key is removed rather than blanked. The first-class
     // trigger config schemas are closed, so a `Webhook` config carrying an
     // `integrationId` key with no value still falls out of the webhook branch of
@@ -210,7 +211,7 @@ describe("postWorkflowDuplicate", () => {
   // A copy names the same Start Events as its source, so it subscribes to them
   // from the moment it exists -- under its own id, and paused, because two
   // unpaused workflows on one Event would double every run.
-  layer(SilentAppLoggerLayer)((it) => {
+  layer(Layer.merge(SilentAppLoggerLayer, stubInngestFunctions()))((it) => {
     it.effect("derives the copy's own subscriptions and pauses it", () =>
       Effect.gen(function* () {
         const repo = makeWorkflowRepo();

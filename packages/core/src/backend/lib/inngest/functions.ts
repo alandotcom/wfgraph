@@ -1,4 +1,4 @@
-import type { InngestFunction } from "inngest";
+import type { Inngest, InngestFunction } from "inngest";
 import { db } from "#src/backend/lib/db/index";
 import { getExtensions } from "#src/backend/lib/extensions/current";
 import type { RovaRuntime } from "#src/backend/runtime";
@@ -24,22 +24,18 @@ type WorkflowDefinition = {
   name: string;
 };
 
-let cachedFunctions: WorkflowFunction[] = [];
-let hasRegistryCache = false;
-let cacheExpiresAt = 0;
-let inflightRegistryBuild: Promise<WorkflowFunction[]> | null = null;
-
 function toFunctionId(workflowId: string): string {
   return `workflow-${workflowId}`;
 }
 
 export function buildWorkflowFunctions(
+  client: Inngest,
   workflowDefinitions: WorkflowDefinition[]
 ): WorkflowFunction[] {
   return workflowDefinitions
     .filter((workflow) => workflow.name !== CURRENT_WORKFLOW_NAME)
     .map((workflow) =>
-      createWorkflowRunRequestedFunction({
+      createWorkflowRunRequestedFunction(client, {
         id: toFunctionId(workflow.id),
         name: workflow.name,
         workflowId: workflow.id,
@@ -54,95 +50,98 @@ export function buildWorkflowFunctions(
  * the process: a workflow that starts on a new Event needs no Inngest re-sync,
  * because the listener for that Event was registered when the app was built.
  */
-function buildEventListenerFunctions(runtime: RovaRuntime): WorkflowFunction[] {
-  const events = getExtensions().events;
-  if (events.length === 0) {
-    return [];
-  }
-
-  return events.map((event) =>
-    createInngestEventListenerFunction({ event, runtime })
+function buildEventListenerFunctions(
+  client: Inngest,
+  runtime: RovaRuntime
+): WorkflowFunction[] {
+  return getExtensions().events.map((event) =>
+    createInngestEventListenerFunction({ client, event, runtime })
   );
 }
 
-async function loadWorkflowFunctionsFromDb(
-  runtime: RovaRuntime
-): Promise<WorkflowFunction[]> {
-  // Ids and names only. The graph column used to come too, for the per-workflow
-  // event listeners derived from it; the listener set is the catalog's now, and
-  // nothing here reads a graph.
-  const workflowDefinitions = await db.query.workflows.findMany({
-    columns: {
-      id: true,
-      name: true,
-    },
-  });
-
-  // The draft is filtered inside `buildWorkflowFunctions`, which is where the
-  // rule is tested.
-  const runRequestedFunctions = buildWorkflowFunctions(workflowDefinitions);
-  const eventListenerFunctions = buildEventListenerFunctions(runtime);
-
-  return [...runRequestedFunctions, ...eventListenerFunctions];
-}
-
 /**
- * The registry the `/inngest` route serves, rebuilt when its short cache
- * expires.
+ * What the `/inngest` route ends up serving, through the surface that holds one
+ * of these, and the one thing that decides how long a newly saved workflow takes
+ * to appear to Inngest.
  *
- * The runtime arrives from the route rather than from a module-level handle,
- * because the event listeners built here run migrated services on it. Caching
- * functions that close over a runtime is safe because the app that owns that
- * runtime clears this cache as the first thing it does when disposing, so no
- * cached function outlives the runtime it was built against.
+ * One registry belongs to one app, which is what makes caching the functions
+ * safe: each closes over that app's runtime and its client, and the app drops
+ * the whole registry as the first thing it does when disposing. As a module-level
+ * cache it could outlive the runtime its listeners ran services on.
  */
-export async function getInngestFunctions(
-  runtime: RovaRuntime
-): Promise<WorkflowFunction[]> {
-  const now = Date.now();
-  if (hasRegistryCache && now < cacheExpiresAt) {
-    return cachedFunctions;
-  }
+export type InngestFunctionRegistry = {
+  /**
+   * The current function list, rebuilt when the short cache expires.
+   *
+   * The runtime is a parameter rather than something the registry holds,
+   * because the Layer graph takes the surface this sits inside: constructing one
+   * before the other is what keeps that from being a cycle. The `/inngest` route
+   * has the runtime in hand and passes the app's own.
+   */
+  get: (runtime: RovaRuntime) => Promise<WorkflowFunction[]>;
+  /** Drop the list, including a build still in flight. */
+  invalidate: () => void;
+};
 
-  if (inflightRegistryBuild) {
-    return await inflightRegistryBuild;
-  }
+export function createInngestFunctionRegistry(
+  client: Inngest
+): InngestFunctionRegistry {
+  let cache: { functions: WorkflowFunction[]; expiresAt: number } | null = null;
+  let inflightBuild: Promise<WorkflowFunction[]> | null = null;
 
-  // The build writes to the cache only while it is still the build this module
-  // is waiting on. An invalidation that lands mid-flight replaces or clears
-  // `inflightRegistryBuild`, and the identity check is what makes that stick:
-  // the abandoned build finishes and stores nothing.
-  const build: Promise<WorkflowFunction[]> = loadWorkflowFunctionsFromDb(
-    runtime
-  )
-    .then((functions) => {
-      if (inflightRegistryBuild === build) {
-        cachedFunctions = functions;
-        hasRegistryCache = true;
-        cacheExpiresAt = Date.now() + REGISTRY_CACHE_TTL_MS;
-      }
-      return functions;
-    })
-    .finally(() => {
-      if (inflightRegistryBuild === build) {
-        inflightRegistryBuild = null;
-      }
+  async function build(runtime: RovaRuntime): Promise<WorkflowFunction[]> {
+    // Ids and names only: a run function is keyed on the id and labelled with
+    // the name, and the listener set comes from the catalog, so nothing here
+    // reads a graph.
+    const workflowDefinitions = await db.query.workflows.findMany({
+      columns: { id: true, name: true },
     });
-  inflightRegistryBuild = build;
 
-  return await build;
-}
+    // The draft is filtered inside `buildWorkflowFunctions`, which is where the
+    // rule is tested.
+    return [
+      ...buildWorkflowFunctions(client, workflowDefinitions),
+      ...buildEventListenerFunctions(client, runtime),
+    ];
+  }
 
-/**
- * Drop the registry, including a build still in flight.
- *
- * Forgetting the in-flight promise matters on the dispose path: a build started
- * before the app began tearing down would otherwise land afterwards and store
- * event listeners closed over a runtime that has already been finalized.
- */
-export function invalidateInngestFunctionsCache() {
-  cachedFunctions = [];
-  hasRegistryCache = false;
-  cacheExpiresAt = 0;
-  inflightRegistryBuild = null;
+  function invalidate(): void {
+    cache = null;
+    // Forgetting the in-flight promise matters on the dispose path: a build
+    // started before the app began tearing down would otherwise land afterwards
+    // and store listeners closed over a runtime that has been finalized.
+    inflightBuild = null;
+  }
+
+  async function get(runtime: RovaRuntime): Promise<WorkflowFunction[]> {
+    if (cache && Date.now() < cache.expiresAt) {
+      return cache.functions;
+    }
+
+    if (inflightBuild) {
+      return await inflightBuild;
+    }
+
+    // The build writes to the cache only while it is still the build this
+    // registry is waiting on. An invalidation that lands mid-flight replaces or
+    // clears `inflightBuild`, and the identity check is what makes that stick:
+    // the abandoned build finishes and stores nothing.
+    const pending: Promise<WorkflowFunction[]> = build(runtime)
+      .then((functions) => {
+        if (inflightBuild === pending) {
+          cache = { functions, expiresAt: Date.now() + REGISTRY_CACHE_TTL_MS };
+        }
+        return functions;
+      })
+      .finally(() => {
+        if (inflightBuild === pending) {
+          inflightBuild = null;
+        }
+      });
+    inflightBuild = pending;
+
+    return await pending;
+  }
+
+  return { get, invalidate };
 }

@@ -113,6 +113,13 @@ be deleted until stage 7 brings that interior across. `DatabaseLayer` and
 `InngestClientLayer` are built from those globals in the meantime, which is what lets the
 services above them be injected and tested now.
 
+**Amendment, 2026-07-30.** Stage 7's first half took the Inngest half of that back.
+`createRovaApp` builds one `InngestSurface` -- the client, the function registry over it,
+and the `/inngest` serve handler as one value -- and threads it to the runtime and the API
+app, so the Layer is `makeInngestClientLayer(client)` and nothing looks a client up. The
+database handle is still a process global, and the run engine's interior is still what
+holds it there.
+
 ## Sequencing
 
 Each stage lands green on `main` before the next one starts.

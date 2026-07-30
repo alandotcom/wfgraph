@@ -17,7 +17,11 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { callDbModule } from "#src/backend/lib/effect/database";
-import { callInngestModule } from "#src/backend/lib/effect/inngest-client";
+import {
+  asPromisePort,
+  callInngestModule,
+  InngestClient,
+} from "#src/backend/lib/effect/inngest-client";
 import { resumeWaitsMatchingEvent } from "#src/backend/lib/workflow-wait-resume";
 import { listWorkflowWaitsForEvent } from "#src/backend/lib/workflow-wait-state";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
@@ -258,8 +262,10 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
     return nothing;
   }
 
+  const inngest = yield* InngestClient;
   const resumedWaits = yield* callInngestModule(() =>
     resumeWaitsMatchingEvent({
+      sendWaitSignal: asPromisePort(inngest.sendWaitSignal),
       workflowId: input.subscriber.id,
       eventType: input.event.name,
       payload: input.payload,

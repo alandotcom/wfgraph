@@ -7,7 +7,7 @@ import {
   InvalidInput,
   NotFound,
 } from "#src/backend/lib/effect/failures";
-import { invalidateInngestFunctionsCache } from "#src/backend/lib/inngest/functions";
+import { invalidateInngestFunctions } from "#src/backend/lib/effect/inngest-functions";
 import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import {
@@ -164,7 +164,7 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
       return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
     }
 
-    invalidateInngestFunctionsCache();
+    yield* invalidateInngestFunctions;
 
     const modeChanged =
       updateInput.mode !== undefined &&
@@ -210,7 +210,7 @@ export const deleteWorkflow = Effect.fn("deleteWorkflow")(
 
     yield* repo.deleteById(workflowId);
 
-    invalidateInngestFunctionsCache();
+    yield* invalidateInngestFunctions;
 
     yield* logger.info("Workflow deleted");
 

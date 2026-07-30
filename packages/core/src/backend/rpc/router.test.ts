@@ -8,6 +8,7 @@ import {
   stubExecutionRepo,
   stubIntegrationRepo,
   stubInngestClient,
+  stubInngestFunctions,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import {
@@ -34,7 +35,8 @@ function createStubRuntime(): RovaRuntime {
       stubIntegrationRepo(),
       stubWorkflowRepo(),
       stubExecutionRepo(),
-      stubInngestClient()
+      stubInngestClient(),
+      stubInngestFunctions()
     )
   );
 }

@@ -1,11 +1,11 @@
-import type { InngestFunction } from "inngest";
+import type { Inngest, InngestFunction } from "inngest";
+import { celStringLiteral } from "@rova/shared/workflow/cel-string-literal";
 import {
   executeWorkflow,
   type WorkflowExecutionInput,
 } from "#src/backend/lib/workflow-engine/core";
 import { dbWorkflowStore } from "#src/backend/lib/workflow-engine/db-store";
 import type { WorkflowExecutionRuntime } from "#src/backend/lib/workflow-engine/runtime";
-import { getInngestClient } from "./client";
 import {
   workflowExecutionInputSchema,
   workflowRunCancelRequested,
@@ -17,19 +17,8 @@ function toDurationString(milliseconds: number): string {
   return `${seconds}s`;
 }
 
-/**
- * Escapes a value into a double-quoted CEL literal for an Inngest expression.
- *
- * `escapeCelString` in `workflow-engine/core.ts` is the same escape for the
- * single-quoted form, on the other side of the runtime port. Stage 7 brings that
- * module across and is where the pair should become one.
- */
-function escapeInngestExpressionString(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
 export function createWorkflowTriggerExpression(workflowId: string): string {
-  return `event.data.workflowId == "${escapeInngestExpressionString(workflowId)}"`;
+  return `event.data.workflowId == ${celStringLiteral(workflowId)}`;
 }
 
 /**
@@ -102,14 +91,17 @@ async function workflowRunRequestedHandler({
 
 // The return type is stated because declaration emit cannot name the inferred
 // one: it references types inngest keeps internal (`SendSignalResponse` under
-// inngest/api). `InngestFunction.Any` is what `getInngestFunctions` collects
+// inngest/api). `InngestFunction.Any` is what the function registry collects
 // these into anyway.
-export function createWorkflowRunRequestedFunction(input: {
-  id: string;
-  name?: string;
-  workflowId: string;
-}): InngestFunction.Any {
-  return getInngestClient().createFunction(
+export function createWorkflowRunRequestedFunction(
+  client: Inngest,
+  input: {
+    id: string;
+    name?: string;
+    workflowId: string;
+  }
+): InngestFunction.Any {
+  return client.createFunction(
     {
       id: input.id,
       name: input.name,

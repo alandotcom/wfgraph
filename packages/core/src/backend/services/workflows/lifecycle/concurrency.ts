@@ -15,7 +15,11 @@
 import { Effect } from "effect";
 import type { EffectLogger } from "#src/backend/lib/effect/app-logger";
 import { callDbModule } from "#src/backend/lib/effect/database";
-import { callInngestModule } from "#src/backend/lib/effect/inngest-client";
+import {
+  asPromisePort,
+  callInngestModule,
+  InngestClient,
+} from "#src/backend/lib/effect/inngest-client";
 import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
 import { announceSupersededRuns } from "#src/backend/lib/workflow-cancellation";
 import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo";
@@ -118,10 +122,12 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
     // those runs to stop and putting the reason on their timelines. A signal that
     // never lands leaves a live run against a superseded row, which is why the ids
     // it failed on travel back to the caller.
+    const inngest = yield* InngestClient;
     const announced =
       opened.supersededExecutionIds.length > 0
         ? yield* callInngestModule(() =>
             announceSupersededRuns({
+              requestCancel: asPromisePort(inngest.sendCancelRequested),
               workflowId: workflow.id,
               executionIds: opened.supersededExecutionIds,
               reason: supersededReason(start.eventName),

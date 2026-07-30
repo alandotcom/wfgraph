@@ -1,5 +1,8 @@
-import { Inngest, type RegisterOptions } from "inngest";
+import { Inngest, type InngestFunction } from "inngest";
+import { serve as serveInngest } from "inngest/hono";
+import { createInngestFunctionRegistry } from "#src/backend/lib/inngest/functions";
 import { getAppLogger } from "#src/backend/lib/logger";
+import type { RovaRuntime } from "#src/backend/runtime";
 
 function getInngestBaseUrl() {
   const candidates = [process.env.INNGEST_BASE_URL, process.env.INNGEST_DEV];
@@ -38,102 +41,37 @@ export type RovaInngestConfig = {
   servePath?: string;
 };
 
-type InngestRuntimeState = {
-  config: RovaInngestConfig | null;
-  client: Inngest | null;
-};
-
-declare global {
-  var __rovaInngestState: InngestRuntimeState | undefined;
-}
-
-const inngestRuntimeState: InngestRuntimeState =
-  globalThis.__rovaInngestState ?? {
-    config: null,
-    client: null,
-  };
-
-globalThis.__rovaInngestState = inngestRuntimeState;
-
-function resolveDefaultConfig(): RovaInngestConfig {
-  return {
-    id: "notifications-workflow",
-    // v4 runs in cloud mode by default and demands a signing key there, so the
-    // dev loop has to say so rather than fall into it.
-    isDev: process.env.NODE_ENV !== "production",
-    baseUrl: getInngestBaseUrl(),
-    eventKey: process.env.INNGEST_EVENT_KEY,
-    env: process.env.INNGEST_ENV,
-    signingKey: process.env.INNGEST_SIGNING_KEY,
-    signingKeyFallback: process.env.INNGEST_SIGNING_KEY_FALLBACK,
-  };
-}
-
-function normalizeConfig(config: RovaInngestConfig): RovaInngestConfig {
-  return {
-    ...config,
-    id: (config.id ?? "").trim(),
-  };
-}
-
 /**
- * Whether a second `configureInngest` call describes the client that is already
- * running. Covers only the fields that reach the constructor, since the serve
- * fields are read per request and can change freely.
+ * The client this app sends and registers through.
+ *
+ * One client per app: a second app in the process gets its own, so it cannot
+ * send on the first app's connection or register functions against it.
+ *
+ * The environment fills in what the host left out, because the fields it covers
+ * are the ones a platform sets rather than ones a host writes: the dev server's
+ * URL, the event key, the signing keys.
  */
-function areConfigsCompatible(
-  current: RovaInngestConfig,
-  next: RovaInngestConfig
-): boolean {
-  return (
-    current.id === next.id &&
-    current.baseUrl === next.baseUrl &&
-    current.eventKey === next.eventKey &&
-    current.env === next.env &&
-    current.isDev === next.isDev &&
-    current.signingKey === next.signingKey &&
-    current.signingKeyFallback === next.signingKeyFallback
-  );
-}
-
-export function configureInngest(config: RovaInngestConfig): void {
-  const normalizedConfig = normalizeConfig(config);
-
-  if (!normalizedConfig.id) {
+function createInngestClient(
+  config: RovaInngestConfig,
+  signingKey: string | undefined
+): Inngest {
+  const id = config.id.trim();
+  if (!id) {
     throw new Error("Inngest configuration requires a non-empty id.");
   }
 
-  if (inngestRuntimeState.client) {
-    const currentConfig = inngestRuntimeState.config ?? resolveDefaultConfig();
-
-    if (areConfigsCompatible(currentConfig, normalizedConfig)) {
-      inngestRuntimeState.config = normalizedConfig;
-      return;
-    }
-
-    throw new Error(
-      "Inngest client is already initialized with a different configuration. Restart the process to apply a new Inngest config."
-    );
-  }
-
-  inngestRuntimeState.config = normalizedConfig;
-}
-
-function getConfig(): RovaInngestConfig {
-  return inngestRuntimeState.config ?? resolveDefaultConfig();
-}
-
-/**
- * The subset `serve()` still takes. As of v4 the signing keys and base URL live
- * on the client, so this is only the two things that describe where Inngest
- * should call back.
- */
-export function getInngestServeConfig(): Pick<
-  RegisterOptions,
-  "serveOrigin" | "servePath"
-> {
-  const { serveOrigin, servePath } = getConfig();
-  return { serveOrigin, servePath };
+  return new Inngest({
+    id,
+    // v4 runs in cloud mode by default and demands a signing key there, so the
+    // dev loop has to say so rather than fall into it.
+    isDev: config.isDev ?? process.env.NODE_ENV !== "production",
+    baseUrl: config.baseUrl ?? getInngestBaseUrl(),
+    eventKey: config.eventKey ?? process.env.INNGEST_EVENT_KEY,
+    env: config.env ?? process.env.INNGEST_ENV,
+    signingKey,
+    signingKeyFallback:
+      config.signingKeyFallback ?? process.env.INNGEST_SIGNING_KEY_FALLBACK,
+  });
 }
 
 /**
@@ -146,8 +84,7 @@ export function getInngestServeConfig(): Pick<
  * unsigned against `inngest dev` and the check that would tell them apart is the
  * same environment-variable guess that made the auth option unreliable.
  */
-export function reportInngestCallbackExposure(): void {
-  const { signingKey } = getConfig();
+function reportInngestCallbackExposure(signingKey: string | undefined): void {
   if (typeof signingKey === "string" && signingKey.trim()) {
     return;
   }
@@ -157,16 +94,68 @@ export function reportInngestCallbackExposure(): void {
   );
 }
 
-export function getInngestClient(): Inngest {
-  if (inngestRuntimeState.client) {
-    return inngestRuntimeState.client;
-  }
+/** What `serve()` answers a callback with, named so the cache below can hold one. */
+type InngestServeHandler = ReturnType<typeof serveInngest>;
 
-  const {
-    serveOrigin: _serveOrigin,
-    servePath: _servePath,
-    ...clientConfig
-  } = getConfig();
-  inngestRuntimeState.client = new Inngest(clientConfig);
-  return inngestRuntimeState.client;
+/**
+ * Everything one app does with Inngest, as one value.
+ *
+ * The connection, the function list, and the handler that serves that list have
+ * to agree: functions registered on one client and served through another are
+ * invisible to Inngest, and a save that invalidates some other app's list leaves
+ * this one serving a stale one. Building all three together is what makes the
+ * disagreement inexpressible -- `createRovaApp` builds one surface and hands the
+ * same value to the Layer graph and to the API app.
+ */
+export type InngestSurface = {
+  /** The connection every send and every registered function is made on. */
+  client: Inngest;
+  /** Drop the function list, including a build still in flight. */
+  invalidate: () => void;
+  /**
+   * The `/inngest` handler for this app's current function list.
+   *
+   * The runtime is a parameter because the event listeners in that list run
+   * services on it, and the route has the app's own in hand.
+   */
+  serve: (runtime: RovaRuntime) => Promise<InngestServeHandler>;
+};
+
+export function createInngestSurface(
+  config: RovaInngestConfig
+): InngestSurface {
+  const signingKey = config.signingKey ?? process.env.INNGEST_SIGNING_KEY;
+  const client = createInngestClient(config, signingKey);
+  reportInngestCallbackExposure(signingKey);
+
+  const registry = createInngestFunctionRegistry(client);
+
+  // The serve handler is rebuilt only when the function list changes. Every
+  // callback and every sync hits this route, and building a handler means
+  // Inngest walking each function to describe it. The list is a stable array
+  // while the registry's cache holds, so identity is the whole test.
+  let cachedFor: InngestFunction.Any[] | undefined;
+  let handler: InngestServeHandler | undefined;
+
+  return {
+    client,
+    invalidate: registry.invalidate,
+    serve: async (runtime) => {
+      const functions = await registry.get(runtime);
+
+      if (!handler || cachedFor !== functions) {
+        handler = serveInngest({
+          client,
+          functions,
+          // As of v4 the signing keys and base URL live on the client, so what
+          // is left for `serve()` is where Inngest should call back.
+          serveOrigin: config.serveOrigin,
+          servePath: config.servePath,
+        });
+        cachedFor = functions;
+      }
+
+      return handler;
+    },
+  };
 }

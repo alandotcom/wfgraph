@@ -13,6 +13,7 @@
 
 import { parse as parseCel } from "@marcbachmann/cel-js";
 import type { JsonValue } from "#src/types/json";
+import { celStringLiteral } from "#src/workflow/cel-string-literal";
 
 function prefixEventDataPath(path: string): string {
   return `event.data.${path}`;
@@ -79,12 +80,11 @@ export function eventSourceMatches(
  * umbrella bus is narrowed in Inngest's own layer and a subtype nothing declared
  * costs no invocation.
  *
- * The literal goes through `JSON.stringify`, which is the escaping CEL wants --
- * double quotes, backslashes doubled -- and matches how Inngest's own docs write
- * one. A segment that is not a plain identifier is bracketed the same way, so a
- * hyphenated key reads as a field access rather than a subtraction. The whole
- * expression is then parsed here, at definition, so a value that produces
- * something CEL cannot read fails where it was written instead of at sync time.
+ * The literal goes through `celStringLiteral`, and a segment that is not a plain
+ * identifier is bracketed with the same literal, so a hyphenated key reads as a
+ * field access rather than a subtraction. The whole expression is then parsed
+ * here, at definition, so a value that produces something CEL cannot read fails
+ * where it was written instead of at sync time.
  */
 export function compileEventDataEquals(when: {
   readonly path: string;
@@ -94,11 +94,11 @@ export function compileEventDataEquals(when: {
     .map((segment) =>
       PLAIN_IDENTIFIER.test(segment)
         ? `.${segment}`
-        : `[${JSON.stringify(segment)}]`
+        : `[${celStringLiteral(segment)}]`
     )
     .join("");
 
-  const expression = `event.data${accessor} == ${JSON.stringify(when.equals)}`;
+  const expression = `event.data${accessor} == ${celStringLiteral(when.equals)}`;
 
   try {
     parseCel(expression);

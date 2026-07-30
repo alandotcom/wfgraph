@@ -28,12 +28,6 @@ vi.mock("#src/backend/lib/logger", () => ({
   }),
 }));
 
-vi.mock("#src/backend/lib/inngest/runtime-events", () => ({
-  sendWorkflowWaitSignal: sendWorkflowWaitSignalMock,
-  sendWorkflowRunRequested: vi.fn(),
-  sendWorkflowCancelRequested: vi.fn(),
-}));
-
 vi.mock("#src/backend/lib/workflow-audit", () => ({
   logWorkflowAuditEvent: logWorkflowAuditEventMock,
 }));
@@ -82,6 +76,21 @@ function createWaitState(
   };
 }
 
+/**
+ * The subject with its one port filled in.
+ *
+ * Every case sends through the same stub, so only what varies is written at a
+ * call site.
+ */
+function resumeWaits(
+  input: Omit<Parameters<typeof resumeWaitsMatchingEvent>[0], "sendWaitSignal">
+): Promise<number> {
+  return resumeWaitsMatchingEvent({
+    sendWaitSignal: sendWorkflowWaitSignalMock,
+    ...input,
+  });
+}
+
 describe("resumeWaitsMatchingEvent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -92,7 +101,7 @@ describe("resumeWaitsMatchingEvent", () => {
   });
 
   it("returns 0 when eventType is undefined", async () => {
-    const result = await resumeWaitsMatchingEvent({
+    const result = await resumeWaits({
       workflowId: "workflow_1",
       eventType: undefined,
       payload: { data: "test" },
@@ -104,7 +113,7 @@ describe("resumeWaitsMatchingEvent", () => {
   });
 
   it("returns 0 when eventType is empty string", async () => {
-    const result = await resumeWaitsMatchingEvent({
+    const result = await resumeWaits({
       workflowId: "workflow_1",
       eventType: "",
       payload: { data: "test" },
@@ -116,7 +125,7 @@ describe("resumeWaitsMatchingEvent", () => {
   });
 
   it("returns 0 for empty waitStates array", async () => {
-    const result = await resumeWaitsMatchingEvent({
+    const result = await resumeWaits({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: { data: "test" },
@@ -127,7 +136,7 @@ describe("resumeWaitsMatchingEvent", () => {
   });
 
   it("skips wait states without a resume token", async () => {
-    const result = await resumeWaitsMatchingEvent({
+    const result = await resumeWaits({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: { data: "test" },
@@ -142,7 +151,7 @@ describe("resumeWaitsMatchingEvent", () => {
   });
 
   it("resumes a match-free subscription on the next occurrence", async () => {
-    const result = await resumeWaitsMatchingEvent({
+    const result = await resumeWaits({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: { key: "value" },
@@ -167,7 +176,7 @@ describe("resumeWaitsMatchingEvent", () => {
   });
 
   it("resumes multiple wait states and returns total count", async () => {
-    const result = await resumeWaitsMatchingEvent({
+    const result = await resumeWaits({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: {},
@@ -185,7 +194,7 @@ describe("resumeWaitsMatchingEvent", () => {
   });
 
   it("wakes nothing for a row whose metadata holds no subscriptions", async () => {
-    const result = await resumeWaitsMatchingEvent({
+    const result = await resumeWaits({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: {},
@@ -203,7 +212,7 @@ describe("resumeWaitsMatchingEvent", () => {
   // named this Event, so a `waitFor` that will not decode is a row this engine
   // wrote and cannot read. Silently, it looks exactly like an ordinary no-match.
   it("says so when a parked row's subscriptions will not decode", async () => {
-    const result = await resumeWaitsMatchingEvent({
+    const result = await resumeWaits({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: {},
@@ -225,7 +234,7 @@ describe("resumeWaitsMatchingEvent", () => {
   it("returns 0 for a wait state when markWaitStateStatus returns false", async () => {
     markWaitStateStatusMock.mockResolvedValue(false);
 
-    const result = await resumeWaitsMatchingEvent({
+    const result = await resumeWaits({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: {},
@@ -245,7 +254,7 @@ describe("resumeWaitsMatchingEvent", () => {
       .mockRejectedValueOnce(new Error("signal failed"))
       .mockResolvedValueOnce(undefined);
 
-    const result = await resumeWaitsMatchingEvent({
+    const result = await resumeWaits({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: {},
@@ -265,7 +274,7 @@ describe("resumeWaitsMatchingEvent", () => {
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(false);
 
-    const result = await resumeWaitsMatchingEvent({
+    const result = await resumeWaits({
       workflowId: "workflow_1",
       eventType: "event.update",
       payload: {},
@@ -279,7 +288,7 @@ describe("resumeWaitsMatchingEvent", () => {
   });
 
   it("logs audit event with correct eventType", async () => {
-    await resumeWaitsMatchingEvent({
+    await resumeWaits({
       workflowId: "workflow_audit",
       eventType: "appointment.rescheduled",
       payload: { appointment: { id: "apt_1" } },
@@ -313,7 +322,7 @@ describe("resumeWaitsMatchingEvent", () => {
         },
       });
 
-      const result = await resumeWaitsMatchingEvent({
+      const result = await resumeWaits({
         workflowId: "workflow_1",
         eventType: "billing/payment.settled",
         payload: { appointmentId: "appt_8813", amountCents: 4200 },
@@ -335,7 +344,7 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     it("wakes nothing when no arriving payload satisfies the match", async () => {
-      const result = await resumeWaitsMatchingEvent({
+      const result = await resumeWaits({
         workflowId: "workflow_1",
         eventType: "billing/payment.settled",
         payload: { appointmentId: "appt_nobody_waits_for" },
@@ -361,7 +370,7 @@ describe("resumeWaitsMatchingEvent", () => {
     // A free-entered Event the catalog never heard of parks and wakes the same
     // way: the name and the match are all resume matching ever reads.
     it("wakes on an undeclared Event name with a match", async () => {
-      const result = await resumeWaitsMatchingEvent({
+      const result = await resumeWaits({
         workflowId: "workflow_1",
         eventType: "vendor/never.declared",
         payload: { ref: "abc" },
@@ -397,7 +406,7 @@ describe("resumeWaitsMatchingEvent", () => {
         },
       ];
 
-      const before = await resumeWaitsMatchingEvent({
+      const before = await resumeWaits({
         workflowId: "workflow_1",
         eventType: "billing/payment.settled",
         payload: { settledAt: "2026-06-30T12:00:00.000Z" },
@@ -408,7 +417,7 @@ describe("resumeWaitsMatchingEvent", () => {
       vi.clearAllMocks();
       markWaitStateStatusMock.mockResolvedValue(true);
 
-      const after = await resumeWaitsMatchingEvent({
+      const after = await resumeWaits({
         workflowId: "workflow_1",
         eventType: "billing/payment.settled",
         payload: { settledAt: "2026-07-02T12:00:00.000Z" },
@@ -420,7 +429,7 @@ describe("resumeWaitsMatchingEvent", () => {
     // The payload arrived from outside and may carry anything, so a field of the
     // wrong shape is a payload that does not satisfy the match.
     it("does not wake a run when the match fails to evaluate", async () => {
-      const result = await resumeWaitsMatchingEvent({
+      const result = await resumeWaits({
         workflowId: "workflow_1",
         eventType: "billing/payment.settled",
         payload: { appointmentId: { nested: "object" } },
@@ -444,7 +453,7 @@ describe("resumeWaitsMatchingEvent", () => {
     });
 
     it("reads only the subscriptions naming the arriving Event", async () => {
-      const result = await resumeWaitsMatchingEvent({
+      const result = await resumeWaits({
         workflowId: "workflow_1",
         eventType: "app/appointment.confirmed",
         payload: { id: "no" },

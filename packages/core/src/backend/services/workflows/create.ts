@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Conflict, InvalidInput } from "#src/backend/lib/effect/failures";
 import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
-import { invalidateInngestFunctionsCache } from "#src/backend/lib/inngest/functions";
+import { invalidateInngestFunctions } from "#src/backend/lib/effect/inngest-functions";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import {
   toWorkflowApiPayload,
@@ -62,7 +62,7 @@ export const postWorkflowsCreate = Effect.fn("postWorkflowsCreate")(
       eventSubscriptions: prepared.subscriptionsFor(workflowId),
     });
 
-    invalidateInngestFunctionsCache();
+    yield* invalidateInngestFunctions;
 
     yield* logger.info("Workflow created", {
       workflowId,

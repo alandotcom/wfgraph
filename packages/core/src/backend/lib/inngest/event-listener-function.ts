@@ -16,9 +16,8 @@
 
 import { Effect } from "effect";
 import { NonRetriableError } from "inngest";
-import type { InngestFunction } from "inngest";
+import type { Inngest, InngestFunction } from "inngest";
 import type { AnyEventDefinition } from "#src/backend/lib/extensions/define-event";
-import { getInngestClient } from "#src/backend/lib/inngest/client";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { RovaRuntime } from "#src/backend/runtime";
 import {
@@ -177,9 +176,11 @@ export async function runEventListener(input: {
 
 // The return type is stated because declaration emit cannot name the inferred
 // one: it references types inngest keeps internal (`SendSignalResponse` under
-// inngest/api). `InngestFunction.Any` is what `getInngestFunctions` collects
+// inngest/api). `InngestFunction.Any` is what the function registry collects
 // these into anyway.
 export function createInngestEventListenerFunction(input: {
+  /** The app's own connection, which this listener is registered on. */
+  client: Inngest;
   event: AnyEventDefinition;
   /**
    * The app's Layer graph. It arrives from `createRovaApp` through the function
@@ -188,10 +189,10 @@ export function createInngestEventListenerFunction(input: {
    */
   runtime: RovaRuntime;
 }): InngestFunction.Any {
-  const { event, runtime } = input;
+  const { client, event, runtime } = input;
   const when = event.source.when;
 
-  return getInngestClient().createFunction(
+  return client.createFunction(
     {
       ...event.inngestFunctionOptions,
       id: toListenerFunctionId(event.name),

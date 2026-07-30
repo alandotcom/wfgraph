@@ -16,10 +16,6 @@ const {
   markWaitingStatesCancelledMock: vi.fn(),
 }));
 
-vi.mock("#src/backend/lib/inngest/runtime-events", () => ({
-  sendWorkflowCancelRequested: sendWorkflowCancelRequestedMock,
-}));
-
 vi.mock("#src/backend/lib/workflow-audit", () => ({
   logWorkflowAuditEvent: logWorkflowAuditEventMock,
 }));
@@ -45,6 +41,7 @@ describe("cancelInFlightRuns", () => {
     markWaitingStatesCancelledMock.mockResolvedValueOnce(["wait_1", "wait_2"]);
 
     const summary = await cancelInFlightRuns({
+      requestCancel: sendWorkflowCancelRequestedMock,
       workflowId: "workflow_1",
       executionIds: ["exec_success", "exec_failed"],
       waitStates: [
@@ -85,6 +82,7 @@ describe("cancelInFlightRuns", () => {
 
   it("cancels an in-flight execution that has no wait state", async () => {
     const summary = await cancelInFlightRuns({
+      requestCancel: sendWorkflowCancelRequestedMock,
       workflowId: "workflow_1",
       executionIds: ["exec_running"],
       waitStates: [],
@@ -115,6 +113,7 @@ describe("cancelInFlightRuns", () => {
     markWaitingStatesCancelledMock.mockResolvedValueOnce(["wait_1", "wait_2"]);
 
     const summary = await cancelInFlightRuns({
+      requestCancel: sendWorkflowCancelRequestedMock,
       workflowId: "workflow_1",
       executionIds: ["exec_1", "exec_1"],
       waitStates: [
@@ -141,6 +140,7 @@ describe("cancelInFlightRuns", () => {
     markWaitingStatesCancelledMock.mockResolvedValueOnce(["wait_2"]);
 
     const summary = await cancelInFlightRuns({
+      requestCancel: sendWorkflowCancelRequestedMock,
       workflowId: "workflow_1",
       executionIds: ["exec_completed", "exec_still_waiting"],
       waitStates: [
@@ -187,6 +187,7 @@ describe("announceSupersededRuns", () => {
 
   it("signals each displaced run and says why on its timeline", async () => {
     const summary = await announceSupersededRuns({
+      requestCancel: sendWorkflowCancelRequestedMock,
       workflowId: "workflow_1",
       executionIds: ["exec_old"],
       reason: "Superseded by a newer start from appointment.rescheduled",
@@ -212,6 +213,7 @@ describe("announceSupersededRuns", () => {
     );
 
     const summary = await announceSupersededRuns({
+      requestCancel: sendWorkflowCancelRequestedMock,
       workflowId: "workflow_1",
       executionIds: ["exec_old"],
       reason: "Superseded by a newer start",

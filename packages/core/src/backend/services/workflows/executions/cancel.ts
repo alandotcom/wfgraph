@@ -6,7 +6,11 @@ import {
   InternalFailure,
   NotFound,
 } from "#src/backend/lib/effect/failures";
-import { callInngestModule } from "#src/backend/lib/effect/inngest-client";
+import {
+  asPromisePort,
+  callInngestModule,
+  InngestClient,
+} from "#src/backend/lib/effect/inngest-client";
 import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
 import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
 import { cancelInFlightRuns } from "#src/backend/lib/workflow-cancellation";
@@ -60,8 +64,10 @@ export const postExecutionCancel = Effect.fn("postExecutionCancel")(
     // The one run-ender, which is also what a Cancel Event will reach in B7: the
     // signal, the row behind its compare-and-set, the wait rows, and the timeline
     // entry are one thing wherever a run is stopped from outside.
+    const inngest = yield* InngestClient;
     const ended = yield* callInngestModule(() =>
       cancelInFlightRuns({
+        requestCancel: asPromisePort(inngest.sendCancelRequested),
         workflowId,
         executionIds: [executionId],
         waitStates: waitingStates.map((state) => ({

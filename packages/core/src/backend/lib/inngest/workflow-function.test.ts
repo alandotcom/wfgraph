@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InngestTestEngine } from "@inngest/test";
+import { Inngest } from "inngest";
 import { dbWorkflowStore } from "#src/backend/lib/workflow-engine/db-store";
 import type { WorkflowExecutionRuntime } from "#src/backend/lib/workflow-engine/runtime";
 import type { WorkflowStore } from "#src/backend/lib/workflow-engine/store";
@@ -23,11 +24,14 @@ vi.mock("#src/backend/lib/workflow-engine/core", () => ({
 }));
 
 function createTestFunction() {
-  return createWorkflowRunRequestedFunction({
-    id: "workflow-test-function",
-    name: "Workflow Test Function",
-    workflowId: "workflow_123",
-  });
+  return createWorkflowRunRequestedFunction(
+    new Inngest({ id: "workflow-function-test", isDev: true }),
+    {
+      id: "workflow-test-function",
+      name: "Workflow Test Function",
+      workflowId: "workflow_123",
+    }
+  );
 }
 
 async function executeWorkflowFunctionForTest() {

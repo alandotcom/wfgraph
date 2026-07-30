@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect";
+import type { Inngest } from "inngest";
 import {
   sendHostEvent,
   sendWorkflowCancelRequested,
@@ -37,22 +38,22 @@ export class InngestClient extends Context.Service<
   {
     /** Enqueue a run. The event id it answers with is the run id we store. */
     readonly sendRunRequested: (
-      data: Parameters<typeof sendWorkflowRunRequested>[0]
+      data: Parameters<typeof sendWorkflowRunRequested>[1]
     ) => Effect.Effect<
       Awaited<ReturnType<typeof sendWorkflowRunRequested>>,
       InngestError
     >;
     /** Ask the run's function to stop; its `cancelOn` does the rest. */
     readonly sendCancelRequested: (
-      input: Parameters<typeof sendWorkflowCancelRequested>[0]
+      input: Parameters<typeof sendWorkflowCancelRequested>[1]
     ) => Effect.Effect<void, InngestError>;
     /** Wake one waiting node with the payload that arrived for it. */
     readonly sendWaitSignal: (
-      input: Parameters<typeof sendWorkflowWaitSignal>[0]
+      input: Parameters<typeof sendWorkflowWaitSignal>[1]
     ) => Effect.Effect<void, InngestError>;
     /** Put a posted Event on the bus, for its own listener to fan out. */
     readonly sendHostEvent: (
-      input: Parameters<typeof sendHostEvent>[0]
+      input: Parameters<typeof sendHostEvent>[1]
     ) => Effect.Effect<void, InngestError>;
   }
 >()("InngestClient") {}
@@ -64,41 +65,60 @@ const send = <A>(run: () => Promise<A>): Effect.Effect<A, InngestError> =>
   });
 
 /**
- * The live bus.
+ * The live bus, over the client the app built.
  *
- * The three sends delegate to `backend/lib/inngest/runtime-events`, which owns
- * the event envelopes and the idempotency key each one carries, and which
- * reaches the process-global client through `getInngestClient()`. Stage 7 of
- * ADR-0002 builds that client inside `createRovaApp` and hands it to this Layer,
- * at which point the global goes away and this file is the only thing that
- * changes.
+ * The four sends delegate to `backend/lib/inngest/runtime-events`, which owns
+ * the event envelopes and the idempotency key each one carries. The client is a
+ * parameter rather than a module lookup, so which connection a service sends on
+ * is decided by the app that owns it.
  */
-export const InngestClientLayer: Layer.Layer<InngestClient> = Layer.succeed(
-  InngestClient,
-  {
-    sendRunRequested: (data) => send(() => sendWorkflowRunRequested(data)),
+export function makeInngestClientLayer(
+  client: Inngest
+): Layer.Layer<InngestClient> {
+  return Layer.succeed(InngestClient, {
+    sendRunRequested: (data) =>
+      send(() => sendWorkflowRunRequested(client, data)),
     sendCancelRequested: (input) =>
       send(async () => {
-        await sendWorkflowCancelRequested(input);
+        await sendWorkflowCancelRequested(client, input);
       }),
     sendWaitSignal: (input) =>
       send(async () => {
-        await sendWorkflowWaitSignal(input);
+        await sendWorkflowWaitSignal(client, input);
       }),
-    sendHostEvent: (input) => send(() => sendHostEvent(input)),
-  }
-);
+    sendHostEvent: (input) => send(() => sendHostEvent(client, input)),
+  });
+}
 
 /**
  * Run a call into one of the `backend/lib/workflow-*` helpers that drives runs
  * through Inngest, and give it the same typed error channel a send gets.
  *
  * `cancelInFlightRuns` and `resumeWaitsMatchingEvent` each mix a send with the
- * wait-state bookkeeping around it, so neither belongs behind a repository and
- * neither is reachable through the three sends above. This is the seam they
- * cross until stage 7 brings the run engine itself onto Effect, and it mirrors
- * `callDbModule` for the modules that only query.
+ * wait-state bookkeeping around it, so neither belongs behind a repository. Each
+ * takes the one send it needs as a parameter, which its caller builds from this
+ * service; what it still cannot do is fail with anything but a rejection, which
+ * is what this seam converts. It mirrors `callDbModule` for the modules that
+ * only query, and goes when the run engine itself comes onto Effect.
  */
 export const callInngestModule = <A>(
   run: () => Promise<A>
 ): Effect.Effect<A, InngestError> => send(run);
+
+/**
+ * One of this service's sends, as the Promise function a `backend/lib` helper
+ * takes for its port.
+ *
+ * The deliberate escape hatch out of the app's `ManagedRuntime`, and the only
+ * one outside an edge: `cancelInFlightRuns` and `resumeWaitsMatchingEvent` call
+ * their port from inside a `Promise.all` a service cannot see into, so the
+ * Effect has to be run rather than composed. Naming it once keeps the count at
+ * three call sites, all of which go when the run engine comes onto Effect.
+ *
+ * A rejection carries the `InngestError` itself, which each helper catches and
+ * logs; nothing downstream reads its message.
+ */
+export const asPromisePort =
+  <I>(sendEffect: (input: I) => Effect.Effect<void, InngestError>) =>
+  (input: I): Promise<void> =>
+    Effect.runPromise(sendEffect(input));

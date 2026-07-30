@@ -5,6 +5,7 @@ import {
   type LogProperties,
 } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
+import { InngestFunctions } from "#src/backend/lib/effect/inngest-functions";
 import { configureExtensions } from "#src/backend/lib/extensions/current";
 import {
   emptyExtensionCatalog,
@@ -229,6 +230,24 @@ export function stubInngestClient(
 ): Layer.Layer<InngestClient> {
   return Layer.succeed(InngestClient, {
     ...inngestClientStubs,
+    ...overrides,
+  });
+}
+
+/**
+ * The registry invalidation, as a no-op a test may replace.
+ *
+ * The default accepts the call and does nothing, because a write that
+ * invalidates and a write that does not are both legitimate; a test that asserts
+ * on it hands over its own `invalidate`. The repository stubs die on an
+ * unaccounted-for call for the opposite reason: a query nobody named would be
+ * answered with a fake empty result.
+ */
+export function stubInngestFunctions(
+  overrides: Partial<InngestFunctions["Service"]> = {}
+): Layer.Layer<InngestFunctions> {
+  return Layer.succeed(InngestFunctions, {
+    invalidate: Effect.void,
     ...overrides,
   });
 }

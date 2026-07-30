@@ -258,9 +258,9 @@ describe("wait node - event mode", () => {
     const wait = runtime.waits.at(0);
     expect(wait?.stepId).toBe("wait-event-wait_1");
     expect(wait?.options.event).toBe("workflow/wait.signal");
-    expect(wait?.options.ifExpression).toContain(`'${resumeToken}'`);
+    expect(wait?.options.ifExpression).toContain(`"${resumeToken}"`);
     expect(wait?.options.ifExpression).toContain(
-      "async.data.nodeId == 'wait_1'"
+      'async.data.nodeId == "wait_1"'
     );
     expect(wait?.options.timeoutMs).toBeGreaterThan(0);
 

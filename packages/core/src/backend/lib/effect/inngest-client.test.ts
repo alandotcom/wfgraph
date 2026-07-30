@@ -5,10 +5,11 @@ import { assert, describe, layer } from "@effect/vitest";
 // `@effect/vitest` re-export leaves it unable to find the module registry.
 import { vi } from "vitest";
 import { Effect } from "effect";
+import { Inngest } from "inngest";
 import {
   InngestClient,
-  InngestClientLayer,
   InngestError,
+  makeInngestClientLayer,
 } from "#src/backend/lib/effect/inngest-client";
 
 /**
@@ -27,6 +28,11 @@ const runtimeEvents = vi.hoisted(() => ({
 }));
 
 vi.mock("#src/backend/lib/inngest/runtime-events", () => runtimeEvents);
+
+// A real client, because constructing one opens nothing: the mocked envelope
+// builders take it as their first argument and none of them calls it.
+const testClient = new Inngest({ id: "inngest-client-test", isDev: true });
+const TestInngestClientLayer = makeInngestClientLayer(testClient);
 
 const runRequest = {
   graph: { nodes: [], edges: [] },
@@ -47,8 +53,8 @@ const waitSignal = {
   token: "resume_token_1",
 };
 
-describe("InngestClientLayer", () => {
-  layer(InngestClientLayer)((it) => {
+describe("TestInngestClientLayer", () => {
+  layer(TestInngestClientLayer)((it) => {
     it.effect("hands back the event id an accepted run answered with", () =>
       Effect.gen(function* () {
         runtimeEvents.sendWorkflowRunRequested.mockResolvedValue({
@@ -122,13 +128,15 @@ describe("InngestClientLayer", () => {
         yield* inngest.sendCancelRequested(cancelRequest);
         yield* inngest.sendWaitSignal(waitSignal);
 
+        // The client is the first argument of every send, which is what says
+        // the Layer passes on the one it was built with.
         assert.deepStrictEqual(
           runtimeEvents.sendWorkflowCancelRequested.mock.lastCall,
-          [cancelRequest]
+          [testClient, cancelRequest]
         );
         assert.deepStrictEqual(
           runtimeEvents.sendWorkflowWaitSignal.mock.lastCall,
-          [waitSignal]
+          [testClient, waitSignal]
         );
       })
     );

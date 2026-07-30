@@ -3,8 +3,13 @@ import { AppLogger, AppLoggerLayer } from "#src/backend/lib/effect/app-logger";
 import { DatabaseLayer } from "#src/backend/lib/effect/database";
 import {
   InngestClient,
-  InngestClientLayer,
+  makeInngestClientLayer,
 } from "#src/backend/lib/effect/inngest-client";
+import {
+  InngestFunctions,
+  makeInngestFunctionsLayer,
+} from "#src/backend/lib/effect/inngest-functions";
+import type { InngestSurface } from "#src/backend/lib/inngest/client";
 import {
   ApiKeyRepo,
   ApiKeyRepoLayer,
@@ -37,7 +42,8 @@ export type RovaServices =
   | IntegrationRepo
   | WorkflowRepo
   | ExecutionRepo
-  | InngestClient;
+  | InngestClient
+  | InngestFunctions;
 
 // A repository that writes its own Drizzle is composed against the database
 // here, so the graph reads as a list of subsystems rather than one nested
@@ -54,13 +60,16 @@ const WorkflowsLayer = Layer.provide(
   DatabaseLayer
 );
 
-const RovaLayer: Layer.Layer<RovaServices> = Layer.mergeAll(
-  AppLoggerLayer,
-  ApiKeysLayer,
-  IntegrationRepoLayer,
-  WorkflowsLayer,
-  InngestClientLayer
-);
+function buildRovaLayer(inngest: InngestSurface): Layer.Layer<RovaServices> {
+  return Layer.mergeAll(
+    AppLoggerLayer,
+    ApiKeysLayer,
+    IntegrationRepoLayer,
+    WorkflowsLayer,
+    makeInngestClientLayer(inngest.client),
+    makeInngestFunctionsLayer(inngest)
+  );
+}
 
 /**
  * The Layer graph, built once and owned by the app that created it.
@@ -75,6 +84,6 @@ const RovaLayer: Layer.Layer<RovaServices> = Layer.mergeAll(
  */
 export type RovaRuntime = ManagedRuntime.ManagedRuntime<RovaServices, never>;
 
-export function createRovaRuntime(): RovaRuntime {
-  return ManagedRuntime.make(RovaLayer);
+export function createRovaRuntime(inngest: InngestSurface): RovaRuntime {
+  return ManagedRuntime.make(buildRovaLayer(inngest));
 }

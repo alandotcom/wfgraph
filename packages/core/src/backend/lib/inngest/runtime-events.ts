@@ -1,6 +1,6 @@
+import type { Inngest } from "inngest";
 import type { JsonObject } from "@rova/shared/types/json";
 import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
-import { getInngestClient } from "./client";
 import {
   workflowRunCancelRequested,
   workflowRunRequested,
@@ -37,9 +37,10 @@ export type WorkflowRunRequestedEventData = {
  * enqueue from starting the workflow twice.
  */
 export async function sendWorkflowRunRequested(
+  client: Inngest,
   data: WorkflowRunRequestedEventData
 ) {
-  const { ids } = await getInngestClient().send(
+  const { ids } = await client.send(
     workflowRunRequested.create(data, {
       id: `workflow-run-${data.executionId}`,
     })
@@ -58,43 +59,52 @@ export async function sendWorkflowRunRequested(
  * Inngest's idempotency key, which here dedupes a retried send of one delivery
  * rather than two posts: each POST mints its own.
  */
-export async function sendHostEvent(input: {
-  name: string;
-  data: JsonObject;
-  deliveryId: string;
-}) {
-  await getInngestClient().send({
+export async function sendHostEvent(
+  client: Inngest,
+  input: {
+    name: string;
+    data: JsonObject;
+    deliveryId: string;
+  }
+) {
+  await client.send({
     name: input.name,
     data: input.data,
     id: input.deliveryId,
   });
 }
 
-export async function sendWorkflowCancelRequested(input: {
-  executionId: string;
-  workflowId: string;
-  reason: string;
-  requestedBy: string;
-  eventType?: string;
-  correlationKey?: string;
-}) {
-  return await getInngestClient().send(
+export async function sendWorkflowCancelRequested(
+  client: Inngest,
+  input: {
+    executionId: string;
+    workflowId: string;
+    reason: string;
+    requestedBy: string;
+    eventType?: string;
+    correlationKey?: string;
+  }
+) {
+  return await client.send(
     workflowRunCancelRequested.create(input, {
       id: `workflow-cancel-${input.executionId}-${Date.now()}`,
     })
   );
 }
 
-export async function sendWorkflowWaitSignal(input: {
-  executionId: string;
-  nodeId: string;
-  token?: string | null;
-  eventType?: string;
-  correlationKey?: string;
-  // JSON is what survives the send, so the caller supplies JSON.
-  payload?: JsonObject;
-}) {
-  return await getInngestClient().send(
+export async function sendWorkflowWaitSignal(
+  client: Inngest,
+  input: {
+    executionId: string;
+    nodeId: string;
+    token?: string | null;
+    eventType?: string;
+    correlationKey?: string;
+    // JSON is what survives the send, so the caller supplies JSON.
+    payload?: JsonObject;
+  }
+) {
+  return await client.send(
     workflowWaitSignal.create(
       { ...input, signalType: "wait-resume" },
       {

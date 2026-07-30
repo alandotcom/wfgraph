@@ -13,7 +13,6 @@
  */
 
 import { partition, uniq } from "es-toolkit";
-import { sendWorkflowCancelRequested } from "#src/backend/lib/inngest/runtime-events";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { logWorkflowAuditEvent } from "#src/backend/lib/workflow-audit";
 import {
@@ -29,7 +28,23 @@ type EndingWaitState = {
   executionId: string;
 };
 
+/**
+ * Asking Inngest to stop one run, as the caller's own send.
+ *
+ * A port rather than an import: this module mixes the send with the wait-state
+ * bookkeeping around it, so it sits below the `InngestClient` service its caller
+ * holds and takes the one send it needs from there.
+ */
+export type RequestRunCancel = (input: {
+  executionId: string;
+  workflowId: string;
+  reason: string;
+  requestedBy: string;
+  eventType?: string;
+}) => Promise<void>;
+
 export type CancelInFlightRunsInput = {
+  requestCancel: RequestRunCancel;
   workflowId: string;
   /** Every in-flight execution to end, whatever node each is standing on. */
   executionIds: string[];
@@ -55,13 +70,14 @@ export type EndedRunsSummary = {
  * run that has already finished is a no-op at Inngest.
  */
 async function signalRunToStop(input: {
+  requestCancel: RequestRunCancel;
   workflowId: string;
   executionId: string;
   reason: string;
   eventName?: string;
 }): Promise<boolean> {
   try {
-    await sendWorkflowCancelRequested({
+    await input.requestCancel({
       executionId: input.executionId,
       workflowId: input.workflowId,
       reason: input.reason,
@@ -170,6 +186,7 @@ export async function cancelInFlightRuns(
   const outcomes = await Promise.all(
     uniq(input.executionIds).map(async (executionId) => {
       const signalled = await signalRunToStop({
+        requestCancel: input.requestCancel,
         workflowId: input.workflowId,
         executionId,
         reason: input.reason,
@@ -246,6 +263,7 @@ export async function cancelInFlightRuns(
  * clean: this is the announcement half of a decision already made.
  */
 export async function announceSupersededRuns(input: {
+  requestCancel: RequestRunCancel;
   workflowId: string;
   executionIds: string[];
   reason: string;
@@ -254,6 +272,7 @@ export async function announceSupersededRuns(input: {
   const outcomes = await Promise.all(
     uniq(input.executionIds).map(async (executionId) => {
       const signalled = await signalRunToStop({
+        requestCancel: input.requestCancel,
         workflowId: input.workflowId,
         executionId,
         reason: input.reason,

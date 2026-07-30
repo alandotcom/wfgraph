@@ -10,15 +10,16 @@
  */
 
 import {
-  configureDatabaseRuntime,
   type DatabaseRuntimeConfig,
-} from "#src/backend/lib/db/index";
+  normalizeDatabaseConfig,
+} from "#src/backend/lib/db/config";
+import { configureDatabaseRuntime } from "#src/backend/lib/db/index";
 import {
   type MigrationsOptions,
   runMigrations,
 } from "#src/backend/lib/db/migrations";
 
-export type { DatabaseRuntimeConfig } from "#src/backend/lib/db/index";
+export type { DatabaseRuntimeConfig } from "#src/backend/lib/db/config";
 
 /**
  * Where the database is, and where the migrations are if not where Rova ships
@@ -48,6 +49,6 @@ export type RovaMigrateOptions = DatabaseRuntimeConfig &
 export async function migrateRovaDatabase(
   options: RovaMigrateOptions
 ): Promise<void> {
-  configureDatabaseRuntime(options);
+  configureDatabaseRuntime(normalizeDatabaseConfig(options));
   await runMigrations({ migrationsDir: options.migrationsDir });
 }
