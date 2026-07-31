@@ -22,7 +22,7 @@ import {
 } from "@rova/shared/graph/types";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { findAction, findIntegration } from "@rova/shared/extensions/catalog";
-import { getIntegrationUi } from "@rova/shared/plugins/ui-registry";
+import { useIntegrationUi } from "#src/components/integration-ui-provider";
 import { readAs } from "@rova/shared/types/schema";
 import { cn } from "@rova/shared/utils";
 import {
@@ -328,8 +328,11 @@ const getIntegrationFromActionType = (actionType: string): string => {
 const requiresIntegration = (actionType: string): boolean =>
   Boolean(findAction(getExtensionCatalog(), actionType)?.integration);
 
-// Helper to get provider logo for action type
-const getProviderLogo = (actionType: string) => {
+// The logo an action wears on its node: a built-in's own glyph, its
+// integration's icon, or a fallback.
+const ProviderLogo = ({ actionType }: { actionType: string }) => {
+  const integrationUi = useIntegrationUi();
+
   // Check for system actions first (non-plugin)
   switch (actionType) {
     case BUILT_IN_ACTION_IDS.condition:
@@ -343,13 +346,12 @@ const getProviderLogo = (actionType: string) => {
       break;
   }
 
-  // The icon an integration registered from its ui.ts, keyed by integration type.
   const integrationType = findAction(
     getExtensionCatalog(),
     actionType
   )?.integration;
   if (integrationType) {
-    const ui = getIntegrationUi(integrationType);
+    const ui = integrationUi[integrationType];
     if (ui) {
       const PluginIcon = ui.icon;
       return <PluginIcon className="size-12" />;
@@ -607,7 +609,7 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
         {generatedImageBase64 ? (
           <GeneratedImageThumbnail base64={generatedImageBase64} />
         ) : (
-          getProviderLogo(actionType)
+          <ProviderLogo actionType={actionType} />
         )}
         <div className="flex flex-col items-center gap-1 text-center">
           <NodeTitle className="text-base">{displayTitle}</NodeTitle>

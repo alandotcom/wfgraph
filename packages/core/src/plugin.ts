@@ -44,10 +44,9 @@ export type { CredentialsUnavailable } from "#src/backend/extensions/credential-
  * above: the JSON type a vendor payload decodes to and the reader that gets it
  * there, the Effect Schema helper for a value already typed as JSON, the
  * error-message helper for a caught exception, and the output-field derivation
- * an integration's own tests run. A browser file (an integration's `ui.ts`, or a
+ * an integration's own tests run. A browser file (an integration's icon, or a
  * custom output renderer) does not import this entry point at all, since it must
- * not pull the backend graph into the client bundle; it reaches
- * `@rova/shared/plugins/ui-registry` directly instead.
+ * not pull the backend graph into the client bundle.
  */
 export {
   type JsonObject,

@@ -1,12 +1,16 @@
 import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { Schema } from "effect";
-import { useState } from "react";
+import { type ComponentType, useState } from "react";
+import type { IntegrationUi, ResultComponentProps } from "@rova/plugins/ui";
 import { Button } from "#src/components/ui/button";
+import { useIntegrationUi } from "#src/components/integration-ui-provider";
 import { getExtensionCatalog } from "#src/lib/extensions";
-import { findAction } from "@rova/shared/extensions/catalog";
+import {
+  type ActionMetadata,
+  findAction,
+} from "@rova/shared/extensions/catalog";
 import type { WorkflowExecutionStatus } from "@rova/shared/lifecycle/execution-contracts";
 import { readAs } from "@rova/shared/types/schema";
-import { getActionOutputComponent } from "@rova/shared/plugins/ui-registry";
 
 /**
  * How a status reads on screen, for the two vocabularies that reach these.
@@ -253,6 +257,33 @@ export function CollapsibleSection({
   );
 }
 
+/**
+ * The custom renderer for an action's output, or undefined when its output is
+ * shown as plain JSON.
+ *
+ * The catalog entry names the owning integration and the id is only how you find
+ * it: a host may legally define an action called `slack/notify`, and that action
+ * must not pick up Slack's renderer for output Slack knows nothing about.
+ */
+function findOutputComponent(
+  integrationUi: Record<string, IntegrationUi>,
+  action: ActionMetadata | undefined
+): ComponentType<ResultComponentProps> | undefined {
+  const owner = action?.integration;
+  if (!owner) {
+    return undefined;
+  }
+
+  const prefix = `${owner}/`;
+  if (!action.id.startsWith(prefix)) {
+    return undefined;
+  }
+
+  return integrationUi[owner]?.outputComponents?.[
+    action.id.slice(prefix.length)
+  ];
+}
+
 export function OutputDisplay({
   output,
   input,
@@ -262,13 +293,15 @@ export function OutputDisplay({
   input?: unknown;
   actionType?: string;
 }) {
-  // An integration can render its own output with a React component, which it
-  // registers from its ui.ts. When one exists it takes precedence over the plain
-  // base64 image below, which is keyed on nothing but the shape of the output.
-  // The catalog entry is what names the owning integration; the id is only the
-  // way to find it.
+  const integrationUi = useIntegrationUi();
+
+  // An integration's own renderer takes precedence over the plain base64 image
+  // below, which is keyed on nothing but the shape of the output.
   const CustomComponent = actionType
-    ? getActionOutputComponent(findAction(getExtensionCatalog(), actionType))
+    ? findOutputComponent(
+        integrationUi,
+        findAction(getExtensionCatalog(), actionType)
+      )
     : undefined;
   const base64Image = CustomComponent ? null : readBase64ImageOutput(output);
 

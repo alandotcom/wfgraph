@@ -17,7 +17,6 @@ plugins/[name]/
   client.test.ts     what the client puts on the wire
   test.ts            the connection test the credentials UI runs
   icon.tsx           the SVG icon component
-  ui.ts              registers the icon, and any output renderer
 ```
 
 A larger integration adds modules beside those rather than growing `index.ts` without
@@ -61,20 +60,18 @@ runs with, exported from `@rova/core/plugin` rather than rebuilt per package. Va
 key's format before spending a request where the vendor's keys have a known shape; it names
 the problem more precisely than a 401.
 
-## ui.ts and icon.tsx
+## icon.tsx and the ui record
+
+`src/ui.ts` is the one module the browser imports from this package. It exports
+`integrationUi`, a record keyed by integration type, and an integration takes one entry:
 
 ```ts
-// ui.ts -- only the browser imports this
-import { registerIntegrationUi } from "@rova/shared/plugins/ui-registry";
-import { MyServiceIcon } from "./icon";
-
-registerIntegrationUi("my-service", { icon: MyServiceIcon });
+"my-service": { icon: MyServiceIcon },
 ```
 
 The icon is an SVG component with an `aria-label` and a `<title>`; take the path from
 simpleicons.org. `outputComponents` beside it maps an action slug to a React renderer for
-that step's output in the runs panel. Add the module to `src/ui.ts`, which is the one import
-the browser makes.
+that step's output in the runs panel.
 
 ## Config field types
 
@@ -107,7 +104,7 @@ have caught none of it.
 
 1. Write the files above under `packages/plugins/src/[name]/`.
 2. Export the integration from `src/index.ts`, by name and in `builtInIntegrations`.
-3. Add `import "./[name]/ui";` to `src/ui.ts`.
+3. Add an entry to the `integrationUi` record in `src/ui.ts`.
 4. `pnpm run type-check && pnpm run test && pnpm run fix`.
 5. `pnpm run dev`, then add a connection, build a workflow on the action, and run it.
 

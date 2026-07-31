@@ -7,9 +7,8 @@ beside `@rova/example-app` (`examples/`), the host app `pnpm run dev` runs.
 - `@rova/core` (`packages/core`) library entrypoints and the backend
 - `@rova/client` (`packages/client`) the React SPA, handed to `createRovaApp` as `client`
 - `@rova/plugins` (`packages/plugins`) the six built-in integrations. Each server half
-  builds against `@rova/core/plugin` alone; each `ui.ts` reaches
-  `@rova/shared/plugins/ui-registry` directly, which is the one gap an outside integration
-  package cannot write and which a browser-only core entry would close.
+  builds against `@rova/core/plugin` alone; the browser half is one exported record,
+  `src/ui.ts`, which the editor provides through React context.
 
 Read the code for structure. `README.md` is the host-facing manual, `CONTEXT.md` the domain
 vocabulary, `docs/adr/` the decisions. What follows is what none of those say.

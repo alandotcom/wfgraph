@@ -145,17 +145,10 @@ const config: KnipConfig = {
       // src/index.ts and src/ui.ts are the two names in this package's "exports"
       // map, and knip picks them up from there. The first exports the
       // integrations as values, which a host passes to createRovaApp; the second
-      // exists for its import side effects, since the icons and output renderers
-      // are React components and cannot travel over /api/extensions.
+      // exports the icons and output renderers, which are React components and
+      // so cannot travel over /api/extensions.
       entry: [],
       project: ["src/**/*.{ts,tsx}"],
-      ignoreDependencies: [
-        // The plugin icons and output renderers are .tsx compiled with the
-        // automatic JSX runtime, so react arrives as a `react/jsx-runtime`
-        // import that the transform adds and @types/react is what tsc reads.
-        "react",
-        "@types/react",
-      ],
     },
   },
 };

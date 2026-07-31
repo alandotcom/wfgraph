@@ -155,6 +155,12 @@ const describeTestFailure: DescribeTestFailure = (cause) =>
 const describeSavedTestFailure: DescribeTestFailure = () =>
   "Failed to test saved integration connection";
 
+const toTestFailure = (cause: unknown): InternalFailure =>
+  new InternalFailure({
+    error: cause instanceof Error ? cause.message : "Failed to test connection",
+    cause,
+  });
+
 /**
  * How a connection test reports something that threw.
  *
@@ -172,11 +178,7 @@ const testFailure =
   (cause: unknown): Effect.Effect<never, InternalFailure> =>
     Effect.gen(function* () {
       yield* logger.error(describe(cause), { error: cause });
-      return yield* new InternalFailure({
-        error:
-          cause instanceof Error ? cause.message : "Failed to test connection",
-        cause,
-      });
+      return yield* toTestFailure(cause);
     });
 
 /**
@@ -195,8 +197,12 @@ const attemptTestStep =
       // it `run()` throws before a promise exists and the throw escapes past
       // `catch` as a defect.
       try: async () => await run(),
-      catch: (cause) => cause,
-    }).pipe(Effect.catch(testFailure(logger, describe)));
+      catch: toTestFailure,
+    }).pipe(
+      Effect.tapError((failure) =>
+        logger.error(describe(failure.cause), { error: failure.cause })
+      )
+    );
 
 /**
  * Does this (type, config) pair connect?

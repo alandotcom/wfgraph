@@ -6,8 +6,8 @@
  * never imports that file, so nothing a plugin reaches for reaches a bundle.
  *
  * Only data fits, so an icon and a custom output renderer stay an explicit
- * browser import in `plugins/ui-registry.ts` keyed by integration type, and
- * `logoUrl` serves an integration that wants no more than an image.
+ * browser import, keyed by integration type in `@rova/plugins/ui`, and `logoUrl`
+ * serves an integration that wants no more than an image.
  *
  * The lookups are pure functions over a catalog rather than methods on one, so
  * the server and the browser run one implementation over the same document.

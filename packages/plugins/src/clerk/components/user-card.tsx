@@ -1,6 +1,6 @@
 import { compact } from "es-toolkit/array";
 import { Schema } from "effect";
-import type { ResultComponentProps } from "@rova/shared/plugins/ui-registry";
+import type { ResultComponentProps } from "#src/ui";
 import { readAs } from "@rova/shared/types/schema";
 
 // This component renders a Clerk step's result read back out of the execution log,

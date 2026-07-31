@@ -429,10 +429,9 @@ outside package can be written the same way. That surface exports `defineIntegra
 `credentialFields`, `CredentialsOf`, `checkIntegration`, `defineStep`, `StepFailure`,
 `StepRunContext`, `IntegrationTestResult`, and `VendorTransport`.
 
-Its browser half is the one gap. Each `ui.ts` in `@rova/plugins` reaches
-`@rova/shared/plugins/ui-registry` to register its icon, and `@rova/shared` is private, so
-an outside package has no published path to `registerIntegrationUi` yet. A browser-only core
-entry is what closes it.
+Its browser half is the one gap. `@rova/plugins/ui` exports the built-in icons and output
+renderers as one record keyed by integration type, and the editor imports that record by
+name and provides it through React context, so an outside package has no route into it yet.
 
 An integration is one `defineIntegration` value holding its credential form, a
 `defineStep` per action, and a loader for its connection test.
@@ -573,9 +572,9 @@ vendor HTTP layer, the config field types, and the testing pattern.
   `client`.
 - `@rova/plugins` is the built-in integrations as values, by name and as
   `builtInIntegrations`.
-- `@rova/plugins/ui` is their icons and output renderers, which only the browser
-  imports. A React component cannot be serialized, so it is the one thing that
-  cannot travel with the rest of the catalog over `/api/extensions`.
+- `@rova/plugins/ui` is their icons and output renderers as one record, which only
+  the browser imports. A React component cannot be serialized, so it is the one
+  thing that cannot travel with the rest of the catalog over `/api/extensions`.
 
 `@rova/shared` stays private and is inlined into whichever bundle needs it.
 

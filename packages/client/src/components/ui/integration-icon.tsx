@@ -1,5 +1,5 @@
 import { Database, HelpCircle } from "lucide-react";
-import { getIntegrationUi } from "@rova/shared/plugins/ui-registry";
+import { useIntegrationUi } from "#src/components/integration-ui-provider";
 import { cn } from "@rova/shared/utils";
 
 interface IntegrationIconProps {
@@ -19,14 +19,15 @@ export function IntegrationIcon({
   integration,
   className = "h-3 w-3",
 }: IntegrationIconProps) {
+  const integrationUi = useIntegrationUi();
+
   // Check for special icons first (integrations without plugins)
   const SpecialIcon = SPECIAL_ICONS[integration];
   if (SpecialIcon) {
     return <SpecialIcon className={cn("text-foreground", className)} />;
   }
 
-  // Look up the icon the plugin registered from its ui.ts
-  const ui = getIntegrationUi(integration);
+  const ui = integrationUi[integration];
 
   if (ui) {
     const PluginIcon = ui.icon;

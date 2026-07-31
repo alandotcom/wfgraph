@@ -21,7 +21,7 @@
       {
         "name": "@effect/language-service",
         "includeSuggestionsInTsc": true,
-        "ignoreEffectWarningsInTscExitCode": true,
+        "ignoreEffectWarningsInTscExitCode": false,
         "diagnosticSeverity": {
           // The suggested Effect.void loses the specific success type these
           // functions declare (e.g. `number | undefined`); the fix does not compile.

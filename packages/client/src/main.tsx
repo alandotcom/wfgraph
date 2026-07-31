@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 // their custom output renderers. A component cannot be serialized, so this stays
 // an import; everything else about an integration arrives over the wire, as the
 // one catalog `hydrateExtensionsFromApi` below decodes.
-import "@rova/plugins/ui";
+import { integrationUi } from "@rova/plugins/ui";
 // Self-hosted variable fonts. The theme's --font-geist-sans/--font-geist-mono
 // variables in globals.css point at the families these register.
 import "@fontsource-variable/geist";
@@ -15,6 +15,7 @@ import {
   CatalogLoading,
   CatalogUnavailable,
 } from "#src/components/catalog-boot";
+import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { getBasePath } from "#src/lib/base-path";
 import { queryClient } from "#src/lib/query-client";
 import { hydrateExtensionsFromApi } from "#src/lib/extensions";
@@ -106,9 +107,11 @@ const catalogLoad = await hydrateExtensionsFromApi();
 
 root.render(
   catalogLoad.ok ? (
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <IntegrationUiProvider value={integrationUi}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </IntegrationUiProvider>
   ) : (
     <CatalogUnavailable
       endpoint={`${getBasePath()}/api/extensions`}
