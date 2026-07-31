@@ -55,6 +55,7 @@ function contextFor(
     nodeType: "action",
     integrationId: "int_resend",
     credentials,
+    readCredentials: () => Effect.runPromise(credentials),
   };
 }
 

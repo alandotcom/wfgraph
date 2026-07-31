@@ -48,6 +48,7 @@ function contextFor(
     nodeType: "action",
     integrationId: "int_linear",
     credentials,
+    readCredentials: () => Effect.runPromise(credentials),
   };
 }
 

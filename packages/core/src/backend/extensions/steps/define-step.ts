@@ -9,9 +9,9 @@
 
 import { Effect, Result, Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
-import type {
+import {
   CredentialsUnavailable,
-  WorkflowCredentials,
+  type WorkflowCredentials,
 } from "#src/backend/extensions/credential-fetcher";
 import { encodeThroughOutputSchema } from "#src/backend/extensions/steps/output-encoding";
 import {
@@ -29,6 +29,7 @@ import { buildConfigForm } from "#src/backend/extensions/steps/config-form";
 import {
   configFieldsFromInputSchema,
   type InputSchema,
+  isPromiseLike,
   validateConfig,
 } from "#src/backend/extensions/schema-io";
 import { asStandardSchema, isEffectSchema } from "@rova/shared/types/schema";
@@ -39,6 +40,7 @@ import type {
   ActionConfigFieldGroup,
 } from "@rova/shared/plugins/action-fields";
 import { formatSchemaFailure } from "@rova/shared/types/schema-message";
+import { getErrorMessage } from "@rova/shared/utils";
 import type { StepResult } from "@rova/shared/actions/step-result";
 
 /**
@@ -87,6 +89,15 @@ export type StepRunContext<TCredentials = WorkflowCredentials> = {
    * catching it would spend the run on a condition that clears on its own.
    */
   readonly credentials: Effect.Effect<TCredentials, CredentialsUnavailable>;
+  /**
+   * The same read for a handler written as a plain async function.
+   *
+   * One fetch behind both: awaiting this after yielding `credentials` reaches
+   * the value already read. It rejects with the `CredentialsUnavailable` itself,
+   * which `defineStep` recognises and turns into the same retry, so a handler
+   * that does not catch it gets that behaviour for free.
+   */
+  readonly readCredentials: () => Promise<TCredentials>;
 };
 
 /**
@@ -103,11 +114,25 @@ export type StepRunContext<TCredentials = WorkflowCredentials> = {
 export type StepHandler<TInput, TOutput> = (
   input: TInput,
   context: StepRunContext
-) => Effect.Effect<
-  TOutput,
-  StepFailure | CredentialsUnavailable,
-  HttpClient.HttpClient
->;
+) => HandlerAnswer<TOutput>;
+
+/**
+ * The three shapes a handler may answer in.
+ *
+ * An `Effect` fails with a `StepFailure` and may ask for the HTTP transport,
+ * which `callExternal` needs. A value or a Promise fails by throwing, and the
+ * message becomes the run log's sentence, which is how `defineAction`'s handler
+ * already works. Nothing else differs: the config decode, the credential fetch
+ * and the output encode are the same either way.
+ */
+type HandlerAnswer<TOutput> =
+  | TOutput
+  | Promise<TOutput>
+  | Effect.Effect<
+      TOutput,
+      StepFailure | CredentialsUnavailable,
+      HttpClient.HttpClient
+    >;
 
 /**
  * A config field naming a key the step's input schema declares.
@@ -236,6 +261,44 @@ function buildInputReader<TInput>(
 }
 
 /**
+ * What a handler threw, as the run log's sentence.
+ *
+ * The shared reader is used because a throw is often a seam failure whose own
+ * `.message` is empty, and a row closed with that alone is a red node with no
+ * sentence beside it.
+ */
+function toStepFailure(error: unknown): StepFailure | CredentialsUnavailable {
+  // A credential read that was refused stays what it is, so the runtime retries
+  // the node rather than failing it. A handler awaiting `readCredentials` and
+  // not catching gets that for free; one that catches has decided otherwise.
+  if (error instanceof CredentialsUnavailable) {
+    return error;
+  }
+
+  const message = getErrorMessage(error);
+  return new StepFailure({
+    message: message === "Unknown error" ? "Step execution failed" : message,
+  });
+}
+
+/** Whatever the handler answered, as the effect the rest of the step runs on. */
+function toHandlerEffect<TOutput>(
+  answer: HandlerAnswer<TOutput>
+): Effect.Effect<
+  TOutput,
+  StepFailure | CredentialsUnavailable,
+  HttpClient.HttpClient
+> {
+  if (Effect.isEffect(answer)) {
+    return answer;
+  }
+
+  return isPromiseLike<TOutput>(answer)
+    ? Effect.tryPromise({ try: () => answer, catch: toStepFailure })
+    : Effect.succeed(answer);
+}
+
+/**
  * Everything a step does around its handler, as a function of the action id.
  *
  * The id is what both messages below name, and a step learns it from the
@@ -270,15 +333,25 @@ function buildStep<TInput, TOutput>(
       }
       const input = parsed.success;
 
-      const data = yield* definition.handler(input, {
-        runMode: context?.runMode ?? "live",
-        executionId: context?.executionId,
-        nodeId: context?.nodeId,
-        nodeName: context?.nodeName,
-        nodeType: context?.nodeType,
-        integrationId,
-        credentials,
+      // The call is wrapped too, because a plain function may throw before it
+      // answers anything. An `Effect.fn` handler cannot, so this changes nothing
+      // for one.
+      const answer = yield* Effect.try({
+        try: () =>
+          definition.handler(input, {
+            runMode: context?.runMode ?? "live",
+            executionId: context?.executionId,
+            nodeId: context?.nodeId,
+            nodeName: context?.nodeName,
+            nodeType: context?.nodeType,
+            integrationId,
+            credentials,
+            readCredentials: () => runToPromise(credentials),
+          }),
+        catch: toStepFailure,
       });
+
+      const data = yield* toHandlerEffect(answer);
 
       // A handler that answered with something its output schema cannot encode
       // will answer with it again on every attempt, so this fails the node once
@@ -392,4 +465,24 @@ function readCredentials(
   return integrationId === undefined
     ? Effect.succeed({})
     : Effect.suspend(() => app.credentialsFor(integrationId));
+}
+
+/**
+ * The credential read as a Promise that rejects with the failure itself.
+ *
+ * `Effect.runPromise` would reject with a fiber failure wrapping the cause, and
+ * a handler catching that could not tell a refused credential store from
+ * anything else. Matching first and rejecting by hand is what keeps
+ * `CredentialsUnavailable` recognisable to `toStepFailure`, which is what turns
+ * it back into a retry.
+ */
+function runToPromise<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
+  return Effect.runPromise(
+    Effect.match(effect, {
+      onSuccess: (value) => ({ ok: true as const, value }),
+      onFailure: (error) => ({ ok: false as const, error }),
+    })
+  ).then((answered) =>
+    answered.ok ? answered.value : Promise.reject(answered.error)
+  );
 }

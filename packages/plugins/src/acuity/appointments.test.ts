@@ -121,6 +121,7 @@ function contextFor(
     nodeType: "action",
     integrationId: "int_acuity",
     credentials,
+    readCredentials: () => Effect.runPromise(credentials),
   };
 }
 

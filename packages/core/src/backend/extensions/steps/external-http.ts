@@ -27,6 +27,11 @@ import {
   readJsonValue,
 } from "@rova/shared/types/json";
 import { ExternalTransport } from "#src/backend/extensions/steps/external-transport";
+import {
+  type InputSchema,
+  isPromiseLike,
+} from "#src/backend/extensions/schema-io";
+import { isEffectSchema } from "@rova/shared/types/schema";
 import { Duration, Effect, Option, Schedule, Schema } from "effect";
 import {
   Headers,
@@ -139,15 +144,18 @@ export type ExternalBody =
   | { readonly kind: "json"; readonly value: JsonObject }
   | { readonly kind: "form"; readonly value: URLSearchParams };
 
-export type ExternalRequest<S extends Schema.ConstraintDecoder<unknown>> = {
+export type ExternalRequest<T> = {
   /** How the system is named in the one message this module writes itself. */
   readonly system: string;
   readonly url: string;
   readonly method: HttpMethod.HttpMethod;
   readonly headers: Record<string, string>;
   readonly body?: ExternalBody;
-  /** What a success body must decode to. Anything else is `ExternalUnreadable`. */
-  readonly schema: S;
+  /**
+   * What a success body must decode to. Anything else is `ExternalUnreadable`.
+   * Effect Schema, Zod, arktype, or anything else publishing Standard Schema.
+   */
+  readonly schema: InputSchema<T>;
   /**
    * Sent as `idempotency-key`, and the reason a POST carrying one may be
    * retried: the system replays its first answer rather than doing the work
@@ -178,9 +186,9 @@ export type ExternalRequest<S extends Schema.ConstraintDecoder<unknown>> = {
  * so a client's own failure vocabulary is a mapping over three cases rather
  * than a pipeline of its own.
  */
-export function callExternal<S extends Schema.ConstraintDecoder<unknown>>(
-  request: ExternalRequest<S>
-): Effect.Effect<S["Type"], ExternalError, HttpClient.HttpClient> {
+export function callExternal<T>(
+  request: ExternalRequest<T>
+): Effect.Effect<T, ExternalError, HttpClient.HttpClient> {
   const attempt = attemptCall(request);
 
   if (!isSafeToRepeat(request)) {
@@ -240,17 +248,28 @@ export type ExternalCallResult<A, TFailure> =
  * `Schema.Unknown` says exactly that; the absent body it would otherwise read as
  * a value is already the caller's failure case here.
  */
-export function parsePayload<S extends Schema.ConstraintDecoder<unknown>>(
+export function parsePayload<T>(
   payload: JsonValue | undefined,
-  schema: S
-): S["Type"] | undefined {
-  return Option.getOrUndefined(Schema.decodeUnknownOption(schema)(payload));
+  schema: InputSchema<T>
+): T | undefined {
+  if (isEffectSchema<T>(schema)) {
+    return Option.getOrUndefined(Schema.decodeUnknownOption(schema)(payload));
+  }
+
+  const parsed = schema["~standard"].validate(payload);
+  if (isPromiseLike(parsed)) {
+    throw new Error(
+      "A response schema must validate synchronously. Async Standard Schema validators are not supported."
+    );
+  }
+
+  return "value" in parsed ? parsed.value : undefined;
 }
 
 /** One trip to the system, with the timeout that bounds it. */
-function attemptCall<S extends Schema.ConstraintDecoder<unknown>>(
-  request: ExternalRequest<S>
-): Effect.Effect<S["Type"], ExternalError, HttpClient.HttpClient> {
+function attemptCall<T>(
+  request: ExternalRequest<T>
+): Effect.Effect<T, ExternalError, HttpClient.HttpClient> {
   return Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient;
     const response = yield* client
@@ -291,8 +310,8 @@ function attemptCall<S extends Schema.ConstraintDecoder<unknown>>(
   );
 }
 
-function buildRequest<S extends Schema.ConstraintDecoder<unknown>>(
-  request: ExternalRequest<S>
+function buildRequest<T>(
+  request: ExternalRequest<T>
 ): HttpClientRequest.HttpClientRequest {
   const bare = HttpClientRequest.make(request.method)(request.url);
   const withBody = encodeBody(bare, request.body);
@@ -388,9 +407,7 @@ function unreachableFrom(
  * other write can, so a send that timed out on the way back stays sent once,
  * unless the caller vouched for it with `safeToRepeat`.
  */
-function isSafeToRepeat<S extends Schema.ConstraintDecoder<unknown>>(
-  request: ExternalRequest<S>
-): boolean {
+function isSafeToRepeat<T>(request: ExternalRequest<T>): boolean {
   return (
     request.safeToRepeat === true ||
     request.method === "GET" ||

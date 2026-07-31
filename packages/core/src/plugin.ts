@@ -8,13 +8,17 @@
  * What is below is the whole of it, for a file that runs on the server. An
  * integration is a `defineIntegration` holding its credential fields and a
  * `defineStep` per action; a step is an input schema, an output schema, the
- * metadata the editor draws the action with, and a handler that fails with a
- * `StepFailure`; and a connection test, which answers the credentials UI over a
- * Promise rather than inside a handler, so it calls out through
- * `callExternalAsync`. There
- * is nothing to register: an integration is a value a host passes to
- * `createRovaApp`, and the credential fetch and the run logging are
- * `defineStep`'s business.
+ * metadata the editor draws the action with, and a handler; and a connection
+ * test, which answers the credentials UI over a Promise, so it calls out through
+ * `callExternalAsync`. There is nothing to register: an integration is a value a
+ * host passes to `createRovaApp`, and the credential fetch and the run logging
+ * are `defineStep`'s business.
+ *
+ * Effect is optional here. Schemas may come from any Standard Schema library and
+ * a handler may be an `async` function, so an integration can be written without
+ * importing Effect at all. Everything Effect-shaped below serves the arm that
+ * wants it: `StepFailure` is how an Effect handler fails, and `callExternal` is
+ * the one an Effect handler yields.
  */
 
 export type {

@@ -2,6 +2,7 @@ import { assert, describe, expect, it } from "@effect/vitest";
 import { afterEach, beforeEach } from "vitest";
 import { Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
+import { z } from "zod";
 import { ExternalTransport } from "#src/backend/extensions/steps/external-transport";
 import {
   callExternal,
@@ -35,7 +36,7 @@ afterEach(() => {
 
 const thing = Schema.Struct({ id: Schema.String });
 
-const request: ExternalRequest<typeof thing> = {
+const request: ExternalRequest<typeof thing.Type> = {
   system: "Example",
   url: "https://example.test/things",
   method: "POST",
@@ -43,9 +44,7 @@ const request: ExternalRequest<typeof thing> = {
   schema: thing,
 };
 
-function call<S extends Schema.ConstraintDecoder<unknown>>(
-  spec: ExternalRequest<S>
-): Effect.Effect<S["Type"], ExternalError> {
+function call<T>(spec: ExternalRequest<T>): Effect.Effect<T, ExternalError> {
   return callExternal(spec).pipe(Effect.provide(ExternalTransport));
 }
 
@@ -53,9 +52,7 @@ function call<S extends Schema.ConstraintDecoder<unknown>>(
  * The failure a call ended in, for a test that expects one. A call that
  * succeeds fails the flip instead, which is what makes the test say so.
  */
-function failure<S extends Schema.ConstraintDecoder<unknown>>(
-  spec: ExternalRequest<S>
-): Effect.Effect<ExternalError, S["Type"]> {
+function failure<T>(spec: ExternalRequest<T>): Effect.Effect<ExternalError, T> {
   return Effect.flip(call(spec));
 }
 
@@ -215,7 +212,7 @@ describe("the timeout", () => {
  * twice is not retried at all.
  */
 describe("the retry policy", () => {
-  const readable: ExternalRequest<typeof thing> = {
+  const readable: ExternalRequest<typeof thing.Type> = {
     ...request,
     method: "GET",
   };
@@ -463,5 +460,16 @@ describe("parsePayload", () => {
     expect(parsePayload(["1"], schema)).toBeUndefined();
     expect(parsePayload("1", schema)).toBeUndefined();
     expect(parsePayload(undefined, schema)).toBeUndefined();
+  });
+
+  // The response schema takes any Standard Schema for the same reason the step's
+  // do: an integration written without Effect has to be able to say what the
+  // system it calls answers with.
+  it("reads a response schema from another library the same way", () => {
+    const foreign = z.object({ id: z.string() });
+
+    expect(parsePayload({ id: "1" }, foreign)).toEqual({ id: "1" });
+    expect(parsePayload({ id: 1 }, foreign)).toBeUndefined();
+    expect(parsePayload(undefined, foreign)).toBeUndefined();
   });
 });

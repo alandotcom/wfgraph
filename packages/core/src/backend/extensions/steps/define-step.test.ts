@@ -310,6 +310,33 @@ describe("defineStep and a credential store that refuses the read", () => {
       error: { message: "The vendor said no." },
     });
   });
+
+  // The same rule through the Promise arm, which is the one place a plain
+  // `catch (error)` around the fetch would get it wrong: a rejection carrying a
+  // refused read is not the handler's failure to report.
+  it("rejects for an async handler that let the refusal through", async () => {
+    const asyncStep = defineStep({
+      ...METADATA,
+      input,
+      output,
+      configFields: [],
+      handler: async (config, context) => {
+        const credentials = await context.readCredentials();
+        return { id: `${credentials.API_KEY}`, sentTo: config.to };
+      },
+    });
+
+    const run = asyncStep.implement("demo/async")(
+      stubStepEnvironment({ credentialsFor: unreadable })
+    );
+
+    await expect(
+      run({ to: "someone", integrationId: "int_1", _context: CONTEXT })
+    ).rejects.toMatchObject({
+      _tag: "CredentialsUnavailable",
+      message: 'Could not read the credentials for integration "int_1".',
+    });
+  });
 });
 
 /**
@@ -625,7 +652,7 @@ describe("defineStep and the config form", () => {
  * Zod stands in for any Standard Schema library. What it publishes is a
  * validator and a JSON Schema, so the form derives and the config is checked,
  * and the encode the Effect arm runs has no counterpart here. The handler is
- * still an Effect: that half is the Promise arm's to change.
+ * still an Effect here; the suite below writes one without.
  */
 describe("defineStep and a schema from another library", () => {
   const step = defineStep({
@@ -661,6 +688,116 @@ describe("defineStep and a schema from another library", () => {
     expect(await run({ to: 7, _context: CONTEXT })).toEqual({
       success: false,
       error: { message: 'Invalid configuration for "demo/foreign": to' },
+    });
+  });
+});
+
+/**
+ * A step written the way an outside author would write one: Zod for the
+ * schemas, an `async` handler, and no Effect anywhere in the definition.
+ *
+ * This is the claim `@rova/core/plugin`'s header makes, so it is asserted rather
+ * than promised. The Effect arm stays first class, and the six built-ins use it.
+ */
+describe("defineStep and a handler that is not an Effect", () => {
+  const asyncStep = defineStep({
+    ...METADATA,
+    input: z.object({ to: z.string().describe("Recipient") }),
+    output: z.object({ id: z.string().describe("Id") }),
+    handler: async (config, context) => {
+      const credentials = await context.readCredentials();
+      return { id: `${credentials.API_KEY}-${config.to}` };
+    },
+  });
+
+  const run = asyncStep.implement("demo/async")(runner);
+
+  it("answers the envelope the engine reads", async () => {
+    expect(
+      await run({ to: "someone", integrationId: "int_1", _context: CONTEXT })
+    ).toEqual({ success: true, data: { id: "k-someone" } });
+  });
+
+  it("reads the credentials once, however often the handler asks", async () => {
+    const twice = defineStep({
+      ...METADATA,
+      input: z.object({ to: z.string() }),
+      output: z.object({ id: z.string().describe("Id") }),
+      handler: async (config, context) => {
+        await context.readCredentials();
+        const credentials = await context.readCredentials();
+        return { id: `${credentials.API_KEY}-${config.to}` };
+      },
+    });
+
+    await twice.implement("demo/twice")(runner)({
+      to: "someone",
+      integrationId: "int_1",
+      _context: CONTEXT,
+    });
+
+    expect(credentialsFor).toHaveBeenCalledTimes(1);
+  });
+
+  // A throw is how this arm fails a node, the same way `defineAction`'s handler
+  // does. The message is the run log's sentence.
+  it("turns a throw into the node's one failure", async () => {
+    const throwing = defineStep({
+      ...METADATA,
+      input: z.object({ to: z.string() }),
+      output: z.object({ id: z.string().describe("Id") }),
+      handler: async () => {
+        await Promise.resolve();
+        throw new Error("The system said no.");
+      },
+    });
+
+    expect(
+      await throwing.implement("demo/throwing")(runner)({
+        to: "someone",
+        _context: CONTEXT,
+      })
+    ).toEqual({ success: false, error: { message: "The system said no." } });
+  });
+
+  // A handler need not be async at all. This is the same path with nothing to
+  // await, and it is what a step doing pure work writes.
+  it("takes a plain value back from a handler that awaits nothing", async () => {
+    const plain = defineStep({
+      ...METADATA,
+      input: z.object({ to: z.string() }),
+      output: z.object({ id: z.string().describe("Id") }),
+      handler: (config) => ({ id: config.to.toUpperCase() }),
+    });
+
+    expect(
+      await plain.implement("demo/plain")(runner)({
+        to: "someone",
+        _context: CONTEXT,
+      })
+    ).toEqual({ success: true, data: { id: "SOMEONE" } });
+  });
+
+  // A throw before the first await escapes as a rejected call rather than a
+  // returned Promise, so the wrap around the call is what catches it.
+  it("turns a synchronous throw into the same failure", async () => {
+    const throwing = defineStep({
+      ...METADATA,
+      input: z.object({ to: z.string() }),
+      output: z.object({ id: z.string().describe("Id") }),
+      handler: () => {
+        throw new Error("Refused before it started.");
+      },
+    });
+
+    expect(
+      await throwing.implement("demo/sync-throw")(runner)({
+        to: "someone",
+        _context: CONTEXT,
+      })
+    ).toEqual({
+      success: false,
+      error: { message: "Refused before it started." },
     });
   });
 });

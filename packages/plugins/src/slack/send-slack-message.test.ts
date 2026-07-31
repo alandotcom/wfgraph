@@ -50,6 +50,7 @@ function contextFor(
     nodeType: "action",
     integrationId: "int_slack",
     credentials,
+    readCredentials: () => Effect.runPromise(credentials),
   };
 }
 

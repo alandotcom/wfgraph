@@ -510,8 +510,34 @@ export const myService = defineIntegration({
 
 **`defineStep` owns everything around the handler**: the config decode, the
 credential fetch, the run log rows, and the `StepResult` envelope the engine reads.
-A handler answers a value or fails with a `StepFailure`. It writes no envelope and
-touches no Promise, and it may ask for `HttpClient.HttpClient` and nothing else.
+A handler answers the payload and writes no envelope.
+
+**Write the handler as an `async` function or as an `Effect`.** The example above
+uses an Effect, which is what the six built-ins use, because `callExternal`
+answers one and a handler yields it directly. Written that way a handler fails
+with a `StepFailure` and may ask for `HttpClient.HttpClient` and nothing else.
+
+An `async` handler, or a plain one answering a value, fails by throwing, and the
+message becomes the run log's sentence. It reads its credentials with
+`await context.readCredentials()` in place of `yield* context.credentials`, and
+reaches an external system through `callExternalAsync`, which provides the
+transport an Effect handler is given. Nothing else differs between the two.
+
+```ts
+handler: async (input, context) => {
+  const { MY_SERVICE_API_KEY } = await context.readCredentials();
+  if (!MY_SERVICE_API_KEY) {
+    throw new Error("MY_SERVICE_API_KEY is not configured.");
+  }
+
+  return { id: await createThing(MY_SERVICE_API_KEY, input.text) };
+},
+```
+
+One case is worth knowing about. `readCredentials` rejects with the failure a
+refused credential store raises, and `defineStep` reads that rejection as a
+condition that clears on its own: the node is retried rather than failed. A
+handler that catches around the await has decided otherwise, so catch narrowly.
 
 **The config form comes from `input`.** Every key the schema declares draws a
 field, labelled from its `description` and marked required where the schema

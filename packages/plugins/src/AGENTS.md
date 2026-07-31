@@ -120,11 +120,16 @@ the credential type is `[Name]Credentials`; the connection test is `test[Name]`;
 
 ## Testing
 
-Test the handler, not the step: it is a function of `(input, context)` to an `Effect`, so a
-case supplies the context it wants and runs it. `twilio/send-sms.test.ts` is the pattern,
-with credentials as an `Effect.sync` that counts its reads and the client as the
-stubbed seam. That file also runs the assembled step through `implement`, which is the whole
-path a run takes.
+Test the handler, not the step: it is a function of `(input, context)`, so a case supplies
+the context it wants and runs it. `twilio/send-sms.test.ts` is the pattern, with
+credentials as an `Effect.sync` that counts its reads and the client as the stubbed seam.
+That file also runs the assembled step through `implement`, which is the whole path a run
+takes.
+
+A context a case builds by hand fills both credential readers, `credentials` and
+`readCredentials`, because a handler may use either. The six here all use the Effect one,
+so `readCredentials: () => Effect.runPromise(credentials)` is the whole of what each
+factory adds.
 
 `[name]/index.test.ts` beside it asserts what the definition contributes: the credential
 vocabulary, the action slugs, and the field list `requireOutputFieldsFromSchema` derives from

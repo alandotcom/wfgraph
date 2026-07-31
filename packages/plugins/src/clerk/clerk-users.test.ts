@@ -75,6 +75,7 @@ function contextFor(
     nodeType: "action",
     integrationId: "int_clerk",
     credentials,
+    readCredentials: () => Effect.runPromise(credentials),
   };
 }
 
