@@ -11,7 +11,7 @@ import {
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import type { WorkflowUpdateData } from "#src/backend/services/workflows/mappers";
-import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
+import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 
 /** One row of `workflow_event_subscriptions`: one workflow, one Event, one role. */
 export type WorkflowEventSubscriptionRow =

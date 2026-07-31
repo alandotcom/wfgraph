@@ -3,8 +3,8 @@ import {
   compileConditionModel,
   createDefaultConditionModel,
   serializeConditionModel,
-} from "@rova/shared/workflow/conditions";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
+} from "@rova/shared/conditions/conditions";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 
 /**
  * The starting condition for a node that has just become a Condition step.

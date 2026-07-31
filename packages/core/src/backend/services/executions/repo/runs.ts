@@ -13,7 +13,7 @@ import {
 import type { Effect } from "effect";
 import { workflowExecutions, workflows } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/workflow/execution-contracts";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/lifecycle/execution-contracts";
 import type { JsonObject } from "@rova/shared/types/json";
 import type {
   ExecutionPageQuery,

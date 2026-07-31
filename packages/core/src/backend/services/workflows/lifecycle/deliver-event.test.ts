@@ -13,8 +13,8 @@ import {
   stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
-import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
-import type { LifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
+import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
+import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
 import type { EventSubscriber } from "#src/backend/services/workflows/repo";
 import { applyLifecycleRules, deliverToWaits } from "./deliver-event";
 
@@ -49,9 +49,12 @@ vi.mock("#src/backend/services/workflows/lifecycle/cancel", () => ({
   requestCanceledOutlet: requestCanceledOutletMock,
 }));
 
-vi.mock("#src/backend/lib/workflow-integration-validation", () => ({
-  validateWorkflowIntegrations: validateWorkflowIntegrationsMock,
-}));
+vi.mock(
+  "#src/backend/services/workflows/validation/workflow-integration-validation",
+  () => ({
+    validateWorkflowIntegrations: validateWorkflowIntegrationsMock,
+  })
+);
 
 // The catalog the save rules are checked against, which preflight reads off the
 // runtime the delivery runs on.

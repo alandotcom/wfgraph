@@ -10,8 +10,8 @@ import {
   makeExtensionsLayer,
 } from "#src/backend/lib/effect/extensions";
 import { InngestFunctions } from "#src/backend/lib/effect/inngest-functions";
-import type { ExtensionSet } from "#src/backend/lib/extensions/extension-set";
-import type { StepEnvironment } from "#src/backend/lib/steps/step-runner";
+import type { ExtensionSet } from "#src/backend/extensions/extension-set";
+import type { StepEnvironment } from "#src/backend/extensions/steps/step-runner";
 import {
   emptyExtensionCatalog,
   type ExtensionCatalog,

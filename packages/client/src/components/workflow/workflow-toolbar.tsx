@@ -42,7 +42,7 @@ import {
 } from "#src/components/workflow/workflow-node-dimensions";
 import { UserMenu } from "#src/components/workflows/user-menu";
 import type { WorkflowExecuteResult } from "#src/lib/rpc-client";
-import type { WorkflowExecutionIgnoredReason } from "@rova/shared/workflow/execution-contracts";
+import type { WorkflowExecutionIgnoredReason } from "@rova/shared/lifecycle/execution-contracts";
 import {
   integrationsQueryOptions,
   orpcQuery,
@@ -85,15 +85,15 @@ import {
   propertiesPanelActiveTabAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { findAction, findIntegration } from "@rova/shared/extensions/catalog";
 import { flattenConfigFields } from "@rova/shared/plugins/action-fields";
 import {
   getMissingRequiredFieldsForNodes,
   type MissingRequiredFieldInfo,
-} from "@rova/shared/workflow/action-config-validation";
-import { findTemplateTokens } from "@rova/shared/workflow/node-references";
+} from "@rova/shared/actions/action-config-validation";
+import { findTemplateTokens } from "@rova/shared/graph/node-references";
 
 // The `satisfies` is the exhaustiveness check: a reason added to the shared
 // union fails to compile here until it has user-facing copy.

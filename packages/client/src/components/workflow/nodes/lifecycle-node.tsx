@@ -10,12 +10,12 @@ import { cn } from "@rova/shared/utils";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
-} from "@rova/shared/workflow/lifecycle-outlets";
-import type { WorkflowNodeData } from "@rova/shared/workflow/types";
+} from "@rova/shared/lifecycle/lifecycle-outlets";
+import type { WorkflowNodeData } from "@rova/shared/graph/types";
 import {
   manualStartAllowed,
   readLifecycleRules,
-} from "@rova/shared/workflow/lifecycle-rules";
+} from "@rova/shared/lifecycle/lifecycle-rules";
 
 // Two bottom handles split left/right rather than stacked, so both stay
 // reachable for a drag, and each carries a label chip centred on it.

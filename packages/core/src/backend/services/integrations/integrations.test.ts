@@ -8,9 +8,9 @@ import {
   InternalFailure,
   InvalidInput,
 } from "#src/backend/lib/effect/failures";
-import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
-import type { IntegrationTestLoader } from "#src/backend/lib/extensions/integration-test";
-import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { defineIntegration } from "#src/backend/extensions/define-integration";
+import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
+import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import {
   SilentAppLoggerLayer,
   stubExtensionCatalog,

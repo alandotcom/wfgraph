@@ -13,7 +13,7 @@ a Promise so that Inngest can memoize what comes back, which keeps the two const
 already documented for this code. Node outputs round-trip through JSON, so they stay
 JSON-safe. Retries remain function-level, with each step carrying its own counter.
 
-`WorkflowExecutionRuntime` (`packages/core/src/backend/lib/workflow-engine/runtime.ts`)
+`WorkflowExecutionRuntime` (`packages/core/src/backend/engine/runtime.ts`)
 has four members: `sleep`, `waitForEvent`, `step`, and `runId`. Inngest is invisible behind
 them, and `packages/core/src/backend/lib/inngest/workflow-function.ts` is the only place
 that supplies the Inngest-backed implementation. A future substrate swap therefore stays

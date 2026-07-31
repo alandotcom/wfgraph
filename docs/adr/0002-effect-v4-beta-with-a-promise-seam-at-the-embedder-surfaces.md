@@ -168,7 +168,7 @@ through those SDKs, which is where they should stay. `lib/steps/http-request.ts`
 user-facing HTTP node, is stage 7's.
 
 **Amendment, 2026-07-29 (stage 6a).** `defineStep` landed as
-`packages/core/src/backend/lib/steps/define-step.ts`, with twilio as the one plugin
+`packages/core/src/backend/extensions/steps/define-step.ts`, with twilio as the one plugin
 migrated onto it. Five decisions in it are worth writing down.
 
 The credentials reach a handler as an `Effect` rather than as a value. A step that
@@ -198,7 +198,7 @@ the 2026-07-30 amendment.)
 
 Issue #8 landed for the plugin surface: an action declares `output` in its `index.ts` and
 `registerIntegration` derives the editor's field list from it. The derivation is shared
-with `createAction`'s in `packages/shared/src/workflow/output-fields.ts`. `outputFields`
+with `createAction`'s in `packages/shared/src/graph/output-fields.ts`. `outputFields`
 stays on the definition type for now, because deleting it in 6a would take the autocomplete
 away from sixteen actions whose steps have not moved; an action declaring both is a
 registration error, so the two cannot drift. (6b deleted both the field and that error.) The derivation is loud for a plugin action

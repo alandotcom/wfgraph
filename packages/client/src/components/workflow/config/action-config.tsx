@@ -33,8 +33,8 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { actionsByCategory, findAction } from "@rova/shared/extensions/catalog";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/workflow/built-in-actions";
-import { DEFAULT_WAIT_TIMEOUT } from "@rova/shared/workflow/wait-subscription";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
+import { DEFAULT_WAIT_TIMEOUT } from "@rova/shared/lifecycle/wait-subscription";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";

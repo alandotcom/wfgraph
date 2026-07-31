@@ -39,7 +39,7 @@ import {
   type TimestampAbsoluteOperator,
   type TimestampRelativeOperator,
   type TimeUnit,
-} from "@rova/shared/workflow/conditions";
+} from "@rova/shared/conditions/conditions";
 
 /**
  * What the row is written against, rather than where it is stored.

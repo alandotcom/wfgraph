@@ -29,8 +29,8 @@ import {
   type WorkflowRunTarget,
 } from "#src/backend/services/executions/run-rows";
 import type { JsonObject } from "@rova/shared/types/json";
-import type { Concurrency } from "@rova/shared/workflow/lifecycle-rules";
-import type { WorkflowMode } from "@rova/shared/workflow/types";
+import type { Concurrency } from "@rova/shared/lifecycle/lifecycle-rules";
+import type { WorkflowMode } from "@rova/shared/graph/types";
 
 export type StartWithConcurrencyInput = {
   workflow: WorkflowRunTarget;

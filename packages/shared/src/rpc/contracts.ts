@@ -13,8 +13,8 @@ import {
   WORKFLOW_EXECUTION_IGNORED_REASONS,
   WORKFLOW_EXECUTION_START_SOURCES,
   WORKFLOW_EXECUTION_STATUSES,
-} from "#src/workflow/execution-contracts";
-import { serializedWorkflowGraphSchema } from "#src/workflow/schemas";
+} from "#src/lifecycle/execution-contracts";
+import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
 
 /**
  * Declares a procedure's REST shape. Routing metadata moved off the contract

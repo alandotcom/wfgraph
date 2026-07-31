@@ -1,12 +1,12 @@
 import type { Inngest, InngestFunction } from "inngest";
-import { celStringLiteral } from "@rova/shared/workflow/cel-string-literal";
-import type { WorkflowActions } from "#src/backend/lib/workflow-engine/actions";
+import { celStringLiteral } from "@rova/shared/conditions/cel-string-literal";
+import type { WorkflowActions } from "#src/backend/engine/actions";
 import {
   executeWorkflow,
   type WorkflowExecutionInput,
-} from "#src/backend/lib/workflow-engine/core";
-import type { WorkflowExecutionRuntime } from "#src/backend/lib/workflow-engine/runtime";
-import type { WorkflowStore } from "#src/backend/lib/workflow-engine/store";
+} from "#src/backend/engine/core";
+import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
+import type { WorkflowStore } from "#src/backend/engine/store";
 import {
   workflowExecutionInputSchema,
   workflowRunCancelRequested,

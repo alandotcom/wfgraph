@@ -8,7 +8,7 @@ import {
   NotFound,
 } from "#src/backend/lib/effect/failures";
 import { invalidateInngestFunctions } from "#src/backend/lib/effect/inngest-functions";
-import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
+import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import {
   type WorkflowEventSubscriptionRow,
@@ -18,7 +18,7 @@ import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
 } from "#src/backend/services/workflows/mappers";
-import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
+import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 
 /** The contract answers a delete with this and nothing else. */
 type WorkflowDeleted = { success: true };

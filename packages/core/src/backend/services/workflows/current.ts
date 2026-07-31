@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InternalFailure, NotFound } from "#src/backend/lib/effect/failures";
 import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
-import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
+import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import {
   buildWorkflowUpdateData,

@@ -9,13 +9,13 @@ import {
   NotFound,
 } from "#src/backend/lib/effect/failures";
 import { invalidateInngestFunctions } from "#src/backend/lib/effect/inngest-functions";
-import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
+import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
 import { generateId } from "@rova/shared/utils/id";
-import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
+import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 
 /**
  * A copy points at no integration: connections are per-workflow, so the person

@@ -17,12 +17,12 @@ import {
 import {
   formatTemplateToken,
   parseTemplate,
-} from "@rova/shared/workflow/node-references";
+} from "@rova/shared/graph/node-references";
 import type {
   WorkflowEdge,
   WorkflowNode,
   WorkflowNodeData,
-} from "@rova/shared/workflow/types";
+} from "@rova/shared/graph/types";
 
 /**
  * The graph the editor is showing, and every operation that may change it.

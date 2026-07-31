@@ -1,7 +1,7 @@
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { findAction } from "@rova/shared/extensions/catalog";
-import { parseTemplate, type TemplateToken } from "@rova/shared/workflow/node-references";
-import type { WorkflowNode } from "@rova/shared/workflow/types";
+import { parseTemplate, type TemplateToken } from "@rova/shared/graph/node-references";
+import type { WorkflowNode } from "@rova/shared/graph/types";
 
 /**
  * The contentEditable behind the template fields, as plain DOM.

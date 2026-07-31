@@ -13,8 +13,8 @@ import {
   LifecyclePanel,
 } from "#src/components/workflow/config/lifecycle-panel";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
-import type { LifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
-import type { WorkflowNode } from "@rova/shared/workflow/types";
+import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
+import type { WorkflowNode } from "@rova/shared/graph/types";
 
 // The Events a panel offers come from the server's catalog. One declares its own
 // Correlation Path and one leaves it to the builder, which is the difference the

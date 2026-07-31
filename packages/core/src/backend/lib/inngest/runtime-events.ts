@@ -1,6 +1,6 @@
 import type { Inngest } from "inngest";
 import type { JsonObject } from "@rova/shared/types/json";
-import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
+import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 import {
   workflowRunCancelRequested,
   workflowRunRequested,

@@ -11,7 +11,7 @@
 import { evaluateCelBooleanExpression } from "#src/backend/lib/cel/environment";
 import type { JsonObject } from "@rova/shared/types/json";
 import { decodeIsoTimestamp } from "@rova/shared/types/timestamp";
-import { CONDITION_CONTEXT_ROOT } from "@rova/shared/workflow/conditions";
+import { CONDITION_CONTEXT_ROOT } from "@rova/shared/conditions/conditions";
 
 /**
  * Read a dotted field path out of the condition context.

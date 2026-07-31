@@ -7,12 +7,12 @@
 import {
   isConditionActionNode,
   normalizeConditionBranch,
-} from "@rova/shared/workflow/condition-branch";
+} from "@rova/shared/conditions/condition-branch";
 import {
   isLifecycleOutlet,
   LIFECYCLE_STARTED_HANDLE,
-} from "@rova/shared/workflow/lifecycle-outlets";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
+} from "@rova/shared/lifecycle/lifecycle-outlets";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 
 /**
  * Which of a Condition node's two branches an edge with no handle takes: the

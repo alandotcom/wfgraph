@@ -20,7 +20,7 @@ import {
 import {
   parseWorkflowSchemaFieldsOrJsonSchema,
   parseWorkflowSchemaFieldsString,
-} from "@rova/shared/workflow/schema-codec";
+} from "@rova/shared/graph/schema-codec";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { SchemaBuilder } from "./schema-builder";
 

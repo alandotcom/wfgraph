@@ -19,7 +19,7 @@ import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import {
   type ExecutionLogEntry,
   type WorkflowNodeData,
-} from "@rova/shared/workflow/types";
+} from "@rova/shared/graph/types";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { findAction, findIntegration } from "@rova/shared/extensions/catalog";
 import { getIntegrationUi } from "@rova/shared/plugins/ui-registry";
@@ -29,8 +29,8 @@ import {
   parseTimestampWithTimezone,
   resolveWaitUntil,
 } from "@rova/shared/utils/wait-time";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/workflow/built-in-actions";
-import { isConditionActionType } from "@rova/shared/workflow/condition-branch";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
+import { isConditionActionType } from "@rova/shared/conditions/condition-branch";
 import { useAfterPaint, useNowMs } from "#src/hooks/effects";
 import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
 import {

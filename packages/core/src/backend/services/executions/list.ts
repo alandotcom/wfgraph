@@ -7,7 +7,7 @@ import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type {
   WorkflowExecutionStartSource,
   WorkflowExecutionStatus,
-} from "@rova/shared/workflow/execution-contracts";
+} from "@rova/shared/lifecycle/execution-contracts";
 
 type WorkflowExecutionItem = {
   id: string;

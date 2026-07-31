@@ -13,7 +13,7 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
-import type { WorkflowNode } from "@rova/shared/workflow/types";
+import type { WorkflowNode } from "@rova/shared/graph/types";
 
 /**
  * The connection a node points at is settled inside `updateConfig`, from the

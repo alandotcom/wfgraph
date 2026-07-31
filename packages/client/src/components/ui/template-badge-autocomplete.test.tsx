@@ -11,8 +11,8 @@ import {
   emptyExtensionCatalog,
   type EventMetadata,
 } from "@rova/shared/extensions/catalog";
-import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/workflow/lifecycle-outlets";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
+import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 import { TemplateBadgeInput } from "./template-badge-input";
 import { TemplateBadgeTextarea } from "./template-badge-textarea";
 

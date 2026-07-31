@@ -16,7 +16,7 @@ import {
   selectedNodeAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
-import { BUILT_IN_ACTION_IDS } from "@rova/shared/workflow/built-in-actions";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
 import type { NodeConfigPatch } from "./node-config-patch";
 
 /**

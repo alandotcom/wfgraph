@@ -1,6 +1,6 @@
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { findAction } from "@rova/shared/extensions/catalog";
-import type { WorkflowNode } from "@rova/shared/workflow/types";
+import type { WorkflowNode } from "@rova/shared/graph/types";
 
 /**
  * Keeping a node's `integrationId` pointing at a connection that still exists.

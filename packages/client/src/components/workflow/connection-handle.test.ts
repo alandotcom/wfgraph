@@ -3,8 +3,8 @@ import { normalizeSourceHandleForConnection } from "#src/components/workflow/con
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
-} from "@rova/shared/workflow/lifecycle-outlets";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
+} from "@rova/shared/lifecycle/lifecycle-outlets";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 
 function triggerNode(id = "entry"): WorkflowNode {
   return {

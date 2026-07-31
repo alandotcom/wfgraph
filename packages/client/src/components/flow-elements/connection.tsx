@@ -1,5 +1,5 @@
 import type { ConnectionLineComponent } from "@xyflow/react";
-import type { WorkflowNode } from "@rova/shared/workflow/types";
+import type { WorkflowNode } from "@rova/shared/graph/types";
 
 const HALF = 0.5;
 

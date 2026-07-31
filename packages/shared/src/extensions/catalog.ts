@@ -14,7 +14,7 @@
  */
 
 import type { ActionConfigField } from "#src/plugins/action-fields";
-import type { ReferenceField } from "#src/workflow/node-references";
+import type { ReferenceField } from "#src/graph/node-references";
 
 /**
  * One Event, as the editor lists it.

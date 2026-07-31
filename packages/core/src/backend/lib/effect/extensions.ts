@@ -1,5 +1,5 @@
 import { Context, Layer } from "effect";
-import type { ExtensionSet } from "#src/backend/lib/extensions/extension-set";
+import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 
 /**
  * The assembled surface, as a service rather than module state.

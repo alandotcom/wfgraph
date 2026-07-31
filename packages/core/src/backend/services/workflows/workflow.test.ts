@@ -10,8 +10,8 @@ import {
 } from "#src/backend/lib/effect/test-layers";
 import { patchWorkflow } from "#src/backend/services/workflows/workflow";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
-import type { LifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
+import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
+import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
 
 const catalogLayer = stubExtensionCatalog({
   events: [

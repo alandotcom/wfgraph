@@ -112,7 +112,7 @@ Four rules, each of which cost something to learn:
   an object literal TypeScript wrote says "no value" with `undefined`, and rejecting that
   broke every run whose webhook carried no correlation key. A shape with both origins
   takes `optional`, because the stricter spelling is the one that fails:
-  `packages/shared/src/workflow/schemas.ts` is the worked example, decoded from the JSONB
+  `packages/shared/src/graph/schemas.ts` is the worked example, decoded from the JSONB
   column, from an RPC payload, from an Inngest event, and from React Flow state on the
   editor's autosave path, and it is `optional` throughout for the sake of the fourth.
 
@@ -124,12 +124,12 @@ Four rules, each of which cost something to learn:
   `optionalKey` is the spelling to prefer in a step's schemas, since its JSON Schema
   renders clean and the engine never sends what it refuses; `optional` is what twilio
   keeps, because under the codec it also tolerates an explicit null.
-  `packages/core/src/backend/lib/steps/define-step.test.ts` holds all three cases.
+  `packages/core/src/backend/extensions/steps/define-step.test.ts` holds all three cases.
 
 - **Annotate the base type before any check.** `.annotate()` on a schema that already
   carries a check lands on the check, and a wrong-typed value never reaches a check.
   `Schema.Finite.annotate({ message })` answers `"5"` with Effect's own text, not the
-  message. `packages/shared/src/workflow/conditions.ts` has the worked example.
+  message. `packages/shared/src/conditions/conditions.ts` has the worked example.
 
 **A message never quotes the value it rejected.**
 `packages/shared/src/types/schema-message.ts` holds `formatSchemaFailure`, which renders a
@@ -161,7 +161,7 @@ by hand and carries its own check: the keyword buys the editor's treatment and r
 nothing. `isoTimestampString` in `@rova/shared/types/timestamp` is that pair.
 
 **An integration is one `defineIntegration` value.**
-`packages/core/src/backend/lib/extensions/define-integration.ts` takes a type, a label, a
+`packages/core/src/backend/extensions/define-integration.ts` takes a type, a label, a
 credential form, an optional connection-test loader, and a record of actions keyed by
 slug. Nothing registers on import: a host passes the value to `createRovaApp` under
 `extensions.integrations`, so the line that turns an integration on is a line in the
@@ -172,19 +172,19 @@ fields>` is the vocabulary a handler reads its credentials by; a misspelled key 
 compile. `packages/plugins/src/twilio/index.ts` is the worked example, and the whole
 plugin is that one file beside `client.ts`, `test.ts`, `icon.tsx` and `ui.ts`.
 
-**A step is written with `defineStep`.** `packages/core/src/backend/lib/steps/define-step.ts`
+**A step is written with `defineStep`.** `packages/core/src/backend/extensions/steps/define-step.ts`
 takes an input schema, an output schema, the metadata the editor draws the action with
 (`label`, `description`, `category`, `configFields`), and a handler returning an
 `Effect<Output, StepFailure, HttpClient>`. It owns everything around that handler: the
 config decode, the credential fetch, and the `StepResult` envelope
 (`{ success: true, data }` or `{ success: false, error: { message } }`, in
-`packages/shared/src/workflow/step-result.ts`) that the engine reads. A handler never
+`packages/shared/src/actions/step-result.ts`) that the engine reads. A handler never
 writes that envelope and never touches a Promise. Each `configFields[].key` is
 `Extract<keyof TInput, string>`, so a field the step cannot read fails to compile.
 
 `implement(actionId)` answers a factory rather than a step, because the one thing around
 the handler that belongs to the app is the credential store a node's integration is read
-from. It arrives as `StepEnvironment` (`backend/lib/steps/step-runner.ts`), which
+from. It arrives as `StepEnvironment` (`backend/extensions/steps/step-runner.ts`), which
 `createWorkflowActions` builds off the assembled surface the credential mapping is read
 through. A plugin's own test hands over `{ credentialsFor: () => Effect.succeed({}) }`.
 The handler's own Effect asks for nothing an app provides -- `defineStep` provides the
@@ -228,7 +228,7 @@ type.
 
 **An action's output fields come from its output schema.** An action declares `output` on
 its `defineStep`, and assembly derives the editor's template-autocomplete paths from it
-(`packages/shared/src/workflow/output-fields.ts`).
+(`packages/shared/src/graph/output-fields.ts`).
 Paths omit the `data.` prefix, because the schema describes the payload rather than the
 wrapper; template variables unwrap it automatically. That unwrap is also why a schema must
 not declare a top-level `data` field of its own: `data` is the envelope's own key, so a path
@@ -273,7 +273,7 @@ renderer are React components and cannot be serialized, so those stay an explici
 import in `plugins/ui-registry.ts`.
 
 `createRovaApp` assembles the catalog with `assembleExtensions`
-(`packages/core/src/backend/lib/extensions/extension-set.ts`) and hands it to the Layer
+(`packages/core/src/backend/extensions/extension-set.ts`) and hands it to the Layer
 graph as the `Extensions` service (`backend/lib/effect/extensions.ts`). Assembly is
 where a definition mistake is caught, naming the offender: each of an Event's name, an
 action's id and an integration's type is held to one owner, an output schema the
@@ -314,7 +314,7 @@ over a field list. Nothing registers anything: `assembleExtensions` is handed ev
 definition and answers for every half of it.
 
 **An Event is a `defineEvent` value, and carries no lifecycle role.**
-`packages/core/src/backend/lib/extensions/define-event.ts` takes a name, a payload schema,
+`packages/core/src/backend/extensions/define-event.ts` takes a name, a payload schema,
 and the Correlation Path where that payload carries its Entity Value. It registers
 nothing: the host passes the value to `createRovaApp` under `extensions.events`. The
 schema crosses the Standard Schema bridge once, there, and `payloadFields` is derived on
@@ -324,19 +324,19 @@ path resolving to a string, which is what an Entity Value is, and `@rova/core` p
 that name as `EventStringPath`.
 `source` separates identity from transport for an umbrella bus that cannot change its event
 name. Inngest flow control is authored against the payload and translated by
-`rewriteInngestOptions` (`packages/core/src/backend/lib/extensions/inngest-options.ts`),
+`rewriteInngestOptions` (`packages/core/src/backend/extensions/inngest-options.ts`),
 which prefixes each `key` and rewrites `priority.run`, so a bad path fails where it was
 written; Inngest `concurrency` and `batchEvents` are refused there, the first because
 Concurrency on the Lifecycle Node owns that question and can write a status. The prefixing
-and the CEL rewrite are `packages/shared/src/workflow/inngest-event-data.ts`, which every
+and the CEL rewrite are `packages/shared/src/lifecycle/inngest-event-data.ts`, which every
 Event translates through, and `extractSchemaKeys` in `types/schema.ts` is
 where the field names a CEL identifier is checked against come from.
 
 **Every CEL string literal is `celStringLiteral`**
-(`packages/shared/src/workflow/cel-string-literal.ts`), which is `JSON.stringify`: the
+(`packages/shared/src/conditions/cel-string-literal.ts`), which is `JSON.stringify`: the
 double-quoted form, backslashes doubled, a control character written as an escape. Three
 places assemble a CEL expression by hand -- the source filter beside it, the wait
-subscription's `if` in `workflow-engine/core.ts`, and the run function's trigger filter in
+subscription's `if` in `engine/core.ts`, and the run function's trigger filter in
 `inngest/workflow-function.ts` -- and they sit on both sides of the runtime port, which is
 why the helper is in `@rova/shared`. Hand-rolling the escape is how a value carrying a
 newline gets past a test and fails at Inngest, where the expression is evaluated and the
@@ -357,9 +357,9 @@ foreign schema; `isEffectSchema` in `types/schema.ts` picks the path, and both a
 one `PayloadRejected`.
 
 **The Lifecycle Rules are per workflow, and the engine reads them off the entry node.**
-`packages/shared/src/workflow/lifecycle-rules.ts` holds `lifecycleRulesSchema` and the
+`packages/shared/src/lifecycle/lifecycle-rules.ts` holds `lifecycleRulesSchema` and the
 sentences a save is refused with (`checkLifecycleRules`), which
-`backend/lib/workflow-lifecycle-validation.ts` runs against the assembled catalog wherever a
+`backend/services/workflows/validation/workflow-lifecycle-validation.ts` runs against the assembled catalog wherever a
 graph is written and again in preflight. `services/workflows/lifecycle/` holds the rest:
 `deliver-event.ts` is Precedence (rules first, then the Wait Subscriptions of the runs that
 survived them), `concurrency.ts` is `startWithConcurrency`, and `subscriptions.ts` derives the
@@ -417,7 +417,7 @@ failed without replaying a start.
 on the clock and `event` waits on an arrival. The third mode, "wait for webhook event", is
 gone: it ran the same prepare and execute path as `event`, wrote the same row and suspended
 on the same envelope, so the three differences it had were two defects and a field rather
-than a mechanism. `waitConfigSchema` in `packages/shared/src/workflow/wait-subscription.ts`
+than a mechanism. `waitConfigSchema` in `packages/shared/src/lifecycle/wait-subscription.ts`
 is the first schema this node has had, both modes in one struct, and every key is
 `Schema.optional` because the engine resolves templates into every declared config key and a
 field left blank arrives present and holding `undefined`.
@@ -500,7 +500,7 @@ answer. There is no hand-written shape, output contract or sample left to keep i
 with the Events.
 
 An edge leaving the Lifecycle Node names its outlet, `started` or `canceled`, from
-`shared/workflow/lifecycle-outlets.ts`: the editor's connect path writes the name and
+`shared/lifecycle/lifecycle-outlets.ts`: the editor's connect path writes the name and
 `validateLifecycleOutletEdges` refuses an edge carrying neither, because an unnamed edge
 would bind by render order. Keeping the Canceled branch terminal needs no rule of its own,
 since a node the Started branch reaches already has an incoming edge and
@@ -532,7 +532,7 @@ row rather than returning early, because a cancel that reached nothing is exactl
 as a start that was declined.
 
 **An Execution's statuses live in one list.** `WORKFLOW_EXECUTION_STATUSES` in
-`packages/shared/src/workflow/execution-contracts.ts` is where the column's type, the RPC
+`packages/shared/src/lifecycle/execution-contracts.ts` is where the column's type, the RPC
 literals, and the run-history filter come from, and `WORKFLOW_EXECUTION_START_SOURCES` beside
 it is the `start_source` column. Terminal is `completed | canceled | superseded | failed`,
 one L as CONTEXT.md has it. Three other status vocabularies keep their own words and are not
@@ -625,7 +625,7 @@ run engine comes onto Effect.
 
 **The run engine is three ports, and the app fills all three.** `executeWorkflow` takes a
 `WorkflowExecutionRuntime` for durability, a `WorkflowStore` for the run's trace, and a
-`WorkflowActions` for what an action id dispatches to (`workflow-engine/actions.ts`). Every
+`WorkflowActions` for what an action id dispatches to (`engine/actions.ts`). Every
 default is the honest in-process one -- work runs inline, nothing is persisted, no action is
 implemented -- so a caller that wants a node to do work injects a surface. The Inngest
 adapter in `lib/inngest/workflow-function.ts` is where a live run picks up all three, and
@@ -636,12 +636,12 @@ An integration that grows a config field needing `literal` marks the field itsel
 engine takes no edit for it.
 
 The run log rows are the engine's, written through the store by
-`workflow-engine/step-log.ts` around every node it runs: a plugin's action, a host's action,
+`engine/step-log.ts` around every node it runs: a plugin's action, a host's action,
 the entry node, the Condition node and the Wait node all leave the same trace, and a step
 author writes none of it. The Wait is the one caller that uses the two halves rather than
 `runWithStepLog`, because it opens its row inside a memoized step and closes it from one of
 many branches on the far side of a suspension; that whole node is
-`workflow-engine/wait.ts`.
+`engine/wait.ts`.
 
 The two writes have opposite failure policies, and the split is what keeps a node's side
 effect at-most-once. A refused open fails the node, and Inngest's function-level retry of it
@@ -654,7 +654,7 @@ Nothing reaches the database outside a repository. The `db` proxy, `getDb`, the
 two `globalThis` blocks, and the `callDbModule` / `callInngestModule` seams are all gone:
 the run log, the audit rows and the wait rows are `ExecutionRepo` methods, the integration
 reads are `IntegrationRepo`'s, and `createDbWorkflowStore(runtime)` in
-`workflow-engine/db-store.ts` is where the engine's Promise-shaped store meets them. The
+`engine/db-store.ts` is where the engine's Promise-shaped store meets them. The
 run engine still speaks Promises, so three adapters run an Effect on the app's runtime
 rather than composing one: that store, the credential fetch behind `createWorkflowActions`,
 and the Inngest function registry's workflow-list read.

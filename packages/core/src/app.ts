@@ -35,7 +35,7 @@ import {
 import {
   assembleExtensions,
   type RovaExtensions,
-} from "#src/backend/lib/extensions/extension-set";
+} from "#src/backend/extensions/extension-set";
 import {
   createInngestSurface,
   type InngestSurface,
@@ -55,7 +55,7 @@ export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations
 export type { RovaInngestConfig } from "#src/backend/lib/inngest/client";
 export type { RovaAuth } from "#src/backend/lib/http/authorize";
 export type { RovaLogger } from "@rova/shared/types/logger";
-export type { RovaExtensions } from "#src/backend/lib/extensions/extension-set";
+export type { RovaExtensions } from "#src/backend/extensions/extension-set";
 
 /**
  * Where the database is, which schema Rova lives in, and whether it migrates on

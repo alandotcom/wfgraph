@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { findAction } from "@rova/shared/extensions/catalog";
-import type { WorkflowExecutionStatus } from "@rova/shared/workflow/execution-contracts";
+import type { WorkflowExecutionStatus } from "@rova/shared/lifecycle/execution-contracts";
 import { readAs } from "@rova/shared/types/schema";
 import { getActionOutputComponent } from "@rova/shared/plugins/ui-registry";
 

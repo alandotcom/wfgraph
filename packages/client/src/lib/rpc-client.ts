@@ -10,20 +10,20 @@ import { omitBy } from "es-toolkit/object";
 import { getBasePath } from "#src/lib/base-path";
 import type { RpcContract } from "@rova/shared/rpc/contracts";
 import { getRpcErrorMessage } from "@rova/shared/rpc/error-message";
-import type { WorkflowApiPayload } from "@rova/shared/workflow/api-contracts";
+import type { WorkflowApiPayload } from "@rova/shared/graph/api-contracts";
 import {
   createSerializedWorkflowGraph,
   toWorkflowGraphData,
-} from "@rova/shared/workflow/graph";
+} from "@rova/shared/graph/graph";
 import type {
   SerializedWorkflowGraph,
   WorkflowEdge,
   WorkflowMode,
   WorkflowNode,
   WorkflowVisibility,
-} from "@rova/shared/workflow/types";
+} from "@rova/shared/graph/types";
 
-export type { WorkflowVisibility } from "@rova/shared/workflow/types";
+export type { WorkflowVisibility } from "@rova/shared/graph/types";
 
 export type WorkflowData = {
   id?: string;

@@ -13,11 +13,11 @@ import {
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
-} from "@rova/shared/workflow/lifecycle-outlets";
-import type { LifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
+} from "@rova/shared/lifecycle/lifecycle-outlets";
+import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
 import { isoTimestampString } from "@rova/shared/types/timestamp";
-import { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fields";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
+import { requireOutputFieldsFromSchema } from "@rova/shared/graph/output-fields";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 
 // What a node offers downstream comes off the catalog the editor fetches once
 // before render: an action's own entry, and for the entry node the Events its rules

@@ -3,7 +3,7 @@ import type { Workflow } from "#src/backend/lib/db/schema";
 import {
   createSerializedWorkflowGraph,
   isSerializedWorkflowGraph,
-} from "@rova/shared/workflow/graph";
+} from "@rova/shared/graph/graph";
 import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,

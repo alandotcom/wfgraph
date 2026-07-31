@@ -15,7 +15,7 @@ import { Schema } from "effect";
 import type { ExtensionCatalog } from "#src/extensions/catalog";
 import type { ActionConfigField } from "#src/plugins/action-fields";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
-import type { ReferenceField } from "#src/workflow/node-references";
+import type { ReferenceField } from "#src/graph/node-references";
 
 const selectOptionSchema = Schema.Struct({
   value: Schema.String,

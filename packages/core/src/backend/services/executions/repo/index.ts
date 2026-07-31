@@ -8,8 +8,8 @@ import {
 } from "#src/backend/lib/db/schema";
 import type { RovaDatabase, RovaTransaction } from "#src/backend/lib/db/index";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/workflow/execution-contracts";
-import type { Concurrency } from "@rova/shared/workflow/lifecycle-rules";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/lifecycle/execution-contracts";
+import type { Concurrency } from "@rova/shared/lifecycle/lifecycle-rules";
 import {
   type AuditRepoMethods,
   makeAuditMethods,

@@ -2,10 +2,10 @@ import { Effect } from "effect";
 import type { Inngest, InngestFunction } from "inngest";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import type { ExtensionSet } from "#src/backend/lib/extensions/extension-set";
-import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
-import type { WorkflowActions } from "#src/backend/lib/workflow-engine/actions";
-import { createDbWorkflowStore } from "#src/backend/lib/workflow-engine/db-store";
+import type { ExtensionSet } from "#src/backend/extensions/extension-set";
+import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
+import type { WorkflowActions } from "#src/backend/engine/actions";
+import { createDbWorkflowStore } from "#src/backend/engine/db-store";
 import type { RovaRuntime } from "#src/backend/runtime";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 // Static, now that the id helper the app assembly needs has moved to a leaf of

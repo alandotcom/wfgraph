@@ -14,8 +14,8 @@ import {
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { WorkflowExecution } from "#src/backend/services/executions/repo/contracts";
 import { postWorkflowExecute } from "#src/backend/services/workflows/lifecycle/manual-start";
-import type { LifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
-import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
+import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
+import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 
 function graphWithRules(rules: LifecycleRules) {
   return createSerializedWorkflowGraph({

@@ -8,18 +8,18 @@ import {
   InngestClient,
   type InngestError,
 } from "#src/backend/lib/effect/inngest-client";
-import type { RunScopedAuditEventType } from "#src/backend/lib/workflow-audit";
+import type { RunScopedAuditEventType } from "#src/backend/services/executions/workflow-audit";
 import { signalRunToStop } from "#src/backend/services/executions/end-runs";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { JsonObject } from "@rova/shared/types/json";
 import type {
   WorkflowExecutionIgnoredReason,
   WorkflowExecutionStartSource,
-} from "@rova/shared/workflow/execution-contracts";
+} from "@rova/shared/lifecycle/execution-contracts";
 import type {
   SerializedWorkflowGraph,
   WorkflowMode,
-} from "@rova/shared/workflow/types";
+} from "@rova/shared/graph/types";
 
 /** Identity of the workflow plus the graph the run will execute. */
 export type WorkflowRunTarget = {

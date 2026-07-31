@@ -13,7 +13,7 @@ import { cn } from "@rova/shared/utils";
 import {
   formatTemplateToken,
   type ReferenceField,
-} from "@rova/shared/workflow/node-references";
+} from "@rova/shared/graph/node-references";
 
 type TemplateAutocompleteProps = {
   isOpen: boolean;

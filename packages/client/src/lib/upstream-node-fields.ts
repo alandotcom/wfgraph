@@ -8,19 +8,19 @@ import {
 import type {
   ConditionFieldDefinition,
   ConditionFieldType,
-} from "@rova/shared/workflow/conditions";
+} from "@rova/shared/conditions/conditions";
 import {
   entryOutletsReaching,
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
-} from "@rova/shared/workflow/lifecycle-outlets";
-import { readLifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
+} from "@rova/shared/lifecycle/lifecycle-outlets";
+import { readLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
 import type {
   ReferenceField,
   UpstreamField,
-} from "@rova/shared/workflow/node-references";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
-import { upstreamNodeIds } from "@rova/shared/workflow/upstream-nodes";
+} from "@rova/shared/graph/node-references";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import { upstreamNodeIds } from "@rova/shared/graph/upstream-nodes";
 
 export type ConditionSelectableField = ConditionFieldDefinition & {
   sourceNodeId: string;

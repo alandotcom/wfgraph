@@ -11,15 +11,15 @@ import { findEvent } from "@rova/shared/extensions/catalog";
 import {
   createDefaultConditionModel,
   serializeConditionModel,
-} from "@rova/shared/workflow/conditions";
+} from "@rova/shared/conditions/conditions";
 import {
   readLifecycleRules,
   resolveCorrelationPath,
-} from "@rova/shared/workflow/lifecycle-rules";
+} from "@rova/shared/lifecycle/lifecycle-rules";
 import {
   type EventSubscription,
   readWaitSubscriptions,
-} from "@rova/shared/workflow/wait-subscription";
+} from "@rova/shared/lifecycle/wait-subscription";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import { EventMultiCombobox } from "./event-combobox";
 import type { UpdateNodeConfig } from "./node-config-patch";

@@ -389,7 +389,7 @@ config decode, the handler, and the envelope.
 credential vocabulary, the action slugs, and the field list
 `requireOutputFieldsFromSchema` derives from each output schema. What `defineStep`
 itself does around a handler is covered once, in
-`packages/core/src/backend/lib/steps/define-step.test.ts`.
+`packages/core/src/backend/extensions/steps/define-step.test.ts`.
 
 `src/index.test.ts` runs `checkIntegration` over all six at module level, which is
 every check `assembleExtensions` runs, so a bad definition fails that file's

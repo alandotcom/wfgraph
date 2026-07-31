@@ -32,14 +32,14 @@ import {
 } from "#src/components/ui/dropdown-menu";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import type { WorkflowExecutionsGlobalResult } from "#src/lib/rpc-client";
-import type { WorkflowSummaryPayload } from "@rova/shared/workflow/api-contracts";
+import type { WorkflowSummaryPayload } from "@rova/shared/graph/api-contracts";
 import {
   orpcQuery,
   refreshRunHistory,
   refreshWorkflowList,
 } from "#src/lib/rpc-query";
 import { getStatusBadgeClass } from "#src/components/workflow/workflow-run-shared";
-import type { WorkflowExecutionStatus } from "@rova/shared/workflow/execution-contracts";
+import type { WorkflowExecutionStatus } from "@rova/shared/lifecycle/execution-contracts";
 import { getRelativeTime } from "@rova/shared/utils/time";
 
 type GlobalExecutionItem = WorkflowExecutionsGlobalResult["items"][number];

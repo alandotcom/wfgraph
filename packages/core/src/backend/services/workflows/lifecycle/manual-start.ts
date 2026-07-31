@@ -16,13 +16,13 @@ import {
 import type { JsonObject } from "@rova/shared/types/json";
 import { asNonEmptyString } from "@rova/shared/types/string";
 import { getValueByPath } from "@rova/shared/utils/object-path";
-import type { WorkflowExecuteResponse } from "@rova/shared/workflow/execution-contracts";
+import type { WorkflowExecuteResponse } from "@rova/shared/lifecycle/execution-contracts";
 import {
   emptyLifecycleRules,
   type LifecycleRules,
   manualStartAllowed,
   resolveCorrelationPath,
-} from "@rova/shared/workflow/lifecycle-rules";
+} from "@rova/shared/lifecycle/lifecycle-rules";
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
 const loggerFor = (workflowId: string) =>

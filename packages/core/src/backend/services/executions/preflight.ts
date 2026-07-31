@@ -7,21 +7,21 @@ import {
   InvalidInput,
   NotFound,
 } from "#src/backend/lib/effect/failures";
-import { validateWorkflowActionConfigs } from "#src/backend/lib/workflow-action-validation";
-import { validateWorkflowConditionConfigs } from "#src/backend/lib/workflow-conditions-validation";
-import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
-import { validateWorkflowIntegrations } from "#src/backend/lib/workflow-integration-validation";
-import { validateWorkflowEvents } from "#src/backend/lib/workflow-lifecycle-validation";
+import { validateWorkflowActionConfigs } from "#src/backend/services/workflows/validation/workflow-action-validation";
+import { validateWorkflowConditionConfigs } from "#src/backend/services/workflows/validation/workflow-conditions-validation";
+import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
+import { validateWorkflowIntegrations } from "#src/backend/services/workflows/validation/workflow-integration-validation";
+import { validateWorkflowEvents } from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
 import {
   type LifecycleRules,
   readLifecycleRules,
-} from "@rova/shared/workflow/lifecycle-rules";
+} from "@rova/shared/lifecycle/lifecycle-rules";
 import type {
   SerializedWorkflowGraph,
   WorkflowNode,
-} from "@rova/shared/workflow/types";
+} from "@rova/shared/graph/types";
 
 type WorkflowForPreflight = {
   graph: unknown;

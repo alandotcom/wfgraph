@@ -14,7 +14,7 @@ import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { ApiError } from "#src/lib/rpc-client";
 import { orpcQuery, refreshWorkflowList } from "#src/lib/rpc-query";
-import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
+import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 
 type CreateWorkflowDialogProps = {
   open: boolean;

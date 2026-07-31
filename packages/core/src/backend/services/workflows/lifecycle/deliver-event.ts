@@ -27,7 +27,7 @@ import {
 } from "#src/backend/services/workflows/repo";
 import type { JsonObject } from "@rova/shared/types/json";
 import { getValueByPath } from "@rova/shared/utils/object-path";
-import { emptyLifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
+import { emptyLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
 import { asNonEmptyString } from "@rova/shared/types/string";
 
 /**

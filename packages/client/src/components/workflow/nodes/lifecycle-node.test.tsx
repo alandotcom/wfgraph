@@ -8,8 +8,8 @@ import {
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
-} from "@rova/shared/workflow/lifecycle-outlets";
-import type { WorkflowNodeData } from "@rova/shared/workflow/types";
+} from "@rova/shared/lifecycle/lifecycle-outlets";
+import type { WorkflowNodeData } from "@rova/shared/graph/types";
 
 describe("getStartSummary", () => {
   // A workflow the panel has never touched is one the Run button starts, so the

@@ -2,8 +2,8 @@ import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
-} from "@rova/shared/workflow/execution-contracts";
-import type { ExecutionLogEntry } from "@rova/shared/workflow/types";
+} from "@rova/shared/lifecycle/execution-contracts";
+import type { ExecutionLogEntry } from "@rova/shared/graph/types";
 
 /**
  * The shapes a workflow run takes on the client, and the pure functions that

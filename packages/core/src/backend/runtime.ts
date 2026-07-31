@@ -14,7 +14,7 @@ import {
   InngestFunctions,
   makeInngestFunctionsLayer,
 } from "#src/backend/lib/effect/inngest-functions";
-import type { ExtensionSet } from "#src/backend/lib/extensions/extension-set";
+import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { InngestSurface } from "#src/backend/lib/inngest/client";
 import {
   ApiKeyRepo,

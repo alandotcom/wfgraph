@@ -19,20 +19,20 @@
 export type {
   IntegrationTestFunction,
   IntegrationTestResult,
-} from "#src/backend/lib/extensions/integration-test";
+} from "#src/backend/extensions/integration-test";
 export {
   checkIntegration,
   credentialFields,
   type CredentialsOf,
   defineIntegration,
   type IntegrationDefinition,
-} from "#src/backend/lib/extensions/define-integration";
+} from "#src/backend/extensions/define-integration";
 export {
   type ActionStep,
   defineStep,
   StepFailure,
   type StepRunContext,
-} from "#src/backend/lib/steps/define-step";
+} from "#src/backend/extensions/steps/define-step";
 /**
  * The `@rova/shared` vocabulary a server-side plugin file needs beside the
  * above: the JSON type a vendor payload decodes to and the reader that gets it
@@ -51,7 +51,7 @@ export {
 export { readAs } from "@rova/shared/types/schema";
 export { isoTimestampString } from "@rova/shared/types/timestamp";
 export { getErrorMessage } from "@rova/shared/utils";
-export { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fields";
+export { requireOutputFieldsFromSchema } from "@rova/shared/graph/output-fields";
 /**
  * The layer a `defineStep` handler already runs with, exported for the calls a
  * plugin makes outside one: a connection test answers the credentials UI over a
@@ -60,4 +60,4 @@ export { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fiel
  * caching it works around is the kind of thing that gets fixed in one copy and
  * not the other.
  */
-export { VendorTransport } from "#src/backend/lib/steps/vendor-transport";
+export { VendorTransport } from "#src/backend/extensions/steps/vendor-transport";

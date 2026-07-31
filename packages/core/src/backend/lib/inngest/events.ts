@@ -31,7 +31,7 @@ import {
   rejectUnknownKeys,
   toStandardSchema,
 } from "@rova/shared/types/schema";
-import { serializedWorkflowGraphSchema } from "@rova/shared/workflow/schemas";
+import { serializedWorkflowGraphSchema } from "@rova/shared/graph/schemas";
 
 /**
  * The `workflow/run.requested` payload, as the engine needs it.

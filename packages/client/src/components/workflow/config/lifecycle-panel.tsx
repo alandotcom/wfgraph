@@ -18,7 +18,7 @@ import {
   type LifecycleRules,
   pruneCorrelationPaths,
   readLifecycleRules,
-} from "@rova/shared/workflow/lifecycle-rules";
+} from "@rova/shared/lifecycle/lifecycle-rules";
 import { EventCombobox, EventMultiCombobox } from "./event-combobox";
 import type { UpdateNodeConfig } from "./node-config-patch";
 

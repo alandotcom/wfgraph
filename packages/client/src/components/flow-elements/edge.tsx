@@ -8,7 +8,7 @@ import {
   Position,
   useInternalNode,
 } from "@xyflow/react";
-import { getConditionBranchDisplayLabel } from "@rova/shared/workflow/condition-branch";
+import { getConditionBranchDisplayLabel } from "@rova/shared/conditions/condition-branch";
 
 const Temporary = ({
   id,

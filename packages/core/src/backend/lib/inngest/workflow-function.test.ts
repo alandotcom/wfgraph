@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InngestTestEngine } from "@inngest/test";
 import { Inngest } from "inngest";
-import { noWorkflowActions } from "#src/backend/lib/workflow-engine/actions";
-import type { WorkflowExecutionRuntime } from "#src/backend/lib/workflow-engine/runtime";
+import { noWorkflowActions } from "#src/backend/engine/actions";
+import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import {
   noopWorkflowStore,
   type WorkflowStore,
-} from "#src/backend/lib/workflow-engine/store";
-import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
+} from "#src/backend/engine/store";
+import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import {
   createWorkflowRunRequestedFunction,
   createWorkflowTriggerExpression,
@@ -22,7 +22,7 @@ const { executeWorkflowMock } = vi.hoisted(() => ({
 // file its own module registry, so core-replay.test.ts still runs the real
 // engine and observes a real suspend. `executeWorkflow` is the module's only
 // runtime export, the rest being types, so nothing else needs supplying.
-vi.mock("#src/backend/lib/workflow-engine/core", () => ({
+vi.mock("#src/backend/engine/core", () => ({
   executeWorkflow: executeWorkflowMock,
 }));
 

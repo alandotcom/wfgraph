@@ -17,7 +17,7 @@
 import { Effect } from "effect";
 import { NonRetriableError } from "inngest";
 import type { Inngest, InngestFunction } from "inngest";
-import type { AnyEventDefinition } from "#src/backend/lib/extensions/define-event";
+import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { RovaRuntime } from "#src/backend/runtime";
 import {
@@ -28,7 +28,7 @@ import {
 } from "#src/backend/services/workflows/lifecycle/deliver-event";
 import { type JsonObject, readJsonObject } from "@rova/shared/types/json";
 import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
-import { compileEventDataEquals } from "@rova/shared/workflow/inngest-event-data";
+import { compileEventDataEquals } from "@rova/shared/lifecycle/inngest-event-data";
 
 const logger = getAppLogger("workflow", "event-listener");
 

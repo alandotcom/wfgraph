@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
-import { noWorkflowActions } from "#src/backend/lib/workflow-engine/actions";
+import { noWorkflowActions } from "#src/backend/engine/actions";
 import {
   buildWorkflowFunctions,
   createInngestFunctionRegistry,

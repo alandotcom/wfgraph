@@ -7,7 +7,7 @@ import {
 import type {
   RunScopedAuditEventType,
   WorkflowScopedAuditEventType,
-} from "#src/backend/lib/workflow-audit";
+} from "#src/backend/services/executions/workflow-audit";
 import type { JsonObject } from "@rova/shared/types/json";
 
 /** One row of `workflow_executions`, as the run panel and the engine see it. */

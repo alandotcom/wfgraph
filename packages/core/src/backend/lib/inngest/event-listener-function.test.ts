@@ -8,7 +8,7 @@ import {
   SilentAppLoggerLayer,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
-import { defineEvent } from "#src/backend/lib/extensions/define-event";
+import { defineEvent } from "#src/backend/extensions/define-event";
 import {
   createInngestEventListenerFunction,
   runEventListener,

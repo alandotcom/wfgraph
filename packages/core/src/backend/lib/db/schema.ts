@@ -9,15 +9,15 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "#src/backend/lib/workflow-audit";
+import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "#src/backend/services/executions/workflow-audit";
 import type { JsonObject } from "@rova/shared/types/json";
 import { generateId } from "@rova/shared/utils/id";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
-} from "@rova/shared/workflow/execution-contracts";
-import type { SerializedWorkflowGraph } from "@rova/shared/workflow/types";
+} from "@rova/shared/lifecycle/execution-contracts";
+import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 
 // Every table here is unqualified, and the Postgres schema holding them is the
 // host's `database.schema` option: the connection's search_path names it, on the
