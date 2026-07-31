@@ -14,6 +14,7 @@ import {
   type CredentialsOf,
   defineIntegration,
   defineStep,
+  type JsonObject,
   StepFailure,
   type StepRunContext,
 } from "@rova/core/plugin";
@@ -21,7 +22,6 @@ import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema } from "effect";
 import { describeResendFailure, sendResendEmail } from "#src/resend/client";
-import type { JsonObject } from "@rova/shared/types/json";
 
 const resendCredentialFields = credentialFields([
   {

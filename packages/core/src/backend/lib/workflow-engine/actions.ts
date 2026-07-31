@@ -4,7 +4,7 @@
  * How the engine reaches an action's implementation, and what it may say about
  * one. Everything a host passed to `createRovaApp` carries its own
  * implementation into the assembled surface -- an integration's actions through
- * `defineStep`, a host's own through `createAction`, the engine's two through
+ * `defineStep`, a host's own through `defineAction`, the engine's two through
  * the same `defineStep` -- and the app turns that surface into one of these. The
  * engine module never reads the surface itself, the way it never reads a
  * database row.

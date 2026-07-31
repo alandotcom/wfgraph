@@ -1,20 +1,14 @@
 import { defineConfig } from "tsdown";
 
-// Builds the publishable @rova/core library: `src/index.ts` is the small
-// createAction and defineIntegration surface, `src/app.ts` is the mountable fetch
-// handler, `src/node.ts` translates that handler for hosts on node:http,
-// `src/plugin.ts` is what a package of integrations builds against, and
-// `src/migrate.ts` applies the migrations without building an app. Every one is
-// named in the "exports" map in package.json, so the emitted file names here
-// have to keep matching that map.
+// Builds the publishable @rova/core library: `src/index.ts` is the one
+// host-facing entry, re-exporting the authoring vocabulary, `createRovaApp`
+// and `createRequestListener` from the internal `app.ts` and `node.ts`
+// modules; `src/plugin.ts` is what a package of integrations builds against,
+// and `src/migrate.ts` applies the migrations without building an app. Every
+// entry here is named in the "exports" map in package.json, so the emitted
+// file names have to keep matching that map.
 export default defineConfig({
-  entry: [
-    "src/index.ts",
-    "src/app.ts",
-    "src/node.ts",
-    "src/plugin.ts",
-    "src/migrate.ts",
-  ],
+  entry: ["src/index.ts", "src/plugin.ts", "src/migrate.ts"],
   format: "esm",
   // Selects Node-flavoured resolution and externalization, which is what a
   // server library needs. tsdown's own default is already "node"; stated here

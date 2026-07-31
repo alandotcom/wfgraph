@@ -3,8 +3,8 @@ import {
   type LinearErrorRaw,
   parseLinearError,
 } from "@linear/sdk";
+import { getErrorMessage } from "@rova/core/plugin";
 import { Option, Schema } from "effect";
-import { getErrorMessage } from "@rova/shared/utils";
 
 /**
  * The error payload Linear's `parseLinearError` reads: the GraphQL request that

@@ -1,5 +1,5 @@
 import { createClerkClient, type User } from "@clerk/backend";
-import { getErrorMessage } from "@rova/shared/utils";
+import { getErrorMessage } from "@rova/core/plugin";
 import type { ClerkApiUser } from "./types";
 
 type ClerkApiError = {

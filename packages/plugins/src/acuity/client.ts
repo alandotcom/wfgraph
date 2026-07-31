@@ -1,8 +1,11 @@
 import { Acuity, AcuityError } from "@fountain-bio/acuity";
-import { StepFailure, type StepRunContext } from "@rova/core/plugin";
+import {
+  getErrorMessage,
+  StepFailure,
+  type StepRunContext,
+} from "@rova/core/plugin";
 import { Effect } from "effect";
 import type { AcuityCredentials } from "#src/acuity/index";
-import { getErrorMessage } from "@rova/shared/utils";
 
 /**
  * The Acuity SDK, built from the step's own credentials, or the failure that

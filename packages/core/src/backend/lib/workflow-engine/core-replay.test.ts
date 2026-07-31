@@ -11,12 +11,9 @@
 
 import { Effect, Schema, SchemaTransformation } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  createAction,
-  type RuntimeActionResult,
-} from "@rova/shared/workflow/action-registry";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
+import { defineAction } from "#src/backend/lib/extensions/define-action";
 import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
@@ -88,30 +85,25 @@ function createDelayWaitNode(id: string): WorkflowNode {
   };
 }
 
-const emailAction = vi.fn<() => RuntimeActionResult>(() => ({
-  success: true,
-  data: { sent: true },
+const emailAction = vi.fn<() => Record<string, unknown>>(() => ({
+  sent: true,
 }));
-const followupAction = vi.fn<() => RuntimeActionResult>(() => ({
-  success: true,
-  data: { sent: true },
+const followupAction = vi.fn<() => Record<string, unknown>>(() => ({
+  sent: true,
 }));
-const branchAction = vi.fn<() => RuntimeActionResult>(() => ({
-  success: true,
-  data: { ok: true },
-}));
+const branchAction = vi.fn<() => Record<string, unknown>>(() => ({ ok: true }));
 
 function aHostAction(
   id: string,
   label: string,
-  execute: () => RuntimeActionResult
+  handler: () => Record<string, unknown>
 ) {
-  return createAction({
+  return defineAction({
     id,
     label,
     description: `Test ${label} action`,
-    schema: Schema.Struct({}),
-    execute,
+    input: Schema.Struct({}),
+    handler,
   });
 }
 

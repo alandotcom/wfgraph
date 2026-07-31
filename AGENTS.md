@@ -7,7 +7,8 @@ beside `@rova/example-app` (`examples/`), the host app `pnpm run dev` runs.
 - `@rova/core` (`packages/core`) library entrypoints and the backend
 - `@rova/client` (`packages/client`) the React SPA, handed to `createRovaApp` as `client`
 - `@rova/plugins` (`packages/plugins`) integration plugins and their steps, built
-  against `@rova/core/plugin` and nothing else
+  against `@rova/core/plugin`, save each integration's browser-facing `ui.ts` and
+  any custom output renderer, which reach `@rova/shared/plugins/ui-registry` directly
 
 Read the code for structure. What follows is what the code cannot tell you.
 
@@ -99,7 +100,7 @@ Four rules, each of which cost something to learn:
   `~standard.validate(payload)` with nothing else to say. Effect assigns `~standard` onto
   the schema and returns early if a `validate` is already there, so a schema crosses that
   bridge once and the first crossing decides its options. The RPC contracts and the Inngest
-  event types call it directly for that reason. `createAction` calls it itself, where the
+  event types call it directly for that reason. `defineAction` calls it itself, where the
   action is defined, so an author takes a bare
   `Schema.Struct` and writes no bridging ceremony; `Schema.isSchema`
   is the discriminator, testing for the type id Effect brands its schemas with, so a Zod or
@@ -140,8 +141,10 @@ becomes text a person reads.
 **Zod is the example app's schema library, and a test fixture inside `packages/`.**
 `@rova/example-app` is written in it, which is what makes "an adopter needs no Effect"
 enforceable rather than promised. In `packages/` it stays a devDependency of
-`packages/shared`, used by `action-registry.test.ts` and `standard-schema-compat.test.ts`
-beside arktype, and no published manifest names it.
+`packages/core` (`define-action.test.ts`) and of `packages/shared`
+(`standard-schema-compat.test.ts`), beside arktype in both. `packages/core` is the one
+that publishes, and a devDependency of it is not something installing `@rova/core`
+fetches.
 
 **Timestamps cross through a codec.** `packages/shared/src/types/timestamp.ts` owns the
 one ISO-string-to-`Date` conversion, as a checked `Schema.decodeTo` pair. Do not hand-roll `new Date(x)` or
@@ -237,17 +240,17 @@ list to declare instead, and a schema the derivation cannot read throws naming t
 that name as a phrase rather than an id, because an Event's payload schema comes through
 it too and the message has to say which kind of thing is at fault.
 
-A host action spells the same thing `outputSchema` on its `createAction`, and derives its
+A host action spells the same thing `output` on its `defineAction`, and derives its
 fields there rather than at assembly, because that call is where any Standard Schema library
 is bridged. It encodes on the way out too, through the same canonical JSON codec, so a
-`Date` a host's `execute` answered with leaves as an ISO string; a foreign Standard Schema
+`Date` a host's handler answered with leaves as an ISO string; a foreign Standard Schema
 library hands over a validator and a JSON Schema and nothing that runs in that direction, so
 those pass through untouched, which is the same call `output-fields.ts` makes for the field
 list. What a schema cannot say about itself is not said.
 
 That encode is what retired the dev-mode JSON-safety walk the in-memory runtime used to
 perform, and it covers exactly the actions that have an Effect output schema. A
-`createAction` with no `outputSchema`, or one written in arktype or Zod, hands `execute`'s
+`defineAction` with no `output`, or one written in arktype or Zod, hands the handler's
 answer back as it is: a `Date` in it becomes a string on the replay with nothing said, and
 that is the host's to know. The in-memory runtime still round-trips a memoized value through
 JSON, which models the loss without reporting it, and the walk never ran in production at
@@ -281,9 +284,9 @@ get their ids and their derived field lists, and where `stepFor` and `connection
 come from, since a definition carries both. Condition and Wait are the two actions the
 engine ships itself, catalog entries in `built-ins.ts` with no step of their own -- the
 engine dispatches to both during the traversal rather than through `stepFor` -- and a
-host's own actions arrive as `extensions.actions` -- `createAction` values, which carry
-their `execute` into the same `stepFor`, so dispatch has one kind of thing to find. HTTP
-and database work are a host's to build with `createAction`; the engine ships neither.
+host's own actions arrive as `extensions.actions` -- `defineAction` values, which carry
+their step into the same `stepFor`, so dispatch has one kind of thing to find. HTTP
+and database work are a host's to build with `defineAction`; the engine ships neither.
 
 The server reads that catalog for everything it used to ask a registry: the credential
 mapping in `credential-fetcher.ts`, the secret-key test in
@@ -736,13 +739,13 @@ development, because the option takes a built bundle and development has none. `
 start` is the other arrangement and one process: the built bundle goes to `createRovaApp` as
 `client`, and Rova serves the editor, the assets, and the API itself.
 
-**Eight published entry points, across three packages.** `@rova/core` is what a host
-authors vocabulary with (`defineEvent` and `createAction`), `@rova/core/app` is
-`createRovaApp`, `@rova/core/node` the Node mount adapter,
-`@rova/core/plugin` the names an integration package may use, and `@rova/core/migrate`
-applies the migrations without building an app. `@rova/client` is the editor,
-`@rova/plugins` the built-in integrations as values, and
-`@rova/plugins/ui` their icons for the browser. `@rova/plugins`
+**Six published entry points, across three packages.** `@rova/core` is the one
+host-facing entry: a host authors vocabulary with it (`defineEvent` and
+`defineAction`), and it is also `createRovaApp` and the Node mount adapter
+`createRequestListener`. `@rova/core/plugin` names what an integration package may
+use, and `@rova/core/migrate` applies the migrations without building an app.
+`@rova/client` is the editor, `@rova/plugins` the built-in integrations as values,
+and `@rova/plugins/ui` their icons for the browser. `@rova/plugins`
 peer-depends on `@rova/core`, because a second copy would mean a second database handle.
 `@rova/shared` stays private and is inlined into whichever bundle needs it.
 
@@ -753,10 +756,10 @@ schema and only Rova's migrator carries the `search_path` that decides which one
 so an adopter with no Rova app running had no way to apply it; `scripts/migrate.ts` runs that
 same entry, which is what keeps the repo's daily path and an adopter's CI job one code path.
 There is no published server wrapper: `createRovaApp` returns a fetch handler, which
-`Bun.serve` and `Deno.serve` take directly and `@rova/core/node` translates for Express and
-Fastify. The one `node:http` server in the tree, `examples/app.ts`, sits outside
-`packages/core` and reaches the fetch handler through `createRequestListener` from
-`@rova/core/node`, which is the same translation an adopter on Node makes. Verify a
+`Bun.serve` and `Deno.serve` take directly and `createRequestListener` translates for
+Express and Fastify. The one `node:http` server in the tree, `examples/app.ts`, sits
+outside `packages/core` and reaches the fetch handler through that same
+`createRequestListener`, which is the same translation an adopter on Node makes. Verify a
 packaging change with `pnpm pack` and read the extracted manifest.
 
 ## Code cleanliness

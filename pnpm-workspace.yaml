@@ -31,6 +31,9 @@ catalog:
   "@testing-library/react": ^16.3.2
   "@types/react": ^19.2.14
   "@xyflow/react": ^12.10.0
+  # The second foreign Standard Schema library the schema tests are written
+  # against, beside zod below.
+  arktype: ^2.2.3
   effect: 4.0.0-beta.102
   es-toolkit: ^1.44.0
   graphology: ^0.26.0
@@ -40,9 +43,9 @@ catalog:
   react-dom: 19.2.4
   tsx: ^4.23.1
   vite: ^8.1.5
-  # The example app writes its Events and its custom action in it, and
-  # packages/shared's registry tests use it as the foreign Standard Schema
-  # library, beside arktype.
+  # The example app writes its Events and its custom action in it, and the schema
+  # tests in packages/core and packages/shared use it as the foreign Standard
+  # Schema library, beside arktype.
   zod: ^4.4.3
 
 # Pins one React copy through the whole graph, including transitive peers. The

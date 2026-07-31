@@ -9,7 +9,7 @@
  * somewhere else.
  *
  * The Events and the custom action are the interesting half. They show what
- * `defineEvent` and `createAction` are for, and Rova serves them beside its
+ * `defineEvent` and `defineAction` are for, and Rova serves them beside its
  * built-in integrations with no further registration.
  *
  * Development hands over no editor. `pnpm run dev` runs Vite's dev server in
@@ -19,9 +19,12 @@
  */
 
 import { createServer } from "node:http";
-import { createAction, defineEvent } from "@rova/core";
-import { createRovaApp } from "@rova/core/app";
-import { createRequestListener } from "@rova/core/node";
+import {
+  createRequestListener,
+  createRovaApp,
+  defineAction,
+  defineEvent,
+} from "@rova/core";
 // The built-in integrations, as values. Nothing registers on import, so the line
 // that passes them to `createRovaApp` below is what turns them on and dropping it
 // is what turns them off.
@@ -118,32 +121,29 @@ const paymentSettled = defineEvent({
   correlationPath: "appointmentId",
 });
 
-const cancelAppointmentAction = createAction({
+const cancelAppointmentAction = defineAction({
   id: "appointments/cancel",
   label: "Cancel Appointment",
   description: "Cancels an appointment and records the cancellation reason.",
   category: "Appointments",
+  input: z.object({
+    appointmentId: appointmentIdSchema,
+    reason: z.string().min(1),
+  }),
   // What the action returns. The editor derives its template picker from this,
-  // so a downstream node addresses exactly the fields `execute` answers with.
-  outputSchema: z.object({
+  // so a downstream node addresses exactly the fields the handler answers with.
+  output: z.object({
     appointmentId: appointmentIdSchema,
     status: z.string(),
     reason: z.string(),
     cancelledAt: z.iso.datetime(),
   }),
-  schema: z.object({
-    appointmentId: appointmentIdSchema,
-    reason: z.string().min(1),
-  }),
-  execute({ payload }) {
+  handler({ payload }) {
     return {
-      success: true,
-      data: {
-        appointmentId: payload.appointmentId,
-        status: "cancelled",
-        reason: payload.reason,
-        cancelledAt: new Date().toISOString(),
-      },
+      appointmentId: payload.appointmentId,
+      status: "cancelled",
+      reason: payload.reason,
+      cancelledAt: new Date().toISOString(),
     };
   },
 });

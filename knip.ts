@@ -106,12 +106,17 @@ const config: KnipConfig = {
       project: ["src/**/*.{ts,tsx}"],
 
       ignoreDependencies: [
-        // packages/core/dist/index.js imports graphology, packages/core/dist/app.js
-        // imports @orpc/contract, and the emitted .d.ts files import
-        // @standard-schema/spec. All three arrive through the @rova/shared source
-        // that tsdown inlines into the bundle — the RPC contracts are built with
-        // `oc` from @orpc/contract — so the published package needs them declared
-        // here even though no file under packages/core/src names them.
+        // packages/core/dist/index.js imports graphology and @orpc/contract, and
+        // the emitted .d.ts files import @standard-schema/spec. All three arrive
+        // through the @rova/shared source that tsdown inlines into the bundle —
+        // the RPC contracts are built with `oc` from @orpc/contract — so the
+        // published package needs them declared here even though no file under
+        // packages/core/src names them.
+        //
+        // @standard-schema/spec's entry is deliberate for that reason, even
+        // though define-action.test.ts also imports it: knip will keep hinting
+        // "Remove from ignoreDependencies" for it, since it cannot see the .d.ts
+        // import the entry justifies. That hint is expected; do not act on it.
         "graphology",
         "@orpc/contract",
         "@standard-schema/spec",

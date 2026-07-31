@@ -17,14 +17,6 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./app": {
-      "types": "./dist/app.d.ts",
-      "default": "./dist/app.js"
-    },
-    "./node": {
-      "types": "./dist/node.d.ts",
-      "default": "./dist/node.js"
-    },
     "./plugin": {
       "types": "./dist/plugin.d.ts",
       "default": "./dist/plugin.js"
@@ -65,7 +57,9 @@
     "@opentelemetry/sdk-trace-base": "^2.10.0",
     "@rova/shared": "workspace:*",
     "@types/express": "^5.0.6",
+    "arktype": "catalog:",
     "express": "^5.2.1",
-    "fastify": "^5.10.0"
+    "fastify": "^5.10.0",
+    "zod": "catalog:"
   }
 }

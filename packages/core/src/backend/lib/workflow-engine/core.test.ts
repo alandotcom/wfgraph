@@ -1,15 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type ActionRunContext,
+  defineAction,
+} from "#src/backend/lib/extensions/define-action";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
 import { defineStep } from "#src/backend/lib/steps/define-step";
 import { Effect, Schema } from "effect";
-import {
-  createAction,
-  type RuntimeActionExecuteInput,
-  type RuntimeActionResult,
-} from "@rova/shared/workflow/action-registry";
 import { unknownRest } from "@rova/shared/types/schema";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
@@ -26,12 +25,12 @@ const CONSUMER_ACTION_ID = "test/consumer-action";
 const NOTIFY_ACTION_ID = "notify/send";
 
 /** What the host action under test answers with, per case. */
-const executeFn = vi.fn<
-  (input: RuntimeActionExecuteInput) => RuntimeActionResult
->(() => ({
-  success: true,
-  data: { donorId: "d_123", name: "Test Donor" },
-}));
+const handlerFn = vi.fn<
+  (input: {
+    payload: Record<string, unknown>;
+    context: ActionRunContext;
+  }) => Record<string, unknown>
+>(() => ({ donorId: "d_123", name: "Test Donor" }));
 
 /** The resolved config the consumer action was handed, for the template cases. */
 let capturedPayload: Record<string, unknown> = {};
@@ -129,37 +128,34 @@ function createTriggerToActionGraph(actionLabel?: string) {
 const actions = createWorkflowActions(
   assembleExtensions({
     actions: [
-      createAction({
+      defineAction({
         id: HOST_ACTION_ID,
         label: "Test Host Action",
         description: "A test host action",
-        schema: Schema.Struct({}),
-        execute: executeFn,
+        input: Schema.Struct({}),
+        handler: handlerFn,
       }),
-      createAction({
+      defineAction({
         id: PRODUCER_ACTION_ID,
         label: "Producer",
         description: "Produces the output later nodes reference",
-        schema: Schema.Struct({}),
-        execute: () => ({
-          success: true,
-          data: {
-            items: [{ name: "Widget" }, { name: "Gadget" }],
-            customer: { name: "Ada" },
-            count: 2,
-          },
+        input: Schema.Struct({}),
+        handler: () => ({
+          items: [{ name: "Widget" }, { name: "Gadget" }],
+          customer: { name: "Ada" },
+          count: 2,
         }),
       }),
-      createAction({
+      defineAction({
         id: CONSUMER_ACTION_ID,
         label: "Consumer",
         description: "Records the config it was handed",
         // Every case hands this action a config of its own, so the shape stays
         // open: a declared field list would decode the keys under test away.
-        schema: Schema.StructWithRest(Schema.Struct({}), unknownRest),
-        execute: ({ payload }) => {
+        input: Schema.StructWithRest(Schema.Struct({}), unknownRest),
+        handler: ({ payload }) => {
           capturedPayload = payload;
-          return { success: true, data: {} };
+          return {};
         },
       }),
     ],
@@ -173,10 +169,10 @@ describe("host action execution", () => {
 
   beforeEach(() => {
     store = createRecordingWorkflowStore();
-    executeFn.mockClear();
-    executeFn.mockImplementation(() => ({
-      success: true,
-      data: { donorId: "d_123", name: "Test Donor" },
+    handlerFn.mockClear();
+    handlerFn.mockImplementation(() => ({
+      donorId: "d_123",
+      name: "Test Donor",
     }));
   });
 
@@ -194,7 +190,7 @@ describe("host action execution", () => {
 
     expect(result.success).toBe(true);
     expect(result.results.action_1?.success).toBe(true);
-    expect(executeFn).toHaveBeenCalledTimes(1);
+    expect(handlerFn).toHaveBeenCalledTimes(1);
   });
 
   // The context is how an author learns which node their action is running as, and
@@ -212,7 +208,7 @@ describe("host action execution", () => {
       actions
     );
 
-    expect(executeFn.mock.calls[0]?.[0]).toMatchObject({
+    expect(handlerFn.mock.calls[0]?.[0]).toMatchObject({
       context: {
         executionId: "exec_123",
         nodeId: "action_1",
@@ -222,10 +218,9 @@ describe("host action execution", () => {
   });
 
   it("reports a failing host action as a failed node result", async () => {
-    executeFn.mockImplementation(() => ({
-      success: false as const,
-      error: { message: "Donor not found" },
-    }));
+    handlerFn.mockImplementation(() => {
+      throw new Error("Donor not found");
+    });
 
     const result = await executeWorkflow(
       {
@@ -295,8 +290,8 @@ describe("run persistence through the store port", () => {
 
   beforeEach(() => {
     store = createRecordingWorkflowStore();
-    executeFn.mockClear();
-    executeFn.mockImplementation(() => ({ success: true, data: { ok: true } }));
+    handlerFn.mockClear();
+    handlerFn.mockImplementation(() => ({ ok: true }));
   });
 
   it("writes the terminal run record and its timeline event on success", async () => {
@@ -373,10 +368,9 @@ describe("run persistence through the store port", () => {
   });
 
   it("closes a failed node's row with the reason it gave", async () => {
-    executeFn.mockImplementation(() => ({
-      success: false as const,
-      error: { message: "Donor not found" },
-    }));
+    handlerFn.mockImplementation(() => {
+      throw new Error("Donor not found");
+    });
 
     await executeWorkflow(
       {
@@ -398,10 +392,9 @@ describe("run persistence through the store port", () => {
   });
 
   it("marks the run failed when a node fails", async () => {
-    executeFn.mockImplementation(() => ({
-      success: false as const,
-      error: { message: "boom" },
-    }));
+    handlerFn.mockImplementation(() => {
+      throw new Error("boom");
+    });
 
     await executeWorkflow(
       {
@@ -465,7 +458,7 @@ describe("run persistence through the store port", () => {
       actions
     );
 
-    expect(executeFn).toHaveBeenCalledTimes(1);
+    expect(handlerFn).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(true);
     expect(result.results.action_1?.data).toEqual({
       success: true,
@@ -489,7 +482,7 @@ describe("run persistence through the store port", () => {
       actions
     );
 
-    expect(executeFn).toHaveBeenCalledTimes(0);
+    expect(handlerFn).toHaveBeenCalledTimes(0);
     expect(result.success).toBe(false);
     expect(result.results.trigger_1?.error).toBe("run log unreachable");
   });
@@ -505,7 +498,7 @@ describe("run persistence through the store port", () => {
       }
     }
 
-    executeFn.mockImplementation(() => {
+    handlerFn.mockImplementation(() => {
       throw new DatabaseError(new Error("connection terminated"));
     });
 
@@ -529,7 +522,7 @@ describe("run persistence through the store port", () => {
   // The word in an error's text says nothing about why a run ended. A cancel is
   // the flag on the execution row, which this run never had set.
   it("records a failure whose text says 'cancelled' as failed", async () => {
-    executeFn.mockImplementation(() => {
+    handlerFn.mockImplementation(() => {
       throw new Error("Subscription cancelled by the provider");
     });
 

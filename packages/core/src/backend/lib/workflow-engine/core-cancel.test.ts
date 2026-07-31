@@ -14,7 +14,7 @@ import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
 import { unknownRest } from "@rova/shared/types/schema";
-import { createAction } from "@rova/shared/workflow/action-registry";
+import { defineAction } from "#src/backend/lib/extensions/define-action";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 import { executeWorkflow } from "./core";
@@ -34,24 +34,24 @@ let recorded: Record<string, Record<string, unknown>> = {};
 const actions = createWorkflowActions(
   assembleExtensions({
     actions: [
-      createAction({
+      defineAction({
         id: PRODUCER_ACTION_ID,
         label: "Producer",
         description: "Produces the output the Canceled branch reads back",
-        schema: Schema.Struct({}),
-        execute: () => ({ success: true, data: { orderId: "o_1" } }),
+        input: Schema.Struct({}),
+        handler: () => ({ orderId: "o_1" }),
       }),
-      createAction({
+      defineAction({
         id: RECORDER_ACTION_ID,
         label: "Recorder",
         description: "Records the config it was handed",
         // Each case hands this action a config of its own, so the shape stays
         // open: a declared field list would decode the keys under test away.
-        schema: Schema.StructWithRest(Schema.Struct({}), unknownRest),
-        execute: ({ payload }) => {
+        input: Schema.StructWithRest(Schema.Struct({}), unknownRest),
+        handler: ({ payload }) => {
           const label = String(payload.label ?? "");
           recorded[label] = payload;
-          return { success: true, data: { seen: label } };
+          return { seen: label };
         },
       }),
     ],

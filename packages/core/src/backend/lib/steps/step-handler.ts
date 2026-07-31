@@ -37,6 +37,11 @@ export type StepContext = typeof stepContextSchema.Type;
 /** The run context out of a step's input record, or undefined when it has none. */
 export const readStepContext = readAs(stepContextSchema);
 
+/** The connected integration's id out of a step's input record, or undefined when it has none. */
+export function readIntegrationId(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
 /** Base input every step's record carries, whatever else the node configured. */
 export type StepInput = {
   _context?: StepContext;

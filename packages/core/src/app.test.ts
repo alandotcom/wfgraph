@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, Schema } from "effect";
-import { createAction, defineEvent } from "#src/index";
+import { defineAction, defineEvent } from "#src/index";
 import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
 import { defineStep } from "#src/backend/lib/steps/define-step";
 import { createRovaApp, type RovaApp } from "#src/app";
@@ -532,15 +532,15 @@ describe("createRovaApp configuration", () => {
   // assembled per app and given back on dispose, so the same definition serves the
   // second one as well.
   it("serves a host's own action from the definition it was handed", async () => {
-    const action = createAction({
+    const action = defineAction({
       id: "host/probe",
       label: "Host Probe",
       description: "Passed to two apps, on purpose",
-      schema: Schema.Struct({ id: Schema.String }),
-      outputSchema: Schema.Struct({
+      input: Schema.Struct({ id: Schema.String }),
+      output: Schema.Struct({
         id: Schema.String.annotate({ description: "What it echoed" }),
       }),
-      execute: ({ payload }) => ({ success: true, data: { id: payload.id } }),
+      handler: ({ payload }) => ({ id: payload.id }),
     });
 
     const first = await createRovaApp({

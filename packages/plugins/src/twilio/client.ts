@@ -13,12 +13,12 @@
  * error body reads.
  */
 
+import type { JsonValue } from "@rova/core/plugin";
 import type { Effect } from "effect";
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
-import type { JsonValue } from "@rova/shared/types/json";
 import { callVendor, parsePayload, type VendorError } from "#src/vendor-http";
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";

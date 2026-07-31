@@ -50,8 +50,8 @@ an adopter writes one, and `pnpm run dev` and `pnpm run start` both run it. See
 
 `createRovaApp` returns a fetch handler with the shape
 `(request: Request) => Promise<Response>`, so Bun, Deno, Cloudflare Workers, and
-Node 18+ consume it directly. Import `@rova/core/app` for the factory and
-`@rova/core` for the authoring helpers.
+Node 18+ consume it directly. `@rova/core` is the one import for the factory and
+the authoring helpers.
 
 Nothing in Rova registers itself on import. The `extensions` option is the whole
 surface an app has, and a line there is what turns each half on.
@@ -60,9 +60,12 @@ surface an app has, and a line there is what turns each half on.
 import { createServer } from "node:http";
 import { z } from "zod";
 import { clientBundle } from "@rova/client";
-import { createAction, defineEvent } from "@rova/core";
-import { createRovaApp } from "@rova/core/app";
-import { createRequestListener } from "@rova/core/node";
+import {
+  createRequestListener,
+  createRovaApp,
+  defineAction,
+  defineEvent,
+} from "@rova/core";
 import { builtInIntegrations } from "@rova/plugins";
 
 // An Event your app raises. Section "Defining an Event" below covers the parts.
@@ -80,7 +83,7 @@ const appointmentCreated = defineEvent({
 });
 
 // An action of your own, beside the ones the built-in integrations bring.
-const cancelAppointment = createAction({
+const cancelAppointment = defineAction({
   id: "appointments/cancel",
   label: "Cancel Appointment",
   description: "Cancels an appointment and records the reason.",
@@ -88,25 +91,23 @@ const cancelAppointment = createAction({
   // The config form is derived from this schema. A field's label is the
   // title-cased key ("Appointment Id"), and a description replaces it, so a
   // description earns its place where the key alone reads badly.
-  schema: z.object({
+  input: z.object({
     appointmentId: z.string().describe("Appointment ID"),
     reason: z.string().min(1),
   }),
-  // What `execute` answers with. The editor's template autocomplete is derived
+  // What `handler` answers with. The editor's template autocomplete is derived
   // from this schema, so there is no field list to write out beside it.
-  outputSchema: z.object({
+  output: z.object({
     appointmentId: z.string().describe("Appointment ID"),
     status: z.string(),
     cancelledAt: z.iso.datetime(),
   }),
-  execute({ payload }) {
+  // Throwing fails the node, and the thrown message is what the run log shows.
+  handler({ payload }) {
     return {
-      success: true,
-      data: {
-        appointmentId: payload.appointmentId,
-        status: "cancelled",
-        cancelledAt: new Date().toISOString(),
-      },
+      appointmentId: payload.appointmentId,
+      status: "cancelled",
+      cancelledAt: new Date().toISOString(),
     };
   },
 });
@@ -155,12 +156,12 @@ export default { fetch: rova.fetch }; // Cloudflare Workers
 ```
 
 Express and Fastify sit on Node's `http` module, whose currency is
-`IncomingMessage` and `ServerResponse`. `@rova/core/node` does that translation and
-needs Node 20 or newer.
+`IncomingMessage` and `ServerResponse`. `createRequestListener` does that
+translation and needs Node 20 or newer.
 
 ```ts
 import express from "express";
-import { createRequestListener } from "@rova/core/node";
+import { createRequestListener } from "@rova/core";
 
 const app = express();
 // Mount Rova ahead of any body parser, and pass the same path as basePath.
@@ -174,7 +175,7 @@ in the `onRequest` hook, ahead of Fastify's body parsing:
 ```ts
 import Fastify from "fastify";
 import middie from "@fastify/middie";
-import { createRequestListener } from "@rova/core/node";
+import { createRequestListener } from "@rova/core";
 
 const app = Fastify();
 await app.register(middie);
@@ -610,12 +611,10 @@ vendor HTTP layer, the config field types, and the testing pattern.
 
 ## Package exports
 
-- `@rova/core` is what a host authors vocabulary with: `defineEvent`,
-  `createAction`, and their types.
-- `@rova/core/app` is `createRovaApp`, `RovaAppOptions`, `RovaApp`, and the
-  re-exported config types.
-- `@rova/core/node` is `createRequestListener`, for hosts on Express, Fastify, or
-  `node:http`.
+- `@rova/core` is the one host-facing entry: `defineEvent` and `defineAction` to
+  author vocabulary, `createRovaApp` (with `RovaAppOptions`, `RovaApp`, and the
+  config types) to build the app, and `createRequestListener` to mount it on
+  Express, Fastify, or `node:http`.
 - `@rova/core/plugin` is what an integration package builds against.
 - `@rova/core/migrate` is `migrateRovaDatabase`, for applying migrations without
   building an app.
@@ -629,7 +628,7 @@ vendor HTTP layer, the config field types, and the testing pattern.
 
 `@rova/shared` stays private and is inlined into whichever bundle needs it.
 
-Everything except `@rova/core/node` runs on any runtime with `Request` and
+Everything except `createRequestListener` runs on any runtime with `Request` and
 `Response`. There is no published server wrapper: once `createRovaApp` returns a
 fetch handler, a wrapper saves a consumer two lines and charges an options type that
 reaccumulates every parameter the host's own server takes.
@@ -651,7 +650,7 @@ reaccumulates every parameter the host's own server takes.
 | `inngest.id`                        | Yes      | Inngest application ID                                            |
 | `inngest.*`                         | No       | baseUrl, eventKey, env, isDev, signingKey, serveOrigin, servePath |
 | `extensions.events`                 | No       | `defineEvent` values                                              |
-| `extensions.actions`                | No       | `createAction` values                                             |
+| `extensions.actions`                | No       | `defineAction` values                                             |
 | `extensions.integrations`           | No       | `defineIntegration` values                                        |
 | `logger`                            | No       | Custom logger conforming to `RovaLogger`                          |
 | `configureLogging`                  | No       | Enable built-in structured logging (default `true`)               |

@@ -69,7 +69,7 @@ function describeSchema(
  * The paths and types a schema offers, as the editor lists them.
  *
  * A schema this cannot read contributes nothing rather than a thrown error,
- * which is what `createAction` wants: a host's `outputSchema` may come from
+ * which is what `defineAction` wants: a host's `output` may come from
  * any Standard Schema library, and a derivation failure there should leave
  * the action addressable by node rather than crash the host's own boot. An
  * integration's action is Rova's own code and is held to the stricter

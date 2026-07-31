@@ -1,14 +1,9 @@
-import type {
-  StandardJSONSchemaV1,
-  StandardSchemaV1,
-} from "@standard-schema/spec";
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { type } from "arktype";
 import { z } from "zod";
 import { extractSchemaKeys, toStandardSchema } from "#src/types/schema";
 import { requireOutputFieldsFromSchema } from "#src/workflow/output-fields";
-import { createAction } from "./action-registry";
 import { rewriteCelExpression } from "./inngest-event-data";
 import {
   jsonSchemaLibraryOptions,
@@ -121,12 +116,12 @@ describe("jsonSchemaLibraryOptions with Zod", () => {
 });
 
 /**
- * Effect splits Standard Schema across two functions, so a registry only ever
+ * Effect splits Standard Schema across two functions, so a reader only ever
  * sees a schema that has been through `toStandardSchema`. These cases are the
  * proof that what comes out the far side is the same kind of object the Zod and
- * arktype arms above hand over. The registries call it themselves, at
- * registration; the RPC contracts and the Inngest event types call it directly,
- * because they need it to carry parse options.
+ * arktype arms above hand over. `defineEvent` and `defineAction` call it
+ * themselves, where the definition is written; the RPC contracts and the Inngest
+ * event types call it directly, because they need it to carry parse options.
  */
 describe("toStandardSchema with Effect Schema", () => {
   it("carries both halves of Standard Schema on one object", () => {
@@ -140,7 +135,7 @@ describe("toStandardSchema with Effect Schema", () => {
     expect(typeof schema["~standard"].jsonSchema.output).toBe("function");
   });
 
-  it("validates synchronously, as the action registry requires", () => {
+  it("validates synchronously, as a resolved config decode requires", () => {
     const schema = toStandardSchema(Schema.Struct({ text: Schema.String }));
 
     const ok = schema["~standard"].validate({ text: "hello" });
@@ -224,34 +219,11 @@ describe("toStandardSchema with Effect Schema", () => {
 });
 
 /**
- * The seam itself: what an author hands `createAction`, and what it does with the
- * schema before anything reads it.
+ * What this package derives from a bridged schema, whichever library wrote it.
+ * The bridge itself belongs to whoever calls it, so `defineAction`'s own cases
+ * live in `packages/core` beside that function.
  */
-describe("createAction bridges the schema it is given", () => {
-  it("gives a bare Effect schema both halves, once", () => {
-    const schema = Schema.Struct({ text: Schema.String });
-    expect("~standard" in schema).toBe(false);
-
-    createAction({
-      id: "effect/bridge-test",
-      label: "Effect Bridge",
-      description: "Tests that createAction bridges what it is handed",
-      schema,
-      execute({ payload }) {
-        return { success: true, data: { echo: payload.text } };
-      },
-    });
-
-    // The same object, now carrying both halves. Effect's bridge assigns onto the
-    // schema rather than wrapping it, which is what makes "bridged once, where the
-    // action is defined" observable from out here.
-    const bridged = schema as unknown as StandardSchemaV1<unknown, unknown> &
-      StandardJSONSchemaV1<unknown, unknown>;
-    expect(bridged["~standard"].vendor).toBe("effect");
-    expect(typeof bridged["~standard"].validate).toBe("function");
-    expect(typeof bridged["~standard"].jsonSchema.input).toBe("function");
-  });
-
+describe("the derivations over a bridged schema", () => {
   it("reads the field names of an open Effect payload schema", () => {
     // A payload that admits keys it did not name is a `Schema.StructWithRest`,
     // which carries neither Zod's `shape` nor `Schema.Struct`'s `fields`: the
@@ -413,128 +385,14 @@ describe("createAction bridges the schema it is given", () => {
       )
     ).toThrow(/"twilio\/compat-dropped".+attempts did not survive/);
   });
-
-  it("leaves a Zod schema exactly as it arrived", () => {
-    // The library-agnostic arm, unchanged: nothing is wrapped, nothing is
-    // assigned onto it, and the registry reads the same `~standard` Zod built.
-    const schema = z.object({ text: z.string() });
-    const before = schema["~standard"];
-
-    const action = createAction({
-      id: "zod/bridge-test",
-      label: "Zod Bridge",
-      description: "Tests that createAction passes Zod through",
-      schema,
-      execute({ payload }) {
-        return { success: true, data: { echo: payload.text } };
-      },
-    });
-
-    expect(schema["~standard"]).toBe(before);
-    expect(schema["~standard"].vendor).toBe("zod");
-    expect(action.configFields).toEqual([
-      { key: "text", label: "Text", type: "template-input", required: true },
-    ]);
-  });
 });
 
 /**
- * The registry takes an Effect schema bare and bridges it itself, so these
- * cases are written the way an author writes one: `schema: Schema.Struct(...)`,
- * no wrapper. The two at the end reach for `toStandardSchema` directly because
- * what they assert is the JSON Schema Effect derives, not what the registry
- * does with it.
+ * What an Effect schema describes itself as, once it has crossed the bridge.
+ * These reach for `toStandardSchema` directly, because what they assert is the
+ * JSON Schema Effect derives rather than what a caller does with it.
  */
-describe("createAction with Effect schemas", () => {
-  it("derives configFields from an Effect input schema", () => {
-    const action = createAction({
-      id: "effect/input-test",
-      label: "Effect Input Test",
-      description: "Tests Effect input schema derivation",
-      schema: Schema.Struct({
-        name: Schema.String.annotate({ description: "Full name" }),
-        // `Schema.Finite`, not `Schema.Number`: Effect renders an unbounded
-        // number as an `anyOf` that also admits "Infinity" and "NaN" strings,
-        // and the field reader sees no single type in that.
-        count: Schema.Finite,
-        tone: Schema.Literals(["warm", "cool"]),
-        note: Schema.optionalKey(Schema.String),
-      }),
-      execute({ payload }) {
-        return { success: true, data: { echo: payload.name } };
-      },
-    });
-
-    expect(action.configFields).toEqual([
-      {
-        key: "name",
-        label: "Full name",
-        type: "template-input",
-        required: true,
-      },
-      { key: "count", label: "Count", type: "number", required: true },
-      {
-        key: "tone",
-        label: "Tone",
-        type: "select",
-        required: true,
-        options: [
-          { value: "warm", label: "warm" },
-          { value: "cool", label: "cool" },
-        ],
-      },
-      { key: "note", label: "Note", type: "template-input" },
-    ]);
-  });
-
-  it("derives outputFields from an Effect output schema", () => {
-    const action = createAction({
-      id: "effect/output-test",
-      label: "Effect Output Test",
-      description: "Tests Effect output schema derivation",
-      schema: Schema.Struct({ id: Schema.String }),
-      outputSchema: Schema.Struct({
-        name: Schema.String,
-        nickname: Schema.NullOr(Schema.String),
-      }),
-      execute() {
-        return { success: true, data: { name: "Test", nickname: null } };
-      },
-    });
-
-    const fields = action.outputFields ?? [];
-    expect(fields.find((f) => f.path === "name")?.type).toBe("string");
-    expect(fields.find((f) => f.path === "nickname")?.type).toBe("string");
-    expect(fields.find((f) => f.path === "nickname")?.nullable).toBe(true);
-  });
-
-  it("validates the payload before execute sees it", async () => {
-    const action = createAction({
-      id: "effect/validate-test",
-      label: "Effect Validate",
-      description: "Tests Effect validation",
-      schema: Schema.Struct({
-        text: Schema.String.check(Schema.isMinLength(1)),
-      }),
-      execute({ payload }) {
-        return { success: true, data: { echo: payload.text } };
-      },
-    });
-
-    const context = {
-      nodeId: "n1",
-      nodeName: "Test",
-      nodeType: "effect/validate-test",
-    };
-
-    expect(
-      (await action.execute({ payload: { text: "hello" }, context })).success
-    ).toBe(true);
-    expect(
-      (await action.execute({ payload: { text: "" }, context })).success
-    ).toBe(false);
-  });
-
+describe("the field derivation over Effect schemas", () => {
   it("surfaces a hand-annotated Effect string as a described timestamp", () => {
     // Effect derives no `format` for any of its date schemas, so an Effect author
     // writes the keyword themselves. It goes on the base type, before any check:
@@ -814,177 +672,5 @@ describe("parseWorkflowSchemaFieldsOrJsonSchema with nullable types", () => {
     expect(fields?.find((f) => f.name === "hasPermanentDeferral")?.type).toBe(
       "boolean"
     );
-  });
-});
-
-describe("createAction with Arktype schemas", () => {
-  it("derives configFields from Arktype input schema", () => {
-    const action = createAction({
-      id: "arktype/input-test",
-      label: "Arktype Input Test",
-      description: "Tests Arktype input schema derivation",
-      schema: type({
-        name: "string",
-        count: "number",
-      }),
-      execute() {
-        return { success: true };
-      },
-    });
-
-    const fields = action.configFields ?? [];
-    expect(fields.length).toBe(2);
-
-    const nameField = fields.find((f) => "key" in f && f.key === "name");
-    expect(nameField).toBeDefined();
-    expect(nameField && "type" in nameField ? nameField.type : undefined).toBe(
-      "template-input"
-    );
-
-    const countField = fields.find((f) => "key" in f && f.key === "count");
-    expect(countField).toBeDefined();
-    expect(
-      countField && "type" in countField ? countField.type : undefined
-    ).toBe("number");
-  });
-
-  it("derives outputFields from an Arktype date the schema gave a format", () => {
-    // The derivation compiles the encoded side, and the encoded side of an Arktype
-    // date morph is its ISO string, which carries a pattern and no keyword.
-    // `.configure({ format })` is how an Arktype author says the string is a
-    // moment in time, the same one keyword every other library carries.
-    const action = createAction({
-      id: "arktype/output-date-test",
-      label: "Arktype Output Date Test",
-      description: "Tests Arktype output schema with date.parse",
-      schema: type({ id: "string" }),
-      outputSchema: type({
-        name: "string",
-        createdAt: type("string.date.iso.parse").configure({
-          format: "date-time",
-        }),
-      }),
-      execute() {
-        return {
-          success: true,
-          data: { name: "Test", createdAt: new Date() },
-        };
-      },
-    });
-
-    const fields = action.outputFields ?? [];
-    expect(fields.length).toBe(2);
-
-    const nameField = fields.find((f) => f.path === "name");
-    expect(nameField).toBeDefined();
-    expect(nameField?.type).toBe("string");
-
-    const createdAtField = fields.find((f) => f.path === "createdAt");
-    expect(createdAtField).toBeDefined();
-    expect(createdAtField?.type).toBe("timestamp");
-    expect(createdAtField?.format).toBe("timestamp");
-  });
-
-  it("does not crash when Arktype output schema has predicate types", () => {
-    const action = createAction({
-      id: "arktype/predicate-test",
-      label: "Arktype Predicate Test",
-      description: "Tests Arktype output schema with predicate",
-      schema: type({ id: "string" }),
-      outputSchema: type({
-        dateStr: "string.date",
-        name: "string",
-      }),
-      execute() {
-        return {
-          success: true,
-          data: { dateStr: "2026-01-01", name: "Test" },
-        };
-      },
-    });
-
-    const fields = action.outputFields ?? [];
-    expect(fields.length).toBe(2);
-    expect(fields.find((f) => f.path === "name")?.type).toBe("string");
-    expect(fields.find((f) => f.path === "dateStr")?.type).toBe("string");
-  });
-
-  it("derives outputFields from Arktype output schema with nullable fields", () => {
-    const action = createAction({
-      id: "arktype/nullable-output-test",
-      label: "Arktype Nullable Output Test",
-      description: "Tests that nullable fields appear in outputFields",
-      schema: type({ donorUuid: "string" }),
-      outputSchema: type({
-        uuid: "string",
-        firstName: "string",
-        "middleInitial?": "string | null",
-        email: "string",
-        "phone?": "string | null",
-        dateOfBirth: type("string.date.iso")
-          .configure({ format: "date-time" })
-          .or("null"),
-        bloodType: "'A' | 'B' | 'AB' | 'O' | null",
-        hasPermanentDeferral: "boolean",
-        createdAt: type("string.date.iso").configure({ format: "date-time" }),
-      }),
-      execute() {
-        return { success: true, data: {} as Record<string, unknown> };
-      },
-    });
-
-    const fields = action.outputFields ?? [];
-    const fieldNames = fields.map((f) => f.path).sort();
-
-    expect(fieldNames).toContain("uuid");
-    expect(fieldNames).toContain("firstName");
-    expect(fieldNames).toContain("middleInitial");
-    expect(fieldNames).toContain("email");
-    expect(fieldNames).toContain("phone");
-    expect(fieldNames).toContain("dateOfBirth");
-    expect(fieldNames).toContain("bloodType");
-    expect(fieldNames).toContain("hasPermanentDeferral");
-    expect(fieldNames).toContain("createdAt");
-    expect(fields).toHaveLength(9);
-
-    // A date field carrying the keyword is a timestamp on either side of a null.
-    expect(fields.find((f) => f.path === "dateOfBirth")?.type).toBe(
-      "timestamp"
-    );
-    expect(fields.find((f) => f.path === "createdAt")?.type).toBe("timestamp");
-  });
-
-  it("validates payload with Arktype schema", async () => {
-    const action = createAction({
-      id: "arktype/validate-test",
-      label: "Arktype Validate",
-      description: "Tests Arktype validation",
-      schema: type({
-        text: "string > 0",
-      }),
-      execute({ payload }) {
-        return { success: true, data: { echo: payload.text } };
-      },
-    });
-
-    const successResult = await action.execute({
-      payload: { text: "hello" },
-      context: {
-        nodeId: "n1",
-        nodeName: "Test",
-        nodeType: "arktype/validate-test",
-      },
-    });
-    expect(successResult.success).toBe(true);
-
-    const failResult = await action.execute({
-      payload: { text: "" },
-      context: {
-        nodeId: "n1",
-        nodeName: "Test",
-        nodeType: "arktype/validate-test",
-      },
-    });
-    expect(failResult.success).toBe(false);
   });
 });

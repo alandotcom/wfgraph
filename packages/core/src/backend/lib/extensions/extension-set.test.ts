@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { findIntegration } from "@rova/shared/extensions/catalog";
-import { createAction } from "@rova/shared/workflow/action-registry";
+import { defineAction } from "#src/backend/lib/extensions/define-action";
 import { defineEvent } from "#src/backend/lib/extensions/define-event";
 import {
   defineIntegration,
@@ -30,15 +30,15 @@ function anEvent(
   });
 }
 
-/** A host's own action, which carries its `execute` into the set. */
+/** A host's own action, which carries its step into the set. */
 function anAction(id: string, category = "Appointments") {
-  return createAction({
+  return defineAction({
     id,
     label: id,
     description: `The ${id} action`,
     category,
-    schema: Schema.Struct({ appointmentId: Schema.String }),
-    execute: ({ payload }) => ({ success: true, data: { echoed: payload } }),
+    input: Schema.Struct({ appointmentId: Schema.String }),
+    handler: ({ payload }) => ({ echoed: payload }),
   });
 }
 

@@ -1,4 +1,4 @@
-import { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fields";
+import { requireOutputFieldsFromSchema } from "@rova/core/plugin";
 import { describe, expect, it } from "vitest";
 import { linear } from "#src/linear/index";
 

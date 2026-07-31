@@ -18,10 +18,10 @@
  * module cannot tell one from the other by the method alone.
  */
 
+import type { JsonObject, JsonValue } from "@rova/core/plugin";
 import type { Effect } from "effect";
 import { Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
-import type { JsonObject, JsonValue } from "@rova/shared/types/json";
 import { callVendor, parsePayload, type VendorError } from "#src/vendor-http";
 
 const SLACK_API_BASE = "https://slack.com/api";

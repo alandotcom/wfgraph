@@ -58,7 +58,7 @@ export function getIntegrationUi(type: string): IntegrationUi | undefined {
  * shown as plain JSON.
  *
  * Which integration owns an action is the catalog's answer, not the id's. A host
- * writes whatever id it likes -- `createAction({ id: "slack/notify" })` is a
+ * writes whatever id it likes -- `defineAction({ id: "slack/notify" })` is a
  * legal id belonging to no integration -- so reading the owner off the string
  * would hand that action Slack's renderer for output Slack knows nothing about.
  * The slug is the other half of the id assembly built with `formatActionId`.

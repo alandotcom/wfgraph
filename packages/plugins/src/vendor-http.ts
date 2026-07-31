@@ -18,7 +18,12 @@
  * rather than six pieces of bookkeeping in each client.
  */
 
-import { VendorTransport } from "@rova/core/plugin";
+import {
+  type JsonObject,
+  type JsonValue,
+  readJsonValue,
+  VendorTransport,
+} from "@rova/core/plugin";
 import { Duration, Effect, Option, Schedule, Schema } from "effect";
 import {
   Headers,
@@ -28,11 +33,6 @@ import {
   type HttpClientResponse,
   type HttpMethod,
 } from "effect/unstable/http";
-import {
-  type JsonObject,
-  type JsonValue,
-  readJsonValue,
-} from "@rova/shared/types/json";
 
 /**
  * How long one attempt may take before the vendor counts as unreachable.
@@ -229,7 +229,7 @@ export type VendorCallResult<A, TFailure> =
  * that shape. Callers decide what an unreadable body means for them: a failed
  * send should say so rather than report success with blank fields.
  *
- * This is `readAs` from `@rova/shared/types/schema` with its compile-time guard
+ * This is `readAs` from `@rova/core/plugin` with its compile-time guard
  * dropped, which is what lets a caller ask for nothing in particular. A vendor
  * client checking that credentials work only needs a body to have arrived, and
  * `Schema.Unknown` says exactly that; the absent body it would otherwise read as

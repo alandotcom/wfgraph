@@ -14,7 +14,7 @@ import { defineEvent } from "#src/backend/lib/extensions/define-event";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
-import { createAction } from "@rova/shared/workflow/action-registry";
+import { defineAction } from "#src/backend/lib/extensions/define-action";
 import {
   isoTimestampString,
   isoTimestampToDate,
@@ -51,20 +51,17 @@ function isoTimestampToDateField(description: string) {
  */
 const ECHO_ACTION_ID = "test/echo-config";
 
-const echoAction = createAction({
+const echoAction = defineAction({
   id: ECHO_ACTION_ID,
   label: "Echo Config",
   description: "Answers with the value its config resolved to",
-  schema: Schema.Struct({
+  input: Schema.Struct({
     startsAt: Schema.String.annotate({ description: "The value handed in" }),
   }),
-  outputSchema: Schema.Struct({
+  output: Schema.Struct({
     startsAt: Schema.String.annotate({ description: "The value handed in" }),
   }),
-  execute: ({ payload: handed }) => ({
-    success: true,
-    data: { startsAt: handed.startsAt },
-  }),
+  handler: ({ payload: handed }) => ({ startsAt: handed.startsAt }),
 });
 
 // The engine reaches an action's step through the dispatch port the app builds,

@@ -22,16 +22,15 @@ import {
   type ActionConfigFieldBase,
   flattenConfigFields,
 } from "@rova/shared/plugins/action-fields";
-import type { ActionDefinition } from "@rova/shared/workflow/action-registry";
 import type { StepFactory } from "#src/backend/lib/steps/step-runner";
 import { builtInActions } from "#src/backend/lib/extensions/built-ins";
 import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
+import type { ActionDefinition } from "#src/backend/lib/extensions/define-action";
 import type { AnyEventDefinition } from "#src/backend/lib/extensions/define-event";
 import {
   checkIntegration,
   type IntegrationDefinition,
 } from "#src/backend/lib/extensions/define-integration";
-import { hostActionStep } from "#src/backend/lib/steps/host-action-step";
 import type { IntegrationTestLoader } from "#src/backend/lib/extensions/integration-test";
 
 /**
@@ -48,7 +47,7 @@ export type RegisteredEvent = AnyEventDefinition;
  * Every kind arrives as a definition carrying its own implementation, so this set
  * answers for both halves of the surface and nothing has to be registered
  * anywhere for it to. An integration brings a step per action and a connection
- * test; a host's own action, from `createAction`, brings its `execute`.
+ * test; a host's own action, from `defineAction`, brings its handler.
  */
 export type RovaExtensions = {
   readonly events?: readonly AnyEventDefinition[];
@@ -304,10 +303,11 @@ function readIntegration(
 /**
  * A host's own action, in both halves the same way an integration's is.
  *
- * `createAction` has already derived the config fields and the output fields from
+ * `defineAction` has already derived the config fields and the output fields from
  * the author's schemas and normalized the rest, so the metadata is read straight
- * off the definition. Its `execute` becomes a step the engine calls the same way
- * it calls an integration's, so dispatch has one kind of thing to find.
+ * off the definition. Its step is built there too, because an action carries its
+ * own id, and it goes into the same map an integration's does, so dispatch has
+ * one kind of thing to find.
  */
 function readHostAction(action: ActionDefinition, into: Assembly): void {
   into.actions.push({
@@ -319,7 +319,7 @@ function readHostAction(action: ActionDefinition, into: Assembly): void {
     configFields: action.configFields ?? [],
     outputFields: action.outputFields ?? [],
   });
-  into.steps.set(action.id, hostActionStep(action));
+  into.steps.set(action.id, action.implement);
 }
 
 export function assembleExtensions(input: RovaExtensions): ExtensionSet {

@@ -4,7 +4,7 @@ import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
 import { checkCelBooleanExpression } from "#src/backend/lib/cel/environment";
 import { createInMemoryWorkflowRuntime } from "./runtime";
-import { createAction } from "@rova/shared/workflow/action-registry";
+import { defineAction } from "#src/backend/lib/extensions/define-action";
 import { Schema } from "effect";
 import {
   compileConditionModel,
@@ -21,12 +21,12 @@ import {
 
 const WRAPPED_ACTION_ID = "test/wrapped-output-action";
 
-const wrappedOutputAction = createAction({
+const wrappedOutputAction = defineAction({
   id: WRAPPED_ACTION_ID,
   label: "Wrapped Output",
   description: "Returns its fields inside the standard step wrapper",
-  schema: Schema.Struct({}),
-  execute: () => ({ success: true, data: { donorId: "abc" } }),
+  input: Schema.Struct({}),
+  handler: () => ({ donorId: "abc" }),
 });
 
 // The engine reaches an action's step and its label through the dispatch port

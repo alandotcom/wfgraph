@@ -132,7 +132,7 @@ function hasStandardValidate(schema: object): boolean {
  * `~standard.jsonSchema`.
  *
  * Effect splits what Zod and arktype hand over together. The registries want
- * both from one object -- `action-registry.ts` validates a resolved config with
+ * both from one object -- `defineAction` validates a resolved config with
  * the first and derives the action's form fields from the second -- so this is
  * the bridge every registry-facing Effect schema crosses.
  *

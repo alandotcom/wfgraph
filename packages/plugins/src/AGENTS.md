@@ -246,7 +246,7 @@ whole of how the editor learns a field is a time: it gives the field before/afte
 operators in the condition builder and ranks it to the top of a menu asking for a date.
 Effect emits it for no date schema of its own, `Schema.Date` included
 ([effect#6790](https://github.com/Effect-TS/effect/issues/6790)), so a step's schema
-writes `isoTimestampString` from `@rova/shared/types/timestamp`, which annotates the base
+writes `isoTimestampString` from `@rova/core/plugin`, which annotates the base
 type and checks the ISO pattern after it. The keyword alone draws the field and refuses
 nothing. A handler that wants a `Date` decodes to one from there, and the output codec
 encodes it back to the string.

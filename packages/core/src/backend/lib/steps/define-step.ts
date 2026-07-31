@@ -38,10 +38,12 @@
  * through its store around this call.
  */
 
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 import type { WorkflowCredentials } from "#src/backend/lib/credential-fetcher";
+import { encodeThroughOutputSchema } from "#src/backend/lib/steps/output-encoding";
 import {
+  readIntegrationId,
   readStepContext,
   type StepContext,
 } from "#src/backend/lib/steps/step-handler";
@@ -197,7 +199,7 @@ type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> & {
  * The id is what both messages below name, and a step learns it from the
  * integration that declares the action, at assembly.
  *
- * Both readers are built once here rather than per invocation, because
+ * Both readers are built once per action rather than per invocation, because
  * `toCodecJson` walks the AST and builds a new schema.
  */
 function buildStep<TInput, TOutput>(
@@ -213,14 +215,11 @@ function buildStep<TInput, TOutput>(
     Schema.toCodecJson(definition.input),
     { errors: "all" }
   );
-  const encodeOutput = Schema.encodeUnknownEffect(
-    Schema.toCodecJson(definition.output),
-    { errors: "all" }
-  );
 
   function runStep(
     app: StepEnvironment,
     actionId: string,
+    encodeOutput: (value: unknown) => Result.Result<unknown, string>,
     rawInput: Record<string, unknown>,
     context: StepContext | undefined
   ): Effect.Effect<StepResult> {
@@ -254,14 +253,14 @@ function buildStep<TInput, TOutput>(
       // rather than spending the retry budget on a certainty. The path is narrow:
       // the handler's return type is the decoded type, so reaching here takes an
       // `as`, an `any`, or a widened vendor type.
-      return yield* encodeOutput(data).pipe(
-        Effect.mapError(
-          (error) =>
-            new StepFailure({
-              message: `Step "${actionId}" returned a value its output schema cannot encode: ${formatSchemaFailure(error.issue)}`,
-            })
-        )
-      );
+      const encoded = encodeOutput(data);
+      if (Result.isFailure(encoded)) {
+        return yield* Effect.fail(
+          new StepFailure({ message: encoded.failure })
+        );
+      }
+
+      return encoded.success;
     }).pipe(
       Effect.match({
         onSuccess: (data): StepResult => ({ success: true, data }),
@@ -274,10 +273,23 @@ function buildStep<TInput, TOutput>(
     );
   }
 
-  return (actionId) => (app) => (rawInput) =>
-    Effect.runPromise(
-      runStep(app, actionId, rawInput, readStepContext(rawInput._context))
+  return (actionId) => {
+    const encodeOutput = encodeThroughOutputSchema(
+      `Step "${actionId}"`,
+      definition.output
     );
+
+    return (app) => (rawInput) =>
+      Effect.runPromise(
+        runStep(
+          app,
+          actionId,
+          encodeOutput,
+          rawInput,
+          readStepContext(rawInput._context)
+        )
+      );
+  };
 }
 
 /**
@@ -319,10 +331,6 @@ export function defineStep<TInput, TOutput>(
     output: definition.output,
     implement: buildStep(definition),
   };
-}
-
-function readIntegrationId(value: unknown): string | undefined {
-  return typeof value === "string" && value ? value : undefined;
 }
 
 /**

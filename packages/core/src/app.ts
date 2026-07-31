@@ -98,7 +98,7 @@ export type RovaAppOptions = {
    *
    * Nothing registers itself, so what is listed here is what this app has: an
    * integration brings its actions, its steps and its connection test with it, an
-   * Event brings its listener, and a `createAction` brings its `execute`. Dropping
+   * Event brings its listener, and a `defineAction` brings its handler. Dropping
    * a line is what turns something off.
    */
   extensions?: RovaExtensions;
@@ -122,8 +122,8 @@ export type RovaClientBundle = {
 export type RovaApp = {
   /**
    * The whole mounted app as one fetch handler. Bun, Deno, Cloudflare Workers,
-   * and Node 18+ all consume this directly; `@rova/core/node` translates it for
-   * hosts that speak Node's `IncomingMessage`/`ServerResponse` instead.
+   * and Node 18+ all consume this directly; `createRequestListener` translates
+   * it for hosts that speak Node's `IncomingMessage`/`ServerResponse` instead.
    */
   fetch: (request: Request) => Promise<Response>;
   /**

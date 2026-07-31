@@ -5,14 +5,15 @@
  * integration package can be written the same way. Anything added here is a
  * promise; add it only when a plugin cannot be written without it.
  *
- * What is below is the whole of it. An integration is a `defineIntegration`
- * holding its credential fields and a `defineStep` per action; a step is an input
- * schema, an output schema, the metadata the editor draws the action with, and a
- * handler that fails with a `StepFailure`; and a connection test, which answers
- * the credentials UI over a Promise rather than inside a handler, provides
- * `VendorTransport` itself. There is nothing to register: an integration is a
- * value a host passes to `createRovaApp`, and the credential fetch and the run
- * logging a plugin used to reach for are `defineStep`'s business.
+ * What is below is the whole of it, for a file that runs on the server. An
+ * integration is a `defineIntegration` holding its credential fields and a
+ * `defineStep` per action; a step is an input schema, an output schema, the
+ * metadata the editor draws the action with, and a handler that fails with a
+ * `StepFailure`; and a connection test, which answers the credentials UI over a
+ * Promise rather than inside a handler, provides `VendorTransport` itself. There
+ * is nothing to register: an integration is a value a host passes to
+ * `createRovaApp`, and the credential fetch and the run logging a plugin used to
+ * reach for are `defineStep`'s business.
  */
 
 export type {
@@ -32,6 +33,25 @@ export {
   StepFailure,
   type StepRunContext,
 } from "#src/backend/lib/steps/define-step";
+/**
+ * The `@rova/shared` vocabulary a server-side plugin file needs beside the
+ * above: the JSON type a vendor payload decodes to and the reader that gets it
+ * there, the Effect Schema helper for a value already typed as JSON, the
+ * error-message helper for a caught exception, and the output-field derivation
+ * an integration's own tests run. A browser file (an integration's `ui.ts`, or a
+ * custom output renderer) does not import this entry point at all, since it must
+ * not pull the backend graph into the client bundle; it reaches
+ * `@rova/shared/plugins/ui-registry` directly instead.
+ */
+export {
+  type JsonObject,
+  type JsonValue,
+  readJsonValue,
+} from "@rova/shared/types/json";
+export { readAs } from "@rova/shared/types/schema";
+export { isoTimestampString } from "@rova/shared/types/timestamp";
+export { getErrorMessage } from "@rova/shared/utils";
+export { requireOutputFieldsFromSchema } from "@rova/shared/workflow/output-fields";
 /**
  * The layer a `defineStep` handler already runs with, exported for the calls a
  * plugin makes outside one: a connection test answers the credentials UI over a
