@@ -17,7 +17,6 @@ import { Controls } from "#src/components/flow-elements/controls";
 import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
 import "@xyflow/react/dist/style.css";
 
-import { PlayCircle, Zap } from "lucide-react";
 import { nanoid } from "nanoid";
 import { Edge } from "#src/components/flow-elements/edge";
 import { Panel } from "#src/components/flow-elements/panel";
@@ -46,7 +45,7 @@ import {
   rightPanelWidthAtom,
   showMinimapAtom,
 } from "#src/lib/workflow-ui-store";
-import type { WorkflowNode, WorkflowNodeType } from "@rova/shared/graph/types";
+import type { WorkflowNode } from "@rova/shared/graph/types";
 import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./connection-handle";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
@@ -57,25 +56,6 @@ import {
   WorkflowContextMenu,
 } from "./workflow-context-menu";
 import { layoutWorkflowNodes } from "./workflow-layout";
-
-const nodeTemplates = [
-  {
-    type: "trigger" as WorkflowNodeType,
-    label: "",
-    description: "",
-    displayLabel: "Lifecycle",
-    icon: PlayCircle,
-    defaultConfig: {},
-  },
-  {
-    type: "action" as WorkflowNodeType,
-    label: "",
-    description: "",
-    displayLabel: "Action",
-    icon: Zap,
-    defaultConfig: {},
-  },
-];
 
 const edgeTypes = {
   animated: Edge.Animated,
@@ -298,9 +278,7 @@ export function WorkflowCanvas() {
 
   const nodeTypes = useMemo(
     () => ({
-      // The serialized node type stays "trigger": it is on the wire and in every
-      // stored graph, while what the builder reads is the Lifecycle Node.
-      trigger: LifecycleNode,
+      lifecycle: LifecycleNode,
       action: ActionNode,
       add: AddNode,
     }),
@@ -320,7 +298,7 @@ export function WorkflowCanvas() {
       }
 
       if (handleType === "target") {
-        return node.type !== "trigger";
+        return node.type !== "lifecycle";
       }
 
       return true;
@@ -406,10 +384,10 @@ export function WorkflowCanvas() {
       nodes: WorkflowNode[];
       edges: XYFlowEdge[];
     }) => {
-      // Triggers cannot be deleted, so a selection holding only a trigger
+      // The Lifecycle Node cannot be deleted, so a selection holding only it
       // deletes nothing. Cancelling keeps its edges and skips the undo step.
       const deletesAnything =
-        nodesToDelete.some((node) => node.data.type !== "trigger") ||
+        nodesToDelete.some((node) => node.data.type !== "lifecycle") ||
         edgesToDelete.length > 0;
 
       if (!deletesAnything) {
@@ -529,12 +507,6 @@ export function WorkflowCanvas() {
         clientY
       );
 
-      // Get the action template
-      const actionTemplate = nodeTemplates.find((t) => t.type === "action");
-      if (!actionTemplate) {
-        return;
-      }
-
       // Get the position in the flow coordinate system
       const position = screenToFlowPosition({
         x: adjustedX,
@@ -548,13 +520,13 @@ export function WorkflowCanvas() {
 
       const newNode: WorkflowNode = {
         id: nanoid(),
-        type: actionTemplate.type,
+        type: "action",
         position,
         data: {
-          label: actionTemplate.label,
-          description: actionTemplate.description,
-          type: actionTemplate.type,
-          config: actionTemplate.defaultConfig,
+          label: "",
+          description: "",
+          type: "action",
+          config: {},
           status: "idle",
         },
         selected: true,

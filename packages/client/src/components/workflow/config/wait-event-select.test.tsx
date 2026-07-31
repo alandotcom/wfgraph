@@ -74,12 +74,12 @@ function withGraph(nodes: WorkflowNode[], children: ReactNode) {
 
 function entryNode(correlationPaths: Record<string, string>): WorkflowNode {
   return {
-    id: "trigger-1",
-    type: "trigger",
+    id: "lifecycle-1",
+    type: "lifecycle",
     position: { x: 0, y: 0 },
     data: {
       label: "Start",
-      type: "trigger",
+      type: "lifecycle",
       config: {
         lifecycleRules: {
           startEvent: "billing/payment.settled",

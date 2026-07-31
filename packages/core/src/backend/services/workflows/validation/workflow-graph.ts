@@ -23,13 +23,13 @@ function hasDuplicates(values: string[]): boolean {
   return new Set(values).size !== values.length;
 }
 
-function hasRootTrigger(input: {
+function hasRootLifecycleNode(input: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
 }): boolean {
   const incoming = new Set(input.edges.map((edge) => edge.target));
   return input.nodes.some(
-    (node) => node.data.type === "trigger" && !incoming.has(node.id)
+    (node) => node.data.type === "lifecycle" && !incoming.has(node.id)
   );
 }
 
@@ -84,7 +84,7 @@ function validateLifecycleOutletEdges(input: {
 
   for (const edge of input.edges) {
     const sourceNode = nodeById.get(edge.source);
-    if (sourceNode?.data.type !== "trigger") {
+    if (sourceNode?.data.type !== "lifecycle") {
       continue;
     }
 
@@ -223,21 +223,21 @@ export function validateWorkflowGraph(
     };
   }
 
-  const hasTriggerNode = normalizedGraph.nodes.some(
-    (node) => getNodeTypeFromSerializedNode(node) === "trigger"
+  const hasLifecycleNode = normalizedGraph.nodes.some(
+    (node) => getNodeTypeFromSerializedNode(node) === "lifecycle"
   );
 
-  if (!hasTriggerNode) {
+  if (!hasLifecycleNode) {
     return {
       valid: false,
-      error: "Workflow must contain at least one trigger node",
+      error: "Workflow must contain at least one Lifecycle Node",
     };
   }
 
-  if (!hasRootTrigger(graphData)) {
+  if (!hasRootLifecycleNode(graphData)) {
     return {
       valid: false,
-      error: "Workflow must contain at least one root trigger node",
+      error: "Workflow must contain at least one root Lifecycle Node",
     };
   }
 

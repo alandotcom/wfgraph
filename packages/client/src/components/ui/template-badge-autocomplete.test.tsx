@@ -50,7 +50,7 @@ const APPOINTMENT_CREATED: EventMetadata = {
   ],
 };
 
-const TRIGGER_TEMPLATE = "{{@trigger_1:Webhook.occurredAt}}";
+const LIFECYCLE_TEMPLATE = "{{@lifecycle_1:Webhook.occurredAt}}";
 const SEND_MESSAGE_STATUS_TEMPLATE = "{{@action_1:Send Message.status}}";
 
 const SEND_MESSAGE_ACTION: ActionMetadata = {
@@ -69,11 +69,11 @@ function seedTemplateContext(selectedNodeId = "wait_1") {
   surface.events = [APPOINTMENT_CREATED];
   const nodes: WorkflowNode[] = [
     {
-      id: "trigger_1",
+      id: "lifecycle_1",
       position: { x: 0, y: 0 },
       data: {
         label: "Webhook",
-        type: "trigger",
+        type: "lifecycle",
         config: {
           lifecycleRules: {
             startEvent: APPOINTMENT_CREATED.name,
@@ -97,7 +97,7 @@ function seedTemplateContext(selectedNodeId = "wait_1") {
   const edges: WorkflowEdge[] = [
     {
       id: "edge_1",
-      source: "trigger_1",
+      source: "lifecycle_1",
       sourceHandle: LIFECYCLE_STARTED_HANDLE,
       target: "wait_1",
     },
@@ -254,7 +254,7 @@ describe("Template badge autocomplete", () => {
     fireEvent.mouseDown(option);
 
     await waitFor(() => {
-      expect(latestValue).toBe(TRIGGER_TEMPLATE);
+      expect(latestValue).toBe(LIFECYCLE_TEMPLATE);
       const badge = textbox.querySelector("[data-template]");
       expect(badge).toBeTruthy();
       expect(badge?.textContent).toBe("Webhook.occurredAt");
@@ -280,7 +280,7 @@ describe("Template badge autocomplete", () => {
     fireEvent.keyDown(window, { key: "Enter" });
 
     await waitFor(() => {
-      expect(latestValue).toBe(TRIGGER_TEMPLATE);
+      expect(latestValue).toBe(LIFECYCLE_TEMPLATE);
       const badge = textbox.querySelector("[data-template]");
       expect(badge).toBeTruthy();
       expect(badge?.textContent).toBe("Webhook.occurredAt");
@@ -304,7 +304,7 @@ describe("Template badge autocomplete", () => {
     fireEvent.mouseDown(option);
 
     await waitFor(() => {
-      expect(latestValue).toBe(TRIGGER_TEMPLATE);
+      expect(latestValue).toBe(LIFECYCLE_TEMPLATE);
       const badge = textbox.querySelector("[data-template]");
       expect(badge).toBeTruthy();
       expect(badge?.textContent).toBe("Webhook.occurredAt");
@@ -406,11 +406,11 @@ describe("Template badge autocomplete", () => {
     const store = getDefaultStore();
     const nodes: WorkflowNode[] = [
       {
-        id: "trigger_1",
+        id: "lifecycle_1",
         position: { x: 0, y: 0 },
         data: {
           label: "Webhook",
-          type: "trigger",
+          type: "lifecycle",
         },
       },
       {
@@ -433,7 +433,7 @@ describe("Template badge autocomplete", () => {
       },
     ];
     const edges: WorkflowEdge[] = [
-      { id: "edge_1", source: "trigger_1", target: "action_1" },
+      { id: "edge_1", source: "lifecycle_1", target: "action_1" },
       { id: "edge_2", source: "action_1", target: "condition_1" },
     ];
 
@@ -477,7 +477,7 @@ describe("Template badge rendering", () => {
     // produces no DOM event, so this is the one thing the editor genuinely has
     // to re-render in response to a React state change.
     const view = render(
-      <UncontrolledTemplateBadgeInput value={TRIGGER_TEMPLATE} />
+      <UncontrolledTemplateBadgeInput value={LIFECYCLE_TEMPLATE} />
     );
 
     const textbox = view.getByRole("textbox");
@@ -488,7 +488,7 @@ describe("Template badge rendering", () => {
     });
 
     getDefaultStore().set(updateNodeDataAtom, {
-      id: "trigger_1",
+      id: "lifecycle_1",
       data: { label: "Incoming Hook" },
     });
 
@@ -503,7 +503,7 @@ describe("Template badge rendering", () => {
     const view = render(<UncontrolledTemplateBadgeInput value="" />);
     const textbox = view.getByRole("textbox");
 
-    view.rerender(<UncontrolledTemplateBadgeInput value={TRIGGER_TEMPLATE} />);
+    view.rerender(<UncontrolledTemplateBadgeInput value={LIFECYCLE_TEMPLATE} />);
 
     await waitFor(() => {
       expect(textbox.querySelector("[data-template]")?.textContent).toBe(
@@ -528,7 +528,7 @@ describe("Template badge rendering", () => {
     const option = await waitFor(() => findTimestampOption());
     fireEvent.mouseDown(option);
 
-    await waitFor(() => expect(latestValue).toBe(TRIGGER_TEMPLATE));
+    await waitFor(() => expect(latestValue).toBe(LIFECYCLE_TEMPLATE));
 
     // Typing after the badge appends to the token, rather than replacing the
     // badge with the label the user can see.
@@ -536,7 +536,7 @@ describe("Template badge rendering", () => {
     fireEvent.input(textbox);
 
     await waitFor(() => {
-      expect(latestValue).toBe(`${TRIGGER_TEMPLATE} done`);
+      expect(latestValue).toBe(`${LIFECYCLE_TEMPLATE} done`);
     });
   });
 });
@@ -586,7 +586,7 @@ describe("Template badge editing", () => {
     await waitFor(() => expect(latestValue).toBe("abc"));
 
     getDefaultStore().set(updateNodeDataAtom, {
-      id: "trigger_1",
+      id: "lifecycle_1",
       data: { label: "Renamed" },
     });
 

@@ -14,14 +14,14 @@ import type { WorkflowNode } from "@rova/shared/graph/types";
 // built-in two, Condition and Wait, ride in on an empty assembly.
 const builtInCatalog = assembleExtensions({}).catalog;
 
-function createTriggerNode(): WorkflowNode {
+function createLifecycleNode(): WorkflowNode {
   return {
-    id: "trigger_1",
-    type: "trigger",
+    id: "lifecycle_1",
+    type: "lifecycle",
     position: { x: 0, y: 0 },
     data: {
-      label: "Trigger",
-      type: "trigger",
+      label: "Lifecycle",
+      type: "lifecycle",
       config: {},
     },
   };
@@ -61,7 +61,7 @@ describe("validateWorkflowActionConfigs", () => {
   it("accepts action nodes with valid system action config", () => {
     const result = validateWorkflowActionConfigs(
       [
-        createTriggerNode(),
+        createLifecycleNode(),
         createActionNode({
           actionType: "Condition",
           condition: "true",
@@ -75,7 +75,7 @@ describe("validateWorkflowActionConfigs", () => {
 
   it("rejects enabled action nodes without actionType", () => {
     const result = validateWorkflowActionConfigs(
-      [createTriggerNode(), createActionNode({})],
+      [createLifecycleNode(), createActionNode({})],
       builtInCatalog
     );
 
@@ -89,7 +89,7 @@ describe("validateWorkflowActionConfigs", () => {
     const actionNode = createActionNode({});
     const result = validateWorkflowActionConfigs(
       [
-        createTriggerNode(),
+        createLifecycleNode(),
         {
           ...actionNode,
           data: {
@@ -106,7 +106,7 @@ describe("validateWorkflowActionConfigs", () => {
 
   it("rejects Condition actions without a condition", () => {
     const result = validateWorkflowActionConfigs(
-      [createTriggerNode(), createActionNode({ actionType: "Condition" })],
+      [createLifecycleNode(), createActionNode({ actionType: "Condition" })],
       builtInCatalog
     );
 
@@ -120,7 +120,7 @@ describe("validateWorkflowActionConfigs", () => {
   it("rejects Wait delay actions without timing configuration", () => {
     const result = validateWorkflowActionConfigs(
       [
-        createTriggerNode(),
+        createLifecycleNode(),
         createActionNode({ actionType: "Wait", waitMode: "delay" }),
       ],
       builtInCatalog
@@ -136,7 +136,7 @@ describe("validateWorkflowActionConfigs", () => {
   it("accepts an event Wait without delay fields", () => {
     const result = validateWorkflowActionConfigs(
       [
-        createTriggerNode(),
+        createLifecycleNode(),
         createActionNode({
           actionType: "Wait",
           waitMode: "event",
@@ -155,7 +155,7 @@ describe("validateWorkflowActionConfigs", () => {
   it("rejects a Wait on events that names none", () => {
     const result = validateWorkflowActionConfigs(
       [
-        createTriggerNode(),
+        createLifecycleNode(),
         createActionNode({ actionType: "Wait", waitMode: "event" }),
       ],
       builtInCatalog
@@ -207,7 +207,7 @@ describe("validateWorkflowActionConfigs", () => {
 
     const result = validateWorkflowActionConfigs(
       [
-        createTriggerNode(),
+        createLifecycleNode(),
         createActionNode({ actionType: "twilio/send-sms" }),
       ],
       twilioCatalog
@@ -223,7 +223,7 @@ describe("validateWorkflowActionConfigs", () => {
   it("rejects plugin actions with missing required fields", () => {
     const result = validateWorkflowActionConfigs(
       [
-        createTriggerNode(),
+        createLifecycleNode(),
         createActionNode({ actionType: "custom/send-message" }),
       ],
       pluginCatalog

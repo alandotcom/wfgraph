@@ -52,7 +52,7 @@ function anAction(
 
 function createNode(input: {
   id: string;
-  type: "trigger" | "action";
+  type: "lifecycle" | "action";
   label: string;
   config?: Record<string, unknown>;
 }): WorkflowNode {
@@ -101,7 +101,7 @@ function anEvent(input: {
 function startedEdge(target: string): WorkflowEdge {
   return createEdge({
     id: `e-${target}`,
-    source: "trigger-1",
+    source: "lifecycle-1",
     sourceHandle: LIFECYCLE_STARTED_HANDLE,
     target,
   });
@@ -119,9 +119,9 @@ function anEntryNode(input: {
   };
 
   return createNode({
-    id: "trigger-1",
-    type: "trigger",
-    label: "Trigger",
+    id: "lifecycle-1",
+    type: "lifecycle",
+    label: "Lifecycle",
     config: { lifecycleRules },
   });
 }
@@ -187,7 +187,7 @@ describe("upstream-node-fields", () => {
     const edges: WorkflowEdge[] = [
       createEdge({
         id: "e1",
-        source: "trigger-1",
+        source: "lifecycle-1",
         sourceHandle: LIFECYCLE_STARTED_HANDLE,
         target: "call-1",
       }),
@@ -201,7 +201,7 @@ describe("upstream-node-fields", () => {
       edges,
     });
     expect(upstreamNodes.map((node) => node.id)).toEqual([
-      "trigger-1",
+      "lifecycle-1",
       "call-1",
       "wait-1",
     ]);
@@ -246,7 +246,7 @@ describe("upstream-node-fields", () => {
       edges: [
         createEdge({
           id: "e1",
-          source: "trigger-1",
+          source: "lifecycle-1",
           sourceHandle: LIFECYCLE_STARTED_HANDLE,
           target: "condition-1",
         }),
@@ -302,13 +302,13 @@ describe("upstream-node-fields", () => {
     const edges: WorkflowEdge[] = [
       createEdge({
         id: "e1",
-        source: "trigger-1",
+        source: "lifecycle-1",
         sourceHandle: LIFECYCLE_CANCELED_HANDLE,
         target: "on-cancel",
       }),
       createEdge({
         id: "e2",
-        source: "trigger-1",
+        source: "lifecycle-1",
         sourceHandle: LIFECYCLE_STARTED_HANDLE,
         target: "either-way",
       }),
@@ -328,7 +328,7 @@ describe("upstream-node-fields", () => {
     // on a start.
     expect(
       getUpstreamFields({ currentNodeId: "either-way", nodes, edges })
-        .filter((field) => field.sourceNodeId === "trigger-1")
+        .filter((field) => field.sourceNodeId === "lifecycle-1")
         .map((field) => field.path)
     ).toEqual(["occurredAt"]);
   });
@@ -398,7 +398,7 @@ describe("upstream-node-fields", () => {
     const edges: WorkflowEdge[] = [
       createEdge({
         id: "e1",
-        source: "trigger-1",
+        source: "lifecycle-1",
         sourceHandle: LIFECYCLE_CANCELED_HANDLE,
         target: "on-cancel",
       }),
@@ -413,8 +413,8 @@ describe("upstream-node-fields", () => {
         path: "occurredAt",
         description: "When the event was raised",
         type: "string",
-        sourceNodeId: "trigger-1",
-        sourceNodeName: "Trigger",
+        sourceNodeId: "lifecycle-1",
+        sourceNodeName: "Lifecycle",
       },
     ]);
   });
@@ -443,7 +443,7 @@ describe("upstream-node-fields", () => {
         }),
       ],
       edges: [
-        createEdge({ id: "e1", source: "trigger-1", target: "action-1" }),
+        createEdge({ id: "e1", source: "lifecycle-1", target: "action-1" }),
       ],
     });
 
@@ -464,9 +464,9 @@ describe("upstream-node-fields", () => {
 
     const nodes: WorkflowNode[] = [
       createNode({
-        id: "trigger-1",
-        type: "trigger",
-        label: "Trigger",
+        id: "lifecycle-1",
+        type: "lifecycle",
+        label: "Lifecycle",
         config: {},
       }),
       createNode({
@@ -484,7 +484,7 @@ describe("upstream-node-fields", () => {
     ];
 
     const edges: WorkflowEdge[] = [
-      createEdge({ id: "e1", source: "trigger-1", target: "action-1" }),
+      createEdge({ id: "e1", source: "lifecycle-1", target: "action-1" }),
       createEdge({ id: "e2", source: "action-1", target: "condition-1" }),
     ];
 
@@ -603,8 +603,8 @@ describe("upstream-node-fields", () => {
 
     const nodes: WorkflowNode[] = [
       createNode({
-        id: "trigger-1",
-        type: "trigger",
+        id: "lifecycle-1",
+        type: "lifecycle",
         label: "Webhook",
         config: {},
       }),
@@ -623,7 +623,7 @@ describe("upstream-node-fields", () => {
     ];
 
     const edges: WorkflowEdge[] = [
-      createEdge({ id: "e1", source: "trigger-1", target: "list-1" }),
+      createEdge({ id: "e1", source: "lifecycle-1", target: "list-1" }),
       createEdge({ id: "e2", source: "list-1", target: "condition-1" }),
     ];
 

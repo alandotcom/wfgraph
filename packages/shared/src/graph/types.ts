@@ -1,7 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { SerializedWorkflowGraphInput } from "#src/graph/schemas";
 
-export type WorkflowNodeType = "trigger" | "action" | "add";
+export type WorkflowNodeType = "lifecycle" | "action" | "add";
 export type ConditionBranch = "true" | "false";
 
 export type WorkflowNodeData = {

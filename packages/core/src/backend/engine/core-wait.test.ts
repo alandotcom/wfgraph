@@ -47,14 +47,14 @@ function waitStepLogs(store: RecordingWorkflowStore) {
   };
 }
 
-function createTriggerNode(id: string): WorkflowNode {
+function createLifecycleNode(id: string): WorkflowNode {
   return {
     id,
-    type: "trigger",
+    type: "lifecycle",
     position: { x: 0, y: 0 },
     data: {
-      label: "Trigger",
-      type: "trigger",
+      label: "Lifecycle",
+      type: "lifecycle",
       config: {},
     },
   };
@@ -78,11 +78,14 @@ function createWaitNode(
 
 function createWaitGraph(config: Record<string, unknown>) {
   return createSerializedWorkflowGraph({
-    nodes: [createTriggerNode("trigger_1"), createWaitNode("wait_1", config)],
+    nodes: [
+      createLifecycleNode("lifecycle_1"),
+      createWaitNode("wait_1", config),
+    ],
     edges: [
       {
         id: "edge_1",
-        source: "trigger_1",
+        source: "lifecycle_1",
         sourceHandle: "started",
         target: "wait_1",
       },
@@ -461,7 +464,7 @@ describe("wait node - event mode", () => {
             event: "billing/payment.settled",
             match: matchOn(
               "appointmentId",
-              "{{@trigger_1:Trigger.appointment.id}}"
+              "{{@lifecycle_1:Lifecycle.appointment.id}}"
             ),
           },
         ],

@@ -76,14 +76,14 @@ const notify = defineIntegration({
   },
 });
 
-function createTriggerNode(id: string): WorkflowNode {
+function createLifecycleNode(id: string): WorkflowNode {
   return {
     id,
-    type: "trigger",
+    type: "lifecycle",
     position: { x: 0, y: 0 },
     data: {
-      label: "Trigger",
-      type: "trigger",
+      label: "Lifecycle",
+      type: "lifecycle",
       config: {},
     },
   };
@@ -104,16 +104,16 @@ function createHostActionNode(id: string, label = "Host Action"): WorkflowNode {
   };
 }
 
-function createTriggerToActionGraph(actionLabel?: string) {
+function createLifecycleToActionGraph(actionLabel?: string) {
   return createSerializedWorkflowGraph({
     nodes: [
-      createTriggerNode("trigger_1"),
+      createLifecycleNode("lifecycle_1"),
       createHostActionNode("action_1", actionLabel),
     ],
     edges: [
       {
         id: "edge_1",
-        source: "trigger_1",
+        source: "lifecycle_1",
         sourceHandle: "started",
         target: "action_1",
       },
@@ -179,7 +179,7 @@ describe("host action execution", () => {
   it("executes a host action and returns its result", async () => {
     const result = await executeWorkflow(
       {
-        graph: createTriggerToActionGraph(),
+        graph: createLifecycleToActionGraph(),
         executionId: "exec_123",
         workflowId: "workflow_1",
       },
@@ -199,7 +199,7 @@ describe("host action execution", () => {
   it("passes the resolved node name into the action's context", async () => {
     await executeWorkflow(
       {
-        graph: createTriggerToActionGraph("Look Up Donor"),
+        graph: createLifecycleToActionGraph("Look Up Donor"),
         executionId: "exec_123",
         workflowId: "workflow_1",
       },
@@ -224,7 +224,7 @@ describe("host action execution", () => {
 
     const result = await executeWorkflow(
       {
-        graph: createTriggerToActionGraph(),
+        graph: createLifecycleToActionGraph(),
         executionId: "exec_456",
         workflowId: "workflow_1",
       },
@@ -248,7 +248,7 @@ describe("host action execution", () => {
       {
         graph: createSerializedWorkflowGraph({
           nodes: [
-            createTriggerNode("trigger_1"),
+            createLifecycleNode("lifecycle_1"),
             {
               id: "action_1",
               type: "action",
@@ -263,7 +263,7 @@ describe("host action execution", () => {
           edges: [
             {
               id: "edge_1",
-              source: "trigger_1",
+              source: "lifecycle_1",
               sourceHandle: "started",
               target: "action_1",
             },
@@ -297,7 +297,7 @@ describe("run persistence through the store port", () => {
   it("writes the terminal run record and its timeline event on success", async () => {
     await executeWorkflow(
       {
-        graph: createTriggerToActionGraph(),
+        graph: createLifecycleToActionGraph(),
         executionId: "exec_success",
         workflowId: "workflow_success",
       },
@@ -324,7 +324,7 @@ describe("run persistence through the store port", () => {
   it("opens and closes a run-log row for every node it runs", async () => {
     await executeWorkflow(
       {
-        graph: createTriggerToActionGraph(),
+        graph: createLifecycleToActionGraph(),
         triggerInput: { donorId: "d_123" },
         executionId: "exec_logs",
         workflowId: "workflow_logs",
@@ -337,10 +337,10 @@ describe("run persistence through the store port", () => {
     expect(store.callsOf("startStepLog")).toEqual([
       {
         executionId: "exec_logs",
-        nodeId: "trigger_1",
-        nodeName: "Trigger",
-        nodeType: "trigger",
-        input: { triggerData: { donorId: "d_123" } },
+        nodeId: "lifecycle_1",
+        nodeName: "Lifecycle",
+        nodeType: "lifecycle",
+        input: { lifecycleData: { donorId: "d_123" } },
       },
       {
         executionId: "exec_logs",
@@ -374,7 +374,7 @@ describe("run persistence through the store port", () => {
 
     await executeWorkflow(
       {
-        graph: createTriggerToActionGraph(),
+        graph: createLifecycleToActionGraph(),
         executionId: "exec_log_failure",
         workflowId: "workflow_log_failure",
       },
@@ -398,7 +398,7 @@ describe("run persistence through the store port", () => {
 
     await executeWorkflow(
       {
-        graph: createTriggerToActionGraph(),
+        graph: createLifecycleToActionGraph(),
         executionId: "exec_failure",
         workflowId: "workflow_failure",
       },
@@ -416,7 +416,7 @@ describe("run persistence through the store port", () => {
   it("labels a test-mode run in its timeline message", async () => {
     await executeWorkflow(
       {
-        graph: createTriggerToActionGraph(),
+        graph: createLifecycleToActionGraph(),
         executionId: "exec_test_mode",
         workflowId: "workflow_test_mode",
         runMode: "test",
@@ -449,7 +449,7 @@ describe("run persistence through the store port", () => {
   it("keeps a node's result when the write closing its row fails", async () => {
     const result = await executeWorkflow(
       {
-        graph: createTriggerToActionGraph(),
+        graph: createLifecycleToActionGraph(),
         executionId: "exec_close_refused",
         workflowId: "workflow_close_refused",
       },
@@ -473,7 +473,7 @@ describe("run persistence through the store port", () => {
   it("fails a node when the write opening its row fails", async () => {
     const result = await executeWorkflow(
       {
-        graph: createTriggerToActionGraph(),
+        graph: createLifecycleToActionGraph(),
         executionId: "exec_open_refused",
         workflowId: "workflow_open_refused",
       },
@@ -484,7 +484,7 @@ describe("run persistence through the store port", () => {
 
     expect(handlerFn).toHaveBeenCalledTimes(0);
     expect(result.success).toBe(false);
-    expect(result.results.trigger_1?.error).toBe("run log unreachable");
+    expect(result.results.lifecycle_1?.error).toBe("run log unreachable");
   });
 
   // Every seam failure the backend answers with is a `Schema.TaggedErrorClass`,
@@ -504,7 +504,7 @@ describe("run persistence through the store port", () => {
 
     await executeWorkflow(
       {
-        graph: createTriggerToActionGraph(),
+        graph: createLifecycleToActionGraph(),
         executionId: "exec_tagged_failure",
         workflowId: "workflow_tagged_failure",
       },
@@ -528,7 +528,7 @@ describe("run persistence through the store port", () => {
 
     const result = await executeWorkflow(
       {
-        graph: createTriggerToActionGraph(),
+        graph: createLifecycleToActionGraph(),
         executionId: "exec_cancel_worded",
         workflowId: "workflow_cancel_worded",
       },
@@ -576,7 +576,7 @@ describe("run persistence through the store port", () => {
 
     await executeWorkflow(
       {
-        graph: createTriggerToActionGraph(),
+        graph: createLifecycleToActionGraph(),
         executionId: "exec_displaced",
         workflowId: "workflow_displaced",
       },
@@ -594,7 +594,7 @@ describe("run persistence through the store port", () => {
   it("announces a fatal failure that did own the terminal write", async () => {
     await executeWorkflow(
       {
-        graph: createTriggerToActionGraph(),
+        graph: createLifecycleToActionGraph(),
         executionId: "exec_fatal",
         workflowId: "workflow_fatal",
       },
@@ -631,7 +631,7 @@ describe("template resolution into action config", () => {
   ): Promise<void> {
     const graph = createSerializedWorkflowGraph({
       nodes: [
-        createTriggerNode("trigger_1"),
+        createLifecycleNode("lifecycle_1"),
         {
           id: "action_1",
           type: "action",
@@ -656,7 +656,7 @@ describe("template resolution into action config", () => {
       edges: [
         {
           id: "edge_1",
-          source: "trigger_1",
+          source: "lifecycle_1",
           sourceHandle: "started",
           target: "action_1",
         },

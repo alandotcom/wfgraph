@@ -38,14 +38,14 @@ function createReplayRuntime(memo: Map<string, unknown>) {
   return createInMemoryWorkflowRuntime({ memo, skipSleep: true });
 }
 
-function createTriggerNode(id: string): WorkflowNode {
+function createLifecycleNode(id: string): WorkflowNode {
   return {
     id,
-    type: "trigger",
+    type: "lifecycle",
     position: { x: 0, y: 0 },
     data: {
-      label: "Trigger",
-      type: "trigger",
+      label: "Lifecycle",
+      type: "lifecycle",
       config: {},
     },
   };
@@ -132,12 +132,12 @@ describe("workflow engine replay safety", () => {
     branchAction.mockClear();
   });
 
-  // Trigger -> Send Email -> Wait -> Send Followup, the shape that produced
+  // Lifecycle -> Send Email -> Wait -> Send Followup, the shape that produced
   // ["send-email", "send-email", "send-followup"] before node work was memoized.
   const waitGraphInput = {
     graph: createSerializedWorkflowGraph({
       nodes: [
-        createTriggerNode("trigger_1"),
+        createLifecycleNode("lifecycle_1"),
         createActionNode("email_1", EMAIL_ACTION_ID, "Send Email"),
         createDelayWaitNode("wait_1"),
         createActionNode("followup_1", FOLLOWUP_ACTION_ID, "Send Followup"),
@@ -145,7 +145,7 @@ describe("workflow engine replay safety", () => {
       edges: [
         {
           id: "edge_1",
-          source: "trigger_1",
+          source: "lifecycle_1",
           sourceHandle: "started",
           target: "email_1",
         },
@@ -207,7 +207,7 @@ describe("workflow engine replay safety", () => {
       actions
     );
 
-    expect(memo.has("node:trigger_1")).toBe(true);
+    expect(memo.has("node:lifecycle_1")).toBe(true);
     expect(memo.has("node:email_1")).toBe(true);
     expect(memo.has("node:followup_1")).toBe(true);
     // The Wait node itself is never wrapped - it suspends the run, and a step
@@ -241,7 +241,7 @@ describe("workflow engine replay safety", () => {
     const fanOutInput = {
       graph: createSerializedWorkflowGraph({
         nodes: [
-          createTriggerNode("trigger_1"),
+          createLifecycleNode("lifecycle_1"),
           createActionNode("fanout_1", BRANCH_ACTION_ID, "Fan Out"),
           createActionNode("left_1", BRANCH_ACTION_ID, "Left Branch"),
           createActionNode("right_1", BRANCH_ACTION_ID, "Right Branch"),
@@ -249,7 +249,7 @@ describe("workflow engine replay safety", () => {
         edges: [
           {
             id: "edge_1",
-            source: "trigger_1",
+            source: "lifecycle_1",
             sourceHandle: "started",
             target: "fanout_1",
           },
@@ -364,7 +364,7 @@ describe("a Date-bearing step output across a replay", () => {
   const clockGraphInput = {
     graph: createSerializedWorkflowGraph({
       nodes: [
-        createTriggerNode("trigger_1"),
+        createLifecycleNode("lifecycle_1"),
         createActionNode("clock_1", CLOCK_ACTION_ID, "Read Clock"),
         createEchoNode("echo_1", "Echo"),
         createDelayWaitNode("wait_1"),
@@ -373,7 +373,7 @@ describe("a Date-bearing step output across a replay", () => {
       edges: [
         {
           id: "edge_1",
-          source: "trigger_1",
+          source: "lifecycle_1",
           sourceHandle: "started",
           target: "clock_1",
         },

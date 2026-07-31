@@ -133,9 +133,9 @@ function ConditionFields({
   return (
     <ConditionBuilderRow
       currentNodeId={selectedNodeId ?? undefined}
-      description="Build a condition from trigger and upstream action output fields. Timestamp fields support relative and absolute time filters."
+      description="Build a condition from the Lifecycle Node and upstream action output fields. Timestamp fields support relative and absolute time filters."
       disabled={disabled}
-      emptyFieldsMessage="No upstream fields available. Connect this node to a trigger or action with typed outputs first."
+      emptyFieldsMessage="No upstream fields available. Connect this node to the Lifecycle Node or an action with typed outputs first."
       fields={fields}
       label="Condition"
       onChange={handleChange}
@@ -244,7 +244,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
               fieldType="timestamp"
               id="waitUntil"
               onChange={(value) => onUpdateConfig({ waitUntil: value })}
-              placeholder="2026-03-10T09:00:00-05:00 or {{@trigger_1:Trigger.appointment.startsAt}}"
+              placeholder="2026-03-10T09:00:00-05:00 or {{@lifecycle_1:Lifecycle.appointment.startsAt}}"
               value={configuredWaitUntil}
             />
             <p className="text-muted-foreground text-xs">

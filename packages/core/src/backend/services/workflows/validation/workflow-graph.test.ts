@@ -7,14 +7,14 @@ import type {
   WorkflowNode,
 } from "@rova/shared/graph/types";
 
-function createBaseTriggerNode(id = "trigger_1"): WorkflowNode {
+function createBaseLifecycleNode(id = "lifecycle_1"): WorkflowNode {
   return {
     id,
-    type: "trigger",
+    type: "lifecycle",
     position: { x: 0, y: 0 },
     data: {
-      label: "Trigger",
-      type: "trigger",
+      label: "Lifecycle",
+      type: "lifecycle",
       config: {},
     },
   };
@@ -60,13 +60,13 @@ function createEdge(
     id,
     source,
     target,
-    ...(source.startsWith("trigger") ? { sourceHandle: "started" } : {}),
+    ...(source.startsWith("lifecycle") ? { sourceHandle: "started" } : {}),
   };
 }
 
 /** An edge leaving the entry node's Canceled outlet. */
 function createCanceledOutletEdge(target: string, id: string): WorkflowEdge {
-  return { id, source: "trigger_1", sourceHandle: "canceled", target };
+  return { id, source: "lifecycle_1", sourceHandle: "canceled", target };
 }
 
 function createConditionEdge(
@@ -86,8 +86,8 @@ function createConditionEdge(
 describe("validateWorkflowGraph", () => {
   it("accepts a valid DAG graph", () => {
     const graph = createSerializedWorkflowGraph({
-      nodes: [createBaseTriggerNode(), createActionNode()],
-      edges: [createEdge("trigger_1", "action_1")],
+      nodes: [createBaseLifecycleNode(), createActionNode()],
+      edges: [createEdge("lifecycle_1", "action_1")],
     });
 
     const result = validateWorkflowGraph(graph);
@@ -99,13 +99,13 @@ describe("validateWorkflowGraph", () => {
     const graph = {
       nodes: [
         {
-          key: "trigger_1",
+          key: "lifecycle_1",
           attributes: {
-            id: "trigger_1",
-            type: "trigger",
+            id: "lifecycle_1",
+            type: "lifecycle",
             position: { x: 0, y: 0 },
             data: {
-              label: "Trigger",
+              label: "Lifecycle",
               // missing data.type on purpose
               config: {},
             },
@@ -124,14 +124,14 @@ describe("validateWorkflowGraph", () => {
       // The node's own fields stay out of the message: the editor put them
       // there, and this string is persisted as a run error.
       expect(result.error).toBe(
-        'nodes[0].attributes.data: Node data needs a type of "trigger", "action", or "add"'
+        'nodes[0].attributes.data: Node data needs a type of "lifecycle", "action", or "add"'
       );
     }
   });
 
   it("rejects mismatched node keys and attribute IDs", () => {
     const graph = createSerializedWorkflowGraph({
-      nodes: [createBaseTriggerNode()],
+      nodes: [createBaseLifecycleNode()],
       edges: [],
     });
 
@@ -155,10 +155,10 @@ describe("validateWorkflowGraph", () => {
 
   it("rejects cyclic graphs", () => {
     const graph = createSerializedWorkflowGraph({
-      nodes: [createBaseTriggerNode(), createActionNode("action_2")],
+      nodes: [createBaseLifecycleNode(), createActionNode("action_2")],
       edges: [
-        createEdge("trigger_1", "action_2", "edge_1"),
-        createEdge("action_2", "trigger_1", "edge_2"),
+        createEdge("lifecycle_1", "action_2", "edge_1"),
+        createEdge("action_2", "lifecycle_1", "edge_2"),
       ],
     });
 
@@ -173,13 +173,13 @@ describe("validateWorkflowGraph", () => {
   it("accepts condition edges with explicit true/false handles", () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
-        createBaseTriggerNode("trigger_1"),
+        createBaseLifecycleNode("lifecycle_1"),
         createConditionActionNode("condition_1"),
         createActionNode("action_true"),
         createActionNode("action_false"),
       ],
       edges: [
-        createEdge("trigger_1", "condition_1", "edge_trigger_condition"),
+        createEdge("lifecycle_1", "condition_1", "edge_lifecycle_condition"),
         createConditionEdge(
           "condition_1",
           "action_true",
@@ -203,12 +203,12 @@ describe("validateWorkflowGraph", () => {
   it("rejects condition edges without explicit branch handles", () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
-        createBaseTriggerNode("trigger_1"),
+        createBaseLifecycleNode("lifecycle_1"),
         createConditionActionNode("condition_1"),
         createActionNode("action_true"),
       ],
       edges: [
-        createEdge("trigger_1", "condition_1", "edge_trigger_condition"),
+        createEdge("lifecycle_1", "condition_1", "edge_lifecycle_condition"),
         createEdge("condition_1", "action_true", "edge_condition_unlabeled"),
       ],
     });
@@ -224,12 +224,12 @@ describe("validateWorkflowGraph", () => {
   it("rejects true/false handles emitted by non-condition nodes", () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
-        createBaseTriggerNode("trigger_1"),
+        createBaseLifecycleNode("lifecycle_1"),
         createActionNode("action_1"),
         createActionNode("action_2"),
       ],
       edges: [
-        createEdge("trigger_1", "action_1", "edge_trigger_action"),
+        createEdge("lifecycle_1", "action_1", "edge_lifecycle_action"),
         createConditionEdge("action_1", "action_2", "true", "edge_invalid"),
       ],
     });
@@ -246,8 +246,8 @@ describe("validateWorkflowGraph", () => {
   // contract: there is no stored data to migrate and no second binding to guess.
   it("rejects an edge that leaves the Lifecycle Node naming no outlet", () => {
     const graph = createSerializedWorkflowGraph({
-      nodes: [createBaseTriggerNode(), createActionNode()],
-      edges: [{ id: "edge_1", source: "trigger_1", target: "action_1" }],
+      nodes: [createBaseLifecycleNode(), createActionNode()],
+      edges: [{ id: "edge_1", source: "lifecycle_1", target: "action_1" }],
     });
 
     const result = validateWorkflowGraph(graph);
@@ -261,12 +261,12 @@ describe("validateWorkflowGraph", () => {
   it("accepts an edge drawn from the Canceled outlet", () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
-        createBaseTriggerNode(),
+        createBaseLifecycleNode(),
         createActionNode("action_1"),
         createActionNode("cleanup_1"),
       ],
       edges: [
-        createEdge("trigger_1", "action_1", "edge_started"),
+        createEdge("lifecycle_1", "action_1", "edge_started"),
         createCanceledOutletEdge("cleanup_1", "edge_canceled"),
       ],
     });
@@ -280,12 +280,12 @@ describe("validateWorkflowGraph", () => {
   it("rejects an edge from the Canceled branch into the Started branch", () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
-        createBaseTriggerNode(),
+        createBaseLifecycleNode(),
         createActionNode("action_1"),
         createActionNode("cleanup_1"),
       ],
       edges: [
-        createEdge("trigger_1", "action_1", "edge_started"),
+        createEdge("lifecycle_1", "action_1", "edge_started"),
         createCanceledOutletEdge("cleanup_1", "edge_canceled"),
         createEdge("cleanup_1", "action_1", "edge_rejoin"),
       ],
@@ -300,14 +300,14 @@ describe("validateWorkflowGraph", () => {
   it("rejects graphs where a node has more than one incoming edge", () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
-        createBaseTriggerNode("trigger_1"),
+        createBaseLifecycleNode("lifecycle_1"),
         createActionNode("action_1"),
         createActionNode("action_2"),
         createActionNode("action_target"),
       ],
       edges: [
-        createEdge("trigger_1", "action_1", "edge_trigger_action_1"),
-        createEdge("trigger_1", "action_2", "edge_trigger_action_2"),
+        createEdge("lifecycle_1", "action_1", "edge_lifecycle_action_1"),
+        createEdge("lifecycle_1", "action_2", "edge_lifecycle_action_2"),
         createEdge("action_1", "action_target", "edge_action_1_target"),
         createEdge("action_2", "action_target", "edge_action_2_target"),
       ],

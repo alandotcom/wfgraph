@@ -114,7 +114,7 @@ export function TemplateAutocomplete({
     for (const node of upstreamNodes) {
       const nodeName = getNodeDisplayName(node);
 
-      if (!fieldType && node.data.type !== "trigger") {
+      if (!fieldType && node.data.type !== "lifecycle") {
         nextOptions.push({
           type: "node",
           rank: 0,

@@ -139,10 +139,10 @@ function graphFor(input: { operator: "before" | "after"; dateTime: string }) {
   return createSerializedWorkflowGraph({
     nodes: [
       {
-        id: "trigger_1",
-        type: "trigger",
+        id: "lifecycle_1",
+        type: "lifecycle",
         position: { x: 0, y: 0 },
-        data: { label: "Trigger", type: "trigger", config: {} },
+        data: { label: "Lifecycle", type: "lifecycle", config: {} },
       },
       conditionNode({
         id: "condition_node",
@@ -169,7 +169,7 @@ function graphFor(input: { operator: "before" | "after"; dateTime: string }) {
           type: "action",
           config: {
             actionType: ECHO_ACTION_ID,
-            startsAt: "{{@trigger_1:Trigger.appointment.startsAt}}",
+            startsAt: "{{@lifecycle_1:Lifecycle.appointment.startsAt}}",
           },
         },
       },
@@ -187,7 +187,7 @@ function graphFor(input: { operator: "before" | "after"; dateTime: string }) {
     edges: [
       {
         id: "edge_t_c",
-        source: "trigger_1",
+        source: "lifecycle_1",
         sourceHandle: "started",
         target: "condition_node",
       },
@@ -364,7 +364,7 @@ describe("an Event's datetime field, end to end", () => {
       actions
     );
 
-    expect(result.results.trigger_1?.data).toEqual(bookedPayload());
+    expect(result.results.lifecycle_1?.data).toEqual(bookedPayload());
   });
 
   it("leaves the payload a Condition read as the text the sender wrote", async () => {
@@ -391,7 +391,7 @@ describe("an Event's datetime field, end to end", () => {
       success: true,
       data: { startsAt: "2026-03-10T09:00:00-05:00" },
     });
-    expect(result.results.trigger_1?.data).toEqual(bookedPayload());
+    expect(result.results.lifecycle_1?.data).toEqual(bookedPayload());
   });
 
   it("refuses a payload whose timestamp field carries no zone", () => {
@@ -455,8 +455,8 @@ describe("an Event's datetime field, end to end", () => {
       actions
     );
 
-    expect(result.results.trigger_1?.success).toBe(true);
-    expect(result.results.trigger_1?.data).toEqual({});
+    expect(result.results.lifecycle_1?.success).toBe(true);
+    expect(result.results.lifecycle_1?.data).toEqual({});
     // Nothing resolved the timestamp, so the comparison is false and the run took
     // the other branch. It ran: an absent payload is not an error.
     expect(result.results.condition_node?.success).toBe(true);

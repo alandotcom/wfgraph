@@ -340,9 +340,9 @@ async function executeWorkflowRun({
   // Set all nodes to idle first
   updateNodesStatus(nodes, updateNodeData, "idle");
 
-  // Immediately set trigger nodes to running for instant visual feedback
+  // Immediately set the Lifecycle Node to running for instant visual feedback
   for (const node of nodes) {
-    if (node.data.type === "trigger") {
+    if (node.data.type === "lifecycle") {
       updateNodeData({ id: node.id, data: { status: "running" } });
     }
   }
@@ -388,7 +388,7 @@ async function executeWorkflowRun({
     setSelectedExecutionId(result.executionId);
   } catch (error) {
     // The mutation cache has already toasted the message. What is left is the
-    // canvas, which still shows the trigger node running.
+    // canvas, which still shows the Lifecycle Node running.
     console.error("Failed to execute workflow:", error);
     updateNodesStatus(nodes, updateNodeData, "error");
     setIsExecuting(false);
@@ -725,7 +725,7 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
     openOverlay(ConfirmOverlay, {
       title: "Clear Workflow",
       message:
-        "Remove every step and connection? The trigger is kept, and this saves right away.",
+        "Remove every step and connection? The Lifecycle Node is kept, and this saves right away.",
       confirmLabel: "Clear Workflow",
       confirmVariant: "destructive" as const,
       destructive: true,

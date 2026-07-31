@@ -7,7 +7,7 @@ import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
-  withDefaultTriggerNode,
+  withDefaultLifecycleNode,
 } from "#src/backend/services/workflows/mappers";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { generateId } from "@rova/shared/utils/id";
@@ -63,7 +63,7 @@ export const postWorkflowsCurrent = Effect.fn("postWorkflowsCurrent")(
     const repo = yield* WorkflowRepo;
 
     const prepared = yield* prepareGraphSave({
-      graph: withDefaultTriggerNode(body.graph),
+      graph: withDefaultLifecycleNode(body.graph),
     });
 
     const existingWorkflow = yield* repo.findCurrent();

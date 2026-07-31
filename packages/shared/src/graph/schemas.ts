@@ -15,8 +15,8 @@
  * Two kinds of object live here and the difference is deliberate. A
  * `Schema.Struct` is closed, and every decode in this project supplies
  * `rejectUnknownKeys`, so a stray key is an error -- that is what stops a
- * duplicated workflow from carrying a trigger config field the trigger never
- * defined. A `Schema.StructWithRest` names the same fields and then admits
+ * duplicated workflow from carrying a Lifecycle Node config field the Lifecycle
+ * Node never defined. A `Schema.StructWithRest` names the same fields and then admits
  * whatever else came with them, which is what the node and edge attributes need:
  * React Flow writes its own bookkeeping onto both, and the editor round-trips
  * fields this schema has never heard of. An index signature skips the
@@ -32,18 +32,18 @@ import { lifecycleRulesSchema } from "#src/lifecycle/lifecycle-rules";
  *
  * The entry node is the Lifecycle Node: its Lifecycle Rules are the declaration
  * the engine reads to decide which Events start a run and what Concurrency does
- * to the runs already going (ADR-0007). There is no trigger type here and no
- * per-type arm, because an entry node no longer has a kind -- what reaches it is
- * an Event, named in the rules.
+ * to the runs already going (ADR-0007). There is no per-type arm, because the
+ * Lifecycle Node no longer has a kind -- what reaches it is an Event, named in
+ * the rules.
  *
  * The payload a run receives belongs to the Event that started or canceled it, so
  * the Events name its shape and the editor derives the fields it offers from
  * them. The rules are the whole of what this node stores.
  */
-const workflowTriggerConfigSchema = Schema.Struct({
+const workflowLifecycleConfigSchema = Schema.Struct({
   lifecycleRules: Schema.optional(lifecycleRulesSchema),
 }).annotate({
-  message: "Trigger config must be an object",
+  message: "Lifecycle config must be an object",
 });
 
 const workflowNodeDataBaseFields = {
@@ -55,11 +55,11 @@ const workflowNodeDataBaseFields = {
   enabled: Schema.optional(Schema.Boolean),
 };
 
-const workflowTriggerNodeDataSchema = Schema.StructWithRest(
+const workflowLifecycleNodeDataSchema = Schema.StructWithRest(
   Schema.Struct({
     ...workflowNodeDataBaseFields,
-    type: Schema.Literal("trigger"),
-    config: Schema.optional(workflowTriggerConfigSchema),
+    type: Schema.Literal("lifecycle"),
+    config: Schema.optional(workflowLifecycleConfigSchema),
   }),
   unknownRest
 );
@@ -71,7 +71,7 @@ const workflowTriggerNodeDataSchema = Schema.StructWithRest(
  * the same values, and would cost every failure message. Effect narrows a union
  * to the arms whose literal-valued fields match the input, and a field holding
  * a union of literals is not one of those: the arm would be tried against every
- * node, so a trigger node with a bad config would be told about `"action" |
+ * node, so a Lifecycle Node with a bad config would be told about `"action" |
  * "add"` as well. One literal per arm is what makes the selection engage.
  */
 function nodeDataWithConfigBag<Type extends string>(type: Type) {
@@ -97,17 +97,17 @@ function nodeDataWithConfigBag<Type extends string>(type: Type) {
  * here, because getting here is exactly `type` not being one of the three.
  */
 export const workflowNodeDataSchema = Schema.Union([
-  workflowTriggerNodeDataSchema,
+  workflowLifecycleNodeDataSchema,
   nodeDataWithConfigBag("action"),
   nodeDataWithConfigBag("add"),
 ]).annotate({
-  message: 'Node data needs a type of "trigger", "action", or "add"',
+  message: 'Node data needs a type of "lifecycle", "action", or "add"',
 });
 
 export const workflowNodeAttributesSchema = Schema.StructWithRest(
   Schema.Struct({
     id: NonEmptyTrimmedString,
-    type: Schema.optional(Schema.String),
+    type: Schema.optional(Schema.Literals(["lifecycle", "action", "add"])),
     // `Schema.Finite` rejects Infinity and NaN. A node position holding either
     // is already corruption, and the editor's save store treats a rejected
     // graph as "nothing to save" rather than surfacing it.

@@ -143,7 +143,7 @@ function checkGraphAndCatalog(input: {
   }
 
   const lifecycleNode = graphValidation.nodes.find(
-    (node) => node.data.type === "trigger"
+    (node) => node.data.type === "lifecycle"
   );
 
   return {

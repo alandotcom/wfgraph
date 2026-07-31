@@ -160,8 +160,8 @@ export function getNodeDisplayName(node: WorkflowNode): string {
     return actionType || "Action";
   }
 
-  if (node.data.type === "trigger") {
-    return "Trigger";
+  if (node.data.type === "lifecycle") {
+    return "Lifecycle";
   }
 
   return "Node";
@@ -192,7 +192,7 @@ export function getNodeOutputFields(
     }
   }
 
-  if (node.data.type === "trigger") {
+  if (node.data.type === "lifecycle") {
     return getEntryNodeOutputFields({
       entryNode: node,
       targetNodeId: request.targetNodeId,

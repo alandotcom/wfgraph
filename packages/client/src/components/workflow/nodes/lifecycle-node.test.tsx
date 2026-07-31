@@ -67,7 +67,7 @@ describe("LifecycleNode handles", () => {
           data={data}
           id="entry"
           selected={false}
-          type="trigger"
+          type="lifecycle"
           {...requiredNodeProps}
         />
       </ReactFlowProvider>
@@ -78,7 +78,7 @@ describe("LifecycleNode handles", () => {
     const view = renderLifecycleNode({
       label: "",
       description: "",
-      type: "trigger",
+      type: "lifecycle",
       config: {},
       status: "idle",
     });

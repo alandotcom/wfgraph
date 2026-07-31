@@ -30,7 +30,7 @@ export function deriveEventSubscriptions(input: {
   // the wait rows come from nodes anywhere in the graph. Read before the walk so
   // node order cannot decide whether a wait row carries its path.
   const entryRules = input.nodes
-    .filter((node) => node.data.type === "trigger")
+    .filter((node) => node.data.type === "lifecycle")
     .map((node) => readLifecycleRules(node.data.config))
     .find((rules) => rules !== undefined);
 
@@ -50,7 +50,7 @@ export function deriveEventSubscriptions(input: {
   };
 
   for (const node of input.nodes) {
-    if (node.data.type === "trigger") {
+    if (node.data.type === "lifecycle") {
       const rules = readLifecycleRules(node.data.config);
       if (rules?.startEvent) {
         add(rules.startEvent, "start");

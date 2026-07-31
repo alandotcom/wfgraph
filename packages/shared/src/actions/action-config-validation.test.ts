@@ -10,14 +10,14 @@ import {
 } from "#src/conditions/conditions";
 import type { WorkflowNode } from "#src/graph/types";
 
-function createTriggerNode(): WorkflowNode {
+function createLifecycleNode(): WorkflowNode {
   return {
-    id: "trigger_1",
-    type: "trigger",
+    id: "lifecycle_1",
+    type: "lifecycle",
     position: { x: 0, y: 0 },
     data: {
-      label: "Trigger",
-      type: "trigger",
+      label: "Lifecycle",
+      type: "lifecycle",
       config: {},
     },
   };
@@ -330,10 +330,10 @@ describe("getMissingRequiredFieldsForNodes", () => {
   it("returns missing required fields only for actionable nodes", () => {
     const result = getMissingRequiredFieldsForNodes({
       nodes: [
-        createTriggerNode(),
+        createLifecycleNode(),
         createActionNode({ actionType: "Condition" }),
         // A wait mode that parks on an Event has to name one, so this fixture
-        // names one: what the case is about is the trigger node being left out.
+        // names one: what the case is about is the Lifecycle Node being left out.
         createActionNode(
           {
             actionType: "Wait",

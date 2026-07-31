@@ -7,7 +7,7 @@ import {
 import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
-  withDefaultTriggerNode,
+  withDefaultLifecycleNode,
 } from "./mappers";
 
 function createWorkflow(overrides: Partial<Workflow> = {}): Workflow {
@@ -67,9 +67,9 @@ describe("workflow mappers", () => {
  * create endpoint and the editor's autosave. An empty graph would otherwise
  * save as a workflow that can never be triggered.
  */
-describe("withDefaultTriggerNode", () => {
-  it("gives an empty graph a webhook trigger to start from", () => {
-    const filled = withDefaultTriggerNode({ nodes: [], edges: [] });
+describe("withDefaultLifecycleNode", () => {
+  it("gives an empty graph a Lifecycle Node to start from", () => {
+    const filled = withDefaultLifecycleNode({ nodes: [], edges: [] });
 
     expect(isSerializedWorkflowGraph(filled)).toBe(true);
     if (!isSerializedWorkflowGraph(filled)) {
@@ -78,7 +78,7 @@ describe("withDefaultTriggerNode", () => {
 
     expect(filled.nodes).toHaveLength(1);
     const node = filled.nodes[0]?.attributes.data;
-    expect(node?.type).toBe("trigger");
+    expect(node?.type).toBe("lifecycle");
     // The entry node starts with nothing configured: what starts a run is the
     // Lifecycle Rules the panel writes, and it has not been near this graph yet.
     expect(node?.config).toEqual({});
@@ -102,13 +102,13 @@ describe("withDefaultTriggerNode", () => {
       edges: [],
     });
 
-    expect(withDefaultTriggerNode(graph)).toBe(graph);
+    expect(withDefaultLifecycleNode(graph)).toBe(graph);
   });
 
   // Deciding whether a value is a graph at all is validation's job, and it runs
   // next, so anything that is not one travels on unchanged rather than being
   // replaced by a graph nobody asked for.
   it("hands back a value that is not a graph", () => {
-    expect(withDefaultTriggerNode("not a graph")).toBe("not a graph");
+    expect(withDefaultLifecycleNode("not a graph")).toBe("not a graph");
   });
 });

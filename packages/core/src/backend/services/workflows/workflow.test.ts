@@ -35,11 +35,11 @@ function graphWith(rules: LifecycleRules): Workflow["graph"] {
     nodes: [
       {
         id: "lifecycle-1",
-        type: "trigger",
+        type: "lifecycle",
         position: { x: 0, y: 0 },
         data: {
           label: "Start",
-          type: "trigger",
+          type: "lifecycle",
           config: { lifecycleRules: rules },
         },
       },

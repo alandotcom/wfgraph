@@ -329,7 +329,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
     frame.confirm({
       title: "Clear Workflow",
       message:
-        "Remove every step and connection? The trigger is kept, and this saves right away.",
+        "Remove every step and connection? The Lifecycle Node is kept, and this saves right away.",
       confirmLabel: "Clear Workflow",
       onConfirm: () => clearWorkflow(),
     });
@@ -497,7 +497,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
 
     return (
       <div className="space-y-4 p-4">
-        {selectedNode.data.type === "trigger" ? (
+        {selectedNode.data.type === "lifecycle" ? (
           /* The Lifecycle Rules are the whole of the entry node's configuration.
              The payload shape is not asked for here: it belongs to the Events the
              rules name, and the editor derives the fields it offers from them. */
@@ -531,12 +531,12 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
         selectedNode.data.config?.actionType ? (
           <div
             className={
-              selectedNode.data.type === "trigger"
+              selectedNode.data.type === "lifecycle"
                 ? "space-y-3 rounded-md border border-muted/70 bg-muted/20 p-3"
                 : "space-y-4"
             }
           >
-            {selectedNode.data.type === "trigger" ? (
+            {selectedNode.data.type === "lifecycle" ? (
               <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
                 Node Metadata
               </p>

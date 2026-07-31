@@ -53,7 +53,7 @@ const decodeEdgeAttributes = Schema.decodeUnknownSync(
 );
 
 function isWorkflowNodeType(value: unknown): value is WorkflowNodeType {
-  return value === "trigger" || value === "action" || value === "add";
+  return value === "lifecycle" || value === "action" || value === "add";
 }
 
 function parseNodeAttributes(attributes: unknown): WorkflowNode {

@@ -481,7 +481,7 @@ Cancel Events and the schedule are present as placeholders, with no control, eac
 the exported interim sentence a save would answer with. A schedule is not in the stored shape
 at all: nothing can write one.
 
-The entry node has no type, and no registry answers for one. `workflowTriggerConfigSchema`
+The entry node has no config type, and no registry answers for one. `workflowLifecycleConfigSchema`
 is one closed struct holding `lifecycleRules` and nothing else, so a stored graph carrying
 any key the panel stopped writing fails to decode, which is the strict contract this repo
 keeps: `triggerType` first, which every graph saved before this batch carries, then

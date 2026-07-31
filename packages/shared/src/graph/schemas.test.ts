@@ -40,13 +40,30 @@ describe("a graph built in process", () => {
         position: { x: 0, y: 0 },
         data: {
           label: "Webhook",
-          type: "trigger",
+          type: "lifecycle",
           config: { lifecycleRules: undefined },
         },
       })
     );
 
     expect(parsed.nodes).toHaveLength(1);
+  });
+
+  // The outer `type` attribute is what React Flow's `nodeTypes` map dispatches
+  // on, and `data.type` is what every validator and the engine read. The two
+  // must agree on the same three-arm union, or a graph can decode clean while
+  // carrying a node React Flow renders as its unstyled default.
+  it("rejects a node whose outer type disagrees with data.type", () => {
+    expect(() =>
+      parseSerializedWorkflowGraph(
+        graphWithNode({
+          id: "n1",
+          type: "trigger",
+          position: { x: 0, y: 0 },
+          data: { label: "Webhook", type: "lifecycle", config: {} },
+        })
+      )
+    ).toThrow();
   });
 
   // Chosen, not inherited: a position holding Infinity is corruption, and the
@@ -80,13 +97,13 @@ describe("node data failure messages", () => {
 
   // One literal `type` per union arm is what lets Effect pick the arm the
   // input was aiming at. Without it every arm is tried and every arm
-  // complains, so a bad trigger config used to be reported beside a demand
-  // that `type` be "action" or "add". The entry node's config is one closed
-  // struct now, so its own field is the whole of what a reader is told.
-  it("names the trigger arm's own problem and not the other arms", () => {
+  // complains, so a bad Lifecycle Node config used to be reported beside a
+  // demand that `type` be "action" or "add". The entry node's config is one
+  // closed struct now, so its own field is the whole of what a reader is told.
+  it("names the Lifecycle Node's own problem and not the other arms", () => {
     const message = messageFor({
       label: "Webhook",
-      type: "trigger",
+      type: "lifecycle",
       config: { lifecycleRules: 42 },
     });
 
@@ -102,7 +119,7 @@ describe("node data failure messages", () => {
   it("names triggerType as the excess key it now is", () => {
     const message = messageFor({
       label: "Webhook",
-      type: "trigger",
+      type: "lifecycle",
       config: { triggerType: "Webhook" },
     });
 
@@ -118,7 +135,7 @@ describe("node data failure messages", () => {
 
     expect(message).not.toContain("sk-live-do-not-echo-this");
     expect(message).toBe(
-      '<root>: Node data needs a type of "trigger", "action", or "add"'
+      '<root>: Node data needs a type of "lifecycle", "action", or "add"'
     );
   });
 });

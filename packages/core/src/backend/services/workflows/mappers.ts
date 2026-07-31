@@ -61,14 +61,14 @@ export function toWorkflowApiPayload(
 }
 
 /**
- * Give an empty graph the trigger every workflow needs to be runnable.
+ * Give an empty graph the Lifecycle Node every workflow needs to be runnable.
  *
  * Both ways a workflow is written for the first time go through here: the
  * create endpoint and the editor's autosave. A graph with nodes is handed back
  * untouched, and so is anything that is not a graph at all, since deciding that
  * is validation's job and it runs next.
  */
-export function withDefaultTriggerNode(graph: unknown): unknown {
+export function withDefaultLifecycleNode(graph: unknown): unknown {
   if (!isSerializedWorkflowGraph(graph) || graph.nodes.length > 0) {
     return graph;
   }
@@ -77,12 +77,12 @@ export function withDefaultTriggerNode(graph: unknown): unknown {
     nodes: [
       {
         id: nanoid(),
-        type: "trigger",
+        type: "lifecycle",
         position: { x: 0, y: 0 },
         data: {
           label: "",
           description: "",
-          type: "trigger",
+          type: "lifecycle",
           config: {},
           status: "idle",
         },

@@ -149,7 +149,7 @@ function WaitSubscriptionRow({
   const entryRules = useMemo(
     () =>
       nodes
-        .filter((node) => node.data.type === "trigger")
+        .filter((node) => node.data.type === "lifecycle")
         .map((node) => readLifecycleRules(node.data.config))
         .find((rules) => rules !== undefined),
     [nodes]

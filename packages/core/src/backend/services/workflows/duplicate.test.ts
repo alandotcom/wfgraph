@@ -18,12 +18,12 @@ import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 const sourceGraph = createSerializedWorkflowGraph({
   nodes: [
     {
-      id: "trigger-1",
-      type: "trigger",
+      id: "lifecycle-1",
+      type: "lifecycle",
       position: { x: 0, y: 0 },
       data: {
         label: "Appointment",
-        type: "trigger",
+        type: "lifecycle",
         config: {
           lifecycleRules: {
             startEvent: "app/appointment.created",
@@ -184,7 +184,7 @@ describe("postWorkflowDuplicate", () => {
         const storedGraph = repo.calls.inserts[0]?.graph;
         assert.isDefined(storedGraph);
         const copiedIds = storedGraph.nodes.map((node) => node.key);
-        assert.notInclude(copiedIds, "trigger-1");
+        assert.notInclude(copiedIds, "lifecycle-1");
         assert.notInclude(copiedIds, "action-1");
         for (const node of storedGraph.nodes) {
           assert.strictEqual(node.attributes.data.status, "idle");

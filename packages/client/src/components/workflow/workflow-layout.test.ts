@@ -47,13 +47,13 @@ describe("layoutWorkflowNodes", () => {
 
   test("is deterministic for the same graph input", async () => {
     const nodes = [
-      buildNode("trigger", { x: 80, y: 80 }, "trigger"),
+      buildNode("lifecycle", { x: 80, y: 80 }, "lifecycle"),
       buildNode("left", { x: 460, y: 260 }),
       buildNode("right", { x: 620, y: 260 }),
     ];
     const edges = [
-      buildEdge("e1", "trigger", "left"),
-      buildEdge("e2", "trigger", "right"),
+      buildEdge("e1", "lifecycle", "left"),
+      buildEdge("e2", "lifecycle", "right"),
     ];
 
     const first = await layoutWorkflowNodes({ nodes, edges });
@@ -69,7 +69,7 @@ describe("layoutWorkflowNodes", () => {
 
   test("falls back to dagre for non-tree graphs", async () => {
     const nodes = [
-      buildNode("a", { x: 0, y: 0 }, "trigger"),
+      buildNode("a", { x: 0, y: 0 }, "lifecycle"),
       buildNode("b", { x: 80, y: 200 }),
       buildNode("c", { x: 220, y: 200 }),
     ];
@@ -86,7 +86,7 @@ describe("layoutWorkflowNodes", () => {
 
   test("ignores dangling edges and still lays out valid nodes", async () => {
     const nodes = [
-      buildNode("a", { x: 140, y: 140 }, "trigger"),
+      buildNode("a", { x: 140, y: 140 }, "lifecycle"),
       buildNode("b", { x: 340, y: 340 }),
     ];
     const edges = [
@@ -106,11 +106,11 @@ describe("layoutWorkflowNodes", () => {
   test("keeps add nodes untouched while reflowing workflow nodes", async () => {
     const addNode = buildNode("add-placeholder", { x: 999, y: 999 }, "add");
     const nodes = [
-      buildNode("trigger", { x: 0, y: 0 }, "trigger"),
+      buildNode("lifecycle", { x: 0, y: 0 }, "lifecycle"),
       buildNode("action", { x: 420, y: 210 }),
       addNode,
     ];
-    const edges = [buildEdge("e1", "trigger", "action")];
+    const edges = [buildEdge("e1", "lifecycle", "action")];
 
     const result = await layoutWorkflowNodes({ nodes, edges });
     const nextAddNode = result.nodes.find((node) => node.id === addNode.id);

@@ -21,12 +21,12 @@ function graphWithRules(rules: LifecycleRules) {
   return createSerializedWorkflowGraph({
     nodes: [
       {
-        id: "trigger-1",
-        type: "trigger",
+        id: "lifecycle-1",
+        type: "lifecycle",
         position: { x: 0, y: 0 },
         data: {
           label: "Appointment",
-          type: "trigger",
+          type: "lifecycle",
           config: { lifecycleRules: rules },
         },
       },
@@ -220,10 +220,10 @@ describe("postWorkflowExecute", () => {
                   graph: createSerializedWorkflowGraph({
                     nodes: [
                       {
-                        id: "trigger-1",
-                        type: "trigger",
+                        id: "lifecycle-1",
+                        type: "lifecycle",
                         position: { x: 0, y: 0 },
-                        data: { label: "Start", type: "trigger", config: {} },
+                        data: { label: "Start", type: "lifecycle", config: {} },
                       },
                     ],
                     edges: [],

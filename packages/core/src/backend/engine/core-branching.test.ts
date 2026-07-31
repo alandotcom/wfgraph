@@ -38,14 +38,14 @@ const actions = createWorkflowActions(
   stubRovaRuntime()
 );
 
-function createTriggerNode(id: string): WorkflowNode {
+function createLifecycleNode(id: string): WorkflowNode {
   return {
     id,
-    type: "trigger",
+    type: "lifecycle",
     position: { x: 0, y: 0 },
     data: {
-      label: "Trigger",
-      type: "trigger",
+      label: "Lifecycle",
+      type: "lifecycle",
       config: {},
     },
   };
@@ -163,7 +163,7 @@ describe("executeWorkflow branch traversal", () => {
   it("does not execute a join node until all inbound dependencies are downstream-ready", async () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
-        createTriggerNode("trigger_1"),
+        createLifecycleNode("lifecycle_1"),
         createConditionNode("action_success", true),
         createUnknownActionNode("action_failure"),
         createConditionNode("join_node", true),
@@ -171,13 +171,13 @@ describe("executeWorkflow branch traversal", () => {
       edges: [
         {
           id: "edge_t_s",
-          source: "trigger_1",
+          source: "lifecycle_1",
           sourceHandle: "started",
           target: "action_success",
         },
         {
           id: "edge_t_f",
-          source: "trigger_1",
+          source: "lifecycle_1",
           sourceHandle: "started",
           target: "action_failure",
         },
@@ -202,7 +202,7 @@ describe("executeWorkflow branch traversal", () => {
   it("executes only the true branch when condition evaluates true", async () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
-        createTriggerNode("trigger_1"),
+        createLifecycleNode("lifecycle_1"),
         createConditionNode("condition_node", true),
         createConditionNode("true_node", true),
         createConditionNode("false_node", true),
@@ -210,7 +210,7 @@ describe("executeWorkflow branch traversal", () => {
       edges: [
         {
           id: "edge_t_c",
-          source: "trigger_1",
+          source: "lifecycle_1",
           sourceHandle: "started",
           target: "condition_node",
         },
@@ -255,7 +255,7 @@ describe("executeWorkflow branch traversal", () => {
   it("executes only the false branch when condition evaluates false", async () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
-        createTriggerNode("trigger_1"),
+        createLifecycleNode("lifecycle_1"),
         createConditionNode("condition_node", false),
         createConditionNode("true_node", true),
         createConditionNode("false_node", true),
@@ -263,7 +263,7 @@ describe("executeWorkflow branch traversal", () => {
       edges: [
         {
           id: "edge_t_c",
-          source: "trigger_1",
+          source: "lifecycle_1",
           sourceHandle: "started",
           target: "condition_node",
         },
@@ -306,7 +306,7 @@ describe("executeWorkflow branch traversal", () => {
   it("fans out to multiple targets on the selected condition branch", async () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
-        createTriggerNode("trigger_1"),
+        createLifecycleNode("lifecycle_1"),
         createConditionNode("condition_node", true),
         createConditionNode("true_node_a", true),
         createConditionNode("true_node_b", true),
@@ -315,7 +315,7 @@ describe("executeWorkflow branch traversal", () => {
       edges: [
         {
           id: "edge_t_c",
-          source: "trigger_1",
+          source: "lifecycle_1",
           sourceHandle: "started",
           target: "condition_node",
         },
@@ -374,7 +374,7 @@ describe("condition context from upstream outputs", () => {
   function createConditionRoutingGraph(expression: string) {
     return createSerializedWorkflowGraph({
       nodes: [
-        createTriggerNode("trigger_1"),
+        createLifecycleNode("lifecycle_1"),
         {
           id: "action_1",
           type: "action",
@@ -392,7 +392,7 @@ describe("condition context from upstream outputs", () => {
       edges: [
         {
           id: "edge_t_a",
-          source: "trigger_1",
+          source: "lifecycle_1",
           sourceHandle: "started",
           target: "action_1",
         },
@@ -447,7 +447,7 @@ describe("condition context from upstream outputs", () => {
   });
 
   it("still reads a field from an output that carries no wrapper", async () => {
-    // Trigger output is a plain record, so its fields sit directly in the context.
+    // The Lifecycle Node's output is a plain record, so its fields sit directly in the context.
     const result = await executeWorkflow(
       {
         graph: createConditionRoutingGraph('payload.plan == "premium"'),
@@ -475,7 +475,7 @@ describe("timestamp conditions against payload values", () => {
   function createGraph(input: { field: string; includeModel: boolean }) {
     return createSerializedWorkflowGraph({
       nodes: [
-        createTriggerNode("trigger_1"),
+        createLifecycleNode("lifecycle_1"),
         createTimestampConditionNode({
           id: "condition_node",
           field: input.field,
@@ -487,7 +487,7 @@ describe("timestamp conditions against payload values", () => {
       edges: [
         {
           id: "edge_t_c",
-          source: "trigger_1",
+          source: "lifecycle_1",
           sourceHandle: "started",
           target: "condition_node",
         },
@@ -639,7 +639,7 @@ describe("conditions on fields named after CEL type constants", () => {
 
     return createSerializedWorkflowGraph({
       nodes: [
-        createTriggerNode("trigger_1"),
+        createLifecycleNode("lifecycle_1"),
         {
           id: "condition_node",
           type: "action",
@@ -660,7 +660,7 @@ describe("conditions on fields named after CEL type constants", () => {
       edges: [
         {
           id: "edge_t_c",
-          source: "trigger_1",
+          source: "lifecycle_1",
           sourceHandle: "started",
           target: "condition_node",
         },

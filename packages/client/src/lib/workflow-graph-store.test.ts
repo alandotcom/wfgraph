@@ -48,12 +48,12 @@ function createGraphStore(nodes: WorkflowNode[], edges: WorkflowEdge[] = []) {
   return store;
 }
 
-function triggerNode(id: string): WorkflowNode {
+function lifecycleNode(id: string): WorkflowNode {
   return {
     id,
-    type: "trigger",
+    type: "lifecycle",
     position: { x: 0, y: 0 },
-    data: { label: id, type: "trigger" },
+    data: { label: id, type: "lifecycle" },
   };
 }
 
@@ -77,7 +77,7 @@ function tick() {
 
 function standardGraph(): [WorkflowNode[], WorkflowEdge[]] {
   return [
-    [triggerNode("t"), actionNode("a"), actionNode("b")],
+    [lifecycleNode("t"), actionNode("a"), actionNode("b")],
     [edge("e1", "t", "a")],
   ];
 }
@@ -251,10 +251,10 @@ describe("graph history", () => {
   });
 
   it("records nothing when a delete removes nothing", () => {
-    const store = createGraphStore([triggerNode("t")], []);
+    const store = createGraphStore([lifecycleNode("t")], []);
 
-    // A trigger cannot be deleted, so this is a no-op and must not consume an
-    // undo step or fire a save.
+    // The Lifecycle Node cannot be deleted, so this is a no-op and must not
+    // consume an undo step or fire a save.
     store.set(onNodesChangeAtom, [{ type: "select", id: "t", selected: true }]);
     store.set(deleteSelectedItemsAtom);
     store.set(clearWorkflowAtom);
@@ -267,13 +267,13 @@ describe("graph history", () => {
 });
 
 describe("clearWorkflowAtom", () => {
-  it("keeps the trigger", () => {
+  it("keeps the Lifecycle Node", () => {
     const store = createGraphStore(...standardGraph());
 
     store.set(clearWorkflowAtom);
 
-    // A graph with no trigger is one the server always rejects, so clearing has
-    // to stop short of removing it.
+    // A graph with no Lifecycle Node is one the server always rejects, so
+    // clearing has to stop short of removing it.
     expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["t"]);
     expect(store.get(edgesAtom)).toEqual([]);
   });

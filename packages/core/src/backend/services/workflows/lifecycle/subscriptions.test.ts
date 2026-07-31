@@ -6,11 +6,11 @@ import { deriveEventSubscriptions } from "./subscriptions";
 function lifecycleNode(rules?: LifecycleRules): WorkflowNode {
   return {
     id: "lifecycle-1",
-    type: "trigger",
+    type: "lifecycle",
     position: { x: 0, y: 0 },
     data: {
       label: "Start",
-      type: "trigger",
+      type: "lifecycle",
       config: rules ? { lifecycleRules: rules } : {},
     },
   };

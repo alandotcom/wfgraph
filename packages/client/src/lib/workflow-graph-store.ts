@@ -211,12 +211,12 @@ export const onNodesChangeAtom = atom(
   (get, set, changes: NodeChange<WorkflowNode>[]) => {
     const currentNodes = get(nodesStateAtom);
 
-    // Trigger nodes are the workflow's entrypoint; the graph is invalid without
-    // one, so drop any attempt to remove them.
+    // Lifecycle Nodes are the workflow's entrypoint; the graph is invalid
+    // without one, so drop any attempt to remove them.
     const filteredChanges = changes.filter((change) => {
       if (change.type === "remove") {
         const nodeToRemove = currentNodes.find((n) => n.id === change.id);
-        return nodeToRemove?.data.type !== "trigger";
+        return nodeToRemove?.data.type !== "lifecycle";
       }
       return true;
     });
@@ -453,7 +453,7 @@ export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
   const currentNodes = get(nodesStateAtom);
 
   const nodeToDelete = currentNodes.find((node) => node.id === nodeId);
-  if (nodeToDelete?.data.type === "trigger") {
+  if (nodeToDelete?.data.type === "lifecycle") {
     return;
   }
 
@@ -499,13 +499,13 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
   const currentEdges = get(edgesStateAtom);
   const selectedNodeIds = new Set(
     currentNodes
-      .filter((node) => node.selected && node.data.type !== "trigger")
+      .filter((node) => node.selected && node.data.type !== "lifecycle")
       .map((node) => node.id)
   );
 
-  // Trigger nodes survive being selected; the graph needs an entrypoint.
+  // Lifecycle Nodes survive being selected; the graph needs an entrypoint.
   const remainingNodes = currentNodes.filter(
-    (node) => node.data.type === "trigger" || !node.selected
+    (node) => node.data.type === "lifecycle" || !node.selected
   );
   const remainingEdges = currentEdges.filter(
     (edge) =>
@@ -516,8 +516,8 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
       )
   );
 
-  // Selecting only a trigger and pressing delete removes nothing, and an undo
-  // step for a change that did not happen is worse than no undo step.
+  // Selecting only the Lifecycle Node and pressing delete removes nothing, and
+  // an undo step for a change that did not happen is worse than no undo step.
   if (
     remainingNodes.length === currentNodes.length &&
     remainingEdges.length === currentEdges.length
@@ -535,24 +535,26 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
 });
 
 /**
- * Strip the workflow back to its trigger.
+ * Strip the workflow back to its Lifecycle Node.
  *
- * Trigger nodes survive, the same way they survive every other delete path: the
- * server rejects a graph with no trigger, so wiping the canvas outright produced
- * something that could never be saved.
+ * The Lifecycle Node survives, the same way it survives every other delete
+ * path: the server rejects a graph with no Lifecycle Node, so wiping the
+ * canvas outright produced something that could never be saved.
  */
 export const clearWorkflowAtom = atom(null, (get, set) => {
   const currentNodes = get(nodesStateAtom);
-  const triggers = currentNodes.filter((node) => node.data.type === "trigger");
+  const lifecycleNodes = currentNodes.filter(
+    (node) => node.data.type === "lifecycle"
+  );
   if (
-    triggers.length === currentNodes.length &&
+    lifecycleNodes.length === currentNodes.length &&
     get(edgesStateAtom).length === 0
   ) {
     return;
   }
 
   pushHistory(get, set);
-  set(nodesStateAtom, triggers);
+  set(nodesStateAtom, lifecycleNodes);
   // Every edge had at least one end on a removed node.
   set(edgesStateAtom, []);
   set(selectedNodeAtom, null);

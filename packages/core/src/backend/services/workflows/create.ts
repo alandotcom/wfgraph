@@ -6,7 +6,7 @@ import { invalidateInngestFunctions } from "#src/backend/lib/effect/inngest-func
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import {
   toWorkflowApiPayload,
-  withDefaultTriggerNode,
+  withDefaultLifecycleNode,
 } from "#src/backend/services/workflows/mappers";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { generateId } from "@rova/shared/utils/id";
@@ -40,7 +40,7 @@ export const postWorkflowsCreate = Effect.fn("postWorkflowsCreate")(
 
     const workflowId = generateId();
     const prepared = yield* prepareGraphSave({
-      graph: withDefaultTriggerNode(body.graph),
+      graph: withDefaultLifecycleNode(body.graph),
     }).pipe(
       // A refused query is not a rejected graph: it says nothing a builder can
       // act on, and the policy below logs it with its cause.

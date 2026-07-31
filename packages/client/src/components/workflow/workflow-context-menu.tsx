@@ -141,10 +141,10 @@ export function WorkflowContextMenu({
     return null;
   }
 
-  // Check if the node is a trigger (can't be deleted)
-  const isTriggerNode = Boolean(
+  // Check if the node is the Lifecycle Node (can't be deleted)
+  const isLifecycleNode = Boolean(
     menuState.nodeId &&
-    nodes.find((n) => n.id === menuState.nodeId)?.data.type === "trigger"
+    nodes.find((n) => n.id === menuState.nodeId)?.data.type === "lifecycle"
   );
 
   const getNodeLabel = () => {
@@ -166,7 +166,7 @@ export function WorkflowContextMenu({
     >
       {menuState.type === "node" && (
         <MenuItem
-          disabled={isTriggerNode}
+          disabled={isLifecycleNode}
           icon={<Trash2 className="size-4" />}
           label={`Delete ${getNodeLabel()}`}
           onClick={handleDeleteNode}

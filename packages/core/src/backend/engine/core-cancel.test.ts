@@ -92,14 +92,14 @@ function withCancelAnswers(
  * stamps the flag, so the engine skips the read outright for a graph naming
  * none, and a run of a rules-free graph would reach no Canceled branch here.
  */
-function createTriggerNode(id: string): WorkflowNode {
+function createLifecycleNode(id: string): WorkflowNode {
   return {
     id,
-    type: "trigger",
+    type: "lifecycle",
     position: { x: 0, y: 0 },
     data: {
-      label: "Trigger",
-      type: "trigger",
+      label: "Lifecycle",
+      type: "lifecycle",
       config: {
         lifecycleRules: {
           startEvent: "app/appointment.created",
@@ -160,7 +160,7 @@ function lifecycleEdge(
   target: string,
   outlet: "started" | "canceled"
 ): WorkflowEdge {
-  return { id, source: "trigger_1", sourceHandle: outlet, target };
+  return { id, source: "lifecycle_1", sourceHandle: outlet, target };
 }
 
 /**
@@ -170,11 +170,11 @@ function lifecycleEdge(
  */
 const cancelGraph = createSerializedWorkflowGraph({
   nodes: [
-    createTriggerNode("trigger_1"),
+    createLifecycleNode("lifecycle_1"),
     createProducerNode("producer_1", "Producer"),
     createRecorderNode("after_1", "After"),
     createRecorderNode("cleanup_1", "Cleanup", {
-      reason: "{{@trigger_1:Trigger.reason}}",
+      reason: "{{@lifecycle_1:Lifecycle.reason}}",
       orderId: "{{@producer_1:Producer.orderId}}",
     }),
   ],
@@ -229,7 +229,7 @@ describe("a run claimed for the Canceled outlet", () => {
   it("ends canceled with nothing to run when the Canceled outlet has no edge", async () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
-        createTriggerNode("trigger_1"),
+        createLifecycleNode("lifecycle_1"),
         createProducerNode("producer_1", "Producer"),
         createRecorderNode("after_1", "After"),
       ],
@@ -298,7 +298,7 @@ describe("a run claimed for the Canceled outlet", () => {
   it("stops a sibling of the node that read the cancel", async () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
-        createTriggerNode("trigger_1"),
+        createLifecycleNode("lifecycle_1"),
         createProducerNode("fan_1", "Fan Out"),
         createRecorderNode("left_1", "Left"),
         createRecorderNode("right_1", "Right"),
@@ -337,7 +337,7 @@ describe("a run claimed for the Canceled outlet", () => {
   it("routes a Wait woken by a cancel nudge to the Canceled branch", async () => {
     const graph = createSerializedWorkflowGraph({
       nodes: [
-        createTriggerNode("trigger_1"),
+        createLifecycleNode("lifecycle_1"),
         createWaitNode("wait_1"),
         createRecorderNode("after_1", "After"),
         createRecorderNode("cleanup_1", "Cleanup"),

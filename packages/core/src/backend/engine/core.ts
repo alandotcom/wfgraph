@@ -731,15 +731,15 @@ async function executeWorkflowInner(
     edgesByTarget.set(edge.target, sources);
   }
 
-  // Find trigger nodes
+  // Find the Lifecycle Nodes
   const nodesWithIncoming = new Set(edges.map((e) => e.target));
-  const triggerNodes = nodes.filter(
-    (node) => node.data.type === "trigger" && !nodesWithIncoming.has(node.id)
+  const lifecycleNodes = nodes.filter(
+    (node) => node.data.type === "lifecycle" && !nodesWithIncoming.has(node.id)
   );
 
-  executionLogger.info("Discovered trigger nodes", {
-    triggerNodeCount: triggerNodes.length,
-    triggerNodeIds: triggerNodes.map((node) => node.id),
+  executionLogger.info("Discovered lifecycle nodes", {
+    lifecycleNodeCount: lifecycleNodes.length,
+    lifecycleNodeIds: lifecycleNodes.map((node) => node.id),
   });
 
   const completedNodes = new Set<string>();
@@ -757,7 +757,7 @@ async function executeWorkflowInner(
   // asked nothing: its run is already canceled, which is what makes a second
   // Cancel Event a no-op.
   const canceledBranchNodeIds = nodesBehindOutlet({
-    entryNodeIds: new Set(triggerNodes.map((node) => node.id)),
+    entryNodeIds: new Set(lifecycleNodes.map((node) => node.id)),
     outlet: LIFECYCLE_CANCELED_HANDLE,
     edges,
   });
@@ -768,7 +768,7 @@ async function executeWorkflowInner(
   // this run's own graph, which the run carries in its Inngest event: a Cancel
   // Event added mid-run reaches the runs that start after it, not the ones
   // already walking.
-  const canBeCanceled = triggerNodes.some(
+  const canBeCanceled = lifecycleNodes.some(
     (node) =>
       (readLifecycleRules(node.data.config)?.cancelEvents.length ?? 0) > 0
   );
@@ -790,8 +790,8 @@ async function executeWorkflowInner(
       }
       return "Action";
     }
-    if (node.data.type === "trigger") {
-      return "Trigger";
+    if (node.data.type === "lifecycle") {
+      return "Lifecycle";
     }
     return node.data.type;
   }
@@ -862,17 +862,17 @@ async function executeWorkflowInner(
     enteredCanceledBranch = true;
 
     const nextNodes: string[] = [];
-    for (const triggerNode of triggerNodes) {
-      outputs[outputKey(triggerNode.id)] = {
-        label: triggerNode.data.label || triggerNode.id,
+    for (const lifecycleNode of lifecycleNodes) {
+      outputs[outputKey(lifecycleNode.id)] = {
+        label: lifecycleNode.data.label || lifecycleNode.id,
         data: pending.payload,
       };
       // The entry node may not have scheduled anything yet, and the branch's
       // first node waits on it the way any node waits on its source.
-      downstreamReadyNodes.add(triggerNode.id);
+      downstreamReadyNodes.add(lifecycleNode.id);
       nextNodes.push(
         ...getLifecycleNextNodeIds({
-          edges: edgesBySource.get(triggerNode.id) ?? [],
+          edges: edgesBySource.get(lifecycleNode.id) ?? [],
           outlet: LIFECYCLE_CANCELED_HANDLE,
         })
       );
@@ -949,7 +949,7 @@ async function executeWorkflowInner(
   }
 
   /**
-   * The node's own work: the trigger step, the action step, or the wait.
+   * The node's own work: the Lifecycle Node's step, the action step, or the wait.
    *
    * This is the unit the durable runtime memoizes, so it deliberately does not
    * schedule downstream nodes - Inngest forbids nesting one step inside
@@ -973,16 +973,16 @@ async function executeWorkflowInner(
     };
     let conditionValue: boolean | undefined;
 
-    if (node.data.type === "trigger") {
-      namedNodeLogger.debug("Executing trigger node");
+    if (node.data.type === "lifecycle") {
+      namedNodeLogger.debug("Executing lifecycle node");
 
       // The entry node's output is the payload and nothing else. The Event's own
       // schema validated it at intake, which is the only gate it passes through,
       // and a key the engine added here would shadow a payload field of the same
       // name.
-      const triggerData: JsonObject = triggerInput ?? {};
+      const lifecycleData: JsonObject = triggerInput ?? {};
 
-      const triggerContext: NodeContext = {
+      const lifecycleContext: NodeContext = {
         executionId,
         nodeId: node.id,
         nodeName,
@@ -991,18 +991,18 @@ async function executeWorkflowInner(
 
       // The entry node does no work, and its row exists so that a run's timeline
       // opens with the payload it started from.
-      const triggerResult = await runWithStepLog(
+      const lifecycleResult = await runWithStepLog(
         {
           store,
-          context: triggerContext,
-          input: { triggerData },
+          context: lifecycleContext,
+          input: { lifecycleData },
         },
-        () => Promise.resolve({ success: true as const, data: triggerData })
+        () => Promise.resolve({ success: true as const, data: lifecycleData })
       );
 
       result = {
-        success: triggerResult.success,
-        data: triggerResult.data,
+        success: lifecycleResult.success,
+        data: lifecycleResult.data,
       };
     } else if (node.data.type === "action") {
       const config = node.data.config || {};
@@ -1118,7 +1118,7 @@ async function executeWorkflowInner(
       namedNodeLogger.error("Unknown node type");
       result = {
         success: false,
-        error: `Unknown node type "${node.data.type}" in node "${node.data.label || node.id}". Expected "trigger" or "action".`,
+        error: `Unknown node type "${node.data.type}" in node "${node.data.label || node.id}". Expected "lifecycle" or "action".`,
       };
     }
 
@@ -1266,7 +1266,7 @@ async function executeWorkflowInner(
           // a Cancel Event claimed.
           const outgoingEdges = edgesBySource.get(nodeId) || [];
           const nextNodes =
-            node.data.type === "trigger"
+            node.data.type === "lifecycle"
               ? getLifecycleNextNodeIds({
                   edges: outgoingEdges,
                   outlet: LIFECYCLE_STARTED_HANDLE,
@@ -1304,10 +1304,12 @@ async function executeWorkflowInner(
     }
   }
 
-  // Execute from each trigger node in parallel
+  // Execute from each lifecycle node in parallel
   try {
-    executionLogger.info("Starting execution from trigger nodes");
-    await Promise.all(triggerNodes.map((trigger) => executeNode(trigger.id)));
+    executionLogger.info("Starting execution from lifecycle nodes");
+    await Promise.all(
+      lifecycleNodes.map((lifecycleNode) => executeNode(lifecycleNode.id))
+    );
 
     const finalSuccess = Object.values(results).every((r) => r.success);
     const duration = Date.now() - workflowStartTime;

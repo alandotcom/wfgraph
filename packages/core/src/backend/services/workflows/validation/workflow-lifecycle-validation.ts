@@ -40,7 +40,7 @@ export function validateWorkflowEvents(
   catalog: ExtensionCatalog
 ): WorkflowLifecycleValidationResult {
   for (const node of nodes) {
-    if (node.data.type === "trigger") {
+    if (node.data.type === "lifecycle") {
       const rules = readLifecycleRules(node.data.config);
       if (rules) {
         const check = checkLifecycleRules({ rules, catalog });

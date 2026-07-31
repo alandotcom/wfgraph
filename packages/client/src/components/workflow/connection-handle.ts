@@ -61,7 +61,7 @@ export function normalizeSourceHandleForConnection(input: {
 
   const sourceNode = nodes.find((node) => node.id === sourceNodeId);
 
-  if (sourceNode?.data.type === "trigger") {
+  if (sourceNode?.data.type === "lifecycle") {
     return isLifecycleOutlet(sourceHandle)
       ? sourceHandle
       : LIFECYCLE_STARTED_HANDLE;

@@ -6,12 +6,12 @@ import {
 } from "@rova/shared/lifecycle/lifecycle-outlets";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 
-function triggerNode(id = "entry"): WorkflowNode {
+function lifecycleNode(id = "entry"): WorkflowNode {
   return {
     id,
-    type: "trigger",
+    type: "lifecycle",
     position: { x: 0, y: 0 },
-    data: { label: "", type: "trigger", config: {} },
+    data: { label: "", type: "lifecycle", config: {} },
   };
 }
 
@@ -44,7 +44,7 @@ describe("normalizeSourceHandleForConnection", () => {
   it("keeps the Canceled handle when that is what was dragged", () => {
     expect(
       normalizeSourceHandleForConnection({
-        nodes: [triggerNode()],
+        nodes: [lifecycleNode()],
         edges: [],
         sourceNodeId: "entry",
         sourceHandle: LIFECYCLE_CANCELED_HANDLE,
@@ -55,7 +55,7 @@ describe("normalizeSourceHandleForConnection", () => {
   it("keeps the Started handle when that is what was dragged", () => {
     expect(
       normalizeSourceHandleForConnection({
-        nodes: [triggerNode()],
+        nodes: [lifecycleNode()],
         edges: [],
         sourceNodeId: "entry",
         sourceHandle: LIFECYCLE_STARTED_HANDLE,
@@ -66,7 +66,7 @@ describe("normalizeSourceHandleForConnection", () => {
   it("falls back to Started for a connection made with no handle to read", () => {
     expect(
       normalizeSourceHandleForConnection({
-        nodes: [triggerNode()],
+        nodes: [lifecycleNode()],
         edges: [],
         sourceNodeId: "entry",
         sourceHandle: null,
