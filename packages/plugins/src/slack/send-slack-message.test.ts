@@ -133,7 +133,7 @@ describe("sendSlackMessageHandler", () => {
       }).pipe(withTransport)
   );
 
-  it.effect("fails with the message the vendor's refusal carries", () =>
+  it.effect("fails with the message the system's refusal carries", () =>
     Effect.gen(function* () {
       mocks.callSlack.mockReturnValue(
         Effect.fail({ message: "channel_not_found" })

@@ -6,7 +6,7 @@
  * default the first `fetch` anything in the process saw would serve every later
  * request, which production never notices and a suite stubbing fetch per case
  * does. Two runs against two stubs is what says the lookup happens per call, and
- * it is the whole reason `vendor-transport.ts` exists rather than
+ * it is the whole reason `external-transport.ts` exists rather than
  * `FetchHttpClient.layer` being provided directly.
  */
 
@@ -59,12 +59,12 @@ describe("the transport a step's handler runs with", () => {
   it("reaches whichever fetch is installed when the step runs", async () => {
     stubFetch({ id: "first" });
     expect(
-      await run({ url: "https://vendor.example/thing", _context: CONTEXT })
+      await run({ url: "https://example.test/thing", _context: CONTEXT })
     ).toEqual({ success: true, data: { id: "first" } });
 
     stubFetch({ id: "second" });
     expect(
-      await run({ url: "https://vendor.example/thing", _context: CONTEXT })
+      await run({ url: "https://example.test/thing", _context: CONTEXT })
     ).toEqual({ success: true, data: { id: "second" } });
   });
 });

@@ -4,7 +4,7 @@
  * One call is made against Resend in this plugin, `POST /emails`, plus a
  * credential check. The `resend` SDK was a thin wrapper over those, so the calls
  * are written out here instead. Everything after the request is described in
- * `vendor-http.ts`, so what is left here is the bearer token, the two endpoints,
+ * `external-http.ts`, so what is left here is the bearer token, the two endpoints,
  * and how Resend's error body reads.
  *
  * The request body uses Resend's own field names, which are snake_case on the
@@ -17,7 +17,11 @@ import type { JsonObject, JsonValue } from "@rova/core/plugin";
 import type { Effect } from "effect";
 import { Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
-import { callVendor, parsePayload, type VendorError } from "#src/vendor-http";
+import {
+  callExternal,
+  parsePayload,
+  type ExternalError,
+} from "@rova/core/plugin";
 
 const RESEND_API_BASE = "https://api.resend.com";
 
@@ -49,12 +53,12 @@ export function readResendError(payload: JsonValue | undefined) {
  * documented resource says so, because reporting success there would tell the
  * run an email went out and leave nothing to look it up by.
  */
-export function describeResendFailure(error: VendorError): string {
-  if (error._tag === "VendorUnreachable") {
+export function describeResendFailure(error: ExternalError): string {
+  if (error._tag === "ExternalUnreachable") {
     return error.message;
   }
 
-  if (error._tag === "VendorUnreadable") {
+  if (error._tag === "ExternalUnreadable") {
     return `Resend answered ${error.status} with an unrecognized body`;
   }
 
@@ -74,9 +78,9 @@ function requestResend<S extends Schema.ConstraintDecoder<unknown>>(
      */
     idempotencyKey?: string;
   }
-): Effect.Effect<S["Type"], VendorError, HttpClient.HttpClient> {
-  return callVendor({
-    vendor: "Resend",
+): Effect.Effect<S["Type"], ExternalError, HttpClient.HttpClient> {
+  return callExternal({
+    system: "Resend",
     url: `${RESEND_API_BASE}${path}`,
     method: init.method,
     headers: { authorization: `Bearer ${apiKey}` },
@@ -93,7 +97,7 @@ export function sendResendEmail(
   apiKey: string,
   payload: JsonObject,
   idempotencyKey?: string
-): Effect.Effect<{ id: string }, VendorError, HttpClient.HttpClient> {
+): Effect.Effect<{ id: string }, ExternalError, HttpClient.HttpClient> {
   return requestResend(apiKey, "/emails", sentEmailSchema, {
     method: "POST",
     jsonBody: payload,
@@ -107,6 +111,6 @@ export function sendResendEmail(
  */
 export function listResendDomains(
   apiKey: string
-): Effect.Effect<unknown, VendorError, HttpClient.HttpClient> {
+): Effect.Effect<unknown, ExternalError, HttpClient.HttpClient> {
   return requestResend(apiKey, "/domains", Schema.Unknown, { method: "GET" });
 }

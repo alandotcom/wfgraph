@@ -7,12 +7,12 @@
  *
  * Slack's HTTP layer is unusual in one way worth knowing: a rejected request
  * still answers 200, with `ok: false` and an error slug in the body. That is
- * what `refusedInBody` below tells `vendor-http.ts` to look for, so the slug
+ * what `refusedInBody` below tells `external-http.ts` to look for, so the slug
  * arrives as the same refusal a 4xx would be. A status Slack does not use for
  * its own answers stays the plain HTTP failure it always was, which is the same
  * distinction @slack/web-api drew between its PlatformError and HTTPError codes.
  *
- * The retry the SDK did and this did not now lives in `vendor-http.ts`, honouring
+ * The retry the SDK did and this did not now lives in `external-http.ts`, honouring
  * `Retry-After` on a 429. It reaches a Slack call only when the caller says the
  * call is safe to repeat, because Slack spells even its reads as POSTs and this
  * module cannot tell one from the other by the method alone.
@@ -22,7 +22,11 @@ import type { JsonObject, JsonValue } from "@rova/core/plugin";
 import type { Effect } from "effect";
 import { Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
-import { callVendor, parsePayload, type VendorError } from "#src/vendor-http";
+import {
+  callExternal,
+  parsePayload,
+  type ExternalError,
+} from "@rova/core/plugin";
 
 const SLACK_API_BASE = "https://slack.com/api";
 
@@ -57,12 +61,12 @@ export function readSlackError(
 }
 
 /** What Slack said, in one sentence a person reads. */
-export function describeSlackFailure(error: VendorError): string {
-  if (error._tag === "VendorUnreachable") {
+export function describeSlackFailure(error: ExternalError): string {
+  if (error._tag === "ExternalUnreachable") {
     return error.message;
   }
 
-  if (error._tag === "VendorUnreadable") {
+  if (error._tag === "ExternalUnreadable") {
     return `HTTP ${error.status}`;
   }
 
@@ -79,9 +83,9 @@ export function callSlack<S extends Schema.ConstraintDecoder<unknown>>(
   method: string,
   schema: S,
   options: { body?: JsonObject; safeToRepeat?: true } = {}
-): Effect.Effect<S["Type"], VendorError, HttpClient.HttpClient> {
-  return callVendor({
-    vendor: "Slack",
+): Effect.Effect<S["Type"], ExternalError, HttpClient.HttpClient> {
+  return callExternal({
+    system: "Slack",
     url: `${SLACK_API_BASE}/${method}`,
     method: "POST",
     headers: {

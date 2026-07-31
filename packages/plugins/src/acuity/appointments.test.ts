@@ -745,7 +745,7 @@ describe("an appointment through the encode", () => {
       }).pipe(withTransport)
   );
 
-  // An appointment type is the other vendor shape these actions answer with, and
+  // An appointment type is the other wire shape these actions answer with, and
   // every one of its fields tolerates an absent key: what Acuity omitted stays
   // omitted rather than failing the encode.
   it.effect("keeps a sparse appointment type on the way out", () =>

@@ -1,5 +1,5 @@
 import { listResendDomains, readResendError } from "#src/resend/client";
-import { runVendorCall } from "#src/vendor-http";
+import { callExternalAsync } from "@rova/core/plugin";
 import type { IntegrationTestResult } from "@rova/core/plugin";
 
 export async function testResend(
@@ -17,7 +17,7 @@ export async function testResend(
   // A connection test answers the credentials UI over a Promise, so this is
   // where the effect is run and the transport provided. The step reaches Resend
   // through the same client without any of that, because `defineStep` does it.
-  const result = await runVendorCall(
+  const result = await callExternalAsync(
     listResendDomains(apiKey),
     (error) => error
   );
@@ -29,7 +29,7 @@ export async function testResend(
   const { failure } = result;
 
   // A request that never arrived has no HTTP status to report.
-  if (failure._tag === "VendorUnreachable") {
+  if (failure._tag === "ExternalUnreachable") {
     return {
       success: false,
       error: failure.message,
@@ -38,7 +38,7 @@ export async function testResend(
   }
 
   const body =
-    failure._tag === "VendorRejected"
+    failure._tag === "ExternalRejected"
       ? readResendError(failure.payload)
       : undefined;
 

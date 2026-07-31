@@ -211,7 +211,7 @@ same call with a different bundle. Neither package depends on the other.
 
 ### Built-in integrations
 
-`@rova/core` carries no vendor SDKs. The built-in integrations live in
+`@rova/core` carries no third-party SDKs. The built-in integrations live in
 `@rova/plugins` as values, and passing them is what turns them on:
 
 ```ts
@@ -227,7 +227,7 @@ Each is also exported by name, for a host listing some of the six rather than al
 them. The editor lists whatever the server assembled, so an integration a host left
 out is absent from the action selector and can have no connection stored for it.
 That narrows what reaches `createRovaApp` and not what the process loads: three of
-the six carry a vendor SDK, and `@rova/plugins` imports all six as values, so those
+the six carry an SDK, and `@rova/plugins` imports all six as values, so those
 SDKs load with the package either way. What the static import buys is the timing of a
 failure, since a missing SDK is then a crash at boot rather than one run failing.
 
@@ -427,7 +427,8 @@ the model looks like this. An Event Author designs against the shape those defin
 An integration's server half builds against `@rova/core/plugin` and nothing else, so an
 outside package can be written the same way. That surface exports `defineIntegration`,
 `credentialFields`, `CredentialsOf`, `checkIntegration`, `defineStep`, `StepFailure`,
-`StepRunContext`, `IntegrationTestResult`, and `VendorTransport`.
+`StepRunContext`, `IntegrationTestResult`, `callExternal`, `callExternalAsync` and
+`ExternalTransport`.
 
 Its browser half is the one gap. `@rova/plugins/ui` exports the built-in icons and output
 renderers as one record keyed by integration type, and the editor imports that record by
@@ -445,7 +446,7 @@ import {
   StepFailure,
 } from "@rova/core/plugin";
 import { Effect, Schema } from "effect";
-// Your own vendor client. It answers an Effect, which the handler yields directly.
+// Your own client over `callExternal`. It answers an Effect the handler yields.
 import { createThing } from "#src/my-service/client";
 
 // `credentialFields` is an identity function with a `const` type parameter. It
@@ -467,7 +468,7 @@ export const myService = defineIntegration({
   label: "My Service",
   description: "What this integration does",
   credentials: myServiceCredentials,
-  // The test reaches the vendor, so it stays behind a dynamic import until
+  // The test reaches the system, so it stays behind a dynamic import until
   // someone presses "Test connection".
   test: async () => (await import("#src/my-service/test")).testMyService,
   // The record key is the action slug, and the only place it exists: the action
@@ -528,18 +529,18 @@ cannot encode fails the node once, naming the field path, rather than spending
 retries on a certainty.
 
 **The output encode is a trim.** A key the output schema does not declare does not
-survive it, so a step handing back a vendor object whole has to describe every field
+survive it, so a step handing back a system's object whole has to describe every field
 it means to pass on. `Schema.StructWithRest` over a `Schema.Record` rest is the other
 spelling, for a shape that is genuinely open.
 
 **Which optional spelling, on which side.** The codec rewrites `optional(X)` to
 `optionalKey(NullOr(X))`. An input field takes `optionalKey(X)`, because the engine
-sends an absent key for a field a builder left blank and never sends a null. A
-vendor-derived output field takes `optionalKey(NullOr(X))`, the one spelling that
-survives both a key the vendor omitted and a null it sent.
+sends an absent key for a field a builder left blank and never sends a null. An
+output field derived from a system's payload takes `optionalKey(NullOr(X))`, the
+one spelling that survives both a key the system omitted and a null it sent.
 
 **A handler sits inline, and that is the only spelling.** An integration is the one
-file, however many actions it declares, and its vendor SDK is a plain import of that
+file, however many actions it declares, and its SDK, when it has one, is a plain import of that
 file. `@rova/plugins` imports all six built-ins as values, so their SDKs are hard
 dependencies of the package and load with it whatever a host goes on to list (see
 "Built-in integrations" above for what that timing buys).
@@ -557,7 +558,7 @@ work without required, and make the rest tolerant. Acuity is the worked example,
 that lesson cost five actions.
 
 `packages/plugins/src/AGENTS.md` is the full guide, with the file layout, the
-vendor HTTP layer, the config field types, and the testing pattern.
+external HTTP layer, the config field types, and the testing pattern.
 
 ## Package exports
 

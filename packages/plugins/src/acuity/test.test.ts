@@ -3,7 +3,7 @@
  *
  * The seam is the SDK, stubbed the way `appointments.test.ts` stubs it, because
  * this is the one integration whose connection test builds an `Acuity` client
- * rather than reaching a vendor over `fetch`.
+ * rather than reaching a system over `fetch`.
  */
 
 import { AcuityError } from "@fountain-bio/acuity";

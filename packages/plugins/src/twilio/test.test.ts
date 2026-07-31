@@ -1,7 +1,7 @@
 /**
  * The Test connection button, for Twilio.
  *
- * The seam is `fetch`: `runVendorCall` provides the transport itself, so a case
+ * The seam is `fetch`: `callExternalAsync` provides the transport itself, so a case
  * says what Twilio answered and reads the verdict back.
  */
 

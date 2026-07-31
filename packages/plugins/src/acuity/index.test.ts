@@ -14,7 +14,7 @@ function outputFieldsOf(slug: keyof typeof acuity.actions) {
  * about the payloads Acuity sends.
  *
  * The appointment cases assert individual paths rather than a full ordered list:
- * a thirty-line list per action over a vendor's payload is a list nobody reads and
+ * a thirty-line list per action over a system's payload is a list nobody reads and
  * everybody re-pastes. An exact list stays where the payload is this repo's own,
  * the way `twilio/index.test.ts` writes one. The wire shape itself is pinned in
  * `appointments.test.ts`, against a fixture built from a recorded response.
@@ -52,7 +52,7 @@ describe("the acuity integration", () => {
     ]);
   });
 
-  // These paths are asserted rather than taken on the vendor's word. An SDK type is
+  // These paths are asserted rather than taken on the system's word. An SDK type is
   // a claim about the wire, and this one was wrong twice before 0.1.0 fixed it: it
   // named the timezone `calendarTimeZone` where Acuity sends `timezone`, and it put
   // an intake answer one level above where it lives.

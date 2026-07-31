@@ -2,15 +2,15 @@ import { assert, describe, expect, it } from "@effect/vitest";
 import { afterEach, beforeEach } from "vitest";
 import { Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { VendorTransport } from "@rova/core/plugin";
+import { ExternalTransport } from "#src/backend/extensions/steps/external-transport";
 import {
-  callVendor,
+  callExternal,
   parsePayload,
-  type VendorError,
-  VendorRejected,
-  type VendorRequest,
-  VendorUnreadable,
-} from "#src/vendor-http";
+  type ExternalError,
+  ExternalRejected,
+  type ExternalRequest,
+  ExternalUnreadable,
+} from "#src/backend/extensions/steps/external-http";
 
 const realFetch = globalThis.fetch;
 let requests: Request[] = [];
@@ -35,18 +35,18 @@ afterEach(() => {
 
 const thing = Schema.Struct({ id: Schema.String });
 
-const request: VendorRequest<typeof thing> = {
-  vendor: "Vendor",
-  url: "https://vendor.example/things",
+const request: ExternalRequest<typeof thing> = {
+  system: "Example",
+  url: "https://example.test/things",
   method: "POST",
   headers: { authorization: "Bearer k" },
   schema: thing,
 };
 
 function call<S extends Schema.ConstraintDecoder<unknown>>(
-  spec: VendorRequest<S>
-): Effect.Effect<S["Type"], VendorError> {
-  return callVendor(spec).pipe(Effect.provide(VendorTransport));
+  spec: ExternalRequest<S>
+): Effect.Effect<S["Type"], ExternalError> {
+  return callExternal(spec).pipe(Effect.provide(ExternalTransport));
 }
 
 /**
@@ -54,8 +54,8 @@ function call<S extends Schema.ConstraintDecoder<unknown>>(
  * succeeds fails the flip instead, which is what makes the test say so.
  */
 function failure<S extends Schema.ConstraintDecoder<unknown>>(
-  spec: VendorRequest<S>
-): Effect.Effect<VendorError, S["Type"]> {
+  spec: ExternalRequest<S>
+): Effect.Effect<ExternalError, S["Type"]> {
   return Effect.flip(call(spec));
 }
 
@@ -63,15 +63,15 @@ function failure<S extends Schema.ConstraintDecoder<unknown>>(
  * The two narrowings a test needs before it can read a status off a failure.
  * `instanceof` is what tells the compiler which of the three it is holding.
  */
-function refusal(error: VendorError): VendorRejected {
-  if (error instanceof VendorRejected) {
+function refusal(error: ExternalError): ExternalRejected {
+  if (error instanceof ExternalRejected) {
     return error;
   }
   throw new Error(`expected a refusal, got ${error._tag}`);
 }
 
-function unreadable(error: VendorError): VendorUnreadable {
-  if (error instanceof VendorUnreadable) {
+function unreadable(error: ExternalError): ExternalUnreadable {
+  if (error instanceof ExternalUnreadable) {
     return error;
   }
   throw new Error(`expected an unreadable body, got ${error._tag}`);
@@ -89,7 +89,7 @@ const settle = Effect.promise(
   () => new Promise<void>((resolve) => setImmediate(resolve))
 );
 
-describe("callVendor", () => {
+describe("callExternal", () => {
   it("passes the method, headers, and body through", async () => {
     stubFetch(() => Response.json({ id: "1" }));
 
@@ -98,13 +98,13 @@ describe("callVendor", () => {
     );
 
     const sent = requests[0];
-    expect(sent?.url).toBe("https://vendor.example/things");
+    expect(sent?.url).toBe("https://example.test/things");
     expect(sent?.method).toBe("POST");
     expect(sent?.headers.get("authorization")).toBe("Bearer k");
     expect(await sent?.text()).toBe(JSON.stringify({ hello: "there" }));
   });
 
-  it("sends an idempotency key as the header the vendors read", async () => {
+  it("sends an idempotency key as the header these systems read", async () => {
     stubFetch(() => Response.json({ id: "1" }));
 
     await Effect.runPromise(call({ ...request, idempotencyKey: "exec_42" }));
@@ -118,7 +118,7 @@ describe("callVendor", () => {
     expect(await Effect.runPromise(call(request))).toEqual({ id: "1" });
   });
 
-  it("keeps a failure status as a refusal carrying the vendor's body", async () => {
+  it("keeps a failure status as a refusal carrying the system's body", async () => {
     stubFetch(() => Response.json({ message: "nope" }, { status: 422 }));
 
     const error = refusal(await Effect.runPromise(failure(request)));
@@ -127,7 +127,7 @@ describe("callVendor", () => {
     assert.deepStrictEqual(error.payload, { message: "nope" });
   });
 
-  // A 204, an empty body, and HTML from a proxy in front of the vendor all read
+  // A 204, an empty body, and HTML from a proxy in front of the system all read
   // as no payload at all. The status is then the whole story: a success status
   // with nothing to decode is unreadable, a failure status is a bare refusal.
   it("finds no payload when there is no JSON body", async () => {
@@ -164,7 +164,7 @@ describe("callVendor", () => {
 
     const error = await Effect.runPromise(failure(request));
 
-    assert.strictEqual(error._tag, "VendorUnreachable");
+    assert.strictEqual(error._tag, "ExternalUnreachable");
     assert.strictEqual(error.message, "ECONNREFUSED");
   });
 
@@ -173,11 +173,11 @@ describe("callVendor", () => {
 
     const error = await Effect.runPromise(failure(request));
 
-    assert.strictEqual(error._tag, "VendorUnreachable");
+    assert.strictEqual(error._tag, "ExternalUnreachable");
     assert.strictEqual(error.message, "timeout");
   });
 
-  it("reads a refusal out of a success body when the vendor puts one there", async () => {
+  it("reads a refusal out of a success body when the system puts one there", async () => {
     stubFetch(() => Response.json({ ok: false, error: "invalid_auth" }));
 
     const error = refusal(
@@ -191,7 +191,7 @@ describe("callVendor", () => {
 });
 
 describe("the timeout", () => {
-  it.effect("calls a vendor that never answers unreachable", () =>
+  it.effect("calls a system that never answers unreachable", () =>
     Effect.gen(function* () {
       stubFetch(() => new Promise<Response>(() => undefined));
 
@@ -201,21 +201,21 @@ describe("the timeout", () => {
 
       const error = yield* Fiber.join(fiber);
 
-      assert.strictEqual(error._tag, "VendorUnreachable");
-      assert.strictEqual(error.message, "Vendor did not answer within 10s");
+      assert.strictEqual(error._tag, "ExternalUnreachable");
+      assert.strictEqual(error.message, "Example did not answer within 10s");
     })
   );
 });
 
 /**
- * The retry policy lives in `vendor-http.ts` and is stated in the comment above
+ * The retry policy lives in `external-http.ts` and is stated in the comment above
  * `RETRY_ATTEMPTS`. These pin the decisions in it: what is retried, how long the
  * wait is, that a `Retry-After` in the form the RFC gives replaces that wait,
  * how long the loop as a whole may run, and that a request a repeat could do
  * twice is not retried at all.
  */
 describe("the retry policy", () => {
-  const readable: VendorRequest<typeof thing> = {
+  const readable: ExternalRequest<typeof thing> = {
     ...request,
     method: "GET",
   };
@@ -244,7 +244,7 @@ describe("the retry policy", () => {
       yield* settle;
       assert.strictEqual(stub.attempts(), 1);
 
-      // Two seconds into the three the vendor asked for, nothing has moved.
+      // Two seconds into the three the system asked for, nothing has moved.
       yield* TestClock.adjust("2 seconds");
       yield* settle;
       assert.strictEqual(stub.attempts(), 1);
@@ -295,7 +295,7 @@ describe("the retry policy", () => {
 
       const error = yield* Fiber.join(fiber);
 
-      assert.strictEqual(error._tag, "VendorRejected");
+      assert.strictEqual(error._tag, "ExternalRejected");
       assert.strictEqual(stub.attempts(), 3);
     })
   );
@@ -319,7 +319,7 @@ describe("the retry policy", () => {
       const fiber = yield* Effect.forkChild(failure(readable));
       yield* settle;
 
-      // The wait the vendor asked for, then the attempt after it hanging until
+      // The wait the system asked for, then the attempt after it hanging until
       // the per-attempt timeout fires.
       yield* TestClock.adjust("10 seconds");
       yield* settle;
@@ -328,7 +328,7 @@ describe("the retry policy", () => {
 
       const error = yield* Fiber.join(fiber);
 
-      assert.strictEqual(error._tag, "VendorUnreachable");
+      assert.strictEqual(error._tag, "ExternalUnreachable");
       assert.strictEqual(attempts, 2);
     })
   );
@@ -413,7 +413,7 @@ describe("the retry policy", () => {
     })
   );
 
-  // A vendor asking for a longer wait than this module will sit through is not
+  // A system asking for a longer wait than this module will sit through is not
   // having a hiccup, so the failure goes out to the engine instead.
   it.effect("does not wait out a Retry-After past the ceiling", () =>
     Effect.gen(function* () {

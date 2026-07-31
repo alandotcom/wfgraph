@@ -1,10 +1,11 @@
 /**
  * The HTTP transport a step's effect runs with.
  *
- * `defineStep` provides this to every handler, which is what lets a plugin call
- * a vendor without saying where its HTTP client comes from. A connection test
- * is still a Promise at its edge, so it runs its own effect and provides this
- * layer itself, which is why `@rova/core/plugin` exports it.
+ * `defineStep` provides this to every handler, which is what lets an
+ * integration call an external system without saying where its HTTP client
+ * comes from. `callExternalAsync` provides it for the one caller that is still
+ * a Promise at its edge, a connection test, so nothing outside this package
+ * names the layer.
  */
 
 import { Layer } from "effect";
@@ -20,7 +21,7 @@ import { FetchHttpClient, type HttpClient } from "effect/unstable/http";
  * test that stubs fetch per case. Handing the reference a function that looks
  * the global up per call puts that lookup back where it was.
  */
-export const VendorTransport: Layer.Layer<HttpClient.HttpClient> =
+export const ExternalTransport: Layer.Layer<HttpClient.HttpClient> =
   Layer.provide(
     FetchHttpClient.layer,
     Layer.succeed(

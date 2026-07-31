@@ -4,7 +4,7 @@
  *
  * One file, because only the server imports it. The editor gets this plugin's
  * metadata as JSON over `/api/extensions`, so nothing here reaches a browser
- * bundle and the vendor client below costs the browser nothing. The icon is the
+ * bundle and the system client below costs the browser nothing. The icon is the
  * exception, since a React component cannot be serialized: it stays in `ui.ts`,
  * which only the browser imports.
  */
@@ -85,7 +85,7 @@ const sendEmailInput = Schema.Struct({
  * What a sent email leaves for the nodes downstream of it.
  *
  * `optionalKey(NullOr(...))` on the way out, which is the one spelling that survives
- * both a key the handler leaves out and a null it writes where the vendor sent
+ * both a key the handler leaves out and a null it writes where the system sent
  * nothing.
  */
 const sendEmailOutput = Schema.Struct({

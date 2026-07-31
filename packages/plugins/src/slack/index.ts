@@ -61,7 +61,7 @@ const sendSlackMessageInput = Schema.Struct({
  * What a posted message leaves for the nodes downstream of it.
  *
  * `optionalKey(NullOr(...))` on the way out, which is the one spelling that survives
- * both a key the handler leaves out and a null it writes where the vendor sent
+ * both a key the handler leaves out and a null it writes where the system sent
  * nothing.
  */
 const sendSlackMessageOutput = Schema.Struct({

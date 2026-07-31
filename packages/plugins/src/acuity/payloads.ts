@@ -2,7 +2,7 @@
  * The wire shapes Acuity's API answers with.
  *
  * Modelled on what the API sends rather than on the SDK's types: the SDK casts the
- * response without validating it, so these describe a vendor's JSON directly. This
+ * response without validating it, so these describe a system's JSON directly. This
  * layer is owned by no single action -- every action whose output nests an
  * appointment, an appointment type, or an availability slot reads from here.
  */
@@ -33,26 +33,26 @@ export function describedNumber(description: string) {
 }
 
 /**
- * A field of a vendor's payload, as an output schema may describe it.
+ * A field of a system's payload, as an output schema may describe it.
  *
- * `optionalKey(NullOr(...))` is the one spelling that survives everything a vendor
+ * `optionalKey(NullOr(...))` is the one spelling that survives everything a system
  * sends: an absent key, an explicit `null`, or the value. `optional(X)` refuses the
  * null and `NullishOr(X)` refuses the absent key, and either refusal fails the
  * encode and so the whole step. The picker reads the same `nullable` off this as it
  * did off the stricter spellings, so nothing is lost by tolerating both.
  */
-function vendorField<S extends Schema.Codec<unknown>>(field: S) {
+function externalField<S extends Schema.Codec<unknown>>(field: S) {
   return Schema.optionalKey(Schema.NullOr(field));
 }
 
 /** The same tolerance for a whole number the picker offers. */
-function vendorNumber(description: string) {
-  return vendorField(describedNumber(description));
+function externalNumber(description: string) {
+  return externalField(describedNumber(description));
 }
 
 /** The same tolerance for a string the picker offers. */
-function vendorText(description: string) {
-  return vendorField(Schema.String.annotate({ description }));
+function externalText(description: string) {
+  return externalField(Schema.String.annotate({ description }));
 }
 
 /**
@@ -66,9 +66,9 @@ function vendorText(description: string) {
  * in the run log.
  */
 const formAnswerSchema = Schema.Struct({
-  id: vendorNumber("Answer ID"),
-  fieldID: vendorNumber("Form field ID"),
-  name: vendorText("Question the client answered"),
+  id: externalNumber("Answer ID"),
+  fieldID: externalNumber("Form field ID"),
+  name: externalText("Question the client answered"),
   value: Schema.optionalKey(
     Schema.NullOr(
       Schema.Union([Schema.String, Schema.mutable(Schema.Array(Schema.String))])
@@ -85,8 +85,8 @@ const formAnswerSchema = Schema.Struct({
  * appointment that has an intake form.
  */
 const appointmentFormSchema = Schema.Struct({
-  id: vendorNumber("Form ID"),
-  name: vendorText("Form name"),
+  id: externalNumber("Form ID"),
+  name: externalText("Form name"),
   values: Schema.optionalKey(
     Schema.NullOr(
       Schema.mutable(Schema.Array(formAnswerSchema)).annotate({
@@ -100,7 +100,7 @@ const appointmentFormSchema = Schema.Struct({
  * Acuity's appointment, as the API sends it.
  *
  * Two fields are required, because the actions read them to answer with and a
- * payload without them is not an appointment: everything else is a `vendorField`.
+ * payload without them is not an appointment: everything else is an `externalField`.
  * That is deliberate rather than lazy. This describes somebody else's JSON, the SDK
  * validates none of it, and a field this schema insists on that a real payload
  * omits fails the encode and so fails the step.
@@ -110,31 +110,31 @@ export const appointmentSchema = Schema.Struct({
   datetime: Schema.String.annotate({
     description: "Appointment start, ISO 8601 with offset",
   }),
-  firstName: vendorText("Client first name"),
-  lastName: vendorText("Client last name"),
-  email: vendorText("Client email address"),
-  phone: vendorText("Client phone number"),
-  date: vendorText("Appointment date, as Acuity writes it for people"),
-  endDate: vendorText("Appointment end date, as Acuity writes it for people"),
-  time: vendorText("Appointment start time"),
-  endTime: vendorText("Appointment end time"),
-  duration: vendorText("Duration in minutes"),
-  timezone: vendorText("The appointment's IANA timezone"),
+  firstName: externalText("Client first name"),
+  lastName: externalText("Client last name"),
+  email: externalText("Client email address"),
+  phone: externalText("Client phone number"),
+  date: externalText("Appointment date, as Acuity writes it for people"),
+  endDate: externalText("Appointment end date, as Acuity writes it for people"),
+  time: externalText("Appointment start time"),
+  endTime: externalText("Appointment end time"),
+  duration: externalText("Duration in minutes"),
+  timezone: externalText("The appointment's IANA timezone"),
   // Acuity sends this on every appointment and documents it nowhere. It matches
   // `timezone` unless the request asked for a different one.
-  calendarTimezone: vendorText("IANA timezone of the calendar that owns it"),
-  type: vendorText("Appointment type name"),
-  appointmentTypeID: vendorNumber("Appointment type ID"),
-  calendar: vendorText("Calendar name"),
-  calendarID: vendorNumber("Calendar ID"),
+  calendarTimezone: externalText("IANA timezone of the calendar that owns it"),
+  type: externalText("Appointment type name"),
+  appointmentTypeID: externalNumber("Appointment type ID"),
+  calendar: externalText("Calendar name"),
+  calendarID: externalNumber("Calendar ID"),
   // A string on some payloads and a number on others, the way the type's own price
   // is. The picker has no single type for a union and drops it; declaring it is what
   // keeps it through the encode and into the run log.
   price: Schema.optionalKey(
     Schema.NullOr(Schema.Union([Schema.String, Schema.Finite]))
   ),
-  paid: vendorText("Whether the appointment is paid"),
-  notes: vendorText("Appointment notes"),
+  paid: externalText("Whether the appointment is paid"),
+  notes: externalText("Appointment notes"),
   forms: Schema.optionalKey(
     Schema.NullOr(
       Schema.mutable(Schema.Array(appointmentFormSchema)).annotate({
@@ -142,17 +142,17 @@ export const appointmentSchema = Schema.Struct({
       })
     )
   ),
-  noShow: vendorField(
+  noShow: externalField(
     Schema.Boolean.annotate({ description: "Marked as a no-show" })
   ),
-  canceled: vendorField(
+  canceled: externalField(
     Schema.Boolean.annotate({
       description: "Whether the appointment is canceled",
     })
   ),
   certificate: opaqueJson,
   package: opaqueJson,
-  scheduledBy: vendorText(
+  scheduledBy: externalText(
     "Who scheduled it, or null for a client not logged in"
   ),
 });
@@ -162,21 +162,21 @@ export const appointmentSchema = Schema.Struct({
  *
  * Same rule as the appointment above: `id` is what identifies one, and everything
  * else tolerates an absent key and an explicit null, because this describes a
- * vendor's JSON. `price` arrives as a string on some types and a number on others,
+ * system's JSON. `price` arrives as a string on some types and a number on others,
  * which the picker has no single type for and drops; it is declared so that the
  * encode keeps it.
  */
 export const appointmentTypeSchema = Schema.Struct({
   id: describedNumber("Appointment type ID"),
-  name: vendorText("Appointment type name"),
-  active: vendorField(
+  name: externalText("Appointment type name"),
+  active: externalField(
     Schema.Boolean.annotate({ description: "Whether the type is bookable" })
   ),
-  description: vendorText("Appointment type description"),
-  duration: vendorNumber("Duration in minutes"),
-  category: vendorText("Category name"),
-  color: vendorText("Calendar colour"),
-  private: vendorField(
+  description: externalText("Appointment type description"),
+  duration: externalNumber("Duration in minutes"),
+  category: externalText("Category name"),
+  color: externalText("Calendar colour"),
+  private: externalField(
     Schema.Boolean.annotate({
       description: "Whether the type is hidden from the public scheduler",
     })
@@ -184,14 +184,14 @@ export const appointmentTypeSchema = Schema.Struct({
   // The three kinds Acuity documents, written out rather than as a bare string: the
   // condition builder offers them as choices. A kind this list does not have still
   // encodes, because the field tolerates anything the union admits or a null.
-  type: vendorField(
+  type: externalField(
     Schema.Literals(["service", "class", "series"]).annotate({
       description: "Kind of type: service, class, or series",
     })
   ),
-  classSize: vendorNumber("Seats in a class, if it is one"),
-  paddingAfter: vendorNumber("Minutes of padding after the appointment"),
-  paddingBefore: vendorNumber("Minutes of padding before the appointment"),
+  classSize: externalNumber("Seats in a class, if it is one"),
+  paddingAfter: externalNumber("Minutes of padding after the appointment"),
+  paddingBefore: externalNumber("Minutes of padding before the appointment"),
   calendarIDs: Schema.optionalKey(
     Schema.NullOr(
       Schema.mutable(Schema.Array(Schema.Finite)).annotate({

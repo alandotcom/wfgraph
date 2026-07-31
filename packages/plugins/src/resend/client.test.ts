@@ -1,4 +1,4 @@
-import { VendorTransport } from "@rova/core/plugin";
+import { ExternalTransport } from "@rova/core/plugin";
 import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { afterEach, beforeEach } from "vitest";
@@ -34,7 +34,7 @@ function stubFetch(
 /** A call that succeeds fails the flip, which is what makes the test say so. */
 const failure = Effect.flip;
 
-const withTransport = Effect.provide(VendorTransport);
+const withTransport = Effect.provide(ExternalTransport);
 
 beforeEach(() => {
   requests = [];
@@ -96,13 +96,13 @@ describe("sendResendEmail", () => {
         sendResendEmail("re_key", { subject: "Hi" })
       );
 
-      expect(error._tag).toBe("VendorRejected");
-      expect(error._tag === "VendorRejected" ? error.status : undefined).toBe(
+      expect(error._tag).toBe("ExternalRejected");
+      expect(error._tag === "ExternalRejected" ? error.status : undefined).toBe(
         422
       );
       expect(describeResendFailure(error)).toBe("The `to` field is required.");
       expect(
-        error._tag === "VendorRejected" && readResendError(error.payload)
+        error._tag === "ExternalRejected" && readResendError(error.payload)
       ).toEqual({
         statusCode: 422,
         name: "validation_error",
@@ -121,10 +121,10 @@ describe("sendResendEmail", () => {
         sendResendEmail("re_key", { subject: "Hi" })
       );
 
-      expect(error._tag).toBe("VendorUnreadable");
-      expect(error._tag === "VendorUnreadable" ? error.status : undefined).toBe(
-        200
-      );
+      expect(error._tag).toBe("ExternalUnreadable");
+      expect(
+        error._tag === "ExternalUnreadable" ? error.status : undefined
+      ).toBe(200);
       expect(describeResendFailure(error)).toBe(
         "Resend answered 200 with an unrecognized body"
       );
@@ -139,7 +139,7 @@ describe("sendResendEmail", () => {
         sendResendEmail("re_key", { subject: "Hi" })
       );
 
-      expect(error._tag).toBe("VendorUnreachable");
+      expect(error._tag).toBe("ExternalUnreachable");
       expect(describeResendFailure(error)).toBe("ECONNRESET");
     }).pipe(withTransport)
   );

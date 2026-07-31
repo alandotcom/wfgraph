@@ -4,7 +4,7 @@ import {
   describeSlackFailure,
   readSlackError,
 } from "#src/slack/client";
-import { runVendorCall } from "#src/vendor-http";
+import { callExternalAsync } from "@rova/core/plugin";
 import type { IntegrationTestResult } from "@rova/core/plugin";
 
 // auth.test is Slack's own "is this token any good" call: it takes no arguments
@@ -31,7 +31,7 @@ export async function testSlack(
   // A connection test answers the credentials UI over a Promise, so this is
   // where the effect is run and the transport provided. The step reaches Slack
   // through the same client without any of that, because `defineStep` does it.
-  const result = await runVendorCall(
+  const result = await callExternalAsync(
     callSlack(apiKey, "auth.test", authTestSchema, { safeToRepeat: true }),
     (error) => error
   );
@@ -44,7 +44,7 @@ export async function testSlack(
 
   // A request that never arrived has no HTTP status to report, so the transport
   // error is the whole story.
-  if (failure._tag === "VendorUnreachable") {
+  if (failure._tag === "ExternalUnreachable") {
     return {
       success: false,
       error: failure.message,
@@ -56,7 +56,7 @@ export async function testSlack(
   // something in front of it did. The two are worded differently because only
   // the first names something a user can act on.
   const slackError =
-    failure._tag === "VendorRejected"
+    failure._tag === "ExternalRejected"
       ? readSlackError(failure.payload)
       : undefined;
 

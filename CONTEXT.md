@@ -108,3 +108,24 @@ One run of one workflow, started by a Start Event, a schedule, or a manual
 test. Ends with exactly one status: completed, canceled, superseded, or
 failed.
 _Avoid_: workflow (a workflow is the definition; an Execution is one run of it)
+
+### Extensions
+
+**Internal Extension**:
+Work that runs inside the host's own process. Its Events arrive because the
+host sent them, and its actions need no credential and reach nothing over the
+network. `defineEvent` and `defineAction` are how one is written. Who wrote it
+decides nothing: a published package of pure-compute actions is internal too.
+
+**External System**:
+A system Rova reaches over HTTP, holding credentials an operator supplied.
+`defineIntegration` and `defineStep` are how one is written, and
+`callExternal` is the one call that reaches it, carrying the timeout, the
+retry schedule, and the rule about when a request may be sent twice.
+_Avoid_: vendor (the retired word, which named who was called rather than what
+the boundary guarantees)
+
+**Connection**:
+One set of stored credentials for one External System, with an id and a name.
+An application may hold several for the same system, which is two Slack
+workspaces or two Twilio accounts. An action node names the one it runs as.

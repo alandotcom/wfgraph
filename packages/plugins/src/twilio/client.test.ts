@@ -1,4 +1,4 @@
-import { VendorTransport } from "@rova/core/plugin";
+import { ExternalTransport } from "@rova/core/plugin";
 import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { afterEach, beforeEach } from "vitest";
@@ -39,7 +39,7 @@ function stubFetch(
 /** A call that succeeds fails the flip, which is what makes the test say so. */
 const failure = Effect.flip;
 
-const withTransport = Effect.provide(VendorTransport);
+const withTransport = Effect.provide(ExternalTransport);
 
 beforeEach(() => {
   requests = [];
@@ -139,11 +139,11 @@ describe("createTwilioMessage", () => {
         createTwilioMessage(credentials, { To: "nope", Body: "Hi" })
       );
 
-      expect(error._tag).toBe("VendorRejected");
+      expect(error._tag).toBe("ExternalRejected");
       expect(describeTwilioFailure(error)).toBe("Invalid parameter: To");
 
       const body =
-        error._tag === "VendorRejected"
+        error._tag === "ExternalRejected"
           ? readTwilioError(error.payload)
           : undefined;
       expect(body).toEqual({
@@ -164,7 +164,7 @@ describe("createTwilioMessage", () => {
           createTwilioMessage(credentials, { To: "+1555", Body: "Hi" })
         );
 
-        expect(error._tag).toBe("VendorRejected");
+        expect(error._tag).toBe("ExternalRejected");
         expect(describeTwilioFailure(error)).toBe("HTTP 502");
       }).pipe(withTransport)
   );
@@ -179,7 +179,7 @@ describe("createTwilioMessage", () => {
         createTwilioMessage(credentials, { To: "+1555", Body: "Hi" })
       );
 
-      expect(error._tag).toBe("VendorUnreadable");
+      expect(error._tag).toBe("ExternalUnreadable");
       expect(describeTwilioFailure(error)).toBe(
         "Twilio answered 200 with an unrecognized body"
       );
@@ -205,7 +205,7 @@ describe("fetchTwilioAccount", () => {
 
   // On the live clock, because reading the account is a GET and a GET that
   // never arrives is retried: under the test clock the backoff between attempts
-  // would never elapse. What that schedule does is vendor-http.test.ts's
+  // would never elapse. What that schedule does is external-http.test.ts's
   // subject; here it is just time the call takes.
   it.live("reports an unreachable Twilio with no status at all", () =>
     Effect.gen(function* () {
@@ -213,7 +213,7 @@ describe("fetchTwilioAccount", () => {
 
       const error = yield* failure(fetchTwilioAccount(credentials));
 
-      expect(error._tag).toBe("VendorUnreachable");
+      expect(error._tag).toBe("ExternalUnreachable");
       expect(describeTwilioFailure(error)).toBe("socket hang up");
     }).pipe(withTransport)
   );

@@ -22,7 +22,7 @@ import type {
   StepEnvironment,
   StepFactory,
 } from "#src/backend/extensions/steps/step-runner";
-import { VendorTransport } from "#src/backend/extensions/steps/vendor-transport";
+import { ExternalTransport } from "#src/backend/extensions/steps/external-transport";
 import type {
   ActionConfigField,
   ActionConfigFieldBase,
@@ -36,8 +36,8 @@ import type { StepResult } from "@rova/shared/actions/step-result";
  *
  * One tagged error rather than a family, because the envelope a step answers
  * with carries a message and nothing else: a second tag would render to the
- * same wire bytes and buy only a `catchTag` nobody has needed. A vendor failure
- * becomes one of these in the plugin that knows how to read its vendor's error
+ * same wire bytes and buy only a `catchTag` nobody has needed. An external failure
+ * becomes one of these in the plugin that knows how to read its system's error
  * body, which is the only place that reading can happen accurately.
  */
 export class StepFailure extends Schema.TaggedErrorClass<StepFailure>()(
@@ -149,7 +149,7 @@ type StepSchemas<TInput, TOutput> = {
    * It is encoded through its canonical JSON codec before the envelope, so a
    * `Date` or an `Option` in it crosses the boundary as JSON. **The encode is
    * also what the payload is trimmed to: a key this schema does not declare does
-   * not survive it.** A step handing back a vendor object whole therefore
+   * not survive it.** A step handing back a system's object whole therefore
    * describes every field it means to pass on, or says so in its shape with
    * `Schema.StructWithRest` over a `Schema.Record` rest.
    */
@@ -166,7 +166,7 @@ type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> & {
    *
    * `NoInfer` is what keeps the schemas the source of truth: without it the
    * handler's own return type is an inference site too, so a step handing back
-   * a vendor object would make the output schema answer to the vendor's type
+   * a system's object would make the output schema answer to that type
    * instead of the other way round.
    */
   readonly handler: StepHandler<NoInfer<TInput>, NoInfer<TOutput>>;
@@ -231,7 +231,7 @@ function buildStep<TInput, TOutput>(
       // will answer with it again on every attempt, so this fails the node once
       // rather than spending the retry budget on a certainty. The path is narrow:
       // the handler's return type is the decoded type, so reaching here takes an
-      // `as`, an `any`, or a widened vendor type.
+      // `as`, an `any`, or a widened external type.
       const encoded = encodeOutput(data);
       if (Result.isFailure(encoded)) {
         return yield* new StepFailure({ message: encoded.failure });
@@ -252,7 +252,7 @@ function buildStep<TInput, TOutput>(
             error: { message: failure.message },
           })
       ),
-      Effect.provide(VendorTransport)
+      Effect.provide(ExternalTransport)
     );
   }
 

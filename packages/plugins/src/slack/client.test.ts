@@ -1,4 +1,4 @@
-import { VendorTransport } from "@rova/core/plugin";
+import { ExternalTransport } from "@rova/core/plugin";
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
 import { afterEach, beforeEach } from "vitest";
@@ -34,7 +34,7 @@ function stubFetch(
 /** A call that succeeds fails the flip, which is what makes the test say so. */
 const failure = Effect.flip;
 
-const withTransport = Effect.provide(VendorTransport);
+const withTransport = Effect.provide(ExternalTransport);
 
 beforeEach(() => {
   requests = [];
@@ -91,8 +91,8 @@ describe("callSlack", () => {
         callSlack("xoxb-bad", "auth.test", Schema.Struct({}))
       );
 
-      expect(error._tag).toBe("VendorRejected");
-      expect(error._tag === "VendorRejected" ? error.status : undefined).toBe(
+      expect(error._tag).toBe("ExternalRejected");
+      expect(error._tag === "ExternalRejected" ? error.status : undefined).toBe(
         200
       );
       expect(describeSlackFailure(error)).toBe("invalid_auth");
@@ -107,8 +107,8 @@ describe("callSlack", () => {
         callSlack("xoxb-token", "auth.test", Schema.Struct({}))
       );
 
-      expect(error._tag).toBe("VendorRejected");
-      expect(error._tag === "VendorRejected" ? error.status : undefined).toBe(
+      expect(error._tag).toBe("ExternalRejected");
+      expect(error._tag === "ExternalRejected" ? error.status : undefined).toBe(
         503
       );
       expect(describeSlackFailure(error)).toBe("HTTP 503");
@@ -125,9 +125,9 @@ describe("callSlack", () => {
           callSlack("xoxb-token", "chat.postMessage", postMessageSchema)
         );
 
-        expect(error._tag).toBe("VendorUnreadable");
+        expect(error._tag).toBe("ExternalUnreadable");
         expect(
-          error._tag === "VendorUnreadable" ? error.status : undefined
+          error._tag === "ExternalUnreadable" ? error.status : undefined
         ).toBe(200);
         expect(describeSlackFailure(error)).toBe("HTTP 200");
       }).pipe(withTransport)
@@ -141,7 +141,7 @@ describe("callSlack", () => {
         callSlack("xoxb-token", "auth.test", Schema.Struct({}))
       );
 
-      expect(error._tag).toBe("VendorUnreachable");
+      expect(error._tag).toBe("ExternalUnreachable");
       expect(describeSlackFailure(error)).toBe("getaddrinfo ENOTFOUND");
     }).pipe(withTransport)
   );

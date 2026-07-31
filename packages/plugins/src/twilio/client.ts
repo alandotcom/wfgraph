@@ -8,7 +8,7 @@
  *
  * The API takes form-encoded parameters, answers JSON, and authenticates with
  * HTTP basic auth where the account SID is the username and the auth token the
- * password. Everything after that request is described in `vendor-http.ts`, so
+ * password. Everything after that request is described in `external-http.ts`, so
  * what is left here is the auth header, the two endpoints, and how Twilio's
  * error body reads.
  */
@@ -19,7 +19,11 @@ import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
 import { Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
-import { callVendor, parsePayload, type VendorError } from "#src/vendor-http";
+import {
+  callExternal,
+  parsePayload,
+  type ExternalError,
+} from "@rova/core/plugin";
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
 
@@ -51,12 +55,12 @@ export type TwilioMessage = typeof twilioMessageSchema.Type;
  * front of the API answers with. A 2xx whose body is not the resource says so,
  * because reporting success there would hand the run an empty message SID.
  */
-export function describeTwilioFailure(error: VendorError): string {
-  if (error._tag === "VendorUnreachable") {
+export function describeTwilioFailure(error: ExternalError): string {
+  if (error._tag === "ExternalUnreachable") {
     return error.message;
   }
 
-  if (error._tag === "VendorUnreadable") {
+  if (error._tag === "ExternalUnreadable") {
     return `Twilio answered ${error.status} with an unrecognized body`;
   }
 
@@ -82,9 +86,9 @@ function requestTwilio<S extends Schema.ConstraintDecoder<unknown>>(
   path: string,
   schema: S,
   init: { method: "GET" | "POST"; body?: URLSearchParams }
-): Effect.Effect<S["Type"], VendorError, HttpClient.HttpClient> {
-  return callVendor({
-    vendor: "Twilio",
+): Effect.Effect<S["Type"], ExternalError, HttpClient.HttpClient> {
+  return callExternal({
+    system: "Twilio",
     url: `${TWILIO_API_BASE}${path}`,
     method: init.method,
     headers: {
@@ -117,7 +121,7 @@ export type TwilioMessageParameters = {
 export function createTwilioMessage(
   credentials: TwilioCredentialPair,
   parameters: TwilioMessageParameters
-): Effect.Effect<TwilioMessage, VendorError, HttpClient.HttpClient> {
+): Effect.Effect<TwilioMessage, ExternalError, HttpClient.HttpClient> {
   const { MediaUrl, ...scalars } = parameters;
   const body = new URLSearchParams(omitBy(scalars, isNil));
   for (const mediaUrl of MediaUrl ?? []) {
@@ -135,7 +139,7 @@ export function createTwilioMessage(
 /** Reading the account back is Twilio's cheapest credential check. */
 export function fetchTwilioAccount(
   credentials: TwilioCredentialPair
-): Effect.Effect<{ sid: string }, VendorError, HttpClient.HttpClient> {
+): Effect.Effect<{ sid: string }, ExternalError, HttpClient.HttpClient> {
   return requestTwilio(
     credentials,
     `/Accounts/${encodeURIComponent(credentials.accountSid)}.json`,

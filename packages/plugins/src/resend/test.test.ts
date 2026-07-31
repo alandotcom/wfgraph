@@ -2,7 +2,7 @@
  * The Test connection button, for Resend.
  *
  * Every branch here is one the credentials UI shows a person, and the seam is
- * `fetch`: `runVendorCall` provides the transport itself, so a case says what
+ * `fetch`: `callExternalAsync` provides the transport itself, so a case says what
  * Resend answered and reads the verdict back.
  */
 

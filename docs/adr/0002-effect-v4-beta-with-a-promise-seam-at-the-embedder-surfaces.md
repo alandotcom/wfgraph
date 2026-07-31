@@ -306,6 +306,22 @@ run log rows moved to the engine, in `workflow-engine/step-log.ts`, which is whe
 `withStepLogging`'s job landed; a step author writes none of it. `defineStep`'s remaining
 Promise seam is one `Effect.runPromise` where the engine calls a step.
 
+**Amendment, 2026-07-31.** Stage 5's module moved and changed its name. It is
+`packages/core/src/backend/extensions/steps/external-http.ts` now, exported whole from
+`@rova/core/plugin`, and every name in it reads `External` where it read `Vendor`:
+`callExternal`, `callExternalAsync` (was `runVendorCall`), the three failure classes, and
+`ExternalTransport` beside it. Nothing about the timeout, the retry schedule, or the
+repeat-safety rule this ADR set out above changed.
+
+Two reasons. The word first: "vendor" named who was called rather than what the boundary
+guarantees, and `CONTEXT.md` defined it nowhere while five type names carried it. The
+project's own pair for this distinction is internal and external, and `CONTEXT.md` now
+holds both terms. The location second: the module sat inside `@rova/plugins`, where no
+outside integration package could reach it, so the one thing this ADR judged worth writing
+once was written once for the six built-ins and not at all for anybody else. The
+repeat-safety rule is the part that matters, because getting it wrong sends a second
+message to a real person.
+
 ## Consequences
 
 - Pinning a beta means upgrades are deliberate work: a bump can break compilation, so read

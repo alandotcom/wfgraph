@@ -3,7 +3,7 @@ import {
   fetchTwilioAccount,
   readTwilioError,
 } from "#src/twilio/client";
-import { runVendorCall } from "#src/vendor-http";
+import { callExternalAsync } from "@rova/core/plugin";
 import type { IntegrationTestResult } from "@rova/core/plugin";
 
 export async function testTwilio(
@@ -22,7 +22,7 @@ export async function testTwilio(
   // A connection test answers the credentials UI over a Promise, so this is
   // where the effect is run and the transport provided. A step reaches Twilio
   // through the same client without any of that, because `defineStep` does it.
-  const result = await runVendorCall(
+  const result = await callExternalAsync(
     fetchTwilioAccount({ accountSid, authToken }),
     (error) => error
   );
@@ -35,7 +35,7 @@ export async function testTwilio(
 
   // A request that never arrived has no HTTP status to report, so the transport
   // error is the whole story.
-  if (failure._tag === "VendorUnreachable") {
+  if (failure._tag === "ExternalUnreachable") {
     return {
       success: false,
       error: failure.message,
@@ -44,7 +44,7 @@ export async function testTwilio(
   }
 
   const body =
-    failure._tag === "VendorRejected"
+    failure._tag === "ExternalRejected"
       ? readTwilioError(failure.payload)
       : undefined;
 

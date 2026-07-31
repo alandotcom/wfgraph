@@ -13,14 +13,14 @@ plugins/[name]/
   index.ts           the integration: credentials, schemas, actions, metadata
   index.test.ts      what the definition contributes: slugs, credentials, fields
   [subject].test.ts  the handlers, each run with a context the case supplies
-  client.ts          the vendor's HTTP API, over fetch
+  client.ts          the system's HTTP API, over fetch
   client.test.ts     what the client puts on the wire
   test.ts            the connection test the credentials UI runs
   icon.tsx           the SVG icon component
 ```
 
 A larger integration adds modules beside those rather than growing `index.ts` without
-limit: `acuity/` has `payloads.ts` for the vendor's wire shapes and `shared.ts` for the
+limit: `acuity/` has `payloads.ts` for the system's wire shapes and `shared.ts` for the
 config parsers its eight actions share, `clerk/` has `types.ts`, `metadata.ts` and a
 `components/` directory for its output renderer, `linear/` an `errors.ts`. What stays in
 `index.ts` either way is the integration itself, so a reader opens one file to learn what
@@ -28,19 +28,26 @@ it does. `acuity/` is the largest at eight actions and lays them out one after a
 schemas then handler then step, so the `actions` record at the foot reads as a contents
 list.
 
-## Calling a vendor
+## Calling the external system
 
-**Call vendors through `vendor-http.ts`, not their SDK.** `callVendor` takes a request spec
-and answers an `Effect` holding the decoded body over Effect's own `HttpClient`. It owns the
-ten-second per-attempt timeout, the retry schedule, the JSON read, the decode, and the three
-failures a vendor call can end in: `VendorUnreachable`, `VendorRejected` (carrying the
-vendor's own error body), and `VendorUnreadable`.
+**Call out through `callExternal`, not through an SDK.** It takes a request spec and
+answers an `Effect` holding the decoded body over Effect's own `HttpClient`. It owns the
+ten-second per-attempt timeout, the retry schedule, the JSON read, the decode, and the
+three failures a call can end in: `ExternalUnreachable`, `ExternalRejected` (carrying the
+system's own error body), and `ExternalUnreadable`.
 
-That module provides `FetchHttpClient.Fetch` explicitly, with a function reading
-`globalThis.fetch` per call, for the `Context.Reference` caching reason root AGENTS.md's
-"Pitfalls that have bitten" section covers.
+It lives in core, at `packages/core/src/backend/extensions/steps/external-http.ts`, and
+reaches this package through `@rova/core/plugin`. That is deliberate: the repeat-safety
+rule it holds is the one an integration written outside this repo would otherwise invent,
+and inventing it wrong sends a second message to a real person.
 
-A `client.ts` is the adapter above that: the auth header, the endpoints, the vendor's
+`ExternalTransport` beside it provides `FetchHttpClient.Fetch` explicitly, with a function
+reading `globalThis.fetch` per call, for the `Context.Reference` caching reason root
+AGENTS.md's "Pitfalls that have bitten" section covers. A step handler is given it.
+`callExternalAsync` provides it. A `client.test.ts` exercising a client outside a step
+provides it by name.
+
+A `client.ts` is the adapter above that: the auth header, the endpoints, the system's
 error-envelope schema, and a `describeXFailure` saying what a failure means in words. Its
 calls answer an `Effect` a step yields directly. Twilio's client is the one to copy. The
 retry policy is stated once, above `RETRY_ATTEMPTS`, and Inngest's function-level retry is
@@ -49,16 +56,14 @@ the outer policy beyond it.
 An SDK earns its place only where it carries protocol logic worth borrowing, which is why
 `@clerk/backend` (JWT verification), `@linear/sdk` (a typed GraphQL client) and
 `@fountain-bio/acuity` stayed while `twilio`, `resend` and `@slack/web-api` did not. Those
-three keep their own transport and error handling and do not go through `vendor-http.ts`.
+three keep their own transport and error handling and do not go through `callExternal`.
 
 ## test.ts
 
 The connection test the credentials UI runs, a Promise all the way out because that is how
-the UI calls it. It is the one caller that is not an effect, so it is where `runVendorCall`
-enters the runtime and provides `VendorTransport`, the layer a `defineStep` handler already
-runs with, exported from `@rova/core/plugin` rather than rebuilt per package. Validate a
-key's format before spending a request where the vendor's keys have a known shape; it names
-the problem more precisely than a 401.
+the UI calls it. It is not an effect at its edge, so it is where `callExternalAsync` enters
+the runtime and provides the transport. Validate a key's format before spending a request
+where the system's keys have a known shape; it names the problem more precisely than a 401.
 
 ## icon.tsx and the ui record
 
@@ -93,7 +98,7 @@ run steering its own test address from its payload defeats the point of nominati
 
 ## Describe the wire, not the SDK
 
-README states the rule. Pin a vendor shape with a fixture built from a recorded response
+README states the rule. Pin a wire shape with a fixture built from a recorded response
 and an assertion running the encode: `acuity/appointments.test.ts` is the pattern, and a
 field-derivation test alone catches none of what an SDK type gets wrong.
 
@@ -113,7 +118,7 @@ the credential type is `[Name]Credentials`; the connection test is `test[Name]`;
 
 Test the handler, not the step: it is a function of `(input, context)` to an `Effect`, so a
 case supplies the context it wants and runs it. `twilio/send-sms.test.ts` is the pattern,
-with credentials as an `Effect.sync` that counts its reads and the vendor client as the
+with credentials as an `Effect.sync` that counts its reads and the client as the
 stubbed seam. That file also runs the assembled step through `implement`, which is the whole
 path a run takes.
 

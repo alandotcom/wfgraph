@@ -283,7 +283,7 @@ describe("sendEmailHandler", () => {
     }).pipe(withTransport)
   );
 
-  it.effect("fails with the message the vendor's refusal carries", () =>
+  it.effect("fails with the message the system's refusal carries", () =>
     Effect.gen(function* () {
       mocks.sendEmail.mockReturnValue(
         Effect.fail({ message: "The `to` field is required." })
