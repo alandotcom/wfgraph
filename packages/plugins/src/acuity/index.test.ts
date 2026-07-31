@@ -52,11 +52,10 @@ describe("the acuity integration", () => {
     ]);
   });
 
-  // `forms` is a list of forms, each holding its own answers, and the timezone
-  // Acuity sends is `timezone`. The SDK declares a `calendarTimeZone` the API does
-  // not send, and an appointment carrying a form puts its answers one level deeper
-  // than the SDK's types say: both are why these paths are asserted rather than
-  // taken on the vendor's word.
+  // These paths are asserted rather than taken on the vendor's word. An SDK type is
+  // a claim about the wire, and this one was wrong twice before 0.1.0 fixed it: it
+  // named the timezone `calendarTimeZone` where Acuity sends `timezone`, and it put
+  // an intake answer one level above where it lives.
   it.each(appointmentActions)(
     "describes %s's appointment as Acuity sends it",
     (slug) => {
@@ -67,7 +66,6 @@ describe("the acuity integration", () => {
       expect(paths).toContain(`${prefix}.timezone`);
       expect(paths).toContain(`${prefix}.forms`);
       expect(paths).not.toContain(`${prefix}.calendarTimeZone`);
-      expect(paths).not.toContain(`${prefix}.calendarTimezone`);
       // Two levels down, which is where an intake answer actually lives. The picker
       // lists three segments at most, so the answer's own fields are reached from
       // `forms` rather than offered beside it.

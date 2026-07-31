@@ -400,8 +400,8 @@ importers:
         specifier: ^2.30.1
         version: 2.33.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@fountain-bio/acuity':
-        specifier: ^0.0.25
-        version: 0.0.25
+        specifier: ^0.1.0
+        version: 0.1.0
       '@linear/sdk':
         specifier: ^75.0.0
         version: 75.0.0(graphql@17.0.2)
@@ -934,8 +934,8 @@ packages:
   '@fontsource-variable/geist@5.3.0':
     resolution: {integrity: sha512-j0m+vLQuG5XAYoHtGCVu0spvlGreR3EzpECUVzkFmI1mTVnAO38l/NEPDCFgZ177JxzYJCLSmTQibIiYPilGrA==}
 
-  '@fountain-bio/acuity@0.0.25':
-    resolution: {integrity: sha512-K+Z7b6b8v1jjB9r8JvYtvZoxrajNLyhJPhS+541w38TX5s6ltSBXr+wCCiqdZbhvozOYx3lrQh0OGMn4FVZYew==}
+  '@fountain-bio/acuity@0.1.0':
+    resolution: {integrity: sha512-dty07ma9zgGPKbDZVaFyirohkCWNbOXMk3QQoFwej0u3EisuKp3pKrqptnoFYNgi6cNfEaXOcXhq8pxbA8apMQ==}
     hasBin: true
 
   '@graphql-typed-document-node/core@3.2.0':
@@ -5877,7 +5877,7 @@ snapshots:
 
   '@fontsource-variable/geist@5.3.0': {}
 
-  '@fountain-bio/acuity@0.0.25':
+  '@fountain-bio/acuity@0.1.0':
     dependencies:
       yargs: 18.0.0
 
@@ -6098,7 +6098,7 @@ snapshots:
   '@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1)':
     dependencies:
       '@opentelemetry/api': 1.9.1
-      '@opentelemetry/semantic-conventions': 1.41.1
+      '@opentelemetry/semantic-conventions': 1.43.0
 
   '@opentelemetry/exporter-logs-otlp-grpc@0.221.0(@opentelemetry/api@1.9.1)':
     dependencies:
@@ -6641,7 +6641,7 @@ snapshots:
       '@opentelemetry/api-logs': 0.221.0
       '@opentelemetry/core': 2.10.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/resources': 2.10.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/semantic-conventions': 1.41.1
+      '@opentelemetry/semantic-conventions': 1.43.0
 
   '@opentelemetry/sdk-metrics@2.10.0(@opentelemetry/api@1.9.1)':
     dependencies:

@@ -93,12 +93,9 @@ run steering its own test address from its payload defeats the point of nominati
 
 ## Describe the wire, not the SDK
 
-README states the rule. The worked example here is `acuity/`, whose SDK declares a
-`calendarTimeZone` the API does not send and puts intake answers one level above where they
-live, so every appointment action failed its encode on any appointment carrying a form. Pin
-a vendor shape with a fixture built from a recorded response and an assertion running the
-encode: `acuity/appointments.test.ts` is the pattern, and a field-derivation test alone would
-have caught none of it.
+README states the rule. Pin a vendor shape with a fixture built from a recorded response
+and an assertion running the encode: `acuity/appointments.test.ts` is the pattern, and a
+field-derivation test alone catches none of what an SDK type gets wrong.
 
 ## Adding one
 

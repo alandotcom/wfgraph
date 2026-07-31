@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@clerk/backend": "^2.30.1",
-    "@fountain-bio/acuity": "^0.0.25",
+    "@fountain-bio/acuity": "^0.1.0",
     "@linear/sdk": "^75.0.0",
     "effect": "catalog:",
     "es-toolkit": "catalog:"

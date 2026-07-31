@@ -89,3 +89,6 @@ allowBuilds:
   inngest-cli: true
   msgpackr-extract: false
   protobufjs: true
+
+minimumReleaseAgeExclude:
+  - "@fountain-bio/acuity@0.1.0"

@@ -103,9 +103,7 @@ const appointmentFormSchema = Schema.Struct({
  * payload without them is not an appointment: everything else is a `vendorField`.
  * That is deliberate rather than lazy. This describes somebody else's JSON, the SDK
  * validates none of it, and a field this schema insists on that a real payload
- * omits fails the encode and so fails the step. The SDK's own type is not evidence
- * of what arrives: it declares a `calendarTimeZone` the API never sends, and the
- * timezone the API does send is `timezone`.
+ * omits fails the encode and so fails the step.
  */
 export const appointmentSchema = Schema.Struct({
   id: describedNumber("Appointment ID"),
@@ -122,6 +120,9 @@ export const appointmentSchema = Schema.Struct({
   endTime: vendorText("Appointment end time"),
   duration: vendorText("Duration in minutes"),
   timezone: vendorText("The appointment's IANA timezone"),
+  // Acuity sends this on every appointment and documents it nowhere. It matches
+  // `timezone` unless the request asked for a different one.
+  calendarTimezone: vendorText("IANA timezone of the calendar that owns it"),
   type: vendorText("Appointment type name"),
   appointmentTypeID: vendorNumber("Appointment type ID"),
   calendar: vendorText("Calendar name"),
