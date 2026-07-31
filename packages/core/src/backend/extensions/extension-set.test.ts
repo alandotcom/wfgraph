@@ -371,6 +371,13 @@ describe("assembleExtensions and an integration definition", () => {
     expect(
       await set.stepFor("twilio/send-sms")?.(stubStepEnvironment())({
         to: "+15550001111",
+        _context: {
+          executionId: "exec_1",
+          nodeId: "n1",
+          nodeName: "Send SMS",
+          nodeType: "action",
+          runMode: "live",
+        },
       })
     ).toEqual({
       success: true,

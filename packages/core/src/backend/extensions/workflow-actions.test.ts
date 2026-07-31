@@ -53,7 +53,15 @@ describe("the step the app runs", () => {
     const actions = createWorkflowActions(extensions, runtime);
     const step = actions.stepFor(SLOW_ACTION_ID);
 
-    const pending = step?.({});
+    const pending = step?.({
+      _context: {
+        executionId: "exec_1",
+        nodeId: "n1",
+        nodeName: "Slow",
+        nodeType: "action",
+        runMode: "live",
+      },
+    });
     await Effect.runPromise(Effect.sleep(10));
     const disposed = runtime.dispose();
 

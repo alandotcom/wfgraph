@@ -193,13 +193,28 @@ describe("defineStep", () => {
   it("tells the handler which mode the run is in, defaulting to live", async () => {
     const { reporting, modes } = makeReportingStep("demo/mode");
 
-    // The three ways a mode reaches a handler: named, named as an empty key,
-    // and absent along with the rest of the context. Only the last two default.
+    // The two ways a mode reaches a handler: named, and named as an empty key.
+    // Only the second defaults.
     await reporting({ to: "a", _context: { ...CONTEXT, runMode: "test" } });
     await reporting({ to: "a", _context: { ...CONTEXT, runMode: undefined } });
-    await reporting({ to: "a" });
 
-    expect(modes).toEqual(["test", "live", "live"]);
+    expect(modes).toEqual(["test", "live"]);
+  });
+
+  // An input with no context is a Rova bug rather than something an author
+  // wrote, and running anyway would hand a handler the node ids it was promised
+  // as undefined. `defineAction` answers the same way.
+  it("fails the node rather than calling the handler without a context", async () => {
+    const { reporting, modes } = makeReportingStep("demo/no-context");
+
+    expect(await reporting({ to: "a" })).toEqual({
+      success: false,
+      error: {
+        message:
+          'Step "demo/no-context" was called without a step context, so the node it belongs to cannot be identified.',
+      },
+    });
+    expect(modes).toEqual([]);
   });
 
   // A key present holding `undefined` is what a caller building the context
@@ -376,7 +391,10 @@ describe("defineStep and the JSON codec", () => {
       }),
     });
 
-    const result = await step.implement("demo/urls")(runner)({ urls: "a,b,c" });
+    const result = await step.implement("demo/urls")(runner)({
+      urls: "a,b,c",
+      _context: CONTEXT,
+    });
 
     expect(received).toEqual(["a", "b", "c"]);
     expect(result).toEqual({ success: true, data: { count: 3 } });
@@ -393,7 +411,9 @@ describe("defineStep and the JSON codec", () => {
       }),
     });
 
-    const result = await step.implement("demo/clock")(runner)({});
+    const result = await step.implement("demo/clock")(runner)({
+      _context: CONTEXT,
+    });
 
     expect(result).toEqual({
       success: true,
@@ -418,7 +438,9 @@ describe("defineStep and the JSON codec", () => {
       }),
     });
 
-    const result = await step.implement("demo/clock")(runner)({});
+    const result = await step.implement("demo/clock")(runner)({
+      _context: CONTEXT,
+    });
 
     expect(result).toEqual({
       success: false,
@@ -455,7 +477,7 @@ describe("defineStep and an optional config field", () => {
       handler: Effect.fn(function* (decoded) {
         return yield* Effect.succeed({ note: decoded.note ?? "blank" });
       }),
-    }).implement("demo/optional")(runner)(config);
+    }).implement("demo/optional")(runner)({ ...config, _context: CONTEXT });
   }
 
   it("takes an absent key as a field left blank", async () => {
@@ -507,7 +529,9 @@ describe("defineStep and the shape of what it answers", () => {
       }),
     });
 
-    expect(await step.implement("demo/vendor")(runner)({})).toEqual({
+    expect(
+      await step.implement("demo/vendor")(runner)({ _context: CONTEXT })
+    ).toEqual({
       success: true,
       data: { id: "1" },
     });
@@ -529,7 +553,9 @@ describe("defineStep and the shape of what it answers", () => {
       }),
     });
 
-    expect(await step.implement("demo/optional-out")(runner)({})).toEqual({
+    expect(
+      await step.implement("demo/optional-out")(runner)({ _context: CONTEXT })
+    ).toEqual({
       success: true,
       data: { id: "1", from: null },
     });

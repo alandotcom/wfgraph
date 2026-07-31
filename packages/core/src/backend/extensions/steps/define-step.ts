@@ -70,9 +70,9 @@ export type StepRunContext<TCredentials = WorkflowCredentials> = {
   /** `"test"` when the editor is running the workflow, `"live"` otherwise. */
   readonly runMode: "live" | "test";
   readonly executionId?: string;
-  readonly nodeId?: string;
-  readonly nodeName?: string;
-  readonly nodeType?: string;
+  readonly nodeId: string;
+  readonly nodeName: string;
+  readonly nodeType: string;
   /** The integration the node was configured with, if any. */
   readonly integrationId?: string;
   /**
@@ -320,6 +320,17 @@ function buildStep<TInput, TOutput>(
     context: StepContext | undefined
   ): Effect.Effect<StepResult, CredentialsUnavailable> {
     return Effect.gen(function* () {
+      // Every node the engine runs carries its context, so an input without one
+      // is a Rova bug rather than something an author wrote. It fails the node
+      // here because the alternative is handing an author the node ids they were
+      // promised as empty strings, and a run log naming a node that does not
+      // exist. `defineAction` answers the same way.
+      if (!context) {
+        return yield* new StepFailure({
+          message: `Step "${actionId}" was called without a step context, so the node it belongs to cannot be identified.`,
+        });
+      }
+
       const integrationId = readIntegrationId(rawInput.integrationId);
       const credentials = yield* Effect.cached(
         readCredentials(app, integrationId)
@@ -339,11 +350,11 @@ function buildStep<TInput, TOutput>(
       const answer = yield* Effect.try({
         try: () =>
           definition.handler(input, {
-            runMode: context?.runMode ?? "live",
-            executionId: context?.executionId,
-            nodeId: context?.nodeId,
-            nodeName: context?.nodeName,
-            nodeType: context?.nodeType,
+            runMode: context.runMode ?? "live",
+            executionId: context.executionId,
+            nodeId: context.nodeId,
+            nodeName: context.nodeName,
+            nodeType: context.nodeType,
             integrationId,
             credentials,
             readCredentials: () => runToPromise(credentials),
