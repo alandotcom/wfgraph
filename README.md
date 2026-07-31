@@ -531,18 +531,29 @@ then fails to compile. The vocabulary is not inferred for you, because a type
 parameter appearing only inside a context-sensitive argument would cost an inline
 handler both parameter types and leave the whole handler unchecked.
 
-**Both directions cross through the schema's canonical JSON codec.** A step boundary
-is JSON on both sides, so what runs is `Schema.toCodecJson(schema)`, built once at
-definition. That is what lets an input schema carry a transform: a comma-separated
-text field decodes to a list on the way in, and a `Date` in an output encodes to an
-ISO string on the way out. A handler answering with something its output schema
-cannot encode fails the node once, naming the field path, rather than spending
-retries on a certainty.
+**Write the schemas in whichever library you already use.** Effect Schema, Zod,
+arktype, anything publishing Standard Schema. What differs is how much Rova can do
+with what you hand it, and the paragraph below is the whole of the difference.
 
-**The output encode is a trim.** A key the output schema does not declare does not
+**An Effect schema crosses its canonical JSON codec in both directions.** A step
+boundary is JSON on both sides, so what runs is `Schema.toCodecJson(schema)`, built
+once at definition. That is what lets an input schema carry a transform: a
+comma-separated text field decodes to a list on the way in, and a `Date` in an
+output encodes to an ISO string on the way out. A handler answering with something
+its output schema cannot encode fails the node once, naming the field path, rather
+than spending retries on a certainty.
+
+A schema from another library publishes a validator and a JSON Schema and nothing
+that runs in the encode direction. Its config is validated and its form and field
+list derive as usual; no transform runs, and what the handler answered is passed on
+as it stands. Answer with JSON there, since the engine memoizes a step result and
+replays it.
+
+**That encode is a trim.** A key the output schema does not declare does not
 survive it, so a step handing back a system's object whole has to describe every field
 it means to pass on. `Schema.StructWithRest` over a `Schema.Record` rest is the other
-spelling, for a shape that is genuinely open.
+spelling, for a shape that is genuinely open. There is no trim on the other arm,
+where nothing runs in that direction.
 
 **Which optional spelling, on which side.** The codec rewrites `optional(X)` to
 `optionalKey(NullOr(X))`. An input field takes `optionalKey(X)`, because the engine

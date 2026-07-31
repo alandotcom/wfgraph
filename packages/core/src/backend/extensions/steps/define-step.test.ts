@@ -1,5 +1,6 @@
 import { Effect, Schema, SchemaTransformation } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { CredentialsUnavailable } from "#src/backend/extensions/credential-fetcher";
 import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import {
@@ -615,5 +616,51 @@ describe("defineStep and the config form", () => {
         placeholder: "+15551234567",
       },
     ]);
+  });
+});
+
+/**
+ * A step whose schemas came from somewhere other than Effect.
+ *
+ * Zod stands in for any Standard Schema library. What it publishes is a
+ * validator and a JSON Schema, so the form derives and the config is checked,
+ * and the encode the Effect arm runs has no counterpart here. The handler is
+ * still an Effect: that half is the Promise arm's to change.
+ */
+describe("defineStep and a schema from another library", () => {
+  const step = defineStep({
+    ...METADATA,
+    input: z.object({
+      to: z.string().describe("Recipient"),
+      note: z.string().optional(),
+    }),
+    output: z.object({ id: z.string().describe("Id") }),
+    handler: (config) => Effect.succeed({ id: `sent-${config.to}` }),
+  });
+
+  const run = step.implement("demo/foreign")(runner);
+
+  it("derives the form from the schema it was given", () => {
+    expect(step.configFields).toEqual([
+      { key: "to", label: "Recipient", type: "template-input", required: true },
+      { key: "note", label: "Note", type: "template-input" },
+    ]);
+  });
+
+  it("runs the handler on a config the schema accepts", async () => {
+    expect(await run({ to: "someone", _context: CONTEXT })).toEqual({
+      success: true,
+      data: { id: "sent-someone" },
+    });
+  });
+
+  // The message names the path and stops there. A foreign library words its own
+  // issues and may quote what arrived in them, and this string is written to the
+  // run log and answered over HTTP.
+  it("refuses a config the schema does not describe, naming the path", async () => {
+    expect(await run({ to: 7, _context: CONTEXT })).toEqual({
+      success: false,
+      error: { message: 'Invalid configuration for "demo/foreign": to' },
+    });
   });
 });

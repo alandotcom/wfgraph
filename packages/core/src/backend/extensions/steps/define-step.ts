@@ -1,9 +1,10 @@
 /**
- * `defineStep` decodes both schemas through `Schema.toCodecJson`, so a transform
- * an author writes (a comma-separated field to a list, a `Date` to an ISO string)
- * runs on the way in and out rather than on the bare schema. README's "Writing a
- * step" section owns the full contract, including why and the optional-field
- * spelling that follows from it.
+ * An Effect schema crosses `Schema.toCodecJson` in both directions, so a
+ * transform an author writes (a comma-separated field to a list, a `Date` to an
+ * ISO string) runs on the way in and out rather than on the bare schema. A
+ * schema from another library validates on the way in and passes through on the
+ * way out, because that is the whole of what Standard Schema publishes. README's
+ * "Writing a step" section owns the full contract.
  */
 
 import { Effect, Result, Schema } from "effect";
@@ -17,6 +18,7 @@ import {
   readIntegrationId,
   readStepContext,
   type StepContext,
+  stripInternalFields,
 } from "#src/backend/extensions/steps/step-handler";
 import type {
   StepEnvironment,
@@ -24,8 +26,13 @@ import type {
 } from "#src/backend/extensions/steps/step-runner";
 import { ExternalTransport } from "#src/backend/extensions/steps/external-transport";
 import { buildConfigForm } from "#src/backend/extensions/steps/config-form";
-import { configFieldsFromInputSchema } from "#src/backend/extensions/schema-io";
-import { toStandardSchema } from "@rova/shared/types/schema";
+import {
+  configFieldsFromInputSchema,
+  type InputSchema,
+  validateConfig,
+} from "#src/backend/extensions/schema-io";
+import { asStandardSchema, isEffectSchema } from "@rova/shared/types/schema";
+import type { OutputSchema } from "@rova/shared/graph/output-fields";
 import type {
   ActionConfigField,
   ActionConfigFieldBase,
@@ -140,29 +147,36 @@ export type ActionStep = {
   readonly description: string;
   readonly category: string;
   readonly configFields: readonly ActionConfigField[];
-  /** The config shape. Assembly holds every required key of it to a field. */
-  readonly input: Schema.ConstraintDecoder<unknown>;
+  /** The config shape, which the form is derived from. */
+  readonly input: InputSchema<unknown>;
   /** What the handler answers, which the editor's field list comes from. */
-  readonly output: Schema.ConstraintCodec<unknown, unknown>;
+  readonly output: OutputSchema<unknown>;
   /** The engine's entry point, once the integration has named the action. */
   readonly implement: (actionId: string) => StepFactory;
 };
 
 type StepSchemas<TInput, TOutput> = {
-  /** The config the engine resolved, as this step reads it. */
-  readonly input: Schema.ConstraintDecoder<TInput>;
+  /**
+   * The config the engine resolved, as this step reads it. Effect Schema, Zod,
+   * arktype, or anything else publishing Standard Schema.
+   */
+  readonly input: InputSchema<TInput>;
   /**
    * The payload the handler answers with, and the fields downstream nodes are
    * offered.
    *
-   * It is encoded through its canonical JSON codec before the envelope, so a
-   * `Date` or an `Option` in it crosses the boundary as JSON. **The encode is
-   * also what the payload is trimmed to: a key this schema does not declare does
-   * not survive it.** A step handing back a system's object whole therefore
-   * describes every field it means to pass on, or says so in its shape with
-   * `Schema.StructWithRest` over a `Schema.Record` rest.
+   * An Effect schema is encoded through its canonical JSON codec before the
+   * envelope, so a `Date` or an `Option` in it crosses the boundary as JSON.
+   * **That encode is also what the payload is trimmed to: a key the schema does
+   * not declare does not survive it.** A step handing back a system's object
+   * whole therefore describes every field it means to pass on, or says so in its
+   * shape with `Schema.StructWithRest` over a `Schema.Record` rest.
+   *
+   * A schema from another library publishes no encoder, so what the handler
+   * answered is passed on as it stands and the trim does not apply. Answer with
+   * JSON there: the engine memoizes a step result and replays it.
    */
-  readonly output: Schema.ConstraintCodec<TOutput, unknown>;
+  readonly output: OutputSchema<TOutput>;
 };
 
 type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> & {
@@ -189,13 +203,43 @@ type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> & {
 };
 
 /**
+ * The resolved config as the handler reads it, or one sentence saying why not.
+ *
+ * An Effect schema decodes through its canonical JSON codec, so a transform the
+ * author wrote runs on the way in. Any other library validates through
+ * `~standard.validate`, which is all Standard Schema publishes in this
+ * direction: no transform runs, and the message is the failing paths.
+ *
+ * Built once per action rather than per invocation, because `toCodecJson` walks
+ * the AST and builds a new schema.
+ */
+function buildInputReader<TInput>(
+  schema: InputSchema<TInput>
+): (raw: Record<string, unknown>) => Result.Result<TInput, string> {
+  // The default encode-direction parameter is what narrows the other arm away
+  // here, and the decode below asks for nothing more than it.
+  if (isEffectSchema<TInput>(schema)) {
+    // `errors: "all"` is what `formatSchemaFailure` is written against: it
+    // counts the issues it does not spell out, and stopping at the first would
+    // make that count always zero.
+    const decode = Schema.decodeUnknownResult(Schema.toCodecJson(schema), {
+      errors: "all",
+    });
+
+    return (raw) =>
+      Result.mapError(decode(raw), (error) => formatSchemaFailure(error.issue));
+  }
+
+  // The internal keys go no further here, because a foreign schema is free to
+  // refuse a key it does not declare and `_context` is not the author's.
+  return (raw) => validateConfig(schema, stripInternalFields(raw));
+}
+
+/**
  * Everything a step does around its handler, as a function of the action id.
  *
  * The id is what both messages below name, and a step learns it from the
  * integration that declares the action, at assembly.
- *
- * Both readers are built once per action rather than per invocation, because
- * `toCodecJson` walks the AST and builds a new schema.
  */
 function buildStep<TInput, TOutput>(
   definition: Pick<
@@ -203,13 +247,7 @@ function buildStep<TInput, TOutput>(
     "handler" | "input" | "output"
   >
 ): (actionId: string) => StepFactory {
-  // `errors: "all"` is what `formatSchemaFailure` is written against: it counts
-  // the issues it does not spell out, and stopping at the first would make that
-  // count always zero.
-  const decodeInput = Schema.decodeUnknownEffect(
-    Schema.toCodecJson(definition.input),
-    { errors: "all" }
-  );
+  const readInput = buildInputReader(definition.input);
 
   function runStep(
     app: StepEnvironment,
@@ -224,14 +262,13 @@ function buildStep<TInput, TOutput>(
         readCredentials(app, integrationId)
       );
 
-      const input = yield* decodeInput(rawInput).pipe(
-        Effect.mapError(
-          (error) =>
-            new StepFailure({
-              message: `Invalid configuration for "${actionId}": ${formatSchemaFailure(error.issue)}`,
-            })
-        )
-      );
+      const parsed = readInput(rawInput);
+      if (Result.isFailure(parsed)) {
+        return yield* new StepFailure({
+          message: `Invalid configuration for "${actionId}": ${parsed.failure}`,
+        });
+      }
+      const input = parsed.success;
 
       const data = yield* definition.handler(input, {
         runMode: context?.runMode ?? "live",
@@ -273,10 +310,14 @@ function buildStep<TInput, TOutput>(
   }
 
   return (actionId) => {
-    const encodeOutput = encodeThroughOutputSchema(
-      `Step "${actionId}"`,
-      definition.output
-    );
+    // Only an Effect output schema has an encoder. A foreign Standard Schema
+    // library publishes a validator and a JSON Schema and nothing that runs in
+    // this direction, so its answers pass through as they stand. That is the
+    // same call `output-fields.ts` makes for the field list: what a schema
+    // cannot say about itself is not said.
+    const encodeOutput = isEffectSchema<TOutput, never>(definition.output)
+      ? encodeThroughOutputSchema(`Step "${actionId}"`, definition.output)
+      : Result.succeed;
 
     return (app) => (rawInput) =>
       app.runStep(
@@ -326,7 +367,7 @@ export function defineStep<TInput, TOutput>(
     description: definition.description,
     category: definition.category,
     configFields: buildConfigForm(
-      configFieldsFromInputSchema(toStandardSchema(definition.input)),
+      configFieldsFromInputSchema(asStandardSchema(definition.input)),
       definition.configFields ?? []
     ),
     input: definition.input,

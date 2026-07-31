@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { AcuityError } from "@fountain-bio/acuity";
+import { isEffectSchema } from "@rova/core/plugin";
 import { Effect, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { beforeEach, vi } from "vitest";
@@ -663,10 +664,18 @@ describe("cancelAppointmentHandler", () => {
  * and the action's own output codec -- which is the layer the mistake was in.
  */
 describe("an appointment through the encode", () => {
+  // A step's schemas are typed as any Standard Schema, so reaching the codec
+  // asks whose they are. These are Effect's, and a definition that stopped being
+  // one would silently skip the encode this file exists to run.
   function encodeOutputOf(slug: keyof typeof acuity.actions) {
-    return Schema.encodeUnknownPromise(
-      Schema.toCodecJson(acuity.actions[slug].output)
-    );
+    const schema = acuity.actions[slug].output;
+    if (!isEffectSchema<unknown, never>(schema)) {
+      throw new Error(
+        `Action "acuity/${slug}" no longer holds an Effect schema`
+      );
+    }
+
+    return Schema.encodeUnknownPromise(Schema.toCodecJson(schema));
   }
 
   it.effect(

@@ -7,6 +7,7 @@
  * a step boundary answers the engine and has no await to spend.
  */
 
+import type { Schema } from "effect";
 import { Result } from "effect";
 import type { ActionConfigFieldBase } from "@rova/shared/plugins/action-fields";
 import {
@@ -15,6 +16,22 @@ import {
 } from "@rova/shared/graph/schema-codec";
 import { formatStandardIssuePath } from "@rova/shared/types/schema-message";
 import type { StandardSchema } from "@rova/shared/types/schema";
+
+/**
+ * What an `input` accepts, in either of the two forms a schema arrives in.
+ *
+ * Both halves of Standard Schema are needed from one object: resolved config
+ * values are validated with `~standard.validate`, and the config form is derived
+ * from `~standard.jsonSchema.input()`. Zod v4 and arktype hand over an object
+ * carrying both, and that is the first arm.
+ *
+ * The second arm is a bare Effect schema, which carries neither until it is
+ * asked to. `defineAction` and `defineStep` ask, once, so an author writes
+ * `input: Schema.Struct({ ... })` and nothing else.
+ */
+export type InputSchema<TPayload> =
+  | StandardSchema<TPayload>
+  | Schema.ConstraintDecoder<TPayload>;
 
 export function isPromiseLike<T>(value: unknown): value is Promise<T> {
   return (
@@ -32,7 +49,7 @@ export function isPromiseLike<T>(value: unknown): value is Promise<T> {
  * quote the value in them, and this string is persisted as the node's run error.
  * What places the fault is the path.
  */
-export function validateConfig<TPayload extends Record<string, unknown>>(
+export function validateConfig<TPayload>(
   schema: StandardSchema<TPayload>,
   payload: Record<string, unknown>
 ): Result.Result<TPayload, string> {

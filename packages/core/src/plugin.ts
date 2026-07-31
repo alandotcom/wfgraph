@@ -54,7 +54,12 @@ export {
   type JsonValue,
   readJsonValue,
 } from "@rova/shared/types/json";
-export { readAs } from "@rova/shared/types/schema";
+/**
+ * `isEffectSchema` is the narrowing an integration's own suite needs: a step's
+ * `input` and `output` are typed as any Standard Schema, so running one through
+ * `Schema.toCodecJson` to assert a wire shape asks first.
+ */
+export { isEffectSchema, readAs } from "@rova/shared/types/schema";
 export { isoTimestampString } from "@rova/shared/types/timestamp";
 export { getErrorMessage } from "@rova/shared/utils";
 export { requireOutputFieldsFromSchema } from "@rova/shared/graph/output-fields";

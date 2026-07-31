@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import { isEffectSchema } from "@rova/core/plugin";
 import { Effect, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { beforeEach, vi } from "vitest";
@@ -325,9 +326,16 @@ describe("the send-sms step as an integration binds it", () => {
   // decode runs: one text field carries the list, and the handler receives the
   // list rather than the text a builder typed.
   it("splits the Media URLs field a builder typed as one line", () => {
-    const decodeConfig = Schema.decodeUnknownSync(
-      Schema.toCodecJson(twilio.actions["send-sms"].input)
-    );
+    // A step's schemas are typed as any Standard Schema, and only Effect's
+    // carries the transform this case is about.
+    const schema = twilio.actions["send-sms"].input;
+    if (!isEffectSchema<unknown, never>(schema)) {
+      throw new Error(
+        'Action "twilio/send-sms" no longer holds an Effect schema'
+      );
+    }
+
+    const decodeConfig = Schema.decodeUnknownSync(Schema.toCodecJson(schema));
 
     expect(
       decodeConfig({

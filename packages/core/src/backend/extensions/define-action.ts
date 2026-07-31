@@ -14,7 +14,7 @@
  * from.
  */
 
-import { Result, Schema } from "effect";
+import { Result } from "effect";
 import {
   readIntegrationId,
   readStepContext,
@@ -25,6 +25,7 @@ import type { StepFactory } from "#src/backend/extensions/steps/step-runner";
 import type { ActionConfigField } from "@rova/shared/plugins/action-fields";
 import {
   configFieldsFromInputSchema,
+  type InputSchema,
   validateConfig,
 } from "#src/backend/extensions/schema-io";
 import { getErrorMessage } from "@rova/shared/utils";
@@ -39,23 +40,6 @@ import {
   outputFieldsFromSchema,
 } from "@rova/shared/graph/output-fields";
 import type { StepResult } from "@rova/shared/actions/step-result";
-
-/**
- * What `input` in `defineAction` accepts, in either of the two forms a schema
- * arrives in.
- *
- * Both halves of Standard Schema are needed from one object: resolved config
- * values are validated with `~standard.validate`, and `configFields` is derived
- * from `~standard.jsonSchema.input()`. Zod v4 and arktype hand over an object
- * carrying both, and that is the first arm.
- *
- * The second arm is a bare Effect schema, which carries neither until it is
- * asked to. `defineAction` asks, once, so an author writes
- * `input: Schema.Struct({ ... })` and nothing else.
- */
-export type InputSchema<TPayload> =
-  | StandardSchema<TPayload>
-  | Schema.ConstraintDecoder<TPayload>;
 
 /**
  * What the handler is told about the run it is part of.
