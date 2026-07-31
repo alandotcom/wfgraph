@@ -11,10 +11,9 @@ import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
  *
  * A Condition node with no stored model is rejected by
  * `workflow-conditions-validation.ts` when the workflow runs, so a node the
- * user has only dropped on the canvas has to arrive with one. This used to be
- * an effect in the builder row that noticed the absence and wrote a model back
- * through a `queueMicrotask`; it belongs to the moment the action is chosen,
- * which is what creates the absence.
+ * user has only dropped on the canvas has to arrive with one. This belongs to
+ * the moment the action is chosen, which is what creates the absence, rather
+ * than an effect in the builder row noticing it after the fact.
  *
  * Returns nothing when there is no upstream field to build a condition from,
  * because there is then nothing to seed it with.

@@ -127,18 +127,18 @@ export const getWorkflowExecutionsGlobal = Effect.fn(
 
     const requestedLimit = resolveLimit(input.limit);
     if (!requestedLimit) {
-      return yield* Effect.fail(
-        new InvalidInput({ error: `Limit must be between 1 and ${MAX_LIMIT}` })
-      );
+      return yield* new InvalidInput({
+        error: `Limit must be between 1 and ${MAX_LIMIT}`,
+      });
     }
 
     const cursorStartedAt = input.cursor
       ? new Date(input.cursor.startedAt)
       : undefined;
     if (cursorStartedAt && Number.isNaN(cursorStartedAt.getTime())) {
-      return yield* Effect.fail(
-        new InvalidInput({ error: "Invalid cursor.startedAt timestamp" })
-      );
+      return yield* new InvalidInput({
+        error: "Invalid cursor.startedAt timestamp",
+      });
     }
 
     const rows = yield* repo.listPage({

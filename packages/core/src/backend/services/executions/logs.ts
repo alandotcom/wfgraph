@@ -24,7 +24,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
 
     if (!execution) {
       yield* logger.warn("Execution not found for logs");
-      return yield* Effect.fail(new NotFound({ error: "Execution not found" }));
+      return yield* new NotFound({ error: "Execution not found" });
     }
 
     const logs = yield* repo.listLogs(executionId);

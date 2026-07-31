@@ -73,8 +73,8 @@ export const sidebarWidthPercentAtom = atom(
 /**
  * The width the canvas has to give up to the sidebar, or null when it gives up
  * none. Nothing writes this: it is the panel's own state read from the other
- * side of the tree, which is what an effect used to mirror across, along with a
- * second effect on unmount whose only job was undoing the mirror.
+ * side of the tree, rather than mirrored across by an effect that would need a
+ * second effect on unmount just to undo the mirror.
  *
  * The mobile case is deliberately absent. Whether the viewport is narrow is the
  * canvas's own layout question, and it asks `useIsMobile` itself.

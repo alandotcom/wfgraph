@@ -27,11 +27,11 @@ import type {
 /**
  * The graph the editor is showing, and every operation that may change it.
  *
- * The node and edge cells are private on purpose. They used to be exported
- * writable, and three modules wrote them directly: creating an edge and running
- * auto-layout both changed the graph without recording an undo step, so neither
- * could be undone. Exporting read-only views instead makes that mistake fail to
- * compile, because jotai types the setter of a read-only atom as `never`.
+ * The node and edge cells are private on purpose. A module writing to them
+ * directly could change the graph without recording an undo step, the way
+ * creating an edge or running auto-layout would. Exporting only read-only
+ * views makes that mistake fail to compile, because jotai types the setter of
+ * a read-only atom as `never`.
  *
  * Add an operation here rather than reaching for the cells.
  */
@@ -93,10 +93,10 @@ function requestGraphSave(
 /**
  * Replace the graph with what came back from the server.
  *
- * Clearing history is the point. It used to be impossible from outside this
- * module, so undo history survived navigating between workflows: pressing undo
- * after switching wrote the previous workflow's graph into the current one, and
- * autosave then persisted it under the wrong id.
+ * Clearing history is the point: undo history surviving a navigation between
+ * workflows would let pressing undo after switching write the previous
+ * workflow's graph into the current one, which autosave would then persist
+ * under the wrong id.
  */
 export const loadWorkflowGraphAtom = atom(
   null,
@@ -115,11 +115,11 @@ export const loadWorkflowGraphAtom = atom(
 /**
  * Put a workflow on screen: the graph, its identity, and who may edit it.
  *
- * Called from the route's loader, before the editor renders. Loading used to be
- * an effect in the editor that fetched, then wrote these one at a time, with a
- * ref comparing workflow ids to throw away a response that arrived after the
- * user had already navigated somewhere else. A loader has neither problem: it
- * runs before the component and the router cancels it on navigation.
+ * Called from the route's loader, before the editor renders. A loader avoids
+ * fetching from an effect in the editor and writing these one at a time, which
+ * would need a ref comparing workflow ids to discard a response that arrived
+ * after the user had already navigated elsewhere: the loader runs before the
+ * component and the router cancels it on navigation.
  */
 export const hydrateWorkflowAtom = atom(
   null,
@@ -324,7 +324,7 @@ export const addNodeAtom = atom(null, (get, set, node: WorkflowNode) => {
   requestGraphSave(get, set, { immediate: true });
 });
 
-/** Connect two nodes. An undo step, which is what the canvas used to skip. */
+/** Connect two nodes, recorded as an undo step like every graph mutation. */
 export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {
   pushHistory(get, set);
   set(edgesStateAtom, [...get(edgesStateAtom), edge]);

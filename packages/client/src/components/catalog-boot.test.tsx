@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { CatalogUnavailable } from "#src/components/catalog-boot";
 
 describe("CatalogUnavailable", () => {
-  // The editor used to draw itself from an empty catalog when this fetch failed,
-  // and the panels then told the builder their host declared no Events. The
-  // failure names the endpoint instead, and offers the one thing worth trying.
+  // A failed catalog fetch names the endpoint that failed rather than drawing
+  // the editor from an empty catalog, which would tell the builder their host
+  // declared no Events. It offers the one thing worth trying: a retry.
   it("names the endpoint and offers a retry", () => {
     const view = render(
       <CatalogUnavailable

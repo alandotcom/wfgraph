@@ -20,8 +20,17 @@
     "plugins": [
       {
         "name": "@effect/language-service",
-        "includeSuggestionsInTsc": false,
-        "ignoreEffectWarningsInTscExitCode": true
+        "includeSuggestionsInTsc": true,
+        "ignoreEffectWarningsInTscExitCode": true,
+        "diagnosticSeverity": {
+          // The suggested Effect.void loses the specific success type these
+          // functions declare (e.g. `number | undefined`); the fix does not compile.
+          "effectSucceedWithVoid": "off",
+          // These sites annotate Schema.Number before an isFinite check on purpose:
+          // Schema.Finite nests the description under `allOf`, where the editor's
+          // field reader cannot see it.
+          "schemaNumber": "off"
+        }
       }
     ],
     "paths": {

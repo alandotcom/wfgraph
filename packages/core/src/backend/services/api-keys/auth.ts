@@ -120,5 +120,5 @@ export const validateApiKey = Effect.fn("validateApiKey")(function* (
     }
   }
 
-  return yield* Effect.fail(new Unauthorized({ error: "Invalid API key" }));
+  return yield* new Unauthorized({ error: "Invalid API key" });
 });

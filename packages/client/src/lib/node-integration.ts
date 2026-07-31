@@ -10,8 +10,9 @@ import type { WorkflowNode } from "@rova/shared/graph/types";
  * connections differ from the author's. Repair is therefore a normalisation of
  * stored config against the connections that exist right now, and it belongs at
  * the moments those two things meet: loading a workflow, changing the
- * connection list, and choosing an action. It used to live in three render
- * effects that disagreed with each other about the no-candidates case.
+ * connection list, and choosing an action. Running it from one place is what
+ * keeps the no-candidates case answered the same way everywhere, rather than
+ * separately by each render effect that would otherwise own a piece of it.
  *
  * Every function here returns its input unchanged when nothing needs fixing.
  * That identity matters: the graph store treats a new node object as an edit

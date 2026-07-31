@@ -24,7 +24,7 @@ export const deleteApiKey = Effect.fn("deleteApiKey")(function* (
 
   if (deletedIds.length === 0) {
     yield* logger.warn("API key not found for delete");
-    return yield* Effect.fail(new NotFound({ error: "API key not found" }));
+    return yield* new NotFound({ error: "API key not found" });
   }
 
   const deleted: ApiKeyDeleted = { success: true };

@@ -72,7 +72,7 @@ export class WorkflowRepo extends Context.Service<
      * switcher both draw names, and reading whole rows here would pull every
      * stored graph into memory on every `refreshWorkflowList`.
      */
-    readonly listSummariesNewestFirst: () => Effect.Effect<
+    readonly listSummariesNewestFirst: Effect.Effect<
       WorkflowSummaryRow[],
       DatabaseError
     >;
@@ -169,7 +169,7 @@ export class WorkflowRepo extends Context.Service<
      * The single workflow the editor autosaves into, newest first because the
      * name is only unique through an index the autosave path predates.
      */
-    readonly findCurrent: () => Effect.Effect<Workflow | null, DatabaseError>;
+    readonly findCurrent: Effect.Effect<Workflow | null, DatabaseError>;
     /**
      * The draft subscribes to nothing: an Event may not start a run of a graph
      * nobody has saved, so no subscription rows are written for it here or on
@@ -188,26 +188,24 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
     Effect.gen(function* () {
       const database = yield* Database;
 
-      const findCurrent = () =>
-        database.query(async (db) => {
-          const [currentWorkflow] = await db
-            .select()
-            .from(workflows)
-            .where(eq(workflows.name, CURRENT_WORKFLOW_NAME))
-            .orderBy(desc(workflows.updatedAt))
-            .limit(1);
+      const findCurrent = database.query(async (db) => {
+        const [currentWorkflow] = await db
+          .select()
+          .from(workflows)
+          .where(eq(workflows.name, CURRENT_WORKFLOW_NAME))
+          .orderBy(desc(workflows.updatedAt))
+          .limit(1);
 
-          return currentWorkflow ?? null;
-        });
+        return currentWorkflow ?? null;
+      });
 
       return {
-        listSummariesNewestFirst: () =>
-          database.query((db) =>
-            db
-              .select(workflowSummaryColumns)
-              .from(workflows)
-              .orderBy(desc(workflows.updatedAt))
-          ),
+        listSummariesNewestFirst: database.query((db) =>
+          db
+            .select(workflowSummaryColumns)
+            .from(workflows)
+            .orderBy(desc(workflows.updatedAt))
+        ),
 
         findById: (workflowId) =>
           database.query(async (db) => {

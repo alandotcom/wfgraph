@@ -123,9 +123,9 @@ const integrationTestResultSchema = Schema.Struct({
 
 // Everything here but `description` and `isOwner` comes from a non-null column
 // through the one mapper that builds this payload, so the client never has to
-// invent a value. It used to be optional throughout, which pushed a `?? ""` into
-// every consumer — including two that fed the result straight to a router as a
-// workflow id, where the empty string resolves to a route that redirects away.
+// invent a value or defend against `?? ""`. A consumer that feeds `id` straight
+// to a router as a workflow id would have an empty string resolve to a route
+// that redirects away.
 const workflowSummarySchema = Schema.Struct({
   id: idSchema,
   name: Schema.String,
@@ -479,7 +479,7 @@ export const rpcContract = {
         contractSchema(
           Schema.Struct({
             items: listOf(workflowExecutionSchema),
-            supersededCount: Schema.Number,
+            supersededCount: Schema.Finite,
             /**
              * The starts that opened no run: first-wins Concurrency finding a run
              * for the entity already going, a payload carrying nothing at the

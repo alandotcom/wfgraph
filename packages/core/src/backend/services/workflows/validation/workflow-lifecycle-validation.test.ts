@@ -98,9 +98,10 @@ describe("validateWorkflowEvents - lifecycle role", () => {
   });
 
   // Rules that do not fit the shape read as no rules rather than as a refusal:
-  // the graph schema is what holds them to their shape, and it decoded this node
-  // before anything here saw it. A malformed bag reaching here means the config
-  // came through the open custom-trigger arm, where the panel's own fields live.
+  // the graph schema is what holds them to their shape in production, decoding
+  // a stored node before this validator ever sees it. This test calls the
+  // validator directly with a bag the schema would have refused, so it has to
+  // answer without that guarantee too.
   it("passes rules it cannot read, which the graph schema already refused", () => {
     const node = lifecycleNode();
     node.data.config = {

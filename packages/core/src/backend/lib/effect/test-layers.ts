@@ -173,7 +173,7 @@ export function stubStepEnvironment(
 }
 
 const workflowRepoStubs: WorkflowRepo["Service"] = {
-  listSummariesNewestFirst: refuse("listSummariesNewestFirst"),
+  listSummariesNewestFirst: refuse("listSummariesNewestFirst")(),
   findById: refuse("findById"),
   existsById: refuse("existsById"),
   hasWithName: refuse("hasWithName"),
@@ -184,7 +184,7 @@ const workflowRepoStubs: WorkflowRepo["Service"] = {
   setPaused: refuse("setPaused"),
   update: refuse("update"),
   deleteById: refuse("deleteById"),
-  findCurrent: refuse("findCurrent"),
+  findCurrent: refuse("findCurrent")(),
   insertCurrent: refuse("insertCurrent"),
 };
 
@@ -242,7 +242,7 @@ export function stubExecutionRepo(
 }
 
 const apiKeyRepoStubs: ApiKeyRepo["Service"] = {
-  listNewestFirst: refuse("listNewestFirst"),
+  listNewestFirst: refuse("listNewestFirst")(),
   insert: refuse("insert"),
   deleteById: refuse("deleteById"),
   findByPrefix: refuse("findByPrefix"),

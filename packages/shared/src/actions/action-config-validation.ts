@@ -142,10 +142,9 @@ function getWaitMissingRequiredFields(
   if (waitMode === "event") {
     const eventMissing: MissingRequiredField[] = [];
 
-    // An event-mode wait has to name at least one Event. An empty list used to
-    // mean "any Event for this entity", and the subscription index the fan-out
-    // reads has no way to hold that: a wildcard is a subscription to every Event
-    // there is.
+    // An event-mode wait has to name at least one Event: the subscription index
+    // the fan-out reads has no way to represent "any Event for this entity",
+    // since a wildcard there is a subscription to every Event there is.
     if (readWaitSubscriptions(config).length === 0) {
       eventMissing.push({
         fieldKey: "waitFor",

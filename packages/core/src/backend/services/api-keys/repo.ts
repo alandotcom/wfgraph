@@ -31,10 +31,7 @@ export class ApiKeyRepo extends Context.Service<
   ApiKeyRepo,
   {
     /** Newest first, which is the order the settings list shows. */
-    readonly listNewestFirst: () => Effect.Effect<
-      ApiKeySummary[],
-      DatabaseError
-    >;
+    readonly listNewestFirst: Effect.Effect<ApiKeySummary[], DatabaseError>;
     readonly insert: (input: {
       name: string | null;
       keyHash: string;
@@ -65,19 +62,18 @@ export const ApiKeyRepoLayer: Layer.Layer<ApiKeyRepo, never, Database> =
       const database = yield* Database;
 
       return {
-        listNewestFirst: () =>
-          database.query((db) =>
-            db.query.apiKeys.findMany({
-              columns: {
-                id: true,
-                name: true,
-                keyPrefix: true,
-                createdAt: true,
-                lastUsedAt: true,
-              },
-              orderBy: (table, { desc }) => [desc(table.createdAt)],
-            })
-          ),
+        listNewestFirst: database.query((db) =>
+          db.query.apiKeys.findMany({
+            columns: {
+              id: true,
+              name: true,
+              keyPrefix: true,
+              createdAt: true,
+              lastUsedAt: true,
+            },
+            orderBy: (table, { desc }) => [desc(table.createdAt)],
+          })
+        ),
 
         insert: (input) =>
           database.query(async (db) => {

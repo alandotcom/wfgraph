@@ -123,11 +123,6 @@ describe("postWorkflowDuplicate", () => {
   layer(
     Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, stubIntegrationRepo())
   )((it) => {
-    // The integration key is removed rather than blanked. The first-class
-    // trigger config schemas are closed, so a `Webhook` config carrying an
-    // `integrationId` key with no value still falls out of the webhook branch of
-    // the union and is refused by the custom-trigger branch, which threw on
-    // every copy.
     it.effect("drops the integration key instead of emptying it", () =>
       Effect.gen(function* () {
         const repo = makeWorkflowRepo();

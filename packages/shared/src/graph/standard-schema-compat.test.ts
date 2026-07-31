@@ -329,10 +329,10 @@ describe("the derivations over a bridged schema", () => {
     ]);
   });
 
-  // A schema that describes the action while offering the editor nothing it can
-  // address. This used to be silent: the derivation answered an empty list, and
-  // an action with no autocomplete looks the same to a user as one whose fields
-  // have not loaded yet.
+  // Without this refusal, a schema that describes the action while offering the
+  // editor nothing it can address would fail silently: the derivation would
+  // answer an empty list, and an action with no autocomplete looks the same to a
+  // user as one whose fields have not loaded yet.
   it("refuses an output schema the editor cannot address by path", () => {
     expect(() =>
       requireOutputFieldsFromSchema(

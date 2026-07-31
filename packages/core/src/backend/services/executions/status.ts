@@ -24,7 +24,7 @@ export const getExecutionStatus = Effect.fn("getExecutionStatus")(
 
     if (!execution) {
       yield* logger.warn("Execution not found for status");
-      return yield* Effect.fail(new NotFound({ error: "Execution not found" }));
+      return yield* new NotFound({ error: "Execution not found" });
     }
 
     const logs = yield* repo.listNodeStatuses(executionId);

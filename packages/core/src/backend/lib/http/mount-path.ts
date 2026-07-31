@@ -2,10 +2,10 @@
  * Path arithmetic for a Rova app mounted somewhere other than the root.
  *
  * The host tells `createRovaApp` where it mounted us via `basePath`, and every
- * URL Rova builds or matches is derived from that one answer. Rova used to
- * deduce the mount point per request by subtracting Hono's local path from the
- * full URL, which silently produced the wrong prefix under any host that
- * rewrites the request URL on mount (Express `app.use("/rova", ...)` does).
+ * URL Rova builds or matches is derived from that one answer. Deducing the
+ * mount point per request by subtracting Hono's local path from the full URL
+ * would silently produce the wrong prefix under any host that rewrites the
+ * request URL on mount (Express `app.use("/rova", ...)` does).
  */
 
 // A mount path travels into URLs and into a filesystem join, so it is kept to

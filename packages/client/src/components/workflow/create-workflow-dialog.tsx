@@ -49,11 +49,9 @@ export function CreateWorkflowDialog({
   onCreated,
 }: CreateWorkflowDialogProps) {
   // The suggested name is computed once, when this dialog mounts. Callers give
-  // it a fresh key each time they open it, so mounting is the reset.
-  //
-  // It used to be recomputed from `existingWorkflowNames` and pushed into state
-  // by an effect, which meant that a refetch of the workflow list while the
-  // dialog was open silently replaced whatever the user had typed.
+  // it a fresh key each time they open it, so mounting is the reset. Recomputing
+  // it from `existingWorkflowNames` on every render would let a background
+  // refetch of the workflow list silently replace whatever the user had typed.
   const [workflowName, setWorkflowName] = useState(() =>
     buildNextWorkflowName(existingWorkflowNames)
   );

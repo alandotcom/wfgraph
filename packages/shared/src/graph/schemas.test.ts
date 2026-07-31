@@ -97,9 +97,9 @@ describe("node data failure messages", () => {
 
   // One literal `type` per union arm is what lets Effect pick the arm the
   // input was aiming at. Without it every arm is tried and every arm
-  // complains, so a bad Lifecycle Node config used to be reported beside a
-  // demand that `type` be "action" or "add". The entry node's config is one
-  // closed struct now, so its own field is the whole of what a reader is told.
+  // complains, which would report a bad Lifecycle Node config beside a demand
+  // that `type` be "action" or "add". The entry node's config is one closed
+  // struct, so its own field is the whole of what a reader is told.
   it("names the Lifecycle Node's own problem and not the other arms", () => {
     const message = messageFor({
       label: "Webhook",

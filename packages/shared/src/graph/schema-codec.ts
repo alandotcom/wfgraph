@@ -108,6 +108,9 @@ type WorkflowFieldRecords = (WorkflowFieldRecord | undefined)[];
  */
 const readObject = readAs(Schema.Record(Schema.String, Schema.Unknown));
 const readString = readAs(Schema.String);
+// A foreign JSON Schema's `minimum` keyword carries whatever number its author
+// wrote; narrowing to finite would reject a document this reader must still
+// tolerate.
 const readNumber = readAs(Schema.Number);
 const readStringArray = readAs(Schema.mutable(Schema.Array(Schema.String)));
 const readUnknownArray = readAs(Schema.mutable(Schema.Array(Schema.Unknown)));

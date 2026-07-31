@@ -12,9 +12,8 @@ const NO_LOGS: Record<string, ExecutionLogEntry> = {};
  * node id.
  *
  * Every ActionNode on the canvas calls this, which is one query with N
- * observers rather than N requests. It used to be a Jotai atom that the runs
- * panel wrote from an effect whenever its local logs changed, so a node's badge
- * depended on the runs panel being mounted and having noticed.
+ * observers rather than N requests, so a node's badge never depends on the
+ * runs panel being mounted to notice a change.
  *
  * `toExecutionLogsByNodeId` is module-level on purpose: TanStack memoises a
  * select by identity, so a poll that returns the same JSON hands back the same

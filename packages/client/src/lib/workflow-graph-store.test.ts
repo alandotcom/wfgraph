@@ -101,9 +101,9 @@ function deleteNodeViaReactFlow(store: Store) {
 }
 
 /**
- * Every way the graph can change has to be both undoable and persisted. These
- * two properties used to be decided per call site, which is how creating an
- * edge ended up saved but not undoable.
+ * Every way the graph can change has to be both undoable and persisted,
+ * decided in one place rather than per call site -- a mutation like creating
+ * an edge can otherwise end up saved but not undoable.
  */
 describe("graph mutations are undoable and persisted", () => {
   const mutations: Array<[string, (store: Store) => void]> = [

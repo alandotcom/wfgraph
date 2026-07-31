@@ -348,7 +348,7 @@ describe("enqueueStartedRun", () => {
 
     // The enqueue is irreversible, so failing here would put the caller's Inngest
     // step into a retry that enqueues nothing new and re-runs everything around
-    // it -- which is how one arrival used to open two Executions.
+    // it -- exactly how one arrival could open two Executions.
     serviceIt.effect(
       "reports the run as started when the writes after the send are refused",
       () =>

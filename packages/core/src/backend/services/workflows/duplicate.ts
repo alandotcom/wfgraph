@@ -71,7 +71,7 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
     const sourceWorkflow = yield* repo.findById(workflowId);
 
     if (!sourceWorkflow) {
-      return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
+      return yield* new NotFound({ error: "Workflow not found" });
     }
 
     // The graph column is untyped JSON, so a stored graph that no longer parses
@@ -83,9 +83,7 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
       yield* logger.error("Stored workflow graph is invalid on duplicate", {
         reason: sourceValidation.error,
       });
-      return yield* Effect.fail(
-        new InternalFailure({ error: "Workflow graph is invalid" })
-      );
+      return yield* new InternalFailure({ error: "Workflow graph is invalid" });
     }
 
     const { nodes: oldNodes, edges: oldEdges } = sourceValidation;
@@ -103,11 +101,9 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
       yield* logger.warn("Duplicate workflow name on duplicate", {
         workflowName,
       });
-      return yield* Effect.fail(
-        new Conflict({
-          error: `Workflow name "${workflowName}" already exists`,
-        })
-      );
+      return yield* new Conflict({
+        error: `Workflow name "${workflowName}" already exists`,
+      });
     }
 
     const newWorkflowId = generateId();

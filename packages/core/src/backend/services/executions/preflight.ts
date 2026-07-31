@@ -184,7 +184,7 @@ export const runWorkflowExecutionPreflight = Effect.fn(
   }
 
   if (!check.valid) {
-    return yield* Effect.fail(new InvalidInput({ error: check.error }));
+    return yield* new InvalidInput({ error: check.error });
   }
 
   // The only way this fails is the integration rows it reads, so a rejected
@@ -197,12 +197,10 @@ export const runWorkflowExecutionPreflight = Effect.fn(
     integrations.typesByIds
   );
   if (!integrationValidation.valid) {
-    return yield* Effect.fail(
-      new IntegrationValidationFailed({
-        error: "Workflow contains invalid integration references",
-        invalidIntegrationIds: integrationValidation.invalidIds,
-      })
-    );
+    return yield* new IntegrationValidationFailed({
+      error: "Workflow contains invalid integration references",
+      invalidIntegrationIds: integrationValidation.invalidIds,
+    });
   }
 
   const preflight: WorkflowExecutionPreflight = {
@@ -228,7 +226,7 @@ export const loadWorkflowForRun = Effect.fn("loadWorkflowForRun")(function* (
   const workflow = yield* repo.findById(workflowId);
 
   if (!workflow) {
-    return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
+    return yield* new NotFound({ error: "Workflow not found" });
   }
 
   const preflight = yield* runWorkflowExecutionPreflight({ workflow });

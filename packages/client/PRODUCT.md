@@ -14,7 +14,7 @@ Developers first: engineers who adopt Rova, embed `@rova/core` and the editor in
 
 ## Product Purpose
 
-Rova is a general workflow automation platform: a node-based visual editor over a typed, plugin-driven execution engine (Hono API, Postgres, Inngest). Users compose triggers, steps, and conditions on a canvas, connect integrations (Slack, Twilio, Resend, Linear, Acuity, Clerk), and watch runs execute with logs and history. Success in the near term is production use at Fountain, with real workflows running reliably.
+Rova is a general workflow automation platform: a node-based visual editor over a typed, plugin-driven execution engine (Hono API, Postgres, Inngest). Users compose a Lifecycle Node, steps, and conditions on a canvas, connect integrations (Slack, Twilio, Resend, Linear, Acuity, Clerk), and watch runs execute with logs and history. Success in the near term is production use at Fountain, with real workflows running reliably.
 
 ## Positioning
 

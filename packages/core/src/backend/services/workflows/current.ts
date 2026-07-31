@@ -21,12 +21,12 @@ export const getWorkflowsCurrent = Effect.fn("getWorkflowsCurrent")(
     const repo = yield* WorkflowRepo;
     const logger = yield* loggerFor();
 
-    const currentWorkflow = yield* repo.findCurrent();
+    const currentWorkflow = yield* repo.findCurrent;
 
     if (!currentWorkflow) {
       // Answering with a bare empty graph would be a workflow payload missing
       // its name, mode, and timestamps, which is not a workflow.
-      return yield* Effect.fail(new NotFound({ error: "No current workflow" }));
+      return yield* new NotFound({ error: "No current workflow" });
     }
 
     const graphValidation = validateWorkflowGraph(currentWorkflow.graph);
@@ -34,11 +34,9 @@ export const getWorkflowsCurrent = Effect.fn("getWorkflowsCurrent")(
       yield* logger.error("Stored current workflow has invalid graph", {
         error: graphValidation.error,
       });
-      return yield* Effect.fail(
-        new InternalFailure({
-          error: "Stored current workflow graph is invalid",
-        })
-      );
+      return yield* new InternalFailure({
+        error: "Stored current workflow graph is invalid",
+      });
     }
 
     // Conditions and Lifecycle Rules are checked on save and again before a run,
@@ -66,7 +64,7 @@ export const postWorkflowsCurrent = Effect.fn("postWorkflowsCurrent")(
       graph: withDefaultLifecycleNode(body.graph),
     });
 
-    const existingWorkflow = yield* repo.findCurrent();
+    const existingWorkflow = yield* repo.findCurrent;
 
     if (existingWorkflow) {
       const updatedWorkflow = yield* repo.update({
@@ -81,9 +79,9 @@ export const postWorkflowsCurrent = Effect.fn("postWorkflowsCurrent")(
       if (!updatedWorkflow) {
         // The row was read a moment ago, so losing it here means something
         // deleted it mid-save; there is no newer graph to answer with.
-        return yield* Effect.fail(
-          new InternalFailure({ error: "Failed to save current workflow" })
-        );
+        return yield* new InternalFailure({
+          error: "Failed to save current workflow",
+        });
       }
 
       return toWorkflowApiPayload(updatedWorkflow);
@@ -95,9 +93,9 @@ export const postWorkflowsCurrent = Effect.fn("postWorkflowsCurrent")(
     });
 
     if (!savedWorkflow) {
-      return yield* Effect.fail(
-        new InternalFailure({ error: "Failed to save current workflow" })
-      );
+      return yield* new InternalFailure({
+        error: "Failed to save current workflow",
+      });
     }
 
     return toWorkflowApiPayload(savedWorkflow);

@@ -245,7 +245,7 @@ export type StandardSchema<T> = StandardSchemaV1<unknown, T> &
  * directions at run time, so `isEffectSchema<T, never>` is how a caller states
  * the half it is holding. Neither parameter is a finding of the check, which
  * cannot tell one payload type from another. Exported because the intake gate
- * and the action registry's encoder pick their path on this same question.
+ * and `defineAction`'s encoder pick their path on this same question.
  */
 export function isEffectSchema<T, REncode = unknown>(
   schema: unknown
@@ -254,19 +254,20 @@ export function isEffectSchema<T, REncode = unknown>(
 }
 
 /**
- * The registries' one-line rule for the schema a plugin author handed them:
- * bridge it if it is an Effect schema, take it as it is otherwise.
+ * `defineAction` and `defineEvent`'s one-line rule for the schema an author
+ * handed them: bridge it if it is an Effect schema, take it as it is otherwise.
  *
- * This exists so that writing a trigger or an action in Effect Schema reads the
- * same as writing one in Zod -- `schema: Schema.Struct({ ... })`, no wrapper --
- * while the library-agnostic seam stays exactly as wide as it was. Registration
- * is where it is called, which is the one moment a schema is handled before
- * anything reads it, so the bridge's first-call-wins rule is satisfied by there
- * being only one call.
+ * This exists so that writing an Event's payload or an action's schema in
+ * Effect Schema reads the same as writing one in Zod -- `schema:
+ * Schema.Struct({ ... })`, no wrapper -- while the library-agnostic seam stays
+ * exactly as wide as it was. Definition is where it is called, which is the one
+ * moment a schema is handled before anything reads it, so the bridge's
+ * first-call-wins rule is satisfied by there being only one call.
  *
  * `Other` is whatever the caller's own seam already accepted, handed back
- * untouched. The action registry names one shape there, the trigger registry
- * names two, and neither has to restate this bridge to say so.
+ * untouched. `defineEvent` names one shape there, its payload; `defineAction`
+ * names two, its input and its output, and neither has to restate this bridge
+ * to say so.
  *
  * The discrimination is exact rather than structural: `Schema.isSchema` tests
  * for the `"~effect/Schema/Schema"` type id Effect brands every schema with, so

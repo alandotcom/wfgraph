@@ -19,8 +19,8 @@ export class DatabaseError extends Schema.TaggedErrorClass<DatabaseError>()(
  * The database, as a service rather than a module-level handle.
  *
  * A caller hands in the query it wants run and gets back an Effect whose error
- * channel names database failure, so a service that queries can no longer forget
- * that querying fails. Repository services (`services/<domain>/repo.ts`) are the
+ * channel names database failure, so a service that queries cannot forget that
+ * querying fails. Repository services (`services/<domain>/repo.ts`) are the
  * only intended callers: they turn a domain question into a Drizzle query, which
  * leaves domain code free of the query builder and gives a test a place to stand
  * that needs no database.

@@ -38,9 +38,9 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
 
     if (!waitState) {
       yield* logger.warn("Wait not found or no longer active");
-      return yield* Effect.fail(
-        new NotFound({ error: "Wait not found or no longer active" })
-      );
+      return yield* new NotFound({
+        error: "Wait not found or no longer active",
+      });
     }
 
     yield* inngest.sendWaitSignal({
@@ -57,9 +57,9 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
     });
     if (!waitStateUpdated) {
       yield* logger.warn("Wait changed state before resume update");
-      return yield* Effect.fail(
-        new Conflict({ error: "Wait not found or no longer active" })
-      );
+      return yield* new Conflict({
+        error: "Wait not found or no longer active",
+      });
     }
 
     yield* repo.markRunning(waitState.executionId);

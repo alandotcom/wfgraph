@@ -1,9 +1,8 @@
 /**
  * The run context the engine hands a step, and the reader that recovers it.
  *
- * Everything else a step used to do around its work belongs somewhere else now:
- * the run log rows are the engine's, written through its `WorkflowStore` port,
- * and the envelope is `defineStep`'s.
+ * The run log rows are the engine's, written through its `WorkflowStore` port,
+ * and the envelope is `defineStep`'s. What is left here is the run context.
  */
 
 import { Schema } from "effect";

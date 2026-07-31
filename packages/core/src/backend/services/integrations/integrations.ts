@@ -172,15 +172,11 @@ const testFailure =
   (cause: unknown): Effect.Effect<never, InternalFailure> =>
     Effect.gen(function* () {
       yield* logger.error(describe(cause), { error: cause });
-      return yield* Effect.fail(
-        new InternalFailure({
-          error:
-            cause instanceof Error
-              ? cause.message
-              : "Failed to test connection",
-          cause,
-        })
-      );
+      return yield* new InternalFailure({
+        error:
+          cause instanceof Error ? cause.message : "Failed to test connection",
+        cause,
+      });
     });
 
 /**
@@ -226,15 +222,13 @@ const runConnectionTest = Effect.fn("runConnectionTest")(function* (
   if (!integration) {
     const error = describeUnavailableIntegration(extensions.catalog, type);
     yield* logger.warn(error);
-    return yield* Effect.fail(new InvalidInput({ error }));
+    return yield* new InvalidInput({ error });
   }
 
   const loadTest = extensions.connectionTestFor(type);
   if (!loadTest) {
     yield* logger.warn(MISSING_TEST_MESSAGE);
-    return yield* Effect.fail(
-      new InvalidInput({ error: MISSING_TEST_MESSAGE })
-    );
+    return yield* new InvalidInput({ error: MISSING_TEST_MESSAGE });
   }
 
   // The loader reaches for a vendor module, which is a throw the same `attempt`
@@ -307,7 +301,7 @@ export const getIntegration = Effect.fn("getIntegration")(function* (
 
   if (!integration) {
     yield* logger.warn("Integration not found");
-    return yield* Effect.fail(new NotFound({ error: "Integration not found" }));
+    return yield* new NotFound({ error: "Integration not found" });
   }
 
   return toIntegrationWithConfig(catalog, integration);
@@ -334,7 +328,7 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
 
   if (!existingIntegration) {
     yield* logger.warn("Integration not found for update");
-    return yield* Effect.fail(new NotFound({ error: "Integration not found" }));
+    return yield* new NotFound({ error: "Integration not found" });
   }
 
   // A config the browser sent back still carries the mask over each secret, so
@@ -362,7 +356,7 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
 
   if (!integration) {
     yield* logger.warn("Integration not found for update");
-    return yield* Effect.fail(new NotFound({ error: "Integration not found" }));
+    return yield* new NotFound({ error: "Integration not found" });
   }
 
   return toIntegrationWithConfig(catalog, integration);
@@ -385,7 +379,7 @@ export const deleteIntegration = Effect.fn("deleteIntegration")(function* (
 
   if (!deleted) {
     yield* logger.warn("Integration not found for delete");
-    return yield* Effect.fail(new NotFound({ error: "Integration not found" }));
+    return yield* new NotFound({ error: "Integration not found" });
   }
 
   const result: IntegrationDeleted = { success: true };
@@ -425,7 +419,7 @@ export const postIntegrationTest = Effect.fn("postIntegrationTest")(function* (
 
   if (!integration) {
     yield* logger.warn("Integration not found for test");
-    return yield* Effect.fail(new NotFound({ error: "Integration not found" }));
+    return yield* new NotFound({ error: "Integration not found" });
   }
 
   return yield* runConnectionTest(
@@ -451,11 +445,9 @@ export const postIntegrations = Effect.fn("postIntegrations")(function* (body: {
   // testable nor maskable.
   const { catalog } = yield* Extensions;
   if (!findIntegration(catalog, body.type)) {
-    return yield* Effect.fail(
-      new InvalidInput({
-        error: describeUnavailableIntegration(catalog, body.type),
-      })
-    );
+    return yield* new InvalidInput({
+      error: describeUnavailableIntegration(catalog, body.type),
+    });
   }
 
   const integration = yield* repo

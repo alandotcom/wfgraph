@@ -118,8 +118,8 @@ function renderRuns() {
 }
 
 describe("WorkflowRuns", () => {
-  // A newest-wins workflow supersedes the open run out of the polled list, and
-  // the reader used to be dropped back to the list with no word about why.
+  // A newest-wins workflow supersedes the open run out of the polled list, so
+  // the detail view has to survive its row disappearing from underneath it.
   it("keeps the detail view open when its run leaves the list", async () => {
     served.items = [execution("exec_1", "running")];
     const { view, queryClient } = renderRuns();

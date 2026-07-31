@@ -103,7 +103,7 @@ export const getWorkflowExecutions = Effect.fn("getWorkflowExecutions")(
 
     if (!workflowExists) {
       yield* logger.warn("Workflow not found for executions list");
-      return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
+      return yield* new NotFound({ error: "Workflow not found" });
     }
 
     const [executions, supersededCount, refusedStarts] = yield* Effect.all(
@@ -146,7 +146,7 @@ export const deleteWorkflowExecutions = Effect.fn("deleteWorkflowExecutions")(
 
     if (!workflowExists) {
       yield* logger.warn("Workflow not found for executions delete");
-      return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
+      return yield* new NotFound({ error: "Workflow not found" });
     }
 
     const deletedCount = yield* executionRepo.deleteAllForWorkflow(workflowId);

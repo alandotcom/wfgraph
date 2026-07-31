@@ -193,9 +193,9 @@ export const appointmentTypeSchema = Schema.Struct({
   paddingBefore: vendorNumber("Minutes of padding before the appointment"),
   calendarIDs: Schema.optionalKey(
     Schema.NullOr(
-      Schema.mutable(
-        Schema.Array(Schema.Number.check(Schema.isFinite()))
-      ).annotate({ description: "Calendars offering this type" })
+      Schema.mutable(Schema.Array(Schema.Finite)).annotate({
+        description: "Calendars offering this type",
+      })
     )
   ),
   price: Schema.optionalKey(

@@ -35,7 +35,7 @@ export const getExecutionEvents = Effect.fn("getExecutionEvents")(
 
     if (!executionExists) {
       yield* logger.warn("Execution not found for events");
-      return yield* Effect.fail(new NotFound({ error: "Execution not found" }));
+      return yield* new NotFound({ error: "Execution not found" });
     }
 
     const events = yield* repo.listEvents(executionId);

@@ -27,12 +27,11 @@ describe("the twilio integration", () => {
   /**
    * What a node downstream of a Send SMS node can reference.
    *
-   * These paths used to be a list written out beside the action, with nothing
-   * tying them to what the step returns. They are read off the step's output
-   * schema now, which is the same schema the handler is typed against, so this
-   * case is where the derivation is pinned: the three paths the hand-written list
-   * carried keep their exact descriptions, and the three the step has always
-   * returned and never offered are here too.
+   * These paths are read off the step's output schema, which is the same schema
+   * the handler is typed against, tying them to what the step actually returns.
+   * This case is where the derivation is pinned: three paths keep the exact
+   * descriptions a hand-written list would give them, and three the step has
+   * always returned and never offered are here too.
    *
    * Those three are `nullable`, which is what the schema says about a field the
    * handler may answer with nothing. The condition builder reads it and offers

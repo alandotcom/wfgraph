@@ -1,7 +1,7 @@
 // `it` comes from the `layer` callback below, typed with the services that layer
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { makeExtensionsLayer } from "#src/backend/lib/effect/extensions";
 import {
@@ -151,8 +151,7 @@ describe("integration service secret handling", () => {
         const repo = makeIntegrationRepo(storedSlackIntegration);
 
         const integration = yield* getIntegration("int_1").pipe(
-          Effect.provide(repo.layer),
-          Effect.provide(slackCatalog)
+          Effect.provide(Layer.mergeAll(repo.layer, slackCatalog))
         );
 
         assert.strictEqual(integration.config.apiKey, "********");
@@ -172,7 +171,7 @@ describe("integration service secret handling", () => {
               apiKey: "********",
               teamId: "team-new",
             },
-          }).pipe(Effect.provide(repo.layer), Effect.provide(slackCatalog));
+          }).pipe(Effect.provide(Layer.mergeAll(repo.layer, slackCatalog)));
 
           assert.deepStrictEqual(repo.calls.updates, [
             {
@@ -200,7 +199,7 @@ describe("integration service secret handling", () => {
           config: {
             apiKey: "new-secret",
           },
-        }).pipe(Effect.provide(repo.layer), Effect.provide(slackCatalog));
+        }).pipe(Effect.provide(Layer.mergeAll(repo.layer, slackCatalog)));
 
         assert.deepStrictEqual(repo.calls.updates, [
           {
@@ -256,8 +255,7 @@ describe("integration connection test failures", () => {
         const repo = makeIntegrationRepo(storedSlackIntegration);
 
         const failure = yield* postIntegrationTest("int_1").pipe(
-          Effect.provide(repo.layer),
-          Effect.provide(throwingSlack),
+          Effect.provide(Layer.mergeAll(repo.layer, throwingSlack)),
           Effect.flip
         );
 
@@ -273,8 +271,7 @@ describe("integration connection test failures", () => {
         const repo = makeIntegrationRepo(storedSlackIntegration);
 
         const failure = yield* postIntegrationTest("int_1").pipe(
-          Effect.provide(repo.layer),
-          Effect.provide(assembledSlack),
+          Effect.provide(Layer.mergeAll(repo.layer, assembledSlack)),
           Effect.flip
         );
 
@@ -288,8 +285,9 @@ describe("integration connection test failures", () => {
       () =>
         Effect.gen(function* () {
           const failure = yield* postIntegrationTest("int_1").pipe(
-            Effect.provide(unreadableIntegrationRepo),
-            Effect.provide(assembledSlack),
+            Effect.provide(
+              Layer.mergeAll(unreadableIntegrationRepo, assembledSlack)
+            ),
             Effect.flip
           );
 
@@ -336,8 +334,7 @@ describe("an integration this server does not hold", () => {
           type: "notion",
           config: { apiKey: "secret" },
         }).pipe(
-          Effect.provide(repo.layer),
-          Effect.provide(assembledSlack),
+          Effect.provide(Layer.mergeAll(repo.layer, assembledSlack)),
           Effect.flip
         );
 

@@ -30,16 +30,16 @@ export const postExecutionCancel = Effect.fn("postExecutionCancel")(
 
     if (!workflowId) {
       yield* logger.warn("Execution not found for cancel");
-      return yield* Effect.fail(new NotFound({ error: "Execution not found" }));
+      return yield* new NotFound({ error: "Execution not found" });
     }
 
     const waitingStates = yield* repo.listWaitingStates(executionId);
 
     if (waitingStates.length === 0) {
       yield* logger.warn("Execution is not waiting and cannot be cancelled");
-      return yield* Effect.fail(
-        new Conflict({ error: "Execution is not currently waiting" })
-      );
+      return yield* new Conflict({
+        error: "Execution is not currently waiting",
+      });
     }
 
     yield* repo.recordAuditEvent({
@@ -65,9 +65,9 @@ export const postExecutionCancel = Effect.fn("postExecutionCancel")(
 
     if (ended.failedExecutionIds.length > 0) {
       yield* logger.warn("Cancel signal did not reach the run");
-      return yield* Effect.fail(
-        new InternalFailure({ error: "Failed to cancel execution" })
-      );
+      return yield* new InternalFailure({
+        error: "Failed to cancel execution",
+      });
     }
 
     // The run had already reached a terminal status: Concurrency or another

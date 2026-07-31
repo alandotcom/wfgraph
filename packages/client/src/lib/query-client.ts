@@ -69,18 +69,16 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       // An ApiError carries the HTTP status that produced it, and a 401 or a
-      // 404 will not become a 200 on the third try. Every fetch this cache
-      // replaced was a single attempt inside a try/catch, and the polling
-      // queries would stack retries on top of their own interval.
+      // 404 will not become a 200 on the third try. A polling query would also
+      // stack retries on top of its own interval.
       retry: false,
-      // Nothing in this app refetched on focus before, and in the editor a
-      // focus refetch would rehydrate the graph from the server and throw away
-      // whatever the user had not saved yet. Anything that needs to stay fresh
-      // says so with its own refetchInterval.
+      // In the editor a focus refetch would rehydrate the graph from the
+      // server and throw away whatever the user had not saved yet. Anything
+      // that needs to stay fresh says so with its own refetchInterval.
       refetchOnWindowFocus: false,
-      // Connections and workflow lists were previously fetched once into an
-      // atom and refreshed only when something explicitly invalidated them.
-      // Half a minute keeps that shape without the manual version counter.
+      // Connections and workflow lists are fetched once and read from cache
+      // until something explicitly invalidates them; half a minute of
+      // staleTime covers the gap without a manual version counter.
       staleTime: 30_000,
     },
   },

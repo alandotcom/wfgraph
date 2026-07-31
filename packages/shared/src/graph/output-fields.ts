@@ -2,11 +2,10 @@
  * What an action offers downstream, read off the schema of what it returns.
  *
  * The editor's template autocomplete needs a flat list of paths a user can drop
- * into a config field. That list used to be written out by hand beside the
- * implementation, where nothing tied the two together: a forgotten entry
- * silently degraded to no autocomplete, and a path that no longer existed
- * produced a template variable resolving to nothing at run time. Reading it off
- * the schema the handler is typed against removes the gap by construction.
+ * into a config field. Reading it off the schema the handler is typed against
+ * ties the two together by construction, so a forgotten entry cannot silently
+ * degrade to no autocomplete, and a path that stops existing cannot leave a
+ * template variable resolving to nothing at run time.
  *
  * The walk descends. A nested object contributes its own path and every leaf
  * beneath it, so a field asking for an id is offered `appointment.id` and not

@@ -53,9 +53,9 @@ describe("defineStep", () => {
       yield* context.credentials;
 
       if (!credentials.API_KEY) {
-        return yield* Effect.fail(
-          new StepFailure({ message: "API_KEY is not configured." })
-        );
+        return yield* new StepFailure({
+          message: "API_KEY is not configured.",
+        });
       }
 
       return { id: `${credentials.API_KEY}-1`, sentTo: config.to };
@@ -195,9 +195,9 @@ describe("defineStep", () => {
   });
 
   // A key present holding `undefined` is what a caller building the context
-  // from optional values sends, and the context schema accepts it. It used to
-  // fail the decode, which threw the whole context away: the run stopped
-  // logging, and a test run read as a live one.
+  // from optional values sends, and the context schema accepts it. Failing the
+  // decode there would throw the whole context away: the run would stop
+  // logging, and a test run would read as a live one.
   it("keeps the run context when a field arrives as an empty key", async () => {
     const { reporting, modes } = makeReportingStep("demo/empty-key");
 
@@ -288,9 +288,7 @@ describe("defineStep and a credential store that refuses the read", () => {
       output,
       configFields: [],
       handler: Effect.fn(function* () {
-        return yield* Effect.fail(
-          new StepFailure({ message: "The vendor said no." })
-        );
+        return yield* new StepFailure({ message: "The vendor said no." });
       }),
     });
 

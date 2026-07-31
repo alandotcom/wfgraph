@@ -150,8 +150,8 @@ describe("validateWorkflowActionConfigs", () => {
     expect(result.valid).toBe(true);
   });
 
-  // A wait that parks on an Event has to name one: an empty list used to mean
-  // "any Event for this entity", which the subscription index cannot hold.
+  // A wait that parks on an Event has to name one: the subscription index has
+  // no way to hold a wildcard meaning "any Event for this entity".
   it("rejects a Wait on events that names none", () => {
     const result = validateWorkflowActionConfigs(
       [

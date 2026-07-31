@@ -191,13 +191,11 @@ export function callVendor<S extends Schema.ConstraintDecoder<unknown>>(
  * Run a vendor call for a caller that is still a Promise.
  *
  * A step written with `defineStep` runs its own effect and is given the
- * transport, so this is for the callers that are not one yet: the steps stage
- * 6b has still to migrate, and a connection test, which answers the credentials
- * UI over its own Promise seam.
+ * transport, so this is for the one caller that is not one: a connection test,
+ * which answers the credentials UI over its own Promise seam.
  *
  * Only a `VendorError` becomes a result object. A defect, a `refusedInBody` that
- * throws among them, rejects the returned Promise, which is what the old code
- * did with a thrown error too.
+ * throws among them, rejects the returned Promise.
  */
 export function runVendorCall<A, TFailure>(
   call: Effect.Effect<A, VendorError, HttpClient.HttpClient>,
@@ -258,22 +256,18 @@ function attemptCall<S extends Schema.ConstraintDecoder<unknown>>(
       request.refusedInBody?.(payload) === true;
 
     if (refused) {
-      return yield* Effect.fail(
-        new VendorRejected({
-          status: response.status,
-          payload,
-          retryAfterSeconds: readRetryAfter(response.headers),
-        })
-      );
+      return yield* new VendorRejected({
+        status: response.status,
+        payload,
+        retryAfterSeconds: readRetryAfter(response.headers),
+      });
     }
 
     const data = parsePayload(payload, request.schema);
     if (data === undefined) {
       // A success status the vendor did not shape the way it documents.
       // Reporting success here would hand the run an empty id and call it sent.
-      return yield* Effect.fail(
-        new VendorUnreadable({ status: response.status })
-      );
+      return yield* new VendorUnreadable({ status: response.status });
     }
 
     return data;
@@ -361,7 +355,7 @@ function readRetryAfter(headers: Headers.Headers): number | undefined {
 }
 
 /**
- * Whatever the transport threw, said in the words the caller used to get.
+ * Whatever the transport threw, in the caller's own words.
  *
  * `HttpClientError` copies the raw rejection onto its own `cause`, so this is
  * the `fetch` rejection itself rather than the wrapper's formatted message.

@@ -396,6 +396,9 @@ const conditionRuleVariants = [
     // The checks rule out NaN and the infinities along with the fractions and
     // the non-positive counts; a count of time units has to be a real positive
     // whole number to be compiled into a CEL duration.
+    // The message sits on `Schema.Number`, not on `isFinite`: a check that carries
+    // the message instead would never see a wrong-typed value, which fails the
+    // base type and reaches Effect's own text.
     amount: withMessage(Schema.Number, TIMESTAMP_AMOUNT_ERROR).check(
       Schema.isFinite().annotate({ message: TIMESTAMP_AMOUNT_ERROR }),
       Schema.isInt().annotate({ message: TIMESTAMP_AMOUNT_ERROR }),
@@ -446,6 +449,9 @@ const conditionRuleVariants = [
     ),
     // The check rules out NaN and the infinities, leaving the finite numbers a
     // comparison can be compiled against.
+    // The message sits on `Schema.Number`, not on `isFinite`: a check that carries
+    // the message instead would never see a wrong-typed value, which fails the
+    // base type and reaches Effect's own text.
     value: withMessage(Schema.Number, NUMBER_VALUE_ERROR).check(
       Schema.isFinite().annotate({ message: NUMBER_VALUE_ERROR })
     ),

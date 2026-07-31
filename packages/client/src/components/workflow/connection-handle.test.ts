@@ -38,9 +38,9 @@ function plainActionNode(id = "action"): WorkflowNode {
 }
 
 describe("normalizeSourceHandleForConnection", () => {
-  // The bug this guards: every edge dragged off the entry node used to be
-  // renamed Started regardless of which of its two handles was actually
-  // dragged, which made the Canceled outlet undraggable.
+  // An edge dragged off the entry node has to keep the handle it was actually
+  // dragged from; relabeling every edge to Started would make the Canceled
+  // outlet undraggable.
   it("keeps the Canceled handle when that is what was dragged", () => {
     expect(
       normalizeSourceHandleForConnection({

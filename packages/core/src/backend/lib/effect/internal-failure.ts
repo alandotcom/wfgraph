@@ -34,7 +34,7 @@ export const internalFailure =
       yield* logger.error(`${message}: ${getErrorMessage(cause)}`, {
         error: cause,
       });
-      return yield* Effect.fail(new InternalFailure({ error: message, cause }));
+      return yield* new InternalFailure({ error: message, cause });
     });
 
 /**
@@ -82,12 +82,10 @@ export const internalFailureRelayingCause =
       yield* serviceLogger.error(`${message}: ${getErrorMessage(cause)}`, {
         error: cause,
       });
-      return yield* Effect.fail(
-        new InternalFailure({
-          error: cause instanceof Error ? cause.message : callerMessage,
-          cause,
-        })
-      );
+      return yield* new InternalFailure({
+        error: cause instanceof Error ? cause.message : callerMessage,
+        cause,
+      });
     });
 
 /**
@@ -117,9 +115,7 @@ const statedInternalFailure =
       yield* serviceLogger.error(`${message}: ${getErrorMessage(cause)}`, {
         error: cause,
       });
-      return yield* Effect.fail(
-        new InternalFailure({ error: callerMessage, cause })
-      );
+      return yield* new InternalFailure({ error: callerMessage, cause });
     });
 
 /**

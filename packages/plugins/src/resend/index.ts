@@ -307,23 +307,19 @@ export const sendEmailHandler = Effect.fn(function* (
   const apiKey = credentials.RESEND_API_KEY;
 
   if (!apiKey) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message:
-          "RESEND_API_KEY is not configured. Please add it in Project Integrations.",
-      })
-    );
+    return yield* new StepFailure({
+      message:
+        "RESEND_API_KEY is not configured. Please add it in Project Integrations.",
+    });
   }
 
   const senderEmail = input.emailFrom || credentials.RESEND_FROM_EMAIL;
 
   if (!senderEmail) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message:
-          "No sender is configured. Please add it in the action or in Project Integrations.",
-      })
-    );
+    return yield* new StepFailure({
+      message:
+        "No sender is configured. Please add it in the action or in Project Integrations.",
+    });
   }
 
   // A test send goes to the nominated address alone: carrying the real cc and

@@ -4,7 +4,7 @@
  * A payload is described by a schema, so the paths into it are derivable from
  * the payload type alone: an author writes `correlationPath: "appointment.id"`
  * and the compiler holds it to a path that schema declares. The Event surface
- * and the trigger registry both alias these under names of their own.
+ * aliases these under names of its own.
  */
 
 import type { JsonObject } from "#src/types/json";

@@ -13,10 +13,9 @@ function outputFieldsOf(slug: keyof typeof linear.actions) {
  * What a node downstream of a Linear node can reference.
  *
  * Create Ticket's three paths are what the hand-written list carried, word for
- * word. Find Issues gained the inside of its list: `issues` used to be one
- * entry described as "Array of issues found", which a template could name and
- * then had nothing to do with, and the six fields of an issue are addressable
- * now.
+ * word. Find Issues' list exposes the six fields of an issue individually,
+ * rather than only `issues` described as "Array of issues found", which a
+ * template could name and then have nothing useful to do with.
  */
 describe("the linear integration", () => {
   it("declares its credentials and its actions as one value", () => {

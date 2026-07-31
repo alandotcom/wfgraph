@@ -135,9 +135,9 @@ function firstTeamId(client: LinearClient): Effect.Effect<string, StepFailure> {
 
     return firstTeam
       ? firstTeam.id
-      : yield* Effect.fail(
-          new StepFailure({ message: "No teams found in Linear workspace" })
-        );
+      : yield* new StepFailure({
+          message: "No teams found in Linear workspace",
+        });
   });
 }
 
@@ -153,12 +153,10 @@ export const createTicketHandler = Effect.fn(function* (
   const apiKey = credentials.LINEAR_API_KEY;
 
   if (!apiKey) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message:
-          "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
-      })
-    );
+    return yield* new StepFailure({
+      message:
+        "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
+    });
   }
 
   const client = new LinearClient({ apiKey });
@@ -177,9 +175,7 @@ export const createTicketHandler = Effect.fn(function* (
   });
 
   if (!issue) {
-    return yield* Effect.fail(
-      new StepFailure({ message: "Failed to create issue" })
-    );
+    return yield* new StepFailure({ message: "Failed to create issue" });
   }
 
   return { id: issue.id, url: issue.url, title: issue.title };
@@ -226,12 +222,10 @@ export const findIssuesHandler = Effect.fn(function* (
   const apiKey = credentials.LINEAR_API_KEY;
 
   if (!apiKey) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message:
-          "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
-      })
-    );
+    return yield* new StepFailure({
+      message:
+        "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
+    });
   }
 
   const client = new LinearClient({ apiKey });

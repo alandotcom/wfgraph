@@ -3,9 +3,9 @@
  * takes.
  *
  * Every link in the chain has its own cases elsewhere. This one holds the chain
- * together, because each link used to work while the whole did not: a payload's
- * ISO string was offered as text, so the condition builder gave it string
- * operators and the field asking for a moment in time never listed it at all.
+ * together against a payload's ISO string being offered as text only, which
+ * would give the condition builder string operators and leave the field asking
+ * for a moment in time unable to list it at all.
  */
 
 import { Effect, Schema } from "effect";

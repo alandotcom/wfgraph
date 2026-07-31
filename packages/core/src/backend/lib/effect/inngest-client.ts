@@ -28,9 +28,8 @@ export class InngestError extends Schema.TaggedErrorClass<InngestError>()(
  * Four sends is the whole of what the services ask Inngest for: start a run,
  * cancel one, wake a waiting one, and forward a host's Event so its listener
  * drives the fan-out durably. Each answers an Effect whose error channel names
- * `InngestError`, so a service that enqueues can no longer forget that
- * enqueueing fails, and a test provides its own sends instead of reaching a
- * dev server.
+ * `InngestError`, so a service that enqueues cannot forget that enqueueing
+ * fails, and a test provides its own sends instead of reaching a dev server.
  */
 export class InngestClient extends Context.Service<
   InngestClient,

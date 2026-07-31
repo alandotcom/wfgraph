@@ -296,7 +296,7 @@ export function pruneCorrelationPaths(rules: LifecycleRules): LifecycleRules {
  * What a save is held to, as sentences a builder can be shown.
  *
  * The catalog is the vocabulary these rules are checked against, so a workflow
- * naming an Event the app no longer defines is refused where it is saved rather
+ * naming an Event the app does not define is refused where it is saved rather
  * than going quiet at delivery time.
  */
 export function checkLifecycleRules(input: {

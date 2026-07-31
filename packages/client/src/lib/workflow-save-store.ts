@@ -15,9 +15,9 @@ import type {
  * gets written back.
  *
  * Every write to the open workflow goes through `saveWorkflowAtom`. That is the
- * point of this module: the editor used to save from nine places, none of which
- * knew about the others' pending debounce, so an explicit save could be undone
- * by a debounced one landing a second later.
+ * point of this module: saving from nine places with no shared knowledge of
+ * each other's pending debounce would let an explicit save be undone by a
+ * debounced one landing a second later.
  *
  * This module deliberately knows nothing about the graph cells. It queues
  * patches; `workflow-graph-store` is what decides a patch is due. Keeping the
@@ -115,9 +115,9 @@ type SaveQueue = {
 
 /**
  * Queue bookkeeping, held in an atom for one reason: this state has to live at
- * the same scope as the state it guards. It used to be three module-level
- * `let`s, which meant two jotai stores shared one debounce timer and each could
- * cancel the other's pending save.
+ * the same scope as the state it guards. Three module-level `let`s would let
+ * two jotai stores share one debounce timer, so each could cancel the other's
+ * pending save.
  *
  * It has to be a *derived* atom, not `atom(initialValue)`: a primitive atom's
  * initial value is one object shared by every store, which would reintroduce

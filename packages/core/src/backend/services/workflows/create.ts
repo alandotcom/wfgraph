@@ -22,19 +22,15 @@ export const postWorkflowsCreate = Effect.fn("postWorkflowsCreate")(
     const workflowName = body.name.trim();
     if (!workflowName) {
       yield* logger.warn("Rejected workflow create request with empty name");
-      return yield* Effect.fail(
-        new InvalidInput({ error: "Workflow name is required" })
-      );
+      return yield* new InvalidInput({ error: "Workflow name is required" });
     }
 
     const nameTaken = yield* repo.hasWithName(workflowName);
     if (nameTaken) {
       yield* logger.warn("Duplicate workflow name on create", { workflowName });
-      return yield* Effect.fail(
-        new Conflict({
-          error: `Workflow name "${workflowName}" already exists`,
-        })
-      );
+      return yield* new Conflict({
+        error: `Workflow name "${workflowName}" already exists`,
+      });
     }
 
     const workflowId = generateId();

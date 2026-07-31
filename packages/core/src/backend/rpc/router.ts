@@ -135,7 +135,7 @@ export function rpcEffectHandler<
             });
           })
         ),
-        Effect.catch((failure) => Effect.fail(toOrpcError(failure)))
+        Effect.mapError(toOrpcError)
       )
     );
 }

@@ -526,11 +526,9 @@ export function ConditionBuilderRow({
   }, [persistModel, seedField]);
 
   // Rules are reconciled against the fields available now, on the way to being
-  // rendered. An effect used to do this and write the result back through a
-  // queueMicrotask, which was there only to dodge a set-state-during-commit
-  // warning: a tell that the write was happening in the wrong phase. Nothing is
-  // written now until the user next touches the row, which is the moment the
-  // reconciled shape becomes their edit rather than a change they never made.
+  // rendered, and nothing is written until the user next touches the row --
+  // that is the moment the reconciled shape becomes their edit rather than a
+  // change they never made.
   const parsedModel = storedModel
     ? reconcileModelWithFields(storedModel, fieldByPath)
     : null;

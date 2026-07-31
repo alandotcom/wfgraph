@@ -46,9 +46,8 @@ import { WorkflowRuns } from "./workflow-runs";
  *
  * The editor mounts this in two places: the right rail on a wide viewport, and
  * a sheet from the toolbar's Configuration button or from the issues overlay.
- * They used to be two components rendering the same three screens over the same
- * atoms, and they drifted every time one of them was fixed. Everything they can
- * share is here; what a frame genuinely owns is `NodeConfigFrame`.
+ * Everything the two placements share is here; what a frame genuinely owns is
+ * `NodeConfigFrame`.
  */
 
 /** A destructive action the user has to agree to before it happens. */

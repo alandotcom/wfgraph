@@ -65,8 +65,8 @@ describe("readWaitConfig", () => {
     ).toBe(false);
   });
 
-  // An empty list used to mean "any Event for this entity". The subscription
-  // index has no way to hold a wildcard, so the shape refuses it outright.
+  // An empty list would mean "any Event for this entity", which the
+  // subscription index has no way to hold, so the shape refuses it outright.
   it("refuses an empty subscription list", () => {
     expect(
       readWaitConfig(waitConfig({ waitMode: "event", waitFor: [] })).valid

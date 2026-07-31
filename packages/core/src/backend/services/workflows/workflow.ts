@@ -41,14 +41,12 @@ export const getWorkflow = Effect.fn("getWorkflow")(
     const workflow = yield* repo.findById(workflowId);
 
     if (!workflow) {
-      return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
+      return yield* new NotFound({ error: "Workflow not found" });
     }
 
     const graphValidation = validateWorkflowGraph(workflow.graph);
     if (!graphValidation.valid) {
-      return yield* Effect.fail(
-        new InternalFailure({ error: "Workflow graph is invalid" })
-      );
+      return yield* new InternalFailure({ error: "Workflow graph is invalid" });
     }
 
     // Conditions are checked when the graph is written and again before a run,
@@ -98,9 +96,9 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
     }
     if (body.mode !== undefined) {
       if (body.mode !== "live" && body.mode !== "test") {
-        return yield* Effect.fail(
-          new InvalidInput({ error: "Workflow mode must be live or test" })
-        );
+        return yield* new InvalidInput({
+          error: "Workflow mode must be live or test",
+        });
       }
       updateInput.mode = body.mode;
     }
@@ -108,16 +106,14 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
     const existingWorkflow = yield* repo.findById(workflowId);
 
     if (!existingWorkflow) {
-      return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
+      return yield* new NotFound({ error: "Workflow not found" });
     }
 
     if (body.name !== undefined) {
       const normalizedName = body.name.trim();
       if (!normalizedName) {
         yield* logger.warn("Rejected workflow update with empty name");
-        return yield* Effect.fail(
-          new InvalidInput({ error: "Workflow name is required" })
-        );
+        return yield* new InvalidInput({ error: "Workflow name is required" });
       }
 
       const nameConflict = yield* repo.hasOtherWithName({
@@ -128,11 +124,9 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
         yield* logger.warn("Duplicate workflow name on update", {
           workflowName: normalizedName,
         });
-        return yield* Effect.fail(
-          new Conflict({
-            error: `Workflow name "${normalizedName}" already exists`,
-          })
-        );
+        return yield* new Conflict({
+          error: `Workflow name "${normalizedName}" already exists`,
+        });
       }
 
       updateInput.name = normalizedName;
@@ -160,7 +154,7 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
     });
 
     if (!updatedWorkflow) {
-      return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
+      return yield* new NotFound({ error: "Workflow not found" });
     }
 
     const modeChanged =
@@ -202,7 +196,7 @@ export const deleteWorkflow = Effect.fn("deleteWorkflow")(
     const exists = yield* repo.existsById(workflowId);
 
     if (!exists) {
-      return yield* Effect.fail(new NotFound({ error: "Workflow not found" }));
+      return yield* new NotFound({ error: "Workflow not found" });
     }
 
     yield* repo.deleteById(workflowId);

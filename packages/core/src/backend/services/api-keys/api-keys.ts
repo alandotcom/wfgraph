@@ -31,14 +31,12 @@ export const getApiKeys = Effect.fn("getApiKeys")(function* () {
   const repo = yield* ApiKeyRepo;
   const logger = (yield* AppLogger).get("api-keys");
 
-  const keys = yield* repo
-    .listNewestFirst()
-    .pipe(
-      Effect.catchTag(
-        "DatabaseError",
-        internalFailure(logger, "Failed to list API keys")
-      )
-    );
+  const keys = yield* repo.listNewestFirst.pipe(
+    Effect.catchTag(
+      "DatabaseError",
+      internalFailure(logger, "Failed to list API keys")
+    )
+  );
 
   return keys.map(toListItem);
 });

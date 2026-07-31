@@ -1,12 +1,12 @@
 /**
  * How an integration writes a step.
  *
- * Everything a step used to do around its own work is here instead: decoding the
- * config the engine resolved, fetching the integration's credentials, and turning
- * what the handler answered into the `StepResult` envelope the engine reads. What
- * is left for an author is the
- * schema of what comes in, the schema of what goes out, the metadata the editor
- * draws the action with, and an `Effect` that gets from one schema to the other.
+ * `defineStep` owns everything around a step's own work: decoding the config the
+ * engine resolved, fetching the integration's credentials, and turning what the
+ * handler answered into the `StepResult` envelope the engine reads. What is left
+ * for an author is the schema of what comes in, the schema of what goes out, the
+ * metadata the editor draws the action with, and an `Effect` that gets from one
+ * schema to the other.
  *
  * The two schemas are load-bearing rather than documentation. The input one is
  * what the handler's parameter type comes from, so a field the schema does not
@@ -266,9 +266,7 @@ function buildStep<TInput, TOutput>(
       // `as`, an `any`, or a widened vendor type.
       const encoded = encodeOutput(data);
       if (Result.isFailure(encoded)) {
-        return yield* Effect.fail(
-          new StepFailure({ message: encoded.failure })
-        );
+        return yield* new StepFailure({ message: encoded.failure });
       }
 
       return encoded.success;

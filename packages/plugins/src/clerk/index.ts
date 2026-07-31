@@ -129,18 +129,14 @@ export const clerkGetUserHandler = Effect.fn(function* (
   const secretKey = credentials.CLERK_SECRET_KEY;
 
   if (!secretKey) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message:
-          "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-      })
-    );
+    return yield* new StepFailure({
+      message:
+        "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+    });
   }
 
   if (!input.userId) {
-    return yield* Effect.fail(
-      new StepFailure({ message: "User ID is required." })
-    );
+    return yield* new StepFailure({ message: "User ID is required." });
   }
 
   const clerk = createClerkBackendClient(secretKey);
@@ -163,18 +159,14 @@ export const clerkCreateUserHandler = Effect.fn(function* (
   const secretKey = credentials.CLERK_SECRET_KEY;
 
   if (!secretKey) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message:
-          "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-      })
-    );
+    return yield* new StepFailure({
+      message:
+        "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+    });
   }
 
   if (!input.emailAddress) {
-    return yield* Effect.fail(
-      new StepFailure({ message: "Email address is required." })
-    );
+    return yield* new StepFailure({ message: "Email address is required." });
   }
 
   const publicMetadata = yield* parseClerkMetadata(
@@ -220,18 +212,14 @@ export const clerkUpdateUserHandler = Effect.fn(function* (
   const secretKey = credentials.CLERK_SECRET_KEY;
 
   if (!secretKey) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message:
-          "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-      })
-    );
+    return yield* new StepFailure({
+      message:
+        "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+    });
   }
 
   if (!input.userId) {
-    return yield* Effect.fail(
-      new StepFailure({ message: "User ID is required." })
-    );
+    return yield* new StepFailure({ message: "User ID is required." });
   }
 
   const publicMetadata = yield* parseClerkMetadata(
@@ -275,18 +263,14 @@ export const clerkDeleteUserHandler = Effect.fn(function* (
   const secretKey = credentials.CLERK_SECRET_KEY;
 
   if (!secretKey) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message:
-          "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-      })
-    );
+    return yield* new StepFailure({
+      message:
+        "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+    });
   }
 
   if (!input.userId) {
-    return yield* Effect.fail(
-      new StepFailure({ message: "User ID is required." })
-    );
+    return yield* new StepFailure({ message: "User ID is required." });
   }
 
   const clerk = createClerkBackendClient(secretKey);

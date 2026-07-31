@@ -196,12 +196,10 @@ export const sendSmsHandler = Effect.fn(function* (
   const authToken = credentials.TWILIO_AUTH_TOKEN;
 
   if (!(accountSid && authToken)) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message:
-          "TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are required. Add them in Project Integrations.",
-      })
-    );
+    return yield* new StepFailure({
+      message:
+        "TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are required. Add them in Project Integrations.",
+    });
   }
 
   const senderFrom = input.smsFrom || credentials.TWILIO_FROM_NUMBER;
@@ -209,20 +207,18 @@ export const sendSmsHandler = Effect.fn(function* (
     input.smsMessagingServiceSid || credentials.TWILIO_MESSAGING_SERVICE_SID;
 
   if (!(senderFrom || senderMessagingServiceSid)) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message:
-          "Either From number or Messaging Service SID is required. Configure one in the action or integration settings.",
-      })
-    );
+    return yield* new StepFailure({
+      message:
+        "Either From number or Messaging Service SID is required. Configure one in the action or integration settings.",
+    });
   }
 
   const recipient = routeToTestPhone ? testPhone : input.smsTo;
 
   if (!(recipient && input.smsBody)) {
-    return yield* Effect.fail(
-      new StepFailure({ message: "smsTo and smsBody are required" })
-    );
+    return yield* new StepFailure({
+      message: "smsTo and smsBody are required",
+    });
   }
 
   const mediaUrls = input.smsMediaUrls ?? [];

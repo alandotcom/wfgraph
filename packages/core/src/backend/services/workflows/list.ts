@@ -12,7 +12,7 @@ export const getWorkflows = Effect.fn("getWorkflows")(
   function* () {
     const repo = yield* WorkflowRepo;
 
-    const allWorkflows = yield* repo.listSummariesNewestFirst();
+    const allWorkflows = yield* repo.listSummariesNewestFirst;
 
     return allWorkflows.map(toWorkflowSummaryPayload);
   },

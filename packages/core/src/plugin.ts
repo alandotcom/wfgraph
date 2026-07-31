@@ -12,8 +12,8 @@
  * `StepFailure`; and a connection test, which answers the credentials UI over a
  * Promise rather than inside a handler, provides `VendorTransport` itself. There
  * is nothing to register: an integration is a value a host passes to
- * `createRovaApp`, and the credential fetch and the run logging a plugin used to
- * reach for are `defineStep`'s business.
+ * `createRovaApp`, and the credential fetch and the run logging are
+ * `defineStep`'s business.
  */
 
 export type {

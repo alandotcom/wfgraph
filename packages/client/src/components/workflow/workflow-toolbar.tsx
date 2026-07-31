@@ -696,10 +696,8 @@ function useWorkflowActions(state: ReturnType<typeof useWorkflowState>) {
   });
 
   // Cmd+Enter runs the workflow. The listener lives here, beside handleExecute,
-  // so the shortcut and the Run button are the same call. It used to be a
-  // boolean atom the editor route set to true and this effect immediately set
-  // back to false: an event dressed as state, and a round trip through the
-  // store for something one function call away.
+  // so the shortcut and the Run button are the same call rather than a store
+  // round trip for something one function call away.
   //
   // Capture phase, because a focused node in the canvas would otherwise get the
   // keystroke first.

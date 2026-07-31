@@ -408,11 +408,9 @@ export const getAvailabilityDatesHandler = Effect.fn(function* (
   const calendarID = yield* optionalInteger(input.calendarId, "Calendar ID");
 
   if (!input.month.trim()) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message: "Month is required and must use YYYY-MM format.",
-      })
-    );
+    return yield* new StepFailure({
+      message: "Month is required and must use YYYY-MM format.",
+    });
   }
 
   // Acuity's own parameter names, so this reads like its documentation.
@@ -502,11 +500,9 @@ export const getAvailabilityTimesHandler = Effect.fn(function* (
   );
 
   if (!input.date.trim()) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message: "Date is required and must use YYYY-MM-DD format.",
-      })
-    );
+    return yield* new StepFailure({
+      message: "Date is required and must use YYYY-MM-DD format.",
+    });
   }
 
   // Acuity's own parameter names, so this reads like its documentation.
@@ -618,23 +614,19 @@ export const createAppointmentHandler = Effect.fn(function* (
   const fields = yield* optionalCustomFields(input.customFieldsJson);
 
   if (!input.datetime.trim()) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message: "Datetime is required (ISO 8601 format).",
-      })
-    );
+    return yield* new StepFailure({
+      message: "Datetime is required (ISO 8601 format).",
+    });
   }
 
   if (!(input.firstName.trim() && input.lastName.trim())) {
-    return yield* Effect.fail(
-      new StepFailure({ message: "First Name and Last Name are required." })
-    );
+    return yield* new StepFailure({
+      message: "First Name and Last Name are required.",
+    });
   }
 
   if (!(input.email.trim() && input.phone.trim())) {
-    return yield* Effect.fail(
-      new StepFailure({ message: "Email and Phone are required." })
-    );
+    return yield* new StepFailure({ message: "Email and Phone are required." });
   }
 
   // Acuity's own parameter names, so this reads like its documentation.
@@ -782,11 +774,9 @@ export const rescheduleAppointmentHandler = Effect.fn(function* (
   );
 
   if (!input.datetime.trim()) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message: "New Datetime is required (ISO 8601 format).",
-      })
-    );
+    return yield* new StepFailure({
+      message: "New Datetime is required (ISO 8601 format).",
+    });
   }
 
   const calendarID = yield* optionalInteger(input.calendarId, "Calendar ID");

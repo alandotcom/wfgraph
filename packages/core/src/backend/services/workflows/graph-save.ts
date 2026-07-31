@@ -3,10 +3,11 @@
  * rows that go with it.
  *
  * Four services write a graph -- create, patch, the editor's draft, and duplicate
- * -- and each used to spell the battery out again, which is how duplicate ended up
- * without the Lifecycle Rules check and how a path could write a graph while
- * skipping the subscription index derived from it. Both are one seam now: a caller
- * gets either a refusal to hand back or the nodes and the rows to write.
+ * -- and spelling the battery out separately at each is exactly how a path can
+ * end up missing the Lifecycle Rules check, or writing a graph while skipping
+ * the subscription index derived from it. The battery and the derived-rows write
+ * are one seam now: a caller gets either a refusal to hand back or the nodes and
+ * the rows to write.
  *
  * The order is deliberate and the reason is the message a builder reads. The graph
  * has to parse before anything can be said about its nodes; a node's own
@@ -60,25 +61,19 @@ export const prepareGraphSave = Effect.fn("prepareGraphSave")(
     const { catalog } = yield* Extensions;
     const graphValidation = validateWorkflowGraph(input.graph);
     if (!graphValidation.valid) {
-      return yield* Effect.fail(
-        new InvalidInput({ error: graphValidation.error })
-      );
+      return yield* new InvalidInput({ error: graphValidation.error });
     }
 
     const { nodes, edges, graph } = graphValidation;
 
     const conditionValidation = validateWorkflowConditionConfigs(nodes);
     if (!conditionValidation.valid) {
-      return yield* Effect.fail(
-        new InvalidInput({ error: conditionValidation.error })
-      );
+      return yield* new InvalidInput({ error: conditionValidation.error });
     }
 
     const eventValidation = validateWorkflowEvents(nodes, catalog);
     if (!eventValidation.valid) {
-      return yield* Effect.fail(
-        new InvalidInput({ error: eventValidation.error })
-      );
+      return yield* new InvalidInput({ error: eventValidation.error });
     }
 
     // The only way this fails is the integration rows it reads, so a rejected
@@ -90,12 +85,10 @@ export const prepareGraphSave = Effect.fn("prepareGraphSave")(
       integrations.typesByIds
     );
     if (!integrationValidation.valid) {
-      return yield* Effect.fail(
-        new IntegrationValidationFailed({
-          error: "Invalid integration references in workflow",
-          invalidIntegrationIds: integrationValidation.invalidIds,
-        })
-      );
+      return yield* new IntegrationValidationFailed({
+        error: "Invalid integration references in workflow",
+        invalidIntegrationIds: integrationValidation.invalidIds,
+      });
     }
 
     const prepared: PreparedGraphSave = {

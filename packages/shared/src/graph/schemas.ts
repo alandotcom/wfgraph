@@ -33,8 +33,8 @@ import { lifecycleRulesSchema } from "#src/lifecycle/lifecycle-rules";
  * The entry node is the Lifecycle Node: its Lifecycle Rules are the declaration
  * the engine reads to decide which Events start a run and what Concurrency does
  * to the runs already going (ADR-0007). There is no per-type arm, because the
- * Lifecycle Node no longer has a kind -- what reaches it is an Event, named in
- * the rules.
+ * Lifecycle Node carries no kind of its own: what reaches it is an Event,
+ * named in the rules.
  *
  * The payload a run receives belongs to the Event that started or canceled it, so
  * the Events name its shape and the editor derives the fields it offers from

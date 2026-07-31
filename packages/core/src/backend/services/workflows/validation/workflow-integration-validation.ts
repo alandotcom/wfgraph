@@ -135,9 +135,9 @@ export function extractRequiredIntegrationIds(
  *
  * One query answers both questions the graph asks -- whether each integration
  * exists, and whether it is the type the action needs -- because an id absent from
- * the type map is an id no row carries. It used to be two reads of the same rows
- * for different columns, on a path a delivered Event runs per subscribing
- * workflow.
+ * the type map is an id no row carries. This runs once per subscribing workflow on
+ * every delivered Event, so a second read of the same rows would be paid per
+ * delivery.
  */
 const findInvalidIntegrations = Effect.fn("findInvalidIntegrations")(
   function* (input: {

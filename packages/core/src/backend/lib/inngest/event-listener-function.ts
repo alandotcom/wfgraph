@@ -3,8 +3,8 @@
  *
  * The listener set is the app's extension surface rather than its saved graphs, so
  * it is fixed for the life of the process: nothing a Workflow Builder does changes
- * which Events Inngest delivers, and the re-sync a graph save used to need does not
- * exist. Which workflows a delivered Event concerns is the subscription index's
+ * which Events Inngest delivers, and a graph save needs no re-sync to keep it
+ * current. Which workflows a delivered Event concerns is the subscription index's
  * question, asked inside the handler.
  *
  * Per Event rather than per source name, even though several Events may share a

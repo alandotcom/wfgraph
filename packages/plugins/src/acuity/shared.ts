@@ -160,7 +160,7 @@ export function optionalIntegerList(
 const acuityCustomFieldsSchema = Schema.mutable(
   Schema.Array(
     Schema.Struct({
-      fieldID: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+      fieldID: Schema.Finite.check(Schema.isInt(), Schema.isGreaterThan(0)),
       value: Schema.Union([
         Schema.String,
         Schema.mutable(Schema.Array(Schema.String)),

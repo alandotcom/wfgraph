@@ -107,12 +107,10 @@ export const sendSlackMessageHandler = Effect.fn(function* (
   const apiKey = credentials.SLACK_API_KEY;
 
   if (!apiKey) {
-    return yield* Effect.fail(
-      new StepFailure({
-        message:
-          "SLACK_API_KEY is not configured. Please add it in Project Integrations.",
-      })
-    );
+    return yield* new StepFailure({
+      message:
+        "SLACK_API_KEY is not configured. Please add it in Project Integrations.",
+    });
   }
 
   const posted = yield* callSlack(

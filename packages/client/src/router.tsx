@@ -79,11 +79,11 @@ const workflowRoute = createRoute({
   /**
    * Put the workflow on screen before the editor renders.
    *
-   * The editor used to fetch this from an effect after mounting, which meant a
-   * render against the previous workflow's graph, then a second one, and a ref
-   * comparing ids to discard a response that arrived after the user had moved
-   * on. A loader has neither problem: the router cancels it on navigation, and
-   * the component's first render already has the right graph.
+   * A loader avoids fetching from an effect after mounting, which would render
+   * against the previous workflow's graph before a second render caught up, and
+   * would need a ref comparing ids to discard a response that arrived after the
+   * user had moved on. The router cancels a loader on navigation, so the
+   * component's first render already has the right graph.
    *
    * The connection list comes along because a stored integrationId can have
    * gone stale since the last save, and repairing it here is what keeps that
