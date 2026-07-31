@@ -7,7 +7,6 @@ import { Conflict } from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
   stubExtensionCatalog,
-  stubInngestFunctions,
   stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
@@ -122,12 +121,7 @@ const catalogLayer = stubExtensionCatalog({
 
 describe("postWorkflowDuplicate", () => {
   layer(
-    Layer.mergeAll(
-      SilentAppLoggerLayer,
-      catalogLayer,
-      stubInngestFunctions(),
-      stubIntegrationRepo()
-    )
+    Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, stubIntegrationRepo())
   )((it) => {
     // The integration key is removed rather than blanked. The first-class
     // trigger config schemas are closed, so a `Webhook` config carrying an
@@ -215,12 +209,7 @@ describe("postWorkflowDuplicate", () => {
   // from the moment it exists -- under its own id, and paused, because two
   // unpaused workflows on one Event would double every run.
   layer(
-    Layer.mergeAll(
-      SilentAppLoggerLayer,
-      catalogLayer,
-      stubInngestFunctions(),
-      stubIntegrationRepo()
-    )
+    Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, stubIntegrationRepo())
   )((it) => {
     it.effect("derives the copy's own subscriptions and pauses it", () =>
       Effect.gen(function* () {

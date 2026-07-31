@@ -211,9 +211,8 @@ async function buildRovaApp(
   // corrects an option and calls again is not refused as a rebind.
   let runtime: RovaRuntime | undefined;
   try {
-    // One value for the client, the function list and the `/inngest` handler,
-    // built before the runtime because the Layer graph takes it: a workflow save
-    // invalidates the list through a service, and the listeners in it run on
+    // One value for the client and the `/inngest` handler, built before the
+    // runtime because the Layer graph takes it: the functions it serves run on
     // whichever runtime the route hands them.
     const inngest = createInngestSurface(options.inngest);
 
@@ -271,11 +270,14 @@ async function assembleRovaApp(
 ): Promise<RovaApp> {
   const { basePath, authorize, runtime, inngest, database } = startup;
 
+  // Built here rather than on the first callback, so a broken extension
+  // surface fails at boot instead of on the first Inngest request.
+  const inngestHandler = await inngest.serve(runtime);
   const apiApp = createApiApp({
     basePath: `${basePath}/api`,
     authorize,
     runtime,
-    inngest,
+    inngestHandler,
   });
   const fullApp = new Hono();
 
@@ -302,11 +304,6 @@ async function assembleRovaApp(
   }
 
   const dispose = async (): Promise<void> => {
-    // The cached Inngest functions close over this runtime, so they go before
-    // it does. Otherwise a `/inngest` request arriving during teardown is
-    // served event listeners that run services on a finalized runtime.
-    inngest.invalidate();
-
     await runtime.dispose();
 
     // Last, because a Layer finalizer is free to run a closing query. postgres.js

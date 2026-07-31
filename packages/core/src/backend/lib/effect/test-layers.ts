@@ -9,7 +9,6 @@ import {
   Extensions,
   makeExtensionsLayer,
 } from "#src/backend/lib/effect/extensions";
-import { InngestFunctions } from "#src/backend/lib/effect/inngest-functions";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { StepEnvironment } from "#src/backend/extensions/steps/step-runner";
 import {
@@ -175,7 +174,6 @@ export function stubStepEnvironment(
 
 const workflowRepoStubs: WorkflowRepo["Service"] = {
   listSummariesNewestFirst: refuse("listSummariesNewestFirst"),
-  listIdentities: refuse("listIdentities"),
   findById: refuse("findById"),
   existsById: refuse("existsById"),
   hasWithName: refuse("hasWithName"),
@@ -291,31 +289,13 @@ export function stubInngestClient(
 }
 
 /**
- * The registry invalidation, as a no-op a test may replace.
- *
- * The default accepts the call and does nothing, because a write that
- * invalidates and a write that does not are both legitimate; a test that asserts
- * on it hands over its own `invalidate`. The repository stubs die on an
- * unaccounted-for call for the opposite reason: a query nobody named would be
- * answered with a fake empty result.
- */
-export function stubInngestFunctions(
-  overrides: Partial<InngestFunctions["Service"]> = {}
-): Layer.Layer<InngestFunctions> {
-  return Layer.succeed(InngestFunctions, {
-    invalidate: Effect.void,
-    ...overrides,
-  });
-}
-
-/**
  * A whole `RovaRuntime`, for a test standing up something the app builds from
  * its own.
  *
  * Three things take the runtime rather than a service: the engine's Postgres
- * store, the dispatch port's credential fetch, and the Inngest function
- * registry. Each is a Promise boundary the run engine sits behind, so a test of
- * one has no Effect to provide Layers to and needs the runtime itself.
+ * store, the dispatch port's credential fetch, and the Inngest function list.
+ * Each is a Promise boundary the run engine sits behind, so a test of one has no
+ * Effect to provide Layers to and needs the runtime itself.
  *
  * Every repository dies on an unnamed method, the same as the stub Layers do, so
  * a subject that reaches a query the test did not account for fails loudly.
@@ -338,8 +318,7 @@ export function stubRovaRuntime(
       stubExecutionRepo(overrides.executionRepo),
       stubIntegrationRepo(overrides.integrationRepo),
       stubApiKeyRepo(overrides.apiKeyRepo),
-      stubInngestClient(overrides.inngestClient),
-      stubInngestFunctions()
+      stubInngestClient(overrides.inngestClient)
     )
   );
 }

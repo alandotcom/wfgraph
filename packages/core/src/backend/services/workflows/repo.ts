@@ -76,17 +76,6 @@ export class WorkflowRepo extends Context.Service<
       WorkflowSummaryRow[],
       DatabaseError
     >;
-    /**
-     * Every workflow's id and name, and nothing else.
-     *
-     * What the Inngest function registry builds its run handlers from: one
-     * function per workflow, keyed on the id and labelled with the name. Reading
-     * whole rows there would pull every stored graph into memory on a cache miss.
-     */
-    readonly listIdentities: () => Effect.Effect<
-      Array<Pick<Workflow, "id" | "name">>,
-      DatabaseError
-    >;
     readonly findById: (
       workflowId: string
     ) => Effect.Effect<Workflow | null, DatabaseError>;
@@ -218,11 +207,6 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               .select(workflowSummaryColumns)
               .from(workflows)
               .orderBy(desc(workflows.updatedAt))
-          ),
-
-        listIdentities: () =>
-          database.query((db) =>
-            db.query.workflows.findMany({ columns: { id: true, name: true } })
           ),
 
         findById: (workflowId) =>

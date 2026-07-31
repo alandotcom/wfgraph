@@ -339,13 +339,12 @@ where the field names a CEL identifier is checked against come from.
 
 **Every CEL string literal is `celStringLiteral`**
 (`packages/shared/src/conditions/cel-string-literal.ts`), which is `JSON.stringify`: the
-double-quoted form, backslashes doubled, a control character written as an escape. Three
-places assemble a CEL expression by hand -- the source filter beside it, the wait
-subscription's `if` in `engine/wait.ts`, and the run function's trigger filter in
-`inngest/workflow-function.ts` -- and they sit on both sides of the runtime port, which is
-why the helper is in `@rova/shared`. Hand-rolling the escape is how a value carrying a
-newline gets past a test and fails at Inngest, where the expression is evaluated and the
-failure is a run that never triggers.
+double-quoted form, backslashes doubled, a control character written as an escape. Two places
+assemble a CEL expression by hand -- `inngest-event-data.ts`'s source filter and the wait
+subscription's `if` in `engine/wait.ts` -- and the helper lives in `@rova/shared` because the
+first cannot import from `packages/core`, while the second reaches `@rova/shared` freely.
+Hand-rolling the escape is how a value carrying a newline gets past a test and fails at Inngest,
+where the expression is evaluated and the failure is a run that never triggers.
 Which Event starts a run and which Events cancel it is the Workflow Builder's
 per-workflow declaration, never the Event's (ADR-0007).
 
@@ -408,15 +407,17 @@ runs per call, because the rows it reads change with no write to the workflow. T
 the key rather than `(id, updatedAt)` because a stale verdict carries the stale graph, which
 is the object a start hands to the bus.
 
-One Inngest listener per Event, built from the catalog in `lib/inngest/functions.ts`, so the
-listener set is fixed for the life of the process and a workflow that starts on a new Event
-needs no re-sync. Several Events may share one source and narrow it with `source.when`: each
-listener carries that filter as its trigger's `if`, compiled by `compileEventDataEquals`, so
-the bus decides which Event a payload is and a subtype nothing declared costs no invocation.
-`extension-set.ts` refuses two Events on one source that both omit `when`. The handler gates
-the payload again -- a host may send to the bus directly -- and then runs two sibling steps per
-workflow, the Lifecycle Rules and the wait delivery, so a retry resumes at the workflow that
-failed without replaying a start.
+`buildInngestFunctions` (`lib/inngest/functions.ts`) answers one Inngest listener per Event
+plus the one `workflow-run` function every workflow shares, so the whole function list is
+fixed for the process's life and a workflow created, saved or deleted after boot needs no
+re-sync. `assembleRovaApp` awaits that build once, at boot, so a broken extension surface
+fails there rather than on the first `/inngest` callback. Several Events may share one source
+and narrow it with `source.when`: each listener carries that filter as its trigger's `if`,
+compiled by `compileEventDataEquals`, so the bus decides which Event a payload is and a
+subtype nothing declared costs no invocation. `extension-set.ts` refuses two Events on one
+source that both omit `when`. The handler gates the payload again -- a host may send to the
+bus directly -- and then runs two sibling steps per workflow, the Lifecycle Rules and the wait
+delivery, so a retry resumes at the workflow that failed without replaying a start.
 
 **A Wait node has two modes, and its subscription carries its own matcher.** `delay` waits
 on the clock and `event` waits on an arrival. The third mode, "wait for webhook event", is
@@ -588,8 +589,11 @@ entrypoints word their log line and their caller-facing sentence differently. Th
 shape the workflows services use. `seamFailureHandlers(loggerEffect, message,
 callerMessage?)` beside them builds one relaying handler and answers both tags with it,
 so a service that queries and enqueues states its policy once. `app-logger.ts` wraps the
-logtape logger so a log line is an Effect. `packages/core/src/backend/runtime.ts`
-composes the Layer graph, and
+logtape logger so a log line is an Effect, and `tracer.ts` opens every `Effect.fn` span on
+the OpenTelemetry provider the host registered, under the same instrumentation scope as the
+engine's own `withSpan` in `lib/telemetry.ts`, so the two arrive as one trace tree. Rova
+starts no SDK, exporter or processor of its own, and a host that registers no provider gets
+no-op spans. `packages/core/src/backend/runtime.ts` composes the Layer graph, and
 `createRovaApp` builds one `ManagedRuntime` from it and disposes it. The runtime is owned
 by the app rather than by a module so that a service's dependencies can be replaced in a
 test, which is the whole of what it buys: one Rova per process stays the only supported
@@ -610,18 +614,14 @@ module is test support and ships nowhere: `packages/core` publishes `dist` and `
 and no entry reaches it.
 
 **Nothing reaches Inngest through module state, and one value holds all of it.**
-`createInngestSurface` (`backend/lib/inngest/client.ts`) builds the client, the function
-registry over it, and the `/inngest` serve handler together, because the three have to
-agree: functions registered on one client and served through another are invisible to
-Inngest. `createRovaApp` builds one `InngestSurface` and hands the same value to
-`createRovaRuntime` and to `createApiApp`, so a divergent pair is inexpressible rather than
-merely avoided. The runtime reads `client` for `makeInngestClientLayer`, which is the four
-sends a service makes, and `invalidate` for `makeInngestFunctionsLayer`; `api-app.ts` names
-Inngest nowhere except that one route. The registry belonging to the app is what keeps its
-cached functions from outliving the runtime their event listeners close over, and a service
-that changes which workflows exist drops the list through the `InngestFunctions` service --
-`invalidateInngestFunctions` is that whole call, so no service body yields the service to
-reach one member of it. The two helpers that mix a send with wait-state bookkeeping,
+`createInngestSurface` (`backend/lib/inngest/client.ts`) builds the client and returns a pure
+`serve(runtime)`: functions built on one client are invisible if served through another.
+`assembleRovaApp` awaits `serve` once, at boot, and hands the resulting handler to
+`createApiApp` alongside the same runtime, so a divergent pair is inexpressible. The runtime
+reads `client` for `makeInngestClientLayer`, the four sends a service makes; `api-app.ts`
+names Inngest nowhere except that one route's handler.
+
+The two helpers that mix a send with wait-state bookkeeping,
 `cancelInFlightRuns` (`services/executions/end-runs.ts`) and
 `resumeWaitsMatchingEvent` (`services/workflows/lifecycle/resume-waits.ts`), are Effects
 over `InngestClient` and `ExecutionRepo` like any other service. A step runs on the app's
@@ -634,8 +634,8 @@ engine's own loop, and the three adapters named below are where it meets an Effe
 default is the honest in-process one -- work runs inline, nothing is persisted, no action is
 implemented -- so a caller that wants a node to do work injects a surface. The Inngest
 adapter in `lib/inngest/workflow-function.ts` is where a live run picks up all three, and
-the third comes from `createWorkflowActions`, built once per function-list rebuild from the
-surface the registry read off the runtime it was handed. The engine module imports neither
+the third comes from `createWorkflowActions`, built once with the function list from the
+surface read off the runtime it was handed. The engine module imports neither
 the database nor the assembled surface, the same way it imports neither Inngest nor Drizzle.
 An integration that grows a config field needing `literal` marks the field itself, and the
 engine takes no edit for it.
@@ -661,9 +661,9 @@ the run log, the audit rows and the wait rows are `ExecutionRepo` methods, the i
 reads are `IntegrationRepo`'s, and `createDbWorkflowStore(runtime)` in
 `engine/db-store.ts` is where the engine's Promise-shaped store meets them. The
 run engine still speaks Promises, so two adapters run an Effect on the app's runtime rather
-than composing one: that store, and the Inngest function registry's workflow-list read. A
-step is the third crossing and composes instead, since the credential read is part of the
-step's own Effect and `StepEnvironment.runStep` runs the whole of it on that runtime.
+than composing one: that store, and the extension-surface read the function list is built
+from. A step is the third crossing and composes instead, since the credential read is part
+of the step's own Effect and `StepEnvironment.runStep` runs the whole of it on that runtime.
 
 **The database config is checked apart from the pool being opened.** `db/config.ts` holds
 `DatabaseRuntimeConfig` and `normalizeDatabaseConfig`, a pure function that refuses a

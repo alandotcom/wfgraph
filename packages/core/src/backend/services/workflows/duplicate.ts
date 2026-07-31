@@ -8,7 +8,6 @@ import {
   InternalFailure,
   NotFound,
 } from "#src/backend/lib/effect/failures";
-import { invalidateInngestFunctions } from "#src/backend/lib/effect/inngest-functions";
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
@@ -150,8 +149,6 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
       isPaused: true,
       eventSubscriptions: prepared.subscriptionsFor(newWorkflowId),
     });
-
-    yield* invalidateInngestFunctions;
 
     yield* logger.info("Workflow duplicated", {
       sourceWorkflowName: sourceWorkflow.name,

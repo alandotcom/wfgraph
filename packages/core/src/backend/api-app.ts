@@ -3,7 +3,7 @@ import { Effect, Result, Schema, type SchemaAST } from "effect";
 import { Hono } from "hono";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
-import type { InngestSurface } from "#src/backend/lib/inngest/client";
+import type { InngestServeHandler } from "#src/backend/lib/inngest/client";
 import { getAppLogger } from "#src/backend/lib/logger";
 import {
   type Authorize,
@@ -190,8 +190,8 @@ export type CreateApiAppOptions = {
    * procedure whose service has been migrated can run its Effect on it.
    */
   runtime: RovaRuntime;
-  /** The app's own Inngest surface, which is all the `/inngest` route serves with. */
-  inngest: InngestSurface;
+  /** The `/inngest` handler, built once at boot against this app's runtime. */
+  inngestHandler: InngestServeHandler;
 };
 
 /**
@@ -223,7 +223,7 @@ type ApiEnv = {
 };
 
 export function createApiApp(options: CreateApiAppOptions) {
-  const { basePath, authorize, runtime, inngest } = options;
+  const { basePath, authorize, runtime, inngestHandler } = options;
   const app = new Hono<ApiEnv>().basePath(basePath);
   const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
 
@@ -404,14 +404,7 @@ export function createApiApp(options: CreateApiAppOptions) {
     .all("/auth/*", (c) => c.json({ error: "Not found" }, 404))
     .all("/og", (c) => c.json({ error: "Not found" }, 404))
     .all("/og/*", (c) => c.json({ error: "Not found" }, 404))
-    .on(["GET", "POST", "PUT"], "/inngest", async (c) => {
-      // The surface is where this app's runtime reaches the event listeners it
-      // serves: they run migrated services, and nothing there may reach for a
-      // runtime of its own.
-      return await (
-        await inngest.serve(runtime)
-      )(c);
-    })
+    .on(["GET", "POST", "PUT"], "/inngest", (c) => inngestHandler(c))
     .post(WAIT_RESUME_ROUTE, async (c) => {
       const params = readTokenParams(c.req.param());
       if (Result.isFailure(params)) {

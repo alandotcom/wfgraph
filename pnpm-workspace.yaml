@@ -16,9 +16,11 @@ packages:
 # each other at exact versions, so a mismatched pair does not resolve; keeping the
 # version in one place is what makes "they move together" a fact rather than a rule
 # someone has to remember. A beta line also moves under you, hence the exact pin.
-# `effect` and `@effect/vitest` are here for the same reason: an @effect/* package
-# is built against one exact core release, so the whole set moves as one (ADR-0002).
+# `effect` and the two `@effect/*` packages are here for the same reason: an
+# @effect/* package names one exact core release as a peer, so the whole set moves
+# as one (ADR-0002).
 catalog:
+  "@effect/opentelemetry": 4.0.0-beta.102
   "@effect/vitest": 4.0.0-beta.102
   "@marcbachmann/cel-js": ^7.5.1
   "@orpc/client": 2.0.0-beta.21

@@ -1,165 +1,45 @@
-import { Effect } from "effect";
 import type { Inngest, InngestFunction } from "inngest";
 import { Extensions } from "#src/backend/lib/effect/extensions";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
-import type { WorkflowActions } from "#src/backend/engine/actions";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
 import type { RovaRuntime } from "#src/backend/runtime";
-import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 // Static, now that the id helper the app assembly needs has moved to a leaf of
 // its own: this import is the only reason the delivery stack loads, and this
 // module is on the path of a request that serves it anyway.
 import { createInngestEventListenerFunction } from "./event-listener-function";
-import { createWorkflowRunRequestedFunction } from "./workflow-function";
-
-const REGISTRY_CACHE_TTL_MS = 5000;
+import { createWorkflowRunFunction } from "./workflow-function";
 
 /**
- * The registry holds both kinds of function side by side: run handlers, whose
- * trigger carries a schema, and event listeners, whose event names are only
- * known at runtime. v4 encodes the trigger tuple in the function's type, so
- * those two have no common specific type and the registry names the general
- * one. `serve()` takes this same type.
- */
-type WorkflowFunction = InngestFunction.Any;
-type WorkflowDefinition = {
-  id: string;
-  name: string;
-};
-
-function toFunctionId(workflowId: string): string {
-  return `workflow-${workflowId}`;
-}
-
-export function buildWorkflowFunctions(
-  client: Inngest,
-  runtime: RovaRuntime,
-  workflowDefinitions: WorkflowDefinition[],
-  actions: WorkflowActions
-): WorkflowFunction[] {
-  // One store for every run handler this build produces: it holds nothing but
-  // the runtime, and the rows it writes are addressed by the run each call
-  // names.
-  const store = createDbWorkflowStore(runtime);
-
-  return workflowDefinitions
-    .filter((workflow) => workflow.name !== CURRENT_WORKFLOW_NAME)
-    .map((workflow) =>
-      createWorkflowRunRequestedFunction(client, {
-        id: toFunctionId(workflow.id),
-        name: workflow.name,
-        workflowId: workflow.id,
-        actions,
-        store,
-      })
-    );
-}
-
-/**
- * One listener per Event, from the catalog.
+ * Everything this app registers with Inngest: the one run function, and one
+ * listener per Event in the catalog.
  *
- * The set does not depend on any saved graph, so it is the same for the life of
- * the process: a workflow that starts on a new Event needs no Inngest re-sync,
- * because the listener for that Event was registered when the app was built.
- */
-function buildEventListenerFunctions(
-  client: Inngest,
-  runtime: RovaRuntime,
-  extensions: ExtensionSet
-): WorkflowFunction[] {
-  return extensions.events.map((event) =>
-    createInngestEventListenerFunction({ client, event, runtime })
-  );
-}
-
-/**
- * What the `/inngest` route ends up serving, through the surface that holds one
- * of these, and the one thing that decides how long a newly saved workflow takes
- * to appear to Inngest.
+ * Neither half depends on a saved graph, so the list is the same for the life of
+ * the process. Creating, saving or deleting a workflow changes nothing here and
+ * needs no re-sync.
  *
- * One registry belongs to one app, which is what makes caching the functions
- * safe: each closes over that app's runtime and its client, and the app drops
- * the whole registry as the first thing it does when disposing. As a module-level
- * cache it could outlive the runtime its listeners ran services on.
+ * The runtime is a parameter rather than something the caller holds, because the
+ * Layer graph takes the surface this is built for: constructing one before the
+ * other is what keeps that from being a cycle. The `/inngest` route has the
+ * runtime in hand and passes the app's own, which is also what keeps the
+ * surface, the rows and the functions that dispatch against them the same app's.
+ *
+ * v4 encodes the trigger tuple in a function's type, so the run function and the
+ * listeners have no common specific type and this names the general one.
+ * `serve()` takes that same type.
  */
-export type InngestFunctionRegistry = {
-  /**
-   * The current function list, rebuilt when the short cache expires.
-   *
-   * The runtime is a parameter rather than something the registry holds,
-   * because the Layer graph takes the surface this sits inside: constructing one
-   * before the other is what keeps that from being a cycle. The `/inngest` route
-   * has the runtime in hand and passes the app's own.
-   */
-  get: (runtime: RovaRuntime) => Promise<WorkflowFunction[]>;
-  /** Drop the list, including a build still in flight. */
-  invalidate: () => void;
-};
+export async function buildInngestFunctions(
+  client: Inngest,
+  runtime: RovaRuntime
+): Promise<InngestFunction.Any[]> {
+  const extensions = await runtime.runPromise(Extensions);
 
-export function createInngestFunctionRegistry(
-  client: Inngest
-): InngestFunctionRegistry {
-  let cache: { functions: WorkflowFunction[]; expiresAt: number } | null = null;
-  let inflightBuild: Promise<WorkflowFunction[]> | null = null;
-
-  async function build(runtime: RovaRuntime): Promise<WorkflowFunction[]> {
-    // The surface and the workflow list both come off the runtime the route
-    // handed over rather than from a parameter, because the Layer graph is built
-    // from it: asking the runtime is what keeps the surface, the rows, and the
-    // functions that dispatch against them the same app's.
-    const extensions = await runtime.runPromise(Extensions);
-    const workflowDefinitions = await runtime.runPromise(
-      Effect.flatMap(WorkflowRepo, (repo) => repo.listIdentities())
-    );
-    const actions = createWorkflowActions(extensions, runtime);
-
-    // The draft is filtered inside `buildWorkflowFunctions`, which is where the
-    // rule is tested.
-    return [
-      ...buildWorkflowFunctions(client, runtime, workflowDefinitions, actions),
-      ...buildEventListenerFunctions(client, runtime, extensions),
-    ];
-  }
-
-  function invalidate(): void {
-    cache = null;
-    // Forgetting the in-flight promise matters on the dispose path: a build
-    // started before the app began tearing down would otherwise land afterwards
-    // and store listeners closed over a runtime that has been finalized.
-    inflightBuild = null;
-  }
-
-  async function get(runtime: RovaRuntime): Promise<WorkflowFunction[]> {
-    if (cache && Date.now() < cache.expiresAt) {
-      return cache.functions;
-    }
-
-    if (inflightBuild) {
-      return await inflightBuild;
-    }
-
-    // The build writes to the cache only while it is still the build this
-    // registry is waiting on. An invalidation that lands mid-flight replaces or
-    // clears `inflightBuild`, and the identity check is what makes that stick:
-    // the abandoned build finishes and stores nothing.
-    const pending: Promise<WorkflowFunction[]> = build(runtime)
-      .then((functions) => {
-        if (inflightBuild === pending) {
-          cache = { functions, expiresAt: Date.now() + REGISTRY_CACHE_TTL_MS };
-        }
-        return functions;
-      })
-      .finally(() => {
-        if (inflightBuild === pending) {
-          inflightBuild = null;
-        }
-      });
-    inflightBuild = pending;
-
-    return await pending;
-  }
-
-  return { get, invalidate };
+  return [
+    createWorkflowRunFunction(client, {
+      actions: createWorkflowActions(extensions, runtime),
+      store: createDbWorkflowStore(runtime),
+    }),
+    ...extensions.events.map((event) =>
+      createInngestEventListenerFunction({ client, event, runtime })
+    ),
+  ];
 }

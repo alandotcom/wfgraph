@@ -1,5 +1,4 @@
 import type { Inngest, InngestFunction } from "inngest";
-import { celStringLiteral } from "@rova/shared/conditions/cel-string-literal";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import { executionError } from "#src/backend/engine/contracts";
 import {
@@ -17,10 +16,6 @@ import {
 function toDurationString(milliseconds: number): string {
   const seconds = Math.max(1, Math.ceil(milliseconds / 1000));
   return `${seconds}s`;
-}
-
-export function createWorkflowTriggerExpression(workflowId: string): string {
-  return `event.data.workflowId == ${celStringLiteral(workflowId)}`;
 }
 
 /**
@@ -99,16 +94,26 @@ async function workflowRunRequestedHandler({
   return result;
 }
 
-// The return type is stated because declaration emit cannot name the inferred
-// one: it references types inngest keeps internal (`SendSignalResponse` under
-// inngest/api). `InngestFunction.Any` is what the function registry collects
-// these into anyway.
-export function createWorkflowRunRequestedFunction(
+/**
+ * Every run in the app, on one function.
+ *
+ * The trigger carries no per-workflow filter, so which workflows exist is a
+ * question this function never asks: one saved a moment ago runs on the same
+ * registration, and Inngest needs no re-sync. Which graph a run walks is on the
+ * event, put there by whoever enqueued it.
+ *
+ * The Inngest dashboard therefore labels every run alike. The workflow's name
+ * reaches a trace through the `rova.workflow.name` attribute the engine's span
+ * carries.
+ *
+ * The return type is stated because declaration emit cannot name the inferred
+ * one: it references types inngest keeps internal (`SendSignalResponse` under
+ * inngest/api). `InngestFunction.Any` is what the served function list collects
+ * these into anyway.
+ */
+export function createWorkflowRunFunction(
   client: Inngest,
   input: {
-    id: string;
-    name?: string;
-    workflowId: string;
     /** Where an action id becomes work, built by the app from its own surface. */
     actions: WorkflowActions;
     /** Where a run's rows go, built by the app from its own runtime. */
@@ -117,8 +122,8 @@ export function createWorkflowRunRequestedFunction(
 ): InngestFunction.Any {
   return client.createFunction(
     {
-      id: input.id,
-      name: input.name,
+      id: "workflow-run",
+      name: "Workflow run",
       // Each node runs inside its own memoized step, so a retry resumes at the
       // step that failed instead of replaying the graph from the trigger. That
       // is what makes retrying safe here, and it is why this is not 0: without
@@ -131,12 +136,7 @@ export function createWorkflowRunRequestedFunction(
       // retry sends again. Steps that must not double-fire should pass an
       // idempotency key to their provider rather than rely on this count.
       retries: 4,
-      triggers: [
-        {
-          event: workflowRunRequested,
-          if: createWorkflowTriggerExpression(input.workflowId),
-        },
-      ],
+      triggers: [{ event: workflowRunRequested }],
       cancelOn: [
         {
           event: workflowRunCancelRequested,

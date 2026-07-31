@@ -10,10 +10,7 @@ import {
   InngestClient,
   makeInngestClientLayer,
 } from "#src/backend/lib/effect/inngest-client";
-import {
-  InngestFunctions,
-  makeInngestFunctionsLayer,
-} from "#src/backend/lib/effect/inngest-functions";
+import { TracerBridgeLayer } from "#src/backend/lib/effect/tracer";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { InngestSurface } from "#src/backend/lib/inngest/client";
 import {
@@ -52,8 +49,7 @@ export type RovaServices =
   | IntegrationRepo
   | WorkflowRepo
   | ExecutionRepo
-  | InngestClient
-  | InngestFunctions;
+  | InngestClient;
 
 /** Everything the app hands the Layer graph, as the app itself holds it. */
 export type RovaRuntimeParts = {
@@ -70,11 +66,12 @@ export type RovaRuntimeParts = {
 // value used in every position means one database service, however many domains
 // provide it to.
 function buildRovaLayer(parts: RovaRuntimeParts): Layer.Layer<RovaServices> {
-  const { inngest } = parts;
   const database = makeDatabaseLayer(parts.database.db);
 
   return Layer.mergeAll(
     AppLoggerLayer,
+    // Provides no service: it replaces the Tracer every Effect span is opened on.
+    TracerBridgeLayer,
     makeExtensionsLayer(parts.extensions),
     Layer.provide(ApiKeyRepoLayer, database),
     Layer.provide(makeIntegrationRepoLayer(parts.cipher), database),
@@ -82,8 +79,7 @@ function buildRovaLayer(parts: RovaRuntimeParts): Layer.Layer<RovaServices> {
       Layer.mergeAll(WorkflowRepoLayer, ExecutionRepoLayer),
       database
     ),
-    makeInngestClientLayer(inngest.client),
-    makeInngestFunctionsLayer(inngest)
+    makeInngestClientLayer(parts.inngest.client)
   );
 }
 

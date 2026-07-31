@@ -1,11 +1,10 @@
 // `it` comes from the `layer` callback below, typed with the services that layer
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   SilentAppLoggerLayer,
-  stubInngestFunctions,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { postWorkflowsBulkLifecycle } from "#src/backend/services/workflows/bulk-actions";
@@ -64,7 +63,7 @@ function makeWorkflowRepo(
 }
 
 describe("postWorkflowsBulkLifecycle", () => {
-  layer(Layer.merge(SilentAppLoggerLayer, stubInngestFunctions()))((it) => {
+  layer(SilentAppLoggerLayer)((it) => {
     it.effect("runs pause action in best-effort mode", () =>
       Effect.gen(function* () {
         const repo = makeWorkflowRepo({ wf_1: false });

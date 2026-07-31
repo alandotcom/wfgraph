@@ -1,103 +1,62 @@
+import { Schema } from "effect";
 import { Inngest } from "inngest";
 import { describe, expect, it } from "vitest";
 
-import { Effect } from "effect";
-import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
+import { defineEvent } from "#src/backend/extensions/define-event";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
-import { noWorkflowActions } from "#src/backend/engine/actions";
-import {
-  buildWorkflowFunctions,
-  createInngestFunctionRegistry,
-} from "./functions";
+import { buildInngestFunctions } from "./functions";
 
 // Constructing a client opens nothing; these functions are never invoked.
 const client = new Inngest({ id: "functions-test", isDev: true });
-// A registry reads the surface and the workflow list off the runtime it is
-// handed. Which functions it builds is beside the point here, so the list is
-// empty and nothing else on the runtime is ever asked.
-const runtime = stubRovaRuntime({
-  workflowRepo: { listIdentities: () => Effect.succeed([]) },
+
+const appointmentCreated = defineEvent({
+  name: "app/appointment.created",
+  schema: Schema.Struct({
+    id: Schema.String.annotate({ description: "Appointment ID" }),
+  }),
+  correlationPath: "id",
 });
 
-/**
- * The run functions, which are one per saved workflow and keyed on its id.
- *
- * Nothing here reads a graph. The event listeners are the catalog's, one per
- * Event, and `event-listener-function.test.ts` covers them: which Events exist
- * stopped being a question about saved graphs when the per-workflow listener went.
- */
-describe("buildWorkflowFunctions", () => {
-  it("creates one function per workflow with stable ids", () => {
-    const functions = buildWorkflowFunctions(
-      client,
-      runtime,
-      [
-        { id: "workflow_123", name: "Order Updates" },
-        { id: "workflow_999", name: CURRENT_WORKFLOW_NAME },
-      ],
-      noWorkflowActions
-    );
-
-    expect(functions).toHaveLength(1);
-    expect(functions[0].id()).toBe("workflow-workflow_123");
-    expect(functions[0].name).toBe("Order Updates");
-  });
-
-  // The draft has no run of its own: it is what the editor autosaves into, and
-  // nothing starts it.
-  it("excludes the editor's draft", () => {
-    const functions = buildWorkflowFunctions(
-      client,
-      runtime,
-      [{ id: "workflow_only_current", name: CURRENT_WORKFLOW_NAME }],
-      noWorkflowActions
-    );
-
-    expect(functions).toHaveLength(0);
-  });
-
-  it("handles an empty workflow list", () => {
-    expect(
-      buildWorkflowFunctions(client, runtime, [], noWorkflowActions)
-    ).toHaveLength(0);
-  });
-});
+/** The `if` an Inngest function was registered with, read back off the options. */
+function triggerFilters(built: unknown): (string | undefined)[] {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const { opts } = built as { opts: { triggers: { if?: string }[] } };
+  return opts.triggers.map((trigger) => trigger.if);
+}
 
 /**
- * The cache, which decides how long a newly saved workflow stays invisible to
- * Inngest.
+ * What this app registers with Inngest: one run function, and one listener per
+ * Event in the catalog.
  *
- * Array identity is the whole test: the registry hands back the same array
- * while its short TTL holds, and a new one after a write says the list is
- * stale. Each app owns a registry of its own, so the invalidation a save
- * performs reaches that app's list and no other.
+ * Nothing here reads a saved graph, which the stub runtime enforces -- its
+ * workflow repository dies on every method, so a build that asked which
+ * workflows exist would fail the test rather than pass with an empty list.
  */
-describe("the function registry's cache", () => {
-  it("answers the same list until something invalidates it", async () => {
-    const registry = createInngestFunctionRegistry(client);
+describe("buildInngestFunctions", () => {
+  it("builds the run function and a listener for each Event", async () => {
+    const runtime = stubRovaRuntime({
+      extensions: { events: [appointmentCreated] },
+    });
 
-    const built = await registry.get(runtime);
+    const functions = await buildInngestFunctions(client, runtime);
 
-    expect(await registry.get(runtime)).toBe(built);
-
-    registry.invalidate();
-
-    expect(await registry.get(runtime)).not.toBe(built);
+    expect(functions.map((fn) => fn.id())).toEqual([
+      "workflow-run",
+      "rova-event-app-appointment-created",
+    ]);
   });
 
-  // What holds one app's save to one app's list: the second registry's cache
-  // survives the first's invalidation, so it answers the same array it built.
-  it("gives two registries lists of their own", async () => {
-    const first = createInngestFunctionRegistry(client);
-    const second = createInngestFunctionRegistry(client);
+  /**
+   * The property the single run function buys: a workflow saved after the app
+   * booted runs on the registration Inngest already has. An unfiltered trigger
+   * is the whole of it -- every `workflow/run.requested` reaches this function,
+   * whatever workflow it names.
+   */
+  it("gives the run function a trigger no workflow id narrows", async () => {
+    const runtime = stubRovaRuntime();
 
-    const firstList = await first.get(runtime);
-    const secondList = await second.get(runtime);
-    expect(secondList).not.toBe(firstList);
+    const [runFunction] = await buildInngestFunctions(client, runtime);
 
-    first.invalidate();
-
-    expect(await second.get(runtime)).toBe(secondList);
-    expect(await first.get(runtime)).not.toBe(firstList);
+    expect(triggerFilters(runFunction)).toEqual([undefined]);
   });
 });

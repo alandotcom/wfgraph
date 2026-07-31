@@ -8,10 +8,7 @@ import {
   type WorkflowStore,
 } from "#src/backend/engine/store";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import {
-  createWorkflowRunRequestedFunction,
-  createWorkflowTriggerExpression,
-} from "./workflow-function";
+import { createWorkflowRunFunction } from "./workflow-function";
 
 const { executeWorkflowMock } = vi.hoisted(() => ({
   executeWorkflowMock: vi.fn(),
@@ -32,15 +29,9 @@ const testActions = noWorkflowActions;
 const testStore = noopWorkflowStore;
 
 function createTestFunction() {
-  return createWorkflowRunRequestedFunction(
+  return createWorkflowRunFunction(
     new Inngest({ id: "workflow-function-test", isDev: true }),
-    {
-      id: "workflow-test-function",
-      name: "Workflow Test Function",
-      workflowId: "workflow_123",
-      actions: testActions,
-      store: testStore,
-    }
+    { actions: testActions, store: testStore }
   );
 }
 
@@ -79,21 +70,18 @@ async function executeWorkflowFunctionForTest() {
   return { runtime, ctx: execution.ctx };
 }
 
-describe("workflowRunRequestedFunction", () => {
+describe("the workflow run function", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("builds a workflow-specific trigger expression", () => {
-    expect(createWorkflowTriggerExpression("workflow_123")).toBe(
-      'event.data.workflowId == "workflow_123"'
-    );
-  });
-
-  it("creates workflow-specific function metadata", () => {
-    const workflowRunRequestedFunction = createTestFunction();
-    expect(workflowRunRequestedFunction.id()).toBe("workflow-test-function");
-    expect(workflowRunRequestedFunction.name).toBe("Workflow Test Function");
+  // One function serves every workflow, so its id is a constant rather than
+  // something a build derives; `functions.test.ts` pins the unfiltered trigger
+  // that lets it.
+  it("registers under one id whatever workflows exist", () => {
+    const runFunction = createTestFunction();
+    expect(runFunction.id()).toBe("workflow-run");
+    expect(runFunction.name).toBe("Workflow run");
   });
 
   it("forwards event data, runtime, store and actions to executeWorkflow", async () => {

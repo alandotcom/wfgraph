@@ -1,8 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { defineAction, defineEvent } from "#src/index";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { defineStep } from "#src/backend/extensions/steps/define-step";
@@ -14,38 +14,6 @@ import { createRovaRuntime } from "#src/backend/runtime";
 import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
 import { createDatabaseSurface } from "#src/backend/lib/db/index";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
-
-// Every method a caller reaching this app could ask for, refused. The mock
-// below fills in the one the function registry needs; the rest dying is what
-// keeps a query nobody meant to run from reading a fake empty answer. Written
-// out rather than taken from `test-layers`, because importing that module from
-// inside the factory would have vitest resolving the module it is mocking.
-const { emptyWorkflowRepo } = vi.hoisted(() => ({
-  emptyWorkflowRepo: new Proxy({} as Record<string, unknown>, {
-    get: (_target, method: string) => () => {
-      throw new Error(`${method} is not part of this test`);
-    },
-  }),
-}));
-
-// The function registry reads the workflows table to decide which Inngest
-// functions exist. Which functions it builds is beside the point here, so the
-// query answers nothing and the connection is never opened; vitest scopes a
-// mock to the file that declares it.
-vi.mock("#src/backend/services/workflows/repo", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("#src/backend/services/workflows/repo")
-    >();
-
-  return {
-    ...actual,
-    WorkflowRepoLayer: Layer.succeed(actual.WorkflowRepo, {
-      ...(emptyWorkflowRepo as typeof actual.WorkflowRepo.Service),
-      listIdentities: () => Effect.succeed([]),
-    }),
-  };
-});
 
 // createRovaApp opens no connections: the database client is lazy and
 // migrations only run when asked. Every route exercised below answers from
@@ -342,7 +310,7 @@ describe("createRovaApp with an auth predicate", () => {
         basePath: "/rova/api",
         authorize: () => Promise.resolve(true),
         runtime,
-        inngest,
+        inngestHandler: await inngest.serve(runtime),
       });
       const machinePaths = new Set(
         MACHINE_ROUTES.map((route) => `/rova/api${route}`)

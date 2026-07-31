@@ -1,6 +1,6 @@
-import { Inngest, type InngestFunction } from "inngest";
+import { Inngest } from "inngest";
 import { serve as serveInngest } from "inngest/hono";
-import { createInngestFunctionRegistry } from "#src/backend/lib/inngest/functions";
+import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { RovaRuntime } from "#src/backend/runtime";
 
@@ -110,29 +110,27 @@ function reportInngestCallbackExposure(
   );
 }
 
-/** What `serve()` answers a callback with, named so the cache below can hold one. */
-type InngestServeHandler = ReturnType<typeof serveInngest>;
+/** What `serve()` answers a callback with. */
+export type InngestServeHandler = ReturnType<typeof serveInngest>;
 
 /**
  * Everything one app does with Inngest, as one value.
  *
- * The connection, the function list, and the handler that serves that list have
- * to agree: functions registered on one client and served through another are
- * invisible to Inngest, and a save that invalidates some other app's list leaves
- * this one serving a stale one. Building all three together is what makes the
- * disagreement inexpressible -- `createRovaApp` builds one surface and hands the
- * same value to the Layer graph and to the API app.
+ * The connection and the handler that serves this app's functions have to
+ * agree: functions registered on one client and served through another are
+ * invisible to Inngest. Building both together is what makes the disagreement
+ * inexpressible -- `createRovaApp` builds one surface and hands the same value
+ * to the Layer graph and to the API app.
  */
 export type InngestSurface = {
   /** The connection every send and every registered function is made on. */
   client: Inngest;
-  /** Drop the function list, including a build still in flight. */
-  invalidate: () => void;
   /**
-   * The `/inngest` handler for this app's current function list.
+   * Builds the `/inngest` handler for this app's functions.
    *
-   * The runtime is a parameter because the event listeners in that list run
-   * services on it, and the route has the app's own in hand.
+   * The runtime is a parameter because the functions in that list run services
+   * on it. Called once, at boot, so a build failure surfaces there rather than
+   * on the first Inngest callback.
    */
   serve: (runtime: RovaRuntime) => Promise<InngestServeHandler>;
 };
@@ -144,34 +142,16 @@ export function createInngestSurface(
   const client = createInngestClient(config, signingKey);
   reportInngestCallbackExposure(client.mode, signingKey);
 
-  const registry = createInngestFunctionRegistry(client);
-
-  // The serve handler is rebuilt only when the function list changes. Every
-  // callback and every sync hits this route, and building a handler means
-  // Inngest walking each function to describe it. The list is a stable array
-  // while the registry's cache holds, so identity is the whole test.
-  let cachedFor: InngestFunction.Any[] | undefined;
-  let handler: InngestServeHandler | undefined;
-
   return {
     client,
-    invalidate: registry.invalidate,
-    serve: async (runtime) => {
-      const functions = await registry.get(runtime);
-
-      if (!handler || cachedFor !== functions) {
-        handler = serveInngest({
-          client,
-          functions,
-          // As of v4 the signing keys and base URL live on the client, so what
-          // is left for `serve()` is where Inngest should call back.
-          serveOrigin: config.serveOrigin,
-          servePath: config.servePath,
-        });
-        cachedFor = functions;
-      }
-
-      return handler;
-    },
+    serve: async (runtime) =>
+      serveInngest({
+        client,
+        functions: await buildInngestFunctions(client, runtime),
+        // As of v4 the signing keys and base URL live on the client, so what
+        // is left for `serve()` is where Inngest should call back.
+        serveOrigin: config.serveOrigin,
+        servePath: config.servePath,
+      }),
   };
 }

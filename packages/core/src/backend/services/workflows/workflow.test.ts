@@ -4,7 +4,6 @@ import type { Workflow } from "#src/backend/lib/db/schema";
 import {
   SilentAppLoggerLayer,
   stubExtensionCatalog,
-  stubInngestFunctions,
   stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
@@ -86,12 +85,7 @@ function makeRepo() {
 
 describe("patchWorkflow", () => {
   layer(
-    Layer.mergeAll(
-      SilentAppLoggerLayer,
-      catalogLayer,
-      stubInngestFunctions(),
-      stubIntegrationRepo()
-    )
+    Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, stubIntegrationRepo())
   )((it) => {
     // The index is derived from the graph being written, so dropping a Cancel
     // Event has to shrink it in the same call. A stale row would keep delivering
