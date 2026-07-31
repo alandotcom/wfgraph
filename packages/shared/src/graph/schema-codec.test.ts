@@ -3,7 +3,6 @@ import {
   configFieldsFromJsonSchema,
   parseWorkflowSchemaField,
   parseWorkflowSchemaFieldsOrJsonSchema,
-  parseWorkflowSchemaFieldsString,
   workflowSchemaFieldsToJsonSchemaDocument,
 } from "./schema-codec";
 
@@ -69,12 +68,6 @@ describe("parseWorkflowSchemaField", () => {
       fields: undefined,
       description: undefined,
     });
-  });
-});
-
-describe("parseWorkflowSchemaFieldsString", () => {
-  it("returns empty schema for invalid JSON", () => {
-    expect(parseWorkflowSchemaFieldsString("{not-json")).toEqual([]);
   });
 });
 

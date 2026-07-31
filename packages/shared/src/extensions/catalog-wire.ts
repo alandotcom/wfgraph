@@ -40,7 +40,6 @@ const actionConfigFieldBaseSchema = Schema.Struct({
     "text",
     "number",
     "select",
-    "schema-builder",
     "key-value",
   ]),
   placeholder: Schema.optionalKey(Schema.String),

@@ -17,12 +17,7 @@ import {
   type ActionConfigFieldBase,
   isFieldGroup,
 } from "@rova/shared/plugins/action-fields";
-import {
-  parseWorkflowSchemaFieldsOrJsonSchema,
-  parseWorkflowSchemaFieldsString,
-} from "@rova/shared/graph/schema-codec";
 import type { UpdateNodeConfig } from "./node-config-patch";
-import { SchemaBuilder } from "./schema-builder";
 
 type FieldProps = {
   field: ActionConfigFieldBase;
@@ -234,21 +229,6 @@ function KeyValueField({ value, onChange, disabled }: FieldProps) {
   );
 }
 
-function SchemaBuilderField(props: FieldProps) {
-  const schema =
-    typeof props.value === "string"
-      ? parseWorkflowSchemaFieldsString(props.value)
-      : (parseWorkflowSchemaFieldsOrJsonSchema(props.value) ?? []);
-
-  return (
-    <SchemaBuilder
-      disabled={props.disabled}
-      onChange={(nextSchema) => props.onChange(nextSchema)}
-      schema={schema}
-    />
-  );
-}
-
 const FIELD_RENDERERS: Record<
   ActionConfigFieldBase["type"],
   React.ComponentType<FieldProps>
@@ -258,7 +238,6 @@ const FIELD_RENDERERS: Record<
   text: TextInputField,
   number: NumberInputField,
   select: SelectField,
-  "schema-builder": SchemaBuilderField,
   "key-value": KeyValueField,
 };
 

@@ -97,7 +97,7 @@ export type ActionDefinition = ActionIdentity & {
    * Declarative field definitions rendered as the action's configuration form,
    * derived from `input`. Each field maps to a key in the action's config
    * object. Supported types include `"template-input"`, `"template-textarea"`,
-   * `"text"`, `"number"`, `"select"`, `"schema-builder"`, and `"key-value"`.
+   * `"text"`, `"number"`, `"select"`, and `"key-value"`.
    */
   readonly configFields: ActionConfigField[];
 

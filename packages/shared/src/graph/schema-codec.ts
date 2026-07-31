@@ -404,21 +404,6 @@ export function parseWorkflowSchemaFields(
   return workflowSchemaFieldsFromRecords(readWorkflowFieldRecords(value));
 }
 
-export function parseWorkflowSchemaFieldsString(
-  value: string | undefined | null
-): WorkflowSchemaField[] {
-  if (typeof value !== "string" || !value.trim()) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(value);
-    return parseWorkflowSchemaFields(parsed);
-  } catch {
-    return [];
-  }
-}
-
 function resolveConstBranches(
   nonNullBranches: JsonSchemaNode[],
   description: string | undefined

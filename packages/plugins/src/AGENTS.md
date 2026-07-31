@@ -91,7 +91,6 @@ none and the schema's own list is the form. README's "Writing a step" owns the r
 | `text`              | Plain text input                           | No        |
 | `number`            | Numeric input                              | No        |
 | `select`            | Dropdown over `options`                    | No        |
-| `schema-builder`    | Structured output schema builder           | No        |
 | `key-value`         | Dynamic key-value list                     | No        |
 | `group`             | Collapsible section holding `fields`       | N/A       |
 
