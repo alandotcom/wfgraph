@@ -2,11 +2,12 @@
  * How a host writes an action of its own.
  *
  * The step half of the same vocabulary is `defineStep`, and the two read alike on
- * purpose: `input`, `output`, `handler`, and everything around the handler owned
- * here. They differ where they have to. A step's handler is an `Effect` and is
- * handed an integration's credentials; an action's is a plain function or a
- * Promise and belongs to no integration, and its schemas may come from any
- * Standard Schema library rather than from Effect alone.
+ * purpose: `input`, `output`, `handler`. What sits between the engine's input
+ * record and the handler is the same work, and both call it in
+ * `steps/step-boundary.ts` rather than each wording it. One thing differs: a
+ * step belongs to an integration and reads its credentials, so a step's handler
+ * may also answer an `Effect` whose error channel carries a refused credential
+ * read out to the durable runtime. An action belongs to no integration.
  *
  * This is server code. It runs the host's `handler`, catches its throws, encodes
  * what it answered, and builds the `StepResult` envelope the engine reads, so it
@@ -18,45 +19,37 @@ import { Result } from "effect";
 import {
   readIntegrationId,
   readStepContext,
-  stripInternalFields,
 } from "#src/backend/extensions/steps/step-handler";
+import {
+  failedStep,
+  type HandlerRunContext,
+  handlerErrorMessage,
+  invalidConfigMessage,
+  missingContextMessage,
+  toHandlerRunContext,
+} from "#src/backend/extensions/steps/step-boundary";
 import { encodeThroughOutputSchema } from "#src/backend/extensions/steps/output-encoding";
 import type { StepFactory } from "#src/backend/extensions/steps/step-runner";
 import type { ActionConfigField } from "@rova/shared/plugins/action-fields";
 import {
+  buildConfigReader,
   configFieldsFromInputSchema,
   type InputSchema,
-  validateConfig,
 } from "#src/backend/extensions/schema-io";
-import { getErrorMessage } from "@rova/shared/utils";
-import {
-  asStandardSchema,
-  isEffectSchema,
-  type StandardSchema,
-} from "@rova/shared/types/schema";
+import { asStandardSchema, isEffectSchema } from "@rova/shared/types/schema";
 import type { ReferenceField } from "@rova/shared/graph/node-references";
 import {
   type OutputSchema,
   outputFieldsFromSchema,
 } from "@rova/shared/graph/output-fields";
-import type { StepResult } from "@rova/shared/actions/step-result";
 
 /**
  * What the handler is told about the run it is part of.
  *
- * The step half calls this `StepRunContext` and carries the same fields, less
- * the credentials an action has no integration to read.
+ * The step half calls this `StepRunContext` and adds the credentials an action
+ * has no integration to read. Both are the one context in `step-boundary.ts`.
  */
-export type ActionRunContext = {
-  /** `"test"` when the editor is running the workflow, `"live"` otherwise. */
-  readonly runMode: "live" | "test";
-  readonly executionId?: string;
-  readonly nodeId: string;
-  readonly nodeName: string;
-  readonly nodeType: string;
-  /** The integration the node was configured with, if any. */
-  readonly integrationId?: string;
-};
+export type ActionRunContext = HandlerRunContext;
 
 /** What a host writes to describe an action's identity and presentation. */
 export type ActionIdentity = {
@@ -200,19 +193,6 @@ function normalizeActionIdentity(
 }
 
 /**
- * What an action's throw becomes on the node's run-log row.
- *
- * The shared reader is used because a handler's throw is often a seam failure
- * whose own `.message` is empty -- every `Schema.TaggedErrorClass` in the
- * backend is one -- and a row closed with that alone is a red node with no
- * sentence beside it.
- */
-function getActionErrorMessage(error: unknown): string {
-  const message = getErrorMessage(error);
-  return message === "Unknown error" ? "Action execution failed" : message;
-}
-
-/**
  * Everything an action does around its handler, as the engine calls it.
  *
  * Only an Effect output schema has an encoder: a foreign Standard Schema library
@@ -223,50 +203,38 @@ function getActionErrorMessage(error: unknown): string {
  */
 function buildAction<TPayload extends Record<string, unknown>>(
   actionId: string,
-  schema: StandardSchema<TPayload>,
+  input: InputSchema<TPayload>,
   outputSchema: OutputSchema<Record<string, unknown>> | undefined,
   handler: ActionHandler<TPayload, unknown>
 ): StepFactory {
+  const subject = `Action "${actionId}"`;
+  const readConfig = buildConfigReader(input);
   const encodeOutput =
     outputSchema !== undefined &&
     isEffectSchema<Record<string, unknown>, never>(outputSchema)
-      ? encodeThroughOutputSchema(`Action "${actionId}"`, outputSchema)
+      ? encodeThroughOutputSchema(subject, outputSchema)
       : undefined;
 
   return () => async (rawInput) => {
     const context = readStepContext(rawInput._context);
-
-    // Every node the engine runs carries its context, so an input without one is
-    // a Rova bug rather than something a host wrote. It fails the node here
-    // because the alternative is handing an author the node ids they were
-    // promised as empty strings, and a run log naming a node that does not exist.
     if (!context) {
-      return failed(
-        `Action "${actionId}" was called without a step context, so the node it belongs to cannot be identified.`
-      );
+      return failedStep(missingContextMessage(subject));
     }
 
-    // The same three keys a run log leaves out: the handler is told about the
-    // connection and the action through its context instead.
-    const payload = stripInternalFields(rawInput);
-    const validated = validateConfig(schema, payload);
-    if (Result.isFailure(validated)) {
-      return failed(
-        `Action "${actionId}" received an invalid payload: ${validated.failure}`
-      );
+    const parsed = readConfig(rawInput);
+    if (Result.isFailure(parsed)) {
+      return failedStep(invalidConfigMessage(subject, parsed.failure));
     }
 
     try {
       const data = await handler({
-        payload: validated.success,
-        context: {
-          runMode: context.runMode ?? "live",
-          executionId: context.executionId,
-          nodeId: context.nodeId,
-          nodeName: context.nodeName,
-          nodeType: context.nodeType,
-          integrationId: readIntegrationId(rawInput.integrationId),
-        },
+        payload: parsed.success,
+        // The connection reaches the handler through its context rather than its
+        // payload, which is why the read happens here and not in the config.
+        context: toHandlerRunContext(
+          context,
+          readIntegrationId(rawInput.integrationId)
+        ),
       });
 
       if (!encodeOutput) {
@@ -278,16 +246,12 @@ function buildAction<TPayload extends Record<string, unknown>>(
       // rather than spending the retry budget on a certainty.
       const encoded = encodeOutput(data);
       return Result.isFailure(encoded)
-        ? failed(encoded.failure)
+        ? failedStep(encoded.failure)
         : { success: true, data: encoded.success };
     } catch (error) {
-      return failed(getActionErrorMessage(error));
+      return failedStep(handlerErrorMessage(subject, error));
     }
   };
-}
-
-function failed(message: string): StepResult {
-  return { success: false, error: { message } };
 }
 
 /**
@@ -339,8 +303,9 @@ export function defineAction<TPayload extends Record<string, unknown>>(
     | DefineActionInput<TPayload>
     | DefineActionInputWithOutput<TPayload, Record<string, unknown>>
 ): ActionDefinition {
-  // The one place a schema is bridged. Everything below reads Standard Schema
-  // and nothing below knows which library wrote what it is reading.
+  // The one place a schema is bridged. Effect's bridge assigns onto the schema
+  // rather than wrapping it, so `definition.input` below is the same object,
+  // now carrying the `~standard` half the field derivation reads.
   const schema = asStandardSchema(definition.input);
   const outputSchema = "output" in definition ? definition.output : undefined;
 
@@ -365,7 +330,7 @@ export function defineAction<TPayload extends Record<string, unknown>>(
       : undefined,
     implement: buildAction(
       normalized.id,
-      schema,
+      definition.input,
       outputSchema,
       definition.handler
     ),

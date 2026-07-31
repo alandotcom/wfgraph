@@ -18,8 +18,15 @@ import {
   readIntegrationId,
   readStepContext,
   type StepContext,
-  stripInternalFields,
 } from "#src/backend/extensions/steps/step-handler";
+import {
+  failedStep,
+  type HandlerRunContext,
+  handlerErrorMessage,
+  invalidConfigMessage,
+  missingContextMessage,
+  toHandlerRunContext,
+} from "#src/backend/extensions/steps/step-boundary";
 import type {
   StepEnvironment,
   StepFactory,
@@ -27,10 +34,10 @@ import type {
 import { ExternalTransport } from "#src/backend/extensions/steps/external-transport";
 import { buildConfigForm } from "#src/backend/extensions/steps/config-form";
 import {
+  buildConfigReader,
   configFieldsFromInputSchema,
   type InputSchema,
   isPromiseLike,
-  validateConfig,
 } from "#src/backend/extensions/schema-io";
 import { asStandardSchema, isEffectSchema } from "@rova/shared/types/schema";
 import type { OutputSchema } from "@rova/shared/graph/output-fields";
@@ -39,8 +46,6 @@ import type {
   ActionConfigFieldBase,
   ActionConfigFieldGroup,
 } from "@rova/shared/plugins/action-fields";
-import { formatSchemaFailure } from "@rova/shared/types/schema-message";
-import { getErrorMessage } from "@rova/shared/utils";
 import type { StepResult } from "@rova/shared/actions/step-result";
 
 /**
@@ -66,39 +71,32 @@ export class StepFailure extends Schema.TaggedErrorClass<StepFailure>()(
  * names by annotating this parameter with `CredentialsOf<typeof fields>`. The
  * default is the open record, for a step belonging to no integration.
  */
-export type StepRunContext<TCredentials = WorkflowCredentials> = {
-  /** `"test"` when the editor is running the workflow, `"live"` otherwise. */
-  readonly runMode: "live" | "test";
-  readonly executionId?: string;
-  readonly nodeId: string;
-  readonly nodeName: string;
-  readonly nodeType: string;
-  /** The integration the node was configured with, if any. */
-  readonly integrationId?: string;
-  /**
-   * The integration's credentials, fetched the first time the handler asks and
-   * not at all if it never does.
-   *
-   * A step that decides it has nothing to send -- a test run in log-only mode,
-   * say -- should not read an integration's secrets to reach that conclusion,
-   * so the fetch is an effect the handler yields rather than a value handed to
-   * it. Yielding it more than once fetches once.
-   *
-   * A store that refuses the read fails with `CredentialsUnavailable`. Let it
-   * through: `defineStep` turns it into a retry rather than a failed node, and
-   * catching it would spend the run on a condition that clears on its own.
-   */
-  readonly credentials: Effect.Effect<TCredentials, CredentialsUnavailable>;
-  /**
-   * The same read for a handler written as a plain async function.
-   *
-   * One fetch behind both: awaiting this after yielding `credentials` reaches
-   * the value already read. It rejects with the `CredentialsUnavailable` itself,
-   * which `defineStep` recognises and turns into the same retry, so a handler
-   * that does not catch it gets that behaviour for free.
-   */
-  readonly readCredentials: () => Promise<TCredentials>;
-};
+export type StepRunContext<TCredentials = WorkflowCredentials> =
+  HandlerRunContext & {
+    /**
+     * The integration's credentials, fetched the first time the handler asks and
+     * not at all if it never does.
+     *
+     * A step that decides it has nothing to send -- a test run in log-only mode,
+     * say -- should not read an integration's secrets to reach that conclusion,
+     * so the fetch is an effect the handler yields rather than a value handed to
+     * it. Yielding it more than once fetches once.
+     *
+     * A store that refuses the read fails with `CredentialsUnavailable`. Let it
+     * through: `defineStep` turns it into a retry rather than a failed node, and
+     * catching it would spend the run on a condition that clears on its own.
+     */
+    readonly credentials: Effect.Effect<TCredentials, CredentialsUnavailable>;
+    /**
+     * The same read for a handler written as a plain async function.
+     *
+     * One fetch behind both: awaiting this after yielding `credentials` reaches
+     * the value already read. It rejects with the `CredentialsUnavailable` itself,
+     * which `defineStep` recognises and turns into the same retry, so a handler
+     * that does not catch it gets that behaviour for free.
+     */
+    readonly readCredentials: () => Promise<TCredentials>;
+  };
 
 /**
  * A handler, as `defineStep` takes it.
@@ -228,62 +226,25 @@ type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> & {
 };
 
 /**
- * The resolved config as the handler reads it, or one sentence saying why not.
+ * What a handler threw, as the failure the rest of the step runs on.
  *
- * An Effect schema decodes through its canonical JSON codec, so a transform the
- * author wrote runs on the way in. Any other library validates through
- * `~standard.validate`, which is all Standard Schema publishes in this
- * direction: no transform runs, and the message is the failing paths.
- *
- * Built once per action rather than per invocation, because `toCodecJson` walks
- * the AST and builds a new schema.
+ * A credential read that was refused stays what it is, so the runtime retries
+ * the node rather than failing it. A handler awaiting `readCredentials` and not
+ * catching gets that for free; one that catches has decided otherwise.
  */
-function buildInputReader<TInput>(
-  schema: InputSchema<TInput>
-): (raw: Record<string, unknown>) => Result.Result<TInput, string> {
-  // The default encode-direction parameter is what narrows the other arm away
-  // here, and the decode below asks for nothing more than it.
-  if (isEffectSchema<TInput>(schema)) {
-    // `errors: "all"` is what `formatSchemaFailure` is written against: it
-    // counts the issues it does not spell out, and stopping at the first would
-    // make that count always zero.
-    const decode = Schema.decodeUnknownResult(Schema.toCodecJson(schema), {
-      errors: "all",
-    });
-
-    return (raw) =>
-      Result.mapError(decode(raw), (error) => formatSchemaFailure(error.issue));
-  }
-
-  // The internal keys go no further here, because a foreign schema is free to
-  // refuse a key it does not declare and `_context` is not the author's.
-  return (raw) => validateConfig(schema, stripInternalFields(raw));
-}
-
-/**
- * What a handler threw, as the run log's sentence.
- *
- * The shared reader is used because a throw is often a seam failure whose own
- * `.message` is empty, and a row closed with that alone is a red node with no
- * sentence beside it.
- */
-function toStepFailure(error: unknown): StepFailure | CredentialsUnavailable {
-  // A credential read that was refused stays what it is, so the runtime retries
-  // the node rather than failing it. A handler awaiting `readCredentials` and
-  // not catching gets that for free; one that catches has decided otherwise.
-  if (error instanceof CredentialsUnavailable) {
-    return error;
-  }
-
-  const message = getErrorMessage(error);
-  return new StepFailure({
-    message: message === "Unknown error" ? "Step execution failed" : message,
-  });
+function stepFailureFrom(
+  subject: string
+): (error: unknown) => StepFailure | CredentialsUnavailable {
+  return (error) =>
+    error instanceof CredentialsUnavailable
+      ? error
+      : new StepFailure({ message: handlerErrorMessage(subject, error) });
 }
 
 /** Whatever the handler answered, as the effect the rest of the step runs on. */
 function toHandlerEffect<TOutput>(
-  answer: HandlerAnswer<TOutput>
+  answer: HandlerAnswer<TOutput>,
+  toFailure: (error: unknown) => StepFailure | CredentialsUnavailable
 ): Effect.Effect<
   TOutput,
   StepFailure | CredentialsUnavailable,
@@ -294,14 +255,14 @@ function toHandlerEffect<TOutput>(
   }
 
   return isPromiseLike<TOutput>(answer)
-    ? Effect.tryPromise({ try: () => answer, catch: toStepFailure })
+    ? Effect.tryPromise({ try: () => answer, catch: toFailure })
     : Effect.succeed(answer);
 }
 
 /**
  * Everything a step does around its handler, as a function of the action id.
  *
- * The id is what both messages below name, and a step learns it from the
+ * The id is what every message below names, and a step learns it from the
  * integration that declares the action, at assembly.
  */
 function buildStep<TInput, TOutput>(
@@ -310,24 +271,21 @@ function buildStep<TInput, TOutput>(
     "handler" | "input" | "output"
   >
 ): (actionId: string) => StepFactory {
-  const readInput = buildInputReader(definition.input);
+  const readConfig = buildConfigReader(definition.input);
 
   function runStep(
     app: StepEnvironment,
-    actionId: string,
+    subject: string,
     encodeOutput: (value: unknown) => Result.Result<unknown, string>,
     rawInput: Record<string, unknown>,
     context: StepContext | undefined
   ): Effect.Effect<StepResult, CredentialsUnavailable> {
+    const toFailure = stepFailureFrom(subject);
+
     return Effect.gen(function* () {
-      // Every node the engine runs carries its context, so an input without one
-      // is a Rova bug rather than something an author wrote. It fails the node
-      // here because the alternative is handing an author the node ids they were
-      // promised as empty strings, and a run log naming a node that does not
-      // exist. `defineAction` answers the same way.
       if (!context) {
         return yield* new StepFailure({
-          message: `Step "${actionId}" was called without a step context, so the node it belongs to cannot be identified.`,
+          message: missingContextMessage(subject),
         });
       }
 
@@ -336,10 +294,10 @@ function buildStep<TInput, TOutput>(
         readCredentials(app, integrationId)
       );
 
-      const parsed = readInput(rawInput);
+      const parsed = readConfig(rawInput);
       if (Result.isFailure(parsed)) {
         return yield* new StepFailure({
-          message: `Invalid configuration for "${actionId}": ${parsed.failure}`,
+          message: invalidConfigMessage(subject, parsed.failure),
         });
       }
       const input = parsed.success;
@@ -350,19 +308,14 @@ function buildStep<TInput, TOutput>(
       const answer = yield* Effect.try({
         try: () =>
           definition.handler(input, {
-            runMode: context.runMode ?? "live",
-            executionId: context.executionId,
-            nodeId: context.nodeId,
-            nodeName: context.nodeName,
-            nodeType: context.nodeType,
-            integrationId,
+            ...toHandlerRunContext(context, integrationId),
             credentials,
             readCredentials: () => runToPromise(credentials),
           }),
-        catch: toStepFailure,
+        catch: toFailure,
       });
 
-      const data = yield* toHandlerEffect(answer);
+      const data = yield* toHandlerEffect(answer, toFailure);
 
       // A handler that answered with something its output schema cannot encode
       // will answer with it again on every attempt, so this fails the node once
@@ -384,30 +337,29 @@ function buildStep<TInput, TOutput>(
       Effect.catchTag(
         "StepFailure",
         (failure): Effect.Effect<StepResult> =>
-          Effect.succeed({
-            success: false,
-            error: { message: failure.message },
-          })
+          Effect.succeed(failedStep(failure.message))
       ),
       Effect.provide(ExternalTransport)
     );
   }
 
   return (actionId) => {
+    const subject = `Step "${actionId}"`;
+
     // Only an Effect output schema has an encoder. A foreign Standard Schema
     // library publishes a validator and a JSON Schema and nothing that runs in
     // this direction, so its answers pass through as they stand. That is the
     // same call `output-fields.ts` makes for the field list: what a schema
     // cannot say about itself is not said.
     const encodeOutput = isEffectSchema<TOutput, never>(definition.output)
-      ? encodeThroughOutputSchema(`Step "${actionId}"`, definition.output)
+      ? encodeThroughOutputSchema(subject, definition.output)
       : Result.succeed;
 
     return (app) => (rawInput) =>
       app.runStep(
         runStep(
           app,
-          actionId,
+          subject,
           encodeOutput,
           rawInput,
           readStepContext(rawInput._context)

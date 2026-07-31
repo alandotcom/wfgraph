@@ -2,20 +2,23 @@
  * What both authoring functions do with an author's schema, written once.
  *
  * `defineAction` and `defineStep` accept a schema from any Standard Schema
- * library, so each of them validates a resolved config against it and derives
- * the editor's config form from its JSON Schema. Validation must be synchronous:
- * a step boundary answers the engine and has no await to spend.
+ * library, so each of them reads a resolved config through it and derives the
+ * editor's config form from its JSON Schema. The read must be synchronous: a
+ * step boundary answers the engine and has no await to spend.
  */
 
-import type { Schema } from "effect";
-import { Result } from "effect";
+import { Result, Schema } from "effect";
+import { stripInternalFields } from "#src/backend/extensions/steps/step-handler";
 import type { ActionConfigFieldBase } from "@rova/shared/plugins/action-fields";
 import {
   configFieldsFromJsonSchema,
   jsonSchemaLibraryOptions,
 } from "@rova/shared/graph/schema-codec";
-import { formatStandardIssuePath } from "@rova/shared/types/schema-message";
-import type { StandardSchema } from "@rova/shared/types/schema";
+import {
+  formatSchemaFailure,
+  formatStandardIssuePath,
+} from "@rova/shared/types/schema-message";
+import { isEffectSchema, type StandardSchema } from "@rova/shared/types/schema";
 
 /**
  * What an `input` accepts, in either of the two forms a schema arrives in.
@@ -43,13 +46,51 @@ export function isPromiseLike<T>(value: unknown): value is Promise<T> {
 }
 
 /**
- * The resolved config as the handler reads it, or the paths that refused it.
+ * The resolved config as the handler reads it, or one sentence saying why not.
+ *
+ * An Effect schema decodes through its canonical JSON codec, so a transform the
+ * author wrote runs on the way in. Any other library validates through
+ * `~standard.validate`, which is all Standard Schema publishes in this
+ * direction: no transform runs, and the message is the failing paths.
+ *
+ * The three keys the engine's dispatch owns come off first either way. A schema
+ * that declares a rest would otherwise carry `_context` into the payload, and
+ * `_context` is not the author's.
+ *
+ * Built once per action rather than per invocation, because `toCodecJson` walks
+ * the AST and builds a new schema.
+ */
+export function buildConfigReader<TPayload>(
+  schema: InputSchema<TPayload>
+): (raw: Record<string, unknown>) => Result.Result<TPayload, string> {
+  // The default encode-direction parameter is what narrows the other arm away
+  // here, and the decode below asks for nothing more than it.
+  if (isEffectSchema<TPayload>(schema)) {
+    // `errors: "all"` is what `formatSchemaFailure` is written against: it
+    // counts the issues it does not spell out, and stopping at the first would
+    // make that count always zero.
+    const decode = Schema.decodeUnknownResult(Schema.toCodecJson(schema), {
+      errors: "all",
+    });
+
+    return (raw) =>
+      Result.mapError(decode(stripInternalFields(raw)), (error) =>
+        formatSchemaFailure(error.issue)
+      );
+  }
+
+  return (raw) => validateConfig(schema, stripInternalFields(raw));
+}
+
+/**
+ * The resolved config as a foreign library reads it, or the paths that refused
+ * it.
  *
  * Paths and no messages: a foreign library words its own issues and is free to
  * quote the value in them, and this string is persisted as the node's run error.
  * What places the fault is the path.
  */
-export function validateConfig<TPayload>(
+function validateConfig<TPayload>(
   schema: StandardSchema<TPayload>,
   payload: Record<string, unknown>
 ): Result.Result<TPayload, string> {

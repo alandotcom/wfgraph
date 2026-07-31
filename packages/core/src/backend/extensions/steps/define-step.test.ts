@@ -148,7 +148,7 @@ describe("defineStep", () => {
       success: false,
       error: {
         message:
-          'Invalid configuration for "demo/send": to: Expected string, got 7',
+          'Step "demo/send" received an invalid configuration: to: Expected string, got 7',
       },
     });
   });
@@ -168,7 +168,7 @@ describe("defineStep", () => {
       success: false,
       error: {
         message:
-          'Invalid configuration for "demo/send": note: Expected string, got 5',
+          'Step "demo/send" received an invalid configuration: note: Expected string, got 5',
       },
     });
   });
@@ -501,7 +501,7 @@ describe("defineStep and an optional config field", () => {
       success: false,
       error: {
         message:
-          'Invalid configuration for "demo/optional": note: Expected string | null, got undefined',
+          'Step "demo/optional" received an invalid configuration: note: Expected string | null, got undefined',
       },
     });
   });
@@ -713,8 +713,46 @@ describe("defineStep and a schema from another library", () => {
   it("refuses a config the schema does not describe, naming the path", async () => {
     expect(await run({ to: 7, _context: CONTEXT })).toEqual({
       success: false,
-      error: { message: 'Invalid configuration for "demo/foreign": to' },
+      error: {
+        message: 'Step "demo/foreign" received an invalid configuration: to',
+      },
     });
+  });
+});
+
+/**
+ * A step whose input schema is genuinely open, which is the one shape the three
+ * keys the engine's dispatch owns could reach a handler through.
+ *
+ * A closed schema drops them on its own. `StructWithRest` keeps whatever it is
+ * handed, so the strip has to happen before the decode rather than rely on the
+ * schema to do it. `defineAction` reads through the same reader.
+ */
+describe("defineStep and an input schema that declares a rest", () => {
+  it("keeps the engine's own keys out of the config", async () => {
+    let received: Record<string, unknown> = {};
+
+    const open = defineStep({
+      ...METADATA,
+      input: Schema.StructWithRest(Schema.Struct({}), [
+        Schema.Record(Schema.String, Schema.Unknown),
+      ]),
+      output: Schema.Struct({ id: Schema.String }),
+      configFields: [],
+      handler: Effect.fn(function* (config) {
+        received = config;
+        return yield* Effect.succeed({ id: "1" });
+      }),
+    });
+
+    await open.implement("demo/open")(runner)({
+      to: "someone",
+      actionType: "demo",
+      integrationId: "int_1",
+      _context: CONTEXT,
+    });
+
+    expect(received).toEqual({ to: "someone" });
   });
 });
 

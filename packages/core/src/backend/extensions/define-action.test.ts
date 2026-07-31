@@ -77,7 +77,7 @@ describe("defineAction", () => {
       success: false,
       error: {
         message:
-          'Action "custom/requires-text" received an invalid payload: text',
+          'Action "custom/requires-text" received an invalid configuration: text',
       },
     });
   });
@@ -485,6 +485,30 @@ describe("defineAction with Effect schemas", () => {
     expect(fields.find((f) => f.path === "name")?.type).toBe("string");
     expect(fields.find((f) => f.path === "nickname")?.type).toBe("string");
     expect(fields.find((f) => f.path === "nickname")?.nullable).toBe(true);
+  });
+
+  // The same codec that encodes an Effect output decodes an Effect input, so a
+  // transform an author wrote runs on the way in as well as on the way out.
+  // `defineStep` reads its config through the one reader this shares with.
+  it("runs an input transform on the way in", async () => {
+    const action = defineAction({
+      id: "effect/decode-test",
+      label: "Effect Decode",
+      description: "Takes a text field its schema turns into a Date",
+      input: Schema.Struct({
+        at: Schema.String.pipe(
+          Schema.decodeTo(Schema.Date, SchemaTransformation.dateFromString)
+        ),
+      }),
+      handler({ payload }) {
+        return { year: payload.at.getUTCFullYear() };
+      },
+    });
+
+    expect(await call(action, { at: "2026-03-01T10:00:00Z" })).toEqual({
+      success: true,
+      data: { year: 2026 },
+    });
   });
 
   it("validates the payload before the handler sees it", async () => {

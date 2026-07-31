@@ -563,7 +563,9 @@ with what you hand it, and the paragraph below is the whole of the difference.
 
 **An Effect schema crosses its canonical JSON codec in both directions.** A step
 boundary is JSON on both sides, so what runs is `Schema.toCodecJson(schema)`, built
-once at definition. That is what lets an input schema carry a transform: a
+once at definition. `defineAction` reads and answers through the same codec, so a
+host's action written in Effect Schema gets this too. That is what lets an input
+schema carry a transform: a
 comma-separated text field decodes to a list on the way in, and a `Date` in an
 output encodes to an ISO string on the way out. A handler answering with something
 its output schema cannot encode fails the node once, naming the field path, rather
