@@ -97,13 +97,12 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
         workflowId: workflow.id,
         startSource: start.source,
         runMode,
-        triggerEventType: start.eventName,
-        correlationKey: start.entityValue,
+        startEventName: start.eventName,
+        entityValue: start.entityValue,
         input: payload,
         deliveryId: start.deliveryId,
       },
       concurrency: input.concurrency,
-      entityValue: start.entityValue,
       supersededReason: supersededReason(start.eventName),
     });
 
@@ -193,7 +192,7 @@ const refuseStart = Effect.fn("refuseStart")(function* (input: {
 
   yield* repo.recordAuditEvent({
     workflowId: input.workflow.id,
-    eventType: "run_not_started",
+    eventType: "run_refused",
     message: buildIgnoredRunAuditMessage({
       startSource: input.start.source,
       reason: input.reason,

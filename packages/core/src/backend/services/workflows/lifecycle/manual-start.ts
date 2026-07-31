@@ -121,13 +121,10 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
         reason: "manual_start_not_allowed",
       });
 
-      // A Refused Start, recorded the way the other two are: this one is the
-      // workflow's own checkbox declining, and the panel that lists refusals has
-      // to hold for the case a builder created themselves.
       const repo = yield* ExecutionRepo;
       yield* repo.recordAuditEvent({
         workflowId,
-        eventType: "run_not_started",
+        eventType: "run_refused",
         message: buildIgnoredRunAuditMessage({
           startSource: "manual",
           reason: "manual_start_not_allowed",

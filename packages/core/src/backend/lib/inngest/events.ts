@@ -17,7 +17,7 @@
  * payload that has already been through `JSON.parse`, where a key is either
  * present or absent and never `undefined`. This one is checked before the
  * payload is serialized, against an object literal TypeScript built, and
- * `{ correlationKey: undefined }` is how TypeScript spells a field the caller
+ * `{ entityValue: undefined }` is how TypeScript spells a field the caller
  * had no value for. `optionalKey` calls that a missing string.
  *
  * These live in `@rova/core` because they import the SDK. `@rova/shared` has no
@@ -44,7 +44,7 @@ import { serializedWorkflowGraphSchema } from "@rova/shared/graph/schemas";
 export const workflowExecutionInputSchema = Schema.Struct({
   graph: serializedWorkflowGraphSchema,
   // JSON is all that survived the trip, so JSON is what the schema accepts.
-  triggerInput: Schema.optional(jsonObjectSchema),
+  startPayload: Schema.optional(jsonObjectSchema),
   requestPayload: Schema.optional(jsonObjectSchema),
   // Both ids are required and must carry a value: every log row, timeline event,
   // and wait state the run writes hangs off them, and the enqueue side always
@@ -70,7 +70,7 @@ export const workflowRunCancelRequested = eventType(
         reason: Schema.String,
         requestedBy: Schema.String,
         eventType: Schema.optional(Schema.String),
-        correlationKey: Schema.optional(Schema.String),
+        entityValue: Schema.optional(Schema.String),
       }),
       rejectUnknownKeys
     ),
@@ -86,7 +86,7 @@ export const workflowWaitSignal = eventType("workflow/wait.signal", {
       // rather than dropping the column, so null is a value here.
       token: Schema.optional(Schema.NullOr(Schema.String)),
       eventType: Schema.optional(Schema.String),
-      correlationKey: Schema.optional(Schema.String),
+      entityValue: Schema.optional(Schema.String),
       payload: Schema.optional(jsonObjectSchema),
       // One envelope wakes a parked run for either reason. The signal carries
       // no decision of its own: a `lifecycle-cancel` wake sends the run back to

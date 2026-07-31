@@ -51,7 +51,7 @@ describe("listWorkflowEvents", () => {
     // The limit trails the filter, so the types are read off the front.
     expect(statement?.params.slice(0, 3)).toEqual([
       "wf_1",
-      "run_not_started",
+      "run_refused",
       "cancel_not_delivered",
     ]);
   });

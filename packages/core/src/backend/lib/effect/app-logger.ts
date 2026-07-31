@@ -45,7 +45,7 @@ export class AppLogger extends Context.Service<
   {
     readonly get: (...category: string[]) => EffectLogger;
   }
->()("AppLogger") {}
+>()("@rova/core/AppLogger") {}
 
 type LogtapeLogger = ReturnType<typeof getAppLogger>;
 

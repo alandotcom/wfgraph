@@ -101,7 +101,7 @@ export type WorkflowExecutionInput = {
    * the data on an Inngest event. It reached the engine as JSON and is written
    * back out as JSON into `workflow_executions.input`.
    */
-  triggerInput?: JsonObject;
+  startPayload?: JsonObject;
   /** The untouched payload as it arrived, before any mock request filled in. */
   requestPayload?: JsonObject;
   /**
@@ -685,7 +685,7 @@ async function executeWorkflowInner(
 ) {
   const {
     graph,
-    triggerInput = {},
+    startPayload = {},
     requestPayload,
     executionId,
     workflowId,
@@ -709,8 +709,8 @@ async function executeWorkflowInner(
     nodeCount: nodes.length,
     edgeCount: edges.length,
     runMode,
-    triggerInput,
-    requestPayload: requestPayload ?? triggerInput,
+    startPayload,
+    requestPayload: requestPayload ?? startPayload,
   });
 
   const outputs: NodeOutputs = {};
@@ -980,7 +980,7 @@ async function executeWorkflowInner(
       // schema validated it at intake, which is the only gate it passes through,
       // and a key the engine added here would shadow a payload field of the same
       // name.
-      const lifecycleData: JsonObject = triggerInput ?? {};
+      const lifecycleData: JsonObject = startPayload ?? {};
 
       const lifecycleContext: NodeContext = {
         executionId,

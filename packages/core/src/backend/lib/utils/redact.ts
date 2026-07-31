@@ -5,6 +5,11 @@
 
 import { getAppLogger } from "#src/backend/lib/logger";
 import { getErrorMessage } from "@rova/shared/utils";
+import {
+  type JsonObject,
+  type JsonValue,
+  readJsonValue,
+} from "@rova/shared/types/json";
 
 const redactLogger = getAppLogger("utils", "redact");
 
@@ -104,16 +109,29 @@ function maskValue(value: string): string {
 }
 
 /**
- * Recursively redact sensitive data from an object
+ * Recursively redact sensitive data from an object.
+ *
+ * The walk answers JSON, which is what the run-log columns hold. Anything JSON
+ * has no spelling for -- a function, a symbol, a bigint -- comes back
+ * `undefined`, which is what `JSON.stringify` does with the same value inside an
+ * object. A `Date` reaches the object branch and becomes `{}`, since it carries
+ * no own enumerable properties.
  */
-function redactObject(obj: unknown, depth = 0): unknown {
-  // Prevent infinite recursion
+function redactObject(obj: unknown, depth = 0): JsonValue | undefined {
+  // Prevent infinite recursion. What is left goes in as it stands, so a subtree
+  // this deep keeps whatever the walk would have masked above it. The `?? undefined`
+  // keeps the JSON policy the same as every level above: a value JSON cannot
+  // spell drops its key rather than turning into a stored `null`.
   if (depth > 10) {
-    return obj;
+    return readJsonValue(obj) ?? undefined;
   }
 
-  if (obj === null || obj === undefined) {
-    return obj;
+  if (obj === undefined) {
+    return undefined;
+  }
+
+  if (obj === null) {
+    return null;
   }
 
   if (typeof obj === "string") {
@@ -125,39 +143,54 @@ function redactObject(obj: unknown, depth = 0): unknown {
   }
 
   if (Array.isArray(obj)) {
-    return obj.map((item) => redactObject(item, depth + 1));
+    // An element JSON cannot spell serializes as `null`, so it is one here.
+    return obj.map((item) => redactObject(item, depth + 1) ?? null);
   }
 
   if (typeof obj === "object") {
-    const redacted: Record<string, unknown> = {};
+    const redacted: JsonObject = {};
 
     for (const [key, value] of Object.entries(obj)) {
       if (isSensitiveKey(key)) {
-        // Redact sensitive fields
-        if (typeof value === "string") {
-          redacted[key] = maskValue(value);
-        } else {
-          redacted[key] = "[REDACTED]";
+        // A sensitive key holding no value is not a secret to mask: `undefined`
+        // drops like any other key, and `null` is a value JSON can spell, so it
+        // stays `null` rather than being redacted into a secret that never was.
+        if (value === undefined) {
+          continue;
         }
-      } else {
-        // Recursively process nested objects
-        redacted[key] = redactObject(value, depth + 1);
+        if (value === null) {
+          redacted[key] = null;
+          continue;
+        }
+        redacted[key] =
+          typeof value === "string" ? maskValue(value) : "[REDACTED]";
+        continue;
+      }
+
+      // Recursively process nested objects
+      const walked = redactObject(value, depth + 1);
+      if (walked !== undefined) {
+        redacted[key] = walked;
       }
     }
 
     return redacted;
   }
 
-  return obj;
+  return undefined;
 }
 
 /**
  * Redact sensitive data from any value
  * This is the main export that should be used throughout the application
  */
-export function redactSensitiveData(data: unknown): unknown {
-  if (data === null || data === undefined) {
-    return data;
+export function redactSensitiveData(data: unknown): JsonValue | undefined {
+  if (data === undefined) {
+    return undefined;
+  }
+
+  if (data === null) {
+    return null;
   }
 
   try {
@@ -168,36 +201,4 @@ export function redactSensitiveData(data: unknown): unknown {
     });
     return "[REDACTION_ERROR]";
   }
-}
-
-/**
- * Remove all credentials from an object
- * Use this when you want to completely strip out sensitive data
- */
-export function stripCredentials(obj: unknown): unknown {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
-
-  if (typeof obj !== "object") {
-    return obj;
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map(stripCredentials);
-  }
-
-  const stripped: Record<string, unknown> = {};
-
-  for (const [key, value] of Object.entries(obj)) {
-    if (!isSensitiveKey(key)) {
-      if (typeof value === "object" && value !== null) {
-        stripped[key] = stripCredentials(value);
-      } else {
-        stripped[key] = value;
-      }
-    }
-  }
-
-  return stripped;
 }

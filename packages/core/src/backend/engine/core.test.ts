@@ -325,7 +325,7 @@ describe("run persistence through the store port", () => {
     await executeWorkflow(
       {
         graph: createLifecycleToActionGraph(),
-        triggerInput: { donorId: "d_123" },
+        startPayload: { donorId: "d_123" },
         executionId: "exec_logs",
         workflowId: "workflow_logs",
       },

@@ -24,6 +24,40 @@ export type JsonValue =
 export type JsonObject = { [key: string]: JsonValue };
 
 /**
+ * A JSON object as TypeScript writes one, before it is stored.
+ *
+ * An object literal says "no value for this key" with `undefined`, which JSON
+ * has no spelling for, so a shape assembled from optional fields cannot be a
+ * `JsonObject` until those keys are gone. `toJsonObject` is what takes them off.
+ */
+export type JsonObjectDraft = { [key: string]: JsonValue | undefined };
+
+/**
+ * The draft with its valueless keys removed, which is what `JSON.stringify`
+ * would have done to them anyway.
+ *
+ * Takes `undefined` through unchanged, since both call sites hold an optional
+ * draft and would otherwise repeat the `&&` guard at the call site.
+ */
+export function toJsonObject(
+  draft: JsonObjectDraft | undefined
+): JsonObject | undefined {
+  if (draft === undefined) {
+    return undefined;
+  }
+
+  const object: JsonObject = {};
+
+  for (const [key, value] of Object.entries(draft)) {
+    if (value !== undefined) {
+      object[key] = value;
+    }
+  }
+
+  return object;
+}
+
+/**
  * `Schema.MutableJson` is the same union `JsonValue` spells out by hand, and it
  * validates the whole tree without rebuilding it, so a value that passes comes
  * back as the object that went in. `Schema.Json` is its readonly twin and would
@@ -67,7 +101,7 @@ export function readJsonObject(value: unknown): JsonObject | null {
 
 /**
  * The same shape as a schema, for the payloads that are described rather than
- * read: the `input` an RPC procedure takes, the `triggerInput` an Inngest event
+ * read: the `input` an RPC procedure takes, the `startPayload` an Inngest event
  * carries. Those two embed it inside an object schema of their own, so it is a
  * schema here rather than a reader.
  *

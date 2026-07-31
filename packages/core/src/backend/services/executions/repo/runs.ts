@@ -14,7 +14,7 @@ import type { Effect } from "effect";
 import { workflowExecutions, workflows } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/lifecycle/execution-contracts";
-import type { JsonObject } from "@rova/shared/types/json";
+import type { JsonObject, JsonValue } from "@rova/shared/types/json";
 import type {
   ExecutionPageQuery,
   ExecutionStatusRow,
@@ -199,7 +199,7 @@ export type RunsRepoMethods = {
   readonly finishRun: (input: {
     executionId: string;
     status: "completed" | "failed" | "canceled";
-    output?: unknown;
+    output?: JsonValue;
     error?: string;
     durationMs: number;
   }) => Effect.Effect<boolean, DatabaseError>;
@@ -254,8 +254,8 @@ export function makeRunsMethods(
             status: workflowExecutions.status,
             startSource: workflowExecutions.startSource,
             runMode: workflowExecutions.runMode,
-            triggerEventType: workflowExecutions.triggerEventType,
-            correlationKey: workflowExecutions.correlationKey,
+            startEventName: workflowExecutions.startEventName,
+            entityValue: workflowExecutions.entityValue,
             deliveryId: workflowExecutions.deliveryId,
             workflowRunId: workflowExecutions.workflowRunId,
             enqueuedAt: workflowExecutions.enqueuedAt,
@@ -340,8 +340,8 @@ export function makeRunsMethods(
             status: input.status,
             startSource: input.startSource,
             runMode: input.runMode,
-            triggerEventType: input.triggerEventType,
-            correlationKey: input.correlationKey,
+            startEventName: input.startEventName,
+            entityValue: input.entityValue,
             input: input.input,
             output: input.output,
             error: input.error,
@@ -430,7 +430,7 @@ export function makeRunsMethods(
           .where(
             and(
               eq(workflowExecutions.workflowId, input.workflowId),
-              eq(workflowExecutions.correlationKey, input.entityValue),
+              eq(workflowExecutions.entityValue, input.entityValue),
               eq(workflowExecutions.runMode, input.runMode),
               inArray(workflowExecutions.status, [
                 ...IN_FLIGHT_EXECUTION_STATUSES,

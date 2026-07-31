@@ -10,7 +10,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "#src/backend/services/executions/workflow-audit";
-import type { JsonObject } from "@rova/shared/types/json";
+import type { JsonObject, JsonValue } from "@rova/shared/types/json";
 import { generateId } from "@rova/shared/utils/id";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
@@ -24,6 +24,15 @@ import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 // query client and on the migration client alike. Naming it here instead, with
 // `pgSchema`, would bake one schema into the generated migration SQL and into
 // every query, which is what made the name unconfigurable.
+
+/**
+ * The default for a `timestamp` column, which is timezone-naive and read back as
+ * UTC. Plain `now()` writes the session's own wall clock, so on a server whose
+ * timezone is not UTC a defaulted row disagrees with every timestamp the app
+ * writes from a `Date`. This is the same framing `api-keys/repo.ts` compares
+ * `last_used_at` against.
+ */
+const utcNow = () => sql`(now() at time zone 'utc')`;
 
 // Workflow visibility type
 export type WorkflowVisibility = "private" | "public";
@@ -44,8 +53,8 @@ export const workflows = pgTable(
       .notNull()
       .default("private")
       .$type<WorkflowVisibility>(),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().default(utcNow()),
+    updatedAt: timestamp("updated_at").notNull().default(utcNow()),
   },
   (table) => [
     uniqueIndex("workflows_name_ci_uidx").on(sql`lower(${table.name})`),
@@ -58,10 +67,12 @@ export const integrations = pgTable("integrations", {
     .$defaultFn(() => generateId()),
   name: text("name").notNull(),
   type: text("type").notNull(),
-  config: jsonb("config").notNull().$type<any>(),
+  // The AES envelope `integrations/cipher.ts` seals the credentials into, which
+  // is one string however many fields the connection form had.
+  config: jsonb("config").notNull().$type<string>(),
   isManaged: boolean("is_managed").default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().default(utcNow()),
+  updatedAt: timestamp("updated_at").notNull().default(utcNow()),
 });
 
 /**
@@ -103,12 +114,14 @@ export const workflowExecutions = pgTable(
     // an in-flight row behind that nothing will ever finish.
     enqueuedAt: timestamp("enqueued_at"),
     runMode: text("run_mode").notNull().default("live").$type<WorkflowMode>(),
-    triggerEventType: text("trigger_event_type"),
-    correlationKey: text("correlation_key"),
-    input: jsonb("input").$type<Record<string, any>>(),
-    output: jsonb("output").$type<any>(),
+    startEventName: text("start_event_name"),
+    entityValue: text("entity_value"),
+    input: jsonb("input").$type<JsonObject>(),
+    // What the run finished with. A terminal row written without executing the
+    // graph puts its verdict here instead, so this is not always a node output.
+    output: jsonb("output").$type<JsonValue>(),
     error: text("error"),
-    startedAt: timestamp("started_at").notNull().defaultNow(),
+    startedAt: timestamp("started_at").notNull().default(utcNow()),
     waitingAt: timestamp("waiting_at"),
     cancelledAt: timestamp("cancelled_at"),
     completedAt: timestamp("completed_at"),
@@ -162,8 +175,8 @@ export const workflowExecutions = pgTable(
     // stays tiny while terminal rows accrete without bound, so the index tracks
     // only the rows the query can return. The predicate is built from the same
     // list the query's guard is, so the two cannot drift.
-    index("workflow_executions_in_flight_by_correlation_idx")
-      .on(table.workflowId, table.correlationKey, table.runMode)
+    index("workflow_executions_in_flight_by_entity_idx")
+      .on(table.workflowId, table.entityValue, table.runMode)
       .where(sql`${table.status} in (${sql.raw(inFlightStatusLiterals)})`),
   ]
 );
@@ -216,13 +229,16 @@ export const workflowExecutionLogs = pgTable(
     status: text("status")
       .notNull()
       .$type<"pending" | "running" | "success" | "error">(),
-    input: jsonb("input").$type<any>(),
-    output: jsonb("output").$type<any>(),
+    // Both are whatever the node handled, scrubbed by `redactSensitiveData` on
+    // the way here. A step's payload is JSON but need not be an object: an
+    // output schema encoding to a list or a string is stored as it stands.
+    input: jsonb("input").$type<JsonValue>(),
+    output: jsonb("output").$type<JsonValue>(),
     error: text("error"),
-    startedAt: timestamp("started_at").notNull().defaultNow(),
+    startedAt: timestamp("started_at").notNull().default(utcNow()),
     completedAt: timestamp("completed_at"),
     duration: text("duration"),
-    timestamp: timestamp("timestamp").notNull().defaultNow(),
+    timestamp: timestamp("timestamp").notNull().default(utcNow()),
   },
   (table) => [
     index("workflow_execution_logs_execution_id_idx").on(table.executionId),
@@ -267,8 +283,8 @@ export const workflowWaitStates = pgTable(
      * compiled match in `metadata.waitFor`.
      */
     subscribedEvents: text("subscribed_events").array(),
-    metadata: jsonb("metadata").$type<Record<string, any>>(),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<JsonObject>(),
+    createdAt: timestamp("created_at").notNull().default(utcNow()),
     resumedAt: timestamp("resumed_at"),
     cancelledAt: timestamp("cancelled_at"),
   },
@@ -309,8 +325,8 @@ export const workflowExecutionEvents = pgTable(
     }),
     eventType: text("event_type").notNull(),
     message: text("message").notNull(),
-    metadata: jsonb("metadata").$type<Record<string, any>>(),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<JsonObject>(),
+    createdAt: timestamp("created_at").notNull().default(utcNow()),
   },
   (table) => [
     index("workflow_execution_events_workflow_created_at_idx").on(
@@ -343,7 +359,7 @@ export const apiKeys = pgTable(
     name: text("name"),
     keyHash: text("key_hash").notNull(),
     keyPrefix: text("key_prefix").notNull(),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().default(utcNow()),
     lastUsedAt: timestamp("last_used_at"),
   },
   (table) => [index("api_keys_key_prefix_idx").on(table.keyPrefix)]

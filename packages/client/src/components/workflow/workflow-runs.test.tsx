@@ -16,8 +16,8 @@ type RawExecution = {
   cancelledAt: string | null;
   duration: string | null;
   error: string | null;
-  correlationKey: string | null;
-  triggerEventType: string | null;
+  entityValue: string | null;
+  startEventName: string | null;
   runMode: string;
   startSource: string;
 };
@@ -92,8 +92,8 @@ function execution(id: string, status: string): RawExecution {
     cancelledAt: null,
     duration: null,
     error: null,
-    correlationKey: null,
-    triggerEventType: "app/appointment.created",
+    entityValue: null,
+    startEventName: "app/appointment.created",
     runMode: "live",
     startSource: "event",
   };

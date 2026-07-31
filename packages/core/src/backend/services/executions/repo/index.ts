@@ -120,10 +120,13 @@ type CrossTableRepoMethods = {
    * caller tells the bus about it.
    */
   readonly startForEntity: (input: {
+    /**
+     * The row to open. Its `entityValue` is what Concurrency serializes on as
+     * well as what the column stores, and a start with nothing to serialize on
+     * leaves it out.
+     */
     execution: NewExecution;
     concurrency: Concurrency;
-    /** Absent for a start with nothing to serialize on. */
-    entityValue?: string;
     /** Written onto a displaced run's `error`, which run history shows. */
     supersededReason: string;
   }) => Effect.Effect<EntityStartOutcome, DatabaseError>;
@@ -157,7 +160,7 @@ export class ExecutionRepo extends Context.Service<
     WaitsRepoMethods &
     AuditRepoMethods &
     CrossTableRepoMethods
->()("ExecutionRepo") {}
+>()("@rova/core/ExecutionRepo") {}
 
 export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
   Layer.effect(
@@ -171,13 +174,10 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
         ...makeWaitsMethods(database),
         ...makeAuditMethods(database),
 
-        startForEntity: ({
-          execution,
-          concurrency,
-          entityValue,
-          supersededReason,
-        }) =>
+        startForEntity: ({ execution, concurrency, supersededReason }) =>
           database.query(async (db) => {
+            const { entityValue } = execution;
+
             const findByDelivery = async (
               tx: RovaDatabase | RovaTransaction
             ) => {
@@ -206,8 +206,8 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                   status: "running",
                   startSource: execution.startSource,
                   runMode: execution.runMode,
-                  triggerEventType: execution.triggerEventType,
-                  correlationKey: execution.correlationKey,
+                  startEventName: execution.startEventName,
+                  entityValue: execution.entityValue,
                   deliveryId: execution.deliveryId,
                   input: execution.input,
                 })
@@ -269,7 +269,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 .where(
                   and(
                     eq(workflowExecutions.workflowId, execution.workflowId),
-                    eq(workflowExecutions.correlationKey, entityValue),
+                    eq(workflowExecutions.entityValue, entityValue),
                     eq(workflowExecutions.runMode, execution.runMode),
                     inArray(workflowExecutions.status, [
                       ...IN_FLIGHT_EXECUTION_STATUSES,

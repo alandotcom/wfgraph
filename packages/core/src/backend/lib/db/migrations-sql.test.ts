@@ -6,6 +6,7 @@ import { is } from "drizzle-orm";
 import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 import * as schema from "#src/backend/lib/db/schema";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/lifecycle/execution-contracts";
+import { WORKFLOW_SCOPED_AUDIT_EVENT_TYPES } from "#src/backend/services/executions/workflow-audit";
 
 /**
  * The committed SQL, held to naming no schema.
@@ -76,7 +77,25 @@ describe("the generated migrations", () => {
     ).join(", ");
 
     expect(sql).toContain(
-      `CREATE INDEX "workflow_executions_in_flight_by_correlation_idx"`
+      `CREATE INDEX "workflow_executions_in_flight_by_entity_idx"`
+    );
+    expect(sql).toContain(`in (${predicate})`);
+  });
+
+  // Same guard, for the index the Refused Starts list reads. Without this pin,
+  // a literal renamed in WORKFLOW_SCOPED_AUDIT_EVENT_TYPES with no regenerated
+  // migration goes unnoticed here and falls back to a full audit-history scan
+  // at read time.
+  it("index the workflow-scoped audit rows the refusals list reads", async () => {
+    const sql = (await readMigrations())
+      .map((migration) => migration.sql)
+      .join("\n");
+    const predicate = WORKFLOW_SCOPED_AUDIT_EVENT_TYPES.map(
+      (type) => `'${type}'`
+    ).join(", ");
+
+    expect(sql).toContain(
+      `CREATE INDEX "workflow_execution_events_workflow_scoped_idx"`
     );
     expect(sql).toContain(`in (${predicate})`);
   });

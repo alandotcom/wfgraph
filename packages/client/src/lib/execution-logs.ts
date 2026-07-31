@@ -34,8 +34,8 @@ export type WorkflowExecution = {
   status: WorkflowExecutionStatus;
   startSource: WorkflowExecutionStartSource | null;
   runMode: "live" | "test";
-  triggerEventType: string | null;
-  correlationKey: string | null;
+  startEventName: string | null;
+  entityValue: string | null;
   workflowRunId: string | null;
   startedAt: Date;
   waitingAt: Date | null;

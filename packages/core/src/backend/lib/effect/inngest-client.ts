@@ -51,7 +51,7 @@ export class InngestClient extends Context.Service<
       input: Parameters<typeof sendWorkflowWaitSignal>[1]
     ) => Effect.Effect<void, InngestError>;
   }
->()("InngestClient") {}
+>()("@rova/core/InngestClient") {}
 
 const send = <A>(run: () => Promise<A>): Effect.Effect<A, InngestError> =>
   Effect.tryPromise({

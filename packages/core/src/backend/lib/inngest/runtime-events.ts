@@ -14,7 +14,7 @@ export type WorkflowRunRequestedEventData = {
    * sending it, so anything here that is not JSON is lost in transit; the type
    * says so.
    */
-  triggerInput?: JsonObject;
+  startPayload?: JsonObject;
   workflowName?: string;
   requestPayload?: JsonObject;
   /**
@@ -53,7 +53,7 @@ export async function sendWorkflowCancelRequested(
     reason: string;
     requestedBy: string;
     eventType?: string;
-    correlationKey?: string;
+    entityValue?: string;
   }
 ) {
   return await client.send(
@@ -70,7 +70,7 @@ export async function sendWorkflowWaitSignal(
     nodeId: string;
     token?: string | null;
     eventType?: string;
-    correlationKey?: string;
+    entityValue?: string;
     // JSON is what survives the send, so the caller supplies JSON.
     payload?: JsonObject;
     /** Why the run is being woken; the wait's `if` expression admits both. */

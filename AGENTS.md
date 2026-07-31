@@ -110,7 +110,7 @@ Four rules, each of which cost something to learn:
   `optionalKey(UndefinedOr(...))`, so it also accepts a key holding `undefined` and keeps
   it. A parsed JSON payload never carries `undefined`, and its JSON Schema renders clean;
   an object literal TypeScript wrote says "no value" with `undefined`, and rejecting that
-  broke every run whose webhook carried no correlation key. A shape with both origins
+  broke every run whose webhook carried no Entity Value. A shape with both origins
   takes `optional`, because the stricter spelling is the one that fails:
   `packages/shared/src/graph/schemas.ts` is the worked example, decoded from the JSONB
   column, from an RPC payload, from an Inngest event, and from React Flow state on the
@@ -519,7 +519,7 @@ where the outlet has no edge.
 **The editor's runs panel shows what did not run.** `getExecutions` answers three things at
 once, because the panel polls every two seconds and a second procedure would double that: the
 runs, `supersededCount` (answered whether or not the rows were asked for, since it labels the
-toggle), and the Refused Starts. Those are the `run_not_started` rows, which
+toggle), and the Refused Starts. Those are the `run_refused` rows, which
 `workflow-audit.ts` keeps in `WORKFLOW_SCOPED_AUDIT_EVENT_TYPES` -- the scope is what the type
 means, and `NewAuditEvent` in `executions/repo/contracts.ts` requires an execution id for every
 other type. A refusal is

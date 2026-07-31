@@ -8,7 +8,7 @@ import type {
   RunScopedAuditEventType,
   WorkflowScopedAuditEventType,
 } from "#src/backend/services/executions/workflow-audit";
-import type { JsonObject } from "@rova/shared/types/json";
+import type { JsonObject, JsonObjectDraft } from "@rova/shared/types/json";
 
 /** One row of `workflow_executions`, as the run panel and the engine see it. */
 export type WorkflowExecution = typeof workflowExecutions.$inferSelect;
@@ -34,8 +34,8 @@ export type NewExecution = {
   workflowId: string;
   startSource: NonNullable<WorkflowExecution["startSource"]>;
   runMode: WorkflowExecution["runMode"];
-  triggerEventType?: string;
-  correlationKey?: string;
+  startEventName?: string;
+  entityValue?: string;
   input: JsonObject;
   /**
    * The arrival this run answers, which is what makes opening it idempotent. A
@@ -58,7 +58,7 @@ export type NewTerminalExecution = NewExecution & {
     WorkflowExecution["status"],
     "completed" | "failed" | "canceled"
   >;
-  output?: Record<string, unknown>;
+  output?: JsonObject;
   error?: string;
 };
 
@@ -136,7 +136,7 @@ export type PendingCancel = {
 export type NewAuditEvent = {
   workflowId: string;
   message: string;
-  metadata?: Record<string, unknown>;
+  metadata?: JsonObjectDraft;
 } & (
   | { eventType: RunScopedAuditEventType; executionId: string }
   | { eventType: WorkflowScopedAuditEventType; executionId?: undefined }

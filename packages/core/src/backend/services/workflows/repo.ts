@@ -191,7 +191,7 @@ export class WorkflowRepo extends Context.Service<
       graph: SerializedWorkflowGraph;
     }) => Effect.Effect<Workflow | null, DatabaseError>;
   }
->()("WorkflowRepo") {}
+>()("@rova/core/WorkflowRepo") {}
 
 export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
   Layer.effect(

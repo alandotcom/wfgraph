@@ -32,7 +32,7 @@ export class Database extends Context.Service<
       run: (db: RovaDatabase) => Promise<A>
     ) => Effect.Effect<A, DatabaseError>;
   }
->()("Database") {}
+>()("@rova/core/Database") {}
 
 /**
  * The live database, over the handle the app built.

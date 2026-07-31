@@ -11,7 +11,7 @@ import {
 import type { RunScopedAuditEventType } from "#src/backend/services/executions/workflow-audit";
 import { signalRunToStop } from "#src/backend/services/executions/end-runs";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
-import type { JsonObject } from "@rova/shared/types/json";
+import type { JsonObject, JsonObjectDraft } from "@rova/shared/types/json";
 import type {
   WorkflowExecutionIgnoredReason,
   WorkflowExecutionStartSource,
@@ -80,17 +80,16 @@ export type RecordTerminalWorkflowRunInput = {
   payload: JsonObject;
   status: "completed" | "failed" | "canceled";
   error?: string;
-  output?: Record<string, unknown>;
+  output?: JsonObject;
   audit: {
-    // A row this path writes always has the terminal Execution it just inserted
-    // behind it, which is what keeps `run_not_started` out: that one is the
-    // Refused Start, and a refusal opens no run at all.
+    // Run-scoped only: this path always inserts the terminal Execution the row
+    // hangs off, and a refusal opens no run to hang one off at all.
     eventType: Extract<
       RunScopedAuditEventType,
       "run_cancelled" | "run_ignored" | "run_completed"
     >;
     message: string;
-    metadata?: Record<string, unknown>;
+    metadata?: JsonObjectDraft;
   };
 };
 
@@ -184,7 +183,7 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
   const run = yield* inngest
     .sendRunRequested({
       graph: workflow.graph,
-      triggerInput: payload,
+      startPayload: payload,
       requestPayload: input.requestPayload ?? payload,
       executionId: execution.id,
       workflowId: workflow.id,
@@ -321,8 +320,8 @@ export const recordTerminalWorkflowRun = Effect.fn("recordTerminalWorkflowRun")(
       status: input.status,
       startSource: input.start.source,
       runMode: input.runMode,
-      triggerEventType: input.start.eventName,
-      correlationKey: input.start.entityValue,
+      startEventName: input.start.eventName,
+      entityValue: input.start.entityValue,
       input: input.payload,
       output: input.output,
       error: input.error,

@@ -7,6 +7,7 @@ import type {
   NewAuditEvent,
   WorkflowExecutionEvent,
 } from "#src/backend/services/executions/repo/contracts";
+import { toJsonObject } from "@rova/shared/types/json";
 
 /** How far back the audit trail beside a single run is read. */
 const EXECUTION_EVENTS_LIMIT = 200;
@@ -49,7 +50,7 @@ export function makeAuditMethods(
           executionId: input.executionId ?? null,
           eventType: input.eventType,
           message: input.message,
-          metadata: input.metadata,
+          metadata: toJsonObject(input.metadata),
         });
       }),
 

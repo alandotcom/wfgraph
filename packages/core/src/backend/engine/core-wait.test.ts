@@ -97,7 +97,7 @@ type RunWaitOptions = {
   config: Record<string, unknown>;
   store: RecordingWorkflowStore;
   resumeEvent?: unknown;
-  triggerInput?: JsonObject;
+  startPayload?: JsonObject;
   memo?: Map<string, unknown>;
 };
 
@@ -165,7 +165,7 @@ function runWait(options: RunWaitOptions) {
       graph: createWaitGraph(options.config),
       executionId: "exec_wait",
       workflowId: "workflow_wait",
-      triggerInput: options.triggerInput,
+      startPayload: options.startPayload,
     },
     runtime,
     options.store,
@@ -471,7 +471,7 @@ describe("wait node - event mode", () => {
         waitTimeout: "7d",
       },
       store,
-      triggerInput: { appointment: { id: "appt_8813" } },
+      startPayload: { appointment: { id: "appt_8813" } },
       resumeEvent: {},
     });
     await execution;

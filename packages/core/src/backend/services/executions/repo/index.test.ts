@@ -104,12 +104,11 @@ function harness(answers: {
             workflowId: "wf_1",
             startSource: "event",
             runMode: "live",
-            correlationKey: "appt_1",
+            entityValue: "appt_1",
             input: {},
             deliveryId: deliveryId ?? undefined,
           },
           concurrency,
-          entityValue: "appt_1",
           supersededReason: "Superseded by a newer start",
         });
       }).pipe(
@@ -252,7 +251,7 @@ describe("startForEntity", () => {
 
     const candidates = sent(isInFlightQuery);
     expect(candidates?.query).toContain('"workflow_id" = ');
-    expect(candidates?.query).toContain('"correlation_key" = ');
+    expect(candidates?.query).toContain('"entity_value" = ');
     expect(candidates?.query).toContain('"run_mode" = ');
     expect(candidates?.params.slice(0, 3)).toEqual(["wf_1", "appt_1", "live"]);
     expect(candidates?.params.slice(3)).toEqual([

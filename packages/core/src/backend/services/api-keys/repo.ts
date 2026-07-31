@@ -56,7 +56,7 @@ export class ApiKeyRepo extends Context.Service<
       keyId: string
     ) => Effect.Effect<void, DatabaseError>;
   }
->()("ApiKeyRepo") {}
+>()("@rova/core/ApiKeyRepo") {}
 
 export const ApiKeyRepoLayer: Layer.Layer<ApiKeyRepo, never, Database> =
   Layer.effect(

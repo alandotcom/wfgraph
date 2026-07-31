@@ -37,8 +37,8 @@ type GlobalExecutionItem = {
   status: WorkflowExecutionStatus;
   startSource: WorkflowExecutionStartSource | null;
   runMode: "live" | "test";
-  triggerEventType: string | null;
-  correlationKey: string | null;
+  startEventName: string | null;
+  entityValue: string | null;
   workflowRunId: string | null;
   input: unknown;
   output: unknown;
@@ -80,8 +80,8 @@ function toGlobalExecutionItem(row: GlobalExecutionRow): GlobalExecutionItem {
     status: row.status,
     startSource: row.startSource,
     runMode: row.runMode,
-    triggerEventType: row.triggerEventType,
-    correlationKey: row.correlationKey,
+    startEventName: row.startEventName,
+    entityValue: row.entityValue,
     workflowRunId: row.workflowRunId,
     input: row.input,
     output: row.output,

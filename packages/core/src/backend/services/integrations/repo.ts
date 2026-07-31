@@ -58,7 +58,7 @@ export class IntegrationRepo extends Context.Service<
       integrationId: string
     ) => Effect.Effect<boolean, DatabaseError>;
   }
->()("IntegrationRepo") {}
+>()("@rova/core/IntegrationRepo") {}
 
 /**
  * The live repository.

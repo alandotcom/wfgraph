@@ -187,7 +187,7 @@ const cancelGraph = createSerializedWorkflowGraph({
 
 const cancelInput = {
   graph: cancelGraph,
-  triggerInput: { reason: "started normally", entityId: "sub_9" },
+  startPayload: { reason: "started normally", entityId: "sub_9" },
   executionId: "exec_cancel",
   workflowId: "workflow_cancel",
 };

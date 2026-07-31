@@ -13,7 +13,7 @@ import type { ExtensionSet } from "#src/backend/extensions/extension-set";
  * carrying one can run it.
  */
 export class Extensions extends Context.Service<Extensions, ExtensionSet>()(
-  "Extensions"
+  "@rova/core/Extensions"
 ) {}
 
 export function makeExtensionsLayer(

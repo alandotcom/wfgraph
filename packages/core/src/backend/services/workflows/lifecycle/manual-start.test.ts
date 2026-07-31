@@ -78,8 +78,8 @@ function executionRow(overrides: Partial<WorkflowExecution> = {}) {
     status: "running" as const,
     startSource: "manual" as const,
     runMode: "live" as const,
-    triggerEventType: null,
-    correlationKey: null,
+    startEventName: null,
+    entityValue: null,
     input: {},
     output: null,
     error: null,
@@ -178,7 +178,7 @@ describe("postWorkflowExecute", () => {
           )
         );
 
-        assert.strictEqual(repo.starts[0]?.entityValue, "appt_1");
+        assert.strictEqual(repo.starts[0]?.execution.entityValue, "appt_1");
         assert.deepStrictEqual(response, {
           status: "running",
           executionId: "exec_new",
@@ -201,7 +201,10 @@ describe("postWorkflowExecute", () => {
           )
         );
 
-        assert.strictEqual(repo.starts[0]?.entityValue, "workflow:wf_1");
+        assert.strictEqual(
+          repo.starts[0]?.execution.entityValue,
+          "workflow:wf_1"
+        );
       })
     );
 
@@ -237,7 +240,10 @@ describe("postWorkflowExecute", () => {
         assert.strictEqual(response.status, "running");
         // No rules means no Concurrency to compare on, so the entity is the
         // workflow's own namespaced id.
-        assert.strictEqual(repo.starts[0]?.entityValue, "workflow:wf_1");
+        assert.strictEqual(
+          repo.starts[0]?.execution.entityValue,
+          "workflow:wf_1"
+        );
       })
     );
 
@@ -295,7 +301,7 @@ describe("postWorkflowExecute", () => {
         assert.deepStrictEqual(repo.terminals, []);
 
         const audit = repo.audits[0];
-        assert.strictEqual(audit?.eventType, "run_not_started");
+        assert.strictEqual(audit?.eventType, "run_refused");
         assert.isUndefined(audit?.executionId);
         assert.strictEqual(audit?.metadata?.reason, "manual_start_not_allowed");
         assert.include(audit?.message, "does not list manual runs");

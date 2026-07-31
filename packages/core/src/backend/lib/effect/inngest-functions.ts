@@ -16,7 +16,7 @@ export class InngestFunctions extends Context.Service<
     /** Forget the function list, including a build still in flight. */
     readonly invalidate: Effect.Effect<void>;
   }
->()("InngestFunctions") {}
+>()("@rova/core/InngestFunctions") {}
 
 /** The whole of what a write does to the list, as one name to yield. */
 export const invalidateInngestFunctions: Effect.Effect<

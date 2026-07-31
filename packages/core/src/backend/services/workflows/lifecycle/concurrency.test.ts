@@ -59,8 +59,8 @@ function createExecution(
     status: "running",
     startSource: "event",
     runMode: "live",
-    triggerEventType: "app/appointment.created",
-    correlationKey: "appt_8813",
+    startEventName: "app/appointment.created",
+    entityValue: "appt_8813",
     input: {},
     output: null,
     error: null,
@@ -144,7 +144,7 @@ describe("startWithConcurrency", () => {
           failedToSupersede: [],
         });
         assert.strictEqual(repo.calls[0]?.concurrency, "unlimited");
-        assert.strictEqual(repo.calls[0]?.entityValue, "appt_8813");
+        assert.strictEqual(repo.calls[0]?.execution.entityValue, "appt_8813");
       })
     );
 
@@ -174,7 +174,7 @@ describe("startWithConcurrency", () => {
         });
 
         const audit = recordAuditEventMock.mock.calls[0]?.[0];
-        assert.strictEqual(audit?.eventType, "run_not_started");
+        assert.strictEqual(audit?.eventType, "run_refused");
         assert.strictEqual(audit?.metadata?.reason, "concurrency_first_wins");
         // One arrival can reach many workflows, so the row says which arrival it
         // was: an operator reading a refusal finds the delivery behind it.
@@ -242,7 +242,7 @@ describe("startWithConcurrency", () => {
         }).pipe(Effect.provide(repo.layer));
 
         assert.strictEqual(outcome.status, "started");
-        assert.strictEqual(repo.calls[0]?.entityValue, undefined);
+        assert.strictEqual(repo.calls[0]?.execution.entityValue, undefined);
       })
     );
 

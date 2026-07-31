@@ -37,7 +37,7 @@ type WorkflowRunSummaryRowProps = {
   trailing: TrailingSlot;
   onClick?: () => void;
   selected?: boolean;
-  showTriggerEventType?: boolean;
+  showStartEventName?: boolean;
 };
 
 const ROW_LAYOUT_CLASS =
@@ -91,10 +91,10 @@ function renderTrailingSlot(
 function SummaryContent({
   execution,
   runNumber,
-  showTriggerEventType,
+  showStartEventName,
 }: Pick<
   WorkflowRunSummaryRowProps,
-  "execution" | "runNumber" | "showTriggerEventType"
+  "execution" | "runNumber" | "showStartEventName"
 >) {
   return (
     <div className="flex min-w-0 items-start gap-3">
@@ -130,10 +130,10 @@ function SummaryContent({
               <span className="capitalize">{execution.startSource}</span>
             </>
           ) : null}
-          {showTriggerEventType && execution.triggerEventType ? (
+          {showStartEventName && execution.startEventName ? (
             <>
               <span>·</span>
-              <span>{execution.triggerEventType}</span>
+              <span>{execution.startEventName}</span>
             </>
           ) : null}
           {execution.duration ? (
@@ -157,7 +157,7 @@ export function WorkflowRunSummaryRow({
   trailing,
   onClick,
   selected = false,
-  showTriggerEventType = false,
+  showStartEventName = false,
 }: WorkflowRunSummaryRowProps) {
   const content = (
     <>
@@ -165,7 +165,7 @@ export function WorkflowRunSummaryRow({
       <SummaryContent
         execution={execution}
         runNumber={runNumber}
-        showTriggerEventType={showTriggerEventType}
+        showStartEventName={showStartEventName}
       />
       {renderTrailingSlot(execution, trailing)}
     </>

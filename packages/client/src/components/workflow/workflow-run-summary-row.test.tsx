@@ -6,14 +6,14 @@ import { WorkflowRunSummaryRow } from "./workflow-run-summary-row";
 const BASE_EXECUTION: WorkflowExecution = {
   cancelledAt: null,
   completedAt: new Date("2026-02-22T10:01:00Z"),
-  correlationKey: null,
+  entityValue: null,
   duration: "1200",
   error: null,
   id: "exec_1",
   runMode: "test",
   startedAt: new Date("2026-02-22T10:00:00Z"),
   status: "completed",
-  triggerEventType: "appointment.updated",
+  startEventName: "appointment.updated",
   startSource: "event",
   waitingAt: null,
   workflowId: "wf_1",
@@ -51,7 +51,7 @@ describe("WorkflowRunSummaryRow", () => {
         execution={BASE_EXECUTION}
         leading={{ onBack, type: "back" }}
         runNumber={2}
-        showTriggerEventType
+        showStartEventName
         trailing={{ type: "spacer" }}
       />
     );

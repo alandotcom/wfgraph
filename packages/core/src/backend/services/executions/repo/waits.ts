@@ -15,6 +15,7 @@ import {
 } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/lifecycle/execution-contracts";
+import { type JsonObjectDraft, toJsonObject } from "@rova/shared/types/json";
 import { inFlightExecution } from "#src/backend/services/executions/repo/runs";
 import type {
   SettledWaitStatus,
@@ -43,7 +44,7 @@ export type WaitsRepoMethods = {
     waitUntil?: Date;
     /** The Event names a delivery finds this row by. Empty for a wait on a clock. */
     subscribedEvents?: string[];
-    metadata?: Record<string, unknown>;
+    metadata?: JsonObjectDraft;
   }) => Effect.Effect<{ waitStateId: string } | undefined, DatabaseError>;
   /**
    * Close out one wait row, answering whether it was still waiting. Guarded on
@@ -140,7 +141,7 @@ export function makeWaitsMethods(
             resumeToken: input.resumeToken,
             waitUntil: input.waitUntil,
             subscribedEvents: input.subscribedEvents ?? [],
-            metadata: input.metadata,
+            metadata: toJsonObject(input.metadata),
           })
           .returning({ id: workflowWaitStates.id });
 

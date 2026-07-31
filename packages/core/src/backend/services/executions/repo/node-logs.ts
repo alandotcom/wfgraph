@@ -3,6 +3,7 @@ import type { Effect } from "effect";
 import { workflowExecutionLogs } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import type { WorkflowExecutionLog } from "#src/backend/services/executions/repo/contracts";
+import type { JsonValue } from "@rova/shared/types/json";
 
 /** The `workflow_execution_logs` slice of `ExecutionRepo`, one row per node attempt. */
 export type NodeLogsRepoMethods = {
@@ -12,13 +13,13 @@ export type NodeLogsRepoMethods = {
     nodeId: string;
     nodeName: string;
     nodeType: string;
-    input?: unknown;
+    input?: JsonValue;
   }) => Effect.Effect<string, DatabaseError>;
   /** Close a row `openNodeLog` opened. */
   readonly closeNodeLog: (input: {
     logId: string;
     status: "success" | "error";
-    output?: unknown;
+    output?: JsonValue;
     error?: string;
     durationMs: number;
   }) => Effect.Effect<void, DatabaseError>;

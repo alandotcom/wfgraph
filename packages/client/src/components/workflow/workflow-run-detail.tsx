@@ -48,7 +48,7 @@ export function WorkflowRunDetail({
         execution={execution}
         leading={{ onBack, type: "back" }}
         runNumber={runNumber}
-        showTriggerEventType
+        showStartEventName
         trailing={
           execution.status === "waiting"
             ? {

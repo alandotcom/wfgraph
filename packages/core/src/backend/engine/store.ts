@@ -14,10 +14,12 @@
  *
  * Every value crossing this interface is JSON-safe (timestamps travel as ISO
  * strings) because store calls happen inside memoized steps whose results
- * round-trip through the durable runtime's storage.
+ * round-trip through the durable runtime's storage. A step's own payload is
+ * still `unknown` here, since that is all a step result carries; the adapter
+ * that stores it is where it is read back as JSON.
  */
 
-import type { JsonObject } from "@rova/shared/types/json";
+import type { JsonObject, JsonObjectDraft } from "@rova/shared/types/json";
 
 /**
  * Timeline events the engine itself emits. The database accepts a wider set;
@@ -63,7 +65,7 @@ export type RecordAuditEventInput = {
   executionId: string;
   eventType: WorkflowRunAuditEventType;
   message: string;
-  metadata?: Record<string, unknown>;
+  metadata?: JsonObjectDraft;
 };
 
 export type CreateWaitStateInput = {
@@ -86,7 +88,7 @@ export type CreateWaitStateInput = {
    * by. Empty for a wait on a clock, which no Event reaches.
    */
   subscribedEvents?: string[];
-  metadata?: Record<string, unknown>;
+  metadata?: JsonObjectDraft;
 };
 
 export type MarkWaitStateStatusInput = {

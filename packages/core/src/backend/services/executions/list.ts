@@ -15,8 +15,8 @@ type WorkflowExecutionItem = {
   status: WorkflowExecutionStatus;
   startSource: WorkflowExecutionStartSource | null;
   runMode: "live" | "test";
-  triggerEventType: string | null;
-  correlationKey: string | null;
+  startEventName: string | null;
+  entityValue: string | null;
   workflowRunId: string | null;
   input: unknown;
   output: unknown;
@@ -38,8 +38,8 @@ function toWorkflowExecutionItem(input: {
   status: WorkflowExecutionStatus;
   startSource: WorkflowExecutionStartSource | null;
   runMode: "live" | "test";
-  triggerEventType: string | null;
-  correlationKey: string | null;
+  startEventName: string | null;
+  entityValue: string | null;
   workflowRunId: string | null;
   input: unknown;
   output: unknown;
