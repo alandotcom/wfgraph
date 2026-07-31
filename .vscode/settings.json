@@ -54,6 +54,13 @@
   // Deleting this line makes the extension fall back to its own bundled compiler,
   // which can drift from the pinned version.
   "typescript.tsdk": "node_modules/typescript/lib",
+  // The native TypeScript extension reads these settings and launches this
+  // workspace's patched TypeScript-Go binary, which loads the Effect language
+  // service plugin configured in tsconfig.json.
+  "js/ts.experimental.useTsgo": true,
+  "js/ts.tsdk.path": "./node_modules/typescript/bin",
+  "js/ts.tsdk.promptToUseWorkspaceVersion": true,
+  "js/ts.tsdk.additionalLocations": ["./node_modules/typescript/bin"],
   "editor.formatOnSave": true,
   // oxfmt formats whole files only, so a save that asked for just the changed
   // ranges would be dropped. "file" is VS Code's default; it is written out here

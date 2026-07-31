@@ -6,7 +6,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "prepare": "./scripts/prepare-effect.sh",
+    "prepare": "./scripts/prepare-effect.sh && effect-tsgo patch",
     "dev": "concurrently --kill-others-on-fail --names app,client,inngest --prefix-colors blue,green,magenta \"pnpm run dev:app\" \"pnpm --filter @rova/client dev\" \"pnpm run dev:inngest\"",
     "dev:app": "pnpm --filter @rova/example-app dev",
     "dev:inngest": "sh -c 'if [ -x ./node_modules/.bin/inngest ]; then until curl -sSf http://localhost:${PORT:-4017}/api/inngest >/dev/null 2>/dev/null; do sleep 1; done; DO_NOT_TRACK=1 ./node_modules/.bin/inngest dev --no-discovery -u http://localhost:${PORT:-4017}/api/inngest -p 8388 --connect-gateway-port 8390 --connect-gateway-grpc-port 50062 --connect-executor-grpc-port 50063 --persist; else echo \"[inngest] inngest-cli is not installed; skipping local Inngest dev server\"; fi'",
@@ -27,6 +27,7 @@
     "dotenv": "^17.4.2"
   },
   "devDependencies": {
+    "@effect/tsgo": "0.24.3",
     "@effect/vitest": "catalog:",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "catalog:",
