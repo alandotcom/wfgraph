@@ -119,28 +119,6 @@ export function requireOutputFieldsFromSchema(
 }
 
 /**
- * The keys a schema insists on, as its JSON Schema names them.
- *
- * This lives beside the other reader of a schema's encoded JSON Schema so the
- * project has one answer to which side of a codec describes a value. Assembly
- * asks it of an action's input schema, to hold every key the step cannot do
- * without to a config field a builder can fill in.
- *
- * An empty list is the answer for a schema with no required keys and for one this
- * cannot read at all. The second case is already a definition failure, raised by
- * `requireOutputFieldsFromSchema` against the same action's output schema.
- */
-export function requiredKeysFromSchema(
-  schema: OutputSchema<unknown>
-): readonly string[] {
-  const required = describeSchema(asStandardSchema(schema))?.required;
-
-  return Array.isArray(required)
-    ? required.filter((key): key is string => typeof key === "string")
-    : [];
-}
-
-/**
  * Why this schema cannot become an autocomplete list, in the words the message
  * ends with, or undefined when it can.
  */

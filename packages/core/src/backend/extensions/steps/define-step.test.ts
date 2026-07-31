@@ -83,8 +83,15 @@ describe("defineStep", () => {
     expect(step.label).toBe("Send");
     expect(step.description).toBe("Sends a thing");
     expect(step.category).toBe("Demo");
+  });
+
+  // Every key comes from the schema. `to` is the one the author wrote a field
+  // for and keeps their label; `note` was never written down and is drawn all
+  // the same, which is what a step declaring no fields at all relies on.
+  it("draws a field for every input key, the author's entry over the schema's", () => {
     expect(step.configFields).toEqual([
-      { key: "to", label: "To", type: "template-input" },
+      { key: "to", label: "To", type: "template-input", required: true },
+      { key: "note", label: "Note", type: "template-input" },
     ]);
   });
 
@@ -498,5 +505,115 @@ describe("defineStep and the shape of what it answers", () => {
       success: true,
       data: { id: "1", from: null },
     });
+  });
+});
+
+/**
+ * What the schema says and what the author adds, in one list.
+ *
+ * Assembly used to refuse a step whose required key had no field behind it,
+ * because a builder could then save a node whose config decode failed on every
+ * run. Deriving the field removes the case rather than catching it, so these
+ * cases stand where that check stood.
+ */
+describe("defineStep and the config form", () => {
+  const anOutput = Schema.Struct({
+    id: Schema.String.annotate({ description: "Id" }),
+  });
+
+  const noop = Effect.fn(function* () {
+    return yield* Effect.succeed({ id: "1" });
+  });
+
+  it("fills a required key the author never wrote a field for", () => {
+    expect(
+      defineStep({
+        ...METADATA,
+        input: Schema.Struct({ to: Schema.String, body: Schema.String }),
+        output: anOutput,
+        configFields: [{ key: "to", label: "To", type: "template-input" }],
+        handler: noop,
+      }).configFields
+    ).toEqual([
+      { key: "to", label: "To", type: "template-input", required: true },
+      { key: "body", label: "Body", type: "template-input", required: true },
+    ]);
+  });
+
+  // The author's list is the spine, so a group draws where they put it rather
+  // than wherever the key order would have placed its fields.
+  it("keeps a group where the author put it, filling its fields from the schema", () => {
+    expect(
+      defineStep({
+        ...METADATA,
+        input: Schema.Struct({ to: Schema.String, body: Schema.String }),
+        output: anOutput,
+        configFields: [
+          {
+            type: "group",
+            label: "Message",
+            fields: [{ key: "body", type: "template-textarea", rows: 4 }],
+          },
+          { key: "to", label: "To", type: "template-input" },
+        ],
+        handler: noop,
+      }).configFields
+    ).toEqual([
+      {
+        type: "group",
+        label: "Message",
+        fields: [
+          {
+            key: "body",
+            label: "Body",
+            type: "template-textarea",
+            rows: 4,
+            required: true,
+          },
+        ],
+      },
+      { key: "to", label: "To", type: "template-input", required: true },
+    ]);
+  });
+
+  // `options` belongs to a select and `min` to a number. Either riding along
+  // onto a field the author respelled would be a value nothing renders.
+  it("drops the derived extras when the author names a different type", () => {
+    expect(
+      defineStep({
+        ...METADATA,
+        input: Schema.Struct({
+          mode: Schema.Literals(["log", "send"]),
+        }),
+        output: anOutput,
+        configFields: [{ key: "mode", type: "text" }],
+        handler: noop,
+      }).configFields
+    ).toEqual([{ key: "mode", label: "Mode", type: "text", required: true }]);
+  });
+
+  // The whole point of writing a field down is to say the one thing the schema
+  // cannot. Everything else, the label and the required flag here, still comes
+  // from the schema.
+  it("takes the schema's label for an author who states only a placeholder", () => {
+    expect(
+      defineStep({
+        ...METADATA,
+        input: Schema.Struct({
+          to: Schema.String.annotate({ description: "Recipient" }),
+        }),
+        output: anOutput,
+        configFields: [{ key: "to", placeholder: "+15551234567" }],
+        handler: noop,
+      }).configFields
+    ).toEqual([
+      {
+        key: "to",
+        label: "Recipient",
+        type: "template-input",
+        required: true,
+        placeholder: "+15551234567",
+      },
+    ]);
   });
 });

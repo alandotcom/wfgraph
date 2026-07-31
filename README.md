@@ -482,11 +482,11 @@ export const myService = defineIntegration({
       output: Schema.Struct({
         id: Schema.String.annotate({ description: "Item ID" }),
       }),
-      // Each `key` is checked against the input schema, so a field the step
-      // cannot read fails to compile.
-      configFields: [
-        { key: "text", label: "Text", type: "template-input", required: true },
-      ],
+      // Optional. The form is derived from `input`, so this states only what a
+      // schema cannot: a placeholder here. The label and the required flag
+      // still come from the schema. Each `key` is checked against it, so a
+      // field the step cannot read fails to compile.
+      configFields: [{ key: "text", placeholder: "Something to send" }],
       handler: Effect.fn(function* (input, context) {
         // Credentials arrive as an effect, so a step that decides it has nothing
         // to do never reads them. Yielding it twice fetches once.
@@ -512,6 +512,17 @@ export const myService = defineIntegration({
 credential fetch, the run log rows, and the `StepResult` envelope the engine reads.
 A handler answers a value or fails with a `StepFailure`. It writes no envelope and
 touches no Promise, and it may ask for `HttpClient.HttpClient` and nothing else.
+
+**The config form comes from `input`.** Every key the schema declares draws a
+field, labelled from its `description` and marked required where the schema
+requires it. `configFields` states what a schema cannot: a placeholder, a
+`template-textarea` row count, a friendly `select` label, a `showWhen`, a group.
+An entry merges into the derived field of the same key, property by property,
+and a step needing none of that writes no `configFields` at all.
+
+Order follows the entries you write, with any key you left out drawn after them
+in schema order. That is why a group takes its position from your list: a group
+has no key of its own to sort by, and where it sits is a decision.
 
 The handler's `context` is typed with the open credential record, where every key is
 `string | undefined`. A handler wanting its integration's own vocabulary annotates
@@ -548,8 +559,8 @@ dependencies of the package and load with it whatever a host goes on to list (se
 **`checkIntegration` is the assembly check, exported for your own suite.** Assembly
 calls it for every integration a host passes, so a bad definition fails the app that
 turned it on. Calling it in the defining package's tests moves that failure to where
-the author reads it, so an output schema the derivation cannot read, or a required
-config key with no field behind it, is caught before review sees a green run.
+the author reads it, so an output schema the derivation cannot read is caught before
+review sees a green run.
 
 **Describe the wire, not the SDK.** An SDK's types are its own promise about somebody
 else's JSON, and a typed client casting a response without validating it is not

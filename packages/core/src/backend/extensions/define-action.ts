@@ -22,11 +22,11 @@ import {
 } from "#src/backend/extensions/steps/step-handler";
 import { encodeThroughOutputSchema } from "#src/backend/extensions/steps/output-encoding";
 import type { StepFactory } from "#src/backend/extensions/steps/step-runner";
-import type {
-  ActionConfigField,
-  ActionConfigFieldBase,
-} from "@rova/shared/plugins/action-fields";
-import { formatStandardIssuePath } from "@rova/shared/types/schema-message";
+import type { ActionConfigField } from "@rova/shared/plugins/action-fields";
+import {
+  configFieldsFromInputSchema,
+  validateConfig,
+} from "#src/backend/extensions/schema-io";
 import { getErrorMessage } from "@rova/shared/utils";
 import {
   asStandardSchema,
@@ -38,10 +38,6 @@ import {
   type OutputSchema,
   outputFieldsFromSchema,
 } from "@rova/shared/graph/output-fields";
-import {
-  configFieldsFromJsonSchema,
-  jsonSchemaLibraryOptions,
-} from "@rova/shared/graph/schema-codec";
 import type { StepResult } from "@rova/shared/actions/step-result";
 
 /**
@@ -188,67 +184,6 @@ export type DefineActionInputWithOutput<
   handler: ActionHandler<TPayload, TOutput>;
 };
 
-function isPromiseLike<T>(value: unknown): value is Promise<T> {
-  return (
-    (typeof value === "object" || typeof value === "function") &&
-    value !== null &&
-    "then" in value &&
-    typeof value.then === "function"
-  );
-}
-
-/**
- * The resolved config as the handler reads it, or the paths that refused it.
- *
- * Paths and no messages: a foreign library words its own issues and is free to
- * quote the value in them, and this string is persisted as the node's run error.
- * What places the fault is the path.
- */
-function validateActionPayload<TPayload extends Record<string, unknown>>(
-  schema: StandardSchema<TPayload>,
-  payload: Record<string, unknown>
-): Result.Result<TPayload, string> {
-  const parsed = schema["~standard"].validate(payload);
-
-  if (isPromiseLike(parsed)) {
-    throw new Error(
-      "Action schema validation must be synchronous. Async Standard Schema validators are not supported."
-    );
-  }
-
-  if (
-    "issues" in parsed &&
-    Array.isArray(parsed.issues) &&
-    parsed.issues.length > 0
-  ) {
-    return Result.fail(
-      parsed.issues
-        .map((issue) => formatStandardIssuePath(issue.path))
-        .join(", ")
-    );
-  }
-
-  if (!("value" in parsed)) {
-    return Result.fail("the schema answered with no value and no issue");
-  }
-
-  return Result.succeed(parsed.value);
-}
-
-function configFieldsFromInputSchema(
-  schema: StandardSchema<Record<string, unknown>>
-): ActionConfigFieldBase[] {
-  try {
-    const jsonSchema = schema["~standard"].jsonSchema.input({
-      target: "draft-2020-12",
-      libraryOptions: jsonSchemaLibraryOptions,
-    });
-    return configFieldsFromJsonSchema(jsonSchema);
-  } catch {
-    return [];
-  }
-}
-
 function normalizeActionIdentity(
   definition: ActionIdentity
 ): ActionIdentity & { category: string } {
@@ -330,7 +265,7 @@ function buildAction<TPayload extends Record<string, unknown>>(
     // The same three keys a run log leaves out: the handler is told about the
     // connection and the action through its context instead.
     const payload = stripInternalFields(rawInput);
-    const validated = validateActionPayload(schema, payload);
+    const validated = validateConfig(schema, payload);
     if (Result.isFailure(validated)) {
       return failed(
         `Action "${actionId}" received an invalid payload: ${validated.failure}`

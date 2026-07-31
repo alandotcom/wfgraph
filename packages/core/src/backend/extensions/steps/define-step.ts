@@ -23,6 +23,9 @@ import type {
   StepFactory,
 } from "#src/backend/extensions/steps/step-runner";
 import { ExternalTransport } from "#src/backend/extensions/steps/external-transport";
+import { buildConfigForm } from "#src/backend/extensions/steps/config-form";
+import { configFieldsFromInputSchema } from "#src/backend/extensions/schema-io";
+import { toStandardSchema } from "@rova/shared/types/schema";
 import type {
   ActionConfigField,
   ActionConfigFieldBase,
@@ -99,8 +102,14 @@ export type StepHandler<TInput, TOutput> = (
   HttpClient.HttpClient
 >;
 
-/** A config field naming a key the step's input schema declares. */
-type ConfigFieldFor<TInput> = Omit<ActionConfigFieldBase, "key"> & {
+/**
+ * A config field naming a key the step's input schema declares.
+ *
+ * Every property but the key is optional, because the schema supplies the rest.
+ * An author writing `{ key: "body", type: "template-textarea", rows: 4 }` keeps
+ * the label and the required flag the schema already stated.
+ */
+type ConfigFieldFor<TInput> = Partial<Omit<ActionConfigFieldBase, "key">> & {
   key: Extract<keyof TInput, string>;
 };
 
@@ -160,7 +169,14 @@ type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> & {
   readonly label: string;
   readonly description: string;
   readonly category: string;
-  readonly configFields: readonly ActionConfigFieldFor<TInput>[];
+  /**
+   * What the input schema cannot say about the form: a placeholder, a row
+   * count, a friendly option label, a group, a `showWhen`.
+   *
+   * Every key comes from the schema whether it appears here or not, so a step
+   * whose fields need nothing beyond their labels writes none of these.
+   */
+  readonly configFields?: readonly ActionConfigFieldFor<TInput>[];
   /**
    * Where the work is.
    *
@@ -309,7 +325,10 @@ export function defineStep<TInput, TOutput>(
     label: definition.label,
     description: definition.description,
     category: definition.category,
-    configFields: definition.configFields,
+    configFields: buildConfigForm(
+      configFieldsFromInputSchema(toStandardSchema(definition.input)),
+      definition.configFields ?? []
+    ),
     input: definition.input,
     output: definition.output,
     implement: buildStep(definition),
