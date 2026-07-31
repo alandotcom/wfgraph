@@ -92,17 +92,18 @@ const WAIT_CANDIDATE_PAGE_SIZE = 200;
 /**
  * Where this workflow reads the Event's Entity Value.
  *
- * The Event Author's path wins, and the builder's override for an Event that
- * declares none comes off the subscription row rather than off the graph: the
- * row is written in the same transaction as the graph it was derived from, which
- * is what lets the index answer a delivery on its own.
+ * The builder's per-workflow path wins over the Event Author's declaration --
+ * the same precedence `resolveCorrelationPath` states over the two paths a graph
+ * carries -- and it comes off the subscription row rather than off the graph:
+ * the row is written in the same transaction as the graph it was derived from,
+ * which is what lets the index answer a delivery on its own.
  */
 function correlationPathFor(input: {
   event: DeliveredEvent;
   subscriber: EventSubscriber;
 }): string | undefined {
   return (
-    input.event.correlationPath ?? input.subscriber.correlationPath ?? undefined
+    input.subscriber.correlationPath ?? input.event.correlationPath ?? undefined
   );
 }
 

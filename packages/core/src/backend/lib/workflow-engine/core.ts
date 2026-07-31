@@ -382,7 +382,7 @@ async function executeActionStepInner(
       result: {
         success: false,
         error: {
-          message: `Unknown action type: "${actionType}". No action with this id was assembled: no integration, no host action, and none of the built-ins, which are ${actions.systemActionIds.join(", ")}.`,
+          message: `Unknown action type: "${actionType}". No action with this id was assembled: no integration, no host action, and none of the built-ins, which are ${Object.values(BUILT_IN_ACTION_IDS).join(", ")}.`,
         },
       },
     };
@@ -454,10 +454,14 @@ function resolveTemplateToken(
  * its config through its schema's canonical JSON codec, where an optional field
  * takes an absent key or a null and refuses one present and empty. A builder left
  * the field blank either way.
+ *
+ * `literalKeys` are the keys the action declared `literal`, whose values pass
+ * through as they were authored.
  */
 function processTemplates(
   config: Record<string, unknown>,
-  outputs: NodeOutputs
+  outputs: NodeOutputs,
+  literalKeys: ReadonlySet<string>
 ): Record<string, unknown> {
   const processed: Record<string, unknown> = {};
 
@@ -467,7 +471,9 @@ function processTemplates(
     }
 
     processed[key] =
-      typeof value === "string" ? resolveTemplateString(value, outputs) : value;
+      typeof value === "string" && !literalKeys.has(key)
+        ? resolveTemplateString(value, outputs)
+        : value;
   }
 
   return processed;
@@ -777,7 +783,7 @@ async function executeWorkflowInner(
       if (actionType) {
         // The label comes from the assembled catalog, so a run log names an action
         // the way the editor does.
-        const label = actions.labelFor(actionType);
+        const label = actions.metadataFor(actionType)?.label;
         if (label) {
           return label;
         }
@@ -1018,38 +1024,23 @@ async function executeWorkflowInner(
         };
       }
 
-      // Process templates in config, but keep conditions unprocessed for special
-      // handling. The key is deleted rather than emptied, because a config key
-      // present and holding `undefined` fails a step's config decode.
+      // The Condition node's expression is held out of template resolution and
+      // put back. It cannot say so with a `literal` field the way every other
+      // action does, because `built-ins.ts` gives Condition no config fields at
+      // all: the editor draws it with a bespoke panel. The key is deleted rather
+      // than emptied, because a config key present and holding `undefined` fails
+      // a step's config decode.
       const { condition: originalCondition, ...configWithoutCondition } =
         config;
 
-      const processedConfig = processTemplates(configWithoutCondition, outputs);
+      const processedConfig = processTemplates(
+        configWithoutCondition,
+        outputs,
+        new Set(actions.metadataFor(actionType)?.literalConfigKeys ?? [])
+      );
 
-      // Add back the original condition (unprocessed)
       if (originalCondition !== undefined) {
         processedConfig.condition = originalCondition;
-      }
-
-      // In test mode, keep test destination overrides as authored literals. This
-      // prevents trigger/runtime payload templates from steering where
-      // test-recipient messages are sent. Each is written only where the node has
-      // one, since assigning an absent field would put a key holding `undefined`
-      // into the config, which a step's config decode refuses.
-      if (runMode === "test") {
-        if (
-          actionType === "resend/send-email" &&
-          config.testEmailTo !== undefined
-        ) {
-          processedConfig.testEmailTo = config.testEmailTo;
-        }
-
-        if (
-          actionType === "twilio/send-sms" &&
-          config.testPhoneTo !== undefined
-        ) {
-          processedConfig.testPhoneTo = config.testPhoneTo;
-        }
       }
 
       const stepContext: NodeContext = {

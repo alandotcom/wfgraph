@@ -549,4 +549,71 @@ describe("assembleExtensions and an integration definition", () => {
       })
     ).not.toThrow();
   });
+
+  // F3: the editor keys its renderer on `field.type` alone, so a template-picker
+  // field type draws the picker whatever `literal` says, and the value it seeds
+  // reaches the vendor unresolved. This is latent until an integration grows one.
+  it("refuses a literal field whose type renders the template picker", () => {
+    expect(() =>
+      assembleExtensions({
+        integrations: [
+          aDefinition("twilio", {
+            actions: {
+              "send-sms": defineStep({
+                label: "Send SMS",
+                description: "Sends a message",
+                category: "Twilio",
+                input: Schema.Struct({ to: Schema.String }),
+                output: Schema.Struct({
+                  sid: Schema.String.annotate({ description: "Message SID" }),
+                }),
+                configFields: [
+                  {
+                    key: "to",
+                    label: "To",
+                    type: "template-input",
+                    required: true,
+                    literal: true,
+                  },
+                ],
+                handler: sendSmsHandler,
+              }),
+            },
+          }),
+        ],
+      })
+    ).toThrow('Action "twilio/send-sms" marks its "to" field literal');
+  });
+
+  it("accepts a literal field typed text, since it draws no template picker", () => {
+    expect(() =>
+      assembleExtensions({
+        integrations: [
+          aDefinition("twilio", {
+            actions: {
+              "send-sms": defineStep({
+                label: "Send SMS",
+                description: "Sends a message",
+                category: "Twilio",
+                input: Schema.Struct({ to: Schema.String }),
+                output: Schema.Struct({
+                  sid: Schema.String.annotate({ description: "Message SID" }),
+                }),
+                configFields: [
+                  {
+                    key: "to",
+                    label: "To",
+                    type: "text",
+                    required: true,
+                    literal: true,
+                  },
+                ],
+                handler: sendSmsHandler,
+              }),
+            },
+          }),
+        ],
+      })
+    ).not.toThrow();
+  });
 });

@@ -6,12 +6,16 @@ import { WarningCallout } from "#src/components/ui/callout";
 import { Label } from "#src/components/ui/label";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { getEventConditionFields } from "#src/lib/upstream-node-fields";
-import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
+import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import { findEvent } from "@rova/shared/extensions/catalog";
 import {
   createDefaultConditionModel,
   serializeConditionModel,
 } from "@rova/shared/workflow/conditions";
+import {
+  readLifecycleRules,
+  resolveCorrelationPath,
+} from "@rova/shared/workflow/lifecycle-rules";
 import {
   type EventSubscription,
   readWaitSubscriptions,
@@ -135,8 +139,21 @@ function WaitSubscriptionRow({
   disabled: boolean;
 }) {
   const selectedNodeId = useAtomValue(selectedNodeAtom);
+  const nodes = useAtomValue(nodesAtom);
   const catalog = getExtensionCatalog();
   const event = findEvent(catalog, subscription.event);
+
+  // The entry node's rules, if this graph has one, so the seed below can read
+  // this workflow's own Correlation Path rather than the Event Author's
+  // declaration -- the two disagree the moment the Lifecycle panel overrides one.
+  const entryRules = useMemo(
+    () =>
+      nodes
+        .filter((node) => node.data.type === "trigger")
+        .map((node) => readLifecycleRules(node.data.config))
+        .find((rules) => rules !== undefined),
+    [nodes]
+  );
 
   const fields = useMemo(
     () => getEventConditionFields(catalog, subscription.event),
@@ -155,12 +172,25 @@ function WaitSubscriptionRow({
   }, [onMatchChange, subscription.event]);
 
   // The comparison the common case wants, offered as one click: the arriving
-  // payload at this Event's Correlation Path, against whatever the builder puts
-  // on the right. `payload.` is not in the path, because the compiler roots it.
+  // payload at this workflow's Correlation Path for the Event, against whatever
+  // the builder puts on the right. `payload.` is not in the path, because the
+  // compiler roots it. Without an entry node to read rules from, the Event's own
+  // declaration is the best guess available.
+  const seedPath = useMemo(
+    () =>
+      entryRules
+        ? resolveCorrelationPath({
+            rules: entryRules,
+            eventName: subscription.event,
+            declaredPath: event?.correlationPath,
+          })
+        : event?.correlationPath,
+    [entryRules, event?.correlationPath, subscription.event]
+  );
+
   const seedMatch = useCallback(() => {
     const seedField =
-      fields.find((field) => field.path === event?.correlationPath) ??
-      fields[0];
+      fields.find((field) => field.path === seedPath) ?? fields[0];
     if (!seedField) {
       return;
     }
@@ -174,7 +204,7 @@ function WaitSubscriptionRow({
         })
       )
     );
-  }, [event?.correlationPath, fields, onMatchChange, subscription.event]);
+  }, [seedPath, fields, onMatchChange, subscription.event]);
 
   return (
     <div className="space-y-2 rounded-md border p-2">

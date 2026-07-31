@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from "effect";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { apiKeys } from "#src/backend/lib/db/schema";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
 
@@ -120,12 +120,29 @@ export const ApiKeyRepoLayer: Layer.Layer<ApiKeyRepo, never, Database> =
             })
           ),
 
+        // Conditioned on staleness, so the ordinary request -- a key used more
+        // than once a minute -- skips the write and the row lock it would take.
+        // Awaiting the send is only cheap because almost every call takes this
+        // branch; see auth.ts for why the send is awaited at all.
+        // `last_used_at` is timezone-naive UTC, so the comparand has to be
+        // framed the same way rather than compared against the session's own zone.
         touchLastUsed: (keyId) =>
           database.query(async (db) => {
             await db
               .update(apiKeys)
               .set({ lastUsedAt: new Date() })
-              .where(eq(apiKeys.id, keyId));
+              .where(
+                and(
+                  eq(apiKeys.id, keyId),
+                  or(
+                    isNull(apiKeys.lastUsedAt),
+                    lt(
+                      apiKeys.lastUsedAt,
+                      sql`(now() at time zone 'utc') - interval '1 minute'`
+                    )
+                  )
+                )
+              );
           }),
       };
     })

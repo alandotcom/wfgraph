@@ -327,6 +327,42 @@ describe("applyLifecycleRules", () => {
       })
     );
 
+    // The Event names the entity its author had in mind, and this workflow may
+    // track a different one. The builder's path rides the subscription row, so
+    // the override is read without the delivery consulting the graph.
+    it.effect(
+      "cancels on the path the builder set rather than the declared one",
+      () =>
+        Effect.gen(function* () {
+          yield* applyLifecycleRules({
+            subscriber: subscriber({
+              roles: ["cancel"],
+              correlationPath: "patient.id",
+            }),
+            event: appointmentCanceled,
+            payload: {
+              appointment: { id: "appt_8813" },
+              patient: { id: "pat_42" },
+            },
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubWorkflowRepo({
+                  findById: () =>
+                    Effect.succeed(createWorkflow({ rules: cancelRules })),
+                }),
+                unreachedRunSeams
+              )
+            )
+          );
+
+          assert.strictEqual(
+            requestCanceledOutletMock.mock.calls[0]?.[0].entityValue,
+            "pat_42"
+          );
+        })
+    );
+
     // A cancel matches by Entity Value and has nothing else to match on, so a
     // payload carrying none reaches no run at all. The row is what a Refused
     // Start gets, and for the same reason: without it the builder watches the

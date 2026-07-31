@@ -15,16 +15,25 @@
 
 import type { StepFunction } from "@rova/shared/workflow/step-result";
 
-export type WorkflowActions = {
-  /** The step for an action id, or undefined when nothing was assembled with it. */
-  stepFor: (actionType: string) => StepFunction | undefined;
+/** What the catalog says about an action, as the run needs it. */
+export type ActionRunMetadata = {
   /**
    * The label the catalog gives an action, which a run log names an unlabelled
    * node with, so a run reads the way the editor does.
    */
-  labelFor: (actionType: string) => string | undefined;
-  /** The ids the engine ships itself, which an unknown action's message lists. */
-  systemActionIds: readonly string[];
+  label: string;
+  /**
+   * The config keys the action declared `literal`, whose values reach the step
+   * as the builder typed them rather than through template resolution.
+   */
+  literalConfigKeys: readonly string[];
+};
+
+export type WorkflowActions = {
+  /** The step for an action id, or undefined when nothing was assembled with it. */
+  stepFor: (actionType: string) => StepFunction | undefined;
+  /** What the catalog holds for an action, or undefined for one it never heard of. */
+  metadataFor: (actionType: string) => ActionRunMetadata | undefined;
 };
 
 /**
@@ -34,6 +43,5 @@ export type WorkflowActions = {
  */
 export const noWorkflowActions: WorkflowActions = {
   stepFor: () => undefined,
-  labelFor: () => undefined,
-  systemActionIds: [],
+  metadataFor: () => undefined,
 };

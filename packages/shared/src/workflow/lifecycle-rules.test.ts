@@ -10,6 +10,7 @@ import {
   type LifecycleRulesCheck,
   lifecycleRulesSchema,
   manualStartAllowed,
+  pruneCorrelationPaths,
   readLifecycleRules,
   resolveCorrelationPath,
 } from "./lifecycle-rules";
@@ -130,23 +131,180 @@ describe("readLifecycleRules", () => {
 });
 
 describe("resolveCorrelationPath", () => {
-  it("prefers the path the Event Author declared", () => {
+  // The workflow reading an Event may be about a different entity than the one
+  // its author had in mind, so the per-workflow path outranks the declaration.
+  it("prefers the path the builder set for this workflow", () => {
     expect(
       resolveCorrelationPath({
         rules: rules({ correlationPaths: { "ops/nightly.swept": "sweep.id" } }),
         eventName: "ops/nightly.swept",
         declaredPath: "declared.id",
       })
+    ).toBe("sweep.id");
+  });
+
+  it("falls to the Event Author's declaration", () => {
+    expect(
+      resolveCorrelationPath({
+        rules: rules(),
+        eventName: "ops/nightly.swept",
+        declaredPath: "declared.id",
+      })
     ).toBe("declared.id");
   });
 
-  it("falls to the path the builder supplied", () => {
+  it("answers nothing where neither side named a path", () => {
     expect(
-      resolveCorrelationPath({
-        rules: rules({ correlationPaths: { "ops/nightly.swept": "sweep.id" } }),
-        eventName: "ops/nightly.swept",
+      resolveCorrelationPath({ rules: rules(), eventName: "ops/nightly.swept" })
+    ).toBeUndefined();
+  });
+});
+
+describe("eventsNeedingCorrelationPath", () => {
+  // The panel maps over this set, and an Event declaring a path is a member like
+  // any other: the builder needs a control to override it with.
+  it("carries both paths for an Event whose author declared one", () => {
+    expect(
+      eventsNeedingCorrelationPath({
+        rules: rules({
+          correlationPaths: { "app/appointment.created": "patient.id" },
+        }),
+        catalog,
       })
-    ).toBe("sweep.id");
+    ).toEqual([
+      {
+        eventName: "app/appointment.created",
+        role: "start",
+        declaredPath: "appointment.id",
+        suppliedPath: "patient.id",
+      },
+    ]);
+  });
+
+  it("carries a Cancel Event with neither path yet", () => {
+    expect(
+      eventsNeedingCorrelationPath({
+        rules: rules({
+          cancelEvents: ["ops/nightly.swept"],
+          concurrency: "unlimited",
+        }),
+        catalog,
+      })
+    ).toEqual([
+      // A Cancel Event exists, so the default Start Event's value lands on the
+      // execution row that Cancel Event will match against: it is listed too,
+      // whatever Concurrency says.
+      {
+        eventName: "app/appointment.created",
+        role: "start",
+        declaredPath: "appointment.id",
+        suppliedPath: undefined,
+      },
+      {
+        eventName: "ops/nightly.swept",
+        role: "cancel",
+        declaredPath: undefined,
+        suppliedPath: undefined,
+      },
+    ]);
+  });
+
+  // F1: a cancel gives a correlation-free Start Event a reason to need a path
+  // even under Unlimited, because its value is what the cancel compares against.
+  it("lists a correlation-free Start Event when a Cancel Event needs a value to compare", () => {
+    expect(
+      eventsNeedingCorrelationPath({
+        rules: rules({
+          startEvent: "ops/nightly.swept",
+          concurrency: "unlimited",
+          cancelEvents: ["app/appointment.canceled"],
+        }),
+        catalog,
+      })
+    ).toEqual([
+      {
+        eventName: "ops/nightly.swept",
+        role: "start",
+        declaredPath: undefined,
+        suppliedPath: undefined,
+      },
+      {
+        eventName: "app/appointment.canceled",
+        role: "cancel",
+        declaredPath: "appointment.id",
+        suppliedPath: undefined,
+      },
+    ]);
+  });
+});
+
+describe("pruneCorrelationPaths", () => {
+  it("leaves the map untouched when there is none", () => {
+    expect(pruneCorrelationPaths(rules())).toEqual(rules());
+  });
+
+  it("keeps an override for an Event still holding a role", () => {
+    const withOverride = rules({
+      cancelEvents: ["ops/nightly.swept"],
+      correlationPaths: { "ops/nightly.swept": "sweep.id" },
+    });
+
+    expect(pruneCorrelationPaths(withOverride)).toEqual(withOverride);
+  });
+
+  // The sharp case: the Start Event keeps its role across a Concurrency change,
+  // so only pruning by current need -- not by role alone -- drops a stale
+  // override once Concurrency stops comparing and no Cancel Event takes over.
+  it("drops a start override once Concurrency stops comparing and no cancel needs it", () => {
+    const pruned = pruneCorrelationPaths(
+      rules({
+        concurrency: "unlimited",
+        correlationPaths: { "app/appointment.created": "patient.id" },
+      })
+    );
+
+    expect(pruned.correlationPaths).toBeUndefined();
+  });
+
+  it("keeps a start override that a Cancel Event still needs, under Unlimited", () => {
+    const withCancel = rules({
+      concurrency: "unlimited",
+      cancelEvents: ["ops/nightly.swept"],
+      correlationPaths: {
+        "app/appointment.created": "patient.id",
+        "ops/nightly.swept": "sweep.id",
+      },
+    });
+
+    expect(pruneCorrelationPaths(withCancel)).toEqual(withCancel);
+  });
+
+  it("drops an override for an Event holding no role at all", () => {
+    const pruned = pruneCorrelationPaths(
+      rules({ correlationPaths: { "ops/nightly.swept": "sweep.id" } })
+    );
+
+    expect(pruned.correlationPaths).toBeUndefined();
+  });
+
+  // The reviewer's three-step repro, at the rules level: an override written
+  // while Concurrency compares must not survive a switch back to Unlimited with
+  // no Cancel Event to keep it alive.
+  it("does not survive a switch to Unlimited with no cancels, after the prune", () => {
+    const underComparison = rules({
+      concurrency: "newest-wins",
+      correlationPaths: { "app/appointment.created": "patient.id" },
+    });
+    expect(underComparison.correlationPaths).toEqual({
+      "app/appointment.created": "patient.id",
+    });
+
+    const backToUnlimited = pruneCorrelationPaths({
+      ...underComparison,
+      concurrency: "unlimited",
+    });
+
+    expect(backToUnlimited).toEqual(rules({ concurrency: "unlimited" }));
   });
 });
 

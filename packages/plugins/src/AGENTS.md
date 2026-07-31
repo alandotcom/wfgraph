@@ -357,6 +357,12 @@ one import the browser makes.
 `showWhen: { field, equals }` hides a field until another holds a value.
 `defaultExpanded` opens a group. A `select` may carry `defaultValue`.
 
+`literal: true` keeps a field out of template resolution: the engine hands the step
+what the builder typed, in every run mode. It is what a test destination declares,
+since a run steering its own test address from its payload defeats the point of
+nominating one. The engine reads the flag off the catalog, so no engine edit is
+needed for the next integration that grows such a field.
+
 ## Adding one
 
 1. Write the files above under `packages/plugins/src/[name]/`.

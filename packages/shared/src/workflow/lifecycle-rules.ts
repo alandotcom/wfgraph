@@ -51,8 +51,10 @@ export const lifecycleRulesSchema = Schema.Struct({
   allowManualStart: Schema.optional(Schema.Boolean),
 
   /**
-   * A Correlation Path the builder supplied for an Event whose definition
-   * declares none. Keyed by Event name.
+   * The Correlation Path this workflow reads an Event at, keyed by Event name.
+   *
+   * It outranks the Event's own declaration, so one Event can identify an
+   * appointment in one workflow and the patient it belongs to in the next.
    */
   correlationPaths: Schema.optional(
     Schema.Record(Schema.String, NonEmptyTrimmedString)
@@ -104,15 +106,19 @@ export function readLifecycleRules(
 }
 
 /**
- * Where an Event's Entity Value sits for this workflow: the Event Author's path,
- * or the one the builder supplied for an Event that declares none.
+ * Where an Event's Entity Value sits for this workflow: the builder's path, or
+ * the Event Author's declaration where the builder wrote none.
+ *
+ * The declaration is a default rather than a verdict. An Event names the entity
+ * its own author had in mind, and the workflow reading it may be about a
+ * different one, so the per-workflow value wins.
  */
 export function resolveCorrelationPath(input: {
   rules: LifecycleRules;
   eventName: string;
   declaredPath?: string;
 }): string | undefined {
-  return input.declaredPath ?? input.rules.correlationPaths?.[input.eventName];
+  return input.rules.correlationPaths?.[input.eventName] ?? input.declaredPath;
 }
 
 /** Whether anything at all can start a run of this workflow. */
@@ -159,23 +165,75 @@ export type CorrelationPathRole = "start" | "cancel";
 export type CorrelationPathRequest = {
   eventName: string;
   role: CorrelationPathRole;
-  /** What the builder has supplied so far, absent while the path is still owed. */
+  /** The Event Author's declaration, which stands until the builder overrides it. */
+  declaredPath?: string;
+  /** The builder's own path for this workflow, absent while the declaration stands. */
   suppliedPath?: string;
 };
 
 /**
- * The Events this workflow matches by Entity Value whose author declared no path,
- * so the builder is the one being asked.
+ * Whether a Start Event's Entity Value is compared against anything.
  *
- * A cancel always matches by entity, and a start does once Concurrency compares,
- * which is why an unlimited workflow may start on a correlation-free Event. A wait
- * is not here: a Wait Subscription carries its own match expression, so what an
- * arriving payload is compared against is stated on the Wait node itself.
+ * Concurrency compares it directly. A Cancel Event compares it too, at one remove:
+ * the value a start reads lands on the execution row, and that row is what a
+ * cancel's own Entity Value is matched against. So a workflow with a Cancel Event
+ * needs its Start Event's path exactly as much as one with Concurrency set,
+ * whatever Concurrency itself says.
+ */
+function startMatchesByEntityValue(rules: LifecycleRules): boolean {
+  return rules.concurrency !== "unlimited" || rules.cancelEvents.length > 0;
+}
+
+/**
+ * One Event's Correlation Path request for this workflow, or undefined for a
+ * Start Event that currently matches nothing (`startMatchesByEntityValue`).
  *
- * A member whose `suppliedPath` is set is answered, not absent: the panel renders an
- * input per member so a path can be corrected or cleared, and the save refuses on
- * the first member still owing one. Filtering the set itself down to the unanswered
- * ones would make the input vanish the moment it was filled in.
+ * A Cancel Event always matches by entity, so a `role: "cancel"` request is never
+ * undefined -- overloaded on that literal so a caller asking for a cancel role
+ * does not carry optionality the value never has.
+ */
+export function correlationPathRequestFor(input: {
+  rules: LifecycleRules;
+  catalog: ExtensionCatalog;
+  eventName: string;
+  role: "cancel";
+}): CorrelationPathRequest;
+export function correlationPathRequestFor(input: {
+  rules: LifecycleRules;
+  catalog: ExtensionCatalog;
+  eventName: string;
+  role: CorrelationPathRole;
+}): CorrelationPathRequest | undefined;
+export function correlationPathRequestFor(input: {
+  rules: LifecycleRules;
+  catalog: ExtensionCatalog;
+  eventName: string;
+  role: CorrelationPathRole;
+}): CorrelationPathRequest | undefined {
+  const { rules, catalog, eventName, role } = input;
+
+  if (role === "start" && !startMatchesByEntityValue(rules)) {
+    return undefined;
+  }
+
+  return {
+    eventName,
+    role,
+    declaredPath: findEvent(catalog, eventName)?.correlationPath,
+    suppliedPath: rules.correlationPaths?.[eventName],
+  };
+}
+
+/**
+ * The Events this workflow matches by Entity Value, each with both paths, so the
+ * panel can render one control showing the default and the override together.
+ *
+ * A wait is not here: a Wait Subscription carries its own match expression, so
+ * what an arriving payload is compared against is stated on the Wait node itself.
+ *
+ * An Event whose author declared a path is a member like any other, because the
+ * builder may need a different field of the same payload. What the save refuses on
+ * is a member with neither path, which `checkLifecycleRules` narrows to.
  */
 export function eventsNeedingCorrelationPath(input: {
   rules: LifecycleRules;
@@ -183,38 +241,55 @@ export function eventsNeedingCorrelationPath(input: {
 }): CorrelationPathRequest[] {
   const { rules, catalog } = input;
 
-  const matchByEntityValue: Array<{
-    eventName: string;
-    role: CorrelationPathRole;
-  }> = [
-    ...(rules.concurrency === "unlimited" || rules.startEvent === undefined
-      ? []
-      : [{ eventName: rules.startEvent, role: "start" as const }]),
-    ...rules.cancelEvents.map((eventName) => ({
-      eventName,
-      role: "cancel" as const,
-    })),
-  ];
+  const start = rules.startEvent
+    ? correlationPathRequestFor({
+        rules,
+        catalog,
+        eventName: rules.startEvent,
+        role: "start",
+      })
+    : undefined;
 
-  const seen = new Set<string>();
-  const requests: CorrelationPathRequest[] = [];
+  const cancels = rules.cancelEvents.map((eventName) =>
+    correlationPathRequestFor({ rules, catalog, eventName, role: "cancel" })
+  );
 
-  for (const entry of matchByEntityValue) {
-    if (
-      seen.has(entry.eventName) ||
-      findEvent(catalog, entry.eventName)?.correlationPath
-    ) {
-      continue;
-    }
-    seen.add(entry.eventName);
+  return compact([start, ...cancels]);
+}
 
-    requests.push({
-      ...entry,
-      suppliedPath: rules.correlationPaths?.[entry.eventName],
-    });
+/**
+ * `rules.correlationPaths`, holding only the Events `eventsNeedingCorrelationPath`
+ * currently lists.
+ *
+ * The panel calls this from every setter that can change which Events hold a
+ * role or whether a Start Event matches by entity -- `setStartEvent`,
+ * `setCancelEvents`, and the Concurrency radio -- so an override for an Event
+ * that just lost its role does not keep governing runs once its own control has
+ * left the screen. A stale start override is the sharper case: a Start Event
+ * keeps its role across a Concurrency change, so only pruning by current need
+ * (not by role alone) drops it when Concurrency stops comparing and no Cancel
+ * Event takes over the reason.
+ */
+export function pruneCorrelationPaths(rules: LifecycleRules): LifecycleRules {
+  if (!rules.correlationPaths) {
+    return rules;
   }
 
-  return requests;
+  const needed = new Set(rules.cancelEvents);
+  if (rules.startEvent && startMatchesByEntityValue(rules)) {
+    needed.add(rules.startEvent);
+  }
+
+  const next = Object.fromEntries(
+    Object.entries(rules.correlationPaths).filter(([eventName]) =>
+      needed.has(eventName)
+    )
+  );
+
+  return {
+    ...rules,
+    correlationPaths: Object.keys(next).length > 0 ? next : undefined,
+  };
 }
 
 /**
@@ -244,8 +319,16 @@ export function checkLifecycleRules(input: {
     }
   }
 
+  // Same rule as `resolveCorrelationPath`: the builder's path outranks the
+  // declaration. Called rather than re-inlined, so a change to precedence
+  // cannot update one copy and miss the other.
   const owed = eventsNeedingCorrelationPath({ rules, catalog }).find(
-    (request) => !request.suppliedPath
+    (request) =>
+      !resolveCorrelationPath({
+        rules,
+        eventName: request.eventName,
+        declaredPath: request.declaredPath,
+      })
   );
   if (owed) {
     return refuse(missingCorrelationPathMessage(owed.eventName));

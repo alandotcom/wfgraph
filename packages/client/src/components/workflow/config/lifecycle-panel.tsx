@@ -12,12 +12,12 @@ import { cn } from "@rova/shared/utils";
 import {
   checkLifecycleRules,
   type Concurrency,
-  type CorrelationPathRole,
-  eventsNeedingCorrelationPath,
+  correlationPathRequestFor,
+  type CorrelationPathRequest,
   initialLifecycleRules,
   type LifecycleRules,
+  pruneCorrelationPaths,
   readLifecycleRules,
-  resolveCorrelationPath,
 } from "@rova/shared/workflow/lifecycle-rules";
 import { EventCombobox, EventMultiCombobox } from "./event-combobox";
 import type { UpdateNodeConfig } from "./node-config-patch";
@@ -57,12 +57,20 @@ export function LifecyclePanel({
     onUpdateConfig({ lifecycleRules: next });
   };
 
+  // Every setter that can change which Events hold a role, or whether a Start
+  // Event matches by entity, prunes through `pruneCorrelationPaths`: an override
+  // for an Event that just lost its reason to have one should not keep governing
+  // runs once its own control has left the screen.
   const setStartEvent = (eventName: string | undefined) => {
-    write({ ...rules, startEvent: eventName });
+    write(pruneCorrelationPaths({ ...rules, startEvent: eventName }));
   };
 
   const setCancelEvents = (eventNames: string[]) => {
-    write({ ...rules, cancelEvents: eventNames });
+    write(pruneCorrelationPaths({ ...rules, cancelEvents: eventNames }));
+  };
+
+  const setConcurrency = (value: Concurrency) => {
+    write(pruneCorrelationPaths({ ...rules, concurrency: value }));
   };
 
   const setCorrelationPath = (eventName: string, path: string) => {
@@ -80,9 +88,18 @@ export function LifecyclePanel({
     });
   };
 
-  // The same set the save is refused over, so an unlimited workflow is not asked
-  // about a value nothing compares.
-  const pathRequests = eventsNeedingCorrelationPath({ rules, catalog });
+  // Each request is looked up directly, by the Event and role the control beside
+  // it owns, rather than found in a list: `correlationPathRequestFor` answers
+  // undefined for a Start Event nothing currently compares, which is what leaves
+  // an unlimited workflow unasked about a value nothing reads.
+  const startPathRequest = rules.startEvent
+    ? correlationPathRequestFor({
+        rules,
+        catalog,
+        eventName: rules.startEvent,
+        role: "start",
+      })
+    : undefined;
 
   return (
     <div className="space-y-4">
@@ -101,23 +118,19 @@ export function LifecyclePanel({
         />
       </EventField>
 
-      {pathRequests.length > 0 ? (
-        <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-          <p className="text-muted-foreground text-xs">
-            These Events declare no Correlation Path. Enter the payload path
-            holding the value that identifies the entity, or ask whoever defined
-            the Event to declare it.
+      {startPathRequest ? (
+        <div className="rounded-md border bg-muted/30 p-3">
+          <p
+            className="mb-1 truncate font-mono text-xs"
+            title={startPathRequest.eventName}
+          >
+            {startPathRequest.eventName}
           </p>
-          {pathRequests.map((request) => (
-            <CorrelationPathInput
-              disabled={disabled}
-              eventName={request.eventName}
-              key={request.eventName}
-              onCommit={setCorrelationPath}
-              role={request.role}
-              storedPath={request.suppliedPath}
-            />
-          ))}
+          <CorrelationPathInput
+            disabled={disabled}
+            onCommit={setCorrelationPath}
+            request={startPathRequest}
+          />
         </div>
       ) : null}
 
@@ -126,9 +139,7 @@ export function LifecyclePanel({
         <RadioGroup
           aria-labelledby={concurrencyLabelId}
           disabled={disabled}
-          onValueChange={(value: Concurrency) =>
-            write({ ...rules, concurrency: value })
-          }
+          onValueChange={setConcurrency}
           value={rules.concurrency}
         >
           {CONCURRENCY_OPTIONS.map((option) => (
@@ -153,9 +164,9 @@ export function LifecyclePanel({
           ))}
         </RadioGroup>
         <p className="text-muted-foreground text-xs">
-          The entity is the value at the Event's Correlation Path. A start
-          carrying no payload uses the workflow itself, so every manual run is
-          about the same entity.
+          The entity is the value at the Correlation Path. A start carrying no
+          payload uses the workflow itself, so every manual run is about the
+          same entity.
         </p>
       </div>
 
@@ -190,7 +201,7 @@ export function LifecyclePanel({
 
       <EventField
         hasEvents={catalog.events.length > 0}
-        help="When one of these arrives, Rova reads its Entity Value at the Event's Correlation Path and cancels the runs already going for that entity. A canceled run leaves through the Canceled outlet."
+        help="When one of these arrives, Rova reads its Entity Value at the Correlation Path you set for it and cancels the runs already going for that entity. A canceled run leaves through the Canceled outlet."
         inputId={cancelEventsId}
         label="Cancel Events"
       >
@@ -207,15 +218,17 @@ export function LifecyclePanel({
             eventName={eventName}
             key={eventName}
             label={findEvent(catalog, eventName)?.label}
+            onCommitPath={setCorrelationPath}
             onRemove={() =>
               setCancelEvents(
                 rules.cancelEvents.filter((entry) => entry !== eventName)
               )
             }
-            path={resolveCorrelationPath({
+            request={correlationPathRequestFor({
               rules,
+              catalog,
               eventName,
-              declaredPath: findEvent(catalog, eventName)?.correlationPath,
+              role: "cancel",
             })}
           />
         ))}
@@ -265,59 +278,58 @@ function EventField({
 }
 
 /**
- * One chosen Cancel Event, with the path its Entity Value will be read at.
+ * One chosen Cancel Event, with the path its Entity Value is read at.
  *
- * The path is what an arriving payload is compared against, so a builder who
- * cannot see it cannot tell a rule that will claim runs from one that will claim
- * none.
+ * The path is what an arriving payload is compared against, so it is editable
+ * here rather than reported here: an Event declaring the wrong field for this
+ * workflow would otherwise be a rule the builder can read and cannot fix. A
+ * cancel role always matches by entity, so `request` is never absent.
  */
 function ChosenCancelEvent({
   eventName,
   label,
-  path,
+  request,
+  onCommitPath,
   onRemove,
   disabled,
 }: {
   eventName: string;
   label: string | undefined;
-  path: string | undefined;
+  request: CorrelationPathRequest;
+  onCommitPath: (eventName: string, path: string) => void;
   onRemove: () => void;
   disabled: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-2 rounded-md border p-2">
-      <div className="min-w-0" title={eventName}>
-        {label ? <p className="truncate text-xs">{label}</p> : null}
-        <p className="truncate font-mono text-[10px] text-muted-foreground">
-          {eventName}
+    <div className="space-y-2 rounded-md border p-2">
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 truncate text-xs" title={eventName}>
+          {label ?? eventName}
         </p>
-        <p className="truncate text-[10px] text-muted-foreground">
-          Correlation Path: {path ?? "none yet"}
-        </p>
+        <Button
+          aria-label={`Remove ${eventName}`}
+          className="size-7 shrink-0"
+          disabled={disabled}
+          onClick={onRemove}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <X className="size-3.5" />
+        </Button>
       </div>
-      <Button
-        aria-label={`Remove ${eventName}`}
-        className="size-7 shrink-0"
+      <CorrelationPathInput
         disabled={disabled}
-        onClick={onRemove}
-        size="icon"
-        type="button"
-        variant="ghost"
-      >
-        <X className="size-3.5" />
-      </Button>
+        onCommit={onCommitPath}
+        request={request}
+      />
     </div>
   );
 }
 
-/** What each role calls the node that is asking for a path. */
-const ROLE_LABELS: Record<CorrelationPathRole, string> = {
-  start: "starts a run",
-  cancel: "cancels runs",
-};
-
 /**
- * One Event's Correlation Path, written through on every keystroke.
+ * One Event's Correlation Path field for this workflow, written through on
+ * every keystroke.
  *
  * Write-through rather than commit-on-blur, because Cmd+S is a capture-phase
  * listener that a focused field never sees: a blur-committed draft was saved as
@@ -325,35 +337,43 @@ const ROLE_LABELS: Record<CorrelationPathRole, string> = {
  * named a path the builder could read on the screen. The autosave is debounced,
  * so a keystroke costs no request of its own. The write trims, so a path is
  * stored the way the payload walker will read it.
+ *
+ * The Event Author's declaration is the placeholder rather than the value: an
+ * empty field means the declaration stands, and seeding it would write an
+ * override on mount for a builder who only opened the panel.
+ *
+ * The caller renders the Event's own heading; this owns the field and its help
+ * line alone, with the Event's name kept as the input's accessible label.
  */
 function CorrelationPathInput({
-  eventName,
-  role,
-  storedPath,
+  request,
   disabled,
   onCommit,
 }: {
-  eventName: string;
-  role: CorrelationPathRole;
-  storedPath: string | undefined;
+  request: CorrelationPathRequest;
   disabled: boolean;
   onCommit: (eventName: string, path: string) => void;
 }) {
   const inputId = useId();
+  const { eventName, declaredPath, suppliedPath } = request;
 
   return (
     <div className="space-y-1">
-      <Label className="font-mono text-xs" htmlFor={inputId}>
+      <Label className="sr-only" htmlFor={inputId}>
         {eventName}
       </Label>
-      <p className="text-muted-foreground text-xs">{ROLE_LABELS[role]}</p>
       <Input
         disabled={disabled}
         id={inputId}
         onChange={(event) => onCommit(eventName, event.target.value)}
-        placeholder="appointment.id"
-        value={storedPath ?? ""}
+        placeholder={declaredPath ?? "appointment.id"}
+        value={suppliedPath ?? ""}
       />
+      <p className="text-muted-foreground text-xs">
+        {declaredPath
+          ? `Runs are matched on this payload path. The Event declares ${declaredPath}; a path here is read instead.`
+          : "Runs are matched on this payload path. This Event declares none, so enter the one holding the value that identifies the entity."}
+      </p>
     </div>
   );
 }

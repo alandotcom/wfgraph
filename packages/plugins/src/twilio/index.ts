@@ -299,6 +299,8 @@ export const twilio = defineIntegration({
           label: "Test Phone Number",
           type: "text",
           placeholder: "+15557654321",
+          // Literal: a run's own payload must not steer the test send.
+          literal: true,
           showWhen: {
             field: "testBehavior",
             equals: "send_to_test_phone",

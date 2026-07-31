@@ -380,9 +380,10 @@ describe("LifecyclePanel Cancel Events", () => {
     });
   });
 
-  // The path is what an arriving payload is compared against, so a builder who
-  // cannot read it cannot tell a rule that claims runs from one that claims none.
-  it("shows the path each chosen Event will be matched at", () => {
+  // The path is what an arriving payload is compared against, so every chosen
+  // Event gets an editable one: an Event declaring the wrong field for this
+  // workflow would otherwise be a rule the builder can read and cannot fix.
+  it("gives each chosen Event an editable path, defaulted to its declaration", () => {
     const view = render(
       <ControlledPanel
         initialConfig={{
@@ -395,12 +396,18 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    // The Event Author's own declaration, then the one the builder still owes.
-    expect(view.getByText("Correlation Path: appointment.id")).toBeTruthy();
-    expect(view.getByText("Correlation Path: none yet")).toBeTruthy();
+    const declared = view.getByLabelText(
+      "app/appointment.created"
+    ) as HTMLInputElement;
+    expect(declared.value).toBe("");
+    expect(declared.placeholder).toBe("appointment.id");
+
+    expect(
+      (view.getByLabelText("ops/nightly.swept") as HTMLInputElement).value
+    ).toBe("");
   });
 
-  it("shows the builder's override where the Event declares no path", () => {
+  it("shows the builder's override in the field", () => {
     const view = render(
       <ControlledPanel
         initialConfig={{
@@ -414,7 +421,39 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    expect(view.getByText("Correlation Path: sweep.id")).toBeTruthy();
+    expect(
+      (view.getByLabelText("ops/nightly.swept") as HTMLInputElement).value
+    ).toBe("sweep.id");
+  });
+
+  // The Event Author's declaration is a default the workflow may disagree with,
+  // and a builder who cannot type over it has to ask for a second Event.
+  it("writes an override for an Event that declares its own path", async () => {
+    let latest: Record<string, unknown> = {
+      lifecycleRules: {
+        cancelEvents: ["app/appointment.created"],
+        concurrency: "unlimited",
+        allowManualStart: true,
+      },
+    };
+    const view = render(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    fireEvent.change(view.getByLabelText("app/appointment.created"), {
+      target: { value: "patient.id" },
+    });
+
+    await waitFor(() => {
+      expect(rulesOf(latest).correlationPaths).toEqual({
+        "app/appointment.created": "patient.id",
+      });
+    });
   });
 
   // ADR-0007 refuses one Event holding both roles rather than picking a
@@ -545,8 +584,59 @@ describe("LifecyclePanel Correlation Paths", () => {
     });
   });
 
-  // An Event carrying its own path needs nothing from the builder.
-  it("asks for no path when the Event declares one", () => {
+  // F1's repro, entirely through the panel: an override written while
+  // Concurrency compares must not survive a switch back to Unlimited with no
+  // Cancel Event to keep it alive. Before the prune, the field's disappearance
+  // was cosmetic and the override kept governing every run in silence.
+  it("prunes a stale start override on a switch back to Unlimited with no cancels", async () => {
+    let latest: Record<string, unknown> = {
+      lifecycleRules: {
+        startEvent: "app/appointment.created",
+        cancelEvents: [],
+        concurrency: "unlimited",
+        allowManualStart: true,
+      },
+    };
+    const view = render(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    // Concurrency now compares, so the field appears; the builder overrides it.
+    fireEvent.click(view.getByRole("radio", { name: /^Newest wins/ }));
+    await waitFor(() => {
+      expect(rulesOf(latest).concurrency).toBe("newest-wins");
+    });
+
+    fireEvent.change(view.getByLabelText("app/appointment.created"), {
+      target: { value: "patient.id" },
+    });
+    await waitFor(() => {
+      expect(rulesOf(latest).correlationPaths).toEqual({
+        "app/appointment.created": "patient.id",
+      });
+    });
+
+    // Back to Unlimited, with no Cancel Event to keep the override alive: the
+    // field leaves the screen, and the pruned outcome is what is pinned here --
+    // the stored override goes with it rather than surviving unseen.
+    fireEvent.click(view.getByRole("radio", { name: /^Unlimited/ }));
+    await waitFor(() => {
+      expect(rulesOf(latest).concurrency).toBe("unlimited");
+    });
+
+    expect(rulesOf(latest).correlationPaths).toBeUndefined();
+    expect(view.queryByLabelText("app/appointment.created")).toBeNull();
+  });
+
+  // An Event carrying its own path still gets a field, seeded with nothing: the
+  // declaration is what an empty field means, so the panel writes no override for
+  // a builder who only opened it.
+  it("offers a field for a Start Event that declares its own path", () => {
     const view = render(
       <ControlledPanel
         initialConfig={{
@@ -559,7 +649,12 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    expect(view.queryByLabelText("app/appointment.created")).toBeNull();
+    const input = view.getByLabelText(
+      "app/appointment.created"
+    ) as HTMLInputElement;
+    expect(input.value).toBe("");
+    expect(input.placeholder).toBe("appointment.id");
+    expect(view.queryByText("This will not save")).toBeNull();
   });
 
   // Unlimited compares no entities, so there is no value to compare and no input.
@@ -580,8 +675,9 @@ describe("LifecyclePanel Correlation Paths", () => {
   });
 
   // A cancel role matches by entity too, so an Event picked to cancel and
-  // declaring no path owes one exactly as a start pick would.
-  it("asks for a path when a cancel pick owes one, labeled by its role", () => {
+  // declaring no path owes one exactly as a start pick would. The row's own
+  // heading names the Event; the field carries no second, role-labelled one.
+  it("asks for a path when a cancel pick owes one", () => {
     const view = render(
       <ControlledPanel
         initialConfig={{
@@ -595,7 +691,7 @@ describe("LifecyclePanel Correlation Paths", () => {
     );
 
     expect(view.getByLabelText("ops/nightly.swept")).toBeTruthy();
-    expect(view.getByText("cancels runs")).toBeTruthy();
+    expect(view.getByText("Nightly sweep")).toBeTruthy();
   });
 
   // A Wait Subscription carries its own match expression, so nothing a Wait node

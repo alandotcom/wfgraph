@@ -8,8 +8,8 @@
  * cannot draw is not a usable field.
  *
  * An integration is a value a host passes to `createRovaApp` and the editor reads
- * the catalog, so what is left here is the field vocabulary those two share and two
- * helpers over a field list.
+ * the catalog, so what is left here is the field vocabulary those two share and a
+ * few helpers over a field list.
  */
 
 /**
@@ -62,6 +62,12 @@ export type ActionConfigFieldBase = {
 
   // Whether this field is required (defaults to false)
   required?: boolean;
+
+  // The value reaches the step as the builder typed it: template resolution
+  // never reads this key. A test destination is the case it exists for, since
+  // steering where a test message goes from a run's own payload is never what
+  // the person who typed the address meant.
+  literal?: true;
 
   // Conditional rendering: only show if another field has a specific value
   showWhen?: {
@@ -121,4 +127,19 @@ export function flattenConfigFields(
   }
 
   return result;
+}
+
+/**
+ * The config keys an action declared `literal`, which the engine hands to the
+ * step as they were authored.
+ *
+ * A group is a rendering decision, so a literal field inside one counts the same
+ * as one beside it.
+ */
+export function literalFieldKeys(
+  fields: readonly ActionConfigField[]
+): string[] {
+  return flattenConfigFields(fields)
+    .filter((field) => field.literal === true)
+    .map((field) => field.key);
 }

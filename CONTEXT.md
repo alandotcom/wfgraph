@@ -30,9 +30,9 @@ workflow by the Workflow Builder.
 _Avoid_: trigger (the retired authored bundle of events and policy)
 
 **Correlation Path**:
-The payload path on an Event where its Entity Value sits. Declared per Event
-by the Event Author; shown to the Workflow Builder, who supplies it when an
-imported Event declares none.
+The payload path on an Event where its Entity Value sits. The Event Author
+declares one as the default; the Workflow Builder sets the path their own
+workflow reads it at, and that one wins.
 
 **Entity Value**:
 The string identifying the entity a run tracks, read from a payload at that

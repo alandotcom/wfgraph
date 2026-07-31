@@ -45,9 +45,8 @@ export type EventSubscriber = {
   mode: WorkflowMode;
   roles: WorkflowEventSubscriptionRow["role"][];
   /**
-   * Where this workflow reads the Event's Entity Value when the Event declares no
-   * Correlation Path of its own. Null when neither declares one, which is a
-   * workflow that cannot identify entities for this Event at all.
+   * The builder's own Correlation Path for this Event, which outranks the one the
+   * Event declares. Null where they wrote none, leaving the declaration to stand.
    */
   correlationPath: string | null;
 };

@@ -1,8 +1,12 @@
 import { fireEvent, render, type RenderResult } from "@testing-library/react";
+import { createStore, Provider as JotaiProvider } from "jotai";
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
 import { WaitEventSelect } from "#src/components/workflow/config/wait-event-select";
+import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
 import { parseConditionModel } from "@rova/shared/workflow/conditions";
+import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 /**
  * The picker takes its subscriptions from the node config it is handed and its
@@ -53,6 +57,60 @@ function renderSelect(config: Record<string, unknown>) {
     view,
     onUpdateConfig,
     /** The waitFor value of the most recent patch. */
+    lastWaitFor: () =>
+      onUpdateConfig.mock.calls.at(-1)?.[0].waitFor as
+        | Subscription[]
+        | undefined,
+  };
+}
+
+/** The graph the entry node's rules are read off, seeded the way the loader does. */
+function withGraph(nodes: WorkflowNode[], children: ReactNode) {
+  const store = createStore();
+  store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
+
+  return <JotaiProvider store={store}>{children}</JotaiProvider>;
+}
+
+function entryNode(correlationPaths: Record<string, string>): WorkflowNode {
+  return {
+    id: "trigger-1",
+    type: "trigger",
+    position: { x: 0, y: 0 },
+    data: {
+      label: "Start",
+      type: "trigger",
+      config: {
+        lifecycleRules: {
+          startEvent: "billing/payment.settled",
+          cancelEvents: [],
+          concurrency: "unlimited",
+          correlationPaths,
+        },
+      },
+    },
+  };
+}
+
+function renderSelectWithGraph(
+  config: Record<string, unknown>,
+  nodes: WorkflowNode[]
+) {
+  const onUpdateConfig = vi.fn((_patch: NodeConfigPatch) => undefined);
+  const view = render(
+    withGraph(
+      nodes,
+      <WaitEventSelect
+        config={config}
+        disabled={false}
+        onUpdateConfig={onUpdateConfig}
+      />
+    )
+  );
+
+  return {
+    view,
+    onUpdateConfig,
     lastWaitFor: () =>
       onUpdateConfig.mock.calls.at(-1)?.[0].waitFor as
         | Subscription[]
@@ -168,6 +226,25 @@ describe("WaitEventSelect match editor", () => {
       expect(parsed.model.groups[0]?.conditions[0]?.field).toBe(
         "appointmentId"
       );
+    }
+  });
+
+  // F2: this workflow's Correlation Path for the Event -- the entry node's
+  // rules, resolved the same way the Lifecycle panel resolves them -- wins over
+  // the Event Author's declaration, so the seed reads the field this workflow
+  // actually correlates on rather than the one nothing here overrode.
+  it("seeds a match at this workflow's overridden Correlation Path", () => {
+    const { view, lastWaitFor } = renderSelectWithGraph(
+      { waitFor: [{ event: "billing/payment.settled" }] },
+      [entryNode({ "billing/payment.settled": "settledAt" })]
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Add a match" }));
+
+    const parsed = parseConditionModel(lastWaitFor()?.at(0)?.match);
+    expect(parsed.valid).toBe(true);
+    if (parsed.valid) {
+      expect(parsed.model.groups[0]?.conditions[0]?.field).toBe("settledAt");
     }
   });
 

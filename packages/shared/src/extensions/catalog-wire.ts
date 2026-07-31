@@ -50,6 +50,7 @@ const actionConfigFieldBaseSchema = Schema.Struct({
   rows: Schema.optionalKey(Schema.Finite),
   min: Schema.optionalKey(Schema.Finite),
   required: Schema.optionalKey(Schema.Boolean),
+  literal: Schema.optionalKey(Schema.Literal(true)),
   showWhen: Schema.optionalKey(
     Schema.Struct({
       field: Schema.String,

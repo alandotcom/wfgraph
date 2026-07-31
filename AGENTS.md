@@ -430,9 +430,10 @@ only time out, and carries an optional `match`, which is the serialized
 `ConditionModel` the Condition node already builds, evaluated against the arriving payload
 rather than against merged node outputs and so rooted at `payload`. The stored predicate is
 the whole of the runtime rule, which is what keeps CONTEXT.md's "equal Entity Values, whatever
-the paths" working: the editor pre-fills the match by comparing the arriving payload at that
-Event's Correlation Path against the run's Entity Value, and a subscription with no match
-resumes on the next occurrence of the Event. At park time the run-side values inside the
+the paths" working: the editor pre-fills the match by comparing the arriving payload at this
+workflow's Correlation Path for that Event -- the entry node's rules, resolved the same way
+the Lifecycle panel resolves them -- against the run's Entity Value, and a subscription with
+no match resumes on the next occurrence of the Event. At park time the run-side values inside the
 match are resolved to literals and compiled to a CEL string on the row, because a compiled
 string and a literal both survive the JSONB round trip and Inngest's memoization where a
 re-resolved template would not.
@@ -469,8 +470,10 @@ That fallback carries `allowManualStart: true`, because the moment rules exist t
 the save rules and rules with no start source refuse the save that wrote them. The panel runs
 `checkLifecycleRules` itself, over the same catalog and the same graph the server uses, so a
 builder reads the refusal before a save answers with it, and it renders one Correlation Path
-input per member of `eventsNeedingCorrelationPath` -- the same set the check refuses over, so a
-Wait node parked on a pathless Event has an input rather than being an unsavable dead end.
+input per member of `eventsNeedingCorrelationPath`, beside the control that gave the Event its
+role: under the Start Event picker, and inside each chosen Cancel Event's row. The builder's
+path outranks the Event Author's declaration, which stands as the input's placeholder so an
+empty field writes no override, and the save is refused only where neither side named one.
 Cancel Events and the schedule are present as placeholders, with no control, each rendering
 the exported interim sentence a save would answer with. A schedule is not in the stored shape
 at all: nothing can write one.
@@ -626,6 +629,8 @@ adapter in `lib/inngest/workflow-function.ts` is where a live run picks up all t
 the third comes from `createWorkflowActions`, built once per function-list rebuild from the
 surface the registry read off the runtime it was handed. The engine module imports neither
 the database nor the assembled surface, the same way it imports neither Inngest nor Drizzle.
+An integration that grows a config field needing `literal` marks the field itself, and the
+engine takes no edit for it.
 
 The run log rows are the engine's, written through the store by
 `workflow-engine/step-log.ts` around every node it runs: a plugin's action, a host's action,

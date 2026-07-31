@@ -103,19 +103,17 @@ export const validateApiKey = Effect.fn("validateApiKey")(function* (
     );
 
     if (isMatch) {
-      // Detached on purpose: the caller is waiting on an authorization answer,
-      // and when this row was last used is not part of it. A failure here is a
-      // log line, not a rejected request.
-      yield* Effect.forkDetach(
-        repo.touchLastUsed(candidate.id).pipe(
-          Effect.catch((error) =>
-            logger.warn("Failed to update API key last-used timestamp", {
-              keyId: candidate.id,
-              error: error.cause,
-            })
-          )
-        ),
-        { startImmediately: true }
+      // The stamp is part of the request: a forked fiber belongs to no scope the
+      // app closes, so it can outlive the database pool it queries. The write
+      // costs far less than the bcrypt compare above it, and a failure is a log
+      // line rather than a rejected request.
+      yield* repo.touchLastUsed(candidate.id).pipe(
+        Effect.catch((error) =>
+          logger.warn("Failed to update API key last-used timestamp", {
+            keyId: candidate.id,
+            error: error.cause,
+          })
+        )
       );
 
       return { keyId: candidate.id };

@@ -394,6 +394,8 @@ export const resend = defineIntegration({
           label: "Test Email Address",
           type: "text",
           placeholder: "test@example.com",
+          // Literal: a run's own payload must not steer the test send.
+          literal: true,
           showWhen: {
             field: "testBehavior",
             equals: "send_to_test_email",

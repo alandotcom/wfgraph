@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { assembleExtensions } from "#src/backend/lib/extensions/extension-set";
+import { defineIntegration } from "#src/backend/lib/extensions/define-integration";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/lib/extensions/workflow-actions";
-import { Schema } from "effect";
+import { defineStep } from "#src/backend/lib/steps/define-step";
+import { Effect, Schema } from "effect";
 import {
   createAction,
   type RuntimeActionExecuteInput,
@@ -21,6 +23,7 @@ import { createInMemoryWorkflowRuntime } from "./runtime";
 const HOST_ACTION_ID = "test/host-action";
 const PRODUCER_ACTION_ID = "test/producer-action";
 const CONSUMER_ACTION_ID = "test/consumer-action";
+const NOTIFY_ACTION_ID = "notify/send";
 
 /** What the host action under test answers with, per case. */
 const executeFn = vi.fn<
@@ -32,6 +35,47 @@ const executeFn = vi.fn<
 
 /** The resolved config the consumer action was handed, for the template cases. */
 let capturedPayload: Record<string, unknown> = {};
+
+/** The decoded config the notify step was handed, for the literal-field cases. */
+let capturedStepInput: Record<string, unknown> = {};
+
+/**
+ * An integration whose step declares one templated field and one literal one,
+ * which is the shape resend and twilio give their test destinations.
+ */
+const notify = defineIntegration({
+  type: "notify",
+  label: "Notify",
+  description: "A step with a literal config field",
+  credentials: [],
+  actions: {
+    send: defineStep({
+      label: "Send Notification",
+      description: "Records the config it was handed",
+      category: "Notify",
+      input: Schema.Struct({
+        subject: Schema.optionalKey(Schema.String),
+        testEmailTo: Schema.optionalKey(Schema.String),
+      }),
+      output: Schema.Struct({
+        ok: Schema.Boolean.annotate({ description: "Whether it ran" }),
+      }),
+      configFields: [
+        { key: "subject", label: "Subject", type: "template-input" },
+        {
+          key: "testEmailTo",
+          label: "Test Email Address",
+          type: "text",
+          literal: true,
+        },
+      ],
+      handler: Effect.fn(function* (input) {
+        capturedStepInput = { ...input };
+        return yield* Effect.succeed({ ok: true });
+      }),
+    }),
+  },
+});
 
 function createTriggerNode(id: string): WorkflowNode {
   return {
@@ -119,6 +163,7 @@ const actions = createWorkflowActions(
         },
       }),
     ],
+    integrations: [notify],
   }),
   stubRovaRuntime()
 );
@@ -200,8 +245,9 @@ describe("host action execution", () => {
   // A stored graph naming an action nothing assembled -- an id from a deleted
   // integration, a typo, a build served by a different Rova than the one that
   // saved it -- fails the node by name rather than the run. The message lists
-  // the built-ins the surface still ships, which is Condition and Wait now that
-  // neither HTTP nor database work rides in on an empty assembly.
+  // the two ids the engine ships itself, which it knows without asking the
+  // dispatch port: a surface holding nothing would otherwise make the sentence
+  // read as though the build shipped no built-ins either.
   it("fails a node naming an action nothing assembled", async () => {
     const result = await executeWorkflow(
       {
@@ -578,11 +624,18 @@ describe("run persistence through the store port", () => {
 describe("template resolution into action config", () => {
   beforeEach(() => {
     capturedPayload = {};
+    capturedStepInput = {};
   });
 
-  async function runWithConsumerConfig(
-    config: Record<string, unknown>
-  ): Promise<Record<string, unknown>> {
+  /**
+   * Run a producer node followed by the node under test, so the second node's
+   * config has an upstream output to reference.
+   */
+  async function runDownstreamNode(
+    actionType: string,
+    config: Record<string, unknown>,
+    runMode: "live" | "test" = "live"
+  ): Promise<void> {
     const graph = createSerializedWorkflowGraph({
       nodes: [
         createTriggerNode("trigger_1"),
@@ -603,7 +656,7 @@ describe("template resolution into action config", () => {
           data: {
             label: "Consumer",
             type: "action",
-            config: { actionType: CONSUMER_ACTION_ID, ...config },
+            config: { actionType, ...config },
           },
         },
       ],
@@ -623,12 +676,18 @@ describe("template resolution into action config", () => {
         graph,
         executionId: "exec_templates",
         workflowId: "workflow_templates",
+        runMode,
       },
       createInMemoryWorkflowRuntime(),
       createRecordingWorkflowStore(),
       actions
     );
+  }
 
+  async function runWithConsumerConfig(
+    config: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+    await runDownstreamNode(CONSUMER_ACTION_ID, config);
     return capturedPayload;
   }
 
@@ -671,4 +730,26 @@ describe("template resolution into action config", () => {
 
     expect(payload.subject).toBe("");
   });
+
+  // The flag is unconditional, so both run modes are covered: a test
+  // destination is an address a person typed, and a run steering it from its own
+  // payload would send the test message wherever the payload pointed.
+  it.each(["live", "test"] as const)(
+    "hands a literal field to the step as authored in %s mode",
+    async (runMode) => {
+      await runDownstreamNode(
+        NOTIFY_ACTION_ID,
+        {
+          subject: "{{@action_1:Producer.customer.name}}",
+          testEmailTo: "{{@action_1:Producer.customer.name}}",
+        },
+        runMode
+      );
+
+      expect(capturedStepInput.subject).toBe("Ada");
+      expect(capturedStepInput.testEmailTo).toBe(
+        "{{@action_1:Producer.customer.name}}"
+      );
+    }
+  );
 });

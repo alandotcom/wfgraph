@@ -2,7 +2,7 @@
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
 import { compare, hash } from "bcryptjs";
-import { Effect, Latch } from "effect";
+import { Effect, Layer, ManagedRuntime } from "effect";
 import { Unauthorized } from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
@@ -22,17 +22,11 @@ import type { ApiKeyCandidate } from "#src/backend/services/api-keys/repo";
  * the repository boundary rather than stubbed as a module: the service asks
  * `ApiKeyRepo` a domain question and this answers it. Built per test rather than
  * reset between them, so no test can see what another one wrote.
- *
- * `touchedFirst` opens once the first last-used write lands. That write happens
- * on a fiber the service detaches and does not wait for, so a test asserting it
- * happened has to wait for it too; awaiting the latch is what makes the
- * assertion independent of when the fiber gets scheduled.
  */
 function makeApiKeyRepo(candidates: ApiKeyCandidate[]) {
   const calls = {
     prefixLookups: [] as string[],
     touched: [] as string[],
-    touchedFirst: Latch.makeUnsafe(),
   };
 
   // Verification never reads or writes the management side of the table, so
@@ -46,7 +40,6 @@ function makeApiKeyRepo(candidates: ApiKeyCandidate[]) {
     touchLastUsed: (keyId) =>
       Effect.sync(() => {
         calls.touched.push(keyId);
-        calls.touchedFirst.openUnsafe();
       }),
   });
 
@@ -86,8 +79,6 @@ describe("api key auth", () => {
 
           assert.deepStrictEqual(result, { keyId: "k2" });
           assert.deepStrictEqual(repo.calls.prefixLookups, [key.slice(0, 11)]);
-
-          yield* repo.calls.touchedFirst.await;
           assert.deepStrictEqual(repo.calls.touched, ["k2"]);
         })
     );
@@ -123,5 +114,43 @@ describe("api key auth", () => {
         assert.deepStrictEqual(repo.calls.touched, []);
       })
     );
+
+    /**
+     * The last-used write belongs to the request that made it.
+     *
+     * A stamp running on a fiber nobody owns lands whenever it lands, which for
+     * the app means possibly after `dispose` has given the database pool back.
+     * The stub sleeps before recording, so a verification that answered without
+     * waiting would leave `touched` empty at the first assertion here and fill
+     * it in later.
+     */
+    it("stamps last-used before answering, so no write outlives the runtime", async () => {
+      const key = "wfb_owned_key";
+      const keyHash = await hash(key, 10);
+      const touched: string[] = [];
+
+      const runtime = ManagedRuntime.make(
+        Layer.mergeAll(
+          SilentAppLoggerLayer,
+          stubApiKeyRepo({
+            findByPrefix: () => Effect.succeed([{ id: "k1", keyHash }]),
+            touchLastUsed: (keyId) =>
+              Effect.andThen(
+                Effect.sleep("20 millis"),
+                Effect.sync(() => {
+                  touched.push(keyId);
+                })
+              ),
+          })
+        )
+      );
+
+      const result = await runtime.runPromise(validateApiKey(`Bearer ${key}`));
+
+      assert.deepStrictEqual(result, { keyId: "k1" });
+      assert.deepStrictEqual(touched, ["k1"]);
+
+      await runtime.dispose();
+    });
   });
 });

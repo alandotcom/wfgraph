@@ -18,6 +18,10 @@ import type {
   ExtensionCatalog,
   IntegrationMetadata,
 } from "@rova/shared/extensions/catalog";
+import {
+  type ActionConfigFieldBase,
+  flattenConfigFields,
+} from "@rova/shared/plugins/action-fields";
 import type { ActionDefinition } from "@rova/shared/workflow/action-registry";
 import type { StepFactory } from "#src/backend/lib/steps/step-runner";
 import { builtInActions } from "#src/backend/lib/extensions/built-ins";
@@ -187,6 +191,33 @@ function assertCredentialsAreReadable(
   }
 }
 
+/** The field types the editor draws with a template picker. */
+const TEMPLATE_FIELD_TYPES = new Set<ActionConfigFieldBase["type"]>([
+  "template-input",
+  "template-textarea",
+]);
+
+/**
+ * `literal` and a template-picker field type contradict each other.
+ *
+ * The editor keys its renderer on `field.type` alone, so a `template-input` or
+ * `template-textarea` field draws the picker regardless of `literal`, inviting a
+ * builder to insert `{{@node.field}}` into a value the engine then hands the
+ * vendor unresolved. `literal` only makes sense on a field type the renderer
+ * never offers a template into.
+ */
+function assertLiteralFieldsRenderNoTemplatePicker(
+  action: ActionMetadata
+): void {
+  for (const field of flattenConfigFields(action.configFields)) {
+    if (field.literal === true && TEMPLATE_FIELD_TYPES.has(field.type)) {
+      throw new Error(
+        `Action "${action.id}" marks its "${field.key}" field literal, but a ${field.type} field always renders the template picker. Give the field a "text" type, or drop literal: true.`
+      );
+    }
+  }
+}
+
 function assertDistinctIntegrationTypes(
   integrations: readonly IntegrationMetadata[]
 ): void {
@@ -318,6 +349,9 @@ export function assembleExtensions(input: RovaExtensions): ExtensionSet {
 
   assertDistinctActionIds(into.actions);
   assertDistinctIntegrationTypes(integrations);
+  for (const action of into.actions) {
+    assertLiteralFieldsRenderNoTemplatePicker(action);
+  }
 
   return {
     catalog: {

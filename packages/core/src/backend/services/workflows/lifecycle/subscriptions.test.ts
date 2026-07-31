@@ -122,6 +122,30 @@ describe("deriveEventSubscriptions", () => {
     ]);
   });
 
+  // The override outranks the Event's own declaration at delivery, so a Cancel
+  // Event whose author named the wrong field for this workflow is corrected here
+  // and the row is what carries the correction.
+  it("carries a Cancel Event's override onto its row", () => {
+    const rows = deriveEventSubscriptions({
+      workflowId: "wf_1",
+      nodes: [
+        lifecycleNode({
+          startEvent: "app/appointment.created",
+          cancelEvents: ["app/appointment.canceled"],
+          concurrency: "unlimited",
+          correlationPaths: { "app/appointment.canceled": "patient.id" },
+        }),
+      ],
+    });
+
+    expect(rows).toContainEqual({
+      workflowId: "wf_1",
+      eventName: "app/appointment.canceled",
+      role: "cancel",
+      correlationPath: "patient.id",
+    });
+  });
+
   it("keeps one row per Event and role however many nodes ask", () => {
     const rows = deriveEventSubscriptions({
       workflowId: "wf_1",

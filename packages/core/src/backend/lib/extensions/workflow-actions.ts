@@ -8,14 +8,12 @@
  */
 
 import { findAction } from "@rova/shared/extensions/catalog";
+import { literalFieldKeys } from "@rova/shared/plugins/action-fields";
 import { fetchCredentials } from "#src/backend/lib/credential-fetcher";
-import { builtInActions } from "#src/backend/lib/extensions/built-ins";
 import type { ExtensionSet } from "#src/backend/lib/extensions/extension-set";
 import type { StepEnvironment } from "#src/backend/lib/steps/step-runner";
 import type { WorkflowActions } from "#src/backend/lib/workflow-engine/actions";
 import type { RovaRuntime } from "#src/backend/runtime";
-
-const systemActionIds = builtInActions.map((action) => action.id);
 
 export function createWorkflowActions(
   extensions: ExtensionSet,
@@ -31,7 +29,16 @@ export function createWorkflowActions(
 
   return {
     stepFor: (actionType) => extensions.stepFor(actionType)?.(app),
-    labelFor: (actionType) => findAction(extensions.catalog, actionType)?.label,
-    systemActionIds,
+    metadataFor: (actionType) => {
+      const action = findAction(extensions.catalog, actionType);
+      if (!action) {
+        return undefined;
+      }
+
+      return {
+        label: action.label,
+        literalConfigKeys: literalFieldKeys(action.configFields),
+      };
+    },
   };
 }

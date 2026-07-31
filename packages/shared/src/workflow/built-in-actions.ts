@@ -7,6 +7,6 @@
  * step, or stops a Wait node reaching the subscription index.
  */
 export const BUILT_IN_ACTION_IDS = {
-  wait: "Wait",
   condition: "Condition",
+  wait: "Wait",
 } as const;
