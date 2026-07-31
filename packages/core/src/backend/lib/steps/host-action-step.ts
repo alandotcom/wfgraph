@@ -15,13 +15,16 @@ import {
   stripInternalFields,
 } from "#src/backend/lib/steps/step-handler";
 import type { StepFactory } from "#src/backend/lib/steps/step-runner";
-import type { RuntimeActionDefinition } from "@rova/shared/workflow/action-registry";
+import type { RuntimeActionExecute } from "@rova/shared/workflow/action-registry";
 
 function readIntegrationId(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
 
-export function hostActionStep(action: RuntimeActionDefinition): StepFactory {
+/** What this dispatch reads off a host's action: nothing beyond its id and its implementation. */
+type DispatchableAction = { id: string; execute: RuntimeActionExecute };
+
+export function hostActionStep(action: DispatchableAction): StepFactory {
   return () => async (rawInput) => {
     const context = readStepContext(rawInput._context);
 

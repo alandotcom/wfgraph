@@ -708,8 +708,9 @@ function deriveConfigFieldType(
  * What a key is called on screen: the author's description, or the key itself
  * title-cased when they wrote none.
  *
- * Every surface that names a schema key reads this one rule, so a key with no
- * description reads the same on a config field as it does in the template picker.
+ * A surface that has to name every key derives its label here. A surface with
+ * room for silence, such as the template picker's second line, reads the
+ * author's description straight off the field instead.
  */
 export function labelFromKey(key: string, description?: string): string {
   return description?.trim() ? description.trim() : startCase(key);

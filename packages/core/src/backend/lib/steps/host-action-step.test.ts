@@ -8,10 +8,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { hostActionStep } from "#src/backend/lib/steps/host-action-step";
 import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
-import type {
-  RuntimeActionDefinition,
-  RuntimeActionExecute,
-} from "@rova/shared/workflow/action-registry";
+import type { RuntimeActionExecute } from "@rova/shared/workflow/action-registry";
 
 const stepContext = {
   executionId: "exec_1",
@@ -28,14 +25,7 @@ const succeeds: RuntimeActionExecute = () => ({
 
 function step(implementation: RuntimeActionExecute = succeeds) {
   const execute = vi.fn(implementation);
-  const action = {
-    id: "billing/notify",
-    name: "Notify",
-    description: "",
-    category: "Billing",
-    configFields: [],
-    execute,
-  } as unknown as RuntimeActionDefinition;
+  const action = { id: "billing/notify", execute };
 
   return { execute, run: hostActionStep(action)(stubStepEnvironment()) };
 }

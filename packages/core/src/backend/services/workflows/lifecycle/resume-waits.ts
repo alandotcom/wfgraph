@@ -9,13 +9,11 @@
 import { Effect } from "effect";
 import { evaluateCompiledCondition } from "#src/backend/lib/cel/condition-payload";
 import { DEFAULT_QUERY_CONNECTIONS } from "#src/backend/lib/db/config";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
-import { getAppLogger } from "#src/backend/lib/logger";
 import { readCompiledWaitSubscriptions } from "#src/backend/lib/workflow-engine/wait-match";
 import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
 import type { JsonObject } from "@rova/shared/types/json";
-
-const logger = getAppLogger("workflow", "wait-resume");
 
 type CandidateWaitState = {
   id: string;
@@ -26,6 +24,9 @@ type CandidateWaitState = {
   metadata: Record<string, unknown> | null;
 };
 
+/** Whether the row matched, and the error from every subscription that could not be evaluated. */
+type WaitMatchResult = { matched: boolean; unevaluated: string[] };
+
 /**
  * Whether this arrival is one this row parked for.
  *
@@ -34,22 +35,26 @@ type CandidateWaitState = {
  * subscription with no expression resumes on the next occurrence of its Event,
  * which is what the editor says a match-free subscription means.
  *
- * An expression that fails to evaluate does not wake the run. The payload
- * arrived from outside and may carry anything, so a field of the wrong type is a
- * payload that does not satisfy the match rather than a reason to resume.
+ * An expression that fails to evaluate does not wake the run: the payload
+ * arrived from outside and may carry anything, so a field of the wrong type is
+ * a payload that does not satisfy the match rather than a reason to resume. Its
+ * error is handed back rather than logged here, since a pure predicate has no
+ * logger of its own; `resumeOneWait` narrates it.
  */
 function waitStateMatches(input: {
   waitState: CandidateWaitState;
   eventType: string;
   payload: JsonObject;
-}): boolean {
+}): WaitMatchResult {
   const subscriptions = readCompiledWaitSubscriptions(
     input.waitState.metadata
   ).filter((subscription) => subscription.event === input.eventType);
 
-  return subscriptions.some((subscription) => {
+  const unevaluated: string[] = [];
+
+  for (const subscription of subscriptions) {
     if (!subscription.match) {
-      return true;
+      return { matched: true, unevaluated };
     }
 
     const evaluation = evaluateCompiledCondition({
@@ -58,16 +63,16 @@ function waitStateMatches(input: {
     });
 
     if (!evaluation.ok) {
-      logger.warn("Wait match did not evaluate", {
-        eventType: input.eventType,
-        waitStateId: input.waitState.id,
-        error: evaluation.error,
-      });
-      return false;
+      unevaluated.push(evaluation.error);
+      continue;
     }
 
-    return evaluation.value;
-  });
+    if (evaluation.value) {
+      return { matched: true, unevaluated };
+    }
+  }
+
+  return { matched: false, unevaluated };
 }
 
 /** How many runs this arrival woke. */
@@ -116,11 +121,12 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
   waitState: CandidateWaitState;
 }) {
   const { waitState, eventType } = input;
+  const logger = (yield* AppLogger).get("workflow", "wait-resume");
   const resumeToken = waitState.resumeToken;
   if (!resumeToken) {
     // A row with no token can never be woken by an Event, whatever arrives, so
     // this is a defect in whatever wrote it rather than a routine miss.
-    logger.warn("Parked wait carries no resume token", {
+    yield* logger.warn("Parked wait carries no resume token", {
       workflowId: input.workflowId,
       eventType,
       waitStateId: waitState.id,
@@ -130,11 +136,28 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
     return 0;
   }
 
-  if (!waitStateMatches({ waitState, eventType, payload: input.payload })) {
+  const { matched, unevaluated } = waitStateMatches({
+    waitState,
+    eventType,
+    payload: input.payload,
+  });
+
+  for (const error of unevaluated) {
+    yield* logger.warn("Wait match did not evaluate", {
+      workflowId: input.workflowId,
+      eventType,
+      waitStateId: waitState.id,
+      executionId: waitState.executionId,
+      nodeId: waitState.nodeId,
+      error,
+    });
+  }
+
+  if (!matched) {
     // "The Event arrived and my run is still parked" is the question this module
     // exists to answer, and the row's frozen predicate is the only copy of the
     // rule: nothing can re-derive it from the graph the builder is looking at.
-    logger.debug("Wait match rejected an arrival", {
+    yield* logger.debug("Wait match rejected an arrival", {
       workflowId: input.workflowId,
       eventType,
       waitStateId: waitState.id,
@@ -184,17 +207,16 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
     return 1;
   }).pipe(
     Effect.catch((error) =>
-      Effect.sync(() => {
-        logger.error("Failed to resume wait", {
+      logger
+        .error("Failed to resume wait", {
           workflowId: input.workflowId,
           eventType,
           waitStateId: waitState.id,
           executionId: waitState.executionId,
           nodeId: waitState.nodeId,
           error,
-        });
-        return 0;
-      })
+        })
+        .pipe(Effect.as(0))
     )
   );
 });

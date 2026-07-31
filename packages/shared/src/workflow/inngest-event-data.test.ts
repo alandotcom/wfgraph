@@ -50,6 +50,18 @@ describe("rewriteCelExpression", () => {
       rewriteCelExpression("appointment.priority ===", payloadKeys)
     ).toThrow("Invalid CEL expression in priority.run");
   });
+
+  // cel-js parses a comprehension macro's bound variable the same way it parses
+  // a free identifier, so checking it against the schema keys would refuse a
+  // valid expression and prefixing it would produce one Inngest cannot evaluate.
+  it("leaves a macro's loop variable alone, checked or not", () => {
+    expect(
+      rewriteCelExpression("items.exists(i, i.x > 1) ? 100 : 50", ["items"])
+    ).toBe("event.data.items.exists(i, i.x > 1) ? 100 : 50");
+    expect(
+      rewriteCelExpression("items.exists(i, i.x > 1) ? 100 : 50", undefined)
+    ).toBe("event.data.items.exists(i, i.x > 1) ? 100 : 50");
+  });
 });
 
 describe("compileEventDataEquals", () => {

@@ -59,6 +59,13 @@ const config: KnipConfig = {
       ],
       project: ["*.ts", "scripts/**/*.ts"],
 
+      ignoreDependencies: [
+        // @effect/tsgo embeds the Effect language-service plugin into its
+        // patched TypeScript-Go binary. The plugin keeps this historical name
+        // in tsconfig even though there is no separate package to declare.
+        "@effect/language-service",
+      ],
+
       // drizzle-kit is a root dev dependency, so knip looks for the Drizzle
       // config beside the root manifest. This repo keeps it with the schema it
       // points at.

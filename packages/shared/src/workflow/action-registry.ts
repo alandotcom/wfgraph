@@ -58,7 +58,8 @@ export type RuntimeActionExecuteInput = {
  */
 export type RuntimeActionResult = StepResult;
 
-export type RuntimeActionMetadata = {
+/** What a host writes to describe an action's identity and presentation. */
+export type ActionMetadata = {
   /**
    * Unique identifier in `"category/slug"` format (e.g. `"appointments/cancel"`).
    * The engine dispatches on it, and it is what a saved node stores.
@@ -79,75 +80,74 @@ export type RuntimeActionMetadata = {
 
   /** Optional URL to a logo/icon displayed next to the action in the editor. */
   logoUrl?: string;
-
-  /**
-   * Declarative field definitions rendered as the action's configuration form.
-   * Each field maps to a key in the action's config object. Supported types
-   * include `"template-input"`, `"template-textarea"`, `"text"`, `"number"`,
-   * `"select"`, `"schema-builder"`, and `"key-value"`.
-   */
-  configFields?: ActionConfigField[];
-
-  /**
-   * Describes the fields available in this action's output for downstream
-   * template autocomplete (e.g. `{{ @NodeLabel.appointmentId }}`).
-   * Field paths should not include the `data.` prefix -- they are unwrapped automatically.
-   */
-  outputFields?: ReferenceField[];
 };
 
 export type RuntimeActionExecute = (
   input: RuntimeActionExecuteInput
 ) => RuntimeActionResult | Promise<RuntimeActionResult>;
 
-/** What a host writes: metadata plus the implementation. */
-export type RuntimeActionDefinition = RuntimeActionMetadata & {
-  execute: RuntimeActionExecute;
-};
-
 /**
- * What `createAction` hands back: a definition with everything filled in.
+ * What `createAction` hands back: identity, the fields derived from its
+ * schemas, and the implementation, everything filled in.
  *
  * `category` is no longer optional, because the default has been applied by the
  * time a value of this type exists, and assembly copies it into the catalog
  * without deciding anything of its own.
  */
-export type ActionDefinition = RuntimeActionDefinition & {
+export type ActionDefinition = ActionMetadata & {
   readonly category: string;
+
+  /**
+   * Declarative field definitions rendered as the action's configuration form,
+   * derived from `schema`. Each field maps to a key in the action's config
+   * object. Supported types include `"template-input"`, `"template-textarea"`,
+   * `"text"`, `"number"`, `"select"`, `"schema-builder"`, and `"key-value"`.
+   */
+  readonly configFields: ActionConfigField[];
+
+  /**
+   * Describes the fields available in this action's output for downstream
+   * template autocomplete (e.g. `{{ @NodeLabel.appointmentId }}`), derived from
+   * `outputSchema`. Field paths should not include the `data.` prefix -- they
+   * are unwrapped automatically. Absent when `createAction` was given no
+   * `outputSchema`, which leaves the action addressable by node but not by
+   * field.
+   */
+  readonly outputFields?: ReferenceField[];
+
+  readonly execute: RuntimeActionExecute;
   readonly __rovaActionBrand: true;
 };
 
-export type CreateActionInput<TPayload extends Record<string, unknown>> = Omit<
-  RuntimeActionDefinition,
-  "execute" | "configFields"
-> & {
-  /**
-   * The schema that validates the resolved config values before they reach
-   * your `execute` function. Write it in Effect Schema, Zod, or arktype --
-   * whichever, it is passed as it is, with no wrapping.
-   *
-   * `configFields` are auto-derived from the schema's JSON Schema
-   * representation. A field's human-readable label comes from its
-   * `description`: an annotation in Effect Schema, `.describe()` in Zod.
-   */
-  schema: InputSchema<TPayload>;
+export type CreateActionInput<TPayload extends Record<string, unknown>> =
+  ActionMetadata & {
+    /**
+     * The schema that validates the resolved config values before they reach
+     * your `execute` function. Write it in Effect Schema, Zod, or arktype --
+     * whichever, it is passed as it is, with no wrapping.
+     *
+     * `configFields` are auto-derived from the schema's JSON Schema
+     * representation. A field's human-readable label comes from its
+     * `description`: an annotation in Effect Schema, `.describe()` in Zod.
+     */
+    schema: InputSchema<TPayload>;
 
-  /**
-   * Action implementation. Receives the validated `payload` (config values
-   * after template resolution) and an execution `context` with metadata
-   * like `executionId`, `nodeId`, and `integrationId`.
-   *
-   * Return `{ success: true, data: { ... } }` on success or
-   * `{ success: false, error: { message: "..." } }` on failure.
-   * Thrown exceptions are caught and wrapped in the error format automatically.
-   */
-  execute: (input: {
-    /** Config values validated against `schema`. */
-    payload: TPayload;
-    /** Execution metadata (IDs, integration reference). */
-    context: RuntimeActionExecutionContext;
-  }) => RuntimeActionResult | Promise<RuntimeActionResult>;
-};
+    /**
+     * Action implementation. Receives the validated `payload` (config values
+     * after template resolution) and an execution `context` with metadata
+     * like `executionId`, `nodeId`, and `integrationId`.
+     *
+     * Return `{ success: true, data: { ... } }` on success or
+     * `{ success: false, error: { message: "..." } }` on failure.
+     * Thrown exceptions are caught and wrapped in the error format automatically.
+     */
+    execute: (input: {
+      /** Config values validated against `schema`. */
+      payload: TPayload;
+      /** Execution metadata (IDs, integration reference). */
+      context: RuntimeActionExecutionContext;
+    }) => RuntimeActionResult | Promise<RuntimeActionResult>;
+  };
 
 /** Typed success result when outputSchema is provided. */
 export type TypedActionResult<TOutput extends Record<string, unknown>> =
@@ -157,18 +157,13 @@ export type TypedActionResult<TOutput extends Record<string, unknown>> =
 export type CreateActionInputWithOutput<
   TPayload extends Record<string, unknown>,
   TOutput extends Record<string, unknown>,
-> = Omit<
-  RuntimeActionDefinition,
-  "execute" | "configFields" | "outputFields"
-> & {
+> = ActionMetadata & {
   schema: InputSchema<TPayload>;
   /**
    * The schema describing what `execute` resolves to. Auto-derives
    * `outputFields` via `~standard.jsonSchema.output()` and types the return.
    */
   outputSchema: OutputSchema<TOutput>;
-  /** Manual overrides merged on top of auto-derived output fields. */
-  outputFields?: ReferenceField[];
   execute: (input: {
     payload: TPayload;
     context: RuntimeActionExecutionContext;
@@ -226,8 +221,8 @@ function configFieldsFromInputSchema(
 }
 
 function normalizeRuntimeActionMetadata(
-  definition: RuntimeActionMetadata
-): RuntimeActionMetadata & { category: string } {
+  definition: ActionMetadata
+): ActionMetadata & { category: string } {
   const actionId = definition.id.trim();
   const label = definition.label.trim();
   const description = definition.description.trim();
@@ -329,20 +324,6 @@ function encodeResult(
   return { success: true, data: encoded.success };
 }
 
-function mergeOutputFields(
-  derived: ReferenceField[],
-  manual: ReferenceField[]
-): ReferenceField[] {
-  const merged = new Map<string, ReferenceField>();
-  for (const field of derived) {
-    merged.set(field.path, field);
-  }
-  for (const field of manual) {
-    merged.set(field.path, field);
-  }
-  return Array.from(merged.values());
-}
-
 /**
  * Create a typed action definition, for `createRovaApp({ extensions: { actions } })`.
  *
@@ -392,15 +373,12 @@ export function createAction<TPayload extends Record<string, unknown>>(
   const schema = asStandardSchema(input.schema);
   const derivedConfigFields = configFieldsFromInputSchema(schema);
 
-  let resolvedOutputFields = input.outputFields;
+  let resolvedOutputFields: ReferenceField[] | undefined;
   let encodeOutput:
     | ((value: unknown) => Result.Result<unknown, Schema.SchemaError>)
     | undefined;
   if ("outputSchema" in input && input.outputSchema) {
-    const derived = outputFieldsFromSchema(input.outputSchema);
-    resolvedOutputFields = input.outputFields
-      ? mergeOutputFields(derived, input.outputFields)
-      : derived;
+    resolvedOutputFields = outputFieldsFromSchema(input.outputSchema);
     encodeOutput = outputEncoder(input.outputSchema);
   }
 
@@ -445,12 +423,12 @@ export function createAction<TPayload extends Record<string, unknown>>(
     description: input.description,
     category: input.category,
     logoUrl: input.logoUrl,
-    configFields: derivedConfigFields,
-    outputFields: resolvedOutputFields,
   });
 
   return {
     ...normalized,
+    configFields: derivedConfigFields,
+    outputFields: resolvedOutputFields,
     execute,
     __rovaActionBrand: true,
   };

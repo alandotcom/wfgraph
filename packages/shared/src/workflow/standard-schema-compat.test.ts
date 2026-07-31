@@ -370,10 +370,10 @@ describe("createAction bridges the schema it is given", () => {
     ).toThrow(/"twilio\/compat-array".+root is not an object/);
   });
 
-  it("labels an undescribed field with its key, at any depth", () => {
-    // A description is decoration a host adds where the key reads badly. The
-    // rule reaches every path the editor lists, so a leaf two levels down is
-    // labelled from its own key rather than from the object it sits in.
+  it("carries a description only where the author wrote one, at any depth", () => {
+    // A description is decoration a host adds where the key reads badly, and it
+    // travels with the path it was written on: an object's own words describe
+    // the object, and a leaf inside it stays as bare as it was declared.
     expect(
       requireOutputFieldsFromSchema(
         'Action "twilio/compat-bare"',
@@ -384,14 +384,14 @@ describe("createAction bridges the schema it is given", () => {
           }),
         })
       )
-    ).toEqual([
-      { path: "status", description: "Status", type: "string" },
+    ).toStrictEqual([
+      { path: "status", type: "string" },
       {
         path: "message",
         description: "The message that was sent",
         type: "object",
       },
-      { path: "message.sentAt", description: "Sent At", type: "string" },
+      { path: "message.sentAt", type: "string" },
     ]);
   });
 

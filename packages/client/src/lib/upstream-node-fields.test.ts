@@ -254,17 +254,9 @@ describe("upstream-node-fields", () => {
     });
 
     expect(fields).toEqual([
-      expect.objectContaining({
-        path: "occurredAt",
-        type: "timestamp",
-        description: "When the event was raised",
-      }),
+      expect.objectContaining({ path: "occurredAt", type: "timestamp" }),
       expect.objectContaining({ path: "patientName", type: "string" }),
-      expect.objectContaining({
-        path: "startsAt",
-        type: "timestamp",
-        description: "When the appointment starts",
-      }),
+      expect.objectContaining({ path: "startsAt", type: "timestamp" }),
     ]);
   });
 

@@ -14,11 +14,14 @@
 
 import { Effect } from "effect";
 import { partition, uniq } from "es-toolkit";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
-import { getAppLogger } from "#src/backend/lib/logger";
 import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
 
-const logger = getAppLogger("workflow", "run-ending");
+/** This module's logger, as the Effect that produces it (see `list.ts`). */
+const loggerFor = Effect.map(AppLogger, (appLogger) =>
+  appLogger.get("workflow", "run-ending")
+);
 
 /** A wait row belonging to a run being ended, which is cancelled with it. */
 type EndingWaitState = {
@@ -77,6 +80,7 @@ export const signalRunToStop = Effect.fn("signalRunToStop")(function* (input: {
   eventName?: string;
 }) {
   const inngest = yield* InngestClient;
+  const logger = yield* loggerFor;
 
   return yield* inngest
     .sendCancelRequested({
@@ -90,7 +94,7 @@ export const signalRunToStop = Effect.fn("signalRunToStop")(function* (input: {
       Effect.as(true),
       Effect.catch((error) =>
         Effect.gen(function* () {
-          logger.error("Failed to send cancel signal for execution", {
+          yield* logger.error("Failed to send cancel signal for execution", {
             workflowId: input.workflowId,
             executionId: input.executionId,
             eventName: input.eventName,
@@ -127,6 +131,7 @@ const recordEndingFailure = Effect.fn("recordEndingFailure")(function* (input: {
   outcome: "send_failed" | "write_failed";
 }) {
   const repo = yield* ExecutionRepo;
+  const logger = yield* loggerFor;
 
   yield* repo
     .recordAuditEvent({
@@ -138,13 +143,11 @@ const recordEndingFailure = Effect.fn("recordEndingFailure")(function* (input: {
     })
     .pipe(
       Effect.catch((auditError) =>
-        Effect.sync(() => {
-          logger.error("Failed to record a half-failed ending", {
-            workflowId: input.workflowId,
-            executionId: input.executionId,
-            outcome: input.outcome,
-            error: auditError,
-          });
+        logger.error("Failed to record a half-failed ending", {
+          workflowId: input.workflowId,
+          executionId: input.executionId,
+          outcome: input.outcome,
+          error: auditError,
         })
       )
     );
@@ -158,6 +161,7 @@ const recordRunEnded = Effect.fn("recordRunEnded")(function* (input: {
   eventName?: string;
 }) {
   const repo = yield* ExecutionRepo;
+  const logger = yield* loggerFor;
 
   return yield* repo
     .recordAuditEvent({
@@ -170,15 +174,14 @@ const recordRunEnded = Effect.fn("recordRunEnded")(function* (input: {
     .pipe(
       Effect.as(true),
       Effect.catch((error) =>
-        Effect.sync(() => {
-          logger.error("Failed to record the end of an execution", {
+        logger
+          .error("Failed to record the end of an execution", {
             workflowId: input.workflowId,
             executionId: input.executionId,
             eventName: input.eventName,
             error,
-          });
-          return false;
-        })
+          })
+          .pipe(Effect.as(false))
       )
     );
 });
@@ -243,6 +246,7 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
 }) {
   const { executionId, workflowId } = input;
   const repo = yield* ExecutionRepo;
+  const logger = yield* loggerFor;
 
   const signalled = yield* signalRunToStop({
     workflowId,
@@ -263,7 +267,7 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
     .pipe(
       Effect.catch((error) =>
         Effect.gen(function* () {
-          logger.error("Failed to end an execution", {
+          yield* logger.error("Failed to end an execution", {
             workflowId,
             executionId,
             error,
@@ -285,7 +289,7 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
   }
 
   if (!wasInFlight) {
-    logger.info(
+    yield* logger.info(
       "Execution reached a terminal status before it could be ended",
       {
         workflowId,

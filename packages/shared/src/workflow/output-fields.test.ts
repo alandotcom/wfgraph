@@ -61,9 +61,11 @@ function describingItselfAs(
 }
 
 describe("requireOutputFieldsFromSchema", () => {
-  it("derives a schema that annotates nothing, labelling each key", () => {
+  it("derives a schema that annotates nothing, describing no key", () => {
     // Validation is the author's job and presentation is Rova's, so a schema
     // written in any library derives without being edited to serve the editor.
+    // An author who wrote no description gets none, and each surface decides
+    // what to show in its place.
     expect(
       requireOutputFieldsFromSchema(
         'Action "test/plain"',
@@ -72,9 +74,9 @@ describe("requireOutputFieldsFromSchema", () => {
           attendeeCount: Schema.Finite,
         })
       )
-    ).toEqual([
-      { path: "appointmentId", description: "Appointment Id", type: "string" },
-      { path: "attendeeCount", description: "Attendee Count", type: "number" },
+    ).toStrictEqual([
+      { path: "appointmentId", type: "string" },
+      { path: "attendeeCount", type: "number" },
     ]);
   });
 
@@ -87,9 +89,7 @@ describe("requireOutputFieldsFromSchema", () => {
         'Action "test/dated"',
         Schema.Struct({ cancelledAt: Schema.Date })
       )
-    ).toEqual([
-      { path: "cancelledAt", description: "Cancelled At", type: "string" },
-    ]);
+    ).toEqual([{ path: "cancelledAt", type: "string" }]);
   });
 
   it("reads a codec's encoded annotation and not its decoded one", () => {
@@ -117,7 +117,7 @@ describe("requireOutputFieldsFromSchema", () => {
         type: "timestamp",
         format: "timestamp",
       },
-      { path: "endsAt", description: "Ends At", type: "string" },
+      { path: "endsAt", type: "string" },
     ]);
   });
 

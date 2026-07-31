@@ -18,14 +18,14 @@ describe("flattenSchemaToReferenceFields", () => {
 
     expect(fields).toEqual([
       { path: "email", description: "Contact email", type: "string" },
-      { path: "age", description: "Age", type: "number" },
+      { path: "age", type: "number" },
     ]);
   });
 
-  it("labels an undescribed field with its title-cased key", () => {
-    // A host writes their schema for validation, so a description is optional
-    // and most keys arrive without one. The key is what a builder recognises;
-    // the type name is the same word on every field of that type.
+  it("leaves an undescribed field carrying no description", () => {
+    // A host writes their schema for validation, so most keys arrive without a
+    // description. The picker shows the path and stays silent below it; a
+    // surface needing a label derives one from the key.
     const fields = flattenSchemaToReferenceFields([
       {
         name: "appointment",
@@ -38,11 +38,17 @@ describe("flattenSchemaToReferenceFields", () => {
       },
     ]);
 
-    expect(fields.map(({ path, description }) => [path, description])).toEqual([
-      ["appointment", "Appointment"],
-      ["appointment.patientName", "Patient Name"],
-      ["appointment.startsAt", "Starts At"],
-      ["appointment.mediaUrls", "Media Urls"],
+    // toStrictEqual, because a key present and holding undefined is what this is
+    // asserting against: the key has to be missing for a renderer to skip it.
+    expect(fields).toStrictEqual([
+      { path: "appointment", type: "object" },
+      { path: "appointment.patientName", type: "string" },
+      {
+        path: "appointment.startsAt",
+        type: "timestamp",
+        format: "timestamp",
+      },
+      { path: "appointment.mediaUrls", type: "array" },
     ]);
   });
 
@@ -84,11 +90,10 @@ describe("flattenSchemaToReferenceFields", () => {
     ]);
 
     expect(fields).toEqual([
-      { path: "items", description: "Items", type: "array" },
-      { path: "items[0].sku", description: "Sku", type: "string" },
+      { path: "items", type: "array" },
+      { path: "items[0].sku", type: "string" },
       {
         path: "items[0].shippedAt",
-        description: "Shipped At",
         type: "timestamp",
         format: "timestamp",
       },
@@ -100,9 +105,7 @@ describe("flattenSchemaToReferenceFields", () => {
       { name: "tags", type: "array", itemType: "string" },
     ]);
 
-    expect(fields).toEqual([
-      { path: "tags", description: "Tags", type: "array" },
-    ]);
+    expect(fields).toEqual([{ path: "tags", type: "array" }]);
   });
 
   it("carries nullable and enum values through to the flat field", () => {
@@ -118,7 +121,6 @@ describe("flattenSchemaToReferenceFields", () => {
     expect(fields).toEqual([
       {
         path: "status",
-        description: "Status",
         type: "string",
         nullable: true,
         enumValues: ["open", "closed"],
@@ -142,9 +144,7 @@ describe("flattenSchemaToReferenceFields", () => {
       { name: "metadata", type: "object", fields: [] },
     ]);
 
-    expect(fields).toEqual([
-      { path: "metadata", description: "Metadata", type: "object" },
-    ]);
+    expect(fields).toEqual([{ path: "metadata", type: "object" }]);
   });
 
   it("stops descending three segments down", () => {
@@ -169,33 +169,6 @@ describe("flattenSchemaToReferenceFields", () => {
     ]);
 
     expect(fields.map((field) => field.path)).toEqual(["a", "a.b", "a.b.c"]);
-  });
-
-  it("goes deeper when a caller looking for one path asks it to", () => {
-    const fields = flattenSchemaToReferenceFields(
-      [
-        {
-          name: "a",
-          type: "object",
-          fields: [
-            {
-              name: "b",
-              type: "object",
-              fields: [
-                {
-                  name: "c",
-                  type: "object",
-                  fields: [{ name: "d", type: "string" }],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-      { maxDepth: 4 }
-    );
-
-    expect(fields.map((field) => field.path)).toContain("a.b.c.d");
   });
 
   it("terminates on a schema tree that points back at itself", () => {

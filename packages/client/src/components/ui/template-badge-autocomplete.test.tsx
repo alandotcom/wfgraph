@@ -348,6 +348,29 @@ describe("Template badge autocomplete", () => {
     });
   });
 
+  it("leaves the second line off a field its author never described", async () => {
+    // The path is already the row's first line, so a title-cased echo of the key
+    // below it would be a line saying nothing twice.
+    surface.events = [
+      {
+        ...APPOINTMENT_CREATED,
+        payloadFields: [
+          { path: "patientName", description: "Patient name", type: "string" },
+          { path: "amountCents", type: "number" },
+        ],
+      },
+    ];
+    const view = render(<DurationTemplateBadgeInput />);
+    typeAtSymbol(view.getByRole("textbox"));
+
+    await waitFor(() => {
+      expect(menuRows()).toEqual([
+        "Webhook.amountCents",
+        "Webhook.patientNamePatient name",
+      ]);
+    });
+  });
+
   // The menu shows about seven rows and ranking keeps every field in it, so a
   // highlight arrowed past the fold has to be scrolled to. happy-dom implements
   // no scrollIntoView, so the stub is both the spy and the implementation.

@@ -5,6 +5,7 @@ import { Effect, Layer } from "effect";
 import { beforeEach, vi } from "vitest";
 import { InngestError } from "#src/backend/lib/effect/inngest-client";
 import {
+  SilentAppLoggerLayer,
   stubExecutionRepo,
   stubInngestClient,
 } from "#src/backend/lib/effect/test-layers";
@@ -30,6 +31,7 @@ beforeEach(() => {
 });
 
 const services = Layer.mergeAll(
+  SilentAppLoggerLayer,
   stubExecutionRepo({ endInFlight, cancelWaits, recordAuditEvent }),
   stubInngestClient({ sendCancelRequested })
 );

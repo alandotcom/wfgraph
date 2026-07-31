@@ -73,7 +73,7 @@ const actionConfigFieldWireSchema: Schema.Codec<ActionConfigField> =
 
 const referenceFieldWireSchema: Schema.Codec<ReferenceField> = Schema.Struct({
   path: Schema.String,
-  description: Schema.String,
+  description: Schema.optionalKey(Schema.String),
   type: Schema.optionalKey(
     Schema.Literals([
       "string",

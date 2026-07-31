@@ -79,26 +79,36 @@ type RecordedLine = { message: string; properties?: LogProperties };
  * needs the line rather than the absence of one. Built per test rather than
  * reset between them, so no test can read another's lines.
  *
- * The two levels are kept in separate lists because a test asserts one whole
- * list at a time: an `error` assertion should not have to account for whatever
- * the same code path narrated at `info` on its way there.
+ * Each level is kept in its own list because a test asserts one whole list at
+ * a time: an `error` assertion should not have to account for whatever the
+ * same code path narrated at `info` on its way there.
  */
 export function makeRecordingLogger(): {
   lines: RecordedLine[];
   infoLines: RecordedLine[];
+  warnLines: RecordedLine[];
+  debugLines: RecordedLine[];
   logger: EffectLogger;
   layer: Layer.Layer<AppLogger>;
 } {
   const lines: RecordedLine[] = [];
   const infoLines: RecordedLine[] = [];
+  const warnLines: RecordedLine[] = [];
+  const debugLines: RecordedLine[] = [];
 
   const recorder: EffectLogger = {
-    debug: () => Effect.void,
+    debug: (message, properties) =>
+      Effect.sync(() => {
+        debugLines.push({ message, properties });
+      }),
     info: (message, properties) =>
       Effect.sync(() => {
         infoLines.push({ message, properties });
       }),
-    warn: () => Effect.void,
+    warn: (message, properties) =>
+      Effect.sync(() => {
+        warnLines.push({ message, properties });
+      }),
     error: (message, properties) =>
       Effect.sync(() => {
         lines.push({ message, properties });
@@ -109,6 +119,8 @@ export function makeRecordingLogger(): {
   return {
     lines,
     infoLines,
+    warnLines,
+    debugLines,
     logger: recorder,
     layer: Layer.succeed(AppLogger, { get: () => recorder }),
   };

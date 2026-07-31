@@ -68,12 +68,12 @@ function describeSchema(
 /**
  * The paths and types a schema offers, as the editor lists them.
  *
- * A schema this cannot read contributes nothing, which is what `createAction`
- * wants: a host may write its action's schema in any library and may pass an
- * `outputFields` list of its own alongside it, so a derivation that came back
- * empty still has somewhere to fall back to. An integration's action has no such
- * fallback, and `requireOutputFieldsFromSchema` below is what assembly holds it
- * to.
+ * A schema this cannot read contributes nothing rather than a thrown error,
+ * which is what `createAction` wants: a host's `outputSchema` may come from
+ * any Standard Schema library, and a derivation failure there should leave
+ * the action addressable by node rather than crash the host's own boot. An
+ * integration's action is Rova's own code and is held to the stricter
+ * `requireOutputFieldsFromSchema` below.
  */
 export function outputFieldsFromSchema(
   schema: OutputSchema<unknown>

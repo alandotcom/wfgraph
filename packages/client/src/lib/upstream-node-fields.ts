@@ -23,7 +23,6 @@ import type { WorkflowEdge, WorkflowNode } from "@rova/shared/workflow/types";
 import { upstreamNodeIds } from "@rova/shared/workflow/upstream-nodes";
 
 export type ConditionSelectableField = ConditionFieldDefinition & {
-  description: string;
   sourceNodeId: string;
   sourceNodeLabel: string;
   sourceNodeLabels: string[];
@@ -91,7 +90,7 @@ function commonPayloadFields(
           ? field
           : {
               path: field.path,
-              description: field.description,
+              ...(field.description ? { description: field.description } : {}),
               type: "string" as const,
             }),
         ...(nullable ? { nullable: true } : {}),
@@ -303,7 +302,6 @@ export function getEventConditionFields(
         path,
         label: path,
         type,
-        description: field.description,
         sourceNodeId: eventName,
         sourceNodeLabel: event.label,
         sourceNodeLabels: [event.label],
@@ -345,7 +343,6 @@ export function getUpstreamConditionFields(input: {
       path,
       label: path,
       type: conditionFieldType,
-      description: field.description,
       sourceNodeId: field.sourceNodeId,
       sourceNodeLabel: field.sourceNodeName,
       sourceNodeLabels: [field.sourceNodeName],

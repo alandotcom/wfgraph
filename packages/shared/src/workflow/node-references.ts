@@ -14,10 +14,9 @@
  */
 
 import type { JsonObject, JsonValue } from "#src/types/json";
-import {
-  labelFromKey,
-  type WorkflowSchemaField,
-  type WorkflowSchemaFieldType,
+import type {
+  WorkflowSchemaField,
+  WorkflowSchemaFieldType,
 } from "./schema-codec";
 
 /**
@@ -33,7 +32,8 @@ import {
  */
 export type ReferenceField = {
   path: string;
-  description: string;
+  /** The author's own words for the field, absent when they wrote none. */
+  description?: string;
   type?: WorkflowSchemaFieldType;
   format?: "timestamp";
   nullable?: boolean;
@@ -54,9 +54,11 @@ function schemaFieldToReferenceField(
   field: WorkflowSchemaField,
   path: string
 ): ReferenceField {
+  const description = field.description?.trim();
+
   return {
     path,
-    description: labelFromKey(field.name, field.description),
+    ...(description ? { description } : {}),
     type: field.type,
     ...(field.type === "timestamp" ? { format: "timestamp" as const } : {}),
     ...(field.nullable ? { nullable: true } : {}),
@@ -81,9 +83,6 @@ function schemaFieldToReferenceField(
  */
 const MAX_REFERENCE_FIELD_DEPTH = 3;
 
-/** How far down a walk goes, when the caller wants something other than the cap. */
-export type SchemaWalkOptions = { maxDepth?: number };
-
 /**
  * Turn a schema tree into the flat list of paths a user can pick from.
  *
@@ -95,14 +94,9 @@ export type SchemaWalkOptions = { maxDepth?: number };
  * emit and stays a single entry.
  */
 export function flattenSchemaToReferenceFields(
-  schema: WorkflowSchemaField[],
-  options: SchemaWalkOptions = {}
+  schema: WorkflowSchemaField[]
 ): ReferenceField[] {
-  return collectReferenceFields(
-    schema,
-    "",
-    options.maxDepth ?? MAX_REFERENCE_FIELD_DEPTH
-  );
+  return collectReferenceFields(schema, "", MAX_REFERENCE_FIELD_DEPTH);
 }
 
 function collectReferenceFields(

@@ -28,7 +28,7 @@ const catalog: ExtensionCatalog = {
     {
       name: "billing/payment.settled",
       label: "Payment settled",
-      payloadFields: [],
+      payloadFields: [{ path: "paymentId", type: "string" }],
     },
   ],
   actions: [
@@ -140,6 +140,11 @@ describe("the catalog wire schema", () => {
 
     expect(decoded?.events[1]).not.toHaveProperty("description");
     expect(decoded?.events[1]).not.toHaveProperty("correlationPath");
+    // A field whose author wrote no description crosses as one with no key, so
+    // the picker has nothing to render under its path.
+    expect(decoded?.events[1].payloadFields[0]).not.toHaveProperty(
+      "description"
+    );
   });
 
   it("decodes the empty catalog", () => {

@@ -4,8 +4,11 @@ import {
   type InngestClient,
   InngestError,
 } from "#src/backend/lib/effect/inngest-client";
+import type { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
+  makeRecordingLogger,
+  SilentAppLoggerLayer,
   stubExecutionRepo,
   stubInngestClient,
 } from "#src/backend/lib/effect/test-layers";
@@ -14,21 +17,6 @@ import type {
   WorkflowWaitState,
 } from "#src/backend/services/workflows/executions/repo/index";
 import { requestCanceledOutlet } from "./cancel";
-
-const { loggerErrorMock } = vi.hoisted(() => ({
-  loggerErrorMock: vi.fn(),
-}));
-
-// Two cases below are about what a contained failure leaves behind rather than
-// about what is returned, and the log line is where that lands.
-vi.mock("#src/backend/lib/logger", () => ({
-  getAppLogger: () => ({
-    error: loggerErrorMock,
-    warn: vi.fn(),
-    info: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
 
 type Repo = ExecutionRepo["Service"];
 
@@ -84,10 +72,13 @@ const cancelInput = {
   entityValue: "appt_8813",
 };
 
-function cancel(overrides: Partial<typeof cancelInput> = {}) {
+function cancel(
+  overrides: Partial<typeof cancelInput> = {},
+  loggerLayer: Layer.Layer<AppLogger> = SilentAppLoggerLayer
+) {
   return Effect.runPromise(
     requestCanceledOutlet({ ...cancelInput, ...overrides }).pipe(
-      Effect.provide(services)
+      Effect.provide(Layer.mergeAll(services, loggerLayer))
     )
   );
 }
@@ -177,11 +168,12 @@ describe("requestCanceledOutlet", () => {
     sendWaitSignalMock.mockReturnValue(
       Effect.fail(new InngestError({ cause: new Error("bus refused") }))
     );
+    const recorder = makeRecordingLogger();
 
-    const claimed = await cancel();
+    const claimed = await cancel({}, recorder.layer);
 
     expect(claimed).toEqual(["exec_1"]);
-    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(recorder.lines).toHaveLength(1);
   });
 
   // The flag is written and `requestCancelForEntity` refuses to re-claim a run it
@@ -194,12 +186,13 @@ describe("requestCanceledOutlet", () => {
     listWaitingStatesForExecutionsMock.mockReturnValue(
       Effect.fail(new DatabaseError({ cause: new Error("connection reset") }))
     );
+    const recorder = makeRecordingLogger();
 
-    const claimed = await cancel();
+    const claimed = await cancel({}, recorder.layer);
 
     expect(claimed).toEqual(["exec_1", "exec_2"]);
     expect(sendWaitSignalMock).not.toHaveBeenCalled();
-    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(recorder.lines).toHaveLength(1);
   });
 
   // One read for the whole claimed set, rather than one per run.

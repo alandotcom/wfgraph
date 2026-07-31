@@ -133,20 +133,16 @@ describe("defineEvent payload fields", () => {
     ]);
   });
 
-  it("labels a field carrying no description with its key", () => {
-    // A host's payload schema is written for validation, and describing every
-    // path is Rova's job rather than theirs.
+  it("carries no description for a field its author never described", () => {
+    // A host's payload schema is written for validation, so most paths arrive
+    // bare, and the editor renders each one as the path alone.
     const event = defineEvent({
       name: "app/fields.bare",
       schema: Schema.Struct({ appointmentId: Schema.String }),
     });
 
-    expect(event.payloadFields).toEqual([
-      {
-        path: "appointmentId",
-        description: "Appointment Id",
-        type: "string",
-      },
+    expect(event.payloadFields).toStrictEqual([
+      { path: "appointmentId", type: "string" },
     ]);
   });
 

@@ -1,30 +1,32 @@
 import { Effect, Layer } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AppLogger } from "#src/backend/lib/effect/app-logger";
 import {
   InngestError,
   type InngestClient,
 } from "#src/backend/lib/effect/inngest-client";
 import {
+  makeRecordingLogger,
+  SilentAppLoggerLayer,
   stubExecutionRepo,
   stubInngestClient,
 } from "#src/backend/lib/effect/test-layers";
 import type { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
 import { resumeWaitsMatchingEvent } from "./resume-waits";
 
-const { loggerErrorMock, loggerWarnMock, loggerDebugMock } = vi.hoisted(() => ({
+const { loggerErrorMock } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
-  loggerWarnMock: vi.fn(),
-  loggerDebugMock: vi.fn(),
 }));
 
-// Both this module and `wait-match` log through the app logger, and two of the
-// cases below are about what reaches it rather than about what is returned.
+// `wait-match` still logs through the module-scope app logger, and one case
+// below is about what reaches it rather than about what is returned. This
+// module's own logging goes through the `AppLogger` service, silenced below.
 vi.mock("#src/backend/lib/logger", () => ({
   getAppLogger: () => ({
     error: loggerErrorMock,
-    warn: loggerWarnMock,
+    warn: vi.fn(),
     info: vi.fn(),
-    debug: loggerDebugMock,
+    debug: vi.fn(),
   }),
 }));
 
@@ -86,13 +88,17 @@ function createWaitState(
  * The subject on its stub services.
  *
  * Every case sends and writes through the same stubs, so only what varies is
- * written at a call site.
+ * written at a call site. The logger defaults to silent; a case that asserts
+ * on a log line hands over `makeRecordingLogger().layer` instead.
  */
 function resumeWaits(
-  input: Parameters<typeof resumeWaitsMatchingEvent>[0]
+  input: Parameters<typeof resumeWaitsMatchingEvent>[0],
+  loggerLayer: Layer.Layer<AppLogger> = SilentAppLoggerLayer
 ): Promise<number> {
   return Effect.runPromise(
-    resumeWaitsMatchingEvent(input).pipe(Effect.provide(services))
+    resumeWaitsMatchingEvent(input).pipe(
+      Effect.provide(Layer.mergeAll(services, loggerLayer))
+    )
   );
 }
 
@@ -140,25 +146,33 @@ describe("resumeWaitsMatchingEvent", () => {
     expect(result).toBe(0);
   });
 
+  // A row with no token can never be woken by an Event, so it is a defect in
+  // whatever wrote it.
   it("skips wait states without a resume token", async () => {
-    const result = await resumeWaits({
-      workflowId: "workflow_1",
-      eventType: "event.update",
-      payload: { data: "test" },
-      waitStates: [
-        createWaitState("1", "exec_1", { resumeToken: null }),
-        createWaitState("2", "exec_2", { resumeToken: null }),
-      ],
-    });
+    const recorder = makeRecordingLogger();
+
+    const result = await resumeWaits(
+      {
+        workflowId: "workflow_1",
+        eventType: "event.update",
+        payload: { data: "test" },
+        waitStates: [
+          createWaitState("1", "exec_1", { resumeToken: null }),
+          createWaitState("2", "exec_2", { resumeToken: null }),
+        ],
+      },
+      recorder.layer
+    );
 
     expect(result).toBe(0);
     expect(sendWaitSignalMock).not.toHaveBeenCalled();
-    // A row with no token can never be woken by an Event, so it is a defect in
-    // whatever wrote it rather than an arrival this run did not want.
-    expect(loggerWarnMock).toHaveBeenCalledTimes(2);
-    expect(loggerWarnMock.mock.calls[0]?.[1]).toMatchObject({
-      waitStateId: "1",
-      executionId: "exec_1",
+    expect(recorder.warnLines).toHaveLength(2);
+    expect(recorder.warnLines[0]).toEqual({
+      message: "Parked wait carries no resume token",
+      properties: expect.objectContaining({
+        waitStateId: "1",
+        executionId: "exec_1",
+      }),
     });
   });
 
@@ -358,38 +372,38 @@ describe("resumeWaitsMatchingEvent", () => {
       );
     });
 
+    // A rejection that wrote nothing leaves an operator with a count of zero
+    // and no way to tell it from a row the candidate query never returned.
     it("wakes nothing when no arriving payload satisfies the match", async () => {
-      const result = await resumeWaits({
-        workflowId: "workflow_1",
-        eventType: "billing/payment.settled",
-        payload: { appointmentId: "appt_nobody_waits_for" },
-        waitStates: [
-          createWaitState("1", "exec_1", {
-            subscriptions: [
-              {
-                event: "billing/payment.settled",
-                match: {
-                  expression: 'payload.appointmentId == "appt_8813"',
-                  timestampPaths: [],
+      const recorder = makeRecordingLogger();
+
+      const result = await resumeWaits(
+        {
+          workflowId: "workflow_1",
+          eventType: "billing/payment.settled",
+          payload: { appointmentId: "appt_nobody_waits_for" },
+          waitStates: [
+            createWaitState("1", "exec_1", {
+              subscriptions: [
+                {
+                  event: "billing/payment.settled",
+                  match: {
+                    expression: 'payload.appointmentId == "appt_8813"',
+                    timestampPaths: [],
+                  },
                 },
-              },
-            ],
-          }),
-        ],
-      });
+              ],
+            }),
+          ],
+        },
+        recorder.layer
+      );
 
       expect(result).toBe(0);
       expect(sendWaitSignalMock).not.toHaveBeenCalled();
-      // The stored predicate is the only copy of the rule, so a rejection that
-      // wrote nothing leaves an operator with a count of zero and no way to tell
-      // it from a row the candidate query never returned.
-      expect(loggerDebugMock).toHaveBeenCalledWith(
-        "Wait match rejected an arrival",
-        expect.objectContaining({
-          waitStateId: "1",
-          executionId: "exec_1",
-          eventType: "billing/payment.settled",
-        })
+      expect(recorder.debugLines).toHaveLength(1);
+      expect(recorder.debugLines[0]?.message).toBe(
+        "Wait match rejected an arrival"
       );
     });
 

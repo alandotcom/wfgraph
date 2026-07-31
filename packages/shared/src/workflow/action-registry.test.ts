@@ -225,38 +225,6 @@ describe("createAction with outputSchema", () => {
     expect(activeField?.type).toBe("boolean");
   });
 
-  it("merges manual outputFields on top of auto-derived", () => {
-    const action = createAction({
-      id: "custom/merged-output",
-      label: "Merged Output",
-      description: "Action with merged output fields",
-      schema: z.object({ id: z.string() }),
-      outputSchema: z.object({
-        name: z.string(),
-        score: z.number(),
-      }),
-      outputFields: [
-        { path: "name", description: "Full legal name" },
-        { path: "extra", description: "Extra field not in schema" },
-      ],
-      execute() {
-        return { success: true, data: { name: "Bob", score: 99 } };
-      },
-    });
-
-    const fields = action.outputFields ?? [];
-    expect(fields.length).toBe(3);
-
-    const nameField = fields.find((f) => f.path === "name");
-    expect(nameField?.description).toBe("Full legal name");
-
-    const scoreField = fields.find((f) => f.path === "score");
-    expect(scoreField).toBeDefined();
-
-    const extraField = fields.find((f) => f.path === "extra");
-    expect(extraField?.description).toBe("Extra field not in schema");
-  });
-
   // The default is what an author who named no category gets, and it is the group
   // heading the action selector lists them under.
   it("defaults an action with no category to Custom", () => {
@@ -271,22 +239,5 @@ describe("createAction with outputSchema", () => {
     });
 
     expect(action.category).toBe("Custom");
-  });
-
-  it("preserves existing behavior without outputSchema", () => {
-    const action = createAction({
-      id: "custom/no-output-schema",
-      label: "No Output Schema",
-      description: "Action without output schema",
-      schema: z.object({ text: z.string() }),
-      outputFields: [{ path: "result", description: "Manual result field" }],
-      execute() {
-        return { success: true, data: { result: "ok" } };
-      },
-    });
-
-    expect(action.outputFields).toEqual([
-      { path: "result", description: "Manual result field" },
-    ]);
   });
 });

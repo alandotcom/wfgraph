@@ -295,9 +295,13 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                     eq(workflows.isPaused, false)
                   )
                 ),
-              // The path comes from the index by a left join rather than a second
-              // round trip, and it is a left join because an orphaned run's
-              // workflow may no longer name this Event anywhere.
+              // A parked run holds the wait role whether or not the graph still
+              // names the Event it parked on, so the join here is only for
+              // `correlationPath`, by a left join rather than a second round
+              // trip: an orphaned run's workflow may no longer carry that row at
+              // all, and one held to the wait role specifically is what stops a
+              // workflow's start or cancel row for the same Event from being the
+              // one the planner happens to pick.
               db
                 .selectDistinct({
                   id: workflows.id,
@@ -314,7 +318,8 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                   workflowEventSubscriptions,
                   and(
                     eq(workflowEventSubscriptions.workflowId, workflows.id),
-                    eq(workflowEventSubscriptions.eventName, eventName)
+                    eq(workflowEventSubscriptions.eventName, eventName),
+                    eq(workflowEventSubscriptions.role, "wait")
                   )
                 )
                 .where(

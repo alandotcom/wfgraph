@@ -12,16 +12,14 @@
 
 import { Effect } from "effect";
 import { DEFAULT_QUERY_CONNECTIONS } from "#src/backend/lib/db/config";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
-import { getAppLogger } from "#src/backend/lib/logger";
 import {
   ExecutionRepo,
   type WorkflowWaitState,
 } from "#src/backend/services/workflows/executions/repo/index";
 import type { JsonObject } from "@rova/shared/types/json";
 import type { WorkflowMode } from "@rova/shared/workflow/types";
-
-const logger = getAppLogger("workflow", "lifecycle-cancel");
 
 /**
  * Claims every in-flight run of this workflow about this entity for the Canceled
@@ -42,6 +40,7 @@ export const requestCanceledOutlet = Effect.fn("requestCanceledOutlet")(
     entityValue: string;
   }) {
     const repo = yield* ExecutionRepo;
+    const logger = (yield* AppLogger).get("workflow", "lifecycle-cancel");
 
     const claimed = yield* repo.requestCancelForEntity({
       workflowId: input.workflowId,
@@ -68,14 +67,13 @@ export const requestCanceledOutlet = Effect.fn("requestCanceledOutlet")(
       .listWaitingStatesForExecutions(claimed)
       .pipe(
         Effect.catch((error) =>
-          Effect.sync(() => {
-            logger.error("Failed to read the waits of claimed runs", {
+          logger
+            .error("Failed to read the waits of claimed runs", {
               workflowId: input.workflowId,
               eventName: input.eventName,
               error,
-            });
-            return new Map<string, WorkflowWaitState[]>();
-          })
+            })
+            .pipe(Effect.as(new Map<string, WorkflowWaitState[]>()))
         )
       );
 
@@ -113,6 +111,7 @@ const nudgeParkedWaits = Effect.fn("nudgeParkedWaits")(function* (input: {
 }) {
   const repo = yield* ExecutionRepo;
   const inngest = yield* InngestClient;
+  const logger = (yield* AppLogger).get("workflow", "lifecycle-cancel");
 
   yield* Effect.gen(function* () {
     yield* Effect.forEach(
@@ -141,13 +140,11 @@ const nudgeParkedWaits = Effect.fn("nudgeParkedWaits")(function* (input: {
     });
   }).pipe(
     Effect.catch((error) =>
-      Effect.sync(() => {
-        logger.error("Failed to nudge a run claimed for cancellation", {
-          workflowId: input.workflowId,
-          executionId: input.executionId,
-          eventName: input.eventName,
-          error,
-        });
+      logger.error("Failed to nudge a run claimed for cancellation", {
+        workflowId: input.workflowId,
+        executionId: input.executionId,
+        eventName: input.eventName,
+        error,
       })
     )
   );

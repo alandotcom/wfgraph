@@ -30,7 +30,11 @@ type NamedRow = [
   correlationPath: string | null,
 ];
 
-/** One row of the parked-run read, which has no role column to select. */
+/**
+ * One row of the parked-run read. `correlationPath` is null when the join
+ * finds no wait-role subscription for this workflow and Event, which is the
+ * orphaned case: the graph no longer names the Event on any Wait node.
+ */
 type ParkedRow = [
   id: string,
   name: string,
@@ -163,5 +167,24 @@ describe("listEventSubscribers", () => {
 
     expect(subscribers).toHaveLength(1);
     expect(subscribers[0]?.roles).toEqual(["wait"]);
+  });
+
+  // An edit to the Wait node cannot orphan the runs already parked on it: the
+  // run is still owed the Event it parked for, with no correlation path to
+  // offer since the join finds no wait row left to read one from.
+  it("still appears with no correlation path when the graph no longer names the Event", async () => {
+    const { listSubscribers } = harness({
+      parked: [["wf_2", "Reminders", "live", null]],
+    });
+
+    expect(await listSubscribers("app/appointment.created")).toEqual([
+      {
+        id: "wf_2",
+        name: "Reminders",
+        mode: "live",
+        roles: ["wait"],
+        correlationPath: null,
+      },
+    ]);
   });
 });
