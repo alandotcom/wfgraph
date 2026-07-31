@@ -28,7 +28,7 @@ import {
 import {
   ExecutionRepo,
   ExecutionRepoLayer,
-} from "#src/backend/services/workflows/executions/repo/index";
+} from "#src/backend/services/executions/repo";
 import {
   WorkflowRepo,
   WorkflowRepoLayer,

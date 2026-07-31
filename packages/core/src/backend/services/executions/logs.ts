@@ -3,13 +3,13 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import { redactSensitiveData } from "#src/backend/lib/utils/redact";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
 function toIso(value: Date | null): string | null {
   return value?.toISOString() ?? null;
 }
 
-/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+/** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (executionId: string) =>
   Effect.map(AppLogger, (appLogger) =>
     appLogger.get("workflow", "execution-logs").with({ executionId })

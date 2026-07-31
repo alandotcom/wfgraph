@@ -15,12 +15,12 @@ import {
 } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/workflow/execution-contracts";
-import { inFlightExecution } from "#src/backend/services/workflows/executions/repo/runs";
+import { inFlightExecution } from "#src/backend/services/executions/repo/runs";
 import type {
   SettledWaitStatus,
   WorkflowExecution,
   WorkflowWaitState,
-} from "#src/backend/services/workflows/executions/repo/contracts";
+} from "#src/backend/services/executions/repo/contracts";
 
 /** The `workflow_wait_states` slice of `ExecutionRepo`. */
 export type WaitsRepoMethods = {

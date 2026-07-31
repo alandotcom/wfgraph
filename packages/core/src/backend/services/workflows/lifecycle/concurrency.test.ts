@@ -13,7 +13,7 @@ import type {
   EntityStartOutcome,
   ExecutionRepo,
   WorkflowExecution,
-} from "#src/backend/services/workflows/executions/repo/index";
+} from "#src/backend/services/executions/repo";
 import { startWithConcurrency } from "./concurrency";
 
 // Announcing a supersede has its own cases in `end-runs.test.ts`; here it is the
@@ -25,7 +25,7 @@ const { announceSupersededRunsMock, announceReclaimedRunsMock } = vi.hoisted(
   })
 );
 
-vi.mock("#src/backend/services/workflows/executions/end-runs", () => ({
+vi.mock("#src/backend/services/executions/end-runs", () => ({
   announceSupersededRuns: announceSupersededRunsMock,
   announceReclaimedRuns: announceReclaimedRunsMock,
 }));

@@ -18,7 +18,7 @@ import {
 } from "@rova/shared/extensions/catalog";
 import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { RovaServices } from "#src/backend/runtime";
 

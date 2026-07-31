@@ -6,7 +6,7 @@ import { InvalidInput } from "#src/backend/lib/effect/failures";
 import {
   ExecutionRepo,
   type GlobalExecutionRow,
-} from "#src/backend/services/workflows/executions/repo/index";
+} from "#src/backend/services/executions/repo";
 import type {
   WorkflowExecutionStartSource,
   WorkflowExecutionStatus,
@@ -109,7 +109,7 @@ function buildNextCursor(input: {
   };
 }
 
-/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+/** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (input: WorkflowExecutionsGlobalInput) =>
   Effect.map(AppLogger, (appLogger) =>
     appLogger.get("workflow", "global-executions").with({

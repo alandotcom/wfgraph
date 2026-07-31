@@ -23,7 +23,7 @@ import type {
   NewTerminalExecution,
   PendingCancel,
   WorkflowExecution,
-} from "#src/backend/services/workflows/executions/repo/contracts";
+} from "#src/backend/services/executions/repo/contracts";
 
 /** The most recent runs one workflow's panel shows. */
 const WORKFLOW_EXECUTIONS_LIMIT = 50;

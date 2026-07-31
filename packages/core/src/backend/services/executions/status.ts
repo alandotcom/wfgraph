@@ -2,14 +2,14 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
 type NodeStatus = {
   nodeId: string;
   status: "pending" | "running" | "success" | "error" | "cancelled";
 };
 
-/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+/** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (executionId: string) =>
   Effect.map(AppLogger, (appLogger) =>
     appLogger.get("workflow", "execution-status").with({ executionId })

@@ -15,7 +15,7 @@ import {
 import type {
   ExecutionRepo,
   WorkflowWaitState,
-} from "#src/backend/services/workflows/executions/repo/index";
+} from "#src/backend/services/executions/repo";
 import { requestCanceledOutlet } from "./cancel";
 
 type Repo = ExecutionRepo["Service"];

@@ -17,7 +17,7 @@ import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
   ExecutionRepo,
   type WorkflowWaitState,
-} from "#src/backend/services/workflows/executions/repo/index";
+} from "#src/backend/services/executions/repo";
 import type { JsonObject } from "@rova/shared/types/json";
 import type { WorkflowMode } from "@rova/shared/workflow/types";
 

@@ -20,7 +20,7 @@ import {
   ExecutionRepo,
   ExecutionRepoLayer,
   UNSENT_RUN_GRACE_MS,
-} from "#src/backend/services/workflows/executions/repo/index";
+} from "#src/backend/services/executions/repo/index";
 
 /** One row of the in-flight candidate query, in the order it selects columns. */
 type InFlightRow = [id: string, enqueuedAt: Date | null, startedAt: Date];

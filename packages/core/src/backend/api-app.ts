@@ -16,7 +16,7 @@ import {
   openApiRestHandler,
 } from "#src/backend/rpc/openapi";
 import { rpcRouter } from "#src/backend/rpc/router";
-import { postWorkflowResume } from "#src/backend/services/workflows/triggering/resume";
+import { postWorkflowResume } from "#src/backend/services/workflows/lifecycle/resume";
 import { type JsonObject, readJsonObject } from "@rova/shared/types/json";
 import { formatSchemaFailure } from "@rova/shared/types/schema-message";
 import {

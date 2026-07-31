@@ -10,8 +10,8 @@ import {
 import type {
   ExecutionPageQuery,
   GlobalExecutionRow,
-} from "#src/backend/services/workflows/executions/repo/index";
-import { getWorkflowExecutionsGlobal } from "#src/backend/services/workflows/executions/global";
+} from "#src/backend/services/executions/repo";
+import { getWorkflowExecutionsGlobal } from "#src/backend/services/executions/global";
 
 function createRow(
   overrides: Partial<GlobalExecutionRow> & { id: string; startedAt: Date }

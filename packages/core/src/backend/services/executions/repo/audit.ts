@@ -6,7 +6,7 @@ import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import type {
   NewAuditEvent,
   WorkflowExecutionEvent,
-} from "#src/backend/services/workflows/executions/repo/contracts";
+} from "#src/backend/services/executions/repo/contracts";
 
 /** How far back the audit trail beside a single run is read. */
 const EXECUTION_EVENTS_LIMIT = 200;

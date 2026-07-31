@@ -16,7 +16,7 @@ import { Effect } from "effect";
 import { partition, uniq } from "es-toolkit";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
 /** This module's logger, as the Effect that produces it (see `list.ts`). */
 const loggerFor = Effect.map(AppLogger, (appLogger) =>

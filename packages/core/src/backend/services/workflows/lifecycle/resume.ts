@@ -4,7 +4,7 @@ import { statedSeamFailureHandlers } from "#src/backend/lib/effect/internal-fail
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { Conflict, NotFound } from "#src/backend/lib/effect/failures";
 import { validateApiKey } from "#src/backend/services/api-keys/auth";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { JsonObject } from "@rova/shared/types/json";
 
 type WorkflowResumeSuccess = {

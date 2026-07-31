@@ -13,25 +13,25 @@ import type { Concurrency } from "@rova/shared/workflow/lifecycle-rules";
 import {
   type AuditRepoMethods,
   makeAuditMethods,
-} from "#src/backend/services/workflows/executions/repo/audit";
+} from "#src/backend/services/executions/repo/audit";
 import {
   type NodeLogsRepoMethods,
   makeNodeLogsMethods,
-} from "#src/backend/services/workflows/executions/repo/node-logs";
+} from "#src/backend/services/executions/repo/node-logs";
 import {
   makeRunsMethods,
   type RunsRepoMethods,
-} from "#src/backend/services/workflows/executions/repo/runs";
+} from "#src/backend/services/executions/repo/runs";
 import {
   makeWaitsMethods,
   type WaitsRepoMethods,
-} from "#src/backend/services/workflows/executions/repo/waits";
+} from "#src/backend/services/executions/repo/waits";
 import type {
   EntityStartOutcome,
   NewExecution,
-} from "#src/backend/services/workflows/executions/repo/contracts";
+} from "#src/backend/services/executions/repo/contracts";
 
-export * from "#src/backend/services/workflows/executions/repo/contracts";
+export * from "#src/backend/services/executions/repo/contracts";
 
 /**
  * How long a run may sit with its row committed and `enqueued_at` unstamped

@@ -9,8 +9,8 @@ import {
   type InngestError,
 } from "#src/backend/lib/effect/inngest-client";
 import type { RunScopedAuditEventType } from "#src/backend/lib/workflow-audit";
-import { signalRunToStop } from "#src/backend/services/workflows/executions/end-runs";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import { signalRunToStop } from "#src/backend/services/executions/end-runs";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { JsonObject } from "@rova/shared/types/json";
 import type {
   WorkflowExecutionIgnoredReason,
@@ -151,10 +151,10 @@ export function buildIgnoredRunAuditMessage(input: {
   return `Refused a start from ${named}: this workflow does not list manual runs as a start source`;
 }
 
-/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+/** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "run-lifecycle").with({ workflowId })
+    appLogger.get("workflow", "run-rows").with({ workflowId })
   );
 
 /**

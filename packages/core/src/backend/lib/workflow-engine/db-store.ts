@@ -13,7 +13,7 @@ import type { DatabaseError } from "#src/backend/lib/effect/database";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import type { RovaRuntime } from "#src/backend/runtime";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { decodeIsoTimestampOrThrow } from "@rova/shared/types/timestamp";
 import type { CompleteRunInput, WorkflowStore } from "./store";
 

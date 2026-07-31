@@ -617,7 +617,7 @@ cached functions from outliving the runtime their event listeners close over, an
 that changes which workflows exist drops the list through the `InngestFunctions` service --
 `invalidateInngestFunctions` is that whole call, so no service body yields the service to
 reach one member of it. The two helpers that mix a send with wait-state bookkeeping,
-`cancelInFlightRuns` (`services/workflows/executions/end-runs.ts`) and
+`cancelInFlightRuns` (`services/executions/end-runs.ts`) and
 `resumeWaitsMatchingEvent` (`services/workflows/lifecycle/resume-waits.ts`), are Effects
 over `InngestClient` and `ExecutionRepo` like any other service. `defineStep`'s call into a
 handler is the one deliberate `Effect.runPromise` left outside an edge, and it goes when the

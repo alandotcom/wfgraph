@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type {
   WorkflowExecutionStartSource,
@@ -75,7 +75,7 @@ function toRefusedStartItem(event: {
 /** What the contract answers a run-history delete with. */
 type WorkflowExecutionsDeleted = { success: true; deletedCount: number };
 
-/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+/** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
     appLogger.get("workflow", "executions").with({ workflowId })

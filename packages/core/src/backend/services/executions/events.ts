@@ -5,9 +5,9 @@ import { NotFound } from "#src/backend/lib/effect/failures";
 import {
   ExecutionRepo,
   type WorkflowExecutionEvent,
-} from "#src/backend/services/workflows/executions/repo/index";
+} from "#src/backend/services/executions/repo";
 
-/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+/** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (executionId: string) =>
   Effect.map(AppLogger, (appLogger) =>
     appLogger.get("workflow", "execution-events").with({ executionId })

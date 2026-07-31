@@ -6,8 +6,8 @@ import {
   NotFound,
 } from "#src/backend/lib/effect/failures";
 import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
-import { cancelInFlightRuns } from "#src/backend/services/workflows/executions/end-runs";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import { cancelInFlightRuns } from "#src/backend/services/executions/end-runs";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
 type CancelExecutionSuccess = {
   success: true;
@@ -15,7 +15,7 @@ type CancelExecutionSuccess = {
   cancelledWaitStates: number;
 };
 
-/** This module's logger, as the Effect that produces it (see `workflow.ts`). */
+/** This module's logger, as the Effect that produces it (see `services/workflows/workflow.ts`). */
 const loggerFor = (executionId: string) =>
   Effect.map(AppLogger, (appLogger) =>
     appLogger.get("workflow", "execution-cancel").with({ executionId })

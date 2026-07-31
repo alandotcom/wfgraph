@@ -12,7 +12,7 @@ import { DEFAULT_QUERY_CONNECTIONS } from "#src/backend/lib/db/config";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import { readCompiledWaitSubscriptions } from "#src/backend/lib/workflow-engine/wait-match";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { JsonObject } from "@rova/shared/types/json";
 
 type CandidateWaitState = {

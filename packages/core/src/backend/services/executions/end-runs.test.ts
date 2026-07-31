@@ -9,7 +9,7 @@ import {
   stubExecutionRepo,
   stubInngestClient,
 } from "#src/backend/lib/effect/test-layers";
-import type { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { announceSupersededRuns, cancelInFlightRuns } from "./end-runs";
 
 type Repo = ExecutionRepo["Service"];

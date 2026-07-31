@@ -18,8 +18,8 @@ import type { ApiKeyCandidate } from "#src/backend/services/api-keys/repo";
 import type {
   ExecutionRepo,
   WorkflowWaitState,
-} from "#src/backend/services/workflows/executions/repo/index";
-import { postWorkflowResume } from "#src/backend/services/workflows/triggering/resume";
+} from "#src/backend/services/executions/repo";
+import { postWorkflowResume } from "#src/backend/services/workflows/lifecycle/resume";
 
 /** Waking a wait means a send plus the three writes around it. */
 const markWaitStatus = vi.fn<ExecutionRepo["Service"]["markWaitStatus"]>(() =>

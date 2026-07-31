@@ -13,7 +13,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { RovaDatabase } from "#src/backend/lib/db/index";
 import type { Database } from "#src/backend/lib/effect/database";
-import { makeRunsMethods } from "#src/backend/services/workflows/executions/repo/runs";
+import { makeRunsMethods } from "#src/backend/services/executions/repo/runs";
 
 function captureStatements(): {
   database: Database["Service"];

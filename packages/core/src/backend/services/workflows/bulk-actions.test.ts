@@ -8,7 +8,7 @@ import {
   stubInngestFunctions,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
-import { postWorkflowsBulkLifecycle } from "#src/backend/services/workflows/bulk-lifecycle";
+import { postWorkflowsBulkLifecycle } from "#src/backend/services/workflows/bulk-actions";
 
 /**
  * A repository holding the workflows one test set up, and a record of what it

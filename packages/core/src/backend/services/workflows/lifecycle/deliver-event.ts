@@ -16,11 +16,11 @@
 
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { requestCanceledOutlet } from "#src/backend/services/workflows/lifecycle/cancel";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 import { resumeWaitsMatchingEvent } from "#src/backend/services/workflows/lifecycle/resume-waits";
-import { runWorkflowExecutionPreflight } from "#src/backend/services/workflows/triggering/preflight";
+import { runWorkflowExecutionPreflight } from "#src/backend/services/executions/preflight";
 import {
   type EventSubscriber,
   WorkflowRepo,

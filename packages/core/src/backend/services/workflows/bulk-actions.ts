@@ -18,7 +18,7 @@ type WorkflowBulkLifecycleOutcome = {
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
 const loggerFor = (input: { action: WorkflowBulkAction; requested: number }) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "bulk-lifecycle").with({
+    appLogger.get("workflow", "bulk-actions").with({
       action: input.action,
       requestedCount: input.requested,
     })
@@ -30,7 +30,7 @@ const itemLoggerFor = (input: {
   action: WorkflowBulkAction;
 }) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "bulk-lifecycle").with({
+    appLogger.get("workflow", "bulk-actions").with({
       action: input.action,
       workflowId: input.workflowId,
     })

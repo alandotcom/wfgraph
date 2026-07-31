@@ -2,13 +2,13 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
-import { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
-import { loadWorkflowForRun } from "#src/backend/services/workflows/triggering/preflight";
+import { loadWorkflowForRun } from "#src/backend/services/executions/preflight";
 import {
   buildIgnoredRunAuditMessage,
   recordPausedRunIgnored,
-} from "#src/backend/services/workflows/triggering/run-lifecycle";
+} from "#src/backend/services/executions/run-rows";
 import {
   type ExtensionCatalog,
   findEvent,
@@ -27,7 +27,7 @@ import {
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("workflow", "execute").with({ workflowId })
+    appLogger.get("workflow", "manual-start").with({ workflowId })
   );
 
 /**

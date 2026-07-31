@@ -17,12 +17,12 @@ import {
   postIntegrationTest,
   putIntegration,
 } from "#src/backend/services/integrations/integrations";
-import { postWorkflowExecute } from "#src/backend/services/workflows/triggering/execute";
-import { resumeWaitByToken } from "#src/backend/services/workflows/triggering/resume";
-import { postExecutionCancel } from "#src/backend/services/workflows/executions/cancel";
-import { getExecutionEvents } from "#src/backend/services/workflows/executions/events";
-import { getExecutionLogs } from "#src/backend/services/workflows/executions/logs";
-import { getExecutionStatus } from "#src/backend/services/workflows/executions/status";
+import { postWorkflowExecute } from "#src/backend/services/workflows/lifecycle/manual-start";
+import { resumeWaitByToken } from "#src/backend/services/workflows/lifecycle/resume";
+import { postExecutionCancel } from "#src/backend/services/executions/cancel";
+import { getExecutionEvents } from "#src/backend/services/executions/events";
+import { getExecutionLogs } from "#src/backend/services/executions/logs";
+import { getExecutionStatus } from "#src/backend/services/executions/status";
 import {
   deleteWorkflow,
   getWorkflow,
@@ -32,10 +32,10 @@ import { postWorkflowDuplicate } from "#src/backend/services/workflows/duplicate
 import {
   deleteWorkflowExecutions,
   getWorkflowExecutions,
-} from "#src/backend/services/workflows/executions/list";
-import { getWorkflowExecutionsGlobal } from "#src/backend/services/workflows/executions/global";
+} from "#src/backend/services/executions/list";
+import { getWorkflowExecutionsGlobal } from "#src/backend/services/executions/global";
 import { getWorkflows } from "#src/backend/services/workflows/list";
-import { postWorkflowsBulkLifecycle } from "#src/backend/services/workflows/bulk-lifecycle";
+import { postWorkflowsBulkLifecycle } from "#src/backend/services/workflows/bulk-actions";
 import { postWorkflowsCreate } from "#src/backend/services/workflows/create";
 import {
   getWorkflowsCurrent,

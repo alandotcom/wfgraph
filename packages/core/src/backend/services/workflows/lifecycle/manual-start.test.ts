@@ -11,9 +11,9 @@ import {
   stubIntegrationRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
-import type { ExecutionRepo } from "#src/backend/services/workflows/executions/repo/index";
-import type { WorkflowExecution } from "#src/backend/services/workflows/executions/repo/contracts";
-import { postWorkflowExecute } from "#src/backend/services/workflows/triggering/execute";
+import type { ExecutionRepo } from "#src/backend/services/executions/repo";
+import type { WorkflowExecution } from "#src/backend/services/executions/repo/contracts";
+import { postWorkflowExecute } from "#src/backend/services/workflows/lifecycle/manual-start";
 import type { LifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
 import { createSerializedWorkflowGraph } from "@rova/shared/workflow/graph";
 

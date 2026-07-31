@@ -3,7 +3,7 @@ import { Effect, Layer } from "effect";
 import type {
   ExecutionRepo,
   WorkflowExecution,
-} from "#src/backend/services/workflows/executions/repo/index";
+} from "#src/backend/services/executions/repo";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { InngestError } from "#src/backend/lib/effect/inngest-client";
 import {
@@ -17,7 +17,7 @@ import {
   buildRunStartedAuditMessage,
   enqueueStartedRun,
   recordPausedRunIgnored,
-} from "./run-lifecycle";
+} from "./run-rows";
 
 function createExecution(
   overrides: Partial<WorkflowExecution> = {}
