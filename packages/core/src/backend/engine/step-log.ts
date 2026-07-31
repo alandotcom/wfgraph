@@ -13,7 +13,10 @@ import { getAppLogger } from "#src/backend/lib/logger";
 import type { StepContext } from "#src/backend/extensions/steps/step-handler";
 import { getErrorMessage } from "@rova/shared/utils";
 import type { StepResult } from "@rova/shared/actions/step-result";
-import type { WorkflowStepLogHandle, WorkflowStore } from "./store";
+import type {
+  WorkflowStepLogHandle,
+  WorkflowStore,
+} from "#src/backend/engine/store";
 
 const stepLogLogger = getAppLogger("workflow", "step-log");
 

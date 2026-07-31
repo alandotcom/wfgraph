@@ -1,41 +1,9 @@
 /**
- * How an integration writes a step.
- *
- * `defineStep` owns everything around a step's own work: decoding the config the
- * engine resolved, fetching the integration's credentials, and turning what the
- * handler answered into the `StepResult` envelope the engine reads. What is left
- * for an author is the schema of what comes in, the schema of what goes out, the
- * metadata the editor draws the action with, and an `Effect` that gets from one
- * schema to the other.
- *
- * The two schemas are load-bearing rather than documentation. The input one is
- * what the handler's parameter type comes from, so a field the schema does not
- * name cannot be read, and each `configFields` key is checked against it. The
- * output one is what the handler's return type comes from and what the editor's
- * template autocomplete lists, so a step whose payload drifts from what
- * downstream nodes are offered stops compiling.
- *
- * **Both directions run through the schema's canonical JSON codec.** A step
- * boundary is JSON on both sides -- the config arrived from a jsonb column
- * through template resolution, and the result is memoized by Inngest -- so what
- * runs is `Schema.toCodecJson(schema)` rather than the schema itself. That is
- * what lets an author write a transform: a comma-separated field becomes a list
- * on the way in, and a `Date` becomes an ISO string on the way out. Encoding
- * through the plain schema would leave a live `Date` in the value, which
- * survives JSONB by accident through `Date.prototype.toJSON` and comes back a
- * string on replay, handing the same memoized step two different types.
- *
- * Two consequences an author meets. On the way in, an optional field takes an
- * absent key or a null and refuses a key present and holding `undefined`, because
- * the codec rewrites `optional(X)` to `optionalKey(NullOr(X))`; the engine writes
- * none of the third kind. On the way out, the encode is a trim as well as a
- * conversion, so a key the output schema does not declare does not survive it.
- *
- * **What runs the handler.** `implement` answers a factory rather than a step,
- * because two things around the handler belong to the app: the credential store
- * a node's integration is read from, and the runtime the composed step runs on.
- * The app supplies both where it builds the engine's action port. The run log
- * rows are the engine's, written through its store around this call.
+ * `defineStep` decodes both schemas through `Schema.toCodecJson`, so a transform
+ * an author writes (a comma-separated field to a list, a `Date` to an ISO string)
+ * runs on the way in and out rather than on the bare schema. README's "Writing a
+ * step" section owns the full contract, including why and the optional-field
+ * spelling that follows from it.
  */
 
 import { Effect, Result, Schema } from "effect";

@@ -7,7 +7,7 @@ import {
   InternalFailure,
   Unauthorized,
 } from "#src/backend/lib/effect/failures";
-import { ApiKeyRepo } from "./repo";
+import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 
 const API_KEY_PREFIX = "wfb_";
 const API_KEY_PREFIX_LENGTH = 11;

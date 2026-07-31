@@ -12,21 +12,21 @@ import { toWorkflowGraphData } from "@rova/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 import type { JsonObject } from "@rova/shared/types/json";
 import { getErrorMessageAsync } from "@rova/shared/utils";
-import type { WorkflowActions } from "./actions";
-import { CancelBoundary } from "./cancel-boundary";
-import type { WorkflowExecutionRuntime } from "./runtime";
-import { NodeScheduler } from "./scheduler";
-import type { WorkflowStore } from "./store";
+import type { WorkflowActions } from "#src/backend/engine/actions";
+import { CancelBoundary } from "#src/backend/engine/cancel-boundary";
+import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
+import { NodeScheduler } from "#src/backend/engine/scheduler";
+import type { WorkflowStore } from "#src/backend/engine/store";
 import {
   recordRunCompleted,
   recordRunFailed,
   type TraversalTerminalStatus,
-} from "./terminal-record";
-import { Traversal } from "./traversal";
+} from "#src/backend/engine/terminal-record";
+import { Traversal } from "#src/backend/engine/traversal";
 
-export type { WorkflowActions } from "./actions";
-export type { WorkflowExecutionRuntime } from "./runtime";
-export type { WorkflowStore } from "./store";
+export type { WorkflowActions } from "#src/backend/engine/actions";
+export type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
+export type { WorkflowStore } from "#src/backend/engine/store";
 
 export type WorkflowExecutionInput = {
   graph: SerializedWorkflowGraph;

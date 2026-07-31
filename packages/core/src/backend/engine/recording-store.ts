@@ -15,7 +15,7 @@ import type {
   RecordAuditEventInput,
   StartStepLogInput,
   WorkflowStore,
-} from "./store";
+} from "#src/backend/engine/store";
 
 /** The input each store method receives, keyed by method name. */
 type StoreCallInputs = {

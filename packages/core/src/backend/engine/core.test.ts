@@ -12,13 +12,13 @@ import { Effect, Schema } from "effect";
 import { unknownRest } from "@rova/shared/types/schema";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { WorkflowNode } from "@rova/shared/graph/types";
-import { executeWorkflow } from "./core";
-import { executionData, executionError } from "./contracts";
+import { executeWorkflow } from "#src/backend/engine/core";
+import { executionData, executionError } from "#src/backend/engine/contracts";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
-} from "./recording-store";
-import { createInMemoryWorkflowRuntime } from "./runtime";
+} from "#src/backend/engine/recording-store";
+import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 
 const HOST_ACTION_ID = "test/host-action";
 const PRODUCER_ACTION_ID = "test/producer-action";

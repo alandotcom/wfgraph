@@ -14,22 +14,28 @@ import type { ConditionBranch, WorkflowNode } from "@rova/shared/graph/types";
 import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
 import { type JsonObject, readJsonValue } from "@rova/shared/types/json";
 import { getErrorMessageAsync } from "@rova/shared/utils";
-import type { WorkflowActions } from "./actions";
-import type { CancelBoundary } from "./cancel-boundary";
-import { conditionLogger, evaluateConditionExpression } from "./conditions";
+import type { WorkflowActions } from "#src/backend/engine/actions";
+import type { CancelBoundary } from "#src/backend/engine/cancel-boundary";
+import {
+  conditionLogger,
+  evaluateConditionExpression,
+} from "#src/backend/engine/conditions";
 import {
   type ExecutionResult,
   executionData,
   executionError,
   type NodeOutputs,
   type RunLogger,
-} from "./contracts";
-import type { WorkflowExecutionRuntime } from "./runtime";
-import { type NodeContext, runWithStepLog } from "./step-log";
-import type { WorkflowStore } from "./store";
-import { processTemplates, resolveTemplateString } from "./templates";
-import type { Traversal } from "./traversal";
-import { executeWaitAction } from "./wait";
+} from "#src/backend/engine/contracts";
+import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
+import { type NodeContext, runWithStepLog } from "#src/backend/engine/step-log";
+import type { WorkflowStore } from "#src/backend/engine/store";
+import {
+  processTemplates,
+  resolveTemplateString,
+} from "#src/backend/engine/templates";
+import type { Traversal } from "#src/backend/engine/traversal";
+import { executeWaitAction } from "#src/backend/engine/wait";
 
 /**
  * What a node's memoized work reports back to the traversal. It travels through

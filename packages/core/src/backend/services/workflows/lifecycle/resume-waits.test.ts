@@ -12,7 +12,7 @@ import {
   stubInngestClient,
 } from "#src/backend/lib/effect/test-layers";
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
-import { resumeWaitsMatchingEvent } from "./resume-waits";
+import { resumeWaitsMatchingEvent } from "#src/backend/services/workflows/lifecycle/resume-waits";
 
 const { loggerErrorMock } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),

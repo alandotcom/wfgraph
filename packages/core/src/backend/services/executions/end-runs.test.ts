@@ -10,7 +10,10 @@ import {
   stubInngestClient,
 } from "#src/backend/lib/effect/test-layers";
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
-import { announceSupersededRuns, cancelInFlightRuns } from "./end-runs";
+import {
+  announceSupersededRuns,
+  cancelInFlightRuns,
+} from "#src/backend/services/executions/end-runs";
 
 type Repo = ExecutionRepo["Service"];
 

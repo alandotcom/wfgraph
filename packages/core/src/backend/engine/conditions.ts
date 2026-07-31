@@ -11,7 +11,7 @@ import {
 } from "@rova/shared/conditions/conditions";
 import { unwrapStepOutput } from "@rova/shared/graph/node-references";
 import type { JsonObject, JsonValue } from "@rova/shared/types/json";
-import type { NodeOutputs } from "./contracts";
+import type { NodeOutputs } from "#src/backend/engine/contracts";
 
 export const conditionLogger = getAppLogger("workflow", "executor").getChild(
   "condition"

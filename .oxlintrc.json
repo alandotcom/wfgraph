@@ -235,6 +235,27 @@
       }
     },
     {
+      // `#src/` is the one spelling a module inside packages/core names another
+      // by. A subpath import is resolved against this package's own manifest, so
+      // it reads the same from any depth and survives the file being moved; a
+      // relative path has to be rewritten in every neighbour when a directory
+      // changes shape, which is the cost this pass just paid down.
+      "files": ["packages/core/src/**/*.ts", "packages/core/src/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["./*", "./**", "../*", "../**"],
+                "message": "Name the module with #src/, which resolves against packages/core's own manifest from any depth."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": [
         "examples/app.ts",
         "scripts/migrate.ts",

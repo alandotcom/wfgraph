@@ -11,7 +11,7 @@ import {
   workflowExecutionInputSchema,
   workflowRunCancelRequested,
   workflowRunRequested,
-} from "./events";
+} from "#src/backend/lib/inngest/events";
 
 function toDurationString(milliseconds: number): string {
   const seconds = Math.max(1, Math.ceil(milliseconds / 1000));

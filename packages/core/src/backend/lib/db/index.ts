@@ -1,7 +1,7 @@
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres, { type Sql } from "postgres";
-import type { NormalizedDatabaseConfig } from "./config";
+import type { NormalizedDatabaseConfig } from "#src/backend/lib/db/config";
 import {
   apiKeys,
   integrations,
@@ -11,7 +11,7 @@ import {
   workflowExecutionsRelations,
   workflows,
   workflowWaitStates,
-} from "./schema";
+} from "#src/backend/lib/db/schema";
 
 const tables: {
   workflows: typeof workflows;

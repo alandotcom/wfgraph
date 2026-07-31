@@ -17,13 +17,13 @@ import { unknownRest } from "@rova/shared/types/schema";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
-import { executeWorkflow } from "./core";
+import { executeWorkflow } from "#src/backend/engine/core";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
-} from "./recording-store";
-import { createInMemoryWorkflowRuntime } from "./runtime";
-import type { PendingCancel, WorkflowStore } from "./store";
+} from "#src/backend/engine/recording-store";
+import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
+import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
 
 const PRODUCER_ACTION_ID = "test/cancel-producer";
 const RECORDER_ACTION_ID = "test/cancel-recorder";

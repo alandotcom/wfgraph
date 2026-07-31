@@ -39,3 +39,46 @@ handle reachable from anywhere is deleted as part of the runtime work in ADR-000
   claim the Layer made two app instances in one process viable; that is not a goal, and
   one Rova per process remains the only supported arrangement. See the dependency-wiring
   amendment in ADR-0002 (decided 2026-07-28).
+
+## Amendment: the schema name is a runtime option (2026-07-31)
+
+Rova keeps its tables in a Postgres schema the host names, `_workflows` by default. The
+tables are therefore declared unqualified in
+`packages/core/src/backend/lib/db/schema.ts`, and the connection's `search_path` is the
+only thing that decides where they land. `db/index.ts` sends it in the startup packet on
+the query client and the migration client alike, so every connection a pool opens, and
+every one it reopens after a network drop, is already pointed at the right schema.
+Dropping that one schema removes Rova from the database, migration journal included.
+
+A build-time schema name was the alternative, and it fails the case this exists for: an
+adopter whose database already has a `workflows` table, or who runs two environments in
+one database. Qualifying every table in the generated SQL would also mean the shipped
+migrations could only ever build one schema.
+
+- A host's config reaches a pool through `normalizeDatabaseConfig` (`db/config.ts`) and
+  no other way. It refuses a config naming no database, a schema name Postgres would not
+  read back as written, and a `url` carrying its own `search_path`. That last one matters
+  because a URL query parameter reaches the startup packet and outranks the option, so
+  the two would disagree about where the tables are.
+- Only a connection that keeps the `search_path` startup parameter works, since a pooler
+  that swallows it would build the wrong schema silently. `runMigrations` reads
+  `current_schema()` back before applying anything and fails naming both schemas, so that
+  failure surfaces at the migration rather than in a query downstream. README's database
+  options section has the pooler configuration this requires.
+- Migrations hold a session-scoped advisory lock, which is why the migration pool is one
+  connection. Postgres does not serialize concurrent `CREATE SCHEMA` or `CREATE TABLE` of
+  one name; it fails the losers on a unique violation, so replicas starting together used
+  to crash all but the first.
+- drizzle-kit can no longer be told where the tables are, so `push`, `studio` and `pull`
+  are gone and `drizzle.config.ts` carries no credentials. Generating SQL is the one thing
+  drizzle-kit still does, offline, and `pnpm run db:migrate` applies it through Rova's own
+  migrator. drizzle-kit also writes `REFERENCES "public"."workflows"` for a foreign key
+  even where both tables are unqualified, which is why `db:generate` runs
+  `scripts/unqualify-migrations.ts` after it.
+- `@rova/core/migrate` exists because of this: the shipped SQL names no schema, so nothing
+  but Rova's migrator carries the `search_path` that decides which one it builds.
+- Four tests guard the arrangement, and they are the reason it can be trusted:
+  `db/schema.test.ts` holds every table to naming no schema, `db/migrations-sql.test.ts`
+  holds every committed statement to qualifying nothing but Rova's own table names,
+  `db/config.test.ts` covers the checks and defaults, and `db/index.test.ts` covers what
+  the pools are opened with.

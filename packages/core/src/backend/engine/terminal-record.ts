@@ -3,8 +3,11 @@
  * that walked its graph to the end and on the one that died on an error.
  */
 
-import type { RunLogger } from "./contracts";
-import type { WorkflowRunAuditEventType, WorkflowStore } from "./store";
+import type { RunLogger } from "#src/backend/engine/contracts";
+import type {
+  WorkflowRunAuditEventType,
+  WorkflowStore,
+} from "#src/backend/engine/store";
 
 /**
  * How a run that walked its graph to the end finished. `canceled` is a run that

@@ -8,7 +8,7 @@ import {
   type WorkflowStore,
 } from "#src/backend/engine/store";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import { createWorkflowRunFunction } from "./workflow-function";
+import { createWorkflowRunFunction } from "#src/backend/lib/inngest/workflow-function";
 
 const { executeWorkflowMock } = vi.hoisted(() => ({
   executeWorkflowMock: vi.fn(),

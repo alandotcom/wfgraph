@@ -18,7 +18,7 @@ import {
   executionData,
   executionError,
   type NodeOutputs,
-} from "./contracts";
+} from "#src/backend/engine/contracts";
 
 /** Key a node's output is stored and looked up under. */
 export function outputKey(nodeId: string): string {

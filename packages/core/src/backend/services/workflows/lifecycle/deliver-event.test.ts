@@ -16,7 +16,10 @@ import {
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
 import type { EventSubscriber } from "#src/backend/services/workflows/repo";
-import { applyLifecycleRules, deliverToWaits } from "./deliver-event";
+import {
+  applyLifecycleRules,
+  deliverToWaits,
+} from "#src/backend/services/workflows/lifecycle/deliver-event";
 
 // The two neighbours whose own cases live elsewhere, replaced for this file.
 const {

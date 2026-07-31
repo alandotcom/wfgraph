@@ -19,12 +19,12 @@ import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { defineStep } from "#src/backend/extensions/steps/define-step";
-import { executeWorkflow } from "./core";
+import { executeWorkflow } from "#src/backend/engine/core";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
-} from "./recording-store";
-import { createInMemoryWorkflowRuntime } from "./runtime";
+} from "#src/backend/engine/recording-store";
+import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 
 const EMAIL_ACTION_ID = "test/replay-email";
 const FOLLOWUP_ACTION_ID = "test/replay-followup";

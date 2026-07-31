@@ -12,10 +12,10 @@ import {
   nodesBehindOutlet,
 } from "@rova/shared/lifecycle/lifecycle-outlets";
 import { readLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
-import type { RunLogger } from "./contracts";
-import type { WorkflowExecutionRuntime } from "./runtime";
-import type { PendingCancel, WorkflowStore } from "./store";
-import type { Traversal } from "./traversal";
+import type { RunLogger } from "#src/backend/engine/contracts";
+import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
+import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
+import type { Traversal } from "#src/backend/engine/traversal";
 
 export type CancelBoundaryInput = {
   /** The entry nodes this run started from. */

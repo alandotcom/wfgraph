@@ -15,7 +15,10 @@ import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import type { RovaRuntime } from "#src/backend/runtime";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { decodeIsoTimestampOrThrow } from "@rova/shared/types/timestamp";
-import type { CompleteRunInput, WorkflowStore } from "./store";
+import type {
+  CompleteRunInput,
+  WorkflowStore,
+} from "#src/backend/engine/store";
 
 const storeLogger = getAppLogger("workflow", "db-store");
 

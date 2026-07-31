@@ -8,8 +8,8 @@ import {
   resolveOutputPath,
   type TemplateToken,
 } from "@rova/shared/graph/node-references";
-import type { NodeOutputs } from "./contracts";
-import { outputKey } from "./traversal";
+import type { NodeOutputs } from "#src/backend/engine/contracts";
+import { outputKey } from "#src/backend/engine/traversal";
 
 /**
  * Render a resolved value back into the surrounding template string. Objects and

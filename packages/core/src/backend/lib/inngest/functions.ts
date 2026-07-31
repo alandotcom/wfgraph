@@ -6,8 +6,8 @@ import type { RovaRuntime } from "#src/backend/runtime";
 // Static, now that the id helper the app assembly needs has moved to a leaf of
 // its own: this import is the only reason the delivery stack loads, and this
 // module is on the path of a request that serves it anyway.
-import { createInngestEventListenerFunction } from "./event-listener-function";
-import { createWorkflowRunFunction } from "./workflow-function";
+import { createInngestEventListenerFunction } from "#src/backend/lib/inngest/event-listener-function";
+import { createWorkflowRunFunction } from "#src/backend/lib/inngest/workflow-function";
 
 /**
  * Everything this app registers with Inngest: the one run function, and one

@@ -7,7 +7,7 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { SilentAppLoggerLayer } from "#src/backend/lib/effect/test-layers";
-import { TracerBridgeLayer } from "./tracer";
+import { TracerBridgeLayer } from "#src/backend/lib/effect/tracer";
 
 const tracedWork = Effect.fn("traced.work")(function* () {
   return yield* Effect.succeed("ok");

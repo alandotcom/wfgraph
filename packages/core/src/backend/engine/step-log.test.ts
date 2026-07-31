@@ -8,8 +8,8 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { runWithStepLog } from "./step-log";
-import type { WorkflowStore } from "./store";
+import { runWithStepLog } from "#src/backend/engine/step-log";
+import type { WorkflowStore } from "#src/backend/engine/store";
 
 const { loggerWarnMock } = vi.hoisted(() => ({ loggerWarnMock: vi.fn() }));
 

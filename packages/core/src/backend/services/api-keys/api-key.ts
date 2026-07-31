@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailure } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
-import { ApiKeyRepo } from "./repo";
+import { ApiKeyRepo } from "#src/backend/services/api-keys/repo";
 
 /** The contract answers a delete with this and nothing else. */
 type ApiKeyDeleted = { success: true };

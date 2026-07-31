@@ -21,11 +21,21 @@ import {
   readWaitConfig,
   type WaitConfig,
 } from "@rova/shared/lifecycle/wait-subscription";
-import type { ExecutionResult } from "./contracts";
-import type { WorkflowExecutionRuntime } from "./runtime";
-import { closeStepLog, type NodeContext, openStepLog } from "./step-log";
-import type { WorkflowStepLogHandle, WorkflowStore } from "./store";
-import { compileWaitSubscriptions, type ResolveTemplates } from "./wait-match";
+import type { ExecutionResult } from "#src/backend/engine/contracts";
+import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
+import {
+  closeStepLog,
+  type NodeContext,
+  openStepLog,
+} from "#src/backend/engine/step-log";
+import type {
+  WorkflowStepLogHandle,
+  WorkflowStore,
+} from "#src/backend/engine/store";
+import {
+  compileWaitSubscriptions,
+  type ResolveTemplates,
+} from "#src/backend/engine/wait-match";
 
 export type WaitActionInput = {
   config: Record<string, unknown>;

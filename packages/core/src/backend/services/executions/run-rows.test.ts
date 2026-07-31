@@ -17,7 +17,7 @@ import {
   buildRunStartedAuditMessage,
   enqueueStartedRun,
   recordPausedRunIgnored,
-} from "./run-rows";
+} from "#src/backend/services/executions/run-rows";
 
 function createExecution(
   overrides: Partial<WorkflowExecution> = {}

@@ -23,8 +23,8 @@ import {
   createSecretConfigKeyTest,
   maskIntegrationConfig,
   SECRET_MASK,
-} from "./integration-config-masking";
-import { IntegrationRepo } from "./repo";
+} from "#src/backend/services/integrations/integration-config-masking";
+import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 
 type IntegrationSummary = {
   id: string;

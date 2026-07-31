@@ -5,7 +5,7 @@ import {
   workflowRunCancelRequested,
   workflowRunRequested,
   workflowWaitSignal,
-} from "./events";
+} from "#src/backend/lib/inngest/events";
 
 export type WorkflowRunRequestedEventData = {
   graph: SerializedWorkflowGraph;

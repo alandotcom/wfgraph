@@ -13,18 +13,18 @@ import type { JsonObject } from "@rova/shared/types/json";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import { resolveOutputPath } from "@rova/shared/graph/node-references";
 import type { WorkflowNode } from "@rova/shared/graph/types";
-import { executeWorkflow } from "./core";
+import { executeWorkflow } from "#src/backend/engine/core";
 import {
   type ExecutionResult,
   executionData,
   executionError,
-} from "./contracts";
+} from "#src/backend/engine/contracts";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
-} from "./recording-store";
-import { noWorkflowActions } from "./actions";
-import { createInMemoryWorkflowRuntime } from "./runtime";
+} from "#src/backend/engine/recording-store";
+import { noWorkflowActions } from "#src/backend/engine/actions";
+import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 
 /**
  * The Wait node's own run-log rows.

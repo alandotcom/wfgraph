@@ -8,7 +8,7 @@ import {
   buildWorkflowUpdateData,
   toWorkflowApiPayload,
   withDefaultLifecycleNode,
-} from "./mappers";
+} from "#src/backend/services/workflows/mappers";
 
 function createWorkflow(overrides: Partial<Workflow> = {}): Workflow {
   return {

@@ -5,7 +5,7 @@ import {
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
-import { withSpan } from "./telemetry";
+import { withSpan } from "#src/backend/lib/telemetry";
 
 let exporter: InMemorySpanExporter;
 let provider: BasicTracerProvider;

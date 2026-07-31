@@ -1,8 +1,11 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailure } from "#src/backend/lib/effect/internal-failure";
-import { createApiKeyRecord } from "./auth";
-import { type ApiKeySummary, ApiKeyRepo } from "./repo";
+import { createApiKeyRecord } from "#src/backend/services/api-keys/auth";
+import {
+  type ApiKeySummary,
+  ApiKeyRepo,
+} from "#src/backend/services/api-keys/repo";
 
 type ApiKeyListItem = {
   id: string;

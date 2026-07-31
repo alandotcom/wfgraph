@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
 import type { WorkflowNode } from "@rova/shared/graph/types";
-import { deriveEventSubscriptions } from "./subscriptions";
+import { deriveEventSubscriptions } from "#src/backend/services/workflows/lifecycle/subscriptions";
 
 function lifecycleNode(rules?: LifecycleRules): WorkflowNode {
   return {

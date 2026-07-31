@@ -3,7 +3,7 @@ import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { checkCelBooleanExpression } from "#src/backend/lib/cel/environment";
-import { createInMemoryWorkflowRuntime } from "./runtime";
+import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { Schema } from "effect";
 import {
@@ -13,12 +13,12 @@ import {
 } from "@rova/shared/conditions/conditions";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { WorkflowNode } from "@rova/shared/graph/types";
-import { executionData } from "./contracts";
-import { executeWorkflow } from "./core";
+import { executionData } from "#src/backend/engine/contracts";
+import { executeWorkflow } from "#src/backend/engine/core";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
-} from "./recording-store";
+} from "#src/backend/engine/recording-store";
 
 const WRAPPED_ACTION_ID = "test/wrapped-output-action";
 

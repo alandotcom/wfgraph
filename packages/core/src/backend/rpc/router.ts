@@ -44,8 +44,8 @@ import {
 import { rpcContract } from "@rova/shared/rpc/contracts";
 import { readAs } from "@rova/shared/types/schema";
 import { getErrorMessage } from "@rova/shared/utils";
-import type { RpcContext } from "./context";
-import { toOrpcError } from "./errors";
+import type { RpcContext } from "#src/backend/rpc/context";
+import { toOrpcError } from "#src/backend/rpc/errors";
 
 const rpcLogger = getAppLogger("rpc", "handler");
 

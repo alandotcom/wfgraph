@@ -3,7 +3,7 @@ import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
 } from "@rova/shared/extensions/catalog";
-import { maskIntegrationConfig } from "./integration-config-masking";
+import { maskIntegrationConfig } from "#src/backend/services/integrations/integration-config-masking";
 
 const slackLike = {
   type: "slack",

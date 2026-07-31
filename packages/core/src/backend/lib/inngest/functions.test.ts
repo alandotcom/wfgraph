@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { defineEvent } from "#src/backend/extensions/define-event";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
-import { buildInngestFunctions } from "./functions";
+import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 
 // Constructing a client opens nothing; these functions are never invoked.
 const client = new Inngest({ id: "functions-test", isDev: true });

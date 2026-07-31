@@ -2,8 +2,8 @@ import { OpenAPIGenerator } from "@orpc/openapi";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { OpenAPIReferenceHandlerPlugin } from "@orpc/openapi/plugins";
 import { EffectSchemaToJsonSchemaConverter } from "@orpc/experimental-effect";
-import type { RpcContext } from "./context";
-import { rpcRouter } from "./router";
+import type { RpcContext } from "#src/backend/rpc/context";
+import { rpcRouter } from "#src/backend/rpc/router";
 
 export const openApiRestHandler = new OpenAPIHandler<RpcContext>(rpcRouter);
 
