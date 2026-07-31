@@ -32,15 +32,18 @@
  * conversion, so a key the output schema does not declare does not survive it.
  *
  * **What runs the handler.** `implement` answers a factory rather than a step,
- * because the one thing around the handler that belongs to the app is the
- * credential store a node's integration is read from. The app supplies it where
- * it builds the engine's action port. The run log rows are the engine's, written
- * through its store around this call.
+ * because two things around the handler belong to the app: the credential store
+ * a node's integration is read from, and the runtime the composed step runs on.
+ * The app supplies both where it builds the engine's action port. The run log
+ * rows are the engine's, written through its store around this call.
  */
 
 import { Effect, Result, Schema } from "effect";
 import type { HttpClient } from "effect/unstable/http";
-import type { WorkflowCredentials } from "#src/backend/extensions/credential-fetcher";
+import type {
+  CredentialsUnavailable,
+  WorkflowCredentials,
+} from "#src/backend/extensions/credential-fetcher";
 import { encodeThroughOutputSchema } from "#src/backend/extensions/steps/output-encoding";
 import {
   readIntegrationId,
@@ -100,8 +103,12 @@ export type StepRunContext<TCredentials = WorkflowCredentials> = {
    * say -- should not read an integration's secrets to reach that conclusion,
    * so the fetch is an effect the handler yields rather than a value handed to
    * it. Yielding it more than once fetches once.
+   *
+   * A store that refuses the read fails with `CredentialsUnavailable`. Let it
+   * through: `defineStep` turns it into a retry rather than a failed node, and
+   * catching it would spend the run on a condition that clears on its own.
    */
-  readonly credentials: Effect.Effect<TCredentials>;
+  readonly credentials: Effect.Effect<TCredentials, CredentialsUnavailable>;
 };
 
 /**
@@ -118,7 +125,11 @@ export type StepRunContext<TCredentials = WorkflowCredentials> = {
 export type StepHandler<TInput, TOutput> = (
   input: TInput,
   context: StepRunContext
-) => Effect.Effect<TOutput, StepFailure, HttpClient.HttpClient>;
+) => Effect.Effect<
+  TOutput,
+  StepFailure | CredentialsUnavailable,
+  HttpClient.HttpClient
+>;
 
 /** A config field naming a key the step's input schema declares. */
 type ConfigFieldFor<TInput> = Omit<ActionConfigFieldBase, "key"> & {
@@ -222,7 +233,7 @@ function buildStep<TInput, TOutput>(
     encodeOutput: (value: unknown) => Result.Result<unknown, string>,
     rawInput: Record<string, unknown>,
     context: StepContext | undefined
-  ): Effect.Effect<StepResult> {
+  ): Effect.Effect<StepResult, CredentialsUnavailable> {
     return Effect.gen(function* () {
       const integrationId = readIntegrationId(rawInput.integrationId);
       const credentials = yield* Effect.cached(
@@ -262,13 +273,19 @@ function buildStep<TInput, TOutput>(
 
       return encoded.success;
     }).pipe(
-      Effect.match({
-        onSuccess: (data): StepResult => ({ success: true, data }),
-        onFailure: (failure): StepResult => ({
-          success: false,
-          error: { message: failure.message },
-        }),
-      }),
+      Effect.map((data): StepResult => ({ success: true, data })),
+      // Only the failure this step can answer for becomes the envelope. A
+      // `CredentialsUnavailable` stays in the error channel, where the app's
+      // `runStep` turns it into a rejection the durable runtime retries: a node
+      // whose secrets were unreadable for a moment has not failed.
+      Effect.catchTag(
+        "StepFailure",
+        (failure): Effect.Effect<StepResult> =>
+          Effect.succeed({
+            success: false,
+            error: { message: failure.message },
+          })
+      ),
       Effect.provide(VendorTransport)
     );
   }
@@ -280,7 +297,7 @@ function buildStep<TInput, TOutput>(
     );
 
     return (app) => (rawInput) =>
-      Effect.runPromise(
+      app.runStep(
         runStep(
           app,
           actionId,
@@ -341,7 +358,7 @@ export function defineStep<TInput, TOutput>(
 function readCredentials(
   app: StepEnvironment,
   integrationId: string | undefined
-): Effect.Effect<WorkflowCredentials> {
+): Effect.Effect<WorkflowCredentials, CredentialsUnavailable> {
   // `Effect.cached` at the call site is what makes the fetch happen where the
   // handler yields. `suspend` covers the other half: `credentialsFor` is the
   // app's function, and wrapping it keeps an impure one from reaching the store

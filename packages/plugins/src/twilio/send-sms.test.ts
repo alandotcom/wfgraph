@@ -285,10 +285,13 @@ describe("sendSmsHandler", () => {
  * keys the node holds a value for.
  */
 describe("the send-sms step as an integration binds it", () => {
-  // What the app supplies a step definition: the credential store. This node
-  // names no integration, so nothing is read.
+  // What the app supplies a step definition: the credential store and the
+  // runtime the step runs on. This node names no integration, so nothing is
+  // read, and the handler asks for no app service, so Effect's own runtime is
+  // all it takes to run.
   const run = twilio.actions["send-sms"].implement("twilio/send-sms")({
     credentialsFor: () => Effect.succeed({}),
+    runStep: (effect) => Effect.runPromise(effect),
   });
 
   it("answers the log-only success a default test run expects", async () => {

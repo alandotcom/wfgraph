@@ -13,6 +13,7 @@ import { unknownRest } from "@rova/shared/types/schema";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { WorkflowNode } from "@rova/shared/graph/types";
 import { executeWorkflow } from "./core";
+import { executionData, executionError } from "./contracts";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
@@ -234,7 +235,7 @@ describe("host action execution", () => {
     );
 
     expect(result.results.action_1?.success).toBe(false);
-    expect(result.results.action_1?.error).toBe("Donor not found");
+    expect(executionError(result.results.action_1)).toBe("Donor not found");
   });
 
   // A stored graph naming an action nothing assembled -- an id from a deleted
@@ -278,10 +279,12 @@ describe("host action execution", () => {
     );
 
     expect(result.results.action_1?.success).toBe(false);
-    expect(result.results.action_1?.error).toContain(
+    expect(executionError(result.results.action_1)).toContain(
       'Unknown action type: "nobody/knows"'
     );
-    expect(result.results.action_1?.error).toContain("Condition, Wait");
+    expect(executionError(result.results.action_1)).toContain(
+      "Condition, Wait"
+    );
   });
 });
 
@@ -460,7 +463,7 @@ describe("run persistence through the store port", () => {
 
     expect(handlerFn).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(true);
-    expect(result.results.action_1?.data).toEqual({
+    expect(executionData(result.results.action_1)).toEqual({
       success: true,
       data: { ok: true },
     });
@@ -484,7 +487,9 @@ describe("run persistence through the store port", () => {
 
     expect(handlerFn).toHaveBeenCalledTimes(0);
     expect(result.success).toBe(false);
-    expect(result.results.lifecycle_1?.error).toBe("run log unreachable");
+    expect(executionError(result.results.lifecycle_1)).toBe(
+      "run log unreachable"
+    );
   });
 
   // Every seam failure the backend answers with is a `Schema.TaggedErrorClass`,
@@ -538,7 +543,7 @@ describe("run persistence through the store port", () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.results.action_1?.error).toBe(
+    expect(executionError(result.results.action_1)).toBe(
       "Subscription cancelled by the provider"
     );
     expect(store.callsOf("completeRun")[0]?.status).toBe("failed");

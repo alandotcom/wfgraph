@@ -7,7 +7,7 @@
  * handler's Effect and what it produces is thrown away with the step.
  */
 
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import {
   credentialsFromConfig,
   findIntegration,
@@ -22,6 +22,22 @@ const credentialFetcherLogger = getAppLogger("credentials", "fetcher");
 
 /** A handler's own credential vocabulary, which its integration declares. */
 export type WorkflowCredentials = Record<string, string | undefined>;
+
+/**
+ * The credential store could not be read, which is nothing about the run.
+ *
+ * It travels the step's error channel rather than the `StepResult` envelope, so
+ * the step rejects where the envelope would have failed the node once: a
+ * database that was briefly unreachable clears on its own, and the durable
+ * runtime's retry of the rejected step is what waits for it.
+ */
+export class CredentialsUnavailable extends Schema.TaggedErrorClass<CredentialsUnavailable>()(
+  "CredentialsUnavailable",
+  {
+    integrationId: Schema.String,
+    message: Schema.String,
+  }
+) {}
 
 const NO_CREDENTIALS: WorkflowCredentials = {};
 
@@ -45,28 +61,38 @@ function mapIntegrationConfig(
 /**
  * An integration's credentials, or nothing when no row carries that id.
  *
- * `Effect.promise`, not `tryPromise`: a credential store that rejects is a
- * defect, and a defect leaves the step by the throw path, where Inngest's
- * function-level retry runs the step again minutes later. That is the right
- * answer for a database that was briefly unreachable. A typed failure would end
- * the run on a condition that clears on its own.
+ * A row that is missing answers with no credentials, because a step configured
+ * with no integration is a step working against a public API. A store that
+ * refuses the read answers with `CredentialsUnavailable`, which the step's
+ * caller retries.
  */
 export function fetchCredentials(
   catalog: ExtensionCatalog,
   runtime: RovaRuntime,
   integrationId: string
-): Effect.Effect<WorkflowCredentials> {
+): Effect.Effect<WorkflowCredentials, CredentialsUnavailable> {
   return Effect.gen(function* () {
     const logger = credentialFetcherLogger.with({ integrationId });
     logger.debug("Fetching integration credentials");
 
-    // A step's Effect asks for nothing but an HTTP client, so the repository is
-    // reached by running the app's runtime rather than by widening what a
-    // handler requires.
-    const integration = yield* Effect.promise(() =>
-      runtime.runPromise(
-        Effect.flatMap(IntegrationRepo, (repo) => repo.findById(integrationId))
-      )
+    // A step's Effect asks for nothing but an HTTP client, so the app's services
+    // are provided into the query here rather than by widening what a handler
+    // requires. That is what keeps the step's own requirement channel empty, and
+    // it is what lets a plugin's test run a step on a runtime carrying nothing.
+    const services = yield* runtime.contextEffect;
+    const integration = yield* Effect.provideContext(
+      Effect.flatMap(IntegrationRepo, (repo) => repo.findById(integrationId)),
+      services
+    ).pipe(
+      Effect.catchTag("DatabaseError", (error) => {
+        logger.error("Could not read the integration", { error });
+        return Effect.fail(
+          new CredentialsUnavailable({
+            integrationId,
+            message: `Could not read the credentials for integration "${integrationId}".`,
+          })
+        );
+      })
     );
 
     if (!integration) {

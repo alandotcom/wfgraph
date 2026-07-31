@@ -175,23 +175,28 @@ plugin is that one file beside `client.ts`, `test.ts`, `icon.tsx` and `ui.ts`.
 **A step is written with `defineStep`.** `packages/core/src/backend/extensions/steps/define-step.ts`
 takes an input schema, an output schema, the metadata the editor draws the action with
 (`label`, `description`, `category`, `configFields`), and a handler returning an
-`Effect<Output, StepFailure, HttpClient>`. It owns everything around that handler: the
+`Effect<Output, StepFailure | CredentialsUnavailable, HttpClient>`. It owns everything around that handler: the
 config decode, the credential fetch, and the `StepResult` envelope
 (`{ success: true, data }` or `{ success: false, error: { message } }`, in
 `packages/shared/src/actions/step-result.ts`) that the engine reads. A handler never
 writes that envelope and never touches a Promise. Each `configFields[].key` is
 `Extract<keyof TInput, string>`, so a field the step cannot read fails to compile.
 
-`implement(actionId)` answers a factory rather than a step, because the one thing around
-the handler that belongs to the app is the credential store a node's integration is read
-from. It arrives as `StepEnvironment` (`backend/extensions/steps/step-runner.ts`), which
-`createWorkflowActions` builds off the assembled surface the credential mapping is read
-through. A plugin's own test hands over `{ credentialsFor: () => Effect.succeed({}) }`.
-The handler's own Effect asks for nothing an app provides -- `defineStep` provides the
-vendor transport itself and turns every failure into the envelope -- so it runs on
-`Effect.runPromise` rather than on the app's `ManagedRuntime`. The runtime belongs in that
-record the day a handler may yield an app service, which is the day the type changes
-anyway.
+`implement(actionId)` answers a factory rather than a step, because two things around the
+handler belong to the app: the credential store a node's integration is read from, and the
+runtime the composed step runs on. Both arrive as `StepEnvironment`
+(`backend/extensions/steps/step-runner.ts`), which `createWorkflowActions` builds off the
+assembled surface the credential mapping is read through and the app's own `ManagedRuntime`.
+A plugin's own test hands over `{ credentialsFor: () => Effect.succeed({}), runStep: (effect)
+=> Effect.runPromise(effect) }`, which is exactly right for a step reaching no app service.
+
+The failure taxonomy is what that seam buys. A `StepFailure` is the step's own answer and
+becomes the envelope, so the node fails once. A `CredentialsUnavailable`
+(`extensions/credential-fetcher.ts`) is the store refusing the read, which is nothing about
+the run: it stays in the error channel, and `runStep` rejects with it, which the engine's
+durable runtime reads as a step to run again. The read reaches `IntegrationRepo` by having
+the app's services provided into it rather than by widening what a handler requires, so the
+handler's own Effect still asks for nothing but `HttpClient`.
 
 The handler's `context` parameter is typed with the open credential record unless an
 author annotates it, and that is deliberate: a type parameter appearing only inside a
@@ -336,7 +341,7 @@ where the field names a CEL identifier is checked against come from.
 (`packages/shared/src/conditions/cel-string-literal.ts`), which is `JSON.stringify`: the
 double-quoted form, backslashes doubled, a control character written as an escape. Three
 places assemble a CEL expression by hand -- the source filter beside it, the wait
-subscription's `if` in `engine/core.ts`, and the run function's trigger filter in
+subscription's `if` in `engine/wait.ts`, and the run function's trigger filter in
 `inngest/workflow-function.ts` -- and they sit on both sides of the runtime port, which is
 why the helper is in `@rova/shared`. Hand-rolling the escape is how a value carrying a
 newline gets past a test and fails at Inngest, where the expression is evaluated and the
@@ -619,9 +624,9 @@ that changes which workflows exist drops the list through the `InngestFunctions`
 reach one member of it. The two helpers that mix a send with wait-state bookkeeping,
 `cancelInFlightRuns` (`services/executions/end-runs.ts`) and
 `resumeWaitsMatchingEvent` (`services/workflows/lifecycle/resume-waits.ts`), are Effects
-over `InngestClient` and `ExecutionRepo` like any other service. `defineStep`'s call into a
-handler is the one deliberate `Effect.runPromise` left outside an edge, and it goes when the
-run engine comes onto Effect.
+over `InngestClient` and `ExecutionRepo` like any other service. A step runs on the app's
+runtime too, through `StepEnvironment.runStep`; what is left speaking Promises is the run
+engine's own loop, and the three adapters named below are where it meets an Effect.
 
 **The run engine is three ports, and the app fills all three.** `executeWorkflow` takes a
 `WorkflowExecutionRuntime` for durability, a `WorkflowStore` for the run's trace, and a
@@ -655,9 +660,10 @@ two `globalThis` blocks, and the `callDbModule` / `callInngestModule` seams are 
 the run log, the audit rows and the wait rows are `ExecutionRepo` methods, the integration
 reads are `IntegrationRepo`'s, and `createDbWorkflowStore(runtime)` in
 `engine/db-store.ts` is where the engine's Promise-shaped store meets them. The
-run engine still speaks Promises, so three adapters run an Effect on the app's runtime
-rather than composing one: that store, the credential fetch behind `createWorkflowActions`,
-and the Inngest function registry's workflow-list read.
+run engine still speaks Promises, so two adapters run an Effect on the app's runtime rather
+than composing one: that store, and the Inngest function registry's workflow-list read. A
+step is the third crossing and composes instead, since the credential read is part of the
+step's own Effect and `StepEnvironment.runStep` runs the whole of it on that runtime.
 
 **The database config is checked apart from the pool being opened.** `db/config.ts` holds
 `DatabaseRuntimeConfig` and `normalizeDatabaseConfig`, a pure function that refuses a

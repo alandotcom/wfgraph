@@ -171,6 +171,12 @@ The config decode, the credential fetch, the run log rows, and the `StepResult`
 envelope. A handler answers a value or fails with a `StepFailure`; there is no
 result type to write and no Promise to touch.
 
+A credential read that the store refuses fails with `CredentialsUnavailable`
+instead, and a handler passes it on: that failure rejects the step, which is what
+gets the node a second attempt, where a `StepFailure` fails it once. A helper of
+your own that yields `context.credentials` names the type in what it answers --
+`acuity/client.ts` is the worked example.
+
 **Both directions go through the schema's canonical JSON codec.** A step boundary is
 JSON on both sides -- the config came out of a jsonb column through template
 resolution, and the result is memoized by Inngest -- so what runs is

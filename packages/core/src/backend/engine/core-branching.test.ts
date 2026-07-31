@@ -13,6 +13,7 @@ import {
 } from "@rova/shared/conditions/conditions";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { WorkflowNode } from "@rova/shared/graph/types";
+import { executionData } from "./contracts";
 import { executeWorkflow } from "./core";
 import {
   createRecordingWorkflowStore,
@@ -244,7 +245,7 @@ describe("executeWorkflow branch traversal", () => {
     expect(result.results.condition_node?.success).toBe(true);
     // The Condition step answers in the same wrapper every other step uses, and
     // the decision it recorded is the branch that ran.
-    expect(result.results.condition_node?.data).toEqual({
+    expect(executionData(result.results.condition_node)).toEqual({
       success: true,
       data: { condition: true },
     });
@@ -295,7 +296,7 @@ describe("executeWorkflow branch traversal", () => {
 
     expect(result.success).toBe(true);
     expect(result.results.condition_node?.success).toBe(true);
-    expect(result.results.condition_node?.data).toEqual({
+    expect(executionData(result.results.condition_node)).toEqual({
       success: true,
       data: { condition: false },
     });

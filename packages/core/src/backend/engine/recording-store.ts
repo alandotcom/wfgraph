@@ -1,7 +1,6 @@
 /**
  * `WorkflowStore` adapter that keeps every write in memory so a test can assert
- * on it. It replaces the module monkey-patching the engine tests used to need
- * before persistence became injectable.
+ * on it.
  *
  * Handles it hands back (log ids, wait-state ids) are sequential and readable,
  * which lets a test pair a `completeStepLog` call with the `startStepLog` that

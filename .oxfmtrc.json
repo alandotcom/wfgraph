@@ -16,6 +16,9 @@
     // exclusion list the Biome config used.
     "packages/client/src/components/ui",
     "packages/client/src/components/flow-elements",
-    "packages/client/src/hooks/use-mobile.ts"
+    "packages/client/src/hooks/use-mobile.ts",
+    // drizzle-kit owns these generated snapshots; reformatting them makes
+    // every db:generate a permanent diff the next generation undoes.
+    "packages/core/drizzle"
   ]
 }

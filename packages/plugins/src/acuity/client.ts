@@ -1,5 +1,6 @@
 import { Acuity, AcuityError } from "@fountain-bio/acuity";
 import {
+  type CredentialsUnavailable,
   getErrorMessage,
   StepFailure,
   type StepRunContext,
@@ -14,10 +15,13 @@ import type { AcuityCredentials } from "#src/acuity/index";
  * It takes the whole context rather than the credentials, so fetching them is
  * part of the one line every handler opens with. Every step starts here, which
  * is what makes the check on them written once and reported the same way.
+ *
+ * A store that could not be read is passed on rather than turned into a
+ * `StepFailure`: that failure is the one a step is retried for.
  */
 export function createAcuityClient(
   context: StepRunContext<AcuityCredentials>
-): Effect.Effect<Acuity, StepFailure> {
+): Effect.Effect<Acuity, StepFailure | CredentialsUnavailable> {
   return Effect.flatMap(context.credentials, (credentials) => {
     const userId = credentials.ACUITY_USER_ID?.trim();
     const apiKey = credentials.ACUITY_API_KEY?.trim();

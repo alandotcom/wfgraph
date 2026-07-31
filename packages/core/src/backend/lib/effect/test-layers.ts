@@ -158,15 +158,17 @@ export function stubExtensionCatalog(
 /**
  * What the app hands a step definition, for a test that calls one directly.
  *
- * `implement(id)` answers a factory, so this is its argument: the default runs
- * the handler's Effect on Effect's own runtime and answers no credentials, which
- * is what a step belonging to no integration gets in production too.
+ * `implement(id)` answers a factory, so this is its argument. The defaults
+ * answer no credentials, which is what a step belonging to no integration gets
+ * in production too, and run the step on Effect's own runtime, which is the
+ * whole of what a step needs when nothing it reaches is an app service.
  */
 export function stubStepEnvironment(
   overrides: Partial<StepEnvironment> = {}
 ): StepEnvironment {
   return {
     credentialsFor: () => Effect.succeed({}),
+    runStep: (effect) => Effect.runPromise(effect),
     ...overrides,
   };
 }

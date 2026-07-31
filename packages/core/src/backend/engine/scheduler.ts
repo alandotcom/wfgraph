@@ -1,0 +1,642 @@
+/**
+ * What runs a node, and what runs next once it has.
+ *
+ * One `NodeScheduler` is built per run and holds that run's ports and identity,
+ * which is what every node is executed against. What each node left behind is
+ * `Traversal`'s, and where a cancellation routes the run is `CancelBoundary`'s.
+ */
+
+import { stripInternalFields } from "#src/backend/extensions/steps/step-handler";
+import { withSpan } from "#src/backend/lib/telemetry";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
+import type { StepResult } from "@rova/shared/actions/step-result";
+import type { ConditionBranch, WorkflowNode } from "@rova/shared/graph/types";
+import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
+import { type JsonObject, readJsonValue } from "@rova/shared/types/json";
+import { getErrorMessageAsync } from "@rova/shared/utils";
+import type { WorkflowActions } from "./actions";
+import type { CancelBoundary } from "./cancel-boundary";
+import { conditionLogger, evaluateConditionExpression } from "./conditions";
+import {
+  type ExecutionResult,
+  executionData,
+  executionError,
+  type NodeOutputs,
+  type RunLogger,
+} from "./contracts";
+import type { WorkflowExecutionRuntime } from "./runtime";
+import { type NodeContext, runWithStepLog } from "./step-log";
+import type { WorkflowStore } from "./store";
+import { processTemplates, resolveTemplateString } from "./templates";
+import type { Traversal } from "./traversal";
+import { executeWaitAction } from "./wait";
+
+/**
+ * What a node's memoized work reports back to the traversal. It travels through
+ * the durable runtime (and therefore through JSON), so it carries only the
+ * routing facts the scheduler needs, never live objects or callbacks.
+ */
+type NodeWorkOutcome = {
+  result: ExecutionResult;
+  /** Action node without an actionType: recorded as failed, no output stored. */
+  unconfigured?: boolean;
+  /**
+   * The branch a Condition node picked. Absent on every other node, and absent
+   * on a disabled Condition node, which evaluated nothing and therefore fans
+   * out to every branch below it.
+   */
+  conditionValue?: boolean;
+};
+
+function readConfigString(
+  config: Record<string, unknown> | undefined,
+  key: string
+): string | undefined {
+  const value = config?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * Whether this node is the Wait step, which the engine runs itself. It is also
+ * what keeps a Wait node out of the node-level step wrapper: a wait suspends the
+ * run, and Inngest forbids a sleep or a wait inside a step.
+ */
+function isWaitNode(node: WorkflowNode): boolean {
+  return (
+    node.data.type === "action" &&
+    readConfigString(node.data.config, "actionType") ===
+      BUILT_IN_ACTION_IDS.wait
+  );
+}
+
+/** What the run log and the trace call a node. */
+function getNodeName(node: WorkflowNode, actions: WorkflowActions): string {
+  if (node.data.label) {
+    return node.data.label;
+  }
+  if (node.data.type === "action") {
+    const actionType = readConfigString(node.data.config, "actionType");
+    if (actionType) {
+      // The label comes from the assembled catalog, so a run log names an action
+      // the way the editor does.
+      const label = actions.metadataFor(actionType)?.label;
+      if (label) {
+        return label;
+      }
+    }
+    return "Action";
+  }
+  if (node.data.type === "lifecycle") {
+    return "Lifecycle";
+  }
+  return node.data.type;
+}
+
+/**
+ * What the action dispatch hands back to the traversal.
+ *
+ * Every action answers with a `StepResult`. A Condition node also reports the
+ * branch it picked: the engine evaluates the expression here, so the boolean is
+ * already in hand and the traversal never has to read it back out of the
+ * payload the step logged.
+ */
+type ActionStepOutcome = {
+  result: StepResult;
+  conditionValue?: boolean;
+};
+
+/** Everything the dispatch below needs from the run it is part of. */
+type ActionStepInput = {
+  actionType: string;
+  config: Record<string, unknown>;
+  outputs: NodeOutputs;
+  context: NodeContext;
+  store: WorkflowStore;
+  actions: WorkflowActions;
+};
+
+/**
+ * Execute a single action step, with the run log rows around it.
+ *
+ * A step is handed the integration id and never the credentials themselves, so
+ * nothing that writes this input down -- the run log below, Inngest's own
+ * observability -- has a secret to write. The step fetches what it needs by that
+ * id, in memory.
+ */
+function executeActionStep(input: ActionStepInput): Promise<ActionStepOutcome> {
+  return withSpan(
+    "rova.workflow.action.execute",
+    {
+      "rova.action.type": input.actionType,
+      "rova.node.id": input.context.nodeId,
+      "rova.node.name": input.context.nodeName,
+    },
+    () => executeActionStepInner(input)
+  );
+}
+
+async function executeActionStepInner(
+  input: ActionStepInput
+): Promise<ActionStepOutcome> {
+  const { actionType, config, outputs, context, store, actions } = input;
+
+  const stepInput: Record<string, unknown> = {
+    ...config,
+    _context: context,
+  };
+
+  // The Condition action evaluates its expression here, against the outputs of
+  // the nodes upstream. The decision is what the run log records and what the
+  // traversal routes on, so it is computed once and travels both ways.
+  if (actionType === BUILT_IN_ACTION_IDS.condition) {
+    const originalExpression = stepInput.condition;
+    const { result: evaluatedCondition } = evaluateConditionExpression(
+      originalExpression,
+      outputs,
+      config.conditionModel
+    );
+    conditionLogger.debug("Condition evaluation result", {
+      evaluatedCondition,
+    });
+
+    const result = await runWithStepLog(
+      {
+        store,
+        context,
+        input: {
+          condition: evaluatedCondition,
+          ...(typeof originalExpression === "string"
+            ? { expression: originalExpression }
+            : {}),
+        },
+      },
+      () =>
+        Promise.resolve({
+          success: true,
+          data: { condition: evaluatedCondition },
+        })
+    );
+
+    return { result, conditionValue: evaluatedCondition };
+  }
+
+  const stepFunction = actions.stepFor(actionType);
+  if (!stepFunction) {
+    // No row is written for an action nothing implements: there is no node work
+    // to record, and the failure is reported by the traversal instead.
+    return {
+      result: {
+        success: false,
+        error: {
+          message: `Unknown action type: "${actionType}". No action with this id was assembled: no integration, no host action, and none of the built-ins, which are ${Object.values(BUILT_IN_ACTION_IDS).join(", ")}.`,
+        },
+      },
+    };
+  }
+
+  const result = await runWithStepLog(
+    // The rows carry the input as the node was configured, minus the three keys
+    // the engine's own dispatch owns.
+    { store, context, input: stripInternalFields(stepInput) },
+    () => Promise.resolve(stepFunction(stepInput))
+  );
+
+  return { result };
+}
+
+/** The ports and the run identity every node of one run is executed against. */
+export type NodeSchedulerInput = {
+  traversal: Traversal;
+  cancelBoundary: CancelBoundary;
+  runtime: WorkflowExecutionRuntime;
+  store: WorkflowStore;
+  actions: WorkflowActions;
+  executionId: string;
+  workflowId: string;
+  workflowRunId: string;
+  runMode: "live" | "test";
+  /** What the entry node hands on: see `WorkflowExecutionInput.startPayload`. */
+  startPayload: JsonObject;
+  logger: RunLogger;
+};
+
+export class NodeScheduler {
+  private readonly input: NodeSchedulerInput;
+
+  constructor(input: NodeSchedulerInput) {
+    this.input = input;
+  }
+
+  // The persisted graph is validated as a DAG before execution, so we avoid
+  // per-call cycle-tracking allocations on this hot path.
+  async executeNode(nodeId: string) {
+    const { traversal, actions, logger } = this.input;
+
+    const nodeLogger = logger.with({ nodeId });
+    nodeLogger.debug("Executing node");
+
+    if (traversal.isCompleted(nodeId)) {
+      nodeLogger.debug("Skipping node already completed");
+      return;
+    }
+
+    const node = traversal.getNode(nodeId);
+    if (!node) {
+      nodeLogger.warn("Node not found");
+      return;
+    }
+
+    const { dependencies, missing } = traversal.dependenciesOf(nodeId);
+    if (missing.length > 0) {
+      nodeLogger.debug("Waiting for dependencies before execution", {
+        dependencies,
+        missingDependencies: missing,
+      });
+      return;
+    }
+
+    const nodeName = getNodeName(node, actions);
+    const actionType =
+      node.data.type === "action"
+        ? readConfigString(node.data.config, "actionType")
+        : undefined;
+    const namedNodeLogger = nodeLogger.with({
+      nodeName,
+      nodeType: node.data.type,
+    });
+
+    const ran = await traversal.withNodeInProgress(nodeId, () =>
+      withSpan(
+        "rova.workflow.node.execute",
+        {
+          "rova.node.id": nodeId,
+          "rova.node.name": nodeName,
+          "rova.node.type": node.data.type,
+          "rova.action.type": actionType,
+        },
+        () => this.executeNodeInner(nodeId, node, nodeName, namedNodeLogger)
+      )
+    );
+
+    if (!ran) {
+      nodeLogger.debug("Skipping node already in progress");
+    }
+  }
+
+  /**
+   * The node's own work: the Lifecycle Node's step, the action step, or the wait.
+   *
+   * This is the unit the durable runtime memoizes, so it deliberately does not
+   * schedule downstream nodes - Inngest forbids nesting one step inside
+   * another. Whatever the traversal needs afterwards travels back in the
+   * returned outcome, which crosses a step boundary and stays JSON-safe.
+   */
+  private async runNodeWork(
+    node: WorkflowNode,
+    nodeName: string,
+    namedNodeLogger: RunLogger
+  ): Promise<NodeWorkOutcome> {
+    const {
+      traversal,
+      runtime,
+      store,
+      actions,
+      executionId,
+      workflowId,
+      workflowRunId,
+      runMode,
+      startPayload,
+    } = this.input;
+
+    // Disabled nodes emit a null output so downstream templates don't hard-fail.
+    if (node.data.enabled === false) {
+      namedNodeLogger.info("Skipping disabled node");
+      return { result: { success: true, data: null } };
+    }
+
+    let result: ExecutionResult = {
+      success: false,
+      error: { message: "Node execution did not produce a result." },
+    };
+    let conditionValue: boolean | undefined;
+
+    if (node.data.type === "lifecycle") {
+      namedNodeLogger.debug("Executing lifecycle node");
+
+      // The entry node's output is the payload and nothing else. The Event's own
+      // schema validated it at intake, which is the only gate it passes through,
+      // and a key the engine added here would shadow a payload field of the same
+      // name.
+      const lifecycleData: JsonObject = startPayload;
+
+      const lifecycleContext: NodeContext = {
+        executionId,
+        nodeId: node.id,
+        nodeName,
+        nodeType: node.data.type,
+      };
+
+      // The entry node does no work, and its row exists so that a run's timeline
+      // opens with the payload it started from.
+      const lifecycleResult = await runWithStepLog(
+        {
+          store,
+          context: lifecycleContext,
+          input: { lifecycleData },
+        },
+        () => Promise.resolve({ success: true as const, data: lifecycleData })
+      );
+
+      result = lifecycleResult;
+    } else if (node.data.type === "action") {
+      const config = node.data.config || {};
+      const actionType = readConfigString(config, "actionType");
+      const actionLogger = namedNodeLogger.with({
+        actionType: actionType ?? null,
+      });
+      actionLogger.debug("Executing action node");
+
+      if (!actionType) {
+        actionLogger.error("Action node missing action type");
+        return {
+          result: {
+            success: false,
+            error: {
+              message: `Action node "${node.data.label || node.id}" has no action type configured`,
+            },
+          },
+          unconfigured: true,
+        };
+      }
+
+      // The Condition node's expression is held out of template resolution and
+      // put back. It cannot say so with a `literal` field the way every other
+      // action does, because `built-ins.ts` gives Condition no config fields at
+      // all: the editor draws it with a bespoke panel. The key is deleted rather
+      // than emptied, because a config key present and holding `undefined` fails
+      // a step's config decode.
+      const { condition: originalCondition, ...configWithoutCondition } =
+        config;
+
+      const processedConfig = processTemplates(
+        configWithoutCondition,
+        traversal.outputs,
+        new Set(actions.metadataFor(actionType)?.literalConfigKeys ?? [])
+      );
+
+      if (originalCondition !== undefined) {
+        processedConfig.condition = originalCondition;
+      }
+
+      const stepContext: NodeContext = {
+        executionId,
+        nodeId: node.id,
+        nodeName: getNodeName(node, actions),
+        nodeType: actionType,
+        runMode,
+      };
+      actionLogger.debug("Calling executeActionStep");
+
+      // The Wait action is the one action the engine runs itself, so it answers
+      // with the branch-halting decision the durable runtime made. A step cannot
+      // say that, so the value below is rebuilt rather than passed on.
+      if (actionType === BUILT_IN_ACTION_IDS.wait) {
+        const waitResult = await executeWaitAction({
+          config: processedConfig,
+          context: stepContext,
+          runtime,
+          store,
+          workflowId,
+          workflowRunId,
+          resolveTemplates: (value) =>
+            resolveTemplateString(value, traversal.outputs),
+        });
+
+        if (waitResult.success) {
+          result = {
+            success: true,
+            data: waitResult,
+            haltBranch: waitResult.haltBranch === true,
+          };
+        } else {
+          actionLogger.error("Wait failed", {
+            nodeId: node.id,
+            nodeLabel: node.data.label,
+            error: waitResult.error.message,
+          });
+          result = { success: false, error: waitResult.error };
+        }
+      } else {
+        const actionOutcome = await executeActionStep({
+          actionType,
+          config: processedConfig,
+          outputs: traversal.outputs,
+          context: stepContext,
+          store,
+          actions,
+        });
+
+        // Set by a Condition node and by nothing else, which is what the
+        // traversal below routes on.
+        conditionValue = actionOutcome.conditionValue;
+
+        const stepResult = actionOutcome.result;
+        if (stepResult.success) {
+          // The whole envelope becomes the node's output, which is what
+          // `unwrapStepOutput` reaches through on the far side: a template
+          // addresses the payload's own fields and never `data`.
+          result = { success: true, data: stepResult };
+        } else {
+          actionLogger.error("Action step failed", {
+            actionType,
+            nodeId: node.id,
+            nodeLabel: node.data.label,
+            error: stepResult.error.message,
+          });
+          result = { success: false, error: stepResult.error };
+        }
+      }
+    } else {
+      namedNodeLogger.error("Unknown node type");
+      result = {
+        success: false,
+        error: {
+          message: `Unknown node type "${node.data.type}" in node "${node.data.label || node.id}". Expected "lifecycle" or "action".`,
+        },
+      };
+    }
+
+    return { result, conditionValue };
+  }
+
+  /**
+   * Runs a node's work through the durable runtime so a replay reuses the
+   * stored result instead of repeating the side effect.
+   *
+   * Two shapes stay unwrapped: disabled nodes (nothing happens, nothing to
+   * remember) and Wait nodes (they suspend the run through runtime.sleep /
+   * runtime.waitForEvent, which cannot sit inside a step - executeWaitAction
+   * memoizes its own persistence segments around those wait boundaries).
+   */
+  private runNodeWorkMemoized(
+    nodeId: string,
+    node: WorkflowNode,
+    nodeName: string,
+    namedNodeLogger: RunLogger
+  ): Promise<NodeWorkOutcome> {
+    if (isWaitNode(node) || node.data.enabled === false) {
+      return this.runNodeWork(node, nodeName, namedNodeLogger);
+    }
+
+    return this.input.runtime.step(`node:${nodeId}`, () =>
+      this.runNodeWork(node, nodeName, namedNodeLogger)
+    );
+  }
+
+  /**
+   * Records a node's outcome and schedules its downstream branches. Runs
+   * outside the node's step so descendants become sibling steps rather than
+   * nested ones.
+   */
+  private async executeNodeInner(
+    nodeId: string,
+    node: WorkflowNode,
+    nodeName: string,
+    namedNodeLogger: RunLogger
+  ) {
+    const { traversal, cancelBoundary } = this.input;
+
+    try {
+      const outcome = await this.runNodeWorkMemoized(
+        nodeId,
+        node,
+        nodeName,
+        namedNodeLogger
+      );
+      const { result } = outcome;
+
+      // A node with no action type never produced an output, so it is recorded
+      // as failed without becoming available to downstream templates.
+      if (outcome.unconfigured) {
+        traversal.recordResult(nodeId, result);
+        return;
+      }
+
+      // A step result crosses Inngest's memoization boundary as JSON, so this is
+      // where it becomes JSON again for the template resolver and the CEL
+      // context to walk.
+      const payload = executionData(result);
+      const outputData = readJsonValue(payload);
+      if (outputData === null && payload !== null) {
+        namedNodeLogger.warn(
+          "Node output is not JSON and will read as empty downstream",
+          { actionType: node.data.config?.actionType }
+        );
+      }
+      traversal.markCompleted(nodeId, result, {
+        label: node.data.label || nodeId,
+        data: outputData,
+      });
+
+      namedNodeLogger.info("Node execution completed", {
+        success: result.success,
+        haltBranch: result.success && result.haltBranch === true,
+        error: executionError(result),
+      });
+
+      // A claimed run takes the Canceled outlet instead of whatever came next,
+      // and a node that finishes after that stops where it stands.
+      const cancel = await cancelBoundary.settle(nodeId);
+      if (cancel.entered) {
+        await this.runAll(cancel.nextNodes);
+        return;
+      }
+
+      if (result.success) {
+        let shouldContinueDownstream = true;
+
+        if (result.haltBranch) {
+          namedNodeLogger.info(
+            "Skipping downstream nodes because step requested halt"
+          );
+          shouldContinueDownstream = false;
+        }
+
+        // A disabled Condition node evaluated nothing, so it fans out to every
+        // branch instead of picking one.
+        const isConditionNode =
+          node.data.enabled !== false &&
+          node.data.type === "action" &&
+          node.data.config?.actionType === BUILT_IN_ACTION_IDS.condition;
+
+        if (isConditionNode && shouldContinueDownstream) {
+          const conditionResult = outcome.conditionValue;
+          namedNodeLogger.debug("Condition node result", {
+            conditionResult,
+          });
+
+          if (conditionResult !== true && conditionResult !== false) {
+            namedNodeLogger.debug(
+              "Condition result missing boolean value, skipping downstream nodes"
+            );
+          } else {
+            const nextBranch: ConditionBranch = conditionResult
+              ? "true"
+              : "false";
+            const nextNodes = traversal.nextNodes(nodeId, {
+              kind: "condition",
+              branch: nextBranch,
+            });
+            namedNodeLogger.debug(
+              "Condition branch selected, executing downstream nodes in parallel",
+              {
+                selectedBranch: nextBranch,
+                nextNodeCount: nextNodes.length,
+                nextNodeIds: nextNodes,
+              }
+            );
+            traversal.markReadyForDownstream(nodeId);
+            await this.runAll(nextNodes);
+          }
+        } else if (shouldContinueDownstream) {
+          // The entry node is the exception to following every edge: a normal
+          // start leaves by the Started outlet, and the Canceled outlet's branch
+          // is reached only by a run a Cancel Event claimed.
+          const nextNodes = traversal.nextNodes(
+            nodeId,
+            node.data.type === "lifecycle"
+              ? { kind: "outlet", outlet: LIFECYCLE_STARTED_HANDLE }
+              : { kind: "all" }
+          );
+          namedNodeLogger.debug("Executing downstream nodes in parallel", {
+            nextNodeCount: nextNodes.length,
+            nextNodeIds: nextNodes,
+          });
+          traversal.markReadyForDownstream(nodeId);
+          await this.runAll(nextNodes);
+        }
+      }
+    } catch (error) {
+      // Every error escaping a node is that node's failure, and the run carries
+      // on with its siblings. A cancellation never arrives this way: Rova's own
+      // is the flag the cancel boundary reads, and Inngest stops calling a
+      // cancelled function rather than throwing into it.
+      namedNodeLogger.error("Unexpected error executing node", {
+        error,
+      });
+      const errorMessage = await getErrorMessageAsync(error);
+      // The node's own row was already closed with this error on its way out of
+      // `runWithStepLog`, so what is left here is recording the failure for the
+      // traversal. No output: the node handed nothing on.
+      traversal.markCompleted(nodeId, {
+        success: false,
+        error: { message: errorMessage },
+      });
+    }
+  }
+
+  /** Runs a set of nodes side by side, which is how every branch fans out. */
+  runAll(nodeIds: readonly string[]): Promise<void[]> {
+    return Promise.all(nodeIds.map((nodeId) => this.executeNode(nodeId)));
+  }
+}

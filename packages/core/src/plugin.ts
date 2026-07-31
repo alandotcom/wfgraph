@@ -34,6 +34,12 @@ export {
   type StepRunContext,
 } from "#src/backend/extensions/steps/define-step";
 /**
+ * The failure a credential read can end in, for a helper that yields
+ * `context.credentials` and annotates what it answers. A plugin never builds
+ * one: it names the type and passes the failure on.
+ */
+export type { CredentialsUnavailable } from "#src/backend/extensions/credential-fetcher";
+/**
  * The `@rova/shared` vocabulary a server-side plugin file needs beside the
  * above: the JSON type a vendor payload decodes to and the reader that gets it
  * there, the Effect Schema helper for a value already typed as JSON, the

@@ -29,6 +29,7 @@ import {
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { WorkflowNode } from "@rova/shared/graph/types";
 import { executeWorkflow } from "#src/backend/engine/core";
+import { executionData } from "#src/backend/engine/contracts";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import {
   createRecordingWorkflowStore,
@@ -364,7 +365,7 @@ describe("an Event's datetime field, end to end", () => {
       actions
     );
 
-    expect(result.results.lifecycle_1?.data).toEqual(bookedPayload());
+    expect(executionData(result.results.lifecycle_1)).toEqual(bookedPayload());
   });
 
   it("leaves the payload a Condition read as the text the sender wrote", async () => {
@@ -387,11 +388,11 @@ describe("an Event's datetime field, end to end", () => {
       actions
     );
 
-    expect(result.results.echo_node?.data).toEqual({
+    expect(executionData(result.results.echo_node)).toEqual({
       success: true,
       data: { startsAt: "2026-03-10T09:00:00-05:00" },
     });
-    expect(result.results.lifecycle_1?.data).toEqual(bookedPayload());
+    expect(executionData(result.results.lifecycle_1)).toEqual(bookedPayload());
   });
 
   it("refuses a payload whose timestamp field carries no zone", () => {
@@ -456,7 +457,7 @@ describe("an Event's datetime field, end to end", () => {
     );
 
     expect(result.results.lifecycle_1?.success).toBe(true);
-    expect(result.results.lifecycle_1?.data).toEqual({});
+    expect(executionData(result.results.lifecycle_1)).toEqual({});
     // Nothing resolved the timestamp, so the comparison is false and the run took
     // the other branch. It ran: an absent payload is not an error.
     expect(result.results.condition_node?.success).toBe(true);

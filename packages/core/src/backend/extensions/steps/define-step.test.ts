@@ -1,5 +1,6 @@
 import { Effect, Schema, SchemaTransformation } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CredentialsUnavailable } from "#src/backend/extensions/credential-fetcher";
 import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import {
   defineStep,
@@ -207,6 +208,101 @@ describe("defineStep", () => {
     });
 
     expect(modes).toEqual(["live"]);
+  });
+});
+
+/**
+ * The two kinds of failure a step tells apart, which decide whether the node is
+ * retried.
+ *
+ * A `StepFailure` is the step's own answer: the config was wrong, or the vendor
+ * said no, and either comes back the same on a second attempt, so it becomes the
+ * envelope and fails the node once. A `CredentialsUnavailable` is the store
+ * refusing the read, which is nothing about the run, so it stays in the error
+ * channel and rejects -- the engine's durable runtime reads a rejected step as
+ * one to run again.
+ */
+describe("defineStep and a credential store that refuses the read", () => {
+  const unreadable = () =>
+    Effect.fail(
+      new CredentialsUnavailable({
+        integrationId: "int_1",
+        message: 'Could not read the credentials for integration "int_1".',
+      })
+    );
+
+  const step = defineStep({
+    ...METADATA,
+    input,
+    output,
+    configFields: [],
+    handler: Effect.fn(function* (config, context) {
+      const credentials = yield* context.credentials;
+      return yield* Effect.succeed({
+        id: `${credentials.API_KEY}`,
+        sentTo: config.to,
+      });
+    }),
+  });
+
+  it("rejects rather than answering the envelope, so the step is retried", async () => {
+    const run = step.implement("demo/send")(
+      stubStepEnvironment({ credentialsFor: unreadable })
+    );
+
+    await expect(
+      run({ to: "someone", integrationId: "int_1", _context: CONTEXT })
+    ).rejects.toMatchObject({
+      _tag: "CredentialsUnavailable",
+      message: 'Could not read the credentials for integration "int_1".',
+    });
+  });
+
+  it("costs nothing to a step whose handler never asks for credentials", async () => {
+    const quiet = defineStep({
+      ...METADATA,
+      input,
+      output,
+      configFields: [],
+      handler: Effect.fn(function* (config) {
+        return yield* Effect.succeed({ id: "fixed", sentTo: config.to });
+      }),
+    });
+
+    const result = await quiet.implement("demo/quiet")(
+      stubStepEnvironment({ credentialsFor: unreadable })
+    )({ to: "someone", integrationId: "int_1", _context: CONTEXT });
+
+    expect(result).toEqual({
+      success: true,
+      data: { id: "fixed", sentTo: "someone" },
+    });
+  });
+
+  // The contrast that makes the case above mean something: everything a step can
+  // answer for is still the one envelope, and the node fails on it once.
+  it("keeps a handler's own failure in the envelope", async () => {
+    const refusing = defineStep({
+      ...METADATA,
+      input,
+      output,
+      configFields: [],
+      handler: Effect.fn(function* () {
+        return yield* Effect.fail(
+          new StepFailure({ message: "The vendor said no." })
+        );
+      }),
+    });
+
+    const result = await refusing.implement("demo/refused")(runner)({
+      to: "someone",
+      _context: CONTEXT,
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: { message: "The vendor said no." },
+    });
   });
 });
 

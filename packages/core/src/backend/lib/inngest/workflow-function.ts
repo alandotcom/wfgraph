@@ -1,6 +1,7 @@
 import type { Inngest, InngestFunction } from "inngest";
 import { celStringLiteral } from "@rova/shared/conditions/cel-string-literal";
 import type { WorkflowActions } from "#src/backend/engine/actions";
+import { executionError } from "#src/backend/engine/contracts";
 import {
   executeWorkflow,
   type WorkflowExecutionInput,
@@ -75,16 +76,20 @@ async function workflowRunRequestedHandler({
   // The engine persists nothing and implements nothing on its own: the store
   // and the dispatch port are the app's, built where the function was.
   const result = await executeWorkflow(data, runtime, store, actions);
-  if ("success" in result && !result.success) {
+  if (!result.success) {
+    // A run that died carries one sentence; a run that finished with failed
+    // nodes carries one per node, and naming them is the whole of what Inngest
+    // shows for the attempt.
     let message = "Workflow execution failed";
     if (typeof result.error === "string") {
       message = result.error;
-    } else if (result.results) {
-      const failed = Object.entries(
-        result.results as Record<string, { success: boolean; error?: string }>
-      )
-        .filter(([, r]) => !r.success && r.error)
-        .map(([nodeId, r]) => `${nodeId}: ${r.error}`);
+    } else {
+      const failed = Object.entries(result.results).flatMap(
+        ([nodeId, nodeResult]) => {
+          const nodeError = executionError(nodeResult);
+          return nodeError ? [`${nodeId}: ${nodeError}`] : [];
+        }
+      );
       if (failed.length > 0) {
         message = failed.join("; ");
       }

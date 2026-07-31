@@ -21,7 +21,7 @@ import {
   readWaitConfig,
   type WaitConfig,
 } from "@rova/shared/lifecycle/wait-subscription";
-import type { ExecutionResult } from "./core";
+import type { ExecutionResult } from "./contracts";
 import type { WorkflowExecutionRuntime } from "./runtime";
 import { closeStepLog, type NodeContext, openStepLog } from "./step-log";
 import type { WorkflowStepLogHandle, WorkflowStore } from "./store";
@@ -134,7 +134,7 @@ async function executeWaitActionInner(
       return { logged: true };
     });
 
-    return { success: false, error: errorMessage };
+    return { success: false, error: { message: errorMessage } };
   }
 
   const config = read.config;
@@ -316,7 +316,7 @@ async function executeDelayWait(
   );
 
   if (prepared.status === "error") {
-    return { success: false, error: prepared.error };
+    return { success: false, error: { message: prepared.error } };
   }
 
   if (prepared.status === "skipped") {
@@ -499,7 +499,7 @@ async function executeEventWait(
   );
 
   if (prepared.status === "error") {
-    return { success: false, error: prepared.error };
+    return { success: false, error: { message: prepared.error } };
   }
 
   let timedOut = false;

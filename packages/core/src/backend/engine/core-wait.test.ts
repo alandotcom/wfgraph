@@ -15,6 +15,11 @@ import { resolveOutputPath } from "@rova/shared/graph/node-references";
 import type { WorkflowNode } from "@rova/shared/graph/types";
 import { executeWorkflow } from "./core";
 import {
+  type ExecutionResult,
+  executionData,
+  executionError,
+} from "./contracts";
+import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
 } from "./recording-store";
@@ -146,11 +151,17 @@ function waitResumeSignal(payload: JsonObject) {
  * The Wait node returns an ExecutionResult, which the engine then stores whole
  * as the node's data - so the wait's own output sits one level in.
  */
-function waitOutput(result: {
-  results: Record<string, { data?: unknown } | undefined>;
-}) {
-  const nodeData = result.results.wait_1?.data as { data?: unknown };
+function waitOutput(result: { results: Record<string, ExecutionResult> }) {
+  const nodeData = executionData(result.results.wait_1) as { data?: unknown };
   return nodeData?.data as Record<string, unknown>;
+}
+
+/** Whether the wait node halted its branch, which only a node that succeeded can. */
+function waitHaltedBranch(result: {
+  results: Record<string, ExecutionResult>;
+}): boolean {
+  const nodeResult = result.results.wait_1;
+  return nodeResult?.success ? nodeResult.haltBranch === true : false;
 }
 
 function runWait(options: RunWaitOptions) {
@@ -237,7 +248,7 @@ describe("wait node - delay mode", () => {
     });
     const result = await execution;
 
-    expect(result.results.wait_1?.haltBranch).toBe(true);
+    expect(waitHaltedBranch(result)).toBe(true);
     expect(waitOutput(result)).toMatchObject({
       skipped: true,
       skippedReason: "past_due_no_wait",
@@ -529,7 +540,7 @@ describe("wait node - event mode", () => {
     const result = await execution;
 
     expect(result.results.wait_1?.success).toBe(false);
-    expect(result.results.wait_1?.error).toContain(
+    expect(executionError(result.results.wait_1)).toContain(
       "is not available to this run"
     );
     expect(runtime.waits).toHaveLength(0);
@@ -552,7 +563,9 @@ describe("wait node - event mode", () => {
     const result = await execution;
 
     expect(result.results.wait_1?.success).toBe(false);
-    expect(result.results.wait_1?.error).toContain("billing/payment.settled");
+    expect(executionError(result.results.wait_1)).toContain(
+      "billing/payment.settled"
+    );
     expect(runtime.waits).toHaveLength(0);
     expect(store.callsOf("createWaitState")).toHaveLength(0);
   });
@@ -583,7 +596,9 @@ describe("wait node - event mode", () => {
     const result = await execution;
 
     expect(result.results.wait_1?.success).toBe(false);
-    expect(result.results.wait_1?.error).toContain("configuration is invalid");
+    expect(executionError(result.results.wait_1)).toContain(
+      "configuration is invalid"
+    );
     expect(runtime.waits).toHaveLength(0);
     expect(store.callsOf("createWaitState")).toHaveLength(0);
     expect(waitStepLogs(store).closed[0]?.status).toBe("error");
@@ -620,7 +635,7 @@ describe("wait node - event mode", () => {
     });
     const result = await execution;
 
-    expect(result.results.wait_1?.haltBranch).toBe(true);
+    expect(waitHaltedBranch(result)).toBe(true);
     expect(waitOutput(result)).toMatchObject({
       skipped: true,
       skippedReason: "timeout_skip",
@@ -654,7 +669,7 @@ describe("wait node - event mode", () => {
       resumeEvent: null,
     }).execution;
 
-    expect(result.results.wait_1?.haltBranch).toBe(true);
+    expect(waitHaltedBranch(result)).toBe(true);
     expect(waitOutput(result)).toMatchObject({
       skipped: true,
       skippedReason: "timeout_skip",
