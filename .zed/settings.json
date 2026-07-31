@@ -1,14 +1,22 @@
 {
   "languages": {
     "JavaScript": {
-      "language_servers": ["vtsls", "oxlint", "oxfmt"]
+      "language_servers": ["typescript-language-server", "oxlint", "oxfmt"]
     },
     "TSX": {
-      "language_servers": ["vtsls", "oxlint", "oxfmt"]
+      "language_servers": ["typescript-language-server", "oxlint", "oxfmt"]
     },
     "TypeScript": {
-      "language_servers": ["vtsls", "oxlint", "oxfmt"],
+      "language_servers": ["typescript-language-server", "oxlint", "oxfmt"],
       "tab_size": 2
+    }
+  },
+  "lsp": {
+    "typescript-language-server": {
+      "binary": {
+        "path": "/usr/bin/env",
+        "arguments": ["./node_modules/typescript/bin/tsc", "--lsp", "--stdio"]
+      }
     }
   },
   "document_symbols": "off"
