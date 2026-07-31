@@ -93,16 +93,16 @@ export const internalFailureRelayingCause =
 /**
  * The same answer with the cause kept out of it, for a caller who is not us.
  *
- * The two machine routes -- event intake and wait-hook resume -- answer third
- * parties across origins, and `internalFailureRelayingCause` would hand them a
- * Postgres message naming our tables and bound parameters. They get a stated
- * sentence; the cause goes to the log, where the operator greps `message`.
+ * The wait resume route answers third parties across origins, and
+ * `internalFailureRelayingCause` would hand them a Postgres message naming our
+ * tables and bound parameters. They get a stated sentence; the cause goes to the
+ * log, where the operator greps `message`.
  *
  * It takes the logger as the Effect that produces one for the same reason the
  * relaying handler does: both are used from an `Effect.fn` transform, which runs
  * outside the generator that could have yielded `AppLogger`.
  */
-export const statedInternalFailure =
+const statedInternalFailure =
   (
     logger: Effect.Effect<EffectLogger, never, AppLogger>,
     message: string,
@@ -123,10 +123,10 @@ export const statedInternalFailure =
     });
 
 /**
- * Both seams answered with a stated sentence, for the machine routes.
+ * Both seams answered with a stated sentence, for the wait resume route.
  *
- * Event intake and wait-hook resume both answer third parties across origins, and
- * neither can act on a Postgres message naming our tables.
+ * That route answers third parties across origins, where a Postgres message
+ * naming our tables tells the sender our schema and nothing they can use.
  */
 export const statedSeamFailureHandlers = (
   logger: Effect.Effect<EffectLogger, never, AppLogger>,

@@ -10,8 +10,8 @@ import { Schema } from "effect";
  *
  * - `invalid`: the caller's input or the resource it points at does not pass validation.
  * - `unauthorized`: the caller's credentials did not authenticate. This is distinct from
- *   `invalid` because the event-intake and wait-hook endpoints are reached by third
- *   parties, who need to tell a rejected API key apart from a malformed request.
+ *   `invalid` because the wait resume endpoint is reached by third parties, who need
+ *   to tell a rejected API key apart from a malformed request.
  * - `not_found`: the addressed resource does not exist.
  * - `conflict`: the request collides with existing state, such as a duplicate name.
  * - `internal`: something failed on our side and the caller cannot fix it.

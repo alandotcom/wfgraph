@@ -36,7 +36,7 @@ function graphWithRules(rules: LifecycleRules) {
 }
 
 const startRules: LifecycleRules = {
-  startEvents: ["app/appointment.created"],
+  startEvent: "app/appointment.created",
   cancelEvents: [],
   concurrency: "newest-wins",
   allowManualStart: true,

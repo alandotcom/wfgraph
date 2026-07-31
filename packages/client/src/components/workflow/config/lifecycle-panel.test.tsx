@@ -13,10 +13,7 @@ import {
   LifecyclePanel,
 } from "#src/components/workflow/config/lifecycle-panel";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
-import {
-  type LifecycleRules,
-  SCHEDULE_INTERIM_MESSAGE,
-} from "@rova/shared/workflow/lifecycle-rules";
+import type { LifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
 
 // The Events a panel offers come from the server's catalog. One declares its own
@@ -97,22 +94,31 @@ function rulesOf(config: Record<string, unknown>): LifecycleRules {
   return config.lifecycleRules as LifecycleRules;
 }
 
-// Start Events and Cancel Events render one chip per catalog Event, so a label
-// alone no longer picks out one: these scope the lookup to the group the picker
-// belongs to. A chip reads as its label over its raw name, hence the prefix
-// match rather than the whole accessible name.
-function startEventButton(view: RenderResult, label: string) {
-  return within(view.getByRole("group", { name: "Start Events" })).getByRole(
-    "button",
-    { name: new RegExp(`^${label}`) }
-  );
-}
+/**
+ * Search one of the two pickers and take the first Event it offers.
+ *
+ * The popup opens on an arrow key rather than a click: a pointer press reaches
+ * the list through events happy-dom does not deliver whole, and the keyboard path
+ * is the one a builder filtering a long list takes anyway. The option is looked
+ * up through the input's own `aria-controls` rather than the page's whole
+ * role="option" set, since two comboboxes can be open on this screen at once.
+ */
+function chooseEvent(view: RenderResult, label: string, query: string) {
+  const input = view.getByLabelText(label);
+  fireEvent.keyDown(input, { key: "ArrowDown" });
+  fireEvent.change(input, { target: { value: query } });
 
-function cancelEventButton(view: RenderResult, label: string) {
-  return within(view.getByRole("group", { name: "Cancel Events" })).getByRole(
-    "button",
-    { name: new RegExp(`^${label}`) }
-  );
+  const listboxId = input.getAttribute("aria-controls");
+  const listbox = listboxId && document.getElementById(listboxId);
+  if (!listbox) {
+    throw new Error(`The ${label} picker's popup never opened`);
+  }
+
+  const option = within(listbox).queryAllByRole("option").at(0);
+  if (!option) {
+    throw new Error(`No Event matched "${query}" in the ${label} picker`);
+  }
+  fireEvent.click(option);
 }
 
 describe("LifecyclePanel", () => {
@@ -128,11 +134,11 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    fireEvent.click(startEventButton(view, "Appointment created"));
+    chooseEvent(view, "Start Event", "Appointment created");
 
     await waitFor(() => {
       expect(rulesOf(latest)).toEqual({
-        startEvents: ["app/appointment.created"],
+        startEvent: "app/appointment.created",
         cancelEvents: [],
         concurrency: "unlimited",
         allowManualStart: true,
@@ -155,9 +161,82 @@ describe("LifecyclePanel", () => {
 
     expect(onUpdateConfig).not.toHaveBeenCalled();
 
-    fireEvent.click(startEventButton(view, "Appointment created"));
+    chooseEvent(view, "Start Event", "Appointment created");
 
     expect(onUpdateConfig).toHaveBeenCalledTimes(1);
+  });
+
+  // The clear button only makes sense once there is a selection to clear;
+  // Base UI unmounts it until then.
+  it("shows no clear button while the Start Event is unset", () => {
+    const view = render(
+      <LifecyclePanel config={{}} disabled={false} onUpdateConfig={vi.fn()} />
+    );
+
+    expect(
+      view.queryByRole("button", { name: "Clear the selection" })
+    ).toBeNull();
+  });
+
+  // The trigger button is the pointer path into a picker's full list, beside
+  // the keyboard path `chooseEvent` drives everywhere else in this file.
+  it("opens the Start Event picker from its trigger button", () => {
+    const view = render(
+      <LifecyclePanel config={{}} disabled={false} onUpdateConfig={vi.fn()} />
+    );
+
+    fireEvent.click(
+      view.getAllByRole("button", { name: "Show the Events" })[0]
+    );
+
+    expect(
+      view.getByRole("option", { name: /Appointment created/ })
+    ).toBeTruthy();
+  });
+
+  // The raw name is what a sender posts and what a builder coming from that side
+  // knows the Event by, so it is searchable beside the label.
+  it("finds an Event by the name a sender posts", async () => {
+    let latest: Record<string, unknown> = {};
+    const view = render(
+      <ControlledPanel
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    chooseEvent(view, "Start Event", "ops/nightly");
+
+    await waitFor(() => {
+      expect(rulesOf(latest).startEvent).toBe("ops/nightly.swept");
+    });
+  });
+
+  // One Start Event, so a second pick is the choice rather than a second entry.
+  it("replaces the Start Event rather than adding to it", async () => {
+    let latest: Record<string, unknown> = {
+      lifecycleRules: {
+        startEvent: "app/appointment.created",
+        cancelEvents: [],
+        concurrency: "unlimited",
+        allowManualStart: true,
+      },
+    };
+    const view = render(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    chooseEvent(view, "Start Event", "Nightly sweep");
+
+    await waitFor(() => {
+      expect(rulesOf(latest).startEvent).toBe("ops/nightly.swept");
+    });
   });
 
   it.each(CONCURRENCY_OPTIONS.map((option) => [option.label, option.value]))(
@@ -165,7 +244,7 @@ describe("LifecyclePanel", () => {
     async (label, value) => {
       let latest: Record<string, unknown> = {
         lifecycleRules: {
-          startEvents: ["app/appointment.created"],
+          startEvent: "app/appointment.created",
           cancelEvents: [],
           concurrency: value === "unlimited" ? "newest-wins" : "unlimited",
         },
@@ -189,10 +268,10 @@ describe("LifecyclePanel", () => {
     }
   );
 
-  it("turns manual runs off and drops a Start Event chip", async () => {
+  it("turns manual runs off and clears the Start Event", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvents: ["app/appointment.created"],
+        startEvent: "app/appointment.created",
         cancelEvents: [],
         concurrency: "unlimited",
         allowManualStart: true,
@@ -212,19 +291,19 @@ describe("LifecyclePanel", () => {
       expect(rulesOf(latest).allowManualStart).toBe(false);
     });
 
-    fireEvent.click(startEventButton(view, "Appointment created"));
+    fireEvent.click(view.getByRole("button", { name: "Clear the selection" }));
     await waitFor(() => {
-      expect(rulesOf(latest).startEvents).toEqual([]);
+      expect(rulesOf(latest).startEvent).toBeUndefined();
     });
   });
 
   it("says a manual run's payload is described by nothing", async () => {
-    // What the editor can offer downstream comes off the Start Events, so a
+    // What the editor can offer downstream comes off the Start Event, so a
     // workflow with none leaves the picker empty. The panel says so rather than
     // leaving that silence to be read as a missing feature.
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvents: ["app/appointment.created"],
+        startEvent: "app/appointment.created",
         cancelEvents: [],
         concurrency: "unlimited",
         allowManualStart: true,
@@ -241,7 +320,7 @@ describe("LifecyclePanel", () => {
 
     expect(view.queryByText(/described by nothing/)).toBeNull();
 
-    fireEvent.click(startEventButton(view, "Appointment created"));
+    fireEvent.click(view.getByRole("button", { name: "Clear the selection" }));
 
     await waitFor(() => {
       expect(view.getByText(/described by nothing/)).toBeTruthy();
@@ -253,7 +332,6 @@ describe("LifecyclePanel Cancel Events", () => {
   it("writes a cancel Event pick to lifecycleRules.cancelEvents", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvents: [],
         cancelEvents: [],
         concurrency: "unlimited",
         allowManualStart: true,
@@ -268,11 +346,75 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    fireEvent.click(cancelEventButton(view, "Appointment created"));
+    chooseEvent(view, "Cancel Events", "Appointment created");
 
     await waitFor(() => {
       expect(rulesOf(latest).cancelEvents).toEqual(["app/appointment.created"]);
     });
+  });
+
+  it("drops a chosen cancel Event when its row is removed", async () => {
+    let latest: Record<string, unknown> = {
+      lifecycleRules: {
+        cancelEvents: ["app/appointment.created", "ops/nightly.swept"],
+        concurrency: "unlimited",
+        allowManualStart: true,
+        correlationPaths: { "ops/nightly.swept": "sweep.id" },
+      },
+    };
+    const view = render(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Remove app/appointment.created" })
+    );
+
+    await waitFor(() => {
+      expect(rulesOf(latest).cancelEvents).toEqual(["ops/nightly.swept"]);
+    });
+  });
+
+  // The path is what an arriving payload is compared against, so a builder who
+  // cannot read it cannot tell a rule that claims runs from one that claims none.
+  it("shows the path each chosen Event will be matched at", () => {
+    const view = render(
+      <ControlledPanel
+        initialConfig={{
+          lifecycleRules: {
+            cancelEvents: ["app/appointment.created", "ops/nightly.swept"],
+            concurrency: "unlimited",
+            allowManualStart: true,
+          },
+        }}
+      />
+    );
+
+    // The Event Author's own declaration, then the one the builder still owes.
+    expect(view.getByText("Correlation Path: appointment.id")).toBeTruthy();
+    expect(view.getByText("Correlation Path: none yet")).toBeTruthy();
+  });
+
+  it("shows the builder's override where the Event declares no path", () => {
+    const view = render(
+      <ControlledPanel
+        initialConfig={{
+          lifecycleRules: {
+            cancelEvents: ["ops/nightly.swept"],
+            concurrency: "unlimited",
+            allowManualStart: true,
+            correlationPaths: { "ops/nightly.swept": "sweep.id" },
+          },
+        }}
+      />
+    );
+
+    expect(view.getByText("Correlation Path: sweep.id")).toBeTruthy();
   });
 
   // ADR-0007 refuses one Event holding both roles rather than picking a
@@ -280,7 +422,7 @@ describe("LifecyclePanel Cancel Events", () => {
   it("shows the shared refusal when a pick gives one Event both roles", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvents: ["app/appointment.created"],
+        startEvent: "app/appointment.created",
         cancelEvents: [],
         concurrency: "unlimited",
         allowManualStart: true,
@@ -297,7 +439,7 @@ describe("LifecyclePanel Cancel Events", () => {
 
     expect(view.queryByText("This will not save")).toBeNull();
 
-    fireEvent.click(cancelEventButton(view, "Appointment created"));
+    chooseEvent(view, "Cancel Events", "Appointment created");
 
     await waitFor(() => {
       expect(
@@ -315,7 +457,7 @@ describe("LifecyclePanel Correlation Paths", () => {
   it("commits a trimmed path as it is typed", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvents: ["ops/nightly.swept"],
+        startEvent: "ops/nightly.swept",
         cancelEvents: [],
         concurrency: "newest-wins",
       },
@@ -345,7 +487,7 @@ describe("LifecyclePanel Correlation Paths", () => {
   it("clears one path and keeps the others", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvents: ["ops/nightly.swept"],
+        startEvent: "ops/nightly.swept",
         cancelEvents: [],
         concurrency: "newest-wins",
         correlationPaths: {
@@ -379,7 +521,7 @@ describe("LifecyclePanel Correlation Paths", () => {
   it("collapses to no paths at all when the last one clears", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvents: ["ops/nightly.swept"],
+        startEvent: "ops/nightly.swept",
         cancelEvents: [],
         concurrency: "newest-wins",
         correlationPaths: { "ops/nightly.swept": "sweep.id" },
@@ -409,7 +551,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
-            startEvents: ["app/appointment.created"],
+            startEvent: "app/appointment.created",
             cancelEvents: [],
             concurrency: "newest-wins",
           },
@@ -426,7 +568,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
-            startEvents: ["ops/nightly.swept"],
+            startEvent: "ops/nightly.swept",
             cancelEvents: [],
             concurrency: "unlimited",
           },
@@ -444,9 +586,9 @@ describe("LifecyclePanel Correlation Paths", () => {
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
-            startEvents: [],
             cancelEvents: ["ops/nightly.swept"],
             concurrency: "unlimited",
+            allowManualStart: true,
           },
         }}
       />
@@ -465,7 +607,7 @@ describe("LifecyclePanel Correlation Paths", () => {
         <ControlledPanel
           initialConfig={{
             lifecycleRules: {
-              startEvents: ["app/appointment.created"],
+              startEvent: "app/appointment.created",
               cancelEvents: [],
               concurrency: "unlimited",
               allowManualStart: true,
@@ -488,7 +630,6 @@ describe("LifecyclePanel refusals", () => {
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
-            startEvents: [],
             cancelEvents: [],
             concurrency: "unlimited",
             allowManualStart: false,
@@ -510,7 +651,7 @@ describe("LifecyclePanel refusals", () => {
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
-            startEvents: ["app/appointment.moved"],
+            startEvent: "app/appointment.moved",
             cancelEvents: [],
             concurrency: "unlimited",
           },
@@ -520,40 +661,6 @@ describe("LifecyclePanel refusals", () => {
 
     expect(
       view.getByText(/^No Event named "app\/appointment\.moved" is defined/)
-    ).toBeTruthy();
-  });
-});
-
-describe("LifecyclePanel interim placeholders", () => {
-  // The panel renders the sentence a save answers with, so the two cannot drift.
-  it("says why a schedule is not available yet", () => {
-    const view = render(<ControlledPanel />);
-
-    expect(view.getByText(SCHEDULE_INTERIM_MESSAGE)).toBeTruthy();
-  });
-});
-
-describe("LifecyclePanel event URLs", () => {
-  // Every namespaced Event name carries a slash, and an unencoded one addresses a
-  // route that does not exist.
-  it("encodes the Event name in the URL it offers", () => {
-    const view = render(
-      <ControlledPanel
-        initialConfig={{
-          lifecycleRules: {
-            startEvents: ["app/appointment.created"],
-            cancelEvents: [],
-            concurrency: "unlimited",
-          },
-        }}
-      />
-    );
-
-    expect(
-      view.getByText(/\/api\/events\/app%2Fappointment\.created$/)
-    ).toBeTruthy();
-    expect(
-      view.getByLabelText("Copy the URL for app/appointment.created")
     ).toBeTruthy();
   });
 });

@@ -19,28 +19,16 @@ describe("getStartSummary", () => {
     expect(getStartSummary({})).toBe("Manual runs only");
   });
 
-  it("names the one Start Event when there is one", () => {
+  it("names the Start Event when there is one", () => {
     expect(
       getStartSummary({
         lifecycleRules: {
-          startEvents: ["app/appointment.created"],
+          startEvent: "app/appointment.created",
           cancelEvents: [],
           concurrency: "unlimited",
         },
       })
     ).toBe("On app/appointment.created");
-  });
-
-  it("counts the Start Events when there are several", () => {
-    expect(
-      getStartSummary({
-        lifecycleRules: {
-          startEvents: ["app/appointment.created", "app/appointment.canceled"],
-          cancelEvents: [],
-          concurrency: "newest-wins",
-        },
-      })
-    ).toBe("On 2 events");
   });
 
   // Rules that exist and leave every start source out are a decision, and the
@@ -49,7 +37,6 @@ describe("getStartSummary", () => {
     expect(
       getStartSummary({
         lifecycleRules: {
-          startEvents: [],
           cancelEvents: [],
           concurrency: "unlimited",
           allowManualStart: false,

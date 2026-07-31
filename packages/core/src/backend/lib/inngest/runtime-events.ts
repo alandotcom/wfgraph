@@ -45,31 +45,6 @@ export async function sendWorkflowRunRequested(
   return { eventId: ids[0] };
 }
 
-/**
- * Put a host's own Event on the bus, which is what HTTP intake does with a
- * posted payload: the Event's listener is then the only fan-out, and the
- * durability is Inngest's rather than the request's.
- *
- * `deliveryId` becomes the event id, so the 202 the sender read, the log line,
- * and every audit row the listener writes all name the same arrival. It is also
- * Inngest's idempotency key, which here dedupes a retried send of one delivery
- * rather than two posts: each POST mints its own.
- */
-export async function sendHostEvent(
-  client: Inngest,
-  input: {
-    name: string;
-    data: JsonObject;
-    deliveryId: string;
-  }
-) {
-  await client.send({
-    name: input.name,
-    data: input.data,
-    id: input.deliveryId,
-  });
-}
-
 export async function sendWorkflowCancelRequested(
   client: Inngest,
   input: {

@@ -404,36 +404,22 @@ refused at assembly.
 
 ### The intake gate
 
-An Event reaches Rova two ways. Send it with an Inngest client:
+An Event reaches Rova on the bus, sent with an Inngest client:
 
 ```ts
 inngest.send({ name: "app/appointment.created", data: { appointment } });
 ```
 
-Or post it, which needs no Inngest client:
-
-```
-POST /api/events/app%2Fappointment.created
-Authorization: Bearer <api key>
-Content-Type: application/json
-```
-
-The route accepts and enqueues. It does not fan out inside the request, because
-that would tie a run's durability to an HTTP connection, so the payload goes onto
-the bus and the Event's own listener does the delivery. The answer names the Event
-and a delivery id and says nothing about the workflows behind it, since this
-endpoint answers third parties across origins. It sits outside the `auth` predicate
-and checks an API key instead, and it answers `OPTIONS` with CORS headers for a
-browser sender.
+The Event's own listener is what delivers it, so a run's durability is the bus's
+from the moment the send returns.
 
 **The gate is open, on purpose.** Declared fields are validated and a key the schema
 never heard of is ignored rather than refused. An Event's payload is the host's own
 message and senders add fields routinely, so an additive change upstream must not
 stop intake. This is the one boundary in the repo that decodes this way, and the
 consequence is worth stating: drift on a declared field fails loudly, and drift by
-addition is silent by choice. A refusal reaches an HTTP sender as a 400 naming the
-paths that did not fit, and reaches the Inngest listener as a logged failure with no
-retry, because a malformed payload does not improve on a second attempt.
+addition is silent by choice. A refusal is a logged failure with no retry, because a
+malformed payload does not improve on a second attempt.
 
 What the gate decodes to is discarded, and the raw JSON travels on. Nothing
 downstream consumes a typed value: the lifecycle reads a string at the Correlation
@@ -449,10 +435,11 @@ Lifecycle Node is the workflow's entry node on the canvas. It carries the
 **Lifecycle Rules** and two outlets, Started and Canceled. An unconnected outlet
 ends the run quietly.
 
-**Start Events** are the Events the rules list as starting a run. When one arrives,
-Concurrency applies first, and then a new Execution enters through the Started
-outlet carrying the payload. Manual starts are the other start source: the Run
-button and the execute route, allowed or refused by the same rules.
+The **Start Event** is the one Event the rules name as starting a run; a
+workflow has at most one. When it arrives, Concurrency applies first, and then
+a new Execution enters through the Started outlet carrying the payload. Manual
+starts are the other start source: the Run button and the execute route,
+allowed or refused by the same rules.
 
 **Cancel Events** are the Events the rules list as canceling runs. When one arrives,
 every in-flight Execution with an equal Entity Value jumps to the Canceled outlet at
@@ -681,11 +668,11 @@ Notes worth reading once:
   predicate `(request: Request) => boolean | Promise<boolean>` reading whatever
   session your app already uses, or `"external"` when something in front of Rova
   already gates it. It covers the RPC, REST, OpenAPI, extensions, and SPA routes.
-- **Three routes sit outside that gate**: the Inngest callback, the Event intake
-  path, and the wait resume path. Those callers are machines carrying a signing key,
-  an API key, or a resume token, and a session check would break all three. Which of
-  Rova's routes are which is Rova's knowledge, which is why the predicate is an
-  option rather than middleware wrapped around the mount.
+- **Two routes sit outside that gate**: the Inngest callback and the wait resume
+  path. Those callers are machines carrying a signing key or a resume token, and a
+  session check would break both. Which of Rova's routes are which is Rova's
+  knowledge, which is why the predicate is an option rather than middleware wrapped
+  around the mount.
 - **Set `inngest.signingKey` on any deployment.** `/api/inngest` sits outside the
   gate because Inngest signs its callbacks, and that holds only with a signing key
   configured. Without one the Inngest SDK runs in dev mode and skips signature
@@ -712,11 +699,6 @@ Base path is `/api`, under whatever `basePath` names.
 - `GET /api/extensions` the whole extension surface as one JSON catalog, which the
   editor reads once before its first render
 - `GET /api/openapi.json`, `GET /api/docs`
-
-**Events**
-
-- `OPTIONS /api/events/:eventName`
-- `POST /api/events/:eventName`
 
 **API keys**
 

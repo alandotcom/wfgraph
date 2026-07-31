@@ -400,8 +400,8 @@ describe("createRovaApp with an auth predicate", () => {
   it("leaves the machine routes on their own credentials", async () => {
     const app = await createGuardedApp(false);
     try {
-      const intake = await app.fetch(
-        new Request("http://localhost/rova/api/events/order.created", {
+      const resume = await app.fetch(
+        new Request("http://localhost/rova/api/workflows/waits/tok_1/resume", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(["wrong", "shape"]),
@@ -409,52 +409,12 @@ describe("createRovaApp with an auth predicate", () => {
       );
       // 400 from the route's own body validation, so the request got past the
       // gate rather than being turned away at it.
-      expect(intake.status).toBe(400);
-
-      const preflight = await app.fetch(
-        new Request("http://localhost/rova/api/events/order.created", {
-          method: "OPTIONS",
-        })
-      );
-      expect(preflight.status).toBe(200);
+      expect(resume.status).toBe(400);
 
       // Inngest cannot carry a browser session, so a gate here would break every
       // callback and with it every workflow run.
       const inngest = await get(app, "/rova/api/inngest");
       expect(inngest.status).not.toBe(401);
-    } finally {
-      await app.dispose();
-    }
-  });
-
-  // Every other answer the event intake route gives carries CORS, including the
-  // 500 built by onError, so a body the route refuses before the service is
-  // reached has to as well. Without it a browser-side sender sees an opaque
-  // response and cannot tell a malformed request from an outage.
-  it("carries CORS on the intake refusals the route makes itself", async () => {
-    const app = await createGuardedApp(false);
-    try {
-      const badBody = await app.fetch(
-        new Request("http://localhost/rova/api/events/order.created", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(["wrong", "shape"]),
-        })
-      );
-      expect(badBody.status).toBe(400);
-      expect(badBody.headers.get("Access-Control-Allow-Origin")).toBe("*");
-
-      // A path segment of nothing but whitespace is the one way the Event name
-      // fails its own schema, since Hono never matches an empty segment.
-      const badParams = await app.fetch(
-        new Request("http://localhost/rova/api/events/%20", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: "{}",
-        })
-      );
-      expect(badParams.status).toBe(400);
-      expect(badParams.headers.get("Access-Control-Allow-Origin")).toBe("*");
     } finally {
       await app.dispose();
     }

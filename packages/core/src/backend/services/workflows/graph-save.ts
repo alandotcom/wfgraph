@@ -25,7 +25,7 @@ import {
 import { validateWorkflowConditionConfigs } from "#src/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
 import { validateWorkflowIntegrations } from "#src/backend/lib/workflow-integration-validation";
-import { validateWorkflowLifecycleRules } from "#src/backend/lib/workflow-lifecycle-validation";
+import { validateWorkflowEvents } from "#src/backend/lib/workflow-lifecycle-validation";
 import { deriveEventSubscriptions } from "#src/backend/services/workflows/lifecycle/subscriptions";
 import type { WorkflowEventSubscriptionRow } from "#src/backend/services/workflows/repo";
 import type {
@@ -74,10 +74,10 @@ export const prepareGraphSave = Effect.fn("prepareGraphSave")(
       );
     }
 
-    const lifecycleValidation = validateWorkflowLifecycleRules(nodes, catalog);
-    if (!lifecycleValidation.valid) {
+    const eventValidation = validateWorkflowEvents(nodes, catalog);
+    if (!eventValidation.valid) {
       return yield* Effect.fail(
-        new InvalidInput({ error: lifecycleValidation.error })
+        new InvalidInput({ error: eventValidation.error })
       );
     }
 

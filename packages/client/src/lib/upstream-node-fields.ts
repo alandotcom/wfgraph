@@ -50,8 +50,7 @@ function readConfigString(
  * `format` included, because the type is what decides a condition row's operators
  * and a rule built against one Event would be unanswerable on a run that arrived
  * as another. Disagreement leaves the path offered as text, which is what a
- * template renders it to in any case, and gives the condition builder the string
- * operators every payload can answer.
+ * template renders it to in any case.
  *
  * An Event the catalog has never heard of is skipped. Saving refuses a rules
  * declaration naming one, so it belongs to a graph that cannot run, and the
@@ -106,10 +105,9 @@ function commonPayloadFields(
  *
  * The entry node's output is the payload of the Event that started or canceled
  * the run, and which of those a node receives depends on the outlet it sits
- * behind: the Start Events' fields behind Started, the Cancel Events' behind
+ * behind: the Start Event's fields behind Started, the Cancel Events' behind
  * Canceled, and the fields common to both where a branch rejoins. Every Event a
- * run could have arrived as goes into one intersection, which is the same rule
- * whether the multiplicity comes from several Start Events or from two outlets.
+ * run could have arrived as goes into one intersection.
  *
  * A node the entry node cannot reach through a named outlet is offered nothing.
  * The save refuses an entry-node edge that names no outlet, so an unnamed one
@@ -132,10 +130,10 @@ function getEntryNodeOutputFields(input: {
   });
 
   return commonPayloadFields(
-    [
-      ...(outlets.has(LIFECYCLE_STARTED_HANDLE) ? rules.startEvents : []),
+    compact([
+      outlets.has(LIFECYCLE_STARTED_HANDLE) && rules.startEvent,
       ...(outlets.has(LIFECYCLE_CANCELED_HANDLE) ? rules.cancelEvents : []),
-    ],
+    ]),
     getExtensionCatalog()
   );
 }

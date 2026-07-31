@@ -144,7 +144,7 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
       graph: prepared.graph,
       mode: sourceWorkflow.mode,
       visibility: "private",
-      // A copy starts paused. It names the same Start Events as its source, so an
+      // A copy starts paused. It names the same Start Event as its source, so an
       // unpaused copy would double every run the original does from the moment it
       // exists -- and a copy is made to be edited, not to run as it is.
       isPaused: true,

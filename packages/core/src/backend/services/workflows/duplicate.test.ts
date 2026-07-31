@@ -26,7 +26,7 @@ const sourceGraph = createSerializedWorkflowGraph({
         type: "trigger",
         config: {
           lifecycleRules: {
-            startEvents: ["app/appointment.created"],
+            startEvent: "app/appointment.created",
             cancelEvents: [],
             concurrency: "newest-wins",
           },
@@ -145,10 +145,10 @@ describe("postWorkflowDuplicate", () => {
         const storedGraph = repo.calls.inserts[0]?.graph;
         assert.isDefined(storedGraph);
         // The entry node's config travels whole, Lifecycle Rules included: the
-        // copy starts on the same Events as its source.
+        // copy starts on the same Event as its source.
         assert.deepStrictEqual(nodeConfig(storedGraph, 0), {
           lifecycleRules: {
-            startEvents: ["app/appointment.created"],
+            startEvent: "app/appointment.created",
             cancelEvents: [],
             concurrency: "newest-wins",
           },
@@ -211,7 +211,7 @@ describe("postWorkflowDuplicate", () => {
     );
   });
 
-  // A copy names the same Start Events as its source, so it subscribes to them
+  // A copy names the same Start Event as its source, so it subscribes to it
   // from the moment it exists -- under its own id, and paused, because two
   // unpaused workflows on one Event would double every run.
   layer(

@@ -52,7 +52,7 @@ const catalog: ExtensionCatalog = {
 
 function rules(overrides: Partial<LifecycleRules> = {}): LifecycleRules {
   return {
-    startEvents: ["app/appointment.created"],
+    startEvent: "app/appointment.created",
     cancelEvents: [],
     concurrency: "newest-wins",
     ...overrides,
@@ -70,7 +70,7 @@ describe("lifecycleRulesSchema", () => {
       lifecycleRulesSchema,
       rejectUnknownKeys
     )({
-      startEvents: ["app/appointment.created"],
+      startEvent: "app/appointment.created",
       cancelEvents: [],
       concurrency: "first-wins",
       allowManualStart: true,
@@ -87,7 +87,6 @@ describe("lifecycleRulesSchema", () => {
   it("refuses a concurrency it has never heard of", () => {
     expect(
       decode({
-        startEvents: [],
         cancelEvents: [],
         concurrency: "replace",
       })._tag
@@ -97,7 +96,7 @@ describe("lifecycleRulesSchema", () => {
   it("refuses a blank Event name", () => {
     expect(
       decode({
-        startEvents: ["  "],
+        startEvent: "  ",
         cancelEvents: [],
         concurrency: "unlimited",
       })._tag
@@ -109,13 +108,13 @@ describe("readLifecycleRules", () => {
   it("reads the rules off an entry node's config", () => {
     const read = readLifecycleRules({
       lifecycleRules: {
-        startEvents: ["app/appointment.created"],
+        startEvent: "app/appointment.created",
         cancelEvents: [],
         concurrency: "unlimited",
       },
     });
 
-    expect(read?.startEvents).toEqual(["app/appointment.created"]);
+    expect(read?.startEvent).toBe("app/appointment.created");
   });
 
   it("answers undefined for a config carrying none", () => {
@@ -161,7 +160,7 @@ describe("checkLifecycleRules", () => {
   it("refuses one Event holding both roles", () => {
     const check = checkLifecycleRules({
       rules: rules({
-        startEvents: ["app/appointment.created"],
+        startEvent: "app/appointment.created",
         cancelEvents: ["app/appointment.created"],
       }),
       catalog,
@@ -172,7 +171,7 @@ describe("checkLifecycleRules", () => {
 
   it("names an Event the catalog does not hold", () => {
     const check = checkLifecycleRules({
-      rules: rules({ startEvents: ["app/appointment.moved"] }),
+      rules: rules({ startEvent: "app/appointment.moved" }),
       catalog,
     });
 
@@ -231,7 +230,7 @@ describe("checkLifecycleRules", () => {
   it("refuses a correlation-free Start Event when Concurrency compares", () => {
     const check = checkLifecycleRules({
       rules: rules({
-        startEvents: ["ops/nightly.swept"],
+        startEvent: "ops/nightly.swept",
         concurrency: "first-wins",
       }),
       catalog,
@@ -245,7 +244,7 @@ describe("checkLifecycleRules", () => {
     expect(
       checkLifecycleRules({
         rules: rules({
-          startEvents: ["ops/nightly.swept"],
+          startEvent: "ops/nightly.swept",
           concurrency: "unlimited",
         }),
         catalog,
@@ -257,7 +256,7 @@ describe("checkLifecycleRules", () => {
     expect(
       checkLifecycleRules({
         rules: rules({
-          startEvents: ["ops/nightly.swept"],
+          startEvent: "ops/nightly.swept",
           concurrency: "newest-wins",
           correlationPaths: { "ops/nightly.swept": "sweep.id" },
         }),
@@ -268,7 +267,7 @@ describe("checkLifecycleRules", () => {
 
   it("refuses a workflow nothing can start", () => {
     const check = checkLifecycleRules({
-      rules: rules({ startEvents: [] }),
+      rules: rules({ startEvent: undefined }),
       catalog,
     });
 
@@ -278,7 +277,7 @@ describe("checkLifecycleRules", () => {
   it("accepts a manual start as the only start source", () => {
     expect(
       checkLifecycleRules({
-        rules: rules({ startEvents: [], allowManualStart: true }),
+        rules: rules({ startEvent: undefined, allowManualStart: true }),
         catalog,
       })
     ).toEqual({ valid: true });
@@ -290,7 +289,7 @@ describe("checkLifecycleRules", () => {
     expect(
       refusalOf(
         checkLifecycleRules({
-          rules: rules({ startEvents: [], allowManualStart: false }),
+          rules: rules({ startEvent: undefined, allowManualStart: false }),
           catalog,
         })
       )
@@ -336,11 +335,11 @@ describe("hasStartSource", () => {
   it("counts a Start Event and the manual checkbox alike", () => {
     expect(hasStartSource(rules())).toBe(true);
     expect(
-      hasStartSource(rules({ startEvents: [], allowManualStart: true }))
+      hasStartSource(rules({ startEvent: undefined, allowManualStart: true }))
     ).toBe(true);
     expect(
-      hasStartSource(rules({ startEvents: [], allowManualStart: false }))
+      hasStartSource(rules({ startEvent: undefined, allowManualStart: false }))
     ).toBe(false);
-    expect(hasStartSource(rules({ startEvents: [] }))).toBe(false);
+    expect(hasStartSource(rules({ startEvent: undefined }))).toBe(false);
   });
 });

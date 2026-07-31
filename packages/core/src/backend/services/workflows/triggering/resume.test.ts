@@ -50,8 +50,8 @@ const liveWaitState: WorkflowWaitState = {
  * The keys one test stored, the wait it can find, and a record of whether the
  * token was ever looked up.
  *
- * The order of the two checks is the point, as it is on the intake route: a
- * wait token travels in a URL and so accumulates in browser history, proxy logs
+ * The order of the two checks is the point: a wait token travels in a URL and so
+ * accumulates in browser history, proxy logs
  * and referrers, and answering "not found" rather than "unauthorized" to a
  * caller holding one but no API key tells them whether that token is still live.
  * `tokenLookups` stays empty for every rejected key, which is what pins it.

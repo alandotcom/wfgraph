@@ -3,9 +3,8 @@ import type {
   ServiceFailureKind,
 } from "#src/backend/lib/effect/failures";
 
-// The two endpoints that are plain Hono handlers (event intake and wait-hook
-// resume) speak HTTP directly, so this is where a domain failure kind picks up a
-// status.
+// The wait resume endpoint is a plain Hono handler speaking HTTP directly, so
+// this is where a domain failure kind picks up a status.
 const FAILURE_KIND_TO_HTTP_STATUS = {
   invalid: 400,
   unauthorized: 401,
@@ -15,16 +14,12 @@ const FAILURE_KIND_TO_HTTP_STATUS = {
 } as const satisfies Record<ServiceFailureKind, number>;
 
 /**
- * The other edge: a domain failure becomes the HTTP response those two routes
- * answer with. The body is the failure's own payload, which is the `{ error }`
- * a third-party sender has always received.
+ * The other edge: a domain failure becomes the HTTP response that route answers
+ * with. The body is the failure's own payload, which is the `{ error }` a
+ * third-party sender has always received.
  */
-export function responseFromServiceFailure(
-  failure: ServiceFailure,
-  init?: Omit<ResponseInit, "status">
-): Response {
+export function responseFromServiceFailure(failure: ServiceFailure): Response {
   return Response.json(failure.payload, {
-    ...init,
     status: FAILURE_KIND_TO_HTTP_STATUS[failure.kind],
   });
 }

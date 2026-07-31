@@ -1,9 +1,8 @@
 import { useAtomValue } from "jotai";
-import { Plus, X } from "lucide-react";
-import { useCallback, useId, useMemo, useState } from "react";
+import { X } from "lucide-react";
+import { useCallback, useId, useMemo } from "react";
 import { Button } from "#src/components/ui/button";
 import { WarningCallout } from "#src/components/ui/callout";
-import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { getEventConditionFields } from "#src/lib/upstream-node-fields";
@@ -18,7 +17,7 @@ import {
   readWaitSubscriptions,
 } from "@rova/shared/workflow/wait-subscription";
 import { ConditionBuilderRow } from "./condition-builder-row";
-import { EventChipGroup } from "./event-chip-group";
+import { EventMultiCombobox } from "./event-combobox";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 /**
@@ -29,8 +28,7 @@ import type { UpdateNodeConfig } from "./node-config-patch";
  * says what an Event does to a run: that is the Lifecycle Node's declaration and
  * the builder reads it there. The vocabulary is the app's Events rather than the
  * entry node's, which is what lets a wait park on something the workflow does not
- * start on, and an Event the catalog does not name can still be typed in -- a host
- * may send one to the bus that it never declared.
+ * start on.
  *
  * A match is the Condition node's model, stored per subscription and evaluated
  * against the arriving payload. Its right-hand side takes a literal or a template
@@ -45,36 +43,28 @@ export function WaitEventSelect({
   onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
 }) {
-  const chipGroupLabelId = useId();
-  const [draftEventType, setDraftEventType] = useState("");
+  const eventsInputId = useId();
 
   const selected = readWaitSubscriptions(config);
   const catalog = getExtensionCatalog();
 
   const selectedNames = selected.map((subscription) => subscription.event);
-  const declared = new Set(catalog.events.map((event) => event.name));
-  // Every selection is a chip, declared or typed in, so nothing the builder
-  // chose is ever invisible. A name the catalog does not carry has no label but
-  // its own.
-  const choices = [
-    ...catalog.events.map((event) => ({
-      name: event.name,
-      label: event.label,
-    })),
-    ...selectedNames
-      .filter((eventName) => !declared.has(eventName))
-      .map((eventName) => ({ name: eventName, label: eventName })),
-  ];
 
   const write = (next: EventSubscription[]) => {
     onUpdateConfig({ waitFor: next });
   };
 
-  const add = (eventName: string) => {
-    if (selectedNames.includes(eventName)) {
-      return;
-    }
-    write([...selected, { event: eventName }]);
+  // A subscription is its Event plus its match, so a selection that survives the
+  // edit keeps the match already written against it.
+  const setEvents = (eventNames: string[]) => {
+    write(
+      eventNames.map(
+        (eventName) =>
+          selected.find((subscription) => subscription.event === eventName) ?? {
+            event: eventName,
+          }
+      )
+    );
   };
 
   const remove = (eventName: string) => {
@@ -91,63 +81,25 @@ export function WaitEventSelect({
     );
   };
 
-  const normalizedDraft = draftEventType.trim();
-  const handleAddDraft = () => {
-    if (!normalizedDraft) {
-      return;
-    }
-    add(normalizedDraft);
-    setDraftEventType("");
-  };
-
   return (
     <div className="space-y-3">
       <div className="space-y-2">
-        <Label id={chipGroupLabelId}>Resume when the event is</Label>
+        <Label htmlFor={eventsInputId}>Resume when the event is</Label>
 
-        {choices.length > 0 ? (
-          <EventChipGroup
-            choices={choices}
+        {catalog.events.length > 0 ? (
+          <EventMultiCombobox
+            choices={catalog.events}
             disabled={disabled}
-            labelId={chipGroupLabelId}
-            onToggle={(eventName) =>
-              selectedNames.includes(eventName)
-                ? remove(eventName)
-                : add(eventName)
-            }
-            selected={selectedNames}
+            inputId={eventsInputId}
+            onValueChange={setEvents}
+            value={selectedNames}
           />
         ) : (
           <p className="text-muted-foreground text-xs">
-            This server declares no Events. Name the one this wait parks on
-            below, or ask whoever runs it to declare the Event.
+            This server declares no Events, so there is nothing for a wait to
+            park on. Ask whoever runs it to declare the Event.
           </p>
         )}
-
-        <div className="flex items-center gap-2">
-          <Input
-            disabled={disabled}
-            onChange={(event) => setDraftEventType(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                handleAddDraft();
-              }
-            }}
-            placeholder="app/appointment.confirmed"
-            value={draftEventType}
-          />
-          <Button
-            disabled={disabled || !normalizedDraft}
-            onClick={handleAddDraft}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <Plus className="size-3.5" />
-            Add
-          </Button>
-        </div>
       </div>
 
       {selected.length === 0 ? (
@@ -232,6 +184,12 @@ function WaitSubscriptionRow({
           <p className="truncate font-mono text-[10px] text-muted-foreground">
             {subscription.event}
           </p>
+          {event ? null : (
+            <p className="text-destructive text-xs">
+              This app no longer declares this Event; the workflow will not save
+              until it is removed or declared again.
+            </p>
+          )}
         </div>
         <Button
           aria-label={`Remove ${subscription.event}`}
@@ -245,14 +203,6 @@ function WaitSubscriptionRow({
           <X className="size-3.5" />
         </Button>
       </div>
-
-      {event ? null : (
-        <WarningCallout variant="text">
-          This server declares no such Event, so its fields are unknown here.
-          The wait still parks on the name, and still wakes on a match if
-          something sends it.
-        </WarningCallout>
-      )}
 
       {subscription.match ? (
         <>

@@ -98,7 +98,7 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
 /**
  * The machine route's resume: an API key, then the token.
  *
- * Credentials before the lookup, the ordering event intake uses too. A wait token
+ * Credentials before the lookup. A wait token
  * travels in a URL and so accumulates in browser history, proxy logs, and
  * referrers; answering "not found" versus "unauthorized" to a caller who has one
  * but no API key tells them whether that token is still live.

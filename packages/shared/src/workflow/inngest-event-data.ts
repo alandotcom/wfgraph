@@ -12,7 +12,6 @@
  */
 
 import { parse as parseCel } from "@marcbachmann/cel-js";
-import type { JsonValue } from "#src/types/json";
 import { celStringLiteral } from "#src/workflow/cel-string-literal";
 
 function prefixEventDataPath(path: string): string {
@@ -22,14 +21,7 @@ function prefixEventDataPath(path: string): string {
 /** A path segment CEL reads as a plain field rather than as an expression. */
 const PLAIN_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-/**
- * A source filter's path, split the one way both readers of it agree on.
- *
- * The compiled expression and the intake route's own check have to reach the same
- * field for the same payload, or an Event accepted at the door is delivered as a
- * different one; sharing the split is what makes that true by construction rather
- * than by two implementations happening to trim alike.
- */
+/** A source filter's path, as segments, refusing one that names no field. */
 function sourceFilterSegments(path: string): string[] {
   const segments = path
     .split(".")
@@ -41,36 +33,6 @@ function sourceFilterSegments(path: string): string[] {
   }
 
   return segments;
-}
-
-/**
- * Whether a payload is the Event a `source.when` narrows to.
- *
- * The bus decides this with the compiled expression above, and this is the same
- * question asked in JavaScript at the HTTP door, where a mismatch can still be
- * answered to the sender. CEL's `==` is false across types, so a value that is not
- * this string is not a match, whatever it is.
- */
-export function eventSourceMatches(
-  when: { readonly path: string; readonly equals: string },
-  payload: JsonValue
-): boolean {
-  let cursor: JsonValue = payload;
-
-  // The path cannot be empty: an Event compiled its filter at definition, and
-  // `sourceFilterSegments` refused one there.
-  for (const segment of sourceFilterSegments(when.path)) {
-    if (
-      typeof cursor !== "object" ||
-      cursor === null ||
-      Array.isArray(cursor)
-    ) {
-      return false;
-    }
-    cursor = cursor[segment] ?? null;
-  }
-
-  return cursor === when.equals;
 }
 
 /**

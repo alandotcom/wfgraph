@@ -5,10 +5,11 @@
  *
  * An Event carries no lifecycle role. The same Event starts one workflow,
  * cancels another, and only wakes a wait in a third, which is why the roles are
- * lists of Event names here rather than anything the Event Author writes.
+ * named here rather than by the Event Author.
  */
 
 import { Schema } from "effect";
+import { compact } from "es-toolkit/array";
 import { type ExtensionCatalog, findEvent } from "#src/extensions/catalog";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 
@@ -28,8 +29,14 @@ const concurrencySchema = Schema.Literals([
 export type Concurrency = typeof concurrencySchema.Type;
 
 export const lifecycleRulesSchema = Schema.Struct({
-  /** Event names that start a run. */
-  startEvents: Schema.Array(NonEmptyTrimmedString),
+  /**
+   * The Event that starts a run, absent when no Event does.
+   *
+   * One rather than a list, because everything downstream of the entry node is
+   * written against the payload that started the run: a second Start Event would
+   * mean a builder addressing only the fields the two happen to share.
+   */
+  startEvent: Schema.optional(NonEmptyTrimmedString),
   /** Event names that route in-flight runs to the Canceled outlet. */
   cancelEvents: Schema.Array(NonEmptyTrimmedString),
   concurrency: concurrencySchema,
@@ -64,7 +71,6 @@ export type LifecycleRules = typeof lifecycleRulesSchema.Type;
  * what answers the other one.
  */
 export const emptyLifecycleRules: LifecycleRules = {
-  startEvents: [],
   cancelEvents: [],
   concurrency: "unlimited",
 };
@@ -111,7 +117,7 @@ export function resolveCorrelationPath(input: {
 
 /** Whether anything at all can start a run of this workflow. */
 export function hasStartSource(rules: LifecycleRules): boolean {
-  return rules.startEvents.length > 0 || rules.allowManualStart === true;
+  return rules.startEvent !== undefined || rules.allowManualStart === true;
 }
 
 /**
@@ -126,15 +132,6 @@ export function manualStartAllowed(rules: LifecycleRules | undefined): boolean {
   return rules === undefined || rules.allowManualStart === true;
 }
 
-/**
- * The interim sentence, said once.
- *
- * It is shown twice over: the panel renders it beside a placeholder, and a save
- * answers with it. Exported so the two copies cannot drift.
- */
-export const SCHEDULE_INTERIM_MESSAGE =
-  "Nothing in Rova ticks a clock yet, so a run on a timer comes from whatever already schedules work for you, posting an Event.";
-
 export type LifecycleRulesCheck =
   | { valid: true }
   | { valid: false; error: string };
@@ -145,6 +142,16 @@ const refuse = (error: string): LifecycleRulesCheck => ({
   valid: false,
   error,
 });
+
+/**
+ * The sentence a save is refused with when a name resolves to no Event.
+ *
+ * Exported so the wait check in `workflow-lifecycle-validation.ts` shares this
+ * copy rather than wording the same refusal a second time.
+ */
+export function unknownEventMessage(name: string): string {
+  return `No Event named "${name}" is defined. Choose an Event this app declares, or ask whoever defines them to add it.`;
+}
 
 /** Which node is asking a builder for an Event's Correlation Path. */
 export type CorrelationPathRole = "start" | "cancel";
@@ -180,12 +187,9 @@ export function eventsNeedingCorrelationPath(input: {
     eventName: string;
     role: CorrelationPathRole;
   }> = [
-    ...(rules.concurrency === "unlimited"
+    ...(rules.concurrency === "unlimited" || rules.startEvent === undefined
       ? []
-      : rules.startEvents.map((eventName) => ({
-          eventName,
-          role: "start" as const,
-        }))),
+      : [{ eventName: rules.startEvent, role: "start" as const }]),
     ...rules.cancelEvents.map((eventName) => ({
       eventName,
       role: "cancel" as const,
@@ -226,22 +230,17 @@ export function checkLifecycleRules(input: {
 }): LifecycleRulesCheck {
   const { rules, catalog } = input;
 
-  // ADR-0007 rejects one Event holding both roles rather than picking a winner,
-  // which is what makes the one-role rule a set intersection.
-  const bothRoles = rules.startEvents.filter((name) =>
-    rules.cancelEvents.includes(name)
-  );
-  if (bothRoles.length > 0) {
+  // ADR-0007 rejects one Event holding both roles rather than picking a winner.
+  if (rules.startEvent && rules.cancelEvents.includes(rules.startEvent)) {
     return refuse(
-      `Event "${bothRoles[0]}" cannot both start and cancel runs of this workflow. Give it one role, or start on one Event and cancel on another.`
+      `Event "${rules.startEvent}" cannot both start and cancel runs of this workflow. Give it one role, or start on one Event and cancel on another.`
     );
   }
 
-  for (const name of [...rules.startEvents, ...rules.cancelEvents]) {
+  const named = compact([rules.startEvent, ...rules.cancelEvents]);
+  for (const name of named) {
     if (!findEvent(catalog, name)) {
-      return refuse(
-        `No Event named "${name}" is defined. Choose an Event this app declares, or ask whoever defines them to add it.`
-      );
+      return refuse(unknownEventMessage(name));
     }
   }
 

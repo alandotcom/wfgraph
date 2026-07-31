@@ -74,17 +74,4 @@ describe("responseFromServiceFailure", () => {
       assert.deepStrictEqual(await response.json(), failure.payload);
     }
   );
-
-  it("keeps the headers the caller asked for", () => {
-    const response = responseFromServiceFailure(
-      new Unauthorized({ error: "Missing Authorization header" }),
-      { headers: { "Access-Control-Allow-Origin": "*" } }
-    );
-
-    assert.strictEqual(
-      response.headers.get("Access-Control-Allow-Origin"),
-      "*"
-    );
-    assert.strictEqual(response.status, 401);
-  });
 });

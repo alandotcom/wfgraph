@@ -338,8 +338,8 @@ subscription's `if` in `workflow-engine/core.ts`, and the run function's trigger
 why the helper is in `@rova/shared`. Hand-rolling the escape is how a value carrying a
 newline gets past a test and fails at Inngest, where the expression is evaluated and the
 failure is a run that never triggers.
-Which Events start a run and which cancel it is the Workflow Builder's per-workflow
-declaration, never the Event's (ADR-0007).
+Which Event starts a run and which Events cancel it is the Workflow Builder's
+per-workflow declaration, never the Event's (ADR-0007).
 
 `decodePayload` beside the schema is the intake gate, and it is the one boundary in this
 repo that decodes **open**: declared fields are validated and a key the schema never heard
@@ -359,8 +359,7 @@ sentences a save is refused with (`checkLifecycleRules`), which
 `backend/lib/workflow-lifecycle-validation.ts` runs against the assembled catalog wherever a
 graph is written and again in preflight. `services/workflows/lifecycle/` holds the rest:
 `deliver-event.ts` is Precedence (rules first, then the Wait Subscriptions of the runs that
-survived them), `concurrency.ts` is `startWithConcurrency`, `intake.ts` is
-`POST /api/events/:eventName`, and `subscriptions.ts` derives the
+survived them), `concurrency.ts` is `startWithConcurrency`, and `subscriptions.ts` derives the
 `workflow_event_subscriptions` rows a graph calls for, each carrying the builder's
 Correlation Path override for its Event so a delivery never reads a graph to find one. Those
 rows are written by `WorkflowRepo` in the same transaction as the graph, and the fan-out
@@ -426,7 +425,8 @@ one is an immortal Execution, holding a row, an Inngest function and a place in 
 until somebody notices. `waitTimeoutBehavior` defaults to `continue` and is honored in both
 modes.
 
-A subscription names an Event and carries an optional `match`, which is the serialized
+A subscription names an Event the catalog declares, since a wait on a name nothing sends can
+only time out, and carries an optional `match`, which is the serialized
 `ConditionModel` the Condition node already builds, evaluated against the arriving payload
 rather than against merged node outputs and so rooted at `payload`. The stored predicate is
 the whole of the runtime rule, which is what keeps CONTEXT.md's "equal Entity Values, whatever
@@ -483,11 +483,11 @@ keeps: `triggerType` first, which every graph saved before this batch carries, t
 schedule fields, and the three that used to describe the payload by hand. The trigger
 registry and the `Schedule` definition went with them.
 
-What a downstream node may address comes from the Start Events instead.
+What a downstream node may address comes from the Start Event instead.
 `packages/client/src/lib/upstream-node-fields.ts` reads each named Event's `payloadFields`
-off the catalog and intersects them, because a node has to cope with whichever start the
-run arrived through, and one intersection covers both sources of multiplicity: several
-Start Events, and the two outlets `entryOutletsReaching` says can reach the node. A path
+off the catalog and intersects them, because a node has to cope with whichever arrival the
+run reached it through: the two outlets `entryOutletsReaching` says lead to the node, and
+the Cancel Events behind one of them. A path
 the Events declare with different types is offered as text, which is what a template
 renders it to anyway and what leaves the condition builder operators every payload can
 answer. There is no hand-written shape, output contract or sample left to keep in step

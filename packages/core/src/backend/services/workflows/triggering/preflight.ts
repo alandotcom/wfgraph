@@ -11,7 +11,7 @@ import { validateWorkflowActionConfigs } from "#src/backend/lib/workflow-action-
 import { validateWorkflowConditionConfigs } from "#src/backend/lib/workflow-conditions-validation";
 import { validateWorkflowGraph } from "#src/backend/lib/workflow-graph";
 import { validateWorkflowIntegrations } from "#src/backend/lib/workflow-integration-validation";
-import { validateWorkflowLifecycleRules } from "#src/backend/lib/workflow-lifecycle-validation";
+import { validateWorkflowEvents } from "#src/backend/lib/workflow-lifecycle-validation";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
 import {
@@ -100,10 +100,10 @@ function writeMemo(catalog: object, key: string, check: GraphCheck): void {
 
 /**
  * Everything about a graph that a delivery can settle without a query: it
- * parses, its actions and conditions are configured, and its Lifecycle Rules
- * name Events this app defines.
+ * parses, its actions and conditions are configured, and every Event it names --
+ * as a lifecycle role or as a Wait node's subscription -- is one this app defines.
  *
- * All four are pure over the graph and the catalog, so the answer is memoized on
+ * All of them are pure over the graph and the catalog, so the answer is memoized on
  * the pair. That is what takes the fan-out's cost off the arrival: the decode is
  * a megabyte of JSONB and the condition check compiles every Condition node and
  * every Wait node's match through the CEL type checker, once per subscribing
@@ -134,12 +134,12 @@ function checkGraphAndCatalog(input: {
     return { valid: false, error: conditionValidation.error };
   }
 
-  const lifecycleValidation = validateWorkflowLifecycleRules(
+  const eventValidation = validateWorkflowEvents(
     graphValidation.nodes,
     input.catalog
   );
-  if (!lifecycleValidation.valid) {
-    return { valid: false, error: lifecycleValidation.error };
+  if (!eventValidation.valid) {
+    return { valid: false, error: eventValidation.error };
   }
 
   const lifecycleNode = graphValidation.nodes.find(
@@ -157,7 +157,7 @@ function checkGraphAndCatalog(input: {
 /**
  * Everything that has to hold before a stored graph is allowed to run: it
  * parses, its actions and conditions are configured, the integrations it names
- * exist, and its Lifecycle Rules name Events the app still defines.
+ * exist, and the Events it names are ones the app still defines.
  *
  * The integration check is the one that stays per call, because it is the one
  * question the graph cannot answer: an integration deleted since the save

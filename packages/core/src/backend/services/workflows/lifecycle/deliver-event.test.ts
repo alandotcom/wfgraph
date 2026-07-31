@@ -85,13 +85,13 @@ const appointmentCanceled = {
 const payload = { appointment: { id: "appt_8813" } };
 
 const startRules: LifecycleRules = {
-  startEvents: ["app/appointment.created"],
+  startEvent: "app/appointment.created",
   cancelEvents: [],
   concurrency: "unlimited",
 };
 
 const cancelRules: LifecycleRules = {
-  startEvents: ["app/appointment.created"],
+  startEvent: "app/appointment.created",
   cancelEvents: ["app/appointment.canceled"],
   concurrency: "unlimited",
 };

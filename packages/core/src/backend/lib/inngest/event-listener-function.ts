@@ -95,8 +95,8 @@ export async function runEventListener(input: {
     ...input.arrival,
   });
 
-  // The gate again, because a payload can reach the bus without passing the HTTP
-  // route: a host sends its own Events directly. A refusal is not retried, since
+  // The gate, because what arrives is a host's own message onto the bus rather
+  // than a contract between Rova's two halves. A refusal is not retried, since
   // the same payload fails the same way on the next attempt.
   const rejection = await runtime.runPromise(
     event.decodePayload(payload).pipe(
@@ -139,8 +139,8 @@ export async function runEventListener(input: {
                 subscriber,
                 event,
                 payload,
-                // The intake route's delivery id is the id it sent the bus event
-                // under, so this is that id wherever the Event came in by HTTP.
+                // Inngest's id for this arrival, which is the sender's own
+                // idempotency id wherever they sent one.
                 deliveryId: input.arrival.eventId,
               })
             )

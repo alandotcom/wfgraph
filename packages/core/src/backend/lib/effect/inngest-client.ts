@@ -1,7 +1,6 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import type { Inngest } from "inngest";
 import {
-  sendHostEvent,
   sendWorkflowCancelRequested,
   sendWorkflowRunRequested,
   sendWorkflowWaitSignal,
@@ -51,10 +50,6 @@ export class InngestClient extends Context.Service<
     readonly sendWaitSignal: (
       input: Parameters<typeof sendWorkflowWaitSignal>[1]
     ) => Effect.Effect<void, InngestError>;
-    /** Put a posted Event on the bus, for its own listener to fan out. */
-    readonly sendHostEvent: (
-      input: Parameters<typeof sendHostEvent>[1]
-    ) => Effect.Effect<void, InngestError>;
   }
 >()("InngestClient") {}
 
@@ -67,7 +62,7 @@ const send = <A>(run: () => Promise<A>): Effect.Effect<A, InngestError> =>
 /**
  * The live bus, over the client the app built.
  *
- * The four sends delegate to `backend/lib/inngest/runtime-events`, which owns
+ * The three sends delegate to `backend/lib/inngest/runtime-events`, which owns
  * the event envelopes and the idempotency key each one carries. The client is a
  * parameter rather than a module lookup, so which connection a service sends on
  * is decided by the app that owns it.
@@ -86,6 +81,5 @@ export function makeInngestClientLayer(
       send(async () => {
         await sendWorkflowWaitSignal(client, input);
       }),
-    sendHostEvent: (input) => send(() => sendHostEvent(client, input)),
   });
 }

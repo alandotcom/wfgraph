@@ -52,8 +52,8 @@ export function deriveEventSubscriptions(input: {
   for (const node of input.nodes) {
     if (node.data.type === "trigger") {
       const rules = readLifecycleRules(node.data.config);
-      for (const eventName of rules?.startEvents ?? []) {
-        add(eventName, "start");
+      if (rules?.startEvent) {
+        add(rules.startEvent, "start");
       }
       for (const eventName of rules?.cancelEvents ?? []) {
         add(eventName, "cancel");

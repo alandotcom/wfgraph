@@ -6,9 +6,6 @@
  * than each picking keys out of the bag. The two modes are the two things a
  * builder can mean -- resume on a clock, or resume when an Event arrives that
  * satisfies a match.
- *
- * Nothing here says how an Event reached Rova. An Inngest send and a post to
- * `/api/events/:eventName` produce the same subscription check.
  */
 
 import { Result, Schema } from "effect";
@@ -19,12 +16,13 @@ import { formatSchemaFailure } from "#src/types/schema-message";
  * One Event a Wait node parks on, with the predicate that decides whether an
  * arrival belongs to this run.
  *
- * `event` is an Event name from the catalog, or a name the catalog has never
- * heard of: a host may send one it never declared, and the picker is not where
- * that is refused. `match` is the serialized `ConditionModel` the Condition node
- * already stores, evaluated against the arriving payload rather than against
- * merged node outputs. A subscription with no match resumes on the next
- * occurrence of that Event, whatever it carries.
+ * `event` is an Event name the app declares. This schema takes any non-empty
+ * string, because it has no catalog to compare against; the save is what holds a
+ * name to the catalog, since a wait on an Event nothing sends can only time out.
+ * `match` is the serialized `ConditionModel` the Condition node already stores,
+ * evaluated against the arriving payload rather than against merged node outputs.
+ * A subscription with no match resumes on the next occurrence of that Event,
+ * whatever it carries.
  */
 export const eventSubscriptionSchema = Schema.Struct({
   event: NonEmptyTrimmedString,

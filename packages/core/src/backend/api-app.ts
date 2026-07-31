@@ -16,7 +16,6 @@ import {
   openApiRestHandler,
 } from "#src/backend/rpc/openapi";
 import { rpcRouter } from "#src/backend/rpc/router";
-import { postEventIntake } from "#src/backend/services/workflows/lifecycle/intake";
 import { postWorkflowResume } from "#src/backend/services/workflows/triggering/resume";
 import { type JsonObject, readJsonObject } from "@rova/shared/types/json";
 import { formatSchemaFailure } from "@rova/shared/types/schema-message";
@@ -25,10 +24,6 @@ import {
   rejectUnknownKeys,
 } from "@rova/shared/types/schema";
 import { getErrorMessage } from "@rova/shared/utils";
-// One app-level route for every Event: an Event is global, so a sender integrates
-// once and every workflow subscribing to it sees what arrives. The editor builds
-// its copyable URL from the same module.
-import { EVENT_INTAKE_ROUTE } from "@rova/shared/workflow/event-intake-url";
 
 // A path segment is whatever the sender typed, so the refusal names the field
 // and the rule rather than echoing the value back into the response body.
@@ -39,10 +34,6 @@ const readParams = {
   ...rejectUnknownKeys,
   errors: "all",
 } as const satisfies SchemaAST.ParseOptions;
-const readEventNameParams = Schema.decodeUnknownResult(
-  Schema.Struct({ eventName: NonEmptyTrimmedString }),
-  readParams
-);
 const readTokenParams = Schema.decodeUnknownResult(
   Schema.Struct({ token: NonEmptyTrimmedString }),
   readParams
@@ -98,7 +89,7 @@ function truncateTextForLogs(text: string): {
 }
 
 /**
- * Read a request body as the JSON object an event or a resume call carries.
+ * Read a request body as the JSON object a resume call carries.
  *
  * Rova parses untrusted input at the route boundary, which is what the project
  * asks for anyway, so no validator middleware sits between the request and the
@@ -211,8 +202,8 @@ const WAIT_RESUME_ROUTE = "/workflows/waits/:token/resume";
 
 /**
  * Routes reached by machines, each carrying a credential of its own: Inngest
- * signs its callback, the event intake path checks an API key, the resume path a
- * resume token. A session check would break all three.
+ * signs its callback, the resume path carries a resume token. A session check
+ * would break both.
  *
  * Written as the exception, so a route added to this file is gated by default
  * and opening one is an edit here with a reason attached. Listing what to gate
@@ -225,26 +216,10 @@ const WAIT_RESUME_ROUTE = "/workflows/waits/:token/resume";
  * Each path is named rather than spelled out, so the gate and the route
  * registration below cannot drift apart into a silent 401 for every sender.
  */
-export const MACHINE_ROUTES = [
-  "/inngest",
-  EVENT_INTAKE_ROUTE,
-  WAIT_RESUME_ROUTE,
-] as const;
-
-/**
- * The event intake endpoint is called from browsers and from third-party
- * senders, so it answers preflight requests and carries these on every answer it
- * gives. CORS is a property of the transport, which is why it is stated here
- * beside the routes rather than inside the service.
- */
-const eventIntakeCorsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
+export const MACHINE_ROUTES = ["/inngest", WAIT_RESUME_ROUTE] as const;
 
 type ApiEnv = {
-  Variables: { rovaMachineRoute?: true; rovaEventIntakeRoute?: true };
+  Variables: { rovaMachineRoute?: true };
 };
 
 export function createApiApp(options: CreateApiAppOptions) {
@@ -322,15 +297,6 @@ export function createApiApp(options: CreateApiAppOptions) {
     });
   }
 
-  // Marks the one route whose failures still need CORS. A defect leaves the
-  // route handler through `onError`, which builds its 500 without knowing what
-  // was being served, and a sender reading a bodyless opaque response cannot
-  // tell an outage from a rejection.
-  app.use(EVENT_INTAKE_ROUTE, async (c, next) => {
-    c.set("rovaEventIntakeRoute", true);
-    await next();
-  });
-
   app.use("*", async (c, next) => {
     if (c.get("rovaMachineRoute") || (await authorize(c.req.raw))) {
       await next();
@@ -348,11 +314,7 @@ export function createApiApp(options: CreateApiAppOptions) {
       error,
     });
 
-    return c.json(
-      { error: "Internal Server Error" },
-      500,
-      c.get("rovaEventIntakeRoute") ? eventIntakeCorsHeaders : undefined
-    );
+    return c.json({ error: "Internal Server Error" }, 500);
   });
 
   // oRPC needs to know the absolute path its handlers are mounted at so it can
@@ -449,49 +411,6 @@ export function createApiApp(options: CreateApiAppOptions) {
       return await (
         await inngest.serve(runtime)
       )(c);
-    })
-    .options(EVENT_INTAKE_ROUTE, () =>
-      Response.json({}, { headers: eventIntakeCorsHeaders })
-    )
-    .post(EVENT_INTAKE_ROUTE, async (c) => {
-      // Both refusals below carry the CORS headers for the same reason the
-      // service's failures do: a browser-side sender reading an opaque response
-      // cannot tell a malformed request from an outage.
-      const params = readEventNameParams(c.req.param());
-      if (Result.isFailure(params)) {
-        return c.json(
-          { error: formatSchemaFailure(params.failure.issue) },
-          400,
-          eventIntakeCorsHeaders
-        );
-      }
-
-      const body = await parseJsonObjectBody(c.req.raw);
-      if (!body.ok) {
-        return c.json({ error: body.error }, 400, eventIntakeCorsHeaders);
-      }
-
-      return await runtime.runPromise(
-        postEventIntake({
-          eventName: params.success.eventName,
-          authHeader: c.req.header("Authorization") ?? null,
-          body: body.data,
-        }).pipe(
-          Effect.match({
-            // 202: the route put the delivery on the bus, and every workflow
-            // behind the Event runs after this response is written.
-            onSuccess: (data) =>
-              Response.json(data, {
-                status: 202,
-                headers: eventIntakeCorsHeaders,
-              }),
-            onFailure: (failure) =>
-              responseFromServiceFailure(failure, {
-                headers: eventIntakeCorsHeaders,
-              }),
-          })
-        )
-      );
     })
     .post(WAIT_RESUME_ROUTE, async (c) => {
       const params = readTokenParams(c.req.param());

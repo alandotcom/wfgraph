@@ -102,7 +102,7 @@ function createTriggerNode(id: string): WorkflowNode {
       type: "trigger",
       config: {
         lifecycleRules: {
-          startEvents: ["app/appointment.created"],
+          startEvent: "app/appointment.created",
           cancelEvents: ["app/appointment.canceled"],
           concurrency: "unlimited",
         },

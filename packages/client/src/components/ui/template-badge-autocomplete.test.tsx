@@ -76,7 +76,7 @@ function seedTemplateContext(selectedNodeId = "wait_1") {
         type: "trigger",
         config: {
           lifecycleRules: {
-            startEvents: [APPOINTMENT_CREATED.name],
+            startEvent: APPOINTMENT_CREATED.name,
             cancelEvents: [],
             concurrency: "unlimited",
           },

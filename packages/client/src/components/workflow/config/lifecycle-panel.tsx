@@ -1,15 +1,13 @@
-import { CalendarClock, Copy } from "lucide-react";
-import { useId } from "react";
-import { toast } from "sonner";
+import { X } from "lucide-react";
+import { type ReactNode, useId } from "react";
 import { Button } from "#src/components/ui/button";
 import { WarningCallout } from "#src/components/ui/callout";
 import { Checkbox } from "#src/components/ui/checkbox";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { Radio, RadioGroup } from "#src/components/ui/radio-group";
-import { getBasePath } from "#src/lib/base-path";
 import { getExtensionCatalog } from "#src/lib/extensions";
-import { buildEventIntakeUrl } from "@rova/shared/workflow/event-intake-url";
+import { findEvent } from "@rova/shared/extensions/catalog";
 import { cn } from "@rova/shared/utils";
 import {
   checkLifecycleRules,
@@ -19,9 +17,9 @@ import {
   initialLifecycleRules,
   type LifecycleRules,
   readLifecycleRules,
-  SCHEDULE_INTERIM_MESSAGE,
+  resolveCorrelationPath,
 } from "@rova/shared/workflow/lifecycle-rules";
-import { EventChipGroup } from "./event-chip-group";
+import { EventCombobox, EventMultiCombobox } from "./event-combobox";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 /**
@@ -33,10 +31,6 @@ import type { UpdateNodeConfig } from "./node-config-patch";
  * writing them on mount: opening a panel is not an edit, and an autosave nobody
  * asked for is how a builder loses the difference between "never configured" and
  * "configured this way".
- *
- * The schedule is present as a placeholder, with no control: a builder can see
- * where it will go, and the sentence beside it is the one a save would answer
- * with. Nothing can write one yet.
  */
 export function LifecyclePanel({
   config,
@@ -47,8 +41,8 @@ export function LifecyclePanel({
   onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
 }) {
-  const startEventsLabelId = useId();
-  const cancelEventsLabelId = useId();
+  const startEventId = useId();
+  const cancelEventsId = useId();
   const concurrencyLabelId = useId();
   const manualStartId = useId();
   const catalog = getExtensionCatalog();
@@ -63,22 +57,12 @@ export function LifecyclePanel({
     onUpdateConfig({ lifecycleRules: next });
   };
 
-  const toggleStartEvent = (eventName: string) => {
-    write({
-      ...rules,
-      startEvents: rules.startEvents.includes(eventName)
-        ? rules.startEvents.filter((entry) => entry !== eventName)
-        : [...rules.startEvents, eventName],
-    });
+  const setStartEvent = (eventName: string | undefined) => {
+    write({ ...rules, startEvent: eventName });
   };
 
-  const toggleCancelEvent = (eventName: string) => {
-    write({
-      ...rules,
-      cancelEvents: rules.cancelEvents.includes(eventName)
-        ? rules.cancelEvents.filter((entry) => entry !== eventName)
-        : [...rules.cancelEvents, eventName],
-    });
+  const setCancelEvents = (eventNames: string[]) => {
+    write({ ...rules, cancelEvents: eventNames });
   };
 
   const setCorrelationPath = (eventName: string, path: string) => {
@@ -102,29 +86,20 @@ export function LifecyclePanel({
 
   return (
     <div className="space-y-4">
-      <EventPicker
-        disabled={disabled}
-        events={catalog.events}
-        help="Each of these starts a run when it arrives. An Event that starts nothing here can still resume a run parked on it."
-        label="Start Events"
-        labelId={startEventsLabelId}
-        onToggle={toggleStartEvent}
-        selected={rules.startEvents}
-      />
-
-      {rules.startEvents.length > 0 ? (
-        <div className="space-y-2 rounded-md border bg-muted/30 p-3">
-          <p className="font-medium text-sm">Where to send these Events</p>
-          <p className="text-muted-foreground text-xs">
-            One URL per Event, app-wide: an Event is global, so every workflow
-            that starts on it sees what arrives. Send a POST carrying an API
-            key.
-          </p>
-          {rules.startEvents.map((eventName) => (
-            <EventUrlRow eventName={eventName} key={eventName} />
-          ))}
-        </div>
-      ) : null}
+      <EventField
+        help="A run starts when this Event arrives."
+        hasEvents={catalog.events.length > 0}
+        inputId={startEventId}
+        label="Start Event"
+      >
+        <EventCombobox
+          choices={catalog.events}
+          disabled={disabled}
+          inputId={startEventId}
+          onValueChange={setStartEvent}
+          value={rules.startEvent}
+        />
+      </EventField>
 
       {pathRequests.length > 0 ? (
         <div className="space-y-3 rounded-md border bg-muted/30 p-3">
@@ -200,10 +175,10 @@ export function LifecyclePanel({
             Event starts a run.
           </p>
           {/* The editor derives what downstream nodes may reference from the
-              Start Events' payloads, and a manual run carries whatever its caller
+              Start Event's payload, and a manual run carries whatever its caller
               posted. Saying so is what keeps the picker's silence from reading as
               a missing feature. */}
-          {rules.startEvents.length === 0 ? (
+          {rules.startEvent === undefined ? (
             <p className="text-muted-foreground text-xs">
               A manual run's payload is described by nothing, so downstream
               nodes are offered no fields to reference. Add a Start Event to
@@ -213,25 +188,38 @@ export function LifecyclePanel({
         </div>
       </div>
 
-      <EventPicker
-        disabled={disabled}
-        events={catalog.events}
-        help="Each of these routes runs already going to the Canceled outlet."
+      <EventField
+        hasEvents={catalog.events.length > 0}
+        help="When one of these arrives, Rova reads its Entity Value at the Event's Correlation Path and cancels the runs already going for that entity. A canceled run leaves through the Canceled outlet."
+        inputId={cancelEventsId}
         label="Cancel Events"
-        labelId={cancelEventsLabelId}
-        onToggle={toggleCancelEvent}
-        selected={rules.cancelEvents}
-      />
-
-      <div className="space-y-2 rounded-md border border-dashed p-3 opacity-70">
-        <div className="flex items-center gap-2">
-          <CalendarClock className="size-3.5 shrink-0 text-muted-foreground" />
-          <p className="font-medium text-sm">Schedule</p>
-        </div>
-        <p className="text-muted-foreground text-xs">
-          {SCHEDULE_INTERIM_MESSAGE}
-        </p>
-      </div>
+      >
+        <EventMultiCombobox
+          choices={catalog.events}
+          disabled={disabled}
+          inputId={cancelEventsId}
+          onValueChange={setCancelEvents}
+          value={rules.cancelEvents}
+        />
+        {rules.cancelEvents.map((eventName) => (
+          <ChosenCancelEvent
+            disabled={disabled}
+            eventName={eventName}
+            key={eventName}
+            label={findEvent(catalog, eventName)?.label}
+            onRemove={() =>
+              setCancelEvents(
+                rules.cancelEvents.filter((entry) => entry !== eventName)
+              )
+            }
+            path={resolveCorrelationPath({
+              rules,
+              eventName,
+              declaredPath: findEvent(catalog, eventName)?.correlationPath,
+            })}
+          />
+        ))}
+      </EventField>
 
       {check.valid ? null : (
         <WarningCallout title="This will not save">
@@ -243,37 +231,27 @@ export function LifecyclePanel({
 }
 
 /**
- * The catalog's Events as chips, shared by the Start and Cancel pickers: only
- * the selection, the toggle, and the two labels differ between them.
+ * A labelled Event picker, or the sentence that stands in for one where the app
+ * declares no Events at all.
  */
-function EventPicker({
+function EventField({
   label,
-  labelId,
-  events,
-  selected,
-  onToggle,
-  disabled,
+  inputId,
+  hasEvents,
   help,
+  children,
 }: {
   label: string;
-  labelId: string;
-  events: ReadonlyArray<{ name: string; label: string }>;
-  selected: readonly string[];
-  onToggle: (eventName: string) => void;
-  disabled: boolean;
+  inputId: string;
+  hasEvents: boolean;
   help: string;
+  children: ReactNode;
 }) {
   return (
     <div className="space-y-2">
-      <Label id={labelId}>{label}</Label>
-      {events.length > 0 ? (
-        <EventChipGroup
-          choices={events}
-          disabled={disabled}
-          labelId={labelId}
-          onToggle={onToggle}
-          selected={selected}
-        />
+      <Label htmlFor={inputId}>{label}</Label>
+      {hasEvents ? (
+        children
       ) : (
         <p className="text-muted-foreground text-xs">
           This server declares no Events. Whoever runs it passes them to
@@ -282,6 +260,52 @@ function EventPicker({
         </p>
       )}
       <p className="text-muted-foreground text-xs">{help}</p>
+    </div>
+  );
+}
+
+/**
+ * One chosen Cancel Event, with the path its Entity Value will be read at.
+ *
+ * The path is what an arriving payload is compared against, so a builder who
+ * cannot see it cannot tell a rule that will claim runs from one that will claim
+ * none.
+ */
+function ChosenCancelEvent({
+  eventName,
+  label,
+  path,
+  onRemove,
+  disabled,
+}: {
+  eventName: string;
+  label: string | undefined;
+  path: string | undefined;
+  onRemove: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-md border p-2">
+      <div className="min-w-0" title={eventName}>
+        {label ? <p className="truncate text-xs">{label}</p> : null}
+        <p className="truncate font-mono text-[10px] text-muted-foreground">
+          {eventName}
+        </p>
+        <p className="truncate text-[10px] text-muted-foreground">
+          Correlation Path: {path ?? "none yet"}
+        </p>
+      </div>
+      <Button
+        aria-label={`Remove ${eventName}`}
+        className="size-7 shrink-0"
+        disabled={disabled}
+        onClick={onRemove}
+        size="icon"
+        type="button"
+        variant="ghost"
+      >
+        <X className="size-3.5" />
+      </Button>
     </div>
   );
 }
@@ -335,57 +359,6 @@ function CorrelationPathInput({
 }
 
 /**
- * One Event's intake URL, with the copy button a sender needs.
- *
- * The URL is the mount point plus the Event's name, and it carries the base path
- * because a Rova mounted at `/workflows` answers there and nowhere else. There is
- * no per-workflow URL to copy any more: an Event posted for one workflow reaches
- * every workflow subscribing to it, which is the whole model.
- */
-function EventUrlRow({ eventName }: { eventName: string }) {
-  const url = buildEventIntakeUrl({
-    origin: typeof window === "undefined" ? "" : window.location.origin,
-    basePath: getBasePath(),
-    eventName,
-  });
-
-  return (
-    <div className="flex items-center gap-2">
-      <code
-        className="min-w-0 flex-1 truncate rounded-sm border bg-background px-2 py-1 font-mono text-xs"
-        title={url}
-      >
-        POST {url}
-      </code>
-      <Button
-        aria-label={`Copy the URL for ${eventName}`}
-        className="size-7 shrink-0"
-        // The clipboard is unavailable outside a secure context, which for a
-        // self-hosted tool reached over plain HTTP is the ordinary case. An
-        // unchecked write reports a copy that never happened and the builder
-        // pastes something else into their sender's config.
-        onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(url);
-            toast.success(`URL for ${eventName} copied`);
-          } catch (error) {
-            console.error("Failed to copy the intake URL:", error);
-            toast.error(
-              "Copy failed. The clipboard needs a secure context, so select the URL and copy it by hand."
-            );
-          }
-        }}
-        size="icon"
-        type="button"
-        variant="ghost"
-      >
-        <Copy className="size-3.5" />
-      </Button>
-    </div>
-  );
-}
-
-/**
  * The three settings, with the consequence each one has.
  *
  * Exported so the test drives itself off these pairs: a fourth setting would
@@ -411,6 +384,6 @@ export const CONCURRENCY_OPTIONS: ReadonlyArray<{
     value: "first-wins",
     label: "First wins",
     description:
-      "A run already going for the same entity keeps it. The arriving Event is recorded as a Refused Start, and still resumes anything waiting.",
+      "A run already going for the same entity keeps it. The arriving Event is recorded as a Refused Start.",
   },
 ];

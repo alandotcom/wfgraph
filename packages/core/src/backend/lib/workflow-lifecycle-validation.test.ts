@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateWorkflowLifecycleRules } from "#src/backend/lib/workflow-lifecycle-validation";
+import { validateWorkflowEvents } from "#src/backend/lib/workflow-lifecycle-validation";
 import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
 import type { LifecycleRules } from "@rova/shared/workflow/lifecycle-rules";
 import type { WorkflowNode } from "@rova/shared/workflow/types";
@@ -32,7 +32,7 @@ function lifecycleNode(rules?: LifecycleRules): WorkflowNode {
   };
 }
 
-function waitNode(waitForEvents: unknown): WorkflowNode {
+function waitNode(eventNames: string[]): WorkflowNode {
   return {
     id: "wait-1",
     type: "action",
@@ -40,18 +40,22 @@ function waitNode(waitForEvents: unknown): WorkflowNode {
     data: {
       label: "Wait",
       type: "action",
-      config: { actionType: "Wait", waitForEvents },
+      config: {
+        actionType: "Wait",
+        waitMode: "event",
+        waitFor: eventNames.map((event) => ({ event })),
+      },
     },
   };
 }
 
-describe("validateWorkflowLifecycleRules", () => {
+describe("validateWorkflowEvents - lifecycle role", () => {
   it("accepts rules naming an Event the app declares", () => {
     expect(
-      validateWorkflowLifecycleRules(
+      validateWorkflowEvents(
         [
           lifecycleNode({
-            startEvents: ["app/appointment.created"],
+            startEvent: "app/appointment.created",
             cancelEvents: [],
             concurrency: "newest-wins",
           }),
@@ -62,10 +66,10 @@ describe("validateWorkflowLifecycleRules", () => {
   });
 
   it("refuses rules naming an Event nothing declares", () => {
-    const result = validateWorkflowLifecycleRules(
+    const result = validateWorkflowEvents(
       [
         lifecycleNode({
-          startEvents: ["app/appointment.moved"],
+          startEvent: "app/appointment.moved",
           cancelEvents: [],
           concurrency: "unlimited",
         }),
@@ -82,13 +86,13 @@ describe("validateWorkflowLifecycleRules", () => {
   // The panel writes the rules, so refusing a graph that predates it would lock
   // the editor out of the one screen that can add them.
   it("accepts an entry node carrying no rules", () => {
-    expect(validateWorkflowLifecycleRules([lifecycleNode()], catalog)).toEqual({
+    expect(validateWorkflowEvents([lifecycleNode()], catalog)).toEqual({
       valid: true,
     });
   });
 
   it("accepts a graph with no entry node at all", () => {
-    expect(validateWorkflowLifecycleRules([waitNode([])], catalog)).toEqual({
+    expect(validateWorkflowEvents([waitNode([])], catalog)).toEqual({
       valid: true,
     });
   });
@@ -103,28 +107,54 @@ describe("validateWorkflowLifecycleRules", () => {
       lifecycleRules: { concurrency: "replace" },
     };
 
-    expect(validateWorkflowLifecycleRules([node], catalog)).toEqual({
+    expect(validateWorkflowEvents([node], catalog)).toEqual({
+      valid: true,
+    });
+  });
+});
+
+describe("validateWorkflowEvents - wait subscription", () => {
+  it("accepts a wait on an Event the app declares", () => {
+    expect(
+      validateWorkflowEvents([waitNode(["app/appointment.created"])], catalog)
+    ).toEqual({ valid: true });
+  });
+
+  // A wait on a name nothing sends can only time out, so the save is where it is
+  // refused rather than the run that holds until its timeout with nothing said.
+  it("refuses a wait on an Event nothing declares", () => {
+    expect(
+      validateWorkflowEvents([waitNode(["billing/payment.settled"])], catalog)
+    ).toMatchObject({
+      valid: false,
+      error: expect.stringContaining(
+        'No Event named "billing/payment.settled"'
+      ),
+    });
+  });
+
+  it("asks nothing of a node that is not a Wait", () => {
+    expect(validateWorkflowEvents([lifecycleNode()], catalog)).toEqual({
       valid: true,
     });
   });
 
-  // A wait matches by Entity Value like a cancel does, so the graph's Wait nodes
-  // are part of what the rules are checked against.
-  it("holds the graph's wait Events to the Correlation Path rule", () => {
-    const result = validateWorkflowLifecycleRules(
+  // A graph mixes both node kinds, and the walk checks each by its own kind:
+  // the lifecycle role's rules and the Wait node's subscriptions, both against
+  // one catalog.
+  it("checks a lifecycle role and a Wait subscription in the same walk", () => {
+    const result = validateWorkflowEvents(
       [
         lifecycleNode({
-          startEvents: ["app/appointment.created"],
+          startEvent: "app/appointment.created",
           cancelEvents: [],
           concurrency: "unlimited",
         }),
-        waitNode(["app/appointment.created", "billing/payment.settled"]),
+        waitNode(["app/appointment.created"]),
       ],
       catalog
     );
 
-    // `billing/payment.settled` is not in the catalog, so it is left alone; the
-    // declared Event carries a path, so the graph passes.
     expect(result).toEqual({ valid: true });
   });
 });

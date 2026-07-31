@@ -1,9 +1,4 @@
-import {
-  fireEvent,
-  render,
-  type RenderResult,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, type RenderResult } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
 import { WaitEventSelect } from "#src/components/workflow/config/wait-event-select";
@@ -44,9 +39,6 @@ vi.mock("#src/lib/extensions", () => ({
 
 type Subscription = { event: string; match?: string };
 
-/** An Event name is a path, and a regex over it has to read it literally. */
-const SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
-
 function renderSelect(config: Record<string, unknown>) {
   const onUpdateConfig = vi.fn((_patch: NodeConfigPatch) => undefined);
   const view = render(
@@ -69,68 +61,81 @@ function renderSelect(config: Record<string, unknown>) {
 }
 
 /**
- * The chip for one Event. A chip reads as its label over its raw name, so the
- * name alone no longer picks one out by accessible name.
+ * Search the picker and take the first Event it offers.
+ *
+ * The popup opens on an arrow key rather than a click: a pointer press reaches
+ * the list through events happy-dom does not deliver whole, and the keyboard path
+ * is the one a builder filtering a long list takes anyway.
  */
-function eventChip(view: RenderResult, eventName: string): HTMLElement {
-  return within(view.getByRole("group")).getByRole("button", {
-    name: new RegExp(eventName.replace(SPECIAL_CHARS, "\\$&")),
-  });
+function chooseEvent(view: RenderResult, query: string) {
+  const input = view.getByLabelText("Resume when the event is");
+  fireEvent.keyDown(input, { key: "ArrowDown" });
+  fireEvent.change(input, { target: { value: query } });
+
+  const option = view.getAllByRole("option").at(0);
+  if (!option) {
+    throw new Error(`No Event matched "${query}"`);
+  }
+  fireEvent.click(option);
 }
 
 describe("WaitEventSelect", () => {
   it("offers every Event the app declares", () => {
     const { view } = renderSelect({ waitFor: [] });
 
-    expect(eventChip(view, "billing/payment.settled").textContent).toContain(
-      "Payment settled"
-    );
-    expect(eventChip(view, "ops/nightly.swept").textContent).toContain(
-      "Nightly sweep"
-    );
+    const input = view.getByLabelText("Resume when the event is");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+
+    expect(
+      view.getAllByRole("option").map((option) => option.textContent)
+    ).toEqual([
+      "Payment settledbilling/payment.settled",
+      "Nightly sweepops/nightly.swept",
+    ]);
   });
 
-  it("adds a subscription with no match when a chip is chosen", () => {
+  it("adds a subscription with no match when an Event is chosen", () => {
     const { view, lastWaitFor } = renderSelect({ waitFor: [] });
 
-    fireEvent.click(eventChip(view, "billing/payment.settled"));
+    chooseEvent(view, "Payment settled");
 
     expect(lastWaitFor()).toEqual([{ event: "billing/payment.settled" }]);
   });
 
-  it("deselects a chip by writing the list without it", () => {
+  // The raw name is what a sender posts, so a builder who knows only that half
+  // still finds the Event.
+  it("finds an Event by the name a sender posts", () => {
+    const { view, lastWaitFor } = renderSelect({ waitFor: [] });
+
+    chooseEvent(view, "ops/nightly");
+
+    expect(lastWaitFor()).toEqual([{ event: "ops/nightly.swept" }]);
+  });
+
+  it("keeps the match already written when another Event is added", () => {
+    const { view, lastWaitFor } = renderSelect({
+      waitFor: [{ event: "billing/payment.settled", match: "{}" }],
+    });
+
+    chooseEvent(view, "Nightly sweep");
+
+    expect(lastWaitFor()).toEqual([
+      { event: "billing/payment.settled", match: "{}" },
+      { event: "ops/nightly.swept" },
+    ]);
+  });
+
+  it("drops a subscription when its row is removed", () => {
     const { view, onUpdateConfig, lastWaitFor } = renderSelect({
       waitFor: [{ event: "ops/nightly.swept" }],
     });
 
-    fireEvent.click(eventChip(view, "ops/nightly.swept"));
+    fireEvent.click(
+      view.getByRole("button", { name: "Remove ops/nightly.swept" })
+    );
 
     expect(onUpdateConfig).toHaveBeenCalledTimes(1);
     expect(lastWaitFor()).toEqual([]);
-  });
-
-  // A host can send the bus an Event it never declared, so a name the catalog
-  // does not carry stays selectable and stays visible -- with the consequence
-  // said out loud, because this server knows none of its fields.
-  it("keeps a subscription the catalog does not declare, and says so", () => {
-    const { view } = renderSelect({
-      waitFor: [{ event: "vendor/thing.happened" }],
-    });
-
-    const chip = eventChip(view, "vendor/thing.happened");
-    expect(chip.getAttribute("aria-pressed")).toBe("true");
-    expect(view.getByText(/declares no such Event/)).toBeTruthy();
-  });
-
-  it("adds a typed-in Event to the subscriptions", () => {
-    const { view, lastWaitFor } = renderSelect({ waitFor: [] });
-
-    fireEvent.change(view.getByPlaceholderText("app/appointment.confirmed"), {
-      target: { value: " vendor/thing.happened " },
-    });
-    fireEvent.click(view.getByRole("button", { name: "Add" }));
-
-    expect(lastWaitFor()).toEqual([{ event: "vendor/thing.happened" }]);
   });
 });
 

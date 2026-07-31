@@ -48,9 +48,9 @@ function graphWith(rules: LifecycleRules): Workflow["graph"] {
   });
 }
 
-const twoStartEvents: LifecycleRules = {
-  startEvents: ["app/appointment.created", "app/appointment.canceled"],
-  cancelEvents: [],
+const startAndCancel: LifecycleRules = {
+  startEvent: "app/appointment.created",
+  cancelEvents: ["app/appointment.canceled"],
   concurrency: "newest-wins",
 };
 
@@ -58,7 +58,7 @@ const stored: Workflow = {
   id: "wf_1",
   name: "Appointment Reminders",
   description: null,
-  graph: graphWith(twoStartEvents),
+  graph: graphWith(startAndCancel),
   isPaused: false,
   mode: "live",
   visibility: "private",
@@ -93,16 +93,16 @@ describe("patchWorkflow", () => {
       stubIntegrationRepo()
     )
   )((it) => {
-    // The index is derived from the graph being written, so removing a Start Event
-    // has to shrink it in the same call. A stale row would keep delivering an
-    // Event the workflow no longer names.
+    // The index is derived from the graph being written, so dropping a Cancel
+    // Event has to shrink it in the same call. A stale row would keep delivering
+    // an Event the workflow no longer names.
     it.effect("rewrites the subscriptions a graph write changes", () =>
       Effect.gen(function* () {
         const repo = makeRepo();
 
         yield* patchWorkflow("wf_1", {
           graph: graphWith({
-            startEvents: ["app/appointment.created"],
+            startEvent: "app/appointment.created",
             cancelEvents: [],
             concurrency: "newest-wins",
           }),

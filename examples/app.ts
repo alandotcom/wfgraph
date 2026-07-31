@@ -58,10 +58,6 @@ const appointmentSchema = z.object({
  * Send one from your app:
  *
  *   inngest.send({ name: "app/appointment.created", data: { appointment, occurredAt } });
- *
- * Or post it, which needs no Inngest client:
- *
- *   POST /api/events/app%2Fappointment.created
  */
 const occurredAt = z.iso.datetime();
 

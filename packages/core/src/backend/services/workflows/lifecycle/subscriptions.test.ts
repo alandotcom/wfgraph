@@ -39,7 +39,7 @@ describe("deriveEventSubscriptions", () => {
       workflowId: "wf_1",
       nodes: [
         lifecycleNode({
-          startEvents: ["app/appointment.created"],
+          startEvent: "app/appointment.created",
           cancelEvents: ["app/appointment.canceled"],
           concurrency: "newest-wins",
         }),
@@ -69,7 +69,7 @@ describe("deriveEventSubscriptions", () => {
       workflowId: "wf_1",
       nodes: [
         lifecycleNode({
-          startEvents: ["app/appointment.created"],
+          startEvent: "app/appointment.created",
           cancelEvents: [],
           concurrency: "unlimited",
         }),
@@ -95,7 +95,7 @@ describe("deriveEventSubscriptions", () => {
       nodes: [
         waitNode({ id: "wait-1", waitFor: ["ops/nightly.swept"] }),
         lifecycleNode({
-          startEvents: ["app/appointment.created"],
+          startEvent: "app/appointment.created",
           cancelEvents: [],
           concurrency: "unlimited",
           correlationPaths: {
@@ -127,7 +127,7 @@ describe("deriveEventSubscriptions", () => {
       workflowId: "wf_1",
       nodes: [
         lifecycleNode({
-          startEvents: ["app/appointment.created"],
+          startEvent: "app/appointment.created",
           cancelEvents: [],
           concurrency: "unlimited",
         }),
@@ -146,7 +146,7 @@ describe("deriveEventSubscriptions", () => {
       workflowId: "wf_1",
       nodes: [
         lifecycleNode({
-          startEvents: ["app/appointment.created"],
+          startEvent: "app/appointment.created",
           cancelEvents: [],
           concurrency: "unlimited",
         }),

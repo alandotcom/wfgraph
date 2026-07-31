@@ -265,7 +265,6 @@ const inngestClientStubs: InngestClient["Service"] = {
   sendRunRequested: refuse("sendRunRequested"),
   sendCancelRequested: refuse("sendCancelRequested"),
   sendWaitSignal: refuse("sendWaitSignal"),
-  sendHostEvent: refuse("sendHostEvent"),
 };
 
 export function stubInngestClient(

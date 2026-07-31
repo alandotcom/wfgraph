@@ -40,9 +40,9 @@ export type WorkflowRunStart = {
   eventName?: string;
   entityValue?: string;
   /**
-   * The arrival this start answers, which for an Event is the id the intake route
-   * minted and the bus carried. It goes on the audit row so one arrival can be
-   * traced across every workflow it started or was refused by.
+   * The arrival this start answers, which for an Event is the id the bus carried
+   * it under. It goes on the audit row so one arrival can be traced across every
+   * workflow it started or was refused by.
    */
   deliveryId?: string;
 };
@@ -343,9 +343,9 @@ export const recordTerminalWorkflowRun = Effect.fn("recordTerminalWorkflowRun")(
 /**
  * The terminal row a paused workflow's request gets.
  *
- * The manual route is the only caller now that HTTP intake enqueues rather than
- * delivering: a paused workflow is filtered out of the subscription join, so an
- * Event never reaches one. The row exists because the runs list is the only
+ * The manual route is the only caller: a paused workflow is filtered out of the
+ * subscription join, so an Event never reaches one. The row exists because the
+ * runs list is the only
  * feedback the Run button gives, and a decision with no row reads there as nothing
  * having happened.
  */

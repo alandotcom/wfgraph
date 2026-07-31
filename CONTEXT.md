@@ -59,9 +59,9 @@ outlets, Started and Canceled. Scheduled and manual runs enter as start
 sources on this node. An unconnected outlet ends the run quietly.
 
 **Start Event**:
-An Event the Lifecycle Rules list as starting a run. When one arrives,
-Concurrency applies first, then a new Execution enters through the Started
-outlet carrying the payload.
+The one Event the Lifecycle Rules name as starting a run; a workflow has at
+most one. When it arrives, Concurrency applies first, then a new Execution
+enters through the Started outlet carrying the payload.
 
 **Cancel Event**:
 An Event the Lifecycle Rules list as canceling runs. When one arrives, every
