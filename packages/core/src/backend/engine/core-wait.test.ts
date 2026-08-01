@@ -492,7 +492,8 @@ describe("wait node - event mode", () => {
         {
           event: "billing/payment.settled",
           match: {
-            expression: '((payload.appointmentId == "appt_8813"))',
+            expression:
+              '((has(payload.appointmentId) && (payload.appointmentId == "appt_8813")))',
             timestampPaths: [],
           },
         },

@@ -36,7 +36,7 @@ describe("conditions", () => {
     expect(compiled.valid).toBe(true);
     if (compiled.valid) {
       expect(compiled.expression).toBe(
-        "((payload.appointment.startsAt > now && payload.appointment.startsAt < now + days(3)))"
+        "((has(payload.appointment) && has(payload.appointment.startsAt) && (payload.appointment.startsAt > now && payload.appointment.startsAt < now + days(3))))"
       );
     }
   });
@@ -66,7 +66,7 @@ describe("conditions", () => {
     expect(compiled.valid).toBe(true);
     if (compiled.valid) {
       expect(compiled.expression).toBe(
-        '((payload.appointment.startsAt < date("2026-03-01T10:00:00.000Z")))'
+        '((has(payload.appointment) && has(payload.appointment.startsAt) && (payload.appointment.startsAt < date("2026-03-01T10:00:00.000Z"))))'
       );
     }
   });
@@ -115,7 +115,7 @@ describe("conditions", () => {
     expect(compiled.valid).toBe(true);
     if (compiled.valid) {
       expect(compiled.expression).toBe(
-        '((payload.data.status == "scheduled") && (payload.data.active == true)) || ((payload.data.count > 5))'
+        '((has(payload.data) && has(payload.data.status) && (payload.data.status == "scheduled")) && (has(payload.data) && has(payload.data.active) && (payload.data.active == true))) || ((has(payload.data) && has(payload.data.count) && (payload.data.count > 5)))'
       );
     }
   });
@@ -172,7 +172,7 @@ describe("conditions", () => {
     const compiled = compileConditionModel(model);
     expect(compiled.valid).toBe(true);
     if (compiled.valid) {
-      expect(compiled.expression).toBe("((payload.middleInitial != null))");
+      expect(compiled.expression).toBe("((has(payload.middleInitial)))");
     }
   });
 
@@ -199,7 +199,102 @@ describe("conditions", () => {
     const compiled = compileConditionModel(model);
     expect(compiled.valid).toBe(true);
     if (compiled.valid) {
-      expect(compiled.expression).toBe("((payload.dateOfBirth == null))");
+      expect(compiled.expression).toBe("((!(has(payload.dateOfBirth))))");
+    }
+  });
+
+  // A nested path needs one `has` per segment: `has(payload.a.b)` raises
+  // "No such key: a" when the parent is absent, so the parent is tested first.
+  it("tests every segment of a nested path for presence", () => {
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: "appointment.patient.email",
+              fieldType: "string",
+              operator: "equals",
+              value: "a@b.test",
+            },
+          ],
+        },
+      ],
+    };
+
+    const compiled = compileConditionModel(model);
+    expect(compiled.valid).toBe(true);
+    if (compiled.valid) {
+      expect(compiled.expression).toBe(
+        '((has(payload.appointment) && has(payload.appointment.patient) && has(payload.appointment.patient.email) && (payload.appointment.patient.email == "a@b.test")))'
+      );
+    }
+  });
+
+  // is_not_set negates the whole chain rather than the leaf alone, so a payload
+  // missing the parent object answers it true: the field is indeed not set.
+  it("answers is_not_set on a path whose parent is absent", () => {
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: "appointment.reason",
+              fieldType: "string",
+              operator: "is_not_set",
+            },
+          ],
+        },
+      ],
+    };
+
+    const compiled = compileConditionModel(model);
+    expect(compiled.valid).toBe(true);
+    if (compiled.valid) {
+      expect(compiled.expression).toBe(
+        "((!(has(payload.appointment) && has(payload.appointment.reason))))"
+      );
+    }
+  });
+
+  // A value carrying a quote, a backslash or a newline has to survive into CEL
+  // as an escape rather than as source, which is what `celStringLiteral` owns.
+  it("escapes a text value that would otherwise break the expression", () => {
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: "note",
+              fieldType: "string",
+              operator: "contains",
+              value: 'say "hi"\nthen go',
+            },
+          ],
+        },
+      ],
+    };
+
+    const compiled = compileConditionModel(model);
+    expect(compiled.valid).toBe(true);
+    if (compiled.valid) {
+      expect(compiled.expression).toBe(
+        '((has(payload.note) && (payload.note.contains("say \\"hi\\"\\nthen go"))))'
+      );
     }
   });
 
@@ -320,7 +415,7 @@ describe("conditions", () => {
     expect(compiled.valid).toBe(true);
     if (compiled.valid) {
       expect(compiled.expression).toBe(
-        '((payload.type == "appointment.created"))'
+        '((has(payload.type) && (payload.type == "appointment.created")))'
       );
     }
   });

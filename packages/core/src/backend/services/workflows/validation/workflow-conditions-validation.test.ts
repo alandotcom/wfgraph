@@ -40,7 +40,7 @@ describe("validateWorkflowConditionConfigs", () => {
       createConditionNode({
         conditionModel: serializeConditionModel(model),
         condition:
-          "((payload.appointment.startsAt > now && payload.appointment.startsAt < now + days(1)))",
+          "((has(payload.appointment) && has(payload.appointment.startsAt) && (payload.appointment.startsAt > now && payload.appointment.startsAt < now + days(1))))",
       }),
     ]);
 

@@ -1,4 +1,5 @@
 import { Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { celStringLiteral } from "#src/conditions/cel-string-literal";
 import { decodeIsoTimestamp } from "#src/types/timestamp";
 
 /**
@@ -758,7 +759,7 @@ function compileTimestampConditionRule(
     };
   }
 
-  const serializedDateTime = JSON.stringify(rule.dateTime.trim());
+  const serializedDateTime = celStringLiteral(rule.dateTime.trim());
   if (rule.operator === "before") {
     return {
       valid: true,
@@ -786,7 +787,7 @@ function compileStringConditionRule(
     };
   }
 
-  const value = JSON.stringify(rule.value);
+  const value = celStringLiteral(rule.value);
 
   if (rule.operator === "equals") {
     return { valid: true, expression: `${field} == ${value}` };
@@ -828,31 +829,46 @@ function compileBooleanConditionRule(
   return { valid: true, expression: `${field} == false` };
 }
 
-function compileNullCheckConditionRule(
-  rule: NullCheckConditionRule,
-  field: string
-): ConditionCompileResult {
-  if (rule.operator === "is_set") {
-    return { valid: true, expression: `${field} != null` };
-  }
+/**
+ * Whether a payload carries the field at this path, as one `has` per segment.
+ *
+ * CEL raises rather than answering false for an absent key, and `has()` inherits
+ * that for every segment but the last: `has(payload.appointment.reason)` raises
+ * "No such key: appointment" where the payload holds no appointment at all. So
+ * each segment is tested before the one below it, and the chain as a whole reads
+ * false for a path the payload does not reach.
+ */
+function presenceChain(path: string): string {
+  const segments = path.split(".");
 
-  return { valid: true, expression: `${field} == null` };
+  return segments
+    .map(
+      (_, index) =>
+        `has(${CONDITION_CONTEXT_ROOT}.${segments.slice(0, index + 1).join(".")})`
+    )
+    .join(" && ");
 }
 
-function compileConditionRule(rule: ConditionRule): ConditionCompileResult {
-  const path = rule.field.trim();
-  if (!path) {
-    return { valid: false, error: "Condition field is required" };
+/**
+ * Presence is the whole of what a null check asks, so it compiles to the chain
+ * itself. `is_not_set` negates the chain entire rather than its last link, which
+ * is what answers it true for a payload missing the parent object.
+ */
+function compileNullCheckConditionRule(
+  rule: NullCheckConditionRule,
+  presence: string
+): ConditionCompileResult {
+  if (rule.operator === "is_set") {
+    return { valid: true, expression: presence };
   }
 
-  // A rule stores the path as the field picker offered it, relative to the node
-  // output. The root belongs to the expression, not the model.
-  const field = `${CONDITION_CONTEXT_ROOT}.${path}`;
+  return { valid: true, expression: `!(${presence})` };
+}
 
-  if (isNullCheckConditionRule(rule)) {
-    return compileNullCheckConditionRule(rule, field);
-  }
-
+function compileComparisonRule(
+  rule: Exclude<ConditionRule, NullCheckConditionRule>,
+  field: string
+): ConditionCompileResult {
   if (rule.fieldType === "timestamp") {
     return compileTimestampConditionRule(rule, field);
   }
@@ -866,6 +882,35 @@ function compileConditionRule(rule: ConditionRule): ConditionCompileResult {
   }
 
   return compileBooleanConditionRule(rule, field);
+}
+
+function compileConditionRule(rule: ConditionRule): ConditionCompileResult {
+  const path = rule.field.trim();
+  if (!path) {
+    return { valid: false, error: "Condition field is required" };
+  }
+
+  // A rule stores the path as the field picker offered it, relative to the node
+  // output. The root belongs to the expression, not the model.
+  const field = `${CONDITION_CONTEXT_ROOT}.${path}`;
+  const presence = presenceChain(path);
+
+  if (isNullCheckConditionRule(rule)) {
+    return compileNullCheckConditionRule(rule, presence);
+  }
+
+  const compiled = compileComparisonRule(rule, field);
+  if (!compiled.valid) {
+    return compiled;
+  }
+
+  // A rule about a field this run's payload does not carry answers false on its
+  // own. Unguarded, the absent key raises instead, and CEL propagates that far
+  // enough to decide the whole condition rather than this one rule.
+  return {
+    valid: true,
+    expression: `${presence} && (${compiled.expression})`,
+  };
 }
 
 function compileConditionGroup(group: ConditionGroup): ConditionCompileResult {
