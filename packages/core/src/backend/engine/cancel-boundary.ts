@@ -66,6 +66,13 @@ export class CancelBoundary {
    */
   private entered = false;
 
+  /**
+   * The Cancel Event that claimed this run, which the Canceled branch reads as
+   * the Event it arrived on. Rebuilt on a replay along with `entered`, since the
+   * boundary read is memoized and hands back the same claim.
+   */
+  private cancelEventName: string | null = null;
+
   constructor(input: CancelBoundaryInput) {
     this.input = input;
 
@@ -84,6 +91,14 @@ export class CancelBoundary {
   /** Whether the run has left the Started branch. */
   hasLeftStartedBranch(): boolean {
     return this.entered;
+  }
+
+  /**
+   * The Cancel Event this run is now on, or null while it is still on the
+   * Started branch and the Start Event is the answer.
+   */
+  canceledByEvent(): string | null {
+    return this.cancelEventName;
   }
 
   /**
@@ -127,6 +142,7 @@ export class CancelBoundary {
    */
   private enter(pending: PendingCancel): readonly string[] {
     this.entered = true;
+    this.cancelEventName = pending.eventName;
 
     const { lifecycleNodes, traversal, logger } = this.input;
 

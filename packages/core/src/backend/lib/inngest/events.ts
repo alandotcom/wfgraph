@@ -45,6 +45,7 @@ export const workflowExecutionInputSchema = Schema.Struct({
   graph: serializedWorkflowGraphSchema,
   // JSON is all that survived the trip, so JSON is what the schema accepts.
   startPayload: Schema.optional(jsonObjectSchema),
+  startEventName: Schema.optional(NonEmptyTrimmedString),
   requestPayload: Schema.optional(jsonObjectSchema),
   // Both ids are required and must carry a value: every log row, timeline event,
   // and wait state the run writes hangs off them, and the enqueue side always

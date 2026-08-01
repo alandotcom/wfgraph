@@ -184,6 +184,7 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
     .sendRunRequested({
       graph: workflow.graph,
       startPayload: payload,
+      ...(start.eventName ? { startEventName: start.eventName } : {}),
       requestPayload: input.requestPayload ?? payload,
       executionId: execution.id,
       workflowId: workflow.id,

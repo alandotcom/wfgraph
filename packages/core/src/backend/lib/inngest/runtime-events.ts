@@ -15,6 +15,8 @@ export type WorkflowRunRequestedEventData = {
    * says so.
    */
   startPayload?: JsonObject;
+  /** The Event that started the run, absent where a person or the route did. */
+  startEventName?: string;
   workflowName?: string;
   requestPayload?: JsonObject;
   /**

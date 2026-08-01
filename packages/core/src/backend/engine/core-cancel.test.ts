@@ -15,6 +15,12 @@ import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { unknownRest } from "@rova/shared/types/schema";
 import { defineAction } from "#src/backend/extensions/define-action";
+import {
+  type ConditionModel,
+  compileConditionModel,
+  EVENT_NAME_FIELD_PATH,
+  serializeConditionModel,
+} from "@rova/shared/conditions/conditions";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 import { executeWorkflow } from "#src/backend/engine/core";
@@ -224,6 +230,99 @@ describe("a run claimed for the Canceled outlet", () => {
       eventType: "run_cancelled",
       message: "Run canceled at the Canceled outlet",
     });
+  });
+
+  // Which Cancel Event claimed the run is the only thing telling two of them
+  // apart, since the Canceled outlet is one outlet however many Events feed it.
+  it("offers the canceling Event's name to a Condition on the branch", async () => {
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: EVENT_NAME_FIELD_PATH,
+              fieldType: "string",
+              operator: "equals",
+              value: "billing/subscription.canceled",
+            },
+          ],
+        },
+      ],
+    };
+
+    const compiled = compileConditionModel(model);
+    if (!compiled.valid) {
+      throw new Error(compiled.error);
+    }
+
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createLifecycleNode("lifecycle_1"),
+        createProducerNode("producer_1", "Producer"),
+        {
+          id: "which_1",
+          type: "action",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Which Event",
+            type: "action",
+            config: {
+              actionType: "Condition",
+              condition: compiled.expression,
+              conditionModel: serializeConditionModel(model),
+            },
+          },
+        },
+        createRecorderNode("canceled_1", "Canceled"),
+        createRecorderNode("rescheduled_1", "Rescheduled"),
+      ],
+      edges: [
+        lifecycleEdge("edge_started", "producer_1", "started"),
+        lifecycleEdge("edge_canceled", "which_1", "canceled"),
+        {
+          id: "edge_true",
+          source: "which_1",
+          sourceHandle: "true",
+          target: "canceled_1",
+        },
+        {
+          id: "edge_false",
+          source: "which_1",
+          sourceHandle: "false",
+          target: "rescheduled_1",
+        },
+      ],
+    });
+
+    await executeWorkflow(
+      { ...cancelInput, graph },
+      createInMemoryWorkflowRuntime(),
+      withCancelAnswers(store, [null, CANCEL]),
+      actions
+    );
+
+    expect(Object.keys(recorded)).toEqual(["Canceled"]);
+
+    // The same graph under the other Cancel Event takes the other branch, which
+    // is what shows the name reaching the rule rather than the rule reading
+    // something that happens to be true.
+    recorded = {};
+    await executeWorkflow(
+      { ...cancelInput, graph, executionId: "exec_cancel_other" },
+      createInMemoryWorkflowRuntime(),
+      withCancelAnswers(createRecordingWorkflowStore(), [
+        null,
+        { ...CANCEL, eventName: "billing/subscription.rescheduled" },
+      ]),
+      actions
+    );
+
+    expect(Object.keys(recorded)).toEqual(["Rescheduled"]);
   });
 
   it("ends canceled with nothing to run when the Canceled outlet has no edge", async () => {

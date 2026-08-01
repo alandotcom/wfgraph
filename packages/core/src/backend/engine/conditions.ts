@@ -84,7 +84,9 @@ function readConditionTimestampPaths(conditionModel: unknown): string[] {
 export function evaluateConditionExpression(
   conditionExpression: unknown,
   outputs: NodeOutputs,
-  conditionModel: unknown
+  conditionModel: unknown,
+  /** The Event that put the run on the branch this node sits on. */
+  eventName: string | null
 ): ConditionEvalResult {
   conditionLogger.debug("Evaluating condition expression", {
     conditionExpression,
@@ -115,6 +117,7 @@ export function evaluateConditionExpression(
     expression,
     timestampPaths: readConditionTimestampPaths(conditionModel),
     payload: merged,
+    eventName,
   });
 
   if (!evaluation.ok) {

@@ -3,6 +3,7 @@ import {
   type ConditionFieldDefinition,
   type ConditionModel,
   compileConditionModel,
+  EVENT_NAME_FIELD_PATH,
   createDefaultConditionModel,
   parseConditionModel,
   reconcileModelWithFields,
@@ -263,6 +264,68 @@ describe("conditions", () => {
       expect(compiled.expression).toBe(
         "((!(has(payload.appointment) && has(payload.appointment.reason))))"
       );
+    }
+  });
+
+  // The Event a run arrived on is a fact about the run, so it compiles to its
+  // own root rather than to a payload path, and needs no presence guard: the
+  // root is written on every run.
+  it("compiles a rule about the Event to its own root", () => {
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: EVENT_NAME_FIELD_PATH,
+              fieldType: "string",
+              operator: "equals",
+              value: "appointment.rescheduled",
+            },
+          ],
+        },
+      ],
+    };
+
+    const compiled = compileConditionModel(model);
+    expect(compiled.valid).toBe(true);
+    if (compiled.valid) {
+      expect(compiled.expression).toBe(
+        '((event.name == "appointment.rescheduled"))'
+      );
+    }
+  });
+
+  // A manual run names no Event, so the root holds null and presence is a null
+  // test rather than the key test a payload path gets.
+  it("compiles a null check about the Event as a null test", () => {
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: EVENT_NAME_FIELD_PATH,
+              fieldType: "string",
+              operator: "is_not_set",
+            },
+          ],
+        },
+      ],
+    };
+
+    const compiled = compileConditionModel(model);
+    expect(compiled.valid).toBe(true);
+    if (compiled.valid) {
+      expect(compiled.expression).toBe("((event.name == null))");
     }
   });
 

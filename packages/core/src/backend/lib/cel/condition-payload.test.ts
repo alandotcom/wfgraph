@@ -4,6 +4,7 @@ import {
   type ConditionModel,
   type ConditionRule,
   compileConditionModel,
+  EVENT_NAME_FIELD_PATH,
 } from "@rova/shared/conditions/conditions";
 import type { JsonObject } from "@rova/shared/types/json";
 
@@ -12,7 +13,11 @@ import type { JsonObject } from "@rova/shared/types/json";
  * the property on its own: the compiler emits a presence chain, and only CEL
  * decides what that chain does to the rule beside it.
  */
-function evaluate(groups: ConditionRule[][], payload: JsonObject) {
+function evaluate(
+  groups: ConditionRule[][],
+  payload: JsonObject,
+  eventName: string | null = null
+) {
   const model: ConditionModel = {
     version: 2,
     groupLogic: "or",
@@ -32,6 +37,7 @@ function evaluate(groups: ConditionRule[][], payload: JsonObject) {
     expression: compiled.expression,
     timestampPaths: [],
     payload,
+    eventName,
   });
 }
 
@@ -160,6 +166,90 @@ describe("a compiled condition against a payload", () => {
     expect(evaluation.ok).toBe(true);
     if (evaluation.ok) {
       expect(evaluation.value).toBe(true);
+    }
+  });
+
+  // The whole point of the Event root: two Events reach one node, each carrying
+  // its own fields, and the rule that answers is the one whose Event arrived.
+  it("selects between Events by name, each reading its own field", () => {
+    const groups: ConditionRule[][] = [
+      [
+        {
+          id: "rule-1",
+          field: EVENT_NAME_FIELD_PATH,
+          fieldType: "string",
+          operator: "equals",
+          value: "appointment.rescheduled",
+        },
+        {
+          id: "rule-2",
+          field: "rescheduledBy",
+          fieldType: "string",
+          operator: "equals",
+          value: "patient",
+        },
+      ],
+      [
+        {
+          id: "rule-3",
+          field: EVENT_NAME_FIELD_PATH,
+          fieldType: "string",
+          operator: "equals",
+          value: "appointment.cancelled",
+        },
+        {
+          id: "rule-4",
+          field: "reason",
+          fieldType: "string",
+          operator: "equals",
+          value: "no_show",
+        },
+      ],
+    ];
+
+    const cancelled = evaluate(
+      groups,
+      cancelledPayload,
+      "appointment.cancelled"
+    );
+    expect(cancelled.ok).toBe(true);
+    if (cancelled.ok) {
+      expect(cancelled.value).toBe(true);
+    }
+
+    const rescheduled = evaluate(
+      groups,
+      { appointment: { id: "appt_123" }, rescheduledBy: "clinic" },
+      "appointment.rescheduled"
+    );
+    expect(rescheduled.ok).toBe(true);
+    if (rescheduled.ok) {
+      expect(rescheduled.value).toBe(false);
+    }
+  });
+
+  // A manual start names no Event, and the root is written null rather than left
+  // out: an absent root raises where a null one compares false.
+  it("compares false for a run that arrived on no Event", () => {
+    const evaluation = evaluate(
+      [
+        [
+          {
+            id: "rule-1",
+            field: EVENT_NAME_FIELD_PATH,
+            fieldType: "string",
+            operator: "equals",
+            value: "appointment.cancelled",
+          },
+        ],
+      ],
+      cancelledPayload,
+      null
+    );
+
+    expect(evaluation.ok).toBe(true);
+    if (evaluation.ok) {
+      expect(evaluation.value).toBe(false);
     }
   });
 

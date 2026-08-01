@@ -13,6 +13,24 @@ import { decodeIsoTimestamp } from "#src/types/timestamp";
  */
 export const CONDITION_CONTEXT_ROOT = "payload";
 
+/**
+ * The CEL root holding the Event a run arrived on, beside `payload` and `now`.
+ *
+ * It sits outside the payload namespace because the entry node's output is the
+ * payload and nothing else: a key added there would shadow a payload field of
+ * the same name.
+ */
+export const EVENT_CONTEXT_ROOT = "event";
+
+/**
+ * The stored field path a rule names the arriving Event by.
+ *
+ * A rule addresses the run itself through this one path, which the compiler
+ * emits as `event.name`. The `$` is what keeps the two namespaces apart: an
+ * Event author declares payload paths, and none of them can open with one.
+ */
+export const EVENT_NAME_FIELD_PATH = "$event.name";
+
 export type ConditionFieldType = "timestamp" | "string" | "number" | "boolean";
 
 export type TimeUnit = "minutes" | "hours" | "days" | "weeks";
@@ -884,10 +902,34 @@ function compileComparisonRule(
   return compileBooleanConditionRule(rule, field);
 }
 
+/**
+ * A rule about the Event the run arrived on rather than about its payload.
+ *
+ * The root is written on every run and holds null where nothing named an Event,
+ * so a comparison needs no presence guard and a null check reads as a null test.
+ */
+function compileEventNameRule(rule: ConditionRule): ConditionCompileResult {
+  const field = `${EVENT_CONTEXT_ROOT}.name`;
+
+  if (isNullCheckConditionRule(rule)) {
+    return {
+      valid: true,
+      expression:
+        rule.operator === "is_set" ? `${field} != null` : `${field} == null`,
+    };
+  }
+
+  return compileComparisonRule(rule, field);
+}
+
 function compileConditionRule(rule: ConditionRule): ConditionCompileResult {
   const path = rule.field.trim();
   if (!path) {
     return { valid: false, error: "Condition field is required" };
+  }
+
+  if (path === EVENT_NAME_FIELD_PATH) {
+    return compileEventNameRule(rule);
   }
 
   // A rule stores the path as the field picker offered it, relative to the node

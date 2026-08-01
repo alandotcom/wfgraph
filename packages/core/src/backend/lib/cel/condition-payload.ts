@@ -11,7 +11,10 @@
 import { evaluateCelBooleanExpression } from "#src/backend/lib/cel/environment";
 import type { JsonObject } from "@rova/shared/types/json";
 import { decodeIsoTimestamp } from "@rova/shared/types/timestamp";
-import { CONDITION_CONTEXT_ROOT } from "@rova/shared/conditions/conditions";
+import {
+  CONDITION_CONTEXT_ROOT,
+  EVENT_CONTEXT_ROOT,
+} from "@rova/shared/conditions/conditions";
 
 /**
  * Read a dotted field path out of the condition context.
@@ -92,12 +95,22 @@ export function evaluateCompiledCondition(input: {
   /** Field paths the model compiled these against as timestamps. */
   timestampPaths: readonly string[];
   payload: JsonObject;
+  /**
+   * The Event this payload arrived on, null where nothing named one. The key is
+   * written either way, because an absent CEL root raises where a null value
+   * compares false.
+   */
+  eventName: string | null;
 }) {
   const payload = structuredClone(input.payload);
   decodeConditionTimestamps(payload, input.timestampPaths);
 
   return evaluateCelBooleanExpression({
     expression: input.expression,
-    context: { now: new Date(), [CONDITION_CONTEXT_ROOT]: payload },
+    context: {
+      now: new Date(),
+      [EVENT_CONTEXT_ROOT]: { name: input.eventName },
+      [CONDITION_CONTEXT_ROOT]: payload,
+    },
   });
 }

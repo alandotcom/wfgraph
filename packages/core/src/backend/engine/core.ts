@@ -36,6 +36,12 @@ export type WorkflowExecutionInput = {
    * written back out as JSON into `workflow_executions.input`.
    */
   startPayload?: JsonObject;
+  /**
+   * The Event that started the run, absent for a manual start and for the
+   * execute route. A Condition node reads it as the Event the run arrived on
+   * until a Cancel Event takes the run to the Canceled outlet.
+   */
+  startEventName?: string;
   /** The untouched payload as it arrived, before any mock request filled in. */
   requestPayload?: JsonObject;
   /**
@@ -88,6 +94,7 @@ async function executeWorkflowInner(
   const {
     graph,
     startPayload = {},
+    startEventName = null,
     requestPayload,
     executionId,
     workflowId,
@@ -152,6 +159,7 @@ async function executeWorkflowInner(
     workflowRunId: currentWorkflowRunId,
     runMode,
     startPayload,
+    startEventName,
     logger: executionLogger,
   });
 

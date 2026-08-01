@@ -60,6 +60,7 @@ function waitStateMatches(input: {
     const evaluation = evaluateCompiledCondition({
       ...subscription.match,
       payload: input.payload,
+      eventName: input.eventType,
     });
 
     if (!evaluation.ok) {

@@ -106,6 +106,8 @@ type ActionStepInput = {
   store: WorkflowStore;
   actions: WorkflowActions;
   runtime: WorkflowExecutionRuntime;
+  /** The Event that put the run on the branch this node sits on. */
+  eventName: string | null;
 };
 
 /**
@@ -147,7 +149,8 @@ async function executeActionStepInner(
     const { result: evaluatedCondition } = evaluateConditionExpression(
       originalExpression,
       outputs,
-      config.conditionModel
+      config.conditionModel,
+      input.eventName
     );
     conditionLogger.debug("Condition evaluation result", {
       evaluatedCondition,
@@ -219,6 +222,8 @@ export type NodeSchedulerInput = {
   runMode: "live" | "test";
   /** What the entry node hands on: see `WorkflowExecutionInput.startPayload`. */
   startPayload: JsonObject;
+  /** The Event that started the run: see `WorkflowExecutionInput.startEventName`. */
+  startEventName: string | null;
   logger: RunLogger;
 };
 
@@ -227,6 +232,18 @@ export class NodeScheduler {
 
   constructor(input: NodeSchedulerInput) {
     this.input = input;
+  }
+
+  /**
+   * The Event the nodes running now arrived on: the Cancel Event once the run
+   * has taken the Canceled outlet, and the Start Event before that. A run
+   * nothing named an Event for answers null, which a rule compares false
+   * against.
+   */
+  private currentEventName(): string | null {
+    return (
+      this.input.cancelBoundary.canceledByEvent() ?? this.input.startEventName
+    );
   }
 
   // The persisted graph is validated as a DAG before execution, so we avoid
@@ -437,6 +454,7 @@ export class NodeScheduler {
           runtime,
           store,
           actions,
+          eventName: this.currentEventName(),
         });
 
         // Set by a Condition node and by nothing else, which is what the
