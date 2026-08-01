@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { validateWorkflowEvents } from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
+import { errorOf } from "#src/backend/services/workflows/validation/validation-test-support";
+import {
+  validateEventSplitOutlets,
+  validateWorkflowEvents,
+} from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
+import { eventSplitOutlet } from "@rova/shared/lifecycle/event-split";
+import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
 import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
 import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 
 // The vocabulary the rules are checked against, which a running app assembles
 // from what the host passed `createRovaApp`.
@@ -157,5 +164,88 @@ describe("validateWorkflowEvents - wait subscription", () => {
     );
 
     expect(result).toEqual({ valid: true });
+  });
+});
+
+describe("validateEventSplitOutlets", () => {
+  const rules: LifecycleRules = {
+    startEvents: ["app/appointment.created"],
+    cancelEvents: [],
+    concurrency: "unlimited",
+  };
+
+  const splitNode: WorkflowNode = {
+    id: "split-1",
+    type: "action",
+    position: { x: 0, y: 100 },
+    data: {
+      label: "Split on Event",
+      type: "action",
+      config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
+    },
+  };
+
+  const targetNode: WorkflowNode = {
+    id: "action-1",
+    type: "action",
+    position: { x: 0, y: 200 },
+    data: { label: "Send", type: "action", config: { actionType: "Send" } },
+  };
+
+  const nodes = [lifecycleNode(rules), splitNode, targetNode];
+  const entryEdge: WorkflowEdge = {
+    id: "e1",
+    source: "lifecycle-1",
+    sourceHandle: LIFECYCLE_STARTED_HANDLE,
+    target: "split-1",
+  };
+
+  it("accepts an outlet naming an Event that reaches the split", () => {
+    expect(
+      validateEventSplitOutlets(
+        nodes,
+        [
+          entryEdge,
+          {
+            id: "e2",
+            source: "split-1",
+            sourceHandle: eventSplitOutlet("app/appointment.created"),
+            target: "action-1",
+          },
+        ],
+        catalog
+      )
+    ).toEqual({ valid: true });
+  });
+
+  it("refuses an outlet naming an Event that cannot reach the split", () => {
+    // The Lifecycle Rules decide which Events arrive, so an outlet for another
+    // is a branch no run travels.
+    const result = validateEventSplitOutlets(
+      nodes,
+      [
+        entryEdge,
+        {
+          id: "e2",
+          source: "split-1",
+          sourceHandle: eventSplitOutlet("app/appointment.canceled"),
+          target: "action-1",
+        },
+      ],
+      catalog
+    );
+
+    expect(result.valid).toBe(false);
+    expect(errorOf(result)).toContain("app/appointment.canceled");
+  });
+
+  it("refuses an edge leaving the split by no outlet at all", () => {
+    const result = validateEventSplitOutlets(
+      nodes,
+      [entryEdge, { id: "e2", source: "split-1", target: "action-1" }],
+      catalog
+    );
+
+    expect(result.valid).toBe(false);
   });
 });

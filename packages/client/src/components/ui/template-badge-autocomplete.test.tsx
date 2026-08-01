@@ -313,38 +313,53 @@ describe("Template badge autocomplete", () => {
     expect(document.activeElement).toBe(textbox);
   });
 
-  it("puts the number first for a duration field and keeps the rest", async () => {
-    // A duration field admitted numbers alone, so a payload of strings and
-    // timestamps rendered nothing at all. Every field is offered now, ordered by
-    // what the target parses: the number, then text, then the instant a duration
-    // has no use for.
+  it("offers a duration field only the durations upstream", async () => {
+    // A patient's name reaches `parseDurationMs` as a run that fails, so the
+    // menu leaves out everything the target cannot read. What an Event Author
+    // declared as a length of time is what stands.
+    surface.events = [
+      {
+        ...APPOINTMENT_CREATED,
+        payloadFields: [
+          ...APPOINTMENT_CREATED.payloadFields,
+          {
+            path: "leadTime",
+            description: "How long before",
+            type: "duration",
+            format: "duration",
+          },
+        ],
+      },
+    ];
+
     const view = render(<DurationTemplateBadgeInput />);
     typeAtSymbol(view.getByRole("textbox"));
 
     await waitFor(() => {
-      expect(menuRows()).toEqual([
-        "Webhook.amountCentsAmount in cents",
-        "Webhook.patientNamePatient name",
-        "Webhook.occurredAtWhen it happened",
-      ]);
+      expect(menuRows()).toEqual(["Webhook.leadTimeHow long before"]);
     });
   });
 
-  it("puts the timestamp first for a date field, the epoch level with the text", async () => {
-    // A unix epoch is one of the two forms `parseTimestampWithTimezone` reads, so
-    // the number sits with the string rather than below it, and declaration order
-    // then decides between them.
+  it("says why a duration field has nothing to offer", async () => {
+    const view = render(<DurationTemplateBadgeInput />);
+    typeAtSymbol(view.getByRole("textbox"));
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain(
+        "No field upstream is a duration"
+      );
+    });
+    expect(menuRows()).toEqual([]);
+  });
+
+  it("offers a date field only the instants upstream", async () => {
     const view = render(
       <ControlledTemplateBadgeInput onValueChange={() => {}} />
     );
     typeAtSymbol(view.getByRole("textbox"));
 
     await waitFor(() => {
-      expect(menuRows()).toEqual([
-        "Webhook.occurredAtWhen it happened",
-        "Webhook.patientNamePatient name",
-        "Webhook.amountCentsAmount in cents",
-      ]);
+      expect(menuRows()).toEqual(["Webhook.occurredAtWhen it happened"]);
     });
   });
 
@@ -355,8 +370,13 @@ describe("Template badge autocomplete", () => {
       {
         ...APPOINTMENT_CREATED,
         payloadFields: [
-          { path: "patientName", description: "Patient name", type: "string" },
-          { path: "amountCents", type: "number" },
+          {
+            path: "leadTime",
+            description: "How long before",
+            type: "duration",
+            format: "duration",
+          },
+          { path: "grace", type: "duration", format: "duration" },
         ],
       },
     ];
@@ -365,15 +385,15 @@ describe("Template badge autocomplete", () => {
 
     await waitFor(() => {
       expect(menuRows()).toEqual([
-        "Webhook.amountCents",
-        "Webhook.patientNamePatient name",
+        "Webhook.leadTimeHow long before",
+        "Webhook.grace",
       ]);
     });
   });
 
-  // The menu shows about seven rows and ranking keeps every field in it, so a
-  // highlight arrowed past the fold has to be scrolled to. happy-dom implements
-  // no scrollIntoView, so the stub is both the spy and the implementation.
+  // The menu shows about seven rows, so a highlight arrowed past the fold has to
+  // be scrolled to. happy-dom implements no scrollIntoView, so the stub is both
+  // the spy and the implementation.
   it("scrolls the highlighted row into view as the keyboard walks past it", async () => {
     const scrollIntoView = vi.fn();
     vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
@@ -381,7 +401,7 @@ describe("Template badge autocomplete", () => {
     );
 
     const view = render(
-      <ControlledTemplateBadgeInput onValueChange={() => {}} />
+      <PlaceholderTemplateBadgeInput onValueChange={() => {}} />
     );
     typeAtSymbol(view.getByRole("textbox"));
 
@@ -592,5 +612,98 @@ describe("Template badge editing", () => {
 
     await waitFor(() => expect(textbox.textContent).toBe("abc"));
     expect(latestValue).toBe("abc");
+  });
+});
+
+describe("Template badge autocomplete node rows", () => {
+  beforeEach(() => {
+    seedTemplateContext();
+  });
+
+  it("leaves out a node that declares no output of its own", async () => {
+    // A Condition or an Event Split routes the run and produces nothing to
+    // address, so the whole-node row would name the engine's own bookkeeping.
+    surface.actions = [
+      {
+        id: "Event Split",
+        label: "Event Split",
+        description: "",
+        category: "System",
+        configFields: [],
+        outputFields: [],
+      },
+      SEND_MESSAGE_ACTION,
+    ];
+
+    const store = getDefaultStore();
+    store.set(loadWorkflowGraphAtom, {
+      nodes: [
+        {
+          id: "lifecycle_1",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Webhook",
+            type: "lifecycle",
+            config: {
+              lifecycleRules: {
+                startEvents: [APPOINTMENT_CREATED.name],
+                cancelEvents: [],
+                concurrency: "unlimited",
+              },
+            },
+          },
+        },
+        {
+          id: "split_1",
+          position: { x: 0, y: 100 },
+          data: {
+            label: "Event Split",
+            type: "action",
+            config: { actionType: "Event Split" },
+          },
+        },
+        {
+          id: "send_1",
+          position: { x: 0, y: 200 },
+          data: {
+            label: "Send Message",
+            type: "action",
+            config: { actionType: "custom/send-message" },
+          },
+        },
+        {
+          id: "wait_1",
+          position: { x: 0, y: 300 },
+          data: { label: "Wait", type: "action", config: { actionType: "Wait" } },
+          selected: true,
+        },
+      ],
+      edges: [
+        {
+          id: "e1",
+          source: "lifecycle_1",
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+          target: "split_1",
+        },
+        {
+          id: "e2",
+          source: "split_1",
+          sourceHandle: "event:app/appointment.created",
+          target: "send_1",
+        },
+        { id: "e3", source: "send_1", target: "wait_1" },
+      ],
+    });
+
+    const view = render(
+      <PlaceholderTemplateBadgeInput onValueChange={() => {}} />
+    );
+    typeAtSymbol(view.getByRole("textbox"));
+
+    await waitFor(() => {
+      // The node that does produce something keeps its whole-output row.
+      expect(menuRows()).toContain("Send Message");
+    });
+    expect(menuRows()).not.toContain("Event Split");
   });
 });

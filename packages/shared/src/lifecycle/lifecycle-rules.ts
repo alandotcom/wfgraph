@@ -34,8 +34,8 @@ export const lifecycleRulesSchema = Schema.Struct({
    *
    * Several of them is how one workflow answers an appointment being booked and
    * being moved: both runs walk the same graph, and newest-wins Concurrency ends
-   * the one already going. What a node behind Started may address is then the
-   * union of their payloads, with `$event.name` selecting between them.
+   * the one already going. What a node behind Started may address is then what
+   * those Events agree on, and an Event Split is what tells them apart.
    */
   startEvents: Schema.Array(NonEmptyTrimmedString),
   /** Event names that route in-flight runs to the Canceled outlet. */

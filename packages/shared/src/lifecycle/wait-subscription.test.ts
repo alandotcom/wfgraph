@@ -3,6 +3,8 @@ import {
   DEFAULT_WAIT_TIMEOUT,
   readWaitConfig,
   readWaitSubscriptions,
+  waitValueKeysNotIn,
+  waitValueTargetsFor,
 } from "./wait-subscription";
 
 /** A Wait node's config bag, which always carries the action's own keys too. */
@@ -128,5 +130,51 @@ describe("readWaitSubscriptions", () => {
 describe("DEFAULT_WAIT_TIMEOUT", () => {
   it("is the seven days the editor writes", () => {
     expect(DEFAULT_WAIT_TIMEOUT).toBe("7d");
+  });
+});
+
+describe("waitValueTargetsFor", () => {
+  it("reads the timeout only while the node parks on an Event", () => {
+    expect(Object.keys(waitValueTargetsFor({ waitMode: "event" }))).toEqual([
+      "waitTimeout",
+    ]);
+  });
+
+  it("reads the duration on a clock, and neither target date nor timeout", () => {
+    expect(
+      Object.keys(
+        waitValueTargetsFor({
+          waitMode: "delay",
+          waitDelayTimingMode: "duration",
+        })
+      )
+    ).toEqual(["waitDuration"]);
+  });
+
+  it("reads the target date and its offset when the timing is a date", () => {
+    expect(
+      Object.keys(
+        waitValueTargetsFor({ waitMode: "delay", waitDelayTimingMode: "until" })
+      )
+    ).toEqual(["waitUntil", "waitOffset"]);
+  });
+
+  it("takes a node carrying a target date as being on that timing", () => {
+    // The timing key is written by the selector alone, so a graph that predates
+    // it says which timing it is on by carrying a date.
+    expect(
+      Object.keys(waitValueTargetsFor({ waitUntil: "2026-03-10T09:00:00Z" }))
+    ).toEqual(["waitUntil", "waitOffset"]);
+  });
+
+  it("names the keys the shape does not read, for the selector to clear", () => {
+    // The case the rule exists for: a timeout left behind by a node switched
+    // back to a clock is a value no run consults and no input shows.
+    expect(waitValueKeysNotIn({ waitMode: "delay" })).toContain("waitTimeout");
+    expect(waitValueKeysNotIn({ waitMode: "event" })).toEqual([
+      "waitDuration",
+      "waitUntil",
+      "waitOffset",
+    ]);
   });
 });

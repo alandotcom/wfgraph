@@ -1,10 +1,27 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeSourceHandleForConnection } from "#src/components/workflow/connection-handle";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
 } from "@rova/shared/lifecycle/lifecycle-outlets";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
+import { eventSplitOutlet } from "@rova/shared/lifecycle/event-split";
+import {
+  emptyExtensionCatalog,
+  type EventMetadata,
+} from "@rova/shared/extensions/catalog";
+
+// An Event Split's outlets are the Events reaching it, which the editor reads
+// off the catalog it fetched once before render.
+const surface = vi.hoisted(() => ({ events: [] as EventMetadata[] }));
+
+vi.mock("#src/lib/extensions", () => ({
+  getExtensionCatalog: () => ({
+    ...emptyExtensionCatalog,
+    events: surface.events,
+  }),
+}));
 
 function lifecycleNode(id = "entry"): WorkflowNode {
   return {
@@ -114,5 +131,113 @@ describe("normalizeSourceHandleForConnection", () => {
         sourceHandle: "out",
       })
     ).toBe("out");
+  });
+});
+
+describe("normalizeSourceHandleForConnection - Event Split", () => {
+  const CREATED = "app/appointment.created";
+  const RESCHEDULED = "app/appointment.rescheduled";
+
+  function splitNode(id = "split"): WorkflowNode {
+    return {
+      id,
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "",
+        type: "action",
+        config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
+      },
+    };
+  }
+
+  function entryNode(startEvents: string[]): WorkflowNode {
+    return {
+      id: "entry",
+      type: "lifecycle",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "",
+        type: "lifecycle",
+        config: {
+          lifecycleRules: {
+            startEvents,
+            cancelEvents: [],
+            concurrency: "unlimited",
+          },
+        },
+      },
+    };
+  }
+
+  const nodes = [entryNode([CREATED, RESCHEDULED]), splitNode()];
+  const entryEdge: WorkflowEdge = {
+    id: "e1",
+    source: "entry",
+    sourceHandle: LIFECYCLE_STARTED_HANDLE,
+    target: "split",
+  };
+
+  beforeEach(() => {
+    surface.events = [
+      { name: CREATED, label: CREATED, payloadFields: [] },
+      { name: RESCHEDULED, label: RESCHEDULED, payloadFields: [] },
+    ];
+  });
+
+  it("keeps the outlet an edge was actually dragged from", () => {
+    expect(
+      normalizeSourceHandleForConnection({
+        nodes,
+        edges: [entryEdge],
+        sourceNodeId: "split",
+        sourceHandle: eventSplitOutlet(RESCHEDULED),
+      })
+    ).toBe(eventSplitOutlet(RESCHEDULED));
+  });
+
+  // The gesture this exists for: the drag started at the downstream node's own
+  // input handle, so the canvas has no source handle to pass on.
+  it("takes the first free outlet for a connection carrying no handle", () => {
+    expect(
+      normalizeSourceHandleForConnection({
+        nodes,
+        edges: [entryEdge],
+        sourceNodeId: "split",
+        sourceHandle: null,
+      })
+    ).toBe(eventSplitOutlet(CREATED));
+  });
+
+  it("takes the next outlet once the first is connected", () => {
+    expect(
+      normalizeSourceHandleForConnection({
+        nodes,
+        edges: [
+          entryEdge,
+          {
+            id: "e2",
+            source: "split",
+            sourceHandle: eventSplitOutlet(CREATED),
+            target: "downstream",
+          },
+        ],
+        sourceNodeId: "split",
+        sourceHandle: null,
+      })
+    ).toBe(eventSplitOutlet(RESCHEDULED));
+  });
+
+  it("answers nothing where no Event reaches the split", () => {
+    // Nothing connects the split to the entry node, so it has no outlets to
+    // choose between and the save refuses the edge rather than inventing one.
+    expect(
+      normalizeSourceHandleForConnection({
+        nodes,
+        edges: [],
+        sourceNodeId: "split",
+        sourceHandle: null,
+      })
+    ).toBeNull();
   });
 });

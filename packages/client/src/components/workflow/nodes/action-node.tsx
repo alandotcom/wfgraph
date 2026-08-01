@@ -5,7 +5,14 @@ import {
 } from "@xyflow/react";
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
-import { AlertTriangle, EyeOff, GitBranch, Hourglass, Zap } from "lucide-react";
+import {
+  AlertTriangle,
+  EyeOff,
+  GitBranch,
+  Hourglass,
+  Split,
+  Zap,
+} from "lucide-react";
 import { Schema } from "effect";
 import { memo, useMemo, useState } from "react";
 import {
@@ -31,6 +38,11 @@ import {
 } from "@rova/shared/utils/wait-time";
 import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
 import { isConditionActionType } from "@rova/shared/conditions/condition-branch";
+import {
+  eventSplitOutlet,
+  isEventSplitActionType,
+} from "@rova/shared/lifecycle/event-split";
+import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
 import { useAfterPaint, useNowMs } from "#src/hooks/effects";
 import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
 import {
@@ -337,6 +349,8 @@ const ProviderLogo = ({ actionType }: { actionType: string }) => {
   switch (actionType) {
     case BUILT_IN_ACTION_IDS.condition:
       return <GitBranch className="size-12 text-pink-300" strokeWidth={1.5} />;
+    case BUILT_IN_ACTION_IDS.eventSplit:
+      return <Split className="size-12 text-sky-400" strokeWidth={1.5} />;
     case BUILT_IN_ACTION_IDS.wait:
       return (
         <Hourglass className="size-12 text-orange-300" strokeWidth={1.5} />
@@ -424,6 +438,18 @@ type ActionNodeProps = NodeProps & {
 const CONDITION_TRUE_HANDLE_LEFT = "38%";
 const CONDITION_FALSE_HANDLE_LEFT = "62%";
 
+/**
+ * How wide one Event Split outlet's slot is, in pixels. Wide enough for the chip
+ * naming its Event, which is why the card grows with its outlets rather than
+ * spacing them inside the width every other node has.
+ */
+const EVENT_SPLIT_OUTLET_WIDTH = 132;
+
+/** Where one outlet's handle sits, as a percentage of the card's own width. */
+function eventSplitOutletLeft(index: number, count: number): string {
+  return `${((index + 0.5) / count) * 100}%`;
+}
+
 export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   const updateNodeInternals = useUpdateNodeInternals();
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
@@ -436,6 +462,8 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   const nodeLog = executionLogs[id];
   const actionType = readConfigString(data?.config, "actionType");
   const isConditionAction = isConditionActionType(actionType);
+  const isEventSplitAction = isEventSplitActionType(actionType);
+  const splitOutlets = useEventSplitOutlets(isEventSplitAction ? id : null);
   const runtimeWaitPreview = useRuntimeWaitPreview(
     actionType,
     selectedExecutionId,
@@ -445,8 +473,9 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   const waitPreview = runtimeWaitPreview ?? configWaitPreview;
 
   // A condition node renders two source handles where every other node renders
-  // one. React Flow caches handle positions and has no way to notice that, so
-  // it has to be told.
+  // one, and an Event Split renders one per Event that can reach it, which
+  // changes as the graph above it does. React Flow caches handle positions and
+  // has no way to notice either, so it has to be told.
   //
   // After paint, not during the commit. React Flow measures a node's handles in
   // its own commit-phase work, which for a node component runs after that
@@ -455,8 +484,12 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   // symptom is a condition node whose true and false handles are on screen and
   // draggable-looking, while React Flow still has only the single default
   // handle recorded and starts no connection from either.
-  useAfterPaint(isConditionAction ? id : null, () => {
-    if (isConditionAction) {
+  const splitOutletKey = isEventSplitAction
+    ? splitOutlets.map((event) => event.name).join("|")
+    : null;
+
+  useAfterPaint(isConditionAction ? id : splitOutletKey, () => {
+    if (isConditionAction || isEventSplitAction) {
       updateNodeInternals(id);
     }
   });
@@ -576,8 +609,25 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
                 },
               },
             ]
-          : true,
+          : isEventSplitAction
+            ? splitOutlets.map((event, index) => ({
+                id: eventSplitOutlet(event.name),
+                position: Position.Bottom,
+                style: {
+                  left: eventSplitOutletLeft(index, splitOutlets.length),
+                  width: 12,
+                  height: 12,
+                },
+              }))
+            : true,
       }}
+      // A split is as wide as its outlets. Every other node keeps the width its
+      // class names, which is what `undefined` leaves standing.
+      style={
+        isEventSplitAction && splitOutlets.length > 1
+          ? { width: splitOutlets.length * EVENT_SPLIT_OUTLET_WIDTH }
+          : undefined
+      }
       status={status}
     >
       {/* Disabled badge in top left */}
@@ -604,6 +654,20 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
           </div>
         </>
       )}
+
+      {isEventSplitAction &&
+        splitOutlets.map((event, index) => (
+          <div
+            className="pointer-events-none absolute -bottom-8 max-w-28 -translate-x-1/2 truncate rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none"
+            key={event.name}
+            style={{
+              left: eventSplitOutletLeft(index, splitOutlets.length),
+            }}
+            title={event.name}
+          >
+            {event.label}
+          </div>
+        ))}
 
       <div className="flex flex-col items-center justify-center gap-3 p-6">
         {generatedImageBase64 ? (

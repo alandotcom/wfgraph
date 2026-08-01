@@ -1,7 +1,10 @@
 import { asNonEmptyString } from "#src/types/string";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import { compileSerializedConditionModel } from "#src/conditions/conditions";
-import { readWaitSubscriptions } from "#src/lifecycle/wait-subscription";
+import {
+  readWaitDelayTiming,
+  readWaitSubscriptions,
+} from "#src/lifecycle/wait-subscription";
 import { parseTimeOfDayMinutes } from "#src/utils/wait-allowed-hours";
 import type { WorkflowNode } from "#src/graph/types";
 
@@ -117,23 +120,6 @@ function getWaitMode(config: Record<string, unknown>): "delay" | "event" {
   return asNonEmptyString(config.waitMode) === "event" ? "event" : "delay";
 }
 
-function getDelayTimingMode(
-  config: Record<string, unknown>
-): "duration" | "until" {
-  const mode = asNonEmptyString(config.waitDelayTimingMode);
-
-  if (mode === "until") {
-    return "until";
-  }
-
-  if (mode === "duration") {
-    return "duration";
-  }
-
-  const hasWaitUntil = !isFieldEmpty(config.waitUntil);
-  return hasWaitUntil ? "until" : "duration";
-}
-
 function getWaitMissingRequiredFields(
   config: Record<string, unknown>
 ): MissingRequiredField[] {
@@ -186,7 +172,7 @@ function getWaitMissingRequiredFields(
 
   const missing: MissingRequiredField[] = [];
 
-  if (getDelayTimingMode(config) === "until") {
+  if (readWaitDelayTiming(config) === "until") {
     if (isFieldEmpty(config.waitUntil)) {
       missing.push({
         fieldKey: "waitUntil",

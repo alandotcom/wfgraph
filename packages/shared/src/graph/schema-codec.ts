@@ -30,6 +30,7 @@ export type WorkflowSchemaFieldType =
   | "number"
   | "boolean"
   | "timestamp"
+  | "duration"
   | "array"
   | "object";
 
@@ -38,6 +39,7 @@ export type WorkflowSchemaItemType =
   | "number"
   | "boolean"
   | "timestamp"
+  | "duration"
   | "object";
 
 export type WorkflowSchemaField = {
@@ -208,6 +210,7 @@ export function isWorkflowSchemaFieldType(
     value === "number" ||
     value === "boolean" ||
     value === "timestamp" ||
+    value === "duration" ||
     value === "array" ||
     value === "object"
   );
@@ -221,6 +224,7 @@ export function isWorkflowSchemaItemType(
     value === "number" ||
     value === "boolean" ||
     value === "timestamp" ||
+    value === "duration" ||
     value === "object"
   );
 }
@@ -256,7 +260,7 @@ function normalizeJsonSchemaType(
 
 function normalizeSchemaFormat(
   value: string | undefined
-): "timestamp" | undefined {
+): "timestamp" | "duration" | undefined {
   if (
     value === "date-time" ||
     value === "datetime" ||
@@ -264,6 +268,12 @@ function normalizeSchemaFormat(
     value === "timestamp"
   ) {
     return "timestamp";
+  }
+
+  // JSON Schema's own keyword for an ISO 8601 length of time, which is the only
+  // spelling: `duration` is what Zod, arktype and `durationString` all emit.
+  if (value === "duration") {
+    return "duration";
   }
 
   return undefined;
@@ -291,6 +301,41 @@ function isTimestampString(prop: JsonSchemaNode): boolean {
   return compact(prop.allOf ?? []).some(isTimestampString);
 }
 
+/** Whether a string property names a length of time, read as `isTimestampString`. */
+function isDurationString(prop: JsonSchemaNode): boolean {
+  if (normalizeSchemaFormat(prop.format) === "duration") {
+    return true;
+  }
+
+  return compact(prop.allOf ?? []).some(isDurationString);
+}
+
+/**
+ * Which of the two meanings a JSON Schema string carries, or undefined for one
+ * that is just text. Both are strings on the wire and the `format` keyword is
+ * the whole of what tells them apart.
+ */
+function stringSubtype(
+  prop: JsonSchemaNode
+): "timestamp" | "duration" | undefined {
+  if (isTimestampString(prop)) {
+    return "timestamp";
+  }
+
+  return isDurationString(prop) ? "duration" : undefined;
+}
+
+/** The `format` a type is written back out under, absent for a plain type. */
+function stringFormatFor(
+  type: WorkflowSchemaFieldType | WorkflowSchemaItemType | undefined
+): "date-time" | "duration" | undefined {
+  if (type === "timestamp") {
+    return "date-time";
+  }
+
+  return type === "duration" ? "duration" : undefined;
+}
+
 function workflowSchemaFieldsFromRecords(
   records: WorkflowFieldRecords | undefined
 ): WorkflowSchemaField[] {
@@ -308,11 +353,9 @@ function resolvePrimitiveWorkflowSchemaType(input: {
   type: JsonSchemaType;
   format: string | undefined;
 }): WorkflowSchemaFieldType {
-  if (
-    input.type === "string" &&
-    normalizeSchemaFormat(input.format) === "timestamp"
-  ) {
-    return "timestamp";
+  const format = normalizeSchemaFormat(input.format);
+  if (input.type === "string" && format) {
+    return format;
   }
 
   return input.type;
@@ -330,8 +373,8 @@ function arrayWorkflowSchemaFieldFromRecord(input: {
   if (isWorkflowSchemaItemType(normalizedItemType)) {
     itemType = normalizedItemType;
   }
-  if (itemType === "string" && normalizedFormat === "timestamp") {
-    itemType = "timestamp";
+  if (itemType === "string" && normalizedFormat) {
+    itemType = normalizedFormat;
   }
 
   return {
@@ -482,14 +525,15 @@ function parseNonNullableJsonSchemaProperty(
     normalizedType === "string" ||
     normalizedType === "number" ||
     normalizedType === "boolean" ||
-    normalizedType === "timestamp"
+    normalizedType === "timestamp" ||
+    normalizedType === "duration"
   ) {
     const enumValues = toEnumValues(value.enum);
     return {
       name,
       type:
-        normalizedType === "string" && isTimestampString(value)
-          ? "timestamp"
+        normalizedType === "string"
+          ? (stringSubtype(value) ?? normalizedType)
           : normalizedType,
       description,
       ...(enumValues ? { enumValues } : {}),
@@ -510,8 +554,8 @@ function parseNonNullableJsonSchemaProperty(
     normalizeJsonSchemaType(items?.type) ||
     (items?.properties ? "object" : null) ||
     "string";
-  if (normalizedItemType === "string" && items && isTimestampString(items)) {
-    normalizedItemType = "timestamp";
+  if (normalizedItemType === "string" && items) {
+    normalizedItemType = stringSubtype(items) ?? normalizedItemType;
   }
 
   if (!isWorkflowSchemaItemType(normalizedItemType)) {
@@ -597,12 +641,14 @@ function workflowSchemaFieldToJsonSchemaNode(
     field.type === "string" ||
     field.type === "number" ||
     field.type === "boolean" ||
-    field.type === "timestamp"
+    field.type === "timestamp" ||
+    field.type === "duration"
   ) {
+    const format = stringFormatFor(field.type);
     return {
       ...base,
-      type: field.type === "timestamp" ? "string" : field.type,
-      ...(field.type === "timestamp" ? { format: "date-time" } : {}),
+      type: format ? "string" : field.type,
+      ...(format ? { format } : {}),
     };
   }
 
@@ -629,15 +675,13 @@ function workflowSchemaFieldToJsonSchemaNode(
     };
   }
 
+  const itemFormat = stringFormatFor(field.itemType);
   return {
     ...base,
     type: "array",
     items: {
-      type:
-        field.itemType === "timestamp"
-          ? "string"
-          : (field.itemType ?? "string"),
-      ...(field.itemType === "timestamp" ? { format: "date-time" } : {}),
+      type: itemFormat ? "string" : (field.itemType ?? "string"),
+      ...(itemFormat ? { format: itemFormat } : {}),
     },
   };
 }

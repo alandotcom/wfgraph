@@ -27,6 +27,7 @@ import {
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
 import { getExtensionCatalog } from "#src/lib/extensions";
+import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
 import { getUpstreamConditionFields } from "#src/lib/upstream-node-fields";
 import {
   edgesAtom,
@@ -35,7 +36,12 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { actionsByCategory, findAction } from "@rova/shared/extensions/catalog";
 import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import { DEFAULT_WAIT_TIMEOUT } from "@rova/shared/lifecycle/wait-subscription";
+import {
+  DEFAULT_WAIT_TIMEOUT,
+  readWaitDelayTiming,
+  WAIT_VALUE_TARGETS,
+  waitValueKeysNotIn,
+} from "@rova/shared/lifecycle/wait-subscription";
 import { ActionConfigRenderer } from "./action-config-renderer";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";
@@ -145,54 +151,75 @@ function ConditionFields({
   );
 }
 
+/**
+ * What the Event Split node splits on, which is a fact of the graph rather than
+ * anything to fill in.
+ *
+ * Its outlets are the Events that can reach it, so the panel states them and the
+ * canvas draws one handle each. A node nothing reaches has no outlets, and
+ * saying so here is the only place a builder finds out why the card has no
+ * handles to drag from.
+ */
+function EventSplitFields() {
+  const selectedNodeId = useAtomValue(selectedNodeAtom);
+  const outlets = useEventSplitOutlets(selectedNodeId);
+
+  return (
+    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+      <p className="font-medium text-xs uppercase tracking-wide">
+        Splits On Event
+      </p>
+
+      {outlets.length === 0 ? (
+        <p className="text-muted-foreground text-xs">
+          No Event reaches this node yet. Connect it below the Lifecycle Node,
+          and it draws one outlet per Start Event.
+        </p>
+      ) : (
+        <>
+          <ul className="space-y-1">
+            {outlets.map((event) => (
+              <li className="text-sm" key={event.name}>
+                {event.label}
+                <span className="ml-2 text-muted-foreground text-xs">
+                  {event.name}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-muted-foreground text-xs">
+            A run leaves by the outlet naming the Event it arrived on. An outlet
+            with nothing connected ends the run there.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 type WaitFieldProps = {
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
 };
 
-function getDelayTimingMode(
-  config: Record<string, unknown>
-): "duration" | "until" {
-  const delayTimingModeRaw = readConfigString(config, "waitDelayTimingMode");
-  if (delayTimingModeRaw === "duration" || delayTimingModeRaw === "until") {
-    return delayTimingModeRaw;
-  }
-
-  const waitUntil = readConfigString(config, "waitUntil");
-  if (waitUntil.trim()) {
-    return "until";
-  }
-
-  return "duration";
-}
-
 function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   const waitGateMode = readConfigString(config, "waitGateMode", "off");
   const configuredWaitUntil = readConfigString(config, "waitUntil");
   const configuredWaitDuration = readConfigString(config, "waitDuration");
-  const delayTimingMode = getDelayTimingMode(config);
+  const delayTimingMode = readWaitDelayTiming(config);
   const isWindowEnabled =
     readConfigString(config, "waitAllowedHoursMode") === "daily_window";
 
-  // Switching timing mode also drops the fields the other mode owns, so a run
+  // Switching timing drops the fields the timing being left owned, so a run
   // never reads a stale duration next to a freshly chosen target date.
   const handleDelayTimingModeChange = (value: string) => {
-    if (value === "duration") {
-      onUpdateConfig({
-        waitDelayTimingMode: value,
-        waitUntil: "",
-        waitOffset: "",
-      });
-      return;
-    }
+    const next = { ...config, waitDelayTimingMode: value };
+    const cleared = Object.fromEntries(
+      waitValueKeysNotIn(next).map((key) => [key, ""])
+    );
 
-    if (value === "until") {
-      onUpdateConfig({ waitDelayTimingMode: value, waitDuration: "" });
-      return;
-    }
-
-    onUpdateConfig({ waitDelayTimingMode: value });
+    onUpdateConfig({ ...cleared, waitDelayTimingMode: value });
   };
 
   return (
@@ -226,7 +253,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           <Label htmlFor="waitDuration">Wait for (duration)</Label>
           <TemplateBadgeInput
             disabled={disabled}
-            fieldType="duration"
+            fieldType={WAIT_VALUE_TARGETS.waitDuration.type}
             id="waitDuration"
             onChange={(value) => onUpdateConfig({ waitDuration: value })}
             placeholder="24h, 90m, 3600000, or P1D"
@@ -242,7 +269,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             <Label htmlFor="waitUntil">Wait until this date/time</Label>
             <TemplateBadgeInput
               disabled={disabled}
-              fieldType="timestamp"
+              fieldType={WAIT_VALUE_TARGETS.waitUntil.type}
               id="waitUntil"
               onChange={(value) => onUpdateConfig({ waitUntil: value })}
               placeholder="2026-03-10T09:00:00-05:00 or {{@lifecycle_1:Lifecycle.appointment.startsAt}}"
@@ -260,7 +287,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             </Label>
             <TemplateBadgeInput
               disabled={disabled}
-              fieldType="duration"
+              fieldType={WAIT_VALUE_TARGETS.waitOffset.type}
               id="waitOffset"
               onChange={(value) => onUpdateConfig({ waitOffset: value })}
               placeholder="-1d, 6h, 30m"
@@ -389,7 +416,7 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <Label htmlFor="waitTimeout">Stop waiting after</Label>
         <TemplateBadgeInput
           disabled={disabled}
-          fieldType="duration"
+          fieldType={WAIT_VALUE_TARGETS.waitTimeout.type}
           id="waitTimeout"
           onChange={(value) => onUpdateConfig({ waitTimeout: value })}
           placeholder={DEFAULT_WAIT_TIMEOUT}
@@ -437,12 +464,23 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
 function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   const waitMode = readConfigString(config, "waitMode", "delay");
 
+  // Switching mode drops the keys the shape being left owned, the same rule the
+  // timing selector below follows: a run never reads a value from a shape the
+  // node is no longer in, and a builder is never refused over an input that is
+  // off screen.
   const handleModeChange = (value: string) => {
-    onUpdateConfig(
-      value === "event" && !readConfigString(config, "waitTimeout").trim()
-        ? { waitMode: value, waitTimeout: DEFAULT_WAIT_TIMEOUT }
-        : { waitMode: value }
+    const next = { ...config, waitMode: value };
+    const cleared = Object.fromEntries(
+      waitValueKeysNotIn(next).map((key) => [key, ""])
     );
+
+    onUpdateConfig({
+      ...cleared,
+      waitMode: value,
+      ...(value === "event" && !readConfigString(config, "waitTimeout").trim()
+        ? { waitTimeout: DEFAULT_WAIT_TIMEOUT }
+        : {}),
+    });
   };
 
   return (
@@ -508,6 +546,8 @@ function SystemActionFields({
           onUpdateConfig={onUpdateConfig}
         />
       );
+    case BUILT_IN_ACTION_IDS.eventSplit:
+      return <EventSplitFields />;
     case BUILT_IN_ACTION_IDS.wait:
       return (
         <WaitFields

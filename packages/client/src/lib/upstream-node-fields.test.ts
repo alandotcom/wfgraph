@@ -636,10 +636,10 @@ describe("upstream-node-fields", () => {
     ).toEqual([]);
   });
 
-  it("offers a path its Events type differently as plain text", () => {
+  it("marks a path its Events type differently as unusable", () => {
     // Two Cancel Events reach this node and disagree about what `occurredAt` is.
-    // The type decides a condition row's operators, so the picker keeps the path
-    // and describes it as the text a template renders it to.
+    // The type decides a condition row's operators and what a typed target
+    // accepts, so a path with two of them has no answer to offer.
     surface.events = [
       anEvent({
         name: "app/appointment.canceled",
@@ -685,11 +685,76 @@ describe("upstream-node-fields", () => {
       {
         path: "occurredAt",
         description: "When the event was raised",
-        type: "string",
         sourceNodeId: "lifecycle-1",
         sourceNodeName: "Carried by every Event",
+        typeClash: {
+          types: ["timestamp", "string"],
+          events: ["app/appointment.canceled", "app/appointment.rescheduled"],
+        },
       },
     ]);
+
+    // A rule cannot be built over a path with no type, so the condition builder
+    // leaves it out rather than offering operators it cannot answer. What stays
+    // is the field a builder splits the Events on.
+    expect(
+      getUpstreamConditionFields({
+        currentNodeId: "on-cancel",
+        nodes,
+        edges,
+      }).map((field) => field.path)
+    ).toEqual([EVENT_NAME_FIELD_PATH]);
+  });
+
+  it("marks a field only some Start Events declare as nullable", () => {
+    // The superset case: a rescheduled appointment carries where it moved from
+    // and a created one does not, so a run can reach this node without the path.
+    surface.events = [
+      anEvent({
+        name: "app/appointment.created",
+        schema: Schema.Struct({
+          appointmentId: Schema.String.annotate({ description: "Which one" }),
+        }),
+      }),
+      anEvent({
+        name: "app/appointment.rescheduled",
+        schema: Schema.Struct({
+          appointmentId: Schema.String.annotate({ description: "Which one" }),
+          previousStartsAt: isoTimestampString("Where it moved from"),
+        }),
+      }),
+    ];
+
+    const nodes: WorkflowNode[] = [
+      anEntryNode({
+        startEvents: ["app/appointment.created", "app/appointment.rescheduled"],
+      }),
+      createNode({
+        id: "action-1",
+        type: "action",
+        label: "Decide",
+        config: { actionType: "Condition" },
+      }),
+    ];
+
+    const fields = getUpstreamConditionFields({
+      currentNodeId: "action-1",
+      nodes,
+      edges: [startedEdge("action-1")],
+    });
+
+    expect(fields).toContainEqual(
+      expect.objectContaining({
+        path: "previousStartsAt",
+        type: "timestamp",
+        nullable: true,
+      })
+    );
+    // The path both Events declare stays guaranteed, which is what keeps the
+    // is-set operators off its row.
+    expect(
+      fields.find((field) => field.path === "appointmentId")?.nullable
+    ).toBeUndefined();
   });
 
   it("offers nothing from an entry node no outlet connects it to", () => {

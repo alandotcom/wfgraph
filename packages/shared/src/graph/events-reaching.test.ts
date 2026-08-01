@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import {
   type ConditionModel,
   type ConditionRule,
@@ -13,6 +14,7 @@ import type {
 } from "#src/extensions/catalog";
 import { eventsReaching } from "#src/graph/events-reaching";
 import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
+import { eventSplitOutlet } from "#src/lifecycle/event-split";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
@@ -213,6 +215,58 @@ describe("eventsReaching", () => {
 
     expect(namesReaching("on-true", nodes, edges)).toEqual([CANCELED]);
     expect(namesReaching("on-false", nodes, edges)).toEqual([RESCHEDULED]);
+  });
+
+  it("leaves one Event behind each Event Split outlet", () => {
+    const nodes = [
+      entryNode({ startEvents: [CREATED, RESCHEDULED] }),
+      actionNode("split-1", BUILT_IN_ACTION_IDS.eventSplit),
+      actionNode("on-created"),
+      actionNode("on-rescheduled"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "split-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "split-1", "on-created", eventSplitOutlet(CREATED)),
+      edge("e3", "split-1", "on-rescheduled", eventSplitOutlet(RESCHEDULED)),
+    ];
+
+    expect(namesReaching("on-created", nodes, edges)).toEqual([CREATED]);
+    expect(namesReaching("on-rescheduled", nodes, edges)).toEqual([
+      RESCHEDULED,
+    ]);
+  });
+
+  it("leaves nothing behind an Event Split outlet no run can take", () => {
+    // An outlet for an Event that cannot reach the split is a branch no run
+    // travels, so there is no payload to promise a node behind it.
+    const nodes = [
+      entryNode({ startEvents: [CREATED] }),
+      actionNode("split-1", BUILT_IN_ACTION_IDS.eventSplit),
+      actionNode("on-canceled"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "split-1", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "split-1", "on-canceled", eventSplitOutlet(CANCELED)),
+    ];
+
+    expect(namesReaching("on-canceled", nodes, edges)).toEqual([]);
+  });
+
+  it("gives the Event Split itself every Event that reaches it", () => {
+    // What the node's own outlets are derived from, so the panel and the canvas
+    // ask this rather than reading the Lifecycle Rules a second time.
+    const nodes = [
+      entryNode({ startEvents: [CREATED, RESCHEDULED] }),
+      actionNode("split-1", BUILT_IN_ACTION_IDS.eventSplit),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "split-1", LIFECYCLE_STARTED_HANDLE),
+    ];
+
+    expect(namesReaching("split-1", nodes, edges)).toEqual([
+      CREATED,
+      RESCHEDULED,
+    ]);
   });
 
   it("inverts both lines for a not_equals rule", () => {

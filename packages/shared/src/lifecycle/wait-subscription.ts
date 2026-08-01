@@ -9,6 +9,7 @@
  */
 
 import { Result, Schema } from "effect";
+import type { ValueTargetType } from "#src/graph/value-targets";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 import { formatSchemaFailure } from "#src/types/schema-message";
 
@@ -77,6 +78,120 @@ export const waitConfigSchema = Schema.Struct({
 });
 
 export type WaitConfig = typeof waitConfigSchema.Type;
+
+/** Which of the node's shapes reads a key: one mode, and for delay one timing. */
+type WaitValueOwner =
+  | { mode: "event" }
+  | { mode: "delay"; timing: "duration" | "until" };
+
+/**
+ * What each of the Wait node's time keys is read as, who reads it, and whether a
+ * blank one stops the node.
+ *
+ * Data because three readers ask: the panel draws the input from it, the mode
+ * selectors clear what the shape they left owned, and the save refuses a token
+ * whose field the key's parser cannot read. Ownership is part of it because a
+ * key belongs to one shape of the node -- the engine reads the timeout only
+ * while parked on an Event -- so a rule that ignored it would police a value no
+ * run consults.
+ */
+export const WAIT_VALUE_TARGETS = {
+  waitDuration: {
+    type: "duration",
+    required: true,
+    owner: { mode: "delay", timing: "duration" },
+  },
+  waitUntil: {
+    type: "timestamp",
+    required: true,
+    owner: { mode: "delay", timing: "until" },
+  },
+  // A wait with no offset writes a blank, so an absent value is what it means.
+  waitOffset: {
+    type: "duration",
+    required: false,
+    owner: { mode: "delay", timing: "until" },
+  },
+  waitTimeout: {
+    type: "duration",
+    required: true,
+    owner: { mode: "event" },
+  },
+} as const satisfies Record<
+  string,
+  { type: ValueTargetType; required: boolean; owner: WaitValueOwner }
+>;
+
+export type WaitValueTargetKey = keyof typeof WAIT_VALUE_TARGETS;
+
+/**
+ * Every key, in panel order. Written out rather than read off the object,
+ * because `Object.keys` answers `string[]` and narrowing it back is an assertion
+ * the compiler cannot check.
+ */
+const WAIT_VALUE_TARGET_KEYS: readonly WaitValueTargetKey[] = [
+  "waitDuration",
+  "waitUntil",
+  "waitOffset",
+  "waitTimeout",
+];
+
+/**
+ * Which timing the delay mode is on, with absence read off the config: a node
+ * carrying a target date is on `until`, whatever it says.
+ */
+export function readWaitDelayTiming(
+  config: Record<string, unknown>
+): "duration" | "until" {
+  const declared = config.waitDelayTimingMode;
+  if (declared === "until" || declared === "duration") {
+    return declared;
+  }
+
+  return typeof config.waitUntil === "string" && config.waitUntil.trim()
+    ? "until"
+    : "duration";
+}
+
+/**
+ * The keys this node's current shape actually reads.
+ *
+ * A key the shape does not own is left out rather than reported: the engine
+ * ignores it, and the input a builder would fix it in is off screen.
+ */
+export function waitValueKeysIn(
+  config: Record<string, unknown>
+): WaitValueTargetKey[] {
+  const mode = config.waitMode === "event" ? "event" : "delay";
+  const timing = readWaitDelayTiming(config);
+
+  return WAIT_VALUE_TARGET_KEYS.filter((key) => {
+    const { owner } = WAIT_VALUE_TARGETS[key];
+    return owner.mode === "event"
+      ? mode === "event"
+      : mode === "delay" && owner.timing === timing;
+  });
+}
+
+/** Those same keys with what each expects, for a reader that needs the target. */
+export function waitValueTargetsFor(
+  config: Record<string, unknown>
+): Partial<
+  Record<WaitValueTargetKey, (typeof WAIT_VALUE_TARGETS)[WaitValueTargetKey]>
+> {
+  return Object.fromEntries(
+    waitValueKeysIn(config).map((key) => [key, WAIT_VALUE_TARGETS[key]])
+  );
+}
+
+/** The keys a node leaving this shape should stop carrying. */
+export function waitValueKeysNotIn(
+  config: Record<string, unknown>
+): WaitValueTargetKey[] {
+  const kept = new Set<WaitValueTargetKey>(waitValueKeysIn(config));
+
+  return WAIT_VALUE_TARGET_KEYS.filter((key) => !kept.has(key));
+}
 
 /** The mode a Wait node is in, with absence reading as the selector's default. */
 export type WaitMode = "delay" | "event";

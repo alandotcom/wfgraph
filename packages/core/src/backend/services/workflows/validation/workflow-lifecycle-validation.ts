@@ -12,17 +12,75 @@ import {
   findEvent,
 } from "@rova/shared/extensions/catalog";
 import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
+import { eventsReaching } from "@rova/shared/graph/events-reaching";
+import {
+  eventSplitOutletEvent,
+  isEventSplitNode,
+} from "@rova/shared/lifecycle/event-split";
 import {
   checkLifecycleRules,
   readLifecycleRules,
   unknownEventMessage,
 } from "@rova/shared/lifecycle/lifecycle-rules";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import { getNodeLabel } from "#src/backend/services/workflows/validation/workflow-graph";
 import { readWaitSubscriptions } from "@rova/shared/lifecycle/wait-subscription";
 
 export type WorkflowLifecycleValidationResult =
   | { valid: true }
   | { valid: false; error: string };
+
+/**
+ * Every Event Split's outlets, held to the Events that can actually reach it.
+ *
+ * The node's outlets are derived rather than configured, so a handle naming
+ * anything else belongs to a graph written before the Lifecycle Rules changed,
+ * or to an API write. Either way it is a branch no run travels, which is silence
+ * a builder cannot see, so the save says it instead.
+ */
+export function validateEventSplitOutlets(
+  nodes: readonly WorkflowNode[],
+  edges: readonly WorkflowEdge[],
+  catalog: ExtensionCatalog
+): WorkflowLifecycleValidationResult {
+  for (const node of nodes) {
+    if (!isEventSplitNode(node)) {
+      continue;
+    }
+
+    const reachable = new Set(
+      eventsReaching({
+        targetNodeId: node.id,
+        nodes,
+        edges,
+        catalog,
+      }).map((event) => event.name)
+    );
+
+    for (const edge of edges) {
+      if (edge.source !== node.id) {
+        continue;
+      }
+
+      const eventName = eventSplitOutletEvent(edge.sourceHandle);
+      if (!eventName) {
+        return {
+          valid: false,
+          error: `Node "${getNodeLabel(node)}" has an edge that leaves by no outlet. Every edge out of a split names the Event it carries.`,
+        };
+      }
+
+      if (!reachable.has(eventName)) {
+        return {
+          valid: false,
+          error: `Node "${getNodeLabel(node)}" splits on "${eventName}", which cannot reach it. Remove that branch, or add the Event to the Lifecycle Rules.`,
+        };
+      }
+    }
+  }
+
+  return { valid: true };
+}
 
 /**
  * Every Event a graph names, as the entry node's lifecycle role or a Wait

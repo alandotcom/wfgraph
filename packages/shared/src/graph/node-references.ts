@@ -26,16 +26,17 @@ import type {
  * for example `order.items[0].sku`. It is the exact string that goes after the
  * node label inside a template token, and the exact string the walker consumes.
  *
- * Known redundancy: `type: "timestamp"` and `format: "timestamp"` say the same
- * thing. Folding `format` into `type` would change the serialized schema
- * contract and needs a read-side migration, so both are kept for now.
+ * Known redundancy: `type` and `format` say the same thing for the two string
+ * subtypes, `timestamp` and `duration`. Folding `format` into `type` would
+ * change the serialized schema contract and needs a read-side migration, so both
+ * are kept for now.
  */
 export type ReferenceField = {
   path: string;
   /** The author's own words for the field, absent when they wrote none. */
   description?: string;
   type?: WorkflowSchemaFieldType;
-  format?: "timestamp";
+  format?: "timestamp" | "duration";
   nullable?: boolean;
   enumValues?: string[];
 };
@@ -61,6 +62,7 @@ function schemaFieldToReferenceField(
     ...(description ? { description } : {}),
     type: field.type,
     ...(field.type === "timestamp" ? { format: "timestamp" as const } : {}),
+    ...(field.type === "duration" ? { format: "duration" as const } : {}),
     ...(field.nullable ? { nullable: true } : {}),
     ...(field.enumValues ? { enumValues: field.enumValues } : {}),
   };

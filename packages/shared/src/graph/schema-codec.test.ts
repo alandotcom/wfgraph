@@ -22,6 +22,44 @@ describe("parseWorkflowSchemaField", () => {
     });
   });
 
+  it("normalizes a primitive duration field", () => {
+    // `format: "duration"` is JSON Schema's own keyword for an ISO 8601 length
+    // of time, which is what an author declares a wait's input with.
+    const field = parseWorkflowSchemaField({
+      name: "reminderLeadTime",
+      type: "string",
+      format: "duration",
+      description: "How long before the appointment",
+    });
+
+    expect(field).toEqual({
+      name: "reminderLeadTime",
+      type: "duration",
+      description: "How long before the appointment",
+    });
+  });
+
+  it("writes a duration field back as the format it was read from", () => {
+    expect(
+      workflowSchemaFieldsToJsonSchemaDocument([
+        {
+          name: "reminderLeadTime",
+          type: "duration",
+          description: "How long before the appointment",
+        },
+      ])
+    ).toEqual({
+      type: "object",
+      properties: {
+        reminderLeadTime: {
+          type: "string",
+          format: "duration",
+          description: "How long before the appointment",
+        },
+      },
+    });
+  });
+
   it("parses array object fields and drops invalid nested entries", () => {
     const field = parseWorkflowSchemaField({
       name: "events",

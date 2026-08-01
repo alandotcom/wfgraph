@@ -6,11 +6,11 @@ import {
 } from "#src/conditions/condition-branch";
 
 describe("condition-branch helpers", () => {
-  it("normalizes true/false branch handles", () => {
+  it("reads the two branch handles and nothing else", () => {
     expect(normalizeConditionBranch("true")).toBe("true");
-    expect(normalizeConditionBranch("FALSE")).toBe("false");
-    expect(normalizeConditionBranch("branch-true")).toBe("true");
-    expect(normalizeConditionBranch("branch-false")).toBe("false");
+    expect(normalizeConditionBranch("false")).toBe("false");
+    expect(normalizeConditionBranch("FALSE")).toBeNull();
+    expect(normalizeConditionBranch("branch-true")).toBeNull();
   });
 
   it("builds user-facing labels from branch handles", () => {
@@ -19,10 +19,10 @@ describe("condition-branch helpers", () => {
     expect(getConditionBranchDisplayLabel("other")).toBeNull();
   });
 
-  it("detects condition action type with normalized casing", () => {
+  it("detects the condition action type exactly, as the engine dispatches on it", () => {
     expect(isConditionActionType("Condition")).toBe(true);
-    expect(isConditionActionType(" condition ")).toBe(true);
-    expect(isConditionActionType("CONDITION")).toBe(true);
+    expect(isConditionActionType(" condition ")).toBe(false);
+    expect(isConditionActionType("CONDITION")).toBe(false);
     expect(isConditionActionType("twilio/send-sms")).toBe(false);
   });
 });

@@ -33,7 +33,8 @@ function hasRootLifecycleNode(input: {
   );
 }
 
-function getNodeLabel(node: WorkflowNode): string {
+/** What a refusal calls a node: the builder's own label, or the id they never set. */
+export function getNodeLabel(node: WorkflowNode): string {
   return node.data.label?.trim() || node.id;
 }
 

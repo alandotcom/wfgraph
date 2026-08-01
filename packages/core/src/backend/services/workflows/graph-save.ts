@@ -26,7 +26,11 @@ import {
 import { validateWorkflowConditionConfigs } from "#src/backend/services/workflows/validation/workflow-conditions-validation";
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { validateWorkflowIntegrations } from "#src/backend/services/workflows/validation/workflow-integration-validation";
-import { validateWorkflowEvents } from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
+import { validateWorkflowTemplates } from "#src/backend/services/workflows/validation/workflow-template-validation";
+import {
+  validateEventSplitOutlets,
+  validateWorkflowEvents,
+} from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
 import { deriveEventSubscriptions } from "#src/backend/services/workflows/lifecycle/subscriptions";
 import type { WorkflowEventSubscriptionRow } from "#src/backend/services/workflows/repo";
 import type {
@@ -66,14 +70,18 @@ export const prepareGraphSave = Effect.fn("prepareGraphSave")(
 
     const { nodes, edges, graph } = graphValidation;
 
-    const conditionValidation = validateWorkflowConditionConfigs(nodes);
-    if (!conditionValidation.valid) {
-      return yield* new InvalidInput({ error: conditionValidation.error });
-    }
-
-    const eventValidation = validateWorkflowEvents(nodes, catalog);
-    if (!eventValidation.valid) {
-      return yield* new InvalidInput({ error: eventValidation.error });
+    // In this order, and no further than the first refusal: a later check reads a
+    // graph the one before it has already vouched for.
+    for (const check of [
+      () => validateWorkflowConditionConfigs(nodes),
+      () => validateWorkflowEvents(nodes, catalog),
+      () => validateEventSplitOutlets(nodes, edges, catalog),
+      () => validateWorkflowTemplates({ nodes, edges, catalog }),
+    ]) {
+      const result = check();
+      if (!result.valid) {
+        return yield* new InvalidInput({ error: result.error });
+      }
     }
 
     // The only way this fails is the integration rows it reads, so a rejected

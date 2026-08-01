@@ -74,6 +74,11 @@ const actionConfigFieldGroupSchema = Schema.Struct({
 const actionConfigFieldWireSchema: Schema.Codec<ActionConfigField> =
   Schema.Union([actionConfigFieldGroupSchema, actionConfigFieldBaseSchema]);
 
+// The annotation above catches a member this schema describes and the type does
+// not. It does not catch the reverse: a literal union narrower than the type's
+// still satisfies `Schema.Codec<ReferenceField>`, and a field type left out here
+// fails the whole catalog decode at run time rather than the build. The
+// round-trip case in `catalog-wire.test.ts` is what holds the two in step.
 const referenceFieldWireSchema: Schema.Codec<ReferenceField> = Schema.Struct({
   path: Schema.String,
   description: Schema.optionalKey(Schema.String),
@@ -83,11 +88,12 @@ const referenceFieldWireSchema: Schema.Codec<ReferenceField> = Schema.Struct({
       "number",
       "boolean",
       "timestamp",
+      "duration",
       "array",
       "object",
     ])
   ),
-  format: Schema.optionalKey(Schema.Literal("timestamp")),
+  format: Schema.optionalKey(Schema.Literals(["timestamp", "duration"])),
   nullable: Schema.optionalKey(Schema.Boolean),
   enumValues: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
 });

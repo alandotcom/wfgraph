@@ -63,8 +63,21 @@ An Event the Lifecycle Rules name as starting a run. When one arrives,
 Concurrency applies first, then a new Execution enters through the Started
 outlet carrying the payload. A workflow may name several, which is how one
 graph answers an appointment being booked and being moved; a node behind
-Started is then offered the union of their payloads, and the Arriving Event
-tells them apart.
+Started may then be reached by any of them, and an Event Split is what tells
+them apart.
+
+**Event Split**:
+A node whose outlets are the Events that can reach it, one each, derived
+rather than configured. A run leaves by the outlet naming its Arriving Event,
+and an unconnected outlet ends the run quietly. Optional: several Events share
+one branch for as long as it reads only the paths they agree on (ADR-0010).
+
+**Reachable Field**:
+One path a node may address on the Lifecycle Node, as the Events reaching it
+agree on it. A path all of them declare keeps its type; a path some of them
+declare is nullable, because a run can arrive without it; a path they type
+differently has no type at all, and needs an Event Split above the node before
+anything can read it.
 
 **Cancel Event**:
 An Event the Lifecycle Rules list as canceling runs. When one arrives, every

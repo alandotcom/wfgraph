@@ -9,9 +9,15 @@ import {
   normalizeConditionBranch,
 } from "@rova/shared/conditions/condition-branch";
 import {
+  eventSplitOutlet,
+  eventSplitOutletEvent,
+  isEventSplitNode,
+} from "@rova/shared/lifecycle/event-split";
+import {
   isLifecycleOutlet,
   LIFECYCLE_STARTED_HANDLE,
 } from "@rova/shared/lifecycle/lifecycle-outlets";
+import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 
 /**
@@ -41,6 +47,38 @@ export function inferConditionBranch(
 }
 
 /**
+ * Which of an Event Split's outlets an edge with no handle takes: the first
+ * Event nothing is connected to, or the first Event when every outlet is taken.
+ *
+ * Null where no Event reaches the split, which is a node with no outlets to
+ * choose between. The save refuses the edge and says so.
+ */
+export function inferEventSplitOutlet(input: {
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+  sourceNodeId: string;
+}): string | null {
+  const { nodes, edges, sourceNodeId } = input;
+  const outlets = eventsReachingTarget({
+    targetNodeId: sourceNodeId,
+    nodes,
+    edges,
+  });
+
+  const taken = new Set(
+    edges
+      .filter((edge) => edge.source === sourceNodeId)
+      .map((edge) => edge.sourceHandle)
+  );
+
+  const chosen =
+    outlets.find((event) => !taken.has(eventSplitOutlet(event.name))) ??
+    outlets[0];
+
+  return chosen ? eventSplitOutlet(chosen.name) : null;
+}
+
+/**
  * The Lifecycle Node's outlet is named whichever way the edge was drawn, so a
  * connection made programmatically says the same thing as one dragged from
  * the handle. Started is a fallback for a connection carrying no handle at
@@ -65,6 +103,13 @@ export function normalizeSourceHandleForConnection(input: {
     return isLifecycleOutlet(sourceHandle)
       ? sourceHandle
       : LIFECYCLE_STARTED_HANDLE;
+  }
+
+  if (isEventSplitNode(sourceNode)) {
+    const draggedFrom = eventSplitOutletEvent(sourceHandle);
+    return draggedFrom
+      ? eventSplitOutlet(draggedFrom)
+      : inferEventSplitOutlet({ nodes, edges, sourceNodeId });
   }
 
   if (!isConditionActionNode(sourceNode)) {

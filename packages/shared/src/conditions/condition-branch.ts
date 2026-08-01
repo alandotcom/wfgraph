@@ -1,37 +1,20 @@
+/**
+ * Which line out of a Condition node an edge leaves by, and what marks the node
+ * itself.
+ *
+ * Both comparisons are exact, which is what the engine's own dispatch compares
+ * with. A reader that accepted `condition` where the engine wants `Condition`
+ * would call a node a Condition that the engine then fans out from as an
+ * unimplemented action.
+ */
+
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import type { ConditionBranch, WorkflowNode } from "#src/graph/types";
-
-function asTrimmedString(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
 
 export function normalizeConditionBranch(
   value: unknown
 ): ConditionBranch | null {
-  const raw = asTrimmedString(value);
-  if (!raw) {
-    return null;
-  }
-
-  const normalized = raw.toLowerCase();
-  if (normalized === "true" || normalized === "false") {
-    return normalized;
-  }
-
-  if (normalized === "branch-true") {
-    return "true";
-  }
-
-  if (normalized === "branch-false") {
-    return "false";
-  }
-
-  return null;
+  return value === "true" || value === "false" ? value : null;
 }
 
 export function getConditionBranchDisplayLabel(value: unknown): string | null {
@@ -40,22 +23,11 @@ export function getConditionBranchDisplayLabel(value: unknown): string | null {
     return "True";
   }
 
-  if (branch === "false") {
-    return "False";
-  }
-
-  return null;
+  return branch === "false" ? "False" : null;
 }
 
 export function isConditionActionType(value: unknown): boolean {
-  const actionType = asTrimmedString(value);
-  if (!actionType) {
-    return false;
-  }
-
-  return (
-    actionType.toLowerCase() === BUILT_IN_ACTION_IDS.condition.toLowerCase()
-  );
+  return value === BUILT_IN_ACTION_IDS.condition;
 }
 
 export function isConditionActionNode(node: WorkflowNode | undefined): boolean {

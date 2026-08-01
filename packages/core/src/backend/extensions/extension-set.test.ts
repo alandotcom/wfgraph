@@ -92,11 +92,12 @@ describe("assembleExtensions", () => {
     expect(catalog.integrations).toEqual([]);
   });
 
-  it("puts the two built-in actions in the catalog", () => {
+  it("puts the built-in actions in the catalog", () => {
     const { catalog } = assembleExtensions({});
 
     expect(catalog.actions.map((action) => action.id)).toEqual([
       "Condition",
+      "Event Split",
       "Wait",
     ]);
   });

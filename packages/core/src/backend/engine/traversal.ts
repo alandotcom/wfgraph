@@ -12,6 +12,7 @@ import type {
   WorkflowEdge,
   WorkflowNode,
 } from "@rova/shared/graph/types";
+import { eventSplitOutletEvent } from "@rova/shared/lifecycle/event-split";
 import type { LifecycleOutlet } from "@rova/shared/lifecycle/lifecycle-outlets";
 import {
   type ExecutionResult,
@@ -29,14 +30,16 @@ export function outputKey(nodeId: string): string {
  * Which of a node's outgoing edges the run follows.
  *
  * `all` is every edge, which is what an ordinary action node fans out along. A
- * Condition node follows the branch it picked, and the Lifecycle Node one named
- * outlet: an edge that names neither is followed by no run, because the only
- * other way to bind it is render order.
+ * Condition node follows the branch it picked, the Lifecycle Node one named
+ * outlet, and an Event Split the outlet naming the Event the run arrived on: an
+ * edge that names none of them is followed by no run, because the only other way
+ * to bind it is render order.
  */
 export type TraversalRoute =
   | { kind: "all" }
   | { kind: "condition"; branch: ConditionBranch }
-  | { kind: "outlet"; outlet: LifecycleOutlet };
+  | { kind: "outlet"; outlet: LifecycleOutlet }
+  | { kind: "event"; eventName: string | null };
 
 export class Traversal {
   private readonly nodeOutputs: NodeOutputs = {};
@@ -145,6 +148,19 @@ export class Traversal {
       return edges
         .filter((edge) => edge.sourceHandle === route.outlet)
         .map((edge) => edge.target);
+    }
+
+    if (route.kind === "event") {
+      // A run with no Event -- a manual start, the execute route -- matches no
+      // outlet, so it stops at the split rather than taking every branch.
+      return route.eventName === null
+        ? []
+        : edges
+            .filter(
+              (edge) =>
+                eventSplitOutletEvent(edge.sourceHandle) === route.eventName
+            )
+            .map((edge) => edge.target);
     }
 
     return edges.map((edge) => edge.target);

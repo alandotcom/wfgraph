@@ -29,6 +29,10 @@ import type {
   WorkflowNode,
 } from "#src/graph/types";
 import {
+  eventSplitOutletEvent,
+  isEventSplitNode,
+} from "#src/lifecycle/event-split";
+import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
 } from "#src/lifecycle/lifecycle-outlets";
@@ -305,6 +309,15 @@ export function eventsReaching(input: {
   for (const step of chain.toReversed()) {
     for (const path of actionOutputPaths(step.parent, catalog)) {
       declaredElsewhere.add(path);
+    }
+
+    // An Event Split outlet names one Event, so everything behind it arrived on
+    // that Event and nothing else. An outlet naming an Event that cannot reach
+    // the split leaves nothing, which is a branch no run travels.
+    if (isEventSplitNode(step.parent)) {
+      const outletEvent = eventSplitOutletEvent(step.handle);
+      events = events.filter((event) => event.name === outletEvent);
+      continue;
     }
 
     if (events.length > 0 && isConditionActionNode(step.parent)) {

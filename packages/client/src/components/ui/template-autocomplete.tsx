@@ -7,6 +7,7 @@ import {
   getNodeDisplayName,
   getNodeOutputFields,
   getUpstreamNodes,
+  type SourcedField,
 } from "#src/lib/upstream-node-fields";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import { cn } from "@rova/shared/utils";
@@ -14,6 +15,10 @@ import {
   formatTemplateToken,
   type ReferenceField,
 } from "@rova/shared/graph/node-references";
+import {
+  targetAccepts,
+  type ValueTargetType,
+} from "@rova/shared/graph/value-targets";
 
 type TemplateAutocompleteProps = {
   isOpen: boolean;
@@ -22,48 +27,51 @@ type TemplateAutocompleteProps = {
   onClose: () => void;
   currentNodeId?: string;
   filter?: string;
-  fieldType?: "duration" | "timestamp";
+  fieldType?: ValueTargetType;
 };
 
-/**
- * Where a field sits in the menu for a typed target: the lower the rank, the
- * higher it appears.
- *
- * A rank rather than a verdict, because what a target accepts is wider than its
- * own type. A template renders to text and the parsers behind these fields read
- * more than one form: `parseTimestampWithTimezone` takes an ISO string or a unix
- * epoch, and a duration is written `24h` or `P1D`. Ranking is what keeps an
- * exactly-typed field at the top of the menu while leaving the rest reachable,
- * which matters most for a duration field, whose payload usually holds no number
- * at all.
- *
- * A field of no declared type ranks with the exact matches, because nothing is
- * known against it.
- */
+/** What the menu offers a typed target: the save's rule, without the numbers. */
+function offeredFor(
+  field: Pick<ReferenceField, "type" | "format">,
+  targetType: ValueTargetType | undefined
+): boolean {
+  return targetAccepts(field, targetType, { allowNumber: false });
+}
+
+/** Where a field sits in the menu: exactly-typed, then untyped, then unusable. */
 function fieldRank(
-  field: ReferenceField,
-  targetType: "duration" | "timestamp" | undefined
+  field: Pick<ReferenceField, "type">,
+  targetType: ValueTargetType | undefined,
+  unusable: string | undefined
 ): number {
-  if (!(targetType && field.type)) {
-    return 0;
+  if (unusable) {
+    return 2;
   }
 
-  if (targetType === "duration") {
-    // A duration is a length. A timestamp names an instant, so it ranks with the
-    // shapes that carry no length at all rather than with plain text.
-    if (field.type === "number") {
-      return 0;
-    }
-    return field.type === "string" ? 1 : 2;
+  return targetType && !field.type ? 1 : 0;
+}
+
+/**
+ * Why a path cannot be dropped into a field, or undefined where it can.
+ *
+ * Shown only where splitting would yield a type this target accepts. A clash
+ * between two types it refuses is advice a builder would follow to the same
+ * refusal.
+ */
+function unusableReason(
+  field: SourcedField,
+  targetType: ValueTargetType | undefined
+): string | undefined {
+  const clash = field.typeClash;
+  if (!clash) {
+    return undefined;
   }
 
-  if (field.type === "timestamp" || field.format === "timestamp") {
-    return 0;
+  if (targetType && !clash.types.some((type) => offeredFor({ type }, targetType))) {
+    return undefined;
   }
 
-  // A number is a unix epoch to the timestamp parser, which is one of the two
-  // forms it reads, so it sits level with a string rather than below it.
-  return field.type === "string" || field.type === "number" ? 1 : 2;
+  return `${clash.events.join(" and ")} type this differently. Add an Event Split above this node to use it.`;
 }
 
 /** One row of the menu: a whole node's output, or one path inside it. */
@@ -75,6 +83,10 @@ type TemplateOption = {
   field?: string;
   description?: string;
   template: string;
+  /** Why this row cannot be chosen, absent where it can. */
+  unusable?: string;
+  /** The Events reaching this node that leave the path out. */
+  absentOn?: string[];
 };
 
 export function TemplateAutocomplete({
@@ -113,8 +125,17 @@ export function TemplateAutocomplete({
 
     for (const node of upstreamNodes) {
       const nodeName = getNodeDisplayName(node);
+      const outputFields = getNodeOutputFields(node, {
+        targetNodeId: currentNodeId,
+        nodes,
+        edges,
+      });
 
-      if (!fieldType && node.data.type !== "lifecycle") {
+      // A whole node's output, for dropping a JSON blob into a text field. Only
+      // where the node produces something: Condition and Event Split route a run
+      // and declare no output, so the row would stand for the bookkeeping the
+      // engine logged rather than for anything a builder wrote the node to get.
+      if (!fieldType && node.data.type !== "lifecycle" && outputFields.length) {
         nextOptions.push({
           type: "node",
           rank: 0,
@@ -127,14 +148,15 @@ export function TemplateAutocomplete({
         });
       }
 
-      for (const field of getNodeOutputFields(node, {
-        targetNodeId: currentNodeId,
-        nodes,
-        edges,
-      })) {
+      for (const field of outputFields) {
+        const unusable = unusableReason(field, fieldType);
+        if (!(unusable || offeredFor(field, fieldType))) {
+          continue;
+        }
+
         nextOptions.push({
           type: "field",
-          rank: fieldRank(field, fieldType),
+          rank: fieldRank(field, fieldType, unusable),
           nodeId: node.id,
           nodeName,
           field: field.path,
@@ -144,6 +166,8 @@ export function TemplateAutocomplete({
             nodeLabel: nodeName,
             fieldPath: field.path,
           }),
+          ...(unusable ? { unusable } : {}),
+          ...(field.absentOn?.length ? { absentOn: field.absentOn } : {}),
         });
       }
     }
@@ -185,12 +209,14 @@ export function TemplateAutocomplete({
           e.preventDefault();
           setSelectedIndex((prev) => (prev > 0 ? prev - 1 : prev));
           break;
-        case "Enter":
+        case "Enter": {
           e.preventDefault();
-          if (filteredOptions[selectedOptionIndex]) {
-            onSelect(filteredOptions[selectedOptionIndex].template);
+          const option = filteredOptions[selectedOptionIndex];
+          if (option && !option.unusable) {
+            onSelect(option.template);
           }
           break;
+        }
         case "Escape":
           e.preventDefault();
           onClose();
@@ -212,10 +238,20 @@ export function TemplateAutocomplete({
     }
   });
 
+  // A typed target whose menu is empty says so, because the reason is a fact
+  // about the payloads rather than about what was typed: nothing upstream is a
+  // length of time, or an instant. A menu with nothing to say stays closed.
+  const emptyMessage =
+    fieldType && options.length === 0
+      ? fieldType === "duration"
+        ? "No field upstream is a duration. Type a value like 24h."
+        : "No field upstream is a date and time. Type one, like 2026-03-10T09:00:00Z."
+      : null;
+
   if (
     !isOpen ||
-    filteredOptions.length === 0 ||
-    typeof document === "undefined"
+    typeof document === "undefined" ||
+    (filteredOptions.length === 0 && !emptyMessage)
   ) {
     return null;
   }
@@ -235,19 +271,29 @@ export function TemplateAutocomplete({
       }}
     >
       <div className="max-h-60 overflow-y-auto" ref={optionListRef}>
+        {emptyMessage && (
+          <div className="px-2 py-1.5 text-muted-foreground text-sm">
+            {emptyMessage}
+          </div>
+        )}
         {filteredOptions.map((option, index) => (
           <div
             className={cn(
-              "flex cursor-pointer items-center justify-between rounded px-2 py-1.5 text-sm transition-colors",
+              "flex items-center justify-between rounded px-2 py-1.5 text-sm transition-colors",
+              option.unusable
+                ? "cursor-not-allowed opacity-60"
+                : "cursor-pointer",
               index === selectedOptionIndex
                 ? "bg-accent text-accent-foreground"
-                : "hover:bg-accent/50"
+                : !option.unusable && "hover:bg-accent/50"
             )}
             key={`${option.nodeId}-${option.field || "root"}`}
             onMouseDown={(event) => {
               // Select on pointer down so contentEditable inputs don't blur first.
               event.preventDefault();
-              onSelect(option.template);
+              if (!option.unusable) {
+                onSelect(option.template);
+              }
             }}
             onMouseEnter={() => setSelectedIndex(index)}
           >
@@ -269,8 +315,20 @@ export function TemplateAutocomplete({
                   {option.description}
                 </div>
               )}
+              {option.absentOn && (
+                <div className="text-amber-600 text-xs dark:text-amber-500">
+                  Absent on {option.absentOn.join(", ")}
+                </div>
+              )}
+              {option.unusable && (
+                <div className="text-muted-foreground text-xs">
+                  {option.unusable}
+                </div>
+              )}
             </div>
-            {index === selectedOptionIndex && <Check className="h-4 w-4" />}
+            {index === selectedOptionIndex && !option.unusable && (
+              <Check className="h-4 w-4" />
+            )}
           </div>
         ))}
       </div>

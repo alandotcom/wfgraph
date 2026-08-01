@@ -11,6 +11,7 @@ import { withSpan } from "#src/backend/lib/telemetry";
 import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
 import type { NodeSteps, StepResult } from "@rova/shared/actions/step-result";
 import type { ConditionBranch, WorkflowNode } from "@rova/shared/graph/types";
+import { isEventSplitNode } from "@rova/shared/lifecycle/event-split";
 import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
 import { type JsonObject, readJsonValue } from "@rova/shared/types/json";
 import { getErrorMessageAsync } from "@rova/shared/utils";
@@ -34,7 +35,7 @@ import {
   processTemplates,
   resolveTemplateString,
 } from "#src/backend/engine/templates";
-import type { Traversal } from "#src/backend/engine/traversal";
+import type { Traversal, TraversalRoute } from "#src/backend/engine/traversal";
 import { executeWaitAction } from "#src/backend/engine/wait";
 
 /**
@@ -96,6 +97,31 @@ type ActionStepOutcome = {
   result: StepResult;
   conditionValue?: boolean;
 };
+
+/**
+ * Which edges a finished node hands the run along.
+ *
+ * Two nodes are the exception to following every edge. A normal start leaves the
+ * entry node by the Started outlet, and the Canceled outlet's branch is reached
+ * only by a run a Cancel Event claimed. An Event Split leaves by the outlet
+ * naming the Event the run arrived on. A disabled node decided nothing, so it
+ * fans out like any other. The Condition node is decided above this, because its
+ * branch is a value its own step produced.
+ */
+function downstreamRoute(
+  node: WorkflowNode,
+  eventName: string | null
+): TraversalRoute {
+  if (node.data.type === "lifecycle") {
+    return { kind: "outlet", outlet: LIFECYCLE_STARTED_HANDLE };
+  }
+
+  if (node.data.enabled !== false && isEventSplitNode(node)) {
+    return { kind: "event", eventName };
+  }
+
+  return { kind: "all" };
+}
 
 /** Everything the dispatch below needs from the run it is part of. */
 type ActionStepInput = {
@@ -176,6 +202,18 @@ async function executeActionStepInner(
     );
 
     return { result, conditionValue: evaluatedCondition };
+  }
+
+  // An Event Split decides nothing of its own: the Event the run arrived on is
+  // already known, and the outlet it names is what the traversal routes along.
+  // The row exists so a run's trace says which Event sent it down which branch.
+  if (actionType === BUILT_IN_ACTION_IDS.eventSplit) {
+    const result = await runWithStepLog(
+      { store, context, runtime, input: { event: input.eventName } },
+      () => Promise.resolve({ success: true, data: { event: input.eventName } })
+    );
+
+    return { result };
   }
 
   const stepFunction = actions.stepFor(actionType);
@@ -589,14 +627,9 @@ export class NodeScheduler {
             await this.runAll(nextNodes);
           }
         } else if (shouldContinueDownstream) {
-          // The entry node is the exception to following every edge: a normal
-          // start leaves by the Started outlet, and the Canceled outlet's branch
-          // is reached only by a run a Cancel Event claimed.
           const nextNodes = traversal.nextNodes(
             nodeId,
-            node.data.type === "lifecycle"
-              ? { kind: "outlet", outlet: LIFECYCLE_STARTED_HANDLE }
-              : { kind: "all" }
+            downstreamRoute(node, this.currentEventName())
           );
           namedNodeLogger.debug("Executing downstream nodes in parallel", {
             nextNodeCount: nextNodes.length,

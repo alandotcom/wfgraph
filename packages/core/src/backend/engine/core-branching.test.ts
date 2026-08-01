@@ -11,7 +11,9 @@ import {
   type ConditionModel,
   serializeConditionModel,
 } from "@rova/shared/conditions/conditions";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
+import { eventSplitOutlet } from "@rova/shared/lifecycle/event-split";
 import type { WorkflowNode } from "@rova/shared/graph/types";
 import { executionData } from "#src/backend/engine/contracts";
 import { executeWorkflow } from "#src/backend/engine/core";
@@ -714,5 +716,96 @@ describe("conditions on fields named after CEL type constants", () => {
 
     expect(result.results.true_node).toBeUndefined();
     expect(result.results.false_node?.success).toBe(true);
+  });
+});
+
+describe("executeWorkflow Event Split traversal", () => {
+  let store: RecordingWorkflowStore;
+
+  beforeEach(() => {
+    store = createRecordingWorkflowStore();
+  });
+
+  function createSplitGraph() {
+    return createSerializedWorkflowGraph({
+      nodes: [
+        createLifecycleNode("lifecycle_1"),
+        {
+          id: "split_1",
+          type: "action",
+          position: { x: 100, y: 100 },
+          data: {
+            label: "Split on Event",
+            type: "action",
+            config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
+          },
+        },
+        createConditionNode("on_created", true),
+        createConditionNode("on_rescheduled", true),
+      ],
+      edges: [
+        {
+          id: "edge_l_s",
+          source: "lifecycle_1",
+          sourceHandle: "started",
+          target: "split_1",
+        },
+        {
+          id: "edge_s_created",
+          source: "split_1",
+          sourceHandle: eventSplitOutlet("app/appointment.created"),
+          target: "on_created",
+        },
+        {
+          id: "edge_s_rescheduled",
+          source: "split_1",
+          sourceHandle: eventSplitOutlet("app/appointment.rescheduled"),
+          target: "on_rescheduled",
+        },
+      ],
+    });
+  }
+
+  it("runs only the branch belonging to the Event the run arrived on", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createSplitGraph(),
+        executionId: "exec_split",
+        workflowId: "workflow_split",
+        startEventName: "app/appointment.rescheduled",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.results.on_rescheduled?.success).toBe(true);
+    expect(result.results.on_created).toBeUndefined();
+    // The step records which Event it routed on, so a run's trace says why the
+    // other branch stayed unvisited.
+    expect(executionData(result.results.split_1)).toEqual({
+      success: true,
+      data: { event: "app/appointment.rescheduled" },
+    });
+  });
+
+  it("ends the run where no outlet claims the Event", async () => {
+    // A manual start carries no Event, so every outlet names something else.
+    const result = await executeWorkflow(
+      {
+        graph: createSplitGraph(),
+        executionId: "exec_split_manual",
+        workflowId: "workflow_split",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.results.split_1?.success).toBe(true);
+    expect(result.results.on_created).toBeUndefined();
+    expect(result.results.on_rescheduled).toBeUndefined();
   });
 });

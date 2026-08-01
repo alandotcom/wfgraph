@@ -1,4 +1,4 @@
-import { compact } from "es-toolkit/array";
+import { compact, partition } from "es-toolkit/array";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import {
   type EventMetadata,
@@ -16,6 +16,10 @@ import type {
   ReferenceField,
   UpstreamField,
 } from "@rova/shared/graph/node-references";
+import {
+  type ReachableField,
+  reachableEventFields,
+} from "@rova/shared/graph/reachable-fields";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 import { upstreamNodeIds } from "@rova/shared/graph/upstream-nodes";
 
@@ -43,7 +47,17 @@ function readConfigString(
  * single node, and a path only some of them declare belongs under those Events
  * rather than beside the paths all of them carry.
  */
-type SourcedField = ReferenceField & { sourceLabel?: string };
+export type SourcedField = Omit<ReachableField, "declaredBy"> & {
+  sourceLabel?: string;
+  /** The Events reaching the node that leave this path out, by label. */
+  absentOn?: string[];
+};
+
+/** One upstream field, under the node that produced it. */
+export type SelectableUpstreamField = Omit<SourcedField, "sourceLabel"> & {
+  sourceNodeId: string;
+  sourceNodeName: string;
+};
 
 /** The section holding the paths every Event reaching a node declares. */
 const SHARED_EVENT_FIELDS_LABEL = "Carried by every Event";
@@ -52,93 +66,40 @@ const SHARED_EVENT_FIELDS_LABEL = "Carried by every Event";
 const EVENT_NAME_FIELD_LABEL = "Event name";
 
 /**
- * One path as the Events declaring it agree on it.
+ * Every path any of these Events declares, each offered once, under the section
+ * saying which runs can answer it.
  *
- * The path keeps its declared type only where they agree, the `format`
- * included, because the type is what decides a condition row's operators and a
- * rule built against one Event would be unanswerable on a run that arrived as
- * another. Disagreement leaves the path offered as text, which is what a
- * template renders it to in any case.
+ * The reconciliation itself is `reachableEventFields`, which the save reads too.
+ * What is added here is presentation: the section a path sits under, and the
+ * Events it is missing from, both by the label a builder sees.
  */
-function reconcileDeclarations(
-  first: ReferenceField,
-  rest: readonly ReferenceField[]
-): ReferenceField {
-  const agreed = rest.every(
-    (other) => other.type === first.type && other.format === first.format
-  );
-  // Null on any of them is null on the field, which is what puts the is-set
-  // operators on its condition row.
-  const nullable = first.nullable || rest.some((other) => other.nullable);
+function entryPayloadFields(events: readonly EventMetadata[]): SourcedField[] {
+  return reachableEventFields(events).map(({ declaredBy, ...field }) => {
+    const [declaring, absent] = partition(events, (event) =>
+      declaredBy.includes(event.name)
+    );
 
-  return {
-    ...(agreed
-      ? first
-      : {
-          path: first.path,
-          ...(first.description ? { description: first.description } : {}),
-          type: "string" as const,
-        }),
-    ...(nullable ? { nullable: true } : {}),
-  };
-}
-
-/**
- * Every path any of these Events declares, each offered once.
- *
- * A run reaches the node on one Event out of these, so a path only some of them
- * declare is still worth offering: a rule naming it reads false on a run that
- * arrived without it rather than failing the condition around it. Which section
- * a path lands in is what says which runs can answer it.
- */
-function unionPayloadFields(events: readonly EventMetadata[]): SourcedField[] {
-  const declarationsByPath = new Map<
-    string,
-    { label: string; field: ReferenceField }[]
-  >();
-
-  for (const event of events) {
-    for (const field of event.payloadFields) {
-      const declarations = declarationsByPath.get(field.path);
-      if (declarations) {
-        declarations.push({ label: event.label, field });
-      } else {
-        declarationsByPath.set(field.path, [{ label: event.label, field }]);
-      }
-    }
-  }
-
-  return compact(
-    Array.from(declarationsByPath.values()).map((declarations) => {
-      const [first, ...rest] = declarations;
-      if (!first) {
-        return undefined;
-      }
-
-      const reconciled = reconcileDeclarations(
-        first.field,
-        rest.map((entry) => entry.field)
-      );
-
+    return {
+      ...field,
+      ...(absent.length > 0
+        ? { absentOn: absent.map((event) => event.label) }
+        : {}),
       // One Event reaching the node leaves one section, which is the node's own
       // name and needs no label of its own.
-      if (events.length < 2) {
-        return reconciled;
-      }
-
-      return {
-        ...reconciled,
-        sourceLabel:
-          declarations.length === events.length
-            ? SHARED_EVENT_FIELDS_LABEL
-            : declarations.map((entry) => entry.label).join(", "),
-      };
-    })
-  );
+      ...(events.length < 2
+        ? {}
+        : {
+            sourceLabel:
+              absent.length === 0
+                ? SHARED_EVENT_FIELDS_LABEL
+                : declaring.map((event) => event.label).join(", "),
+          }),
+    };
+  });
 }
 
-/** The Events that could have put a run at this node, as the picker asks it. */
-function eventsReachingTarget(request: FieldRequest): EventMetadata[] {
+/** The Events that could have put a run at this node, as the editor asks it. */
+export function eventsReachingTarget(request: FieldRequest): EventMetadata[] {
   return eventsReaching({
     targetNodeId: request.targetNodeId,
     nodes: request.nodes,
@@ -188,7 +149,7 @@ export function getNodeDisplayName(node: WorkflowNode): string {
 export type FieldRequest = {
   targetNodeId: string;
   nodes: readonly WorkflowNode[];
-  edges: WorkflowEdge[];
+  edges: readonly WorkflowEdge[];
 };
 
 export function getNodeOutputFields(
@@ -205,9 +166,10 @@ export function getNodeOutputFields(
   }
 
   // The entry node's output is the payload of whichever Event put the run here,
-  // so what it offers is the union of the Events that still could have.
+  // so what it offers is every path the Events that still could have declare,
+  // each carrying what they agree on.
   if (node.data.type === "lifecycle") {
-    return unionPayloadFields(eventsReachingTarget(request));
+    return entryPayloadFields(eventsReachingTarget(request));
   }
 
   // An action type the catalog cannot find -- a stale graph naming a plugin
@@ -235,7 +197,7 @@ export function getUpstreamFields(input: {
   currentNodeId?: string;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
-}): UpstreamField[] {
+}): SelectableUpstreamField[] {
   // The one narrowing: an entry node's answer names the node asking, so the id has
   // to be a string by the time the fields are read.
   const { currentNodeId, nodes, edges } = input;
@@ -269,6 +231,12 @@ function toConditionFieldType(field: UpstreamField): ConditionFieldType | null {
     field.type === "boolean"
   ) {
     return field.type;
+  }
+
+  // A duration is a string on the wire, and the condition vocabulary has no
+  // operators for a length of time, so a rule compares the written form.
+  if (field.type === "duration") {
+    return "string";
   }
 
   // Fields without an explicit type (common for custom action outputFields) default to string
@@ -379,7 +347,9 @@ export function getUpstreamConditionFields(input: {
 
   for (const field of getUpstreamFields(input)) {
     const path = field.path.trim();
-    if (!path) {
+    // A path the reaching Events type differently has no type to build a rule
+    // over. Splitting on `$event.name` is what leaves one Event, and one type.
+    if (!path || field.typeClash) {
       continue;
     }
 
