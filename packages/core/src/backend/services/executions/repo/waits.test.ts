@@ -1,46 +1,21 @@
 /**
  * The shape of the parked-run candidate query, which nothing else can see.
  *
- * Every caller stubs this method out, so `drizzle-orm/pg-proxy` is what makes the
- * statement the assertion (see `runs.test.ts` for the harness this follows). What
- * is pinned here is the paging and the exclusion: both are what keeps one arrival
- * from materializing every run parked on a popular Event.
+ * Every caller stubs this method out, which leaves the statement as the
+ * assertion. What is pinned here is the paging and the exclusion: both are what
+ * keeps one arrival from materializing every run parked on a popular Event.
  */
 
-import { drizzle } from "drizzle-orm/pg-proxy";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import type { RovaDatabase } from "#src/backend/lib/db/index";
-import * as schema from "#src/backend/lib/db/schema";
-import type { Database } from "#src/backend/lib/effect/database";
+import { stubDatabase } from "#src/backend/lib/effect/test-layers";
 import { makeWaitsMethods } from "#src/backend/services/executions/repo/waits";
-
-function captureStatements(): {
-  database: Database["Service"];
-  statements: { query: string; params: unknown[] }[];
-} {
-  const statements: { query: string; params: unknown[] }[] = [];
-  const db = drizzle(
-    async (query, params) => {
-      statements.push({ query, params });
-      return { rows: [] };
-    },
-    { schema }
-  );
-
-  return {
-    statements,
-    database: {
-      query: (run) => Effect.promise(() => run(db as unknown as RovaDatabase)),
-    },
-  };
-}
 
 describe("listWaitsForEvent", () => {
   // An event wait times out after 7 days by default, so the parked population is
   // large by construction and one page of it is what a delivery holds at a time.
   it("takes one page, ordered by the id the next page resumes from", async () => {
-    const { database, statements } = captureStatements();
+    const { service: database, statements } = stubDatabase();
 
     await Effect.runPromise(
       makeWaitsMethods(database).listWaitsForEvent({
@@ -58,7 +33,7 @@ describe("listWaitsForEvent", () => {
   });
 
   it("resumes after the last id of the page before", async () => {
-    const { database, statements } = captureStatements();
+    const { service: database, statements } = stubDatabase();
 
     await Effect.runPromise(
       makeWaitsMethods(database).listWaitsForEvent({
@@ -78,7 +53,7 @@ describe("listWaitsForEvent", () => {
   // The runs this delivery already settled go to the query rather than to a
   // filter after it, so a superseded run never occupies a place in the page.
   it("excludes the settled runs in the statement", async () => {
-    const { database, statements } = captureStatements();
+    const { service: database, statements } = stubDatabase();
 
     await Effect.runPromise(
       makeWaitsMethods(database).listWaitsForEvent({
@@ -96,7 +71,7 @@ describe("listWaitsForEvent", () => {
   });
 
   it("asks for nothing extra when no run was settled", async () => {
-    const { database, statements } = captureStatements();
+    const { service: database, statements } = stubDatabase();
 
     await Effect.runPromise(
       makeWaitsMethods(database).listWaitsForEvent({
@@ -117,7 +92,7 @@ describe("listWaitingStatesForExecutions", () => {
   // in-flight run of an entity in one statement, and asking each one separately
   // queues those reads against a pool of ten.
   it("asks for every run's waits in one statement", async () => {
-    const { database, statements } = captureStatements();
+    const { service: database, statements } = stubDatabase();
 
     await Effect.runPromise(
       makeWaitsMethods(database).listWaitingStatesForExecutions([
@@ -132,7 +107,7 @@ describe("listWaitingStatesForExecutions", () => {
   });
 
   it("asks nothing when no run was claimed", async () => {
-    const { database, statements } = captureStatements();
+    const { service: database, statements } = stubDatabase();
 
     const parked = await Effect.runPromise(
       makeWaitsMethods(database).listWaitingStatesForExecutions([])

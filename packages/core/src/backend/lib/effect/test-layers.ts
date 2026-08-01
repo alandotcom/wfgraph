@@ -1,9 +1,13 @@
+import { drizzle } from "drizzle-orm/pg-proxy";
 import { Effect, Layer, ManagedRuntime } from "effect";
+import type { RovaDatabase } from "#src/backend/lib/db/index";
+import * as schema from "#src/backend/lib/db/schema";
 import {
   AppLogger,
   type EffectLogger,
   type LogProperties,
 } from "#src/backend/lib/effect/app-logger";
+import { Database } from "#src/backend/lib/effect/database";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
   Extensions,
@@ -170,6 +174,65 @@ export function stubStepEnvironment(
     runStep: (effect) => Effect.runPromise(effect),
     ...overrides,
   };
+}
+
+/** One statement the query builder sent, as the driver received it. */
+export type CapturedStatement = { query: string; params: unknown[] };
+
+/** What a statement answers with: one array per row, in the order it selects. */
+export type StatementRows = unknown[][];
+
+export type StubbedDatabase = {
+  /** For a repository built from the service value, as `makeRunsMethods` is. */
+  readonly service: Database["Service"];
+  /** For a repository reached through a Layer, as `WorkflowRepoLayer` is. */
+  readonly layer: Layer.Layer<Database>;
+  /** Every statement sent, in the order the repository sent them. */
+  readonly statements: CapturedStatement[];
+};
+
+/**
+ * The database as the statements a repository sends, with no database behind it.
+ *
+ * This is the seam below the repository stubs above: those replace a repository
+ * for a service test, this replaces the connection for a repository's own test.
+ * A guard living in a `WHERE` is invisible to every caller, since each of them
+ * stubs the repository whole, so the statement itself has to be the assertion.
+ *
+ * `drizzle-orm/pg-proxy` runs the real query builder and hands each statement to
+ * `answer` rather than to a connection. The proxy driver has no transactions, so
+ * the handle answers `transaction` by running the body against itself; a method
+ * that opens one is then testable without the rollback a real one would give.
+ */
+export function stubDatabase(
+  answer: (statement: CapturedStatement) => StatementRows = () => []
+): StubbedDatabase {
+  const statements: CapturedStatement[] = [];
+
+  const base = drizzle(
+    async (query, params) => {
+      const statement = { query, params };
+      statements.push(statement);
+      return { rows: answer(statement) };
+    },
+    { schema }
+  );
+
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the two handles differ only in the driver behind them: both are Drizzle over `schema`, so every method a repository reaches for is present and builds the same statement. This is the one place the two are equated, which is what this factory exists to be.
+  const db: RovaDatabase = new Proxy(base, {
+    get(target, property, receiver) {
+      if (property === "transaction") {
+        return async (body: (tx: unknown) => Promise<unknown>) => body(db);
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  }) as unknown as RovaDatabase;
+
+  const service: Database["Service"] = {
+    query: (run) => Effect.promise(() => run(db)),
+  };
+
+  return { service, layer: Layer.succeed(Database, service), statements };
 }
 
 const workflowRepoStubs: WorkflowRepo["Service"] = {

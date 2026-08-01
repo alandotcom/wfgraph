@@ -4,17 +4,13 @@
  *
  * The paused filter lives in a `WHERE` and the role merge lives in a database
  * callback, neither of which a service test can see: every caller stubs this
- * method whole. `drizzle-orm/pg-proxy` runs the query builder and hands each
- * statement to a callback that answers rows the case chose, so both halves are
- * reachable without a database.
+ * method whole. Each arm is recognised by its own text, so one answer table
+ * covers both reads.
  */
 
-import { drizzle } from "drizzle-orm/pg-proxy";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
-import type { RovaDatabase } from "#src/backend/lib/db/index";
-import * as schema from "#src/backend/lib/db/schema";
-import { Database } from "#src/backend/lib/effect/database";
+import { stubDatabase } from "#src/backend/lib/effect/test-layers";
 import {
   type EventSubscriber,
   WorkflowRepo,
@@ -55,27 +51,15 @@ function isParkedArm(query: string): boolean {
 }
 
 function harness(answers: { named?: NamedRow[]; parked?: ParkedRow[] }) {
-  const statements: { query: string; params: unknown[] }[] = [];
-
-  const db = drizzle(
-    async (query, params) => {
-      statements.push({ query, params });
-
-      if (isNamedArm(query)) {
-        return { rows: answers.named ?? [] };
-      }
-      if (isParkedArm(query)) {
-        return { rows: answers.parked ?? [] };
-      }
-      return { rows: [] };
-    },
-    { schema }
-  ) as unknown as RovaDatabase;
-
-  const databaseLayer = Layer.succeed(Database, {
-    query: <A>(run: (handle: RovaDatabase) => Promise<A>) =>
-      Effect.promise(() => run(db)),
-  } as Database["Service"]);
+  const { layer: databaseLayer, statements } = stubDatabase(({ query }) => {
+    if (isNamedArm(query)) {
+      return answers.named ?? [];
+    }
+    if (isParkedArm(query)) {
+      return answers.parked ?? [];
+    }
+    return [];
+  });
 
   const listSubscribers = (eventName: string): Promise<EventSubscriber[]> =>
     Effect.runPromise(

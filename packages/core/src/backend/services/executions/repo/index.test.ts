@@ -3,18 +3,13 @@
  * rows the test chose.
  *
  * The decision lives in a `WHERE` and in the order the statements go out, neither
- * of which a service test can see: it stubs the whole repo. `drizzle-orm/pg-proxy`
- * runs the query builder and hands each statement to a callback, so the statement
- * and the sequence are the assertion. The proxy driver has no transactions, hence
- * the `transaction` the harness supplies.
+ * of which a service test can see: it stubs the whole repo. So the statement and
+ * the sequence are the assertion here.
  */
 
-import { drizzle } from "drizzle-orm/pg-proxy";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
-import type { RovaDatabase } from "#src/backend/lib/db/index";
-import * as schema from "#src/backend/lib/db/schema";
-import { Database } from "#src/backend/lib/effect/database";
+import { stubDatabase } from "#src/backend/lib/effect/test-layers";
 import {
   type EntityStartOutcome,
   ExecutionRepo,
@@ -53,42 +48,21 @@ function harness(answers: {
   inFlight?: InFlightRow[];
   updated?: string[];
 }) {
-  const statements: { query: string; params: unknown[] }[] = [];
-
-  const base = drizzle(
-    async (query, params) => {
-      statements.push({ query, params });
-
-      if (isDeliveryLookup(query)) {
-        return { rows: answers.ownRow ? [["exec_own"]] : [] };
-      }
-      if (isInFlightQuery(query)) {
-        return { rows: answers.inFlight ?? [] };
-      }
-      if (query.startsWith("update")) {
-        return { rows: (answers.updated ?? []).map((id) => [id]) };
-      }
-      if (query.startsWith("insert")) {
-        return { rows: [["exec_new"]] };
-      }
-      return { rows: [] };
-    },
-    { schema }
-  );
-
-  const db: RovaDatabase = new Proxy(base, {
-    get(target, property, receiver) {
-      if (property === "transaction") {
-        return async (body: (tx: unknown) => Promise<unknown>) => body(db);
-      }
-      return Reflect.get(target, property, receiver);
-    },
-  }) as unknown as RovaDatabase;
-
-  const databaseLayer = Layer.succeed(Database, {
-    query: <A>(run: (db: RovaDatabase) => Promise<A>) =>
-      Effect.promise(() => run(db)),
-  } as Database["Service"]);
+  const { layer: databaseLayer, statements } = stubDatabase(({ query }) => {
+    if (isDeliveryLookup(query)) {
+      return answers.ownRow ? [["exec_own"]] : [];
+    }
+    if (isInFlightQuery(query)) {
+      return answers.inFlight ?? [];
+    }
+    if (query.startsWith("update")) {
+      return (answers.updated ?? []).map((id) => [id]);
+    }
+    if (query.startsWith("insert")) {
+      return [["exec_new"]];
+    }
+    return [];
+  });
 
   // `null` is how a case asks for a start carrying no delivery: an explicit
   // `undefined` would take the default instead.
@@ -279,29 +253,7 @@ describe("startForEntity", () => {
  * execution id into the application and re-sending it as one bind parameter each.
  */
 function deleteHarness() {
-  const statements: { query: string; params: unknown[] }[] = [];
-
-  const base = drizzle(
-    async (query, params) => {
-      statements.push({ query, params });
-      return { rows: [] };
-    },
-    { schema }
-  );
-
-  const db: RovaDatabase = new Proxy(base, {
-    get(target, property, receiver) {
-      if (property === "transaction") {
-        return async (body: (tx: unknown) => Promise<unknown>) => body(db);
-      }
-      return Reflect.get(target, property, receiver);
-    },
-  }) as unknown as RovaDatabase;
-
-  const databaseLayer = Layer.succeed(Database, {
-    query: <A>(run: (db: RovaDatabase) => Promise<A>) =>
-      Effect.promise(() => run(db)),
-  } as Database["Service"]);
+  const { layer: databaseLayer, statements } = stubDatabase();
 
   const run = () =>
     Effect.runPromise(

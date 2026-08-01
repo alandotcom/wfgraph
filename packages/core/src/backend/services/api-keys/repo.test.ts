@@ -6,32 +6,16 @@
  * requires -- has no other seam a test can read it through.
  */
 
-import { drizzle } from "drizzle-orm/pg-proxy";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
-import type { RovaDatabase } from "#src/backend/lib/db/index";
-import * as schema from "#src/backend/lib/db/schema";
-import { Database } from "#src/backend/lib/effect/database";
+import { stubDatabase } from "#src/backend/lib/effect/test-layers";
 import {
   ApiKeyRepo,
   ApiKeyRepoLayer,
 } from "#src/backend/services/api-keys/repo";
 
 function harness() {
-  const statements: { query: string; params: unknown[] }[] = [];
-
-  const db = drizzle(
-    async (query, params) => {
-      statements.push({ query, params });
-      return { rows: [] };
-    },
-    { schema }
-  ) as unknown as RovaDatabase;
-
-  const databaseLayer = Layer.succeed(Database, {
-    query: <A>(run: (handle: RovaDatabase) => Promise<A>) =>
-      Effect.promise(() => run(db)),
-  } as Database["Service"]);
+  const { layer: databaseLayer, statements } = stubDatabase();
 
   const touchLastUsed = (keyId: string): Promise<void> =>
     Effect.runPromise(

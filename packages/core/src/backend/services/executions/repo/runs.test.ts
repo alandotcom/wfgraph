@@ -3,39 +3,18 @@
  * nothing.
  *
  * A guard written into a `WHERE` is invisible to a service test, which stubs the
- * repo out entirely, and the suite has no database. `drizzle-orm/pg-proxy` runs
- * the query builder and hands the statement to a callback instead of a
- * connection, which is what lets the statement itself be an assertion.
+ * repo out entirely, and the suite has no database. That leaves the statement
+ * itself as the only thing left to assert on.
  */
 
-import { drizzle } from "drizzle-orm/pg-proxy";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import type { RovaDatabase } from "#src/backend/lib/db/index";
-import type { Database } from "#src/backend/lib/effect/database";
+import { stubDatabase } from "#src/backend/lib/effect/test-layers";
 import { makeRunsMethods } from "#src/backend/services/executions/repo/runs";
-
-function captureStatements(): {
-  database: Database["Service"];
-  statements: string[];
-} {
-  const statements: string[] = [];
-  const db = drizzle(async (query) => {
-    statements.push(query);
-    return { rows: [] };
-  });
-
-  return {
-    statements,
-    database: {
-      query: (run) => Effect.promise(() => run(db as unknown as RovaDatabase)),
-    },
-  };
-}
 
 describe("requestCancelForEntity", () => {
   it("claims only a run carrying no cancel yet, so the first Cancel Event wins", async () => {
-    const { database, statements } = captureStatements();
+    const { service: database, statements } = stubDatabase();
 
     await Effect.runPromise(
       makeRunsMethods(database).requestCancelForEntity({
@@ -47,7 +26,7 @@ describe("requestCancelForEntity", () => {
       })
     );
 
-    expect(statements[0]).toContain('"cancel_requested_at" is null');
+    expect(statements[0]?.query).toContain('"cancel_requested_at" is null');
   });
 });
 
@@ -58,7 +37,7 @@ describe("finishRun", () => {
   // already holds when it started, so the duration is derived where both
   // timestamps live and no clock crosses the replay boundary.
   it("derives the duration from the row's own started_at", async () => {
-    const { database, statements } = captureStatements();
+    const { service: database, statements } = stubDatabase();
 
     await Effect.runPromise(
       makeRunsMethods(database).finishRun({
@@ -68,6 +47,6 @@ describe("finishRun", () => {
       })
     );
 
-    expect(statements[0]).toMatch(/"duration" = [^,]*started_at/i);
+    expect(statements[0]?.query).toMatch(/"duration" = [^,]*started_at/i);
   });
 });
