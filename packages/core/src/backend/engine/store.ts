@@ -19,7 +19,11 @@
  * that stores it is where it is read back as JSON.
  */
 
-import type { JsonObject, JsonObjectDraft } from "@rova/shared/types/json";
+import type {
+  JsonObject,
+  JsonObjectDraft,
+  JsonValue,
+} from "@rova/shared/types/json";
 
 /**
  * Timeline events the engine itself emits. The database accepts a wider set;
@@ -150,6 +154,20 @@ export type WorkflowStore = {
    * be announced on the timeline either.
    */
   completeRun(input: CompleteRunInput): Promise<boolean>;
+  /**
+   * What the nodes of this run that have already finished left behind, keyed by
+   * node id. A branch run starts partway down the graph, so this is how the
+   * templates behind a Wait reach the outputs above it. A node absent here
+   * either has not run or produced nothing, and both read the same downstream.
+   */
+  readNodeOutputs(executionId: string): Promise<Record<string, JsonValue>>;
+  /**
+   * Closes every node row still open and every wait still waiting, as cancelled.
+   *
+   * The caller states when this is safe: nothing may still be writing to those
+   * rows. See `NodeScheduler.sweepKilledBranchWork`, its one call site.
+   */
+  cancelOpenWork(input: { executionId: string }): Promise<void>;
 };
 
 /**
@@ -165,4 +183,6 @@ export const noopWorkflowStore: WorkflowStore = {
   markExecutionRunning: () => Promise.resolve(),
   readPendingCancel: () => Promise.resolve(null),
   completeRun: () => Promise.resolve(true),
+  readNodeOutputs: () => Promise.resolve({}),
+  cancelOpenWork: () => Promise.resolve(),
 };

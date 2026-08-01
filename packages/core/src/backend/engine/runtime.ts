@@ -11,6 +11,8 @@
  * know about database rows, and nothing there may know about replay.
  */
 
+import type { BranchHandoff } from "#src/backend/engine/branch";
+
 export type WaitForEventOptions = {
   event: string;
   timeoutMs?: number;
@@ -43,6 +45,19 @@ export type WorkflowExecutionRuntime = {
    * check to a value that already passed it.
    */
   run: <T>(stepId: string, fn: () => Promise<T>) => Promise<T>;
+  /**
+   * Hands the branch below one node to a durable run of its own (ADR-0011), and
+   * parks the caller until that run ends.
+   *
+   * `releasedNodeIds` are the nodes this run has already let its downstream
+   * follow, which is what tells the branch it may enter its entry node at all.
+   * A runtime that starts no durable runs leaves this out, and the engine then
+   * enters the Wait where it stands.
+   */
+  startBranch?: (
+    stepId: string,
+    input: { entryNodeId: string; releasedNodeIds: readonly string[] }
+  ) => Promise<BranchHandoff>;
   /**
    * Zero-indexed retry counter for the current attempt, which holds across every
    * replay within that attempt and rises when the runtime retries the body. A

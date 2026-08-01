@@ -8,7 +8,10 @@ import {
   type WorkflowStore,
 } from "#src/backend/engine/store";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
-import { createWorkflowRunFunction } from "#src/backend/lib/inngest/workflow-function";
+import {
+  createWorkflowBranchFunction,
+  createWorkflowRunFunction,
+} from "#src/backend/lib/inngest/workflow-function";
 
 const { executeWorkflowMock } = vi.hoisted(() => ({
   executeWorkflowMock: vi.fn(),
@@ -85,6 +88,21 @@ describe("the workflow run function", () => {
     const runFunction = createTestFunction();
     expect(runFunction.id()).toBe("workflow-run");
     expect(runFunction.name).toBe("Workflow run");
+  });
+
+  /**
+   * A second registration rather than a mode of the first, because `cancelOn`
+   * is declared per function: a branch is killed where it stands and the run
+   * that started it must not be.
+   */
+  it("registers the branch as a function of its own", () => {
+    const branchFunction = createWorkflowBranchFunction(
+      new Inngest({ id: "workflow-function-test", isDev: true }),
+      { actions: buildTestActions, store: testStore }
+    );
+
+    expect(branchFunction.id()).toBe("workflow-branch");
+    expect(branchFunction.name).toBe("Workflow branch");
   });
 
   it("forwards event data, runtime, store and actions to executeWorkflow", async () => {
@@ -185,6 +203,93 @@ describe("the workflow run function", () => {
     expect(runSpy).toHaveBeenCalledWith("node:action_1", work);
     // The stored value wins over re-running the work: that is the whole point.
     expect(result).toBe("memoized-result");
+  });
+
+  it("hands a branch off with the run's own payload and the entry node named", async () => {
+    const { runtime, ctx } = await executeWorkflowFunctionForTest();
+    const branchResult = { results: {}, outputs: {} };
+    const invokeSpy = vi
+      .spyOn(ctx.step, "invoke")
+      .mockResolvedValue(branchResult);
+
+    const handoff = await runtime.startBranch?.("branch-wait_1", {
+      entryNodeId: "wait_1",
+      releasedNodeIds: ["entry_1"],
+    });
+
+    // The branch carries the graph, the run's identity, and the ids of the nodes
+    // that let it start. What those nodes produced stays behind: it reads their
+    // outputs back from the store.
+    expect(invokeSpy).toHaveBeenCalledWith("branch-wait_1", {
+      function: expect.anything(),
+      data: {
+        graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        executionId: "exec_123",
+        workflowId: "workflow_123",
+        entryNodeId: "wait_1",
+        releasedNodeIds: ["entry_1"],
+      },
+    });
+    expect(handoff).toEqual({ status: "finished", result: branchResult });
+  });
+
+  /**
+   * The one outcome that cannot be read off a rejection. A cancelled branch
+   * resolves, with Inngest's own end-of-run envelope in place of the value the
+   * branch would have returned.
+   */
+  it("reads a cancelled branch invocation as a kill", async () => {
+    const { runtime, ctx } = await executeWorkflowFunctionForTest();
+    const invokeSpy = vi.spyOn(ctx.step, "invoke");
+
+    invokeSpy.mockResolvedValueOnce({
+      data: { _inngest: { status: "Cancelled" } },
+    });
+    await expect(
+      runtime.startBranch?.("branch-wait_1", {
+        entryNodeId: "wait_1",
+        releasedNodeIds: [],
+      })
+    ).resolves.toEqual({ status: "killed" });
+
+    invokeSpy.mockResolvedValueOnce({ _inngest: { status: "Cancelled" } });
+    await expect(
+      runtime.startBranch?.("branch-wait_2", {
+        entryNodeId: "wait_2",
+        releasedNodeIds: [],
+      })
+    ).resolves.toEqual({ status: "killed" });
+  });
+
+  /**
+   * The answer becomes the run's own results, so it is decoded as strictly as
+   * the payload that started the branch was.
+   */
+  it("refuses a branch answer it cannot read", async () => {
+    const { runtime, ctx } = await executeWorkflowFunctionForTest();
+    vi.spyOn(ctx.step, "invoke").mockResolvedValue({ sent: true });
+
+    await expect(
+      runtime.startBranch?.("branch-wait_1", {
+        entryNodeId: "wait_1",
+        releasedNodeIds: [],
+      })
+    ).rejects.toThrow(/results: Missing key/);
+  });
+
+  it("refuses a results map whose entries are not outcomes", async () => {
+    const { runtime, ctx } = await executeWorkflowFunctionForTest();
+    vi.spyOn(ctx.step, "invoke").mockResolvedValue({
+      results: { reminder: { sent: true } },
+      outputs: {},
+    });
+
+    await expect(
+      runtime.startBranch?.("branch-wait_1", {
+        entryNodeId: "wait_1",
+        releasedNodeIds: [],
+      })
+    ).rejects.toThrow(/shape this run cannot read/);
   });
 
   it("runtime.sleep skips non-positive durations", async () => {

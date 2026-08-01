@@ -30,6 +30,9 @@ const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 const sendWaitSignalMock = vi.fn<InngestClient["Service"]["sendWaitSignal"]>(
   () => Effect.void
 );
+const sendBranchKillMock = vi.fn<InngestClient["Service"]["sendBranchKill"]>(
+  () => Effect.void
+);
 
 const services = Layer.mergeAll(
   stubExecutionRepo({
@@ -37,7 +40,10 @@ const services = Layer.mergeAll(
     listWaitingStatesForExecutions: listWaitingStatesForExecutionsMock,
     recordAuditEvent: recordAuditEventMock,
   }),
-  stubInngestClient({ sendWaitSignal: sendWaitSignalMock })
+  stubInngestClient({
+    sendWaitSignal: sendWaitSignalMock,
+    sendBranchKill: sendBranchKillMock,
+  })
 );
 
 /** A run parked on a wait, as the batched read hands one over. */
@@ -89,6 +95,7 @@ beforeEach(() => {
   listWaitingStatesForExecutionsMock.mockReturnValue(Effect.succeed(new Map()));
   recordAuditEventMock.mockReturnValue(Effect.void);
   sendWaitSignalMock.mockReturnValue(Effect.void);
+  sendBranchKillMock.mockReturnValue(Effect.void);
 });
 
 describe("requestCanceledOutlet", () => {
@@ -147,6 +154,27 @@ describe("requestCanceledOutlet", () => {
     expect(claimed).toEqual(["exec_1"]);
     expect(sendWaitSignalMock).not.toHaveBeenCalled();
     expect(recordAuditEventMock).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The work behind a Wait runs in an invocation of its own, which nothing on
+   * the run's own row reaches. The kill is what ends it, and it names the
+   * Execution rather than the branch, so one send ends every branch at once and
+   * the sweep that follows closes nothing still going.
+   */
+  it("kills the branch invocations of every claimed run", async () => {
+    requestCancelForEntityMock.mockReturnValue(
+      Effect.succeed(["exec_1", "exec_2"])
+    );
+
+    await cancel();
+
+    expect(sendBranchKillMock).toHaveBeenCalledTimes(2);
+    expect(sendBranchKillMock).toHaveBeenCalledWith({
+      executionId: "exec_1",
+      workflowId: "wf_1",
+      reason: "Cancellation requested by app/appointment.canceled",
+    });
   });
 
   it("asks nothing further when the entity has no run in flight", async () => {

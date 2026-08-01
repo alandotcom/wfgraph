@@ -59,6 +59,15 @@ export type WaitsRepoMethods = {
     waitStateIds: string[]
   ) => Effect.Effect<string[], DatabaseError>;
   /**
+   * Cancel every wait of one run that is still waiting.
+   *
+   * For the rows a killed branch run left behind, whose ids nobody holds: the
+   * branch parked and was then stopped where it stood.
+   */
+  readonly cancelWaitsForExecution: (
+    executionId: string
+  ) => Effect.Effect<void, DatabaseError>;
+  /**
    * One page of the runs of this workflow parked on this Event name, whatever
    * they are waiting for the payload to say.
    *
@@ -187,6 +196,19 @@ export function makeWaitsMethods(
           .returning({ id: workflowWaitStates.id });
 
         return cancelled.map((row) => row.id);
+      }),
+
+    cancelWaitsForExecution: (executionId) =>
+      database.query(async (db) => {
+        await db
+          .update(workflowWaitStates)
+          .set({ status: "cancelled", cancelledAt: new Date() })
+          .where(
+            and(
+              eq(workflowWaitStates.executionId, executionId),
+              eq(workflowWaitStates.status, "waiting")
+            )
+          );
       }),
 
     listWaitsForEvent: (input) =>

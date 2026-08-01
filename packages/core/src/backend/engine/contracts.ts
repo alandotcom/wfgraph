@@ -51,3 +51,19 @@ export function executionError(
 export function executionData(result: ExecutionResult | undefined): unknown {
   return result !== undefined && result.success ? result.data : undefined;
 }
+
+/**
+ * A node's stored row output, as the traversal holds one.
+ *
+ * The two are a wrapper apart. `runWithStepLog` writes the row with the step's
+ * own payload, while the traversal holds the `{ success, data }` envelope around
+ * it and every reader steps through that envelope with `unwrapStepOutput`. A row
+ * read back is therefore wrapped again, so one shape reaches a template whether
+ * the node ran in this run or in the one that handed this branch off. A payload
+ * that is itself `{ success, data }` is what makes the difference visible: read
+ * bare, it would be unwrapped a second time and a template would resolve against
+ * the wrong object.
+ */
+export function wrapStoredOutput(data: JsonValue): JsonValue {
+  return { success: true, data };
+}

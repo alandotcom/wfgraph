@@ -7,10 +7,14 @@ import type { RovaRuntime } from "#src/backend/runtime";
 // its own: this import is the only reason the delivery stack loads, and this
 // module is on the path of a request that serves it anyway.
 import { createInngestEventListenerFunction } from "#src/backend/lib/inngest/event-listener-function";
-import { createWorkflowRunFunction } from "#src/backend/lib/inngest/workflow-function";
+import {
+  createWorkflowBranchFunction,
+  createWorkflowRunFunction,
+} from "#src/backend/lib/inngest/workflow-function";
 
 /**
- * Everything this app registers with Inngest: the one run function, and one
+ * Everything this app registers with Inngest: the run function, the branch
+ * function each waiting branch of a run gets its own invocation of, and one
  * listener per Event in the catalog.
  *
  * Neither half depends on a saved graph, so the list is the same for the life of
@@ -32,12 +36,14 @@ export async function buildInngestFunctions(
   runtime: RovaRuntime
 ): Promise<InngestFunction.Any[]> {
   const extensions = await runtime.runPromise(Extensions);
+  const ports = {
+    actions: () => createWorkflowActions(extensions, runtime),
+    store: createDbWorkflowStore(runtime),
+  };
 
   return [
-    createWorkflowRunFunction(client, {
-      actions: () => createWorkflowActions(extensions, runtime),
-      store: createDbWorkflowStore(runtime),
-    }),
+    createWorkflowRunFunction(client, ports),
+    createWorkflowBranchFunction(client, ports),
     ...extensions.events.map((event) =>
       createInngestEventListenerFunction({ client, event, runtime })
     ),

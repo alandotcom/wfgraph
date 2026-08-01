@@ -6,6 +6,7 @@
  * scheduler has to follow. The scheduler itself is in `core.ts`.
  */
 
+import { omit } from "es-toolkit";
 import { normalizeConditionBranch } from "@rova/shared/conditions/condition-branch";
 import type {
   ConditionBranch,
@@ -14,6 +15,7 @@ import type {
 } from "@rova/shared/graph/types";
 import { eventSplitOutletEvent } from "@rova/shared/lifecycle/event-split";
 import type { LifecycleOutlet } from "@rova/shared/lifecycle/lifecycle-outlets";
+import type { BranchRunResult } from "#src/backend/engine/branch";
 import {
   type ExecutionResult,
   executionData,
@@ -50,6 +52,7 @@ export class Traversal {
   private readonly edgesBySource = new Map<string, WorkflowEdge[]>();
   private readonly edgesByTarget = new Map<string, string[]>();
   private readonly completedNodes = new Set<string>();
+  private readonly inheritedOutputKeys = new Set<string>();
   private readonly inProgressNodes = new Set<string>();
   private readonly downstreamReadyNodes = new Set<string>();
 
@@ -203,6 +206,51 @@ export class Traversal {
   /** Writes a node's output without closing the node. */
   setOutput(nodeId: string, output: NodeOutputs[string]) {
     this.nodeOutputs[outputKey(nodeId)] = output;
+  }
+
+  /**
+   * Records a node this run inherited rather than ran, which is how a branch run
+   * sees the graph above the node it starts at.
+   *
+   * The node is closed, so this run never walks it again, and its output is
+   * readable by the templates behind it. Two things it does not get. No result:
+   * what this run answers for is what it did itself. And no release, which is
+   * carried separately, because a node that halted its branch has an output and
+   * released nothing, and the two cannot be told apart from a stored row.
+   */
+  inheritCompleted(nodeId: string, output: NodeOutputs[string]) {
+    const key = outputKey(nodeId);
+    this.nodeOutputs[key] = output;
+    this.inheritedOutputKeys.add(key);
+    this.completedNodes.add(nodeId);
+  }
+
+  /** Every node that has released what is below it, for a branch run to start from. */
+  get releasedNodeIds(): string[] {
+    return [...this.downstreamReadyNodes];
+  }
+
+  /**
+   * The outputs this run produced, which is what it hands back to the run that
+   * started it. What it inherited is left out: that run has those already, and
+   * an HTTP Request step's response body sent back up is the cost the store read
+   * exists to avoid.
+   */
+  get ownOutputs(): NodeOutputs {
+    return omit(this.nodeOutputs, [...this.inheritedOutputKeys]);
+  }
+
+  /**
+   * Takes on what a branch run did, so the run that handed the branch off
+   * answers for those nodes as if it had walked them.
+   */
+  absorbBranch(branch: BranchRunResult) {
+    for (const [nodeId, result] of Object.entries(branch.results)) {
+      this.nodeResults[nodeId] = result;
+    }
+    for (const [key, output] of Object.entries(branch.outputs)) {
+      this.nodeOutputs[key] = output;
+    }
   }
 
   get resultCount(): number {

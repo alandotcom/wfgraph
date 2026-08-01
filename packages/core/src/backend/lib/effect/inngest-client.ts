@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import type { Inngest } from "inngest";
 import {
+  sendWorkflowBranchKill,
   sendWorkflowCancelRequested,
   sendWorkflowRunRequested,
   sendWorkflowWaitSignal,
@@ -25,11 +26,12 @@ export class InngestError extends Schema.TaggedErrorClass<InngestError>()(
  * The event bus that drives runs, as a service rather than a module-level
  * handle.
  *
- * Four sends is the whole of what the services ask Inngest for: start a run,
- * cancel one, wake a waiting one, and forward a host's Event so its listener
- * drives the fan-out durably. Each answers an Effect whose error channel names
- * `InngestError`, so a service that enqueues cannot forget that enqueueing
- * fails, and a test provides its own sends instead of reaching a dev server.
+ * Five sends is the whole of what the services ask Inngest for: start a run,
+ * cancel one, kill the branch invocations of one, wake a waiting one, and
+ * forward a host's Event so its listener drives the fan-out durably. Each
+ * answers an Effect whose error channel names `InngestError`, so a service that
+ * enqueues cannot forget that enqueueing fails, and a test provides its own
+ * sends instead of reaching a dev server.
  */
 export class InngestClient extends Context.Service<
   InngestClient,
@@ -48,6 +50,14 @@ export class InngestClient extends Context.Service<
     /** Wake one waiting node with the payload that arrived for it. */
     readonly sendWaitSignal: (
       input: Parameters<typeof sendWorkflowWaitSignal>[1]
+    ) => Effect.Effect<void, InngestError>;
+    /**
+     * Kill one run's branch invocations. The run itself survives, which is what
+     * separates this from `sendCancelRequested`: it is the thing that closes
+     * the rows they left open and routes the Execution.
+     */
+    readonly sendBranchKill: (
+      input: Parameters<typeof sendWorkflowBranchKill>[1]
     ) => Effect.Effect<void, InngestError>;
   }
 >()("@rova/core/InngestClient") {}
@@ -79,6 +89,10 @@ export function makeInngestClientLayer(
     sendWaitSignal: (input) =>
       send(async () => {
         await sendWorkflowWaitSignal(client, input);
+      }),
+    sendBranchKill: (input) =>
+      send(async () => {
+        await sendWorkflowBranchKill(client, input);
       }),
   });
 }

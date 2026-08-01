@@ -115,6 +115,24 @@ export function createDbWorkflowStore(runtime: RovaRuntime): WorkflowStore {
     readPendingCancel: (executionId) =>
       onRepo((repo) => repo.findPendingCancel(executionId)),
 
+    readNodeOutputs: (executionId) =>
+      onRepo((repo) => repo.readNodeOutputs(executionId)),
+
+    // Two statements, because the rows a killed branch leaves open are of two
+    // kinds and each table decides for itself which of its rows are still open.
+    // Neither reads the other, so they go together rather than in an order.
+    cancelOpenWork: async ({ executionId }) => {
+      await onRepo((repo) =>
+        Effect.all(
+          [
+            repo.cancelOpenNodeLogs(executionId),
+            repo.cancelWaitsForExecution(executionId),
+          ],
+          { concurrency: 2 }
+        )
+      );
+    },
+
     completeRun,
   };
 }

@@ -9,19 +9,30 @@
  * clock, which is what makes "the run parked here, and that branch had to wait
  * for it" a fact a test can assert on.
  *
- * The executor policy below is Inngest's, read off a dev-server trace rather
- * than off its documentation. `docs/adr/0004` covers why Inngest is the
- * substrate; the policy itself is stated at `advanceToLastPause`.
+ * It owns a set of runs rather than one body, because a Wait is handed to a
+ * durable run of its own and the whole question is what one run's pause costs
+ * another. Each run carries its own memo and its own pauses, and the executor
+ * policy below applies per run.
+ *
+ * That policy is Inngest's, read off a dev-server trace rather than off its
+ * documentation. `docs/adr/0004` covers why Inngest is the substrate; the policy
+ * itself is stated at `endTimersDueNow`.
  */
 
+import type {
+  BranchHandoff,
+  BranchRunResult,
+} from "#src/backend/engine/branch";
 import type {
   WaitForEventOptions,
   WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
 
-/** One memoized step the driver ran, and where in the run it ran. */
+/** One memoized step the driver ran, and where in the run tree it ran. */
 export type ReplayExecution = {
-  /** Which invocation of the body discovered it, counted from zero. */
+  /** Which durable run ran it: `root`, or the step id that started the branch. */
+  run: string;
+  /** Which invocation of that run's body discovered it, counted from zero. */
   invocation: number;
   /** The virtual clock when it ran, in milliseconds from the start of the run. */
   at: number;
@@ -36,15 +47,31 @@ export type ReplayRunOptions = {
   events?: Record<string, unknown>;
   /** Invocation ceiling, which turns a non-converging graph into a failure. */
   maxInvocations?: number;
+  /**
+   * The body a branch hand-off starts. Left out, the runtime offers no
+   * `startBranch` at all, which is what the engine reads as "run the Wait
+   * here".
+   */
+  branch?: (
+    runtime: WorkflowExecutionRuntime,
+    input: { entryNodeId: string; releasedNodeIds: readonly string[] }
+  ) => Promise<unknown>;
+  /**
+   * Virtual clock at which every live branch run is killed, which is what a
+   * cancellation does to them. The run that started one reads `killed` back.
+   */
+  killBranchesAtMs?: number;
 };
 
 export type ReplayRun<T> = {
   value: T;
-  /** Every step the driver ran, in order. */
+  /** Every step the driver ran, in order, across every run. */
   executed: ReplayExecution[];
-  /** How many times the body was called from the top. */
+  /** How many times a body was called from the top, across every run. */
   invocations: number;
-  /** The virtual clock when the body finally returned, in milliseconds. */
+  /** How many durable runs the tree took, the root included. */
+  runs: number;
+  /** The virtual clock when the root body returned, in milliseconds. */
   elapsedMs: number;
 };
 
@@ -54,7 +81,7 @@ const FALLBACK_TIMEOUT_MS = 365 * 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_INVOCATIONS = 200;
 
 /**
- * How many empty macrotask turns mark the body as done making progress.
+ * How many empty macrotask turns mark a body as done making progress.
  *
  * A pass ends when every branch is blocked on a step the driver has yet to run,
  * and blocked is the absence of activity, so it is measured rather than
@@ -62,6 +89,32 @@ const DEFAULT_MAX_INVOCATIONS = 200;
  * between two step calls.
  */
 const QUIET_TURNS = 5;
+
+const ROOT_RUN_ID = "root";
+
+/** Tells the run that started this one how it ended, which is what wakes it. */
+function reportToParent(run: DurableRun, ending: BranchEnding) {
+  const { parent } = run;
+  if (!parent) {
+    return;
+  }
+
+  parent.run.branchEndings.set(parent.stepId, ending);
+  parent.run.outstanding.delete(parent.stepId);
+}
+
+/** A settled body as the run that started it reads it. */
+function endingOf(settlement: Settlement): BranchEnding {
+  return "error" in settlement
+    ? settlement
+    : {
+        handoff: {
+          status: "finished",
+          // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a branch body answers with what the run that started it reads back
+          result: settlement.value as BranchRunResult,
+        },
+      };
+}
 
 /** A step the current pass has to discover rather than answer. */
 function pending<T>(): Promise<T> {
@@ -76,47 +129,191 @@ function nextMacrotask(): Promise<void> {
   });
 }
 
-/** What one invocation of the body left behind. */
+/** What one invocation of one body left behind. */
 type Pass = {
   /** Steps this pass asked for, in the order it asked. */
   readonly runs: Map<string, () => Promise<unknown>>;
-  /** Sleeps and event waits this pass is blocked on. */
+  /** Sleeps, event waits and branch hand-offs this pass is blocked on. */
   readonly pauses: Set<string>;
-  /** Event-wait options, kept so a timeout can be told from an answer. */
-  readonly waits: Map<string, WaitForEventOptions>;
+};
+
+/** How a body ended: the two ways a promise can settle. */
+type Settlement = { value: unknown } | { error: unknown };
+
+/** How a branch ended, as the run that started it reads it back. */
+type BranchEnding = { handoff: BranchHandoff } | { error: unknown };
+
+/** One durable run of the tree, with everything that survives its replays. */
+type DurableRun = {
+  readonly id: string;
+  readonly body: (runtime: WorkflowExecutionRuntime) => Promise<unknown>;
+  readonly memo: Map<string, unknown>;
+  readonly finishedSleeps: Set<string>;
+  readonly finishedWaits: Map<string, unknown>;
+  /** When each pause fires, fixed the first time this run reaches it. */
+  readonly wakeAt: Map<string, number>;
+  /** Which pauses are event waits, so an ended one resolves to its answer. */
+  readonly eventWaits: Set<string>;
+  /** The step ids this run has started a branch under. */
+  readonly branchRuns: Set<string>;
+  /** How each of those branches ended, once one has. */
+  readonly branchEndings: Map<string, BranchEnding>;
+  /** The run that started this one, absent on the root. */
+  readonly parent?: { run: DurableRun; stepId: string };
+  /** Pauses the last pass is blocked on that have yet to end. */
+  outstanding: Set<string>;
+  invocation: number;
+  settled?: Settlement;
 };
 
 /**
- * Runs `body` to completion across as many invocations as it takes, and answers
- * with what it returned and everything the driver had to run on its behalf.
+ * Runs `body` to completion across as many invocations and as many runs as it
+ * takes, and answers with what it returned and everything the driver had to run
+ * on its behalf.
  *
- * `body` is called once per invocation and must build its own state each time,
- * which is what the engine does: `executeWorkflow` constructs a fresh
+ * Every body is called once per invocation and must build its own state each
+ * time, which is what the engine does: `executeWorkflow` constructs a fresh
  * `Traversal` per call and recovers the rest from the memo.
  */
 export async function driveWithReplay<T>(
   body: (runtime: WorkflowExecutionRuntime) => Promise<T>,
   options: ReplayRunOptions = {}
 ): Promise<ReplayRun<T>> {
-  const { events = {}, maxInvocations = DEFAULT_MAX_INVOCATIONS } = options;
+  const {
+    events = {},
+    maxInvocations = DEFAULT_MAX_INVOCATIONS,
+    branch,
+    killBranchesAtMs,
+  } = options;
 
-  const memo = new Map<string, unknown>();
-  const finishedSleeps = new Set<string>();
-  const finishedWaits = new Map<string, unknown>();
-  /** When each pause fires, fixed the first time the body reaches it. */
-  const wakeAt = new Map<string, number>();
+  const tree: DurableRun[] = [];
   const executed: ReplayExecution[] = [];
-
   let now = 0;
-  let invocation = 0;
+  let invocations = 0;
 
-  while (invocation < maxInvocations) {
-    const pass: Pass = { runs: new Map(), pauses: new Set(), waits: new Map() };
+  function startRun(
+    id: string,
+    runBody: (runtime: WorkflowExecutionRuntime) => Promise<unknown>,
+    parent?: { run: DurableRun; stepId: string }
+  ): DurableRun {
+    const run: DurableRun = {
+      id,
+      body: runBody,
+      memo: new Map(),
+      finishedSleeps: new Set(),
+      finishedWaits: new Map(),
+      wakeAt: new Map(),
+      eventWaits: new Set(),
+      branchRuns: new Set(),
+      branchEndings: new Map(),
+      parent,
+      outstanding: new Set(),
+      invocation: 0,
+    };
+    tree.push(run);
+    return run;
+  }
+
+  /** Ends one pause, which is what lets the run that holds it be called again. */
+  function endPause(run: DurableRun, stepId: string) {
+    if (run.eventWaits.has(stepId)) {
+      // A wait with no answer reached its timeout, which the engine reads as
+      // null.
+      run.finishedWaits.set(stepId, events[stepId] ?? null);
+    } else {
+      run.finishedSleeps.add(stepId);
+    }
+    run.outstanding.delete(stepId);
+  }
+
+  /**
+   * Ends every timer this run is holding whose target the clock has reached.
+   *
+   * A run stays parked until the last of its outstanding pauses ends, which is
+   * the executor policy measured against `inngest dev`: two pauses outstanding
+   * together give one wake, at the later target, whichever was registered
+   * first. A 20-second sleep beside a 90-second one resumed 70 seconds past its
+   * own target. What that measurement is about is one run: a pause held by
+   * another run stops nothing here, which is the whole of why a waiting branch
+   * gets a run of its own.
+   */
+  function endTimersDueNow(run: DurableRun) {
+    // `endPause` deletes the id it was given, which is the one being visited,
+    // and a Set iteration is defined over exactly that.
+    for (const stepId of run.outstanding) {
+      const target = run.wakeAt.get(stepId);
+      if (target !== undefined && target <= now) {
+        endPause(run, stepId);
+      }
+    }
+  }
+
+  /** Ends every branch run that is still going, as a cancellation does. */
+  function killLiveBranches() {
+    for (const run of tree) {
+      if (!run.parent || run.settled) {
+        continue;
+      }
+      run.settled = { value: null };
+      reportToParent(run, { handoff: { status: "killed" } });
+    }
+  }
+
+  /**
+   * Moves the clock to the next moment anything is waiting for, and answers
+   * false when nothing is: a tree blocked on a step no run asked for.
+   */
+  function advanceClock(): boolean {
+    const targets: number[] = [];
+
+    for (const run of tree) {
+      if (run.settled) {
+        continue;
+      }
+      for (const stepId of run.outstanding) {
+        const target = run.wakeAt.get(stepId);
+        if (target !== undefined) {
+          targets.push(target);
+        }
+      }
+    }
+
+    const liveBranches = tree.some((run) => run.parent && !run.settled);
+    if (
+      killBranchesAtMs !== undefined &&
+      killBranchesAtMs > now &&
+      liveBranches
+    ) {
+      targets.push(killBranchesAtMs);
+    }
+
+    if (targets.length === 0) {
+      return false;
+    }
+
+    now = Math.max(now, Math.min(...targets));
+
+    for (const run of tree) {
+      if (!run.settled) {
+        endTimersDueNow(run);
+      }
+    }
+
+    if (killBranchesAtMs !== undefined && now >= killBranchesAtMs) {
+      killLiveBranches();
+    }
+
+    return true;
+  }
+
+  /** Calls one run's body from the top, and settles or parks it. */
+  async function invokeOnce(run: DurableRun): Promise<void> {
+    const pass: Pass = { runs: new Map(), pauses: new Set() };
     let discoveries = 0;
 
     const noteFirstReach = (stepId: string, durationMs: number) => {
-      if (!wakeAt.has(stepId)) {
-        wakeAt.set(stepId, now + Math.max(durationMs, 0));
+      if (!run.wakeAt.has(stepId)) {
+        run.wakeAt.set(stepId, now + Math.max(durationMs, 0));
       }
       pass.pauses.add(stepId);
       discoveries += 1;
@@ -124,12 +321,12 @@ export async function driveWithReplay<T>(
 
     const runtime: WorkflowExecutionRuntime = {
       attempt: 0,
-      runId: "replay-run",
+      runId: run.id,
 
       run: <R>(stepId: string, fn: () => Promise<R>): Promise<R> => {
-        if (memo.has(stepId)) {
+        if (run.memo.has(stepId)) {
           // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a step id always maps back to that step's own result type
-          return Promise.resolve(memo.get(stepId) as R);
+          return Promise.resolve(run.memo.get(stepId) as R);
         }
         if (!pass.runs.has(stepId)) {
           pass.runs.set(stepId, fn);
@@ -139,7 +336,7 @@ export async function driveWithReplay<T>(
       },
 
       sleep: (stepId, durationMs) => {
-        if (finishedSleeps.has(stepId)) {
+        if (run.finishedSleeps.has(stepId)) {
           return Promise.resolve();
         }
         if (!pass.pauses.has(stepId)) {
@@ -148,125 +345,140 @@ export async function driveWithReplay<T>(
         return pending<void>();
       },
 
-      waitForEvent: (stepId, waitOptions) => {
-        if (finishedWaits.has(stepId)) {
-          return Promise.resolve(finishedWaits.get(stepId));
+      waitForEvent: (stepId, waitOptions: WaitForEventOptions) => {
+        if (run.finishedWaits.has(stepId)) {
+          return Promise.resolve(run.finishedWaits.get(stepId));
         }
         if (!pass.pauses.has(stepId)) {
+          run.eventWaits.add(stepId);
           noteFirstReach(stepId, waitOptions.timeoutMs ?? FALLBACK_TIMEOUT_MS);
-          pass.waits.set(stepId, waitOptions);
         }
         return pending<unknown>();
       },
+
+      ...(branch
+        ? {
+            startBranch: (
+              stepId: string,
+              input: {
+                entryNodeId: string;
+                releasedNodeIds: readonly string[];
+              }
+            ) => {
+              const ended = run.branchEndings.get(stepId);
+              if (ended) {
+                return "error" in ended
+                  ? Promise.reject(ended.error)
+                  : Promise.resolve(ended.handoff);
+              }
+              if (!run.branchRuns.has(stepId)) {
+                run.branchRuns.add(stepId);
+                startRun(
+                  stepId,
+                  (childRuntime) => branch(childRuntime, input),
+                  {
+                    run,
+                    stepId,
+                  }
+                );
+                discoveries += 1;
+              }
+              pass.pauses.add(stepId);
+              return pending<BranchHandoff>();
+            },
+          }
+        : {}),
     };
 
-    let returned: { value: T } | undefined;
-    let threw: { error: unknown } | undefined;
-    void body(runtime).then(
+    let settlement: Settlement | undefined;
+    void run.body(runtime).then(
       (value) => {
-        returned = { value };
+        settlement = { value };
       },
       (error: unknown) => {
-        threw = { error };
+        settlement = { error };
       }
     );
 
     let idleTurns = 0;
-    // eslint-disable-next-line eslint/no-unmodified-loop-condition -- both are assigned by the body's own settlement above
-    while (idleTurns < QUIET_TURNS && !returned && !threw) {
+    // eslint-disable-next-line eslint/no-unmodified-loop-condition -- assigned by the body's own settlement above
+    while (idleTurns < QUIET_TURNS && !settlement) {
       const before = discoveries;
       // eslint-disable-next-line eslint/no-await-in-loop -- turns are counted one after another, which is what measuring quiescence is
       await nextMacrotask();
       idleTurns = discoveries === before ? idleTurns + 1 : 0;
     }
 
-    if (threw) {
-      throw threw.error;
-    }
-    if (returned) {
-      return {
-        value: returned.value,
-        executed,
-        invocations: invocation + 1,
-        elapsedMs: now,
-      };
+    const invocation = run.invocation;
+    run.invocation += 1;
+    invocations += 1;
+
+    if (settlement) {
+      run.settled = settlement;
+      reportToParent(run, endingOf(settlement));
+      return;
     }
 
     if (pass.runs.size === 0 && pass.pauses.size === 0) {
       throw new Error(
-        `Replay invocation ${invocation} stopped without returning and without asking for a step. The body is blocked on something the runtime does not own.`
+        `Replay run "${run.id}" stopped at invocation ${invocation} without returning and without asking for a step. The body is blocked on something the runtime does not own.`
       );
     }
 
-    // Steps a pass asked for all run before it is called again, which is the
-    // whole of what parallel discovery buys. The stored value is JSON, since
+    // Steps a pass asked for all run before that run is called again, which is
+    // the whole of what parallel discovery buys. The stored value is JSON, since
     // that is what the next invocation reads back.
     for (const [stepId, fn] of pass.runs) {
       // eslint-disable-next-line eslint/no-await-in-loop -- running them in order is what gives `executed` a stable sequence for a test to read
       const value = await fn();
-      memo.set(stepId, JSON.parse(JSON.stringify(value ?? null)));
-      executed.push({ invocation, at: now, stepId });
+      run.memo.set(stepId, JSON.parse(JSON.stringify(value ?? null)));
+      executed.push({ run: run.id, invocation, at: now, stepId });
     }
 
-    advanceToLastPause({
-      pass,
-      wakeAt,
-      events,
-      finishedSleeps,
-      finishedWaits,
-      readClock: () => now,
-      setClock: (value) => {
-        now = value;
-      },
-    });
+    run.outstanding = new Set(pass.pauses);
+    endTimersDueNow(run);
+  }
 
-    invocation += 1;
+  const root = startRun(ROOT_RUN_ID, body);
+
+  while (invocations < maxInvocations) {
+    const runnable = tree.filter(
+      (run) => !run.settled && run.outstanding.size === 0
+    );
+
+    if (runnable.length === 0) {
+      if (!advanceClock()) {
+        throw new Error(
+          "Replay stopped with every run parked and nothing left to wake them."
+        );
+      }
+      continue;
+    }
+
+    for (const run of runnable) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- one pass at a time is what gives the virtual clock a single reader
+      await invokeOnce(run);
+      if (root.settled) {
+        break;
+      }
+    }
+
+    if (root.settled) {
+      if ("error" in root.settled) {
+        throw root.settled.error;
+      }
+      return {
+        // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the root body is the caller's own, so its value is the one they typed
+        value: root.settled.value as T,
+        executed,
+        invocations,
+        runs: tree.length,
+        elapsedMs: now,
+      };
+    }
   }
 
   throw new Error(
     `Replay gave up after ${maxInvocations} invocations. The graph is not converging.`
   );
-}
-
-/**
- * Ends every outstanding pause, and moves the clock to the last of them.
- *
- * This is the executor policy the driver exists to model, and both halves of it
- * were measured against `inngest dev` rather than read off the documentation.
- *
- * A run holding an outstanding pause gets no invocation of its own when a step
- * finishes: Inngest runs the steps the pass asked for and then waits, so every
- * other branch stops at its next step boundary. Two pauses outstanding together
- * give one wake, at the later target, whichever was registered first: a 20s
- * sleep beside a 90s sleep resumed 70 seconds past its own target. A pass
- * holding no pause is called again straight away, which is what leaves the clock
- * alone here.
- */
-function advanceToLastPause(input: {
-  pass: Pass;
-  wakeAt: Map<string, number>;
-  events: Record<string, unknown>;
-  finishedSleeps: Set<string>;
-  finishedWaits: Map<string, unknown>;
-  readClock: () => number;
-  setClock: (value: number) => void;
-}) {
-  const { pass, wakeAt, events, finishedSleeps, finishedWaits } = input;
-
-  if (pass.pauses.size === 0) {
-    return;
-  }
-
-  const times = [...pass.pauses].map((stepId) => wakeAt.get(stepId) ?? 0);
-  input.setClock(Math.max(input.readClock(), ...times));
-
-  for (const stepId of pass.pauses) {
-    if (pass.waits.has(stepId)) {
-      // A wait with no answer reached its timeout, and the engine reads that as
-      // null.
-      finishedWaits.set(stepId, events[stepId] ?? null);
-    } else {
-      finishedSleeps.add(stepId);
-    }
-  }
 }

@@ -284,9 +284,12 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   recordAuditEvent: refuse("recordAuditEvent"),
   openNodeLog: refuse("openNodeLog"),
   closeNodeLog: refuse("closeNodeLog"),
+  cancelOpenNodeLogs: refuse("cancelOpenNodeLogs"),
+  readNodeOutputs: refuse("readNodeOutputs"),
   startWait: refuse("startWait"),
   markWaitStatus: refuse("markWaitStatus"),
   cancelWaits: refuse("cancelWaits"),
+  cancelWaitsForExecution: refuse("cancelWaitsForExecution"),
   listWaitsForEvent: refuse("listWaitsForEvent"),
   findWaitingStateByToken: refuse("findWaitingStateByToken"),
   listWaitingStates: refuse("listWaitingStates"),
@@ -340,6 +343,7 @@ const inngestClientStubs: InngestClient["Service"] = {
   sendRunRequested: refuse("sendRunRequested"),
   sendCancelRequested: refuse("sendCancelRequested"),
   sendWaitSignal: refuse("sendWaitSignal"),
+  sendBranchKill: refuse("sendBranchKill"),
 };
 
 export function stubInngestClient(

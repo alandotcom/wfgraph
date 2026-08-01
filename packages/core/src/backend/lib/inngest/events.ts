@@ -1,5 +1,5 @@
 /**
- * The three events Rova sends to itself, with the schemas that define them.
+ * The five events Rova sends to itself, with the schemas that define them.
  *
  * An `eventType` is one definition used from both ends: the sender builds its
  * payload with `.create()`, and the function that triggers on it declares the
@@ -60,6 +60,63 @@ export const workflowExecutionInputSchema = Schema.Struct({
 export const workflowRunRequested = eventType("workflow/run.requested", {
   schema: toStandardSchema(workflowExecutionInputSchema, rejectUnknownKeys),
 });
+
+/**
+ * Where Inngest states the invocation an event belongs to. Its spelling, and
+ * the one key on this payload Rova neither writes nor reads.
+ */
+export const INNGEST_META_KEY = "_inngest";
+
+/**
+ * The `workflow/branch.requested` payload: one run's own input, plus the Wait
+ * node the branch starts at.
+ *
+ * What those nodes left behind stays in the store for the branch to read back,
+ * because an HTTP Request step's response body is what makes those outputs
+ * large and the wire is the wrong place for it. The ids below are what the
+ * store cannot answer.
+ *
+ * The invoke metadata is declared rather than the shape left open: an event
+ * `step.invoke` produced carries it, the decode below rejects every other
+ * unknown key, and an Inngest release that adds a second one fails here rather
+ * than somewhere the reason is harder to see.
+ */
+export const workflowBranchInputSchema = Schema.Struct({
+  ...workflowExecutionInputSchema.fields,
+  entryNodeId: NonEmptyTrimmedString,
+  /**
+   * Which nodes above the entry have let their downstream follow. Ids alone, so
+   * the size argument against carrying outputs does not reach it, and the stored
+   * rows cannot answer it: a node that halted its branch has an output too.
+   */
+  releasedNodeIds: Schema.Array(NonEmptyTrimmedString),
+  [INNGEST_META_KEY]: Schema.optional(jsonObjectSchema),
+});
+
+export const workflowBranchRequested = eventType("workflow/branch.requested", {
+  schema: toStandardSchema(workflowBranchInputSchema, rejectUnknownKeys),
+});
+
+/**
+ * The event that kills a run's branch invocations, and only those.
+ *
+ * Distinct from `workflowRunCancelRequested` because the run that started them
+ * has to survive what kills them: it is the one thing left alive that can close
+ * their rows and route the Execution into its Canceled outlet.
+ */
+export const workflowBranchKillRequested = eventType(
+  "workflow/branch.kill.requested",
+  {
+    schema: toStandardSchema(
+      Schema.Struct({
+        executionId: NonEmptyTrimmedString,
+        workflowId: NonEmptyTrimmedString,
+        reason: Schema.String,
+      }),
+      rejectUnknownKeys
+    ),
+  }
+);
 
 export const workflowRunCancelRequested = eventType(
   "workflow/run.cancel.requested",

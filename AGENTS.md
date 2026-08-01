@@ -158,14 +158,16 @@ function-level, each step carrying its own counter. Step results round-trip thro
 `JsonSafe` (`packages/shared/src/types/json.ts`) is the compiler holding `step.run` to it: a
 `Date`, `Map` or `Set` in the answer is refused at the field that holds it.
 
-**A suspension holds the run, not the branch.** Every branch of a run shares one function
-invocation, and Inngest parks that invocation on a sleep, so a Wait entered early stops every
-sibling at its next step boundary. `NodeScheduler` holds each Wait back and
-`drainDeferredWaits` enters them once the fan-out has settled, which is what keeps ordinary
-work clear of a wait. Two Waits reachable at once still gate each other, because a run wakes
-once, at the last of its outstanding pauses: `advanceToLastPause` states what was measured.
-`driveWithReplay` (`engine/replay-runtime.ts`) is how a test sees any of this, since it
-abandons the body at each step boundary and calls it again on a virtual clock.
+**A suspension holds the run, and a branch is given a run.** Inngest parks a whole function
+invocation on a sleep and wakes it once, at the last of its outstanding pauses, so each
+waiting branch is a durable run of its own (ADR-0011). `NodeScheduler` holds every Wait back
+and `drainDeferredWaits` hands it to `workflow-branch` through `runtime.startBranch`, which
+is `step.invoke`. The branch run inherits the outputs above its entry node from the store and
+its released node ids from the invoke payload, and leaves the terminal record to the run that
+started it. A cancellation kills it where it stands; that run observes the kill, sweeps the
+rows it left open, and routes the Execution. A runtime offering no `startBranch` enters the
+Wait in place. `driveWithReplay` (`engine/replay-runtime.ts`) is how a test sees any of this:
+it owns a set of runs and keeps the measured wake policy per run.
 
 **happy-dom belongs to the client project alone.** `vitest.config.ts` declares two projects:
 `client` covers `packages/client`, runs in happy-dom, and is the only one loading

@@ -276,6 +276,12 @@ export type NodeSchedulerInput = {
   startPayload: JsonObject;
   /** The Event that started the run: see `WorkflowExecutionInput.startEventName`. */
   startEventName: string | null;
+  /**
+   * The Wait node this run was handed, on a run that is itself a branch. It is
+   * the one Wait this run enters in place rather than hands on again, which is
+   * what stops a branch from handing itself off forever.
+   */
+  branchEntryNodeId?: string;
   logger: RunLogger;
 };
 
@@ -291,11 +297,30 @@ export class NodeScheduler {
    */
   private readonly deferredWaits = new Set<string>();
 
-  /** Wait nodes `drainDeferredWaits` has handed back, which run on sight. */
-  private readonly releasedWaits = new Set<string>();
+  /**
+   * Wait nodes the drain has dealt with, which are no longer held back. How
+   * each is then entered is `entersInPlace` below.
+   */
+  private readonly drainedWaits = new Set<string>();
 
   constructor(input: NodeSchedulerInput) {
     this.input = input;
+    if (input.branchEntryNodeId) {
+      this.drainedWaits.add(input.branchEntryNodeId);
+    }
+  }
+
+  /**
+   * Whether this Wait is entered here rather than handed to a run of its own.
+   *
+   * Two nodes are. The Wait a branch run was handed, which is the whole of what
+   * that run exists to enter, and every Wait at all when the runtime starts no
+   * durable runs.
+   */
+  private entersInPlace(nodeId: string): boolean {
+    return (
+      !this.input.runtime.startBranch || nodeId === this.input.branchEntryNodeId
+    );
   }
 
   /**
@@ -338,7 +363,7 @@ export class NodeScheduler {
       return;
     }
 
-    if (isWaitNode(node) && !this.releasedWaits.has(nodeId)) {
+    if (isWaitNode(node) && !this.drainedWaits.has(nodeId)) {
       this.deferredWaits.add(nodeId);
       nodeLogger.debug(
         "Holding wait node until every other branch has drained"
@@ -492,6 +517,10 @@ export class NodeScheduler {
       // with the branch-halting decision the durable runtime made. A step cannot
       // say that, so the value below is rebuilt rather than passed on.
       if (actionType === BUILT_IN_ACTION_IDS.wait) {
+        if (!this.entersInPlace(node.id)) {
+          return await this.handOffBranch(node, actionLogger);
+        }
+
         const waitResult = await executeWaitAction({
           config: processedConfig,
           context: stepContext,
@@ -560,6 +589,84 @@ export class NodeScheduler {
     }
 
     return { result, conditionValue };
+  }
+
+  /**
+   * Hands one Wait node and everything behind it to a durable run of its own,
+   * and takes on what that run did.
+   *
+   * The branch was walked by the run that comes back, so nothing below this node
+   * is scheduled here and `haltBranch` is how the traversal is told. The node's
+   * own outcome is the one that run recorded for it, which is what keeps a Wait
+   * that failed reading as a failure on either side of the hand-off.
+   *
+   * Only `entersInPlace` reaches this, and it answers false for a runtime with
+   * no `startBranch`, which is why the port method is read without a check.
+   */
+  private async handOffBranch(
+    node: WorkflowNode,
+    namedNodeLogger: RunLogger
+  ): Promise<NodeWorkOutcome> {
+    const { traversal, runtime } = this.input;
+
+    namedNodeLogger.info("Handing the branch below this wait to its own run");
+    const handoff = await runtime.startBranch?.(`branch-${node.id}`, {
+      entryNodeId: node.id,
+      releasedNodeIds: traversal.releasedNodeIds,
+    });
+    if (!handoff) {
+      throw new Error(
+        `Node "${node.id}" was handed off to a branch run by a runtime that starts none.`
+      );
+    }
+
+    if (handoff.status === "killed") {
+      // The cancellation killed the branch where it stood. Its rows are closed
+      // here, and the boundary read below this node is what routes the run.
+      await this.sweepKilledBranchWork();
+      namedNodeLogger.info("Branch run was cancelled");
+      return {
+        result: {
+          success: true,
+          data: { branchCancelled: true },
+          haltBranch: true,
+        },
+      };
+    }
+
+    traversal.absorbBranch(handoff.result);
+
+    const own = handoff.result.results[node.id] ?? {
+      success: true as const,
+      data: null,
+    };
+    return {
+      result: own.success ? { ...own, haltBranch: true } : own,
+    };
+  }
+
+  /**
+   * Closes every row of this run still open, which is what a killed branch
+   * leaves behind: its node rows and its wait states.
+   *
+   * The ordering is the whole of what makes this safe, so it is stated here.
+   * It runs after the kill has been observed, when no branch run is alive to
+   * write to those rows, and before the Canceled outlet is entered, since a
+   * Canceled branch opening with a one-week Wait would otherwise leave a killed
+   * node reading Running for a week. One event kills every branch of a run at
+   * once, which is why closing all of them at the first observed kill closes
+   * nothing that is still going.
+   *
+   * Two killed branches resolving in one pass both reach this, since neither has
+   * been memoized yet. The write is idempotent, and the step id keeps a later
+   * replay from repeating it.
+   */
+  private async sweepKilledBranchWork(): Promise<void> {
+    const { runtime, store, executionId } = this.input;
+    await runtime.run("branch-kill-sweep", async () => {
+      await store.cancelOpenWork({ executionId });
+      return null;
+    });
   }
 
   /**
@@ -702,9 +809,12 @@ export class NodeScheduler {
    * are left. Call it once the fan-out has settled: the run is about to suspend,
    * so anything still runnable has to have run by now.
    *
-   * A batch is entered side by side, which keeps two sibling waits on concurrent
-   * timers. Each round resumes its own waits and may reach further ones, and the
-   * loop terminates because a released wait never returns to the queue.
+   * This is where a branch is handed off. A runtime that starts durable runs
+   * gets one per waiting branch, which is how a short wait stops costing what a
+   * long sibling costs; a runtime that starts none enters the wait in place, and
+   * the batch is entered side by side so two sibling timers still overlap. Each
+   * round may reach further waits, and the loop terminates because a wait the
+   * drain has dealt with never returns to the queue.
    *
    * A run that has taken the Canceled outlet drops whatever it was holding for
    * the Started branch. Every other node stops there by never being scheduled,
@@ -722,7 +832,7 @@ export class NodeScheduler {
       );
       this.deferredWaits.clear();
       for (const nodeId of batch) {
-        this.releasedWaits.add(nodeId);
+        this.drainedWaits.add(nodeId);
       }
       // eslint-disable-next-line eslint/no-await-in-loop -- a round has to resume before the graph can say whether it reached another wait
       await this.runAll(batch);

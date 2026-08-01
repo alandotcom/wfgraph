@@ -2,13 +2,18 @@
  * Coverage for the replay driver itself, so the engine tests that stand on it
  * are standing on a stated model rather than on an assumption.
  *
- * The third case is the one that matters: it pins the executor policy the driver
- * was built to reproduce, which is that a run holding an outstanding pause
- * advances one step boundary per wake.
+ * Two cases carry the executor policy the driver was built to reproduce: a run
+ * holding an outstanding pause advances one step boundary per wake and wakes at
+ * the last of its pauses, and that ceiling belongs to one run rather than to
+ * the tree.
  */
 
 import { describe, expect, it } from "vitest";
+import type { BranchRunResult } from "#src/backend/engine/branch";
 import { driveWithReplay } from "#src/backend/engine/replay-runtime";
+
+/** A branch body's answer, which the driver hands to whoever started it. */
+const NOTHING_RAN: BranchRunResult = { results: {}, outputs: {} };
 
 describe("driveWithReplay", () => {
   it("runs a chain of steps, calling the body again after each", async () => {
@@ -53,7 +58,7 @@ describe("driveWithReplay", () => {
     expect(run.value).toBe("done");
     expect(run.elapsedMs).toBe(5_000);
     expect(run.executed).toEqual([
-      { invocation: 1, at: 5_000, stepId: "after" },
+      { run: "root", invocation: 1, at: 5_000, stepId: "after" },
     ]);
   });
 
@@ -126,6 +131,99 @@ describe("driveWithReplay", () => {
 
     expect(run.value).toBeNull();
     expect(run.elapsedMs).toBe(2_000);
+  });
+
+  it("wakes each branch run at its own pause rather than at the tree's last", async () => {
+    const sleepFor: Record<string, number> = { short: 20_000, long: 90_000 };
+
+    const run = await driveWithReplay(
+      async (runtime) => {
+        await Promise.all([
+          runtime.startBranch?.("branch-short", {
+            entryNodeId: "short",
+            releasedNodeIds: [],
+          }),
+          runtime.startBranch?.("branch-long", {
+            entryNodeId: "long",
+            releasedNodeIds: [],
+          }),
+        ]);
+        return "done";
+      },
+      {
+        branch: async (runtime, { entryNodeId }) => {
+          await runtime.sleep(`wait-${entryNodeId}`, sleepFor[entryNodeId]);
+          await runtime.run(`after-${entryNodeId}`, () =>
+            Promise.resolve(null)
+          );
+          return NOTHING_RAN;
+        },
+      }
+    );
+
+    // The root and one run per branch. Each branch holds one pause, so the
+    // twenty-second one lands on its own target instead of on its sibling's.
+    expect(run.runs).toBe(3);
+    expect(run.executed.map((step) => `${step.stepId}@${step.at}`)).toEqual([
+      "after-short@20000",
+      "after-long@90000",
+    ]);
+    expect(run.elapsedMs).toBe(90_000);
+  });
+
+  it("hands what a branch returned back to the run that started it", async () => {
+    const answered: BranchRunResult = {
+      results: { reminder: { success: true, data: { sent: true } } },
+      outputs: { reminder: { label: "Reminder", data: { sent: true } } },
+    };
+
+    const run = await driveWithReplay(
+      async (runtime) =>
+        await runtime.startBranch?.("branch-wait", {
+          entryNodeId: "wait",
+          releasedNodeIds: [],
+        }),
+      { branch: () => Promise.resolve(answered) }
+    );
+
+    expect(run.value).toEqual({ status: "finished", result: answered });
+  });
+
+  it("rejects the hand-off with what the branch threw", async () => {
+    await expect(
+      driveWithReplay(
+        async (runtime) =>
+          await runtime.startBranch?.("branch-wait", {
+            entryNodeId: "wait",
+            releasedNodeIds: [],
+          }),
+        { branch: () => Promise.reject(new Error("the branch died")) }
+      )
+    ).rejects.toThrow("the branch died");
+  });
+
+  it("answers killed for a branch the cancel reached mid-sleep", async () => {
+    const run = await driveWithReplay(
+      async (runtime) =>
+        await runtime.startBranch?.("branch-wait", {
+          entryNodeId: "wait",
+          releasedNodeIds: [],
+        }),
+      {
+        branch: async (runtime) => {
+          await runtime.sleep("wait-long", 600_000);
+          await runtime.run("after", () => Promise.resolve(null));
+          return NOTHING_RAN;
+        },
+        killBranchesAtMs: 30_000,
+      }
+    );
+
+    expect(run.value).toEqual({ status: "killed" });
+    // The step behind the sleep never ran, and the tree ended at the kill
+    // rather than at the branch's own target.
+    expect(run.executed).toEqual([]);
+    expect(run.elapsedMs).toBe(30_000);
   });
 
   it("gives up on a body that asks for nothing and never returns", async () => {

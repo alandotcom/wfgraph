@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Effect } from "effect";
 import { workflowExecutionLogs } from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
@@ -23,6 +23,26 @@ export type NodeLogsRepoMethods = {
     error?: string;
     durationMs: number;
   }) => Effect.Effect<void, DatabaseError>;
+  /**
+   * Close every row of one run that is still open, as cancelled.
+   *
+   * For the rows a killed branch run left behind: it was stopped where it
+   * stood, so nothing inside it can close its own row. The caller states when
+   * this is safe to call.
+   */
+  readonly cancelOpenNodeLogs: (
+    executionId: string
+  ) => Effect.Effect<void, DatabaseError>;
+  /**
+   * What each node of one run that succeeded left behind, by node id.
+   *
+   * This is how a branch run reads the outputs above the node it starts at. A
+   * node that failed or is still going is absent, and a node with several rows
+   * answers with its newest.
+   */
+  readonly readNodeOutputs: (
+    executionId: string
+  ) => Effect.Effect<Record<string, JsonValue>, DatabaseError>;
   /** One run's node logs, newest first, whole rows. */
   readonly listLogs: (
     executionId: string
@@ -75,6 +95,44 @@ export function makeNodeLogsMethods(
             duration: input.durationMs.toString(),
           })
           .where(eq(workflowExecutionLogs.id, input.logId));
+      }),
+
+    cancelOpenNodeLogs: (executionId) =>
+      database.query(async (db) => {
+        await db
+          .update(workflowExecutionLogs)
+          .set({
+            status: "cancelled",
+            completedAt: new Date(),
+            // Same reasoning as `finishRun`: the row holds when it started, and
+            // the caller's clock belongs to a body that replays.
+            duration: sql`round(extract(epoch from ((now() at time zone 'utc') - ${workflowExecutionLogs.startedAt})) * 1000)::text`,
+          })
+          .where(
+            and(
+              eq(workflowExecutionLogs.executionId, executionId),
+              inArray(workflowExecutionLogs.status, ["pending", "running"])
+            )
+          );
+      }),
+
+    readNodeOutputs: (executionId) =>
+      database.query(async (db) => {
+        const rows = await db.query.workflowExecutionLogs.findMany({
+          where: and(
+            eq(workflowExecutionLogs.executionId, executionId),
+            eq(workflowExecutionLogs.status, "success")
+          ),
+          columns: { nodeId: true, output: true },
+          orderBy: [asc(workflowExecutionLogs.timestamp)],
+        });
+
+        const outputs: Record<string, JsonValue> = {};
+        for (const row of rows) {
+          outputs[row.nodeId] = row.output ?? null;
+        }
+
+        return outputs;
       }),
 
     listLogs: (executionId) =>

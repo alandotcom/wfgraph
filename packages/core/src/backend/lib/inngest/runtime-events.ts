@@ -2,6 +2,7 @@ import type { Inngest } from "inngest";
 import type { JsonObject } from "@rova/shared/types/json";
 import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 import {
+  workflowBranchKillRequested,
   workflowRunCancelRequested,
   workflowRunRequested,
   workflowWaitSignal,
@@ -61,6 +62,28 @@ export async function sendWorkflowCancelRequested(
   return await client.send(
     workflowRunCancelRequested.create(input, {
       id: `workflow-cancel-${input.executionId}-${Date.now()}`,
+    })
+  );
+}
+
+/**
+ * Kills one run's branch invocations, leaving the run itself alive.
+ *
+ * Carries a timestamp for the same reason the cancel above does: a second
+ * request against a run whose earlier one did not take must not be deduplicated
+ * away.
+ */
+export async function sendWorkflowBranchKill(
+  client: Inngest,
+  input: {
+    executionId: string;
+    workflowId: string;
+    reason: string;
+  }
+) {
+  return await client.send(
+    workflowBranchKillRequested.create(input, {
+      id: `workflow-branch-kill-${input.executionId}-${Date.now()}`,
     })
   );
 }

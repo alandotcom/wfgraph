@@ -73,6 +73,19 @@ export class CancelBoundary {
    */
   private cancelEventName: string | null = null;
 
+  /**
+   * A boundary that never claims a run, for a branch run (ADR-0011). The run
+   * that started the branch is the one a cancellation routes, and the branch is
+   * killed where it stands, so a second reader of the flag would put two runs on
+   * the Canceled outlet.
+   *
+   * With no entry node there is no rule to be canceled by and no outlet to
+   * enter, so every answer below is already the inert one.
+   */
+  static inert(input: Omit<CancelBoundaryInput, "lifecycleNodes">) {
+    return new CancelBoundary({ ...input, lifecycleNodes: [] });
+  }
+
   constructor(input: CancelBoundaryInput) {
     this.input = input;
 

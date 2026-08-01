@@ -610,7 +610,12 @@ async function executeEventWait(
     }
   );
 
-  if (resumed.skipOnTimeout) {
+  // A cancel wake halts the branch as a timeout skip does. The run is claimed,
+  // so nothing below this node is work it still wants: a run walking its own
+  // graph is sent to the Canceled outlet by the boundary read at this node,
+  // which happens before the halt is consulted, and a branch run has no boundary
+  // of its own and would otherwise carry on for a run already ending.
+  if (resumed.skipOnTimeout || canceled) {
     return { success: true, data: resumed.output, haltBranch: true };
   }
 

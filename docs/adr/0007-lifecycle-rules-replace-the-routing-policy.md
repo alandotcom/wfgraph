@@ -88,3 +88,18 @@ lists. Concurrency stays one setting for the whole workflow, so under newest-win
 every Start Event displaces the in-flight run for that entity, which is what
 makes a reschedule rebuild a reminder chain rather than needing a second
 workflow of its own.
+
+## Amendment, 2026-08-01: a branch invocation is killed, and the run is told
+
+"Hard-kill cancellation mid-step" was rejected above because killing the durable
+run where it stands loses the memoized context the Canceled Branch is built on.
+That reasoning holds for the run. It does not reach a waiting branch, which
+ADR-0011 made a durable run of its own: the work behind a Wait now sits in an
+invocation that the run's own boundary reads cannot stop.
+
+A Cancel Event therefore kills those invocations, on an event distinct from the
+one that cancels a run. The substance of the decision is untouched: every landed
+output lives in the run-log rows, and the run itself survives to read the flag at
+its next boundary and enter the Canceled outlet with that history in hand. What
+the kill ends is work that would otherwise carry on for a run already claimed,
+and the run is what closes the rows those invocations left open.

@@ -371,8 +371,10 @@ describe("wait node - event mode", () => {
   });
 
   // A Cancel Event wakes a parked run through the same envelope. The wake closes
-  // the wait as cancelled and hands back no resume payload: the run's verdict is
-  // the flag on its execution row, which the engine reads at its next boundary.
+  // the wait as cancelled, hands back no resume payload, and stops the branch
+  // where it stands: the run's verdict is the flag on its execution row, and a
+  // branch run reads no flag of its own (ADR-0011), so anything below this node
+  // would be work done for a run already ending.
   it("closes the wait as cancelled when a lifecycle cancel wakes it", async () => {
     const { runtime, execution } = runWait({
       config: {
@@ -397,6 +399,12 @@ describe("wait node - event mode", () => {
     expect(runtime.waits.at(0)?.options.ifExpression).toContain(
       'async.data.signalType == "lifecycle-cancel"'
     );
+    // Nothing below the wait ran: the entry node and the wait are the whole of
+    // what opened a row.
+    expect(store.callsOf("startStepLog").map((open) => open.nodeId)).toEqual([
+      "lifecycle_1",
+      "wait_1",
+    ]);
   });
 
   // A wait with no end is an immortal run, so the timeout the editor writes is

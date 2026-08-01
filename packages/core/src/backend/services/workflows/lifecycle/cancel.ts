@@ -1,13 +1,14 @@
 /**
  * A Cancel Event, routed to the runs it concerns.
  *
- * ADR-0007 rules out killing an Inngest run, so a cancellation is a routed
+ * ADR-0007 keeps the run itself alive, so a cancellation is a routed
  * continuation: the authority is a flag on the execution row, and the run reads
  * it at its next node boundary and enters its Canceled outlet with every landed
  * node output intact. Two facts shape the rest. A running Execution cannot
  * receive a signal from inside `step.run`, and a parked one is reaching no step
- * boundary at all -- so the flag is written for every run and a nudge is sent to
- * the ones standing on a wait.
+ * boundary at all -- so the flag is written for every run, its branch
+ * invocations are killed (ADR-0011, and its amendment to ADR-0007), and a nudge
+ * is sent to the ones standing on a wait.
  */
 
 import { Effect } from "effect";
@@ -80,7 +81,7 @@ export const requestCanceledOutlet = Effect.fn("requestCanceledOutlet")(
     yield* Effect.forEach(
       claimed,
       (executionId) =>
-        nudgeParkedWaits({
+        stopClaimedRun({
           workflowId: input.workflowId,
           executionId,
           eventName: input.eventName,
@@ -95,13 +96,18 @@ export const requestCanceledOutlet = Effect.fn("requestCanceledOutlet")(
 );
 
 /**
- * Wakes whichever nodes of one claimed run are parked, and records the claim on
- * its timeline.
+ * Stops one claimed run where it stands, and records the claim on its timeline.
+ *
+ * Stopping is two sends. The branch invocations are killed, which is what ends
+ * the work behind a Wait; the run that started them survives, wakes as each
+ * invoke resolves, closes the rows they left open and enters its Canceled
+ * outlet. The wait signal is the second path to that wake, for a run whose
+ * branches the kill did not reach: it would otherwise stand until its timeout.
  *
  * Every failure is contained here: a refused query or a send Inngest would not
- * take must not stop the other claimed runs from being woken.
+ * take must not stop the other claimed runs from being stopped.
  */
-const nudgeParkedWaits = Effect.fn("nudgeParkedWaits")(function* (input: {
+const stopClaimedRun = Effect.fn("stopClaimedRun")(function* (input: {
   workflowId: string;
   executionId: string;
   eventName: string;
@@ -114,6 +120,12 @@ const nudgeParkedWaits = Effect.fn("nudgeParkedWaits")(function* (input: {
   const logger = (yield* AppLogger).get("workflow", "lifecycle-cancel");
 
   yield* Effect.gen(function* () {
+    yield* inngest.sendBranchKill({
+      executionId: input.executionId,
+      workflowId: input.workflowId,
+      reason: `Cancellation requested by ${input.eventName}`,
+    });
+
     yield* Effect.forEach(
       input.parked,
       (waitState) =>
@@ -140,7 +152,7 @@ const nudgeParkedWaits = Effect.fn("nudgeParkedWaits")(function* (input: {
     });
   }).pipe(
     Effect.catch((error) =>
-      logger.error("Failed to nudge a run claimed for cancellation", {
+      logger.error("Failed to stop a run claimed for cancellation", {
         workflowId: input.workflowId,
         executionId: input.executionId,
         eventName: input.eventName,

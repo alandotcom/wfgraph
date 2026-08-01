@@ -226,9 +226,13 @@ export const workflowExecutionLogs = pgTable(
     nodeId: text("node_id").notNull(),
     nodeName: text("node_name").notNull(),
     nodeType: text("node_type").notNull(),
+    // `cancelled` is written by the sweep that closes what a killed branch run
+    // left open, and read by the status poll, which maps an open row of a
+    // terminal run onto the same word. The column is text with no check
+    // constraint, so the vocabulary widens without a migration.
     status: text("status")
       .notNull()
-      .$type<"pending" | "running" | "success" | "error">(),
+      .$type<"pending" | "running" | "success" | "error" | "cancelled">(),
     // Both are whatever the node handled, scrubbed by `redactSensitiveData` on
     // the way here. A step's payload is JSON but need not be an object: an
     // output schema encoding to a list or a string is stored as it stands.
