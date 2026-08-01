@@ -36,6 +36,13 @@ export type HandlerBag<TInput> = {
   readonly nodeType: string;
   /** The integration the node was configured with, if any. */
   readonly integrationId?: string;
+  /**
+   * What the host's middleware put here, empty when it declared none.
+   *
+   * Under its own key rather than spread across the bag, so it is declared
+   * rather than assumed and cannot displace a name Rova owns.
+   */
+  readonly ctx: Readonly<Record<string, unknown>>;
 };
 
 /**
@@ -49,10 +56,12 @@ export type HandlerBag<TInput> = {
 export function toHandlerBag<TInput>(
   input: TInput,
   context: StepContext,
-  integrationId: string | undefined
+  integrationId: string | undefined,
+  ctx: Readonly<Record<string, unknown>> = {}
 ): HandlerBag<TInput> {
   return {
     input,
+    ctx,
     runMode: context.runMode ?? "live",
     executionId: context.executionId,
     nodeId: context.nodeId,

@@ -248,7 +248,8 @@ function buildAction<TInput extends Record<string, unknown>>(
         ...toHandlerBag(
           parsed.success,
           context,
-          readIntegrationId(rawInput.integrationId)
+          readIntegrationId(rawInput.integrationId),
+          node?.ctx
         ),
         step: nodeStepApi(app, node?.steps),
       });

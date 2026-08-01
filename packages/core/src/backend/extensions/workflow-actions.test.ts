@@ -157,9 +157,8 @@ describe("middleware reaching a handler", () => {
       }
     );
 
-    expect(seen.prisma).toBe("a client");
-    // Rova's own names are written after the middleware's, so a middleware
-    // cannot displace the input a handler was called about.
+    expect(seen.ctx).toEqual({ prisma: "a client" });
+    // Under its own key, so a middleware cannot displace a name Rova owns.
     expect(seen.nodeId).toBe("n1");
   });
 

@@ -418,11 +418,7 @@ function buildStep<TInput, TOutput>(
       const answer = yield* Effect.try({
         try: () =>
           definition.handler({
-            // What the host's middleware added sits under the bag's own keys, so
-            // a handler destructures it beside `input`. Rova's own names are
-            // written after it, and win.
-            ...node?.ctx,
-            ...toHandlerBag(input, context, integrationId),
+            ...toHandlerBag(input, context, integrationId, node?.ctx),
             credentials,
             readCredentials: () => runToPromise(credentials),
             step: nodeStepApi(app, node?.steps),

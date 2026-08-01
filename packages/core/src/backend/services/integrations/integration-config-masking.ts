@@ -34,12 +34,16 @@ export function createSecretConfigKeyTest(
     return () => true;
   }
 
-  const secretKeys = new Set(
+  // Named from the other side on purpose: a key the integration does not declare
+  // is secret. A stored row outliving a rename would otherwise be served in the
+  // clear, which is the same reason an integration the catalog never heard of
+  // masks everything above.
+  const plainKeys = new Set(
     Object.entries(integration.credentialFields)
-      .filter(([, field]) => field.type === "password")
+      .filter(([, field]) => field.type !== "password")
       .map(([key]) => key)
   );
-  return (key) => secretKeys.has(key);
+  return (key) => !plainKeys.has(key);
 }
 
 export function maskIntegrationConfig(

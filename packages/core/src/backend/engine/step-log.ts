@@ -104,15 +104,18 @@ async function closeStepLogQuietly(
 /**
  * Opens a run-log row, runs the work, and closes the row with what it answered.
  *
- * Each write is its own memoized step, and the open one has to be: the handler
- * between them is replayed from the top on every attempt, so an unmemoized open
- * would insert a second row per attempt rather than close the first.
+ * The open is a memoized step and the close is not, which is the difference
+ * between an INSERT and an UPDATE by id. The handler between them is replayed
+ * from the top on every attempt, so an unmemoized open would insert a second row
+ * per attempt rather than close the first. Memoizing the close would freeze the
+ * first attempt's verdict on a row a later attempt has since changed the answer
+ * to, and save one idempotent write for it.
  *
- * The two still have opposite failure policies. A refused open fails the node,
- * since nothing has happened yet and Inngest's retry of it costs one wasted
- * call. A refused close is swallowed, because a run that did its work has not
- * failed because a row could not be closed. The price is a row left open, which
- * the run panel shows.
+ * The two have opposite failure policies. A refused open fails the node, since
+ * nothing has happened yet and Inngest's retry of it costs one wasted call. A
+ * refused close is swallowed, because a run that did its work has not failed
+ * because a row could not be closed. The price is a row left open, which the run
+ * panel shows.
  */
 export async function runWithStepLog<T extends StepResult>(
   target: {
@@ -134,12 +137,12 @@ export async function runWithStepLog<T extends StepResult>(
     if (result.success) {
       // A success logs its payload. A step reporting success without one has
       // nothing but the envelope to show.
-      await closeOnce(runtime, store, context, handle, {
+      await closeStepLogQuietly(store, context, handle, {
         status: "success",
         output: result.data ?? result,
       });
     } else {
-      await closeOnce(runtime, store, context, handle, {
+      await closeStepLogQuietly(store, context, handle, {
         status: "error",
         output: result.error,
         error: result.error.message,
@@ -148,26 +151,10 @@ export async function runWithStepLog<T extends StepResult>(
 
     return result;
   } catch (error) {
-    await closeOnce(runtime, store, context, handle, {
+    await closeStepLogQuietly(store, context, handle, {
       status: "error",
       error: getErrorMessage(error),
     });
     throw error;
   }
-}
-
-/**
- * Closes the row inside the node's own memoized step, so a replay reuses the
- * write rather than repeating it.
- */
-function closeOnce(
-  runtime: WorkflowExecutionRuntime,
-  store: WorkflowStore,
-  context: NodeContext,
-  handle: WorkflowStepLogHandle,
-  close: StepLogClose
-): Promise<void> {
-  return runtime.run(`node:${context.nodeId}:log-close`, () =>
-    closeStepLogQuietly(store, context, handle, close)
-  );
 }

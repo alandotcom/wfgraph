@@ -501,8 +501,8 @@ it, so both are written where they are read.
 heading in the selector still writes one.
 
 **A handler takes one bag**, holding `input` (the decoded config), the credential reads,
-`step`, and the run's identity: `runMode`, `executionId`, `nodeId`, `nodeName`,
-`integrationId`. `defineAction` calls its handler the same way. One object rather than two
+`step`, `ctx` (whatever the host's middleware added), and the run's identity: `runMode`,
+`executionId`, `nodeId`, `nodeName`, `integrationId`. `defineAction` calls its handler the same way. One object rather than two
 parameters is Inngest's shape, and it takes a later value with no new position for an author
 to learn.
 
@@ -728,10 +728,11 @@ const rova = await createRovaApp({
 });
 ```
 
-A handler then destructures it beside `input`:
+A handler reads it off the bag's `ctx`:
 
 ```ts
-handler({ input, prisma }) {
+handler({ input, ctx }) {
+  const prisma = ctx.prisma as PrismaClient;
   return prisma.appointment.update({ where: { id: input.appointmentId }, ... });
 }
 ```
@@ -741,15 +742,18 @@ later in the list overwrites a key an earlier one set. The hook is told which
 `actionType` it is serving, so one that serves some actions and not others reads
 that and answers its arguments unchanged for the rest.
 
-Two things to know. What a middleware adds travels beside the node's input record
-rather than inside it, so it never reaches the run log: a client written there
-would be stored as jsonb, read back as `{}`, and shown to whoever opens the run
-panel. And Rova's own names are written after yours, so a middleware cannot
-displace `input`, `step` or the run's identity.
+What a middleware adds travels beside the node's input record rather than inside
+it, so it never reaches the run log: a client written there would be stored as
+jsonb, read back as `{}`, and shown to whoever opens the run panel.
 
-The values are typed as an open record on the bag. An integration is defined
-before any app exists, so Rova cannot carry your middleware's types into a
-plugin's handler; a host that wants them narrows what it destructures.
+`ctx` is an open record, and the cast above is the cost of that. An integration
+is defined before any app exists, so Rova cannot carry your middleware's types
+into a plugin's handler. A host writing its own actions can narrow once:
+
+```ts
+type AppCtx = { prisma: PrismaClient };
+const appCtx = (ctx: Record<string, unknown>) => ctx as AppCtx;
+```
 
 ### createRovaApp options
 

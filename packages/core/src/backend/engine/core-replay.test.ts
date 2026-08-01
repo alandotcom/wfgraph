@@ -228,7 +228,9 @@ describe("workflow engine replay safety", () => {
     // What a node memoizes is its own run-log rows and whatever its handler put
     // in `step.run`, each under that node's id. Nothing wraps the handler body.
     expect(memo.has("node:email_1:log-open")).toBe(true);
-    expect(memo.has("node:email_1:log-close")).toBe(true);
+    // The close is deliberately not memoized: it is an UPDATE by id, so the row
+    // carries the latest attempt's verdict rather than the first one's.
+    expect(memo.has("node:email_1:log-close")).toBe(false);
     expect(memo.has("node:email_1:work")).toBe(true);
     expect(memo.has("node:followup_1:work")).toBe(true);
     expect(memo.has("node:lifecycle_1:log-open")).toBe(true);
