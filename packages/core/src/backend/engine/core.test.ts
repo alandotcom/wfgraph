@@ -428,11 +428,15 @@ describe("run persistence through the store port", () => {
   });
 
   /**
-   * A store that answers one of its two run-log writes with a rejection, the
-   * way an unreachable database does.
+   * A store that answers one of its writes with a rejection, the way an
+   * unreachable database does.
    */
   function storeRefusing(
-    method: "startStepLog" | "completeStepLog"
+    method:
+      | "startStepLog"
+      | "completeStepLog"
+      | "recordAuditEvent"
+      | "completeRun"
   ): RecordingWorkflowStore {
     const refusal = () => Promise.reject(new Error("run log unreachable"));
     return { ...store, [method]: refusal };
@@ -483,6 +487,69 @@ describe("run persistence through the store port", () => {
     expect(executionError(result.results.lifecycle_1)).toBe(
       "run log unreachable"
     );
+  });
+
+  // Both terminal writes sit inside the step that settles the run's outcome, so
+  // an error escaping either one has the fatal handler record the run again.
+  it("keeps a completed run completed when its timeline write fails", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createLifecycleToActionGraph(),
+        executionId: "exec_timeline_refused",
+        workflowId: "workflow_timeline_refused",
+      },
+      createInMemoryWorkflowRuntime(),
+      storeRefusing("recordAuditEvent"),
+      actions
+    );
+
+    expect(result.success).toBe(true);
+    expect(store.callsOf("completeRun")).toHaveLength(1);
+    expect(store.callsOf("completeRun")[0]?.status).toBe("completed");
+  });
+
+  // The port forbids a rejection here, so this is an adapter breaking its word.
+  // The engine reads it as the unclaimed row it stands for.
+  it("announces nothing on the timeline when the terminal row is refused", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createLifecycleToActionGraph(),
+        executionId: "exec_terminal_row_refused",
+        workflowId: "workflow_terminal_row_refused",
+      },
+      createInMemoryWorkflowRuntime(),
+      storeRefusing("completeRun"),
+      actions
+    );
+
+    expect(result.success).toBe(true);
+    expect(
+      store.callsOf("recordAuditEvent").map((call) => call.eventType)
+    ).not.toContain("run_completed");
+  });
+
+  // The error a run carries is the one a person reads in the run panel, so it
+  // stays the node's own even when the timeline write beneath it fails.
+  it("reports a failed node's own error when its timeline write fails", async () => {
+    handlerFn.mockImplementation(() => {
+      throw new Error("boom");
+    });
+
+    const result = await executeWorkflow(
+      {
+        graph: createLifecycleToActionGraph(),
+        executionId: "exec_failed_timeline_refused",
+        workflowId: "workflow_failed_timeline_refused",
+      },
+      createInMemoryWorkflowRuntime(),
+      storeRefusing("recordAuditEvent"),
+      actions
+    );
+
+    expect(result.success).toBe(false);
+    expect(executionError(result.results.action_1)).toBe("boom");
+    expect(store.callsOf("completeRun")).toHaveLength(1);
+    expect(store.callsOf("completeRun")[0]?.error).toBe("boom");
   });
 
   // Every seam failure the backend answers with is a `Schema.TaggedErrorClass`,
@@ -560,18 +627,46 @@ describe("run persistence through the store port", () => {
     };
   }
 
-  // A superseded run reaches this path, and its row stays `superseded` because
-  // `completeRun` refuses the write. Announcing the failure anyway would put a
-  // last word on the timeline that contradicts the row.
-  it("announces a fatal failure only when the terminal write owned it", async () => {
-    const displaced: RecordingWorkflowStore = {
+  /**
+   * A store that records the terminal write and answers that it claimed
+   * nothing, which is what a cancellation that reached the row first and a
+   * refused row write both look like from here.
+   */
+  function storeClaimingNothing(): RecordingWorkflowStore {
+    return {
       ...store,
       completeRun: (input) => {
         store.completeRun(input);
         return Promise.resolve(false);
       },
     };
+  }
 
+  // The run reached the end of its graph and says so to its caller, while the
+  // timeline stays with the row this run never claimed.
+  it("announces nothing when a completed run did not claim the row", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createLifecycleToActionGraph(),
+        executionId: "exec_completed_displaced",
+        workflowId: "workflow_completed_displaced",
+      },
+      createInMemoryWorkflowRuntime(),
+      storeClaimingNothing(),
+      actions
+    );
+
+    expect(result.success).toBe(true);
+    expect(store.callsOf("completeRun")).toHaveLength(1);
+    expect(
+      store.callsOf("recordAuditEvent").map((call) => call.eventType)
+    ).not.toContain("run_completed");
+  });
+
+  // A superseded run reaches this path, and its row stays `superseded` because
+  // `completeRun` refuses the write. Announcing the failure anyway would put a
+  // last word on the timeline that contradicts the row.
+  it("announces a fatal failure only when the terminal write owned it", async () => {
     await executeWorkflow(
       {
         graph: createLifecycleToActionGraph(),
@@ -579,7 +674,7 @@ describe("run persistence through the store port", () => {
         workflowId: "workflow_displaced",
       },
       runtimeRefusingTerminalStep(),
-      displaced,
+      storeClaimingNothing(),
       actions
     );
 

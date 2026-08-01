@@ -144,9 +144,10 @@ export type WorkflowStore = {
    */
   readPendingCancel(executionId: string): Promise<PendingCancel | null>;
   /**
-   * Writes the terminal state of the run. Returns whether this write
-   * recorded it — false when a cancellation already made the row terminal,
-   * in which case the run's own completion must not be announced either.
+   * Writes the terminal state of the run. Never rejects. True when this write
+   * claimed the row, false when it did not, whether a cancellation won the race
+   * or the write itself failed. A false answer means the run's outcome must not
+   * be announced on the timeline either.
    */
   completeRun(input: CompleteRunInput): Promise<boolean>;
 };

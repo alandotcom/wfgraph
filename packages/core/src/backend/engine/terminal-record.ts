@@ -5,6 +5,8 @@
 
 import type { RunLogger } from "#src/backend/engine/contracts";
 import type {
+  CompleteRunInput,
+  RecordAuditEventInput,
   WorkflowRunAuditEventType,
   WorkflowStore,
 } from "#src/backend/engine/store";
@@ -50,11 +52,45 @@ function buildRunFailedMessage(
     : "Run failed with fatal error";
 }
 
-const RUN_COMPLETED_AUDIT_EVENT = {
+const TERMINAL_AUDIT_EVENT = {
   completed: "run_completed",
   failed: "run_failed",
   canceled: "run_cancelled",
 } as const satisfies Record<TraversalTerminalStatus, WorkflowRunAuditEventType>;
+
+/**
+ * Writes a run's terminal row, then announces the outcome when that write
+ * claimed the row. Resolves through any failure: an error escaping here sends
+ * `core.ts` down its fatal path, which records the run a second time.
+ */
+async function writeTerminalRecord(input: {
+  store: WorkflowStore;
+  logger: RunLogger;
+  run: CompleteRunInput;
+  announcement: RecordAuditEventInput;
+}): Promise<void> {
+  try {
+    const claimed = await input.store.completeRun(input.run);
+
+    if (!claimed) {
+      input.logger.info("Run did not claim the terminal record", {
+        status: input.run.status,
+      });
+      return;
+    }
+  } catch (error) {
+    // The port forbids a rejection here, so this guards an adapter breaking its
+    // contract rather than an outcome the engine expects.
+    input.logger.error("Failed to write the terminal run record", { error });
+    return;
+  }
+
+  try {
+    await input.store.recordAuditEvent(input.announcement);
+  } catch (error) {
+    input.logger.error("Failed to announce the run's outcome", { error });
+  }
+}
 
 /**
  * Writes the terminal record and timeline event for a run that finished its
@@ -72,38 +108,26 @@ export async function recordRunCompleted(input: {
   runMode: "live" | "test";
   logger: RunLogger;
 }) {
-  let recorded = true;
-
-  try {
-    recorded = await input.store.completeRun({
+  await writeTerminalRecord({
+    store: input.store,
+    logger: input.logger,
+    run: {
       executionId: input.executionId,
       status: input.status,
       output: input.output,
       error: input.error,
-    });
-    input.logger.debug("Updated execution record", { status: input.status });
-  } catch (error) {
-    input.logger.error("Failed to update execution record", { error });
-  }
-
-  // A completion that lost to a cancellation must not announce itself: the
-  // timeline's last word has to match the row's terminal status.
-  if (recorded) {
-    await input.store.recordAuditEvent({
+    },
+    announcement: {
       workflowId: input.workflowId,
       executionId: input.executionId,
-      eventType: RUN_COMPLETED_AUDIT_EVENT[input.status],
+      eventType: TERMINAL_AUDIT_EVENT[input.status],
       message: buildRunCompletedMessage(input.runMode, input.status),
       metadata: {
         resultCount: input.resultCount,
         runMode: input.runMode,
       },
-    });
-  } else {
-    input.logger.info("Run completion superseded by cancellation", {
-      status: input.status,
-    });
-  }
+    },
+  });
 
   return { status: input.status };
 }
@@ -117,45 +141,32 @@ export async function recordRunFailed(input: {
   executionId: string;
   workflowId: string;
   status: "failed" | "canceled";
-  cancelled: boolean;
   error: string;
   runMode: "live" | "test";
   logger: RunLogger;
 }) {
-  let recorded = true;
-
-  try {
-    recorded = await input.store.completeRun({
+  await writeTerminalRecord({
+    store: input.store,
+    logger: input.logger,
+    run: {
       executionId: input.executionId,
       status: input.status,
       error: input.error,
-    });
-  } catch (logError) {
-    input.logger.error("Failed to persist fatal execution error", {
-      error: logError,
-    });
-  }
-
-  // Same rule as `recordRunCompleted`: a terminal write this run lost must not
-  // announce itself. A superseded run is the case that makes it load-bearing --
-  // its row stays `superseded`, and a "Run cancelled" line on the timeline would
-  // contradict it.
-  if (recorded) {
-    await input.store.recordAuditEvent({
+    },
+    announcement: {
       workflowId: input.workflowId,
       executionId: input.executionId,
-      eventType: input.cancelled ? "run_cancelled" : "run_failed",
-      message: buildRunFailedMessage(input.runMode, input.cancelled),
+      eventType: TERMINAL_AUDIT_EVENT[input.status],
+      message: buildRunFailedMessage(
+        input.runMode,
+        input.status === "canceled"
+      ),
       metadata: {
         error: input.error,
         runMode: input.runMode,
       },
-    });
-  } else {
-    input.logger.info("Run failure superseded by an earlier terminal status", {
-      status: input.status,
-    });
-  }
+    },
+  });
 
   return { status: input.status };
 }

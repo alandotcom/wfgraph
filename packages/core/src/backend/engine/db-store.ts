@@ -4,8 +4,9 @@
  * It is the only place that knows both the engine's persistence port and the
  * repository behind it, which is what keeps the engine module free of database
  * imports. The engine speaks Promises, so each method runs its Effect on the
- * app's runtime; a refused query arrives back as a rejection, which is what the
- * calling step already expects.
+ * app's runtime and a refused query arrives back as a rejection, which is what
+ * the calling step already expects. `completeRun` is the exception the port
+ * requires: it answers rather than rejecting.
  */
 
 import { Effect } from "effect";
@@ -28,13 +29,8 @@ export function createDbWorkflowStore(runtime: RovaRuntime): WorkflowStore {
   ): Promise<A> => runtime.runPromise(Effect.flatMap(ExecutionRepo, use));
 
   /**
-   * Writes the run's terminal row, and says whether this write is the one that
-   * recorded it.
-   *
-   * A transient write failure says nothing about who owns the terminal status,
-   * so the caller still announces its own outcome; a row already terminal is a
-   * cancellation that won the race, and that one the caller must not overwrite
-   * in the timeline either.
+   * The one place a refused terminal write is logged. The port's `false` answer
+   * reaches the engine with the database error left behind here.
    */
   async function completeRun(input: CompleteRunInput): Promise<boolean> {
     try {
@@ -56,12 +52,12 @@ export function createDbWorkflowStore(runtime: RovaRuntime): WorkflowStore {
 
       return recorded;
     } catch (error) {
-      storeLogger.warn("Failed to log workflow completion", {
+      storeLogger.warn("Terminal run record not written", {
         executionId: input.executionId,
         status: input.status,
         error,
       });
-      return true;
+      return false;
     }
   }
 

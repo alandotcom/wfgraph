@@ -227,7 +227,6 @@ async function executeWorkflowInner(
         executionId,
         workflowId,
         status: terminalStatus,
-        cancelled,
         error: errorMessage,
         runMode,
         logger: executionLogger,
