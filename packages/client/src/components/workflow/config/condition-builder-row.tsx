@@ -398,26 +398,25 @@ function ConditionValueInput(input: {
       enumValues.length > 0 &&
       (condition.operator === "equals" || condition.operator === "not_equals")
     ) {
-      const options = enumValues.includes(condition.value)
-        ? enumValues
-        : [...enumValues, condition.value];
-
       return (
         <Select
           disabled={disabled}
           onValueChange={whenChosen((value) => {
             onConditionChange({ ...condition, value });
           })}
-          value={condition.value}
+          // The field declares the whole of what this picker offers. A rule
+          // still holding a value the field no longer names selects nothing,
+          // which leaves the placeholder standing and the rule invalid until
+          // one of the offered values is chosen.
+          value={enumValues.includes(condition.value) ? condition.value : null}
         >
           <SelectTrigger className="min-w-[240px]">
             <SelectValue placeholder="Select value" />
           </SelectTrigger>
           <SelectContent>
-            {options.map((opt) => (
+            {enumValues.map((opt) => (
               <SelectItem key={opt} value={opt}>
                 {opt}
-                {enumValues.includes(opt) ? "" : " (custom)"}
               </SelectItem>
             ))}
           </SelectContent>

@@ -123,16 +123,23 @@ function SelectGroup({
 }
 
 function SelectValue({
+  placeholder,
   ...props
 }: ComponentProps<typeof SelectPrimitive.Value>) {
   const labels = useContext(SelectItemsContext);
 
   return (
-    <SelectPrimitive.Value data-slot="select-value" {...props}>
+    <SelectPrimitive.Value
+      data-slot="select-value"
+      placeholder={placeholder}
+      {...props}
+    >
       {(value: string | null) => {
+        // Base UI renders the placeholder itself only when no child is given,
+        // and this wrapper always gives one, so the fallback is spelled here.
         // A value with no item of its own still shows, so a stored path the
         // catalog no longer offers reads as itself rather than as blank.
-        return labels.get(value) ?? value ?? undefined;
+        return labels.get(value) ?? (value || placeholder);
       }}
     </SelectPrimitive.Value>
   );
