@@ -154,8 +154,9 @@ work at all.
 a Wait node suspends outside any step. Rova wraps no handler body (ADR-0009): work with a
 side effect goes in the handler's own `step.run`, and a `StepFailure` travels back as a
 value so a refused call fails the node once rather than four times. Retries are
-function-level, each step carrying its own counter. Step results round-trip through JSON, so a node output has to be
-JSON-safe: no `Date`, `Map`, or `Set`.
+function-level, each step carrying its own counter. Step results round-trip through JSON, and
+`JsonSafe` (`packages/shared/src/types/json.ts`) is the compiler holding `step.run` to it: a
+`Date`, `Map` or `Set` in the answer is refused at the field that holds it.
 
 **A suspension holds the run, not the branch.** Every branch of a run shares one function
 invocation, and Inngest parks that invocation on a sleep, so a Wait entered early stops every

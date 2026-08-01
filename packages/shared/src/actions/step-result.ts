@@ -8,6 +8,8 @@
  * of them has to re-derive the shape at run time.
  */
 
+import type { JsonSafe } from "#src/types/json";
+
 /**
  * How a failed step says why. A step that fails always supplies a message, and
  * the object form leaves room for siblings alongside it.
@@ -44,9 +46,13 @@ export type StepResult<TData = unknown> =
  *
  * `stepId` is the author's own name for the work, which the engine prefixes with
  * the node it belongs to, so two nodes running the same action do not collide.
+ *
+ * `JsonSafe` is what holds the round trip to values that survive it. The answer
+ * is stored as JSON and read back on the next attempt, so a `Date` in it would
+ * arrive as a string with its type still claiming otherwise.
  */
 export type NodeSteps = {
-  run: <T>(stepId: string, work: () => Promise<T>) => Promise<T>;
+  run: <T>(stepId: string, work: () => Promise<T & JsonSafe<T>>) => Promise<T>;
 };
 
 /**

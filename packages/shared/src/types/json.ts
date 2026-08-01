@@ -23,6 +23,60 @@ export type JsonValue =
 /** A JSON value that is a plain object, the shape a payload root must have. */
 export type JsonObject = { [key: string]: JsonValue };
 
+/** What a rejected value is told, printed in full by the compiler. */
+type NotJsonSafeMessage =
+  "Not JSON-safe: a Date, Map, Set, RegExp, bigint, symbol or function is lost when the run resumes. Return an ISO string or plain JSON.";
+
+/**
+ * The built-in types `JSON.stringify` drops, empties, or throws on.
+ *
+ * `Error` is here because its `name`, `message` and `stack` are non-enumerable,
+ * so it serializes to `{}` rather than to anything a reader could act on.
+ */
+type NotJsonSafe =
+  | Date
+  | RegExp
+  | Map<unknown, unknown>
+  | Set<unknown>
+  | Error
+  | Promise<unknown>
+  | bigint
+  | symbol
+  | ((...args: never[]) => unknown);
+
+/**
+ * The same type with every unserializable leaf replaced by a sentence saying so.
+ *
+ * A signature whose value crosses a memoized step boundary takes
+ * `T & JsonSafe<T>` for that value: the intersection is `T` itself when the
+ * shape is JSON-safe, and collapses to the message above at the offending
+ * property when it is not, so the compiler names the field rather than the run.
+ *
+ * The check refuses known-bad leaves rather than demanding assignability to
+ * `JsonValue`, because TypeScript gives a type alias an implicit index signature
+ * and an interface none. An SDK's `interface Appointment { id: string }` is JSON
+ * in fact, and `extends JsonValue` would reject it.
+ *
+ * Two things get through. A value typed `unknown` or `any` has nothing to
+ * inspect. A class holding only data reads as the object it serializes to, so
+ * its fields arrive intact on the far side and its prototype does not.
+ */
+export type JsonSafe<T> = T extends
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | void
+  ? T
+  : T extends NotJsonSafe
+    ? NotJsonSafeMessage
+    : T extends readonly (infer Element)[]
+      ? readonly JsonSafe<Element>[]
+      : T extends object
+        ? { [Key in keyof T]: JsonSafe<T[Key]> }
+        : T;
+
 /**
  * A JSON object as TypeScript writes one, before it is stored.
  *

@@ -5,6 +5,7 @@ import { CredentialsUnavailable } from "#src/backend/extensions/credential-fetch
 import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import {
   defineStep,
+  type NodeStepApi,
   StepFailure,
 } from "#src/backend/extensions/steps/define-step";
 
@@ -863,5 +864,30 @@ describe("defineStep and a handler that is not an Effect", () => {
       success: false,
       error: { message: "Refused before it started." },
     });
+  });
+});
+
+/**
+ * The memo's JSON rule, checked by the compiler rather than at run time.
+ *
+ * A value handed to `step.run` is stored as JSON and read back on the next
+ * attempt, so a `Date` in it would arrive as a string with its type still
+ * claiming otherwise. `JsonSafe` refuses that where it is written. Nothing here
+ * runs; a missing error fails `pnpm run type-check` instead.
+ */
+describe("what step.run accepts", () => {
+  it("takes a value that survives the round trip and refuses one that does not", () => {
+    const check = (step: NodeStepApi) => {
+      // An SDK's own interface passes, having no JSON-hostile field in it.
+      void step.run("sdk", async () => ({ id: "1", labels: [{ name: "a" }] }));
+      void step.run("iso", async () => ({ at: new Date().toISOString() }));
+
+      // @ts-expect-error a Date is a string by the time a replay reads it
+      void step.run("date", async () => ({ at: new Date() }));
+      // @ts-expect-error a Map is `{}` by the time a replay reads it
+      void step.run("map", async () => new Map<string, string>());
+    };
+
+    expect(check).toBeTypeOf("function");
   });
 });

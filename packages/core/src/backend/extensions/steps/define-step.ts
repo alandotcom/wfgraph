@@ -47,6 +47,7 @@ import type {
   ActionConfigFieldGroup,
 } from "@rova/shared/plugins/action-fields";
 import type { NodeSteps, StepResult } from "@rova/shared/actions/step-result";
+import type { JsonSafe } from "@rova/shared/types/json";
 
 /**
  * Why a step could not do its work, in the words the run log shows.
@@ -72,9 +73,10 @@ export class StepFailure extends Schema.TaggedErrorClass<StepFailure>()(
  * on every attempt. Rova wraps no handler body for you: that is Inngest's model,
  * and an author who reaches a system twice is an author who did not say so here.
  *
- * INVARIANT: what `run` answers round-trips through JSON on its way into the
- * runtime's storage. A `Date`, `Map`, `Set` or class instance inside it either
- * changes shape or throws when the run resumes.
+ * What `run` answers round-trips through JSON on its way into the runtime's
+ * storage, and `JsonSafe` is the compiler holding both forms to that. A `Date`,
+ * `Map` or `Set` in the answer is refused where it is written, with the offending
+ * field named.
  *
  * A `StepFailure` travels back as a failure value rather than as a throw, so a
  * node a system refused fails once instead of spending the retry budget on an
@@ -88,9 +90,9 @@ export type NodeStepApi = {
 type StepRunner = {
   <A>(
     stepId: string,
-    work: Effect.Effect<A, StepFailure, HttpClient.HttpClient>
+    work: Effect.Effect<A & JsonSafe<A>, StepFailure, HttpClient.HttpClient>
   ): Effect.Effect<A, StepFailure, HttpClient.HttpClient>;
-  <A>(stepId: string, work: () => Promise<A>): Promise<A>;
+  <A>(stepId: string, work: () => Promise<A & JsonSafe<A>>): Promise<A>;
 };
 
 /** What a memoized step stores, which has to be JSON. */
@@ -110,10 +112,19 @@ export function nodeStepApi(
   app: StepEnvironment,
   steps: NodeSteps | undefined
 ): NodeStepApi {
+  // `steps.run` carries the JSON-safety check for what an author returns. It is
+  // read here without it, because this forwarder is generic over whatever that
+  // value became and comparing two generic signatures applies the check a second
+  // time, to something that already passed it at `run` below.
+  // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the value was checked at `run`, the signature an author writes against
+  const memoize = steps?.run as
+    | (<T>(stepId: string, work: () => Promise<T>) => Promise<T>)
+    | undefined;
+
   // A caller with no durable runtime runs the work where it stands, which is
   // what an in-process test wants and what the engine hands a disabled node.
   const remember = <T>(stepId: string, work: () => Promise<T>): Promise<T> =>
-    steps ? steps.run(stepId, work) : work();
+    memoize ? memoize(stepId, work) : work();
 
   function run<A>(
     stepId: string,

@@ -523,8 +523,11 @@ keeps the stored value small.
 
 Three rules:
 
-- **What `step.run` answers must be JSON.** A `Date`, `Map`, `Set` or class instance inside
-  it changes shape when the run resumes. Carry a timestamp as an ISO string.
+- **What `step.run` answers must be JSON.** A `Date`, `Map`, `Set`, `Error` or class
+  instance inside it changes shape when the run resumes. The compiler refuses one and names
+  the field, so carry a timestamp as an ISO string and let the output schema decode it back.
+  A class holding only data reads as a plain object and gets through: its fields survive the
+  resume and its prototype does not, so `instanceof` is false on the far side.
 - **A `StepFailure` fails the node once.** It travels back as a value rather than a throw,
   so a system that refused a request does not spend the retry budget on an answer that will
   not change. Anything else that throws inside is a step the runtime retries.

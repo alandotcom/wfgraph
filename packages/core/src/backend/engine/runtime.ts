@@ -36,6 +36,11 @@ export type WorkflowExecutionRuntime = {
    * or `bigint` inside it either changes shape or throws when the run resumes.
    * Return plain objects, arrays, strings, numbers, booleans, and null - and
    * carry timestamps as ISO strings.
+   *
+   * Stated rather than typed: `JsonSafe` guards the two signatures an author
+   * writes against, and a port that adapters implement and forward through
+   * cannot carry it, since comparing two generic signatures re-applies the
+   * check to a value that already passed it.
    */
   run: <T>(stepId: string, fn: () => Promise<T>) => Promise<T>;
   /**
