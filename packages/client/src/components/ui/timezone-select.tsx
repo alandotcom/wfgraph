@@ -8,6 +8,7 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
+  whenChosen,
 } from "#src/components/ui/select";
 
 interface TimezoneSelectProps {
@@ -105,7 +106,11 @@ export function TimezoneSelect({
   id,
 }: TimezoneSelectProps) {
   return (
-    <Select disabled={disabled} onValueChange={onValueChange} value={value}>
+    <Select
+      disabled={disabled}
+      onValueChange={whenChosen(onValueChange)}
+      value={value}
+    >
       <SelectTrigger id={id}>
         <SelectValue placeholder="Select timezone" />
       </SelectTrigger>

@@ -16,6 +16,7 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
+  whenChosen,
 } from "#src/components/ui/select";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import { TimezoneSelect } from "#src/components/ui/timezone-select";
@@ -204,7 +205,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <Label htmlFor="waitDelayTimingMode">Time input mode</Label>
         <Select
           disabled={disabled}
-          onValueChange={handleDelayTimingModeChange}
+          onValueChange={whenChosen(handleDelayTimingModeChange)}
           value={delayTimingMode}
         >
           <SelectTrigger className="w-full" id="waitDelayTimingMode">
@@ -450,7 +451,7 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <Label htmlFor="waitMode">How should this step wait?</Label>
         <Select
           disabled={disabled}
-          onValueChange={handleModeChange}
+          onValueChange={whenChosen(handleModeChange)}
           value={waitMode}
         >
           <SelectTrigger className="w-full" id="waitMode">
@@ -622,7 +623,7 @@ export function ActionConfig({
           </Label>
           <Select
             disabled={disabled}
-            onValueChange={handleCategoryChange}
+            onValueChange={whenChosen(handleCategoryChange)}
             value={category || undefined}
           >
             <SelectTrigger className="w-full" id="actionCategory">
@@ -681,7 +682,7 @@ export function ActionConfig({
           </Label>
           <Select
             disabled={disabled || !category}
-            onValueChange={handleActionTypeChange}
+            onValueChange={whenChosen(handleActionTypeChange)}
             value={actionType || undefined}
           >
             <SelectTrigger className="w-full" id="actionType">

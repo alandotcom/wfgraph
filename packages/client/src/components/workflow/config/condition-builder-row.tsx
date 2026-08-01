@@ -12,6 +12,7 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
+  whenChosen,
 } from "#src/components/ui/select";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
@@ -342,7 +343,7 @@ function ConditionValueInput(input: {
           />
           <Select
             disabled={disabled}
-            onValueChange={(value) => {
+            onValueChange={whenChosen((value) => {
               if (!isTimeUnitValue(value)) {
                 return;
               }
@@ -350,7 +351,7 @@ function ConditionValueInput(input: {
                 ...condition,
                 unit: value,
               });
-            }}
+            })}
             value={condition.unit}
           >
             <SelectTrigger className="w-36">
@@ -404,9 +405,9 @@ function ConditionValueInput(input: {
       return (
         <Select
           disabled={disabled}
-          onValueChange={(value) => {
+          onValueChange={whenChosen((value) => {
             onConditionChange({ ...condition, value });
-          }}
+          })}
           value={condition.value}
         >
           <SelectTrigger className="min-w-[240px]">
@@ -700,7 +701,7 @@ export function ConditionBuilderRow({
                       <div className="flex flex-wrap items-center gap-2">
                         <Select
                           disabled={disabled || availableFields.length === 0}
-                          onValueChange={(fieldPath) => {
+                          onValueChange={whenChosen((fieldPath) => {
                             const selectedField = fieldByPath.get(fieldPath);
                             if (!selectedField) {
                               return;
@@ -715,7 +716,7 @@ export function ConditionBuilderRow({
                                   existing.id
                                 )
                             );
-                          }}
+                          })}
                           value={condition.field}
                         >
                           <SelectTrigger className="min-w-[280px]">
@@ -768,7 +769,7 @@ export function ConditionBuilderRow({
 
                         <Select
                           disabled={disabled}
-                          onValueChange={(operatorValue) => {
+                          onValueChange={whenChosen((operatorValue) => {
                             const nextCondition = applyOperatorValueToCondition(
                               condition,
                               operatorValue
@@ -782,7 +783,7 @@ export function ConditionBuilderRow({
                               condition.id,
                               () => nextCondition
                             );
-                          }}
+                          })}
                           value={condition.operator}
                         >
                           <SelectTrigger className="min-w-[190px]">

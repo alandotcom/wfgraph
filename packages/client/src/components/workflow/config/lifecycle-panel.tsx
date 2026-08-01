@@ -391,10 +391,10 @@ function CorrelationPathInput({
         onValueChange={(next) =>
           onCommit(
             eventName,
-            next === declaredPath || next === NO_PATH_CHOICE ? "" : next
+            next === declaredPath || next === null ? "" : next
           )
         }
-        value={suppliedPath ?? declaredPath ?? NO_PATH_CHOICE}
+        value={suppliedPath ?? declaredPath ?? null}
       >
         <SelectTrigger className="w-full" id={inputId}>
           <SelectValue />
@@ -403,7 +403,7 @@ function CorrelationPathInput({
           {declaredPath ? null : (
             // An Event declaring no path has none to choose back to, so this is
             // the only way to undo a choice and leave the workflow saying so.
-            <SelectItem value={NO_PATH_CHOICE}>Choose a path</SelectItem>
+            <SelectItem value={null}>Choose a path</SelectItem>
           )}
           {paths.map((path) => (
             <SelectItem key={path} value={path}>
@@ -420,9 +420,6 @@ function CorrelationPathInput({
     </div>
   );
 }
-
-/** What an Event declaring no path sits at until a builder chooses one. */
-const NO_PATH_CHOICE = "__none__";
 
 /** The payload paths that can identify an entity, which is what a run matches on. */
 const IDENTIFYING_FIELD_TYPES = new Set(["string", "number"]);

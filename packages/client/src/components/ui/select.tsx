@@ -6,16 +6,24 @@ import { Children, isValidElement } from "react";
 
 import { cn } from "@rova/shared/utils";
 
+/**
+ * `null` is how Base UI spells "nothing chosen", and this wrapper takes it as
+ * given rather than standing a sentinel string in its place. A single select can
+ * report it whatever its items are, so every caller answers for it.
+ */
 type SelectProps = Omit<
   ComponentProps<typeof SelectPrimitive.Root>,
   "multiple" | "value" | "defaultValue" | "onValueChange"
 > & {
-  value?: string;
-  defaultValue?: string;
-  onValueChange?: (value: string) => void;
+  value?: string | null;
+  defaultValue?: string | null;
+  onValueChange?: (value: string | null) => void;
 };
 
-const SelectItemsContext = createContext<Record<string, string>>({});
+/** Labels by value, as a Map because `null` is one of the values it holds. */
+const SelectItemsContext = createContext<ReadonlyMap<string | null, string>>(
+  new Map()
+);
 
 function getTextContent(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") {
@@ -34,7 +42,7 @@ function getTextContent(node: ReactNode): string {
 }
 
 function collectSelectItems(node: ReactNode) {
-  const items: Array<{ value: string; label: string }> = [];
+  const items: Array<{ value: string | null; label: string }> = [];
 
   const visit = (childNode: ReactNode) => {
     Children.forEach(childNode, (child) => {
@@ -48,7 +56,7 @@ function collectSelectItems(node: ReactNode) {
         return;
       }
 
-      if (typeof child.props.value === "string") {
+      if (typeof child.props.value === "string" || child.props.value === null) {
         // An item carrying secondary text (a description under the label)
         // declares its display label explicitly; text extraction would
         // concatenate every nested string into the trigger.
@@ -73,29 +81,39 @@ function collectSelectItems(node: ReactNode) {
 
 function Select({ onValueChange, children, ...props }: SelectProps) {
   const labelByValue = useMemo(() => {
-    const next: Record<string, string> = {};
+    const next = new Map<string | null, string>();
     for (const item of collectSelectItems(children)) {
-      next[item.value] = item.label;
+      next.set(item.value, item.label);
     }
     return next;
   }, [children]);
 
   return (
     <SelectItemsContext.Provider value={labelByValue}>
-      <SelectPrimitive.Root
+      <SelectPrimitive.Root<string>
         data-slot="select"
         multiple={false}
-        onValueChange={(value) => {
-          if (typeof value === "string") {
-            onValueChange?.(value);
-          }
-        }}
+        onValueChange={(value) => onValueChange?.(value)}
         {...props}
       >
         {children}
       </SelectPrimitive.Root>
     </SelectItemsContext.Provider>
   );
+}
+
+/**
+ * Adapts a handler for a select that offers no empty item, which therefore
+ * cannot be cleared to one. Base UI reports `null` for a cleared single select
+ * whatever its items are, so the type admits a case these callers have no value
+ * to put anywhere.
+ */
+function whenChosen(onChosen: (value: string) => void) {
+  return (value: string | null) => {
+    if (value !== null) {
+      onChosen(value);
+    }
+  };
 }
 
 function SelectGroup({
@@ -111,11 +129,10 @@ function SelectValue({
 
   return (
     <SelectPrimitive.Value data-slot="select-value" {...props}>
-      {(value) => {
-        if (typeof value !== "string") {
-          return undefined;
-        }
-        return labels[value] ?? value;
+      {(value: string | null) => {
+        // A value with no item of its own still shows, so a stored path the
+        // catalog no longer offers reads as itself rather than as blank.
+        return labels.get(value) ?? value ?? undefined;
       }}
     </SelectPrimitive.Value>
   );
@@ -209,7 +226,7 @@ function SelectItem({
   children,
   ...props
 }: Omit<ComponentProps<typeof SelectPrimitive.Item>, "value"> & {
-  value: string;
+  value: string | null;
 }) {
   return (
     <SelectPrimitive.Item
@@ -290,4 +307,5 @@ export {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
+  whenChosen,
 };
