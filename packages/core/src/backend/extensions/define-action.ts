@@ -2,45 +2,28 @@
  * How a host writes an action of its own.
  *
  * The step half of the same vocabulary is `defineStep`, and the two read alike on
- * purpose: `input`, `output`, `handler`. What sits between the engine's input
- * record and the handler is the same work, and both call it in
- * `steps/step-boundary.ts` rather than each wording it. One thing differs: a
- * step belongs to an integration and reads its credentials, so a step's handler
- * may also answer an `Effect` whose error channel carries a refused credential
- * read out to the durable runtime. An action belongs to no integration.
+ * purpose: `input`, `output`, `handler`. Everything between the engine's input
+ * record and the handler is `buildStep`, which both call and neither copies.
+ * What is here is the identity an action carries, since a host's action names
+ * itself where an integration names its steps.
  *
- * This is server code. It runs the host's `handler`, catches its throws, encodes
- * what it answered, and builds the `StepResult` envelope the engine reads, so it
- * lives beside assembly rather than in the shared package the browser also pulls
- * from.
+ * This is server code: `buildStep` runs the host's handler and builds the
+ * `StepResult` envelope the engine reads, so the file lives beside assembly
+ * rather than in the shared package the browser also pulls from.
  */
 
-import { Result } from "effect";
 import {
-  readIntegrationId,
-  readStepContext,
-} from "#src/backend/extensions/steps/step-handler";
-import {
-  failedStep,
-  type HandlerBag,
-  handlerErrorMessage,
-  invalidConfigMessage,
-  missingContextMessage,
-  toHandlerBag,
-} from "#src/backend/extensions/steps/step-boundary";
-import {
-  nodeStepApi,
-  type NodeStepApi,
+  buildStep,
+  type HandlerAnswer,
+  type StepBag,
 } from "#src/backend/extensions/steps/define-step";
-import { encodeThroughOutputSchema } from "#src/backend/extensions/steps/output-encoding";
 import type { StepFactory } from "#src/backend/extensions/steps/step-runner";
 import type { ActionConfigField } from "@rova/shared/plugins/action-fields";
 import {
-  buildConfigReader,
   configFieldsFromInputSchema,
   type InputSchema,
 } from "#src/backend/extensions/schema-io";
-import { asStandardSchema, isEffectSchema } from "@rova/shared/types/schema";
+import { asStandardSchema } from "@rova/shared/types/schema";
 import type { ReferenceField } from "@rova/shared/graph/node-references";
 import {
   type OutputSchema,
@@ -48,18 +31,14 @@ import {
 } from "@rova/shared/graph/output-fields";
 
 /**
- * The one argument an action's handler is called with.
+ * The one argument an action's handler is called with, which is the bag a step's
+ * handler reads.
  *
- * The step half calls this `StepBag` and adds the credentials an action has no
- * integration to read. Both are the one bag in `step-boundary.ts`.
+ * The credential reads on it answer whichever connection the node was
+ * configured with, and an empty record for a node configured with none, which is
+ * the ordinary case for a host action.
  */
-export type ActionBag<TInput> = HandlerBag<TInput> & {
-  /**
-   * Where work with a side effect goes, so a replay reuses it rather than doing
-   * it again. Nothing outside it is remembered.
-   */
-  readonly step: NodeStepApi;
-};
+export type ActionBag<TInput> = StepBag<TInput>;
 
 /** What a host writes to describe an action's identity and presentation. */
 export type ActionIdentity = {
@@ -125,15 +104,16 @@ export type ActionDefinition = ActionIdentity & {
 };
 
 /**
- * The handler, in the two forms an author writes it.
+ * The handler, in the three forms an author writes it.
  *
  * It answers its output rather than an envelope: `defineAction` builds the
  * `{ success, data }` wrapper the engine reads, the same way `defineStep` does.
- * To fail the node, throw -- the message becomes the run log's sentence.
+ * A value or a Promise fails the node by throwing, and an `Effect` by failing
+ * with a `StepFailure`; either message becomes the run log's sentence.
  */
 type ActionHandler<TInput, TOutput> = (
   bag: ActionBag<TInput>
-) => TOutput | Promise<TOutput>;
+) => HandlerAnswer<TOutput>;
 
 export type DefineActionInput<TInput extends Record<string, unknown>> =
   ActionIdentity & {
@@ -208,77 +188,14 @@ function normalizeActionIdentity(
 }
 
 /**
- * Everything an action does around its handler, as the engine calls it.
- *
- * Only an Effect output schema has an encoder: a foreign Standard Schema library
- * hands over a validator and a JSON Schema and nothing that runs in this
- * direction, so those answers pass through untouched. That is the same call
- * `output-fields.ts` makes for the field list -- what a schema cannot say about
- * itself is not said.
- */
-function buildAction<TInput extends Record<string, unknown>>(
-  actionId: string,
-  input: InputSchema<TInput>,
-  outputSchema: OutputSchema<Record<string, unknown>> | undefined,
-  handler: ActionHandler<TInput, unknown>
-): StepFactory {
-  const subject = `Action "${actionId}"`;
-  const readConfig = buildConfigReader(input);
-  const encodeOutput =
-    outputSchema !== undefined &&
-    isEffectSchema<Record<string, unknown>, never>(outputSchema)
-      ? encodeThroughOutputSchema(subject, outputSchema)
-      : undefined;
-
-  return (app) => async (rawInput, node) => {
-    const context = readStepContext(rawInput._context);
-    if (!context) {
-      return failedStep(missingContextMessage(subject));
-    }
-
-    const parsed = readConfig(rawInput);
-    if (Result.isFailure(parsed)) {
-      return failedStep(invalidConfigMessage(subject, parsed.failure));
-    }
-
-    try {
-      // The connection reaches the handler beside its config rather than inside
-      // it, which is why the read happens here and not in the config.
-      const data = await handler({
-        ...toHandlerBag(
-          parsed.success,
-          context,
-          readIntegrationId(rawInput.integrationId),
-          node?.ctx
-        ),
-        step: nodeStepApi(app, node?.steps),
-      });
-
-      if (!encodeOutput) {
-        return { success: true, data };
-      }
-
-      // A handler that answered with something its output schema cannot encode
-      // will answer with it again on every attempt, so this fails the node once
-      // rather than spending the retry budget on a certainty.
-      const encoded = encodeOutput(data);
-      return Result.isFailure(encoded)
-        ? failedStep(encoded.failure)
-        : { success: true, data: encoded.success };
-    } catch (error) {
-      return failedStep(handlerErrorMessage(subject, error));
-    }
-  };
-}
-
-/**
  * Define an action of your own, for `createRovaApp({ extensions: { actions } })`.
  *
  * Actions are the executable steps in a workflow. When a workflow reaches an
  * action node, the engine resolves template variables in the config, validates
  * the result against `input`, and calls `handler` with the typed config. What
- * the handler answers becomes the node's output; throwing fails the node with
- * the thrown message.
+ * the handler answers becomes the node's output. A handler written as a plain
+ * or `async` function fails the node by throwing; one written as an `Effect`
+ * fails it with a `StepFailure`. Either message becomes the run log's sentence.
  *
  * An `output` written in a foreign Standard Schema library derives the field
  * list but encodes nothing on the way out, since only an Effect schema carries
@@ -345,11 +262,16 @@ export function defineAction<TInput extends Record<string, unknown>>(
     outputFields: outputSchema
       ? outputFieldsFromSchema(outputSchema)
       : undefined,
-    implement: buildAction(
-      normalized.id,
-      definition.input,
-      outputSchema,
-      definition.handler
+    // `unknown` is the output type this overload has erased to: the branded
+    // definition carries no `TOutput`, and the encoder is decided from the
+    // schema value rather than from the type.
+    implement: buildStep<TInput, unknown>(
+      {
+        input: definition.input,
+        output: outputSchema,
+        handler: definition.handler,
+      },
+      `Action "${normalized.id}"`
     ),
     __rovaActionBrand: true,
   };

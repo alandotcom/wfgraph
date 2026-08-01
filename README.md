@@ -537,7 +537,8 @@ Three rules:
 
 The six built-ins use an Effect, because `callExternal` answers one and a handler yields it
 directly. An Effect handler fails with a `StepFailure`, and `HttpClient.HttpClient` is the
-one service it may ask for.
+one service it may ask for. A host's own action takes the same three shapes, and
+`@rova/core` exports `StepFailure` for the Effect one.
 
 An `async` handler fails by a throw, and the message becomes the sentence in the run log:
 

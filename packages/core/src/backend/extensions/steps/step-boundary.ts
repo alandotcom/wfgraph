@@ -1,14 +1,15 @@
 /**
- * What both authoring functions do around an author's handler, written once.
+ * The bag a handler is handed, and the sentences the run log shows where a
+ * boundary refuses.
  *
  * `defineAction` and `defineStep` stay two functions, because an Internal
- * Extension and an External one are two concepts. What sits between the engine's
- * input record and the handler is one thing, and it is here: the bag a handler
- * is handed, and the sentences the run log shows where the boundary refuses.
+ * Extension and an External one are two concepts. Everything between the
+ * engine's input record and the handler is `buildStep`, which reads its bag and
+ * its wording from here.
  *
  * `subject` is the phrase each sentence names the offender by, `Step
  * "twilio/send-sms"` or `Action "appointments/cancel"`, the same phrase
- * `encodeThroughOutputSchema` takes.
+ * `buildStep` and `encodeThroughOutputSchema` take.
  */
 
 import type { StepContext } from "#src/backend/extensions/steps/step-handler";
@@ -21,9 +22,8 @@ import type { StepResult } from "@rova/shared/actions/step-result";
  *
  * One bag rather than two parameters, which is the shape Inngest uses and the
  * shape a later value can be added to without moving anything an author wrote.
- * `defineStep` adds the credential reads to this. `defineAction` publishes it as
- * it stands, since a host's action belongs to no integration and has nothing to
- * read.
+ * `buildStep` adds the credential reads and `step` to this, and what it builds
+ * is what a handler written either way receives.
  */
 export type HandlerBag<TInput> = {
   /** The node's resolved config, decoded through the schema the author declared. */
@@ -36,13 +36,6 @@ export type HandlerBag<TInput> = {
   readonly nodeType: string;
   /** The integration the node was configured with, if any. */
   readonly integrationId?: string;
-  /**
-   * What the host's middleware put here, empty when it declared none.
-   *
-   * Under its own key rather than spread across the bag, so it is declared
-   * rather than assumed and cannot displace a name Rova owns.
-   */
-  readonly ctx: Readonly<Record<string, unknown>>;
 };
 
 /**
@@ -56,12 +49,10 @@ export type HandlerBag<TInput> = {
 export function toHandlerBag<TInput>(
   input: TInput,
   context: StepContext,
-  integrationId: string | undefined,
-  ctx: Readonly<Record<string, unknown>> = {}
+  integrationId: string | undefined
 ): HandlerBag<TInput> {
   return {
     input,
-    ctx,
     runMode: context.runMode ?? "live",
     executionId: context.executionId,
     nodeId: context.nodeId,

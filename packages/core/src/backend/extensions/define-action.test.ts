@@ -7,7 +7,7 @@
  * an Effect schema is the one arm `defineAction` bridges itself.
  */
 
-import { Schema, SchemaTransformation } from "effect";
+import { Effect, Schema, SchemaTransformation } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { type } from "arktype";
 import { z } from "zod";
@@ -21,6 +21,7 @@ import {
   type ActionBag,
   defineAction,
 } from "#src/backend/extensions/define-action";
+import { StepFailure } from "#src/backend/extensions/steps/define-step";
 
 const stepContext = {
   executionId: "exec_1",
@@ -98,6 +99,45 @@ describe("defineAction", () => {
     expect(await call(action, { text: "hello" })).toEqual({
       success: false,
       error: { message: "boom" },
+    });
+  });
+
+  // The third handler shape. An Effect is not a thenable, so a boundary reaching
+  // its value has to run it: awaiting one answers with the Effect object, which
+  // reads as an empty node output everywhere downstream.
+  it("runs a handler written as an Effect", async () => {
+    const action = defineAction({
+      id: "custom/effect-handler",
+      label: "Effect Handler",
+      description: "Answers from an Effect rather than a Promise",
+      input: z.object({ text: z.string() }),
+      handler: Effect.fn(function* () {
+        return yield* Effect.succeed({ ok: true });
+      }),
+    });
+
+    expect(await call(action, { text: "hello" })).toEqual({
+      success: true,
+      data: { ok: true },
+    });
+  });
+
+  // An Effect handler fails its node with `StepFailure`, which is the arm a
+  // throw covers for a plain function.
+  it("fails the node on a StepFailure an Effect handler raises", async () => {
+    const action = defineAction({
+      id: "custom/effect-fails",
+      label: "Effect Fails",
+      description: "Raises a StepFailure",
+      input: z.object({ text: z.string() }),
+      handler: Effect.fn(function* () {
+        return yield* new StepFailure({ message: "the vendor said no" });
+      }),
+    });
+
+    expect(await call(action, { text: "hello" })).toEqual({
+      success: false,
+      error: { message: "the vendor said no" },
     });
   });
 
@@ -344,8 +384,8 @@ describe("defineAction as the engine calls it", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  // The connection reaches the handler beside its config rather than inside it:
-  // an author reads the id to look their own credentials up with.
+  // The connection reaches the handler beside its config rather than inside it,
+  // as the id and as the two credential reads a step's handler is given.
   it("keeps the connection out of the config the handler reads", async () => {
     const action = notify();
 
@@ -361,7 +401,8 @@ describe("defineAction as the engine calls it", () => {
       input: { actionId: "billing/notify", to: "someone" },
       ...stepContext,
       integrationId: "int_9",
-      ctx: {},
+      credentials: expect.anything(),
+      readCredentials: expect.any(Function),
       step: { run: expect.any(Function) },
     });
   });

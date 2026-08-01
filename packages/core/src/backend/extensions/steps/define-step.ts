@@ -369,29 +369,39 @@ function toHandlerEffect<TOutput>(
 }
 
 /**
- * Everything a step does around its handler, as a function of the action id.
+ * Everything either authoring function does around its handler, written once.
  *
- * The id is what every message below names, and a step learns it from the
- * integration that declares the action, at assembly.
+ * `subject` is the phrase every message below names the offender by: `Step
+ * "twilio/send-sms"` where an integration declares the action, `Action
+ * "appointments/cancel"` where a host writes one. `output` is optional here for
+ * `defineAction`, whose actions may be addressable by node alone; a definition
+ * that omits it passes the handler's answer on unencoded.
  */
-function buildStep<TInput, TOutput>(
-  definition: Pick<
-    ActionStepInput<TInput, TOutput>,
-    "handler" | "input" | "output"
-  >
-): (actionId: string) => StepFactory {
+export function buildStep<TInput, TOutput>(
+  definition: Pick<ActionStepInput<TInput, TOutput>, "handler" | "input"> & {
+    readonly output?: OutputSchema<TOutput>;
+  },
+  subject: string
+): StepFactory {
   const readConfig = buildConfigReader(definition.input);
+  const toFailure = stepFailureFrom(subject);
+
+  // Only an Effect output schema has an encoder. A foreign Standard Schema
+  // library publishes a validator and a JSON Schema and nothing that runs in
+  // this direction, so its answers pass through as they stand. That is the
+  // same call `output-fields.ts` makes for the field list: what a schema
+  // cannot say about itself is not said.
+  const encodeOutput =
+    definition.output && isEffectSchema<TOutput, never>(definition.output)
+      ? encodeThroughOutputSchema(subject, definition.output)
+      : Result.succeed;
 
   function runStep(
     app: StepEnvironment,
-    subject: string,
-    encodeOutput: (value: unknown) => Result.Result<unknown, string>,
     rawInput: Record<string, unknown>,
     context: StepContext | undefined,
     node: NodeRuntime | undefined
   ): Effect.Effect<StepResult, CredentialsUnavailable> {
-    const toFailure = stepFailureFrom(subject);
-
     return Effect.gen(function* () {
       if (!context) {
         return yield* new StepFailure({
@@ -418,7 +428,7 @@ function buildStep<TInput, TOutput>(
       const answer = yield* Effect.try({
         try: () =>
           definition.handler({
-            ...toHandlerBag(input, context, integrationId, node?.ctx),
+            ...toHandlerBag(input, context, integrationId),
             credentials,
             readCredentials: () => runToPromise(credentials),
             step: nodeStepApi(app, node?.steps),
@@ -454,30 +464,10 @@ function buildStep<TInput, TOutput>(
     );
   }
 
-  return (actionId) => {
-    const subject = `Step "${actionId}"`;
-
-    // Only an Effect output schema has an encoder. A foreign Standard Schema
-    // library publishes a validator and a JSON Schema and nothing that runs in
-    // this direction, so its answers pass through as they stand. That is the
-    // same call `output-fields.ts` makes for the field list: what a schema
-    // cannot say about itself is not said.
-    const encodeOutput = isEffectSchema<TOutput, never>(definition.output)
-      ? encodeThroughOutputSchema(subject, definition.output)
-      : Result.succeed;
-
-    return (app) => (rawInput, steps) =>
-      app.runStep(
-        runStep(
-          app,
-          subject,
-          encodeOutput,
-          rawInput,
-          readStepContext(rawInput._context),
-          steps
-        )
-      );
-  };
+  return (app) => (rawInput, node) =>
+    app.runStep(
+      runStep(app, rawInput, readStepContext(rawInput._context), node)
+    );
 }
 
 /**
@@ -500,7 +490,7 @@ export function defineStep<TInput, TOutput>(
     ),
     input: definition.input,
     output: definition.output,
-    implement: buildStep(definition),
+    implement: (actionId) => buildStep(definition, `Step "${actionId}"`),
   };
 }
 

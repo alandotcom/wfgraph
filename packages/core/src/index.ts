@@ -18,6 +18,11 @@ export {
   type ActionDefinition,
   defineAction,
 } from "#src/backend/extensions/define-action";
+/**
+ * How a handler written as an `Effect` fails its node, with the message the run
+ * log shows. A handler written as a plain function throws instead.
+ */
+export { StepFailure } from "#src/backend/extensions/steps/define-step";
 
 export {
   BaseMiddleware,
