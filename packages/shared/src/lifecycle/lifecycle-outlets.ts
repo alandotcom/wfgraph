@@ -74,10 +74,10 @@ export function nodesBehindOutlet(input: {
  * The outlets a run can have left the entry node through and still arrive at this
  * node.
  *
- * Both outlets answer for a node a diamond rejoins, and neither answers for a
- * node the entry node cannot reach at all. Callers read the size of the set as
- * much as its members: two outlets mean the node has to cope with either
- * payload, which is why its field list is the intersection of theirs.
+ * Both outlets answer for a node each of them reaches, and neither answers for a
+ * node the entry node cannot reach at all. What callers read off the members is
+ * which Events could have put a run here, which decides the fields a picker
+ * offers and what a rule about the arriving Event selects between.
  */
 export function entryOutletsReaching(input: {
   entryNodeId: string;

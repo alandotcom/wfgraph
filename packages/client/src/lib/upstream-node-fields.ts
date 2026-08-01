@@ -1,13 +1,15 @@
 import { compact } from "es-toolkit/array";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import {
+  type EventMetadata,
   type ExtensionCatalog,
   findAction,
   findEvent,
 } from "@rova/shared/extensions/catalog";
-import type {
-  ConditionFieldDefinition,
-  ConditionFieldType,
+import {
+  type ConditionFieldDefinition,
+  type ConditionFieldType,
+  EVENT_NAME_FIELD_PATH,
 } from "@rova/shared/conditions/conditions";
 import {
   entryOutletsReaching,
@@ -39,84 +41,124 @@ function readConfigString(
 }
 
 /**
- * The fields every one of these Events carries, by path.
+ * A field together with the picker section it belongs under, where that differs
+ * from the name of the node producing it.
  *
- * Only the common paths qualify: a field some of the Events leave out resolves to
- * nothing on the runs that arrived as one of those, so offering it would be a
- * promise the payload does not keep.
- *
- * A common path keeps its declared type only where every Event agrees on it, the
- * `format` included, because the type is what decides a condition row's operators
- * and a rule built against one Event would be unanswerable on a run that arrived
- * as another. Disagreement leaves the path offered as text, which is what a
- * template renders it to in any case.
- *
- * An Event the catalog has never heard of is skipped. Saving refuses a rules
- * declaration naming one, so it belongs to a graph that cannot run, and the
- * picker's job is to offer what it can name.
+ * The entry node is the only source needing one: several Events can reach a
+ * single node, and a path only some of them declare belongs under those Events
+ * rather than beside the paths all of them carry.
  */
-function commonPayloadFields(
-  eventNames: readonly string[],
-  catalog: ExtensionCatalog
-): ReferenceField[] {
-  const perEvent = compact(
-    eventNames.map((name) => findEvent(catalog, name)?.payloadFields)
-  );
+type SourcedField = ReferenceField & { sourceLabel?: string };
 
-  const [first, ...rest] = perEvent;
-  if (!first) {
-    return [];
+/** The section holding the paths every Event reaching a node declares. */
+const SHARED_EVENT_FIELDS_LABEL = "Carried by every Event";
+
+/** What the picker calls the field naming the Event a run arrived on. */
+const EVENT_NAME_FIELD_LABEL = "Event name";
+
+/**
+ * One path as the Events declaring it agree on it.
+ *
+ * The path keeps its declared type only where they agree, the `format`
+ * included, because the type is what decides a condition row's operators and a
+ * rule built against one Event would be unanswerable on a run that arrived as
+ * another. Disagreement leaves the path offered as text, which is what a
+ * template renders it to in any case.
+ */
+function reconcileDeclarations(
+  first: ReferenceField,
+  rest: readonly ReferenceField[]
+): ReferenceField {
+  const agreed = rest.every(
+    (other) => other.type === first.type && other.format === first.format
+  );
+  // Null on any of them is null on the field, which is what puts the is-set
+  // operators on its condition row.
+  const nullable = first.nullable || rest.some((other) => other.nullable);
+
+  return {
+    ...(agreed
+      ? first
+      : {
+          path: first.path,
+          ...(first.description ? { description: first.description } : {}),
+          type: "string" as const,
+        }),
+    ...(nullable ? { nullable: true } : {}),
+  };
+}
+
+/**
+ * Every path any of these Events declares, each offered once.
+ *
+ * A run reaches the node on one Event out of these, so a path only some of them
+ * declare is still worth offering: a rule naming it reads false on a run that
+ * arrived without it rather than failing the condition around it. Which section
+ * a path lands in is what says which runs can answer it.
+ */
+function unionPayloadFields(events: readonly EventMetadata[]): SourcedField[] {
+  const declarationsByPath = new Map<
+    string,
+    { label: string; field: ReferenceField }[]
+  >();
+
+  for (const event of events) {
+    for (const field of event.payloadFields) {
+      const declarations = declarationsByPath.get(field.path);
+      if (declarations) {
+        declarations.push({ label: event.label, field });
+      } else {
+        declarationsByPath.set(field.path, [{ label: event.label, field }]);
+      }
+    }
   }
 
   return compact(
-    first.map((field) => {
-      const declarations = rest.map((fields) =>
-        fields.find((other) => other.path === field.path)
-      );
-      if (declarations.some((other) => other === undefined)) {
+    Array.from(declarationsByPath.values()).map((declarations) => {
+      const [first, ...rest] = declarations;
+      if (!first) {
         return undefined;
       }
 
-      const agreed = declarations.every(
-        (other) => other?.type === field.type && other?.format === field.format
+      const reconciled = reconcileDeclarations(
+        first.field,
+        rest.map((entry) => entry.field)
       );
-      // Null on any of them is null on the field, which is what puts the
-      // is-set operators on its condition row.
-      const nullable =
-        field.nullable || declarations.some((other) => other?.nullable);
+
+      // One Event reaching the node leaves one section, which is the node's own
+      // name and needs no label of its own.
+      if (events.length < 2) {
+        return reconciled;
+      }
 
       return {
-        ...(agreed
-          ? field
-          : {
-              path: field.path,
-              ...(field.description ? { description: field.description } : {}),
-              type: "string" as const,
-            }),
-        ...(nullable ? { nullable: true } : {}),
+        ...reconciled,
+        sourceLabel:
+          declarations.length === events.length
+            ? SHARED_EVENT_FIELDS_LABEL
+            : declarations.map((entry) => entry.label).join(", "),
       };
     })
   );
 }
 
 /**
- * What the entry node offers a particular node downstream of it.
+ * The Events that can put a run at this node, in the order the rules name them.
  *
- * The entry node's output is the payload of the Event that started or canceled
- * the run, and which of those a node receives depends on the outlet it sits
- * behind: the Start Event's fields behind Started, the Cancel Events' behind
- * Canceled, and the fields common to both where a branch rejoins. Every Event a
- * run could have arrived as goes into one intersection.
+ * Which of them reaches a node depends on the outlet it sits behind: the Start
+ * Event behind Started, the Cancel Events behind Canceled. A node the entry node
+ * reaches through no named outlet is reached by none of them, since the save
+ * refuses an entry-node edge naming no outlet.
  *
- * A node the entry node cannot reach through a named outlet is offered nothing.
- * The save refuses an entry-node edge that names no outlet, so an unnamed one
- * describes a graph that cannot run.
+ * An Event the catalog has never heard of is skipped. Saving refuses a rules
+ * declaration naming one, so it belongs to a graph that cannot run, and the
+ * picker's job is to offer what it can name.
  */
-function getEntryNodeOutputFields(input: {
+function entryEventsReaching(input: {
   entryNode: WorkflowNode;
   targetNodeId: string;
   edges: WorkflowEdge[];
-}): ReferenceField[] {
+}): EventMetadata[] {
   const rules = readLifecycleRules(input.entryNode.data.config);
   if (!rules) {
     return [];
@@ -128,13 +170,22 @@ function getEntryNodeOutputFields(input: {
     edges: input.edges,
   });
 
-  return commonPayloadFields(
+  const catalog = getExtensionCatalog();
+  return compact(
     compact([
       outlets.has(LIFECYCLE_STARTED_HANDLE) && rules.startEvent,
       ...(outlets.has(LIFECYCLE_CANCELED_HANDLE) ? rules.cancelEvents : []),
-    ]),
-    getExtensionCatalog()
+    ]).map((name) => findEvent(catalog, name))
   );
+}
+
+/** What the entry node offers a particular node downstream of it. */
+function getEntryNodeOutputFields(input: {
+  entryNode: WorkflowNode;
+  targetNodeId: string;
+  edges: WorkflowEdge[];
+}): SourcedField[] {
+  return unionPayloadFields(entryEventsReaching(input));
 }
 
 function getPluginActionOutputFields(actionType: string): ReferenceField[] {
@@ -182,7 +233,7 @@ export type FieldRequest = {
 export function getNodeOutputFields(
   node: WorkflowNode,
   request: FieldRequest
-): ReferenceField[] {
+): SourcedField[] {
   const actionType = readConfigString(node.data.config, "actionType");
 
   if (actionType) {
@@ -239,10 +290,10 @@ export function getUpstreamFields(input: {
     return getNodeOutputFields(node, {
       targetNodeId: currentNodeId,
       edges,
-    }).map((field) => ({
+    }).map(({ sourceLabel, ...field }) => ({
       ...field,
       sourceNodeId: node.id,
-      sourceNodeName,
+      sourceNodeName: sourceLabel ?? sourceNodeName,
     }));
   });
 }
@@ -312,12 +363,59 @@ export function getEventConditionFields(
   ).toSorted((a, b) => a.path.localeCompare(b.path));
 }
 
+/**
+ * The field a rule names the arriving Event by, offered only where more than one
+ * Event can put a run at this node: behind the Canceled outlet, and wherever a
+ * workflow names several Start Events. One Event leaves nothing to select
+ * between.
+ *
+ * It belongs to the condition picker alone. A template token resolves against a
+ * node's output, and the Event's name is a fact about the run rather than
+ * anything the entry node hands on.
+ */
+function eventNameConditionField(input: {
+  currentNodeId?: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}): ConditionSelectableField[] {
+  const { currentNodeId, edges } = input;
+  const entryNode = getUpstreamNodes(input).find(
+    (node) => node.data.type === "lifecycle"
+  );
+  if (!(entryNode && currentNodeId)) {
+    return [];
+  }
+
+  const events = entryEventsReaching({
+    entryNode,
+    targetNodeId: currentNodeId,
+    edges,
+  });
+  if (events.length < 2) {
+    return [];
+  }
+
+  return [
+    {
+      path: EVENT_NAME_FIELD_PATH,
+      label: EVENT_NAME_FIELD_LABEL,
+      type: "string",
+      sourceNodeId: entryNode.id,
+      sourceNodeLabel: SHARED_EVENT_FIELDS_LABEL,
+      sourceNodeLabels: [SHARED_EVENT_FIELDS_LABEL],
+      enumValues: events.map((event) => event.name),
+    },
+  ];
+}
+
 export function getUpstreamConditionFields(input: {
   currentNodeId?: string;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
 }): ConditionSelectableField[] {
-  const fieldsByPath = new Map<string, ConditionSelectableField>();
+  const fieldsByPath = new Map<string, ConditionSelectableField>(
+    eventNameConditionField(input).map((field) => [field.path, field])
+  );
 
   for (const field of getUpstreamFields(input)) {
     const path = field.path.trim();

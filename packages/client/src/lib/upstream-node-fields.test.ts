@@ -291,11 +291,71 @@ describe("upstream-node-fields", () => {
         label: "Apologise",
         config: { actionType: "custom/notify" },
       }),
+    ];
+
+    const edges: WorkflowEdge[] = [
+      createEdge({
+        id: "e1",
+        source: "lifecycle-1",
+        sourceHandle: LIFECYCLE_CANCELED_HANDLE,
+        target: "on-cancel",
+      }),
+    ];
+
+    // Behind Canceled: the Cancel Event's own fields, including the one the Start
+    // Event never declares. One Event reaches this node, so the fields stay under
+    // the node's own name.
+    expect(
+      getUpstreamFields({ currentNodeId: "on-cancel", nodes, edges }).map(
+        (field) => [field.path, field.sourceNodeName]
+      )
+    ).toEqual([
+      ["occurredAt", "Lifecycle"],
+      ["reason", "Lifecycle"],
+    ]);
+  });
+
+  // The reported bug: two Cancel Events of unrelated shape intersected to
+  // nothing, and the panel said there were no upstream fields at all.
+  it("offers every Cancel Event's fields, each under the Events declaring it", () => {
+    surface.events = [
+      anEvent({
+        name: "app/appointment.created",
+        schema: Schema.Struct({
+          occurredAt: isoTimestampString("When the event was raised"),
+        }),
+      }),
+      anEvent({
+        name: "app/appointment.canceled",
+        schema: Schema.Struct({
+          occurredAt: isoTimestampString("When the event was raised"),
+          reason: Schema.String.annotate({ description: "Why" }),
+        }),
+      }),
+      anEvent({
+        name: "app/appointment.rescheduled",
+        schema: Schema.Struct({
+          occurredAt: isoTimestampString("When the event was raised"),
+          rescheduledBy: Schema.String.annotate({
+            description: "Who moved it",
+          }),
+        }),
+      }),
+    ];
+
+    const nodes: WorkflowNode[] = [
+      anEntryNode({
+        startEvent: "app/appointment.created",
+        cancelEvents: [
+          "app/appointment.canceled",
+          "app/appointment.rescheduled",
+        ],
+      }),
       createNode({
-        id: "either-way",
+        id: "on-cancel",
         type: "action",
-        label: "Log it",
-        config: { actionType: "custom/notify" },
+        label: "Decide",
+        config: { actionType: "Condition" },
       }),
     ];
 
@@ -306,31 +366,100 @@ describe("upstream-node-fields", () => {
         sourceHandle: LIFECYCLE_CANCELED_HANDLE,
         target: "on-cancel",
       }),
-      createEdge({
-        id: "e2",
-        source: "lifecycle-1",
-        sourceHandle: LIFECYCLE_STARTED_HANDLE,
-        target: "either-way",
-      }),
-      createEdge({ id: "e3", source: "on-cancel", target: "either-way" }),
     ];
 
-    // Behind Canceled: the Cancel Event's own fields, including the one the Start
-    // Event never declares.
     expect(
       getUpstreamFields({ currentNodeId: "on-cancel", nodes, edges }).map(
-        (field) => field.path
+        (field) => [field.path, field.sourceNodeName]
       )
-    ).toEqual(["occurredAt", "reason"]);
+    ).toEqual([
+      ["occurredAt", "Carried by every Event"],
+      ["reason", "app/appointment.canceled"],
+      ["rescheduledBy", "app/appointment.rescheduled"],
+    ]);
+  });
 
-    // Both outlets reach this one, so it is offered what both payloads carry and
-    // neither side's own field: `reason` arrives only on a cancel, `bookedBy` only
-    // on a start.
-    expect(
-      getUpstreamFields({ currentNodeId: "either-way", nodes, edges })
-        .filter((field) => field.sourceNodeId === "lifecycle-1")
-        .map((field) => field.path)
-    ).toEqual(["occurredAt"]);
+  it("offers the Event name where more than one Event reaches the node", () => {
+    surface.events = [
+      anEvent({
+        name: "app/appointment.canceled",
+        schema: Schema.Struct({
+          reason: Schema.String.annotate({ description: "Why" }),
+        }),
+      }),
+      anEvent({
+        name: "app/appointment.rescheduled",
+        schema: Schema.Struct({
+          rescheduledBy: Schema.String.annotate({
+            description: "Who moved it",
+          }),
+        }),
+      }),
+    ];
+
+    const nodes: WorkflowNode[] = [
+      anEntryNode({
+        cancelEvents: [
+          "app/appointment.canceled",
+          "app/appointment.rescheduled",
+        ],
+      }),
+      createNode({
+        id: "on-cancel",
+        type: "action",
+        label: "Decide",
+        config: { actionType: "Condition" },
+      }),
+    ];
+
+    const edges: WorkflowEdge[] = [
+      createEdge({
+        id: "e1",
+        source: "lifecycle-1",
+        sourceHandle: LIFECYCLE_CANCELED_HANDLE,
+        target: "on-cancel",
+      }),
+    ];
+
+    const eventName = getUpstreamConditionFields({
+      currentNodeId: "on-cancel",
+      nodes,
+      edges,
+    }).find((field) => field.path === "$event.name");
+
+    expect(eventName).toMatchObject({
+      label: "Event name",
+      type: "string",
+      enumValues: ["app/appointment.canceled", "app/appointment.rescheduled"],
+    });
+  });
+
+  it("leaves the Event name out where one Event reaches the node", () => {
+    // Nothing to select between: every run arriving here came on that Event.
+    surface.events = [
+      anEvent({
+        name: "app/appointment.created",
+        schema: Schema.Struct({
+          bookedBy: Schema.String.annotate({ description: "Who booked it" }),
+        }),
+      }),
+    ];
+
+    const fields = getUpstreamConditionFields({
+      currentNodeId: "action-1",
+      nodes: [
+        anEntryNode({ startEvent: "app/appointment.created" }),
+        createNode({
+          id: "action-1",
+          type: "action",
+          label: "Condition",
+          config: { actionType: "Condition" },
+        }),
+      ],
+      edges: [startedEdge("action-1")],
+    });
+
+    expect(fields.map((field) => field.path)).toEqual(["bookedBy"]);
   });
 
   it("offers nothing when it cannot name the Start Event", () => {
@@ -357,19 +486,18 @@ describe("upstream-node-fields", () => {
   });
 
   it("offers a path its Events type differently as plain text", () => {
-    // A node both outlets reach can be arrived at by either payload, and the two
-    // disagree about what `occurredAt` is. The type decides a condition row's
-    // operators, so the picker keeps the path and describes it as the text a
-    // template renders it to.
+    // Two Cancel Events reach this node and disagree about what `occurredAt` is.
+    // The type decides a condition row's operators, so the picker keeps the path
+    // and describes it as the text a template renders it to.
     surface.events = [
       anEvent({
-        name: "app/appointment.created",
+        name: "app/appointment.canceled",
         schema: Schema.Struct({
           occurredAt: isoTimestampString("When the event was raised"),
         }),
       }),
       anEvent({
-        name: "app/appointment.canceled",
+        name: "app/appointment.rescheduled",
         schema: Schema.Struct({
           occurredAt: Schema.String.annotate({ description: "When, roughly" }),
         }),
@@ -378,19 +506,15 @@ describe("upstream-node-fields", () => {
 
     const nodes: WorkflowNode[] = [
       anEntryNode({
-        startEvent: "app/appointment.created",
-        cancelEvents: ["app/appointment.canceled"],
+        cancelEvents: [
+          "app/appointment.canceled",
+          "app/appointment.rescheduled",
+        ],
       }),
       createNode({
         id: "on-cancel",
         type: "action",
         label: "Apologise",
-        config: { actionType: "custom/unknown" },
-      }),
-      createNode({
-        id: "either-way",
-        type: "action",
-        label: "Log it",
         config: { actionType: "custom/unknown" },
       }),
     ];
@@ -402,19 +526,17 @@ describe("upstream-node-fields", () => {
         sourceHandle: LIFECYCLE_CANCELED_HANDLE,
         target: "on-cancel",
       }),
-      startedEdge("either-way"),
-      createEdge({ id: "e3", source: "on-cancel", target: "either-way" }),
     ];
 
     expect(
-      getUpstreamFields({ currentNodeId: "either-way", nodes, edges })
+      getUpstreamFields({ currentNodeId: "on-cancel", nodes, edges })
     ).toEqual([
       {
         path: "occurredAt",
         description: "When the event was raised",
         type: "string",
         sourceNodeId: "lifecycle-1",
-        sourceNodeName: "Lifecycle",
+        sourceNodeName: "Carried by every Event",
       },
     ]);
   });

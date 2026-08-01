@@ -740,7 +740,7 @@ export function ConditionBuilderRow({
                                   >
                                     <span className="flex w-full flex-col items-start">
                                       <span className="flex items-center gap-1.5">
-                                        {field.path}
+                                        {field.label}
                                         {field.nullable && (
                                           <span className="rounded bg-muted px-1 py-0.5 font-normal text-[10px] text-muted-foreground leading-none">
                                             nullable
