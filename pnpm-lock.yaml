@@ -12,6 +12,12 @@ catalogs:
     '@effect/vitest':
       specifier: 4.0.0-beta.102
       version: 4.0.0-beta.102
+    '@logtape/logtape':
+      specifier: ^2.3.0
+      version: 2.3.0
+    '@logtape/pretty':
+      specifier: ^2.3.0
+      version: 2.3.0
     '@marcbachmann/cel-js':
       specifier: ^7.5.1
       version: 7.6.1
@@ -197,6 +203,9 @@ importers:
       '@fontsource-variable/geist-mono':
         specifier: 5.3.0
         version: 5.3.0
+      '@logtape/logtape':
+        specifier: 'catalog:'
+        version: 2.3.0
       '@orpc/client':
         specifier: 'catalog:'
         version: 2.0.0-beta.21(@opentelemetry/api@1.9.1)
@@ -303,11 +312,11 @@ importers:
         specifier: ^2.0.12
         version: 2.0.12(hono@4.12.32)
       '@logtape/logtape':
-        specifier: ^2.0.2
-        version: 2.2.4
+        specifier: 'catalog:'
+        version: 2.3.0
       '@logtape/pretty':
-        specifier: ^2.0.2
-        version: 2.2.4(@logtape/logtape@2.2.4)
+        specifier: 'catalog:'
+        version: 2.3.0(@logtape/logtape@2.3.0)
       '@marcbachmann/cel-js':
         specifier: 'catalog:'
         version: 7.6.1
@@ -1029,13 +1038,13 @@ packages:
     resolution: {integrity: sha512-gf/xmbiWc4cLHjoeOGCNVTglpy+M+ENHpP3bvU57wxD17s7j8zJGXp4wOStnRcQYR0FT+n/76fPp+XR3ZtEjDw==}
     engines: {node: '>=18.x'}
 
-  '@logtape/logtape@2.2.4':
-    resolution: {integrity: sha512-2rALzv9m4ibE5FyB8/FMm5MPMMlK7ujgy3ufricVKIxj6e7SZbw4w6J16/fRAsXgdDlOXPUA0aa6XoEQvdlKxw==}
+  '@logtape/logtape@2.3.0':
+    resolution: {integrity: sha512-s/pxCgf9Gg75ypTV/bRUq355Dy/JP/zUJWfgJQPO5pTkXC23X2AXBcmBBgFiWH+bSi4yiX/G06qGV8CdAWD3SA==}
 
-  '@logtape/pretty@2.2.4':
-    resolution: {integrity: sha512-eUaa7+Y3WieTDeSSo3osGDE3m1ohTPGCjqOY9006sYrEZGPRvf4HyU+kbMcKm7Q3syWLF6RkSyJ1WhxTs1Ccvg==}
+  '@logtape/pretty@2.3.0':
+    resolution: {integrity: sha512-rINQolEDH/dkqJE9olePl8quKS66GU4BQT0fAPRaBpyopRQct7bFGmfk7FUGT9qgSM+Cvt+cT98rK5nKyOX+mQ==}
     peerDependencies:
-      '@logtape/logtape': ^2.2.4
+      '@logtape/logtape': ^2.3.0
 
   '@marcbachmann/cel-js@7.6.1':
     resolution: {integrity: sha512-YyY8yiDU07ByKb2rJUoNgMAkYeeDvkdrONBREV2MP9siAW7yNft0KfbIoonWTIMY0fGtv8og0EhzKx3Xsi1Nmg==}
@@ -5979,11 +5988,11 @@ snapshots:
     transitivePeerDependencies:
       - graphql
 
-  '@logtape/logtape@2.2.4': {}
+  '@logtape/logtape@2.3.0': {}
 
-  '@logtape/pretty@2.2.4(@logtape/logtape@2.2.4)':
+  '@logtape/pretty@2.3.0(@logtape/logtape@2.3.0)':
     dependencies:
-      '@logtape/logtape': 2.2.4
+      '@logtape/logtape': 2.3.0
 
   '@marcbachmann/cel-js@7.6.1': {}
 

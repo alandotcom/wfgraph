@@ -1,4 +1,5 @@
 import { atom } from "jotai";
+import { getClientLogger } from "#src/lib/logger";
 import { queryClient } from "#src/lib/query-client";
 import type { SavedWorkflow } from "#src/lib/rpc-client";
 import { workflowApi } from "#src/lib/rpc-client";
@@ -25,6 +26,8 @@ import type {
  */
 
 // Which workflow the editor currently has open.
+const logger = getClientLogger("workflow", "save");
+
 export const currentWorkflowIdAtom = atom<string | null>(null);
 export const currentWorkflowNameAtom = atom<string>("");
 export const currentWorkflowVisibilityAtom =
@@ -227,7 +230,7 @@ export const saveWorkflowAtom = atom(
             const saveError = toError(error);
             outcome = { ok: false, error: saveError };
             set(lastSaveErrorAtom, saveError);
-            console.error("[workflow-save-store] Save failed", {
+            logger.error("Save failed", {
               workflowId: next.workflowId,
               error,
             });
@@ -270,7 +273,7 @@ export const saveWorkflowAtom = atom(
     queue.timeoutId = setTimeout(() => {
       queue.timeoutId = null;
       flush().catch((error) => {
-        console.error("[workflow-save-store] Save flush failed", { error });
+        logger.error("Save flush failed", { error });
       });
     }, get(autosaveDelayAtom));
 

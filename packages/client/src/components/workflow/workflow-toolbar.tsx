@@ -18,6 +18,7 @@ import {
 import { nanoid } from "nanoid";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
+import { getClientLogger } from "#src/lib/logger";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useDeleteWorkflow } from "#src/hooks/use-delete-workflow";
 import { useDomEvent } from "#src/hooks/effects";
@@ -97,6 +98,8 @@ import { findTemplateTokens } from "@rova/shared/graph/node-references";
 
 // The `satisfies` is the exhaustiveness check: a reason added to the shared
 // union fails to compile here until it has user-facing copy.
+const logger = getClientLogger("workflow", "toolbar");
+
 const IGNORED_REASON_MESSAGES = {
   workflow_paused: "Workflow is paused and cannot start new runs.",
   concurrency_first_wins:
@@ -389,7 +392,7 @@ async function executeWorkflowRun({
   } catch (error) {
     // The mutation cache has already toasted the message. What is left is the
     // canvas, which still shows the Lifecycle Node running.
-    console.error("Failed to execute workflow:", error);
+    logger.error("Failed to execute the workflow", { error });
     updateNodesStatus(nodes, updateNodeData, "error");
     setIsExecuting(false);
   }

@@ -1,3 +1,10 @@
+/**
+ * Console logging for the backend. The format follows the terminal: an attached
+ * TTY gets the colourised pretty formatter, anything piped gets JSON lines.
+ * `LOG_FORMAT` overrides that with `pretty` or `json`, and `LOG_LEVEL`,
+ * `LOG_PRETTY_PROPERTIES` and `LOG_PRETTY_INSPECT_DEPTH` tune the rest.
+ */
+
 import {
   configureSync,
   getConsoleSink,
@@ -30,11 +37,7 @@ function resolvePrettyProperties(): boolean {
     return true;
   }
 
-  if (["0", "false", "no", "off"].includes(configured)) {
-    return false;
-  }
-
-  return true;
+  return !["0", "false", "no", "off"].includes(configured);
 }
 
 function resolvePrettyInspectDepth(): number {
@@ -51,29 +54,48 @@ function resolvePrettyInspectDepth(): number {
   return parsedDepth;
 }
 
+/**
+ * Whether the console sink should render the pretty formatter.
+ *
+ * With no `LOG_FORMAT` set, the terminal decides: a person watching an attached
+ * TTY gets the colourised layout, while a piped or redirected stream (a
+ * container, a log shipper, a CI job) gets machine-readable JSON lines.
+ */
+function shouldFormatPretty(): boolean {
+  const logFormat = process.env.LOG_FORMAT?.trim().toLowerCase();
+  if (logFormat === "pretty") {
+    return true;
+  }
+  if (logFormat === "json") {
+    return false;
+  }
+
+  // @types/node calls this a boolean; Node leaves it undefined off a terminal.
+  return process.stdout.isTTY;
+}
+
 export function configureAppLogging(): void {
   if (isConfigured) {
     return;
   }
 
-  const logFormat = process.env.LOG_FORMAT?.trim().toLowerCase();
-  const forcePretty = logFormat === "pretty";
-  const prettyProperties = resolvePrettyProperties();
-  const prettyInspectDepth = resolvePrettyInspectDepth();
-
   configureSync({
     sinks: {
       console: getConsoleSink({
-        formatter: forcePretty
+        formatter: shouldFormatPretty()
           ? getPrettyFormatter({
-              timestamp: "date-time-tz",
+              timestamp: "time",
               categorySeparator: ".",
               icons: false,
-              align: false,
-              properties: prettyProperties,
+              align: true,
+              // The longest category in the tree is app.workflow.event-listener.
+              // The default 20 cuts the middle out of the deeper ones, which is
+              // where the service name is.
+              categoryWidth: 27,
+              properties: resolvePrettyProperties(),
               inspectOptions: {
-                depth: prettyInspectDepth,
-                compact: false,
+                depth: resolvePrettyInspectDepth(),
+                compact: true,
               },
               wordWrap: false,
             })

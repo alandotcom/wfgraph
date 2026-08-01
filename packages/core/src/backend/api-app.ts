@@ -5,6 +5,7 @@ import { Extensions } from "#src/backend/lib/effect/extensions";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
 import type { InngestServeHandler } from "#src/backend/lib/inngest/client";
 import { getAppLogger } from "#src/backend/lib/logger";
+import { isNil, omitBy } from "es-toolkit";
 import {
   type Authorize,
   UNAUTHORIZED_BODY,
@@ -40,7 +41,6 @@ const readTokenParams = Schema.decodeUnknownResult(
 );
 
 const httpLogger = getAppLogger("http", "hono");
-const rpcLogger = getAppLogger("rpc");
 
 const BODY_LOG_LIMIT = 8192;
 const isDevelopmentEnvironment = ["development", "dev"].includes(
@@ -54,22 +54,34 @@ const JSON_CONTENT_TYPES = [
 ];
 const METHODS_WITH_BODY = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+/**
+ * The RPC procedures the editor's run panel reads on a timer while a run is on
+ * screen. One open workflow turns them into a line every two seconds, which
+ * buries whatever the person was reading, so a successful poll logs at trace.
+ * `LOG_LEVEL=trace` brings them back; a failing one still logs at its status.
+ */
+const POLLED_RPC_PROCEDURES = new Set([
+  "workflow/getExecutions",
+  "workflow/getExecutionLogs",
+  "workflow/getExecutionEvents",
+  "workflow/getExecutionStatus",
+]);
+
+function isPolledProcedure(path: string): boolean {
+  const rpcMarker = "/rpc/";
+  const procedureStart = path.indexOf(rpcMarker);
+  return (
+    procedureStart >= 0 &&
+    POLLED_RPC_PROCEDURES.has(path.slice(procedureStart + rpcMarker.length))
+  );
+}
+
 function isJsonContentType(contentType: string | undefined): boolean {
   if (!contentType) {
     return false;
   }
   const normalized = contentType.toLowerCase();
   return JSON_CONTENT_TYPES.some((jsonType) => normalized.includes(jsonType));
-}
-
-function buildRequestId(): string {
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-  ) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function truncateTextForLogs(text: string): {
@@ -227,65 +239,45 @@ export function createApiApp(options: CreateApiAppOptions) {
   const app = new Hono<ApiEnv>().basePath(basePath);
   const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
 
+  // One record per request, written once the answer is known. The message says
+  // what happened and the properties carry the payloads, which in development
+  // is the part worth reading.
   app.use("*", async (c, next) => {
-    const requestId = c.req.header("x-request-id") ?? buildRequestId();
     const startTime = Date.now();
     const method = c.req.method.toUpperCase();
     const path = c.req.path;
-    const query = c.req.query();
     const requestBody = LOG_HTTP_BODIES
       ? await getRequestLogBody(c.req.raw)
       : undefined;
-    const requestLogger = httpLogger.with({ requestId });
-
-    requestLogger.info(`--> ${method} ${path} [${requestId}]`, {
-      method,
-      path,
-      query,
-      requestBody,
-      userAgent: c.req.header("user-agent") ?? null,
-      ip:
-        c.req.header("x-forwarded-for") ??
-        c.req.header("x-real-ip") ??
-        c.req.header("cf-connecting-ip") ??
-        null,
-    });
 
     try {
       await next();
     } catch (error) {
-      requestLogger.error(
-        `xx> ${method} ${path} [${requestId}]: ${getErrorMessage(error)}`,
-        {
-          method,
-          path,
-          durationMs: Date.now() - startTime,
-          error,
-        }
+      httpLogger.error(
+        `${method} ${path} threw after ${Date.now() - startTime}ms: ${getErrorMessage(error)}`,
+        omitBy({ requestBody, error }, isNil)
       );
       throw error;
     }
 
     const status = c.res.status;
+    // A refusal carries its reason in its body, and that is the one payload
+    // worth reading back in production, where the rest stay unread.
     const responseBody =
-      LOG_HTTP_BODIES && status >= 400
+      LOG_HTTP_BODIES || status >= 400
         ? await getResponseLogBody(c.res)
         : undefined;
-    const responseLog = {
-      method,
-      path,
-      statusCode: status,
-      durationMs: Date.now() - startTime,
-      responseBody,
-    };
-    const responseSummary = `<-- ${method} ${path} ${status} ${responseLog.durationMs}ms [${requestId}]`;
+    const summary = `${method} ${path} ${status} ${Date.now() - startTime}ms`;
+    const bodies = omitBy({ requestBody, responseBody }, isNil);
 
     if (status >= 500) {
-      requestLogger.error(responseSummary, responseLog);
+      httpLogger.error(summary, bodies);
     } else if (status >= 400) {
-      requestLogger.warn(responseSummary, responseLog);
+      httpLogger.warn(summary, bodies);
+    } else if (isPolledProcedure(path)) {
+      httpLogger.trace(summary, bodies);
     } else {
-      requestLogger.info(responseSummary, responseLog);
+      httpLogger.info(summary, bodies);
     }
   });
 
@@ -335,18 +327,6 @@ export function createApiApp(options: CreateApiAppOptions) {
       });
 
       if (matched) {
-        if (response.status >= 400) {
-          try {
-            const body = safeParseJson(await response.clone().text());
-            rpcLogger.warn(`RPC error ${response.status} ${c.req.path}`, {
-              status: response.status,
-              path: c.req.path,
-              body,
-            });
-          } catch {
-            /* never break the response */
-          }
-        }
         return c.newResponse(response.body, response);
       }
 

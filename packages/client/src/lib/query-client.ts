@@ -1,5 +1,6 @@
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { getClientLogger } from "#src/lib/logger";
 
 /**
  * The client's cache of server state. It lives in its own module rather than in
@@ -43,6 +44,8 @@ export function mutationErrorToast(
   );
 }
 
+const logger = getClientLogger("query");
+
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     // A query that fails is worth a toast only when the user asked for the
@@ -54,7 +57,10 @@ export const queryClient = new QueryClient({
       if (message) {
         toast.error(message);
       } else {
-        console.error(query.queryHash, error);
+        logger.error("Background query failed", {
+          queryHash: query.queryHash,
+          error,
+        });
       }
     },
   }),

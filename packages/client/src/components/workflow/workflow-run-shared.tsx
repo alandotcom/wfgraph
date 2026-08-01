@@ -5,6 +5,7 @@ import type { IntegrationUi, ResultComponentProps } from "@rova/plugins/ui";
 import { Button } from "#src/components/ui/button";
 import { useIntegrationUi } from "#src/components/integration-ui-provider";
 import { getExtensionCatalog } from "#src/lib/extensions";
+import { getClientLogger } from "#src/lib/logger";
 import {
   type ActionMetadata,
   findAction,
@@ -20,6 +21,8 @@ import { readAs } from "@rova/shared/types/schema";
  * off a payload, so the lookups are records rather than switches and `satisfies`
  * is what holds each to naming every member of its own union.
  */
+const logger = getClientLogger("workflow", "run");
+
 const RUN_STATUS_TONES = {
   pending: "muted",
   running: "info",
@@ -193,7 +196,7 @@ export function CopyButton({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
-      console.error("Failed to copy:", error);
+      logger.error("Failed to copy the run payload", { error });
     }
   };
 

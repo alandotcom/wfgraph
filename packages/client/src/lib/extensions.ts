@@ -12,6 +12,7 @@
  */
 
 import { getBasePath } from "#src/lib/base-path";
+import { getClientLogger } from "#src/lib/logger";
 import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
@@ -20,6 +21,8 @@ import {
   readExtensionCatalog,
   readExtensionsResponse,
 } from "@rova/shared/extensions/catalog-wire";
+
+const logger = getClientLogger("extensions");
 
 let catalog: ExtensionCatalog = emptyExtensionCatalog;
 
@@ -80,7 +83,7 @@ export async function hydrateExtensionsFromApi(): Promise<CatalogLoadResult> {
 
   const decoded = readExtensionCatalog(envelope?.catalog);
   if (!decoded) {
-    console.warn(
+    logger.warn(
       "The extension catalog from /api/extensions did not fit the wire schema in @rova/shared/extensions/catalog-wire, so the editor is drawing from the catalog it had. The server serving it is most likely a different build of Rova."
     );
     return { ok: false, reason: "mismatch" };

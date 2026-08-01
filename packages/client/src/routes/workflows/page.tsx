@@ -9,6 +9,7 @@ import { isNil, omitBy } from "es-toolkit";
 import { MoreHorizontalIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { getClientLogger } from "#src/lib/logger";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,6 +58,8 @@ type ConfirmDeleteState = {
 };
 
 // Above this many workflows, the delete dialog demands the count be typed back.
+const logger = getClientLogger("workflows");
+
 const DELETE_CHALLENGE_THRESHOLD = 3;
 
 /**
@@ -338,7 +341,7 @@ export default function WorkflowsPage() {
       // Which action failed is worth saying, and a mutation's meta cannot see
       // its own variables.
       onError: (error, { action }) => {
-        console.error(`Failed to ${action} workflows:`, error);
+        logger.error(`Failed to ${action} workflows`, { action, error });
         toast.error(`Failed to ${action} workflows`);
       },
       meta: { errorShownByCaller: true },

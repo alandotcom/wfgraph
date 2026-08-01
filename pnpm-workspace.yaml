@@ -22,6 +22,10 @@ packages:
 catalog:
   "@effect/opentelemetry": 4.0.0-beta.102
   "@effect/vitest": 4.0.0-beta.102
+  # The backend and the editor both log through logtape, and @logtape/pretty
+  # names one @logtape/logtape range as a peer, so the pair moves as one.
+  "@logtape/logtape": ^2.3.0
+  "@logtape/pretty": ^2.3.0
   "@marcbachmann/cel-js": ^7.5.1
   "@orpc/client": 2.0.0-beta.21
   "@orpc/contract": 2.0.0-beta.21

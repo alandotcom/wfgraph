@@ -36,8 +36,8 @@
   "dependencies": {
     "@effect/opentelemetry": "catalog:",
     "@hono/node-server": "^2.0.12",
-    "@logtape/logtape": "^2.0.2",
-    "@logtape/pretty": "^2.0.2",
+    "@logtape/logtape": "catalog:",
+    "@logtape/pretty": "catalog:",
     "@marcbachmann/cel-js": "catalog:",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/resources": "^2.10.0",

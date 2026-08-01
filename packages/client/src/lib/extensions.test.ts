@@ -118,9 +118,9 @@ describe("hydrateExtensionsFromApi", () => {
       reason: "mismatch",
     });
 
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("/api/extensions")
-    );
+    // The logger hands console.warn a `%c` template plus its CSS arguments, so
+    // the assertion reads the template rather than the whole argument list.
+    expect(warn.mock.calls[0]?.[0]).toContain("/api/extensions");
     warn.mockRestore();
   });
 
