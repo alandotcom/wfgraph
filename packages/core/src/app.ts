@@ -36,7 +36,6 @@ import {
   assembleExtensions,
   type RovaExtensions,
 } from "#src/backend/extensions/extension-set";
-import type { BaseMiddleware } from "#src/backend/extensions/middleware";
 import {
   createInngestSurface,
   type InngestSurface,
@@ -57,10 +56,6 @@ export type { RovaInngestConfig } from "#src/backend/lib/inngest/client";
 export type { RovaAuth } from "#src/backend/lib/http/authorize";
 export type { RovaLogger } from "@rova/shared/types/logger";
 export type { RovaExtensions } from "#src/backend/extensions/extension-set";
-export {
-  BaseMiddleware,
-  type TransformStepInputArgs,
-} from "#src/backend/extensions/middleware";
 
 /**
  * Where the database is, which schema Rova lives in, and whether it migrates on
@@ -107,15 +102,6 @@ export type RovaAppOptions = {
    * a line is what turns something off.
    */
   extensions?: RovaExtensions;
-  /**
-   * What every handler is given beside its own config: a database client, a
-   * tenant-scoped logger, whatever this application already has.
-   *
-   * They run in the order listed and the last to run wins, so a middleware later
-   * in the list overwrites a key an earlier one set. What they add reaches a
-   * handler's bag beside `input`, and never the run log.
-   */
-  middleware?: readonly BaseMiddleware[];
   /**
    * The workflow editor, from `import { clientBundle } from "@rova/client"`.
    *
@@ -228,7 +214,7 @@ async function buildRovaApp(
     // One value for the client and the `/inngest` handler, built before the
     // runtime because the Layer graph takes it: the functions it serves run on
     // whichever runtime the route hands them.
-    const inngest = createInngestSurface(options.inngest, options.middleware);
+    const inngest = createInngestSurface(options.inngest);
 
     const extensions = assembleExtensions(options.extensions ?? {});
 

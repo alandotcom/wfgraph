@@ -58,19 +58,11 @@ export type NodeSteps = {
  * from a jsonb column; the context half is a live object. Each step narrows the
  * record to the fields it declares.
  *
- * `node` travels beside the record rather than inside it, because the record is
- * written to the run log as jsonb and neither a function nor a database client is
- * JSON. A caller with no durable runtime leaves it out, and the work then runs
- * where it stands.
+ * `steps` travels beside the record rather than inside it, because the record is
+ * written to the run log as jsonb and a function is not JSON. A caller with no
+ * durable runtime leaves it out, and the work then runs where it stands.
  */
 export type StepFunction = (
   input: Record<string, unknown>,
-  node?: NodeRuntime
+  steps?: NodeSteps
 ) => StepResult | Promise<StepResult>;
-
-/** What a node is given beside its config: how to remember work, and what the
- * host's middleware put there. */
-export type NodeRuntime = {
-  readonly steps: NodeSteps;
-  readonly ctx: Readonly<Record<string, unknown>>;
-};

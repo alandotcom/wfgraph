@@ -25,7 +25,6 @@ export {
 export { StepFailure } from "#src/backend/extensions/steps/define-step";
 
 export {
-  BaseMiddleware,
   createRovaApp,
   type DatabaseRuntimeConfig,
   type EncryptionRuntimeConfig,
@@ -38,7 +37,6 @@ export {
   type RovaExtensions,
   type RovaInngestConfig,
   type RovaLogger,
-  type TransformStepInputArgs,
 } from "#src/app";
 
 export {

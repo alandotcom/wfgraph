@@ -34,11 +34,6 @@ export type WorkflowActions = {
   stepFor: (actionType: string) => StepFunction | undefined;
   /** What the catalog holds for an action, or undefined for one it never heard of. */
   metadataFor: (actionType: string) => ActionRunMetadata | undefined;
-  /**
-   * What the host's middleware puts in this action's bag, empty when it declared
-   * none. Computed per node, because a middleware may answer differently for one.
-   */
-  contextFor: (actionType: string) => Readonly<Record<string, unknown>>;
 };
 
 /**
@@ -49,5 +44,4 @@ export type WorkflowActions = {
 export const noWorkflowActions: WorkflowActions = {
   stepFor: () => undefined,
   metadataFor: () => undefined,
-  contextFor: () => ({}),
 };

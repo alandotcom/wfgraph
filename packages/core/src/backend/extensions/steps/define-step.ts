@@ -46,11 +46,7 @@ import type {
   ActionConfigFieldBase,
   ActionConfigFieldGroup,
 } from "@rova/shared/plugins/action-fields";
-import type {
-  NodeRuntime,
-  NodeSteps,
-  StepResult,
-} from "@rova/shared/actions/step-result";
+import type { NodeSteps, StepResult } from "@rova/shared/actions/step-result";
 
 /**
  * Why a step could not do its work, in the words the run log shows.
@@ -401,7 +397,7 @@ export function buildStep<TInput, TOutput>(
     app: StepEnvironment,
     rawInput: Record<string, unknown>,
     context: StepContext | undefined,
-    node: NodeRuntime | undefined
+    steps: NodeSteps | undefined
   ): Effect.Effect<StepResult, CredentialsUnavailable> {
     return Effect.gen(function* () {
       if (!context) {
@@ -432,7 +428,7 @@ export function buildStep<TInput, TOutput>(
             ...toHandlerBag(input, context, integrationId),
             credentials,
             readCredentials: () => runToPromise(credentials),
-            step: nodeStepApi(app, node?.steps),
+            step: nodeStepApi(app, steps),
           }),
         catch: toFailure,
       });

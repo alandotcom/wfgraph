@@ -1,7 +1,6 @@
 import type { Inngest, InngestFunction } from "inngest";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
-import type { BaseMiddleware } from "#src/backend/extensions/middleware";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
 import type { RovaRuntime } from "#src/backend/runtime";
 // Static, now that the id helper the app assembly needs has moved to a leaf of
@@ -30,14 +29,13 @@ import { createWorkflowRunFunction } from "#src/backend/lib/inngest/workflow-fun
  */
 export async function buildInngestFunctions(
   client: Inngest,
-  runtime: RovaRuntime,
-  middleware: readonly BaseMiddleware[] = []
+  runtime: RovaRuntime
 ): Promise<InngestFunction.Any[]> {
   const extensions = await runtime.runPromise(Extensions);
 
   return [
     createWorkflowRunFunction(client, {
-      actions: () => createWorkflowActions(extensions, runtime, middleware),
+      actions: () => createWorkflowActions(extensions, runtime),
       store: createDbWorkflowStore(runtime),
     }),
     ...extensions.events.map((event) =>

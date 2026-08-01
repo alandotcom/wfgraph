@@ -9,7 +9,7 @@
 import { stripInternalFields } from "#src/backend/extensions/steps/step-handler";
 import { withSpan } from "#src/backend/lib/telemetry";
 import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import type { NodeRuntime, StepResult } from "@rova/shared/actions/step-result";
+import type { NodeSteps, StepResult } from "@rova/shared/actions/step-result";
 import type { ConditionBranch, WorkflowNode } from "@rova/shared/graph/types";
 import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
 import { type JsonObject, readJsonValue } from "@rova/shared/types/json";
@@ -191,20 +191,16 @@ async function executeActionStepInner(
 
   // Rova namespaces the id, so an author writes "post" and two nodes running
   // the same action do not write to one another's memoized result.
-  const node: NodeRuntime = {
-    steps: {
-      run: (stepId, work) =>
-        runtime.run(`node:${context.nodeId}:${stepId}`, work),
-    },
-    // What the host's middleware puts in every handler's bag, for this action.
-    ctx: actions.contextFor(actionType),
+  const steps: NodeSteps = {
+    run: (stepId, work) =>
+      runtime.run(`node:${context.nodeId}:${stepId}`, work),
   };
 
   const result = await runWithStepLog(
     // The rows carry the input as the node was configured, minus the three keys
     // the engine's own dispatch owns.
     { store, context, runtime, input: stripInternalFields(stepInput) },
-    () => Promise.resolve(stepFunction(stepInput, node))
+    () => Promise.resolve(stepFunction(stepInput, steps))
   );
 
   return { result };
