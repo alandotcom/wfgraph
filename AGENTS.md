@@ -157,6 +157,15 @@ value so a refused call fails the node once rather than four times. Retries are
 function-level, each step carrying its own counter. Step results round-trip through JSON, so a node output has to be
 JSON-safe: no `Date`, `Map`, or `Set`.
 
+**A suspension holds the run, not the branch.** Every branch of a run shares one function
+invocation, and Inngest parks that invocation on a sleep, so a Wait entered early stops every
+sibling at its next step boundary. `NodeScheduler` holds each Wait back and
+`drainDeferredWaits` enters them once the fan-out has settled, which is what keeps ordinary
+work clear of a wait. Two Waits reachable at once still gate each other, because a run wakes
+once, at the last of its outstanding pauses: `advanceToLastPause` states what was measured.
+`driveWithReplay` (`engine/replay-runtime.ts`) is how a test sees any of this, since it
+abandons the body at each step boundary and calls it again on a virtual clock.
+
 **happy-dom belongs to the client project alone.** `vitest.config.ts` declares two projects:
 `client` covers `packages/client`, runs in happy-dom, and is the only one loading
 `test-setup.ts`; `node` takes every other `packages/*/src` test and runs bare. That boundary

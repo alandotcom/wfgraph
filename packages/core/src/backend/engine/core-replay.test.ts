@@ -32,9 +32,12 @@ const BRANCH_ACTION_ID = "test/replay-branch";
 /**
  * Runtime whose memo survives across calls, which is what makes the second
  * call a replay of the first rather than a fresh run.
+ *
+ * A replay after a wait keeps the attempt it had. Raise `attempt` to model a
+ * retry instead, which is what lets a node's row be closed a second time.
  */
-function createReplayRuntime(memo: Map<string, unknown>) {
-  return createInMemoryWorkflowRuntime({ memo, skipSleep: true });
+function createReplayRuntime(memo: Map<string, unknown>, attempt = 0) {
+  return createInMemoryWorkflowRuntime({ memo, skipSleep: true, attempt });
 }
 
 function createLifecycleNode(id: string): WorkflowNode {
@@ -315,9 +318,11 @@ describe("workflow engine replay safety", () => {
       store,
       flakyActions
     );
+    // The node failed, so what follows is Inngest retrying the body rather than
+    // replaying it, and the attempt rises with it.
     const second = await executeWorkflow(
       waitGraphInput,
-      createReplayRuntime(memo),
+      createReplayRuntime(memo, 1),
       store,
       flakyActions
     );

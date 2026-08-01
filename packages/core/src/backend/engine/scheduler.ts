@@ -123,6 +123,20 @@ function downstreamRoute(
   return { kind: "all" };
 }
 
+/**
+ * Whether this node is the one that suspends the run.
+ *
+ * A disabled node answers false: `runNodeWork` skips its work, so it parks
+ * nothing and the scheduler has no reason to hold it back.
+ */
+function isWaitNode(node: WorkflowNode): boolean {
+  return (
+    node.data.enabled !== false &&
+    node.data.type === "action" &&
+    node.data.config?.actionType === BUILT_IN_ACTION_IDS.wait
+  );
+}
+
 /** Everything the dispatch below needs from the run it is part of. */
 type ActionStepInput = {
   actionType: string;
@@ -268,6 +282,18 @@ export type NodeSchedulerInput = {
 export class NodeScheduler {
   private readonly input: NodeSchedulerInput;
 
+  /**
+   * Wait nodes whose dependencies are met, held back until every other branch
+   * has run as far as it can. A durable runtime suspends the run rather than the
+   * branch: Inngest parks the whole function invocation on a sleep and drives no
+   * other branch forward until the timer fires, so a Wait entered early makes
+   * every sibling wait with it.
+   */
+  private readonly deferredWaits = new Set<string>();
+
+  /** Wait nodes `drainDeferredWaits` has handed back, which run on sight. */
+  private readonly releasedWaits = new Set<string>();
+
   constructor(input: NodeSchedulerInput) {
     this.input = input;
   }
@@ -309,6 +335,14 @@ export class NodeScheduler {
         dependencies,
         missingDependencies: missing,
       });
+      return;
+    }
+
+    if (isWaitNode(node) && !this.releasedWaits.has(nodeId)) {
+      this.deferredWaits.add(nodeId);
+      nodeLogger.debug(
+        "Holding wait node until every other branch has drained"
+      );
       return;
     }
 
@@ -661,5 +695,37 @@ export class NodeScheduler {
   /** Runs a set of nodes side by side, which is how every branch fans out. */
   runAll(nodeIds: readonly string[]): Promise<void[]> {
     return Promise.all(nodeIds.map((nodeId) => this.executeNode(nodeId)));
+  }
+
+  /**
+   * Enters the Wait nodes `executeNode` held back, and keeps going until none
+   * are left. Call it once the fan-out has settled: the run is about to suspend,
+   * so anything still runnable has to have run by now.
+   *
+   * A batch is entered side by side, which keeps two sibling waits on concurrent
+   * timers. Each round resumes its own waits and may reach further ones, and the
+   * loop terminates because a released wait never returns to the queue.
+   *
+   * A run that has taken the Canceled outlet drops whatever it was holding for
+   * the Started branch. Every other node stops there by never being scheduled,
+   * and a wait held back since before the crossing would otherwise park the run
+   * on a branch it has left.
+   */
+  async drainDeferredWaits(): Promise<void> {
+    const { cancelBoundary } = this.input;
+
+    while (this.deferredWaits.size > 0) {
+      const batch = [...this.deferredWaits].filter(
+        (nodeId) =>
+          !cancelBoundary.hasLeftStartedBranch() ||
+          cancelBoundary.isOnCanceledBranch(nodeId)
+      );
+      this.deferredWaits.clear();
+      for (const nodeId of batch) {
+        this.releasedWaits.add(nodeId);
+      }
+      // eslint-disable-next-line eslint/no-await-in-loop -- a round has to resume before the graph can say whether it reached another wait
+      await this.runAll(batch);
+    }
   }
 }

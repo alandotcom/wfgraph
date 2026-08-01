@@ -94,6 +94,17 @@ export class CancelBoundary {
   }
 
   /**
+   * Whether this node sits behind the Canceled outlet.
+   *
+   * Asked by anything holding a node back across the boundary, since a node
+   * scheduled before the crossing and run after it would put the run back on the
+   * branch it just left. The scheduler's deferred waits are the one such queue.
+   */
+  isOnCanceledBranch(nodeId: string): boolean {
+    return this.canceledBranchNodeIds.has(nodeId);
+  }
+
+  /**
    * The Cancel Event this run is now on, or null while it is still on the
    * Started branch and the Start Event is the answer.
    */

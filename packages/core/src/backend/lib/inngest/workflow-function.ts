@@ -31,12 +31,15 @@ function toDurationString(milliseconds: number): string {
 async function workflowRunRequestedHandler({
   event,
   step,
+  attempt,
   actions,
   store,
 }: {
   event: { data: typeof workflowExecutionInputSchema.Type };
   actions: WorkflowActions;
   store: WorkflowStore;
+  /** Zero on the first attempt of this body, and one higher on each retry. */
+  attempt: number;
   step: {
     sleep: (id: string, durationMs: number) => Promise<void>;
     waitForEvent: (
@@ -66,6 +69,7 @@ async function workflowRunRequestedHandler({
     // Memoization boundary: Inngest stores the result under `stepId`, so work
     // already done in an earlier attempt is replayed instead of repeated.
     run: (stepId, fn) => step.run(stepId, fn),
+    attempt,
   };
 
   // The engine persists nothing and implements nothing on its own: the store

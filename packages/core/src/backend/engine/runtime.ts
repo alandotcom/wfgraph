@@ -38,6 +38,13 @@ export type WorkflowExecutionRuntime = {
    * carry timestamps as ISO strings.
    */
   run: <T>(stepId: string, fn: () => Promise<T>) => Promise<T>;
+  /**
+   * Zero-indexed retry counter for the current attempt, which holds across every
+   * replay within that attempt and rises when the runtime retries the body. A
+   * step id carrying it is memoized per attempt, so a later attempt may correct
+   * what an earlier one wrote.
+   */
+  attempt: number;
   runId?: string;
 };
 
@@ -52,6 +59,8 @@ export type InMemoryRuntimeOptions = {
   resumeEvent?: unknown;
   /** Resolve sleeps immediately instead of sitting through a real timer. */
   skipSleep?: boolean;
+  /** The attempt this runtime reports. See `WorkflowExecutionRuntime.attempt`. */
+  attempt?: number;
 };
 
 export type InMemoryWorkflowRuntime = WorkflowExecutionRuntime & {
@@ -78,7 +87,7 @@ export type InMemoryWorkflowRuntime = WorkflowExecutionRuntime & {
 export function createInMemoryWorkflowRuntime(
   options: InMemoryRuntimeOptions = {}
 ): InMemoryWorkflowRuntime {
-  const { resumeEvent = null, skipSleep = false } = options;
+  const { resumeEvent = null, skipSleep = false, attempt = 0 } = options;
   const memo = options.memo ?? new Map<string, unknown>();
   const sleeps: Array<{ stepId: string; durationMs: number }> = [];
   const waits: Array<{ stepId: string; options: WaitForEventOptions }> = [];
@@ -87,6 +96,7 @@ export function createInMemoryWorkflowRuntime(
     memo,
     sleeps,
     waits,
+    attempt,
 
     sleep: async (stepId, durationMs) => {
       sleeps.push({ stepId, durationMs });

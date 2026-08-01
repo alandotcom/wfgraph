@@ -118,12 +118,16 @@ async function closeStepLogQuietly(
 /**
  * Opens a run-log row, runs the work, and closes the row with what it answered.
  *
- * The open is a memoized step and the close is not, which is the difference
- * between an INSERT and an UPDATE by id. The handler between them is replayed
- * from the top on every attempt, so an unmemoized open would insert a second row
- * per attempt rather than close the first. Memoizing the close would freeze the
- * first attempt's verdict on a row a later attempt has since changed the answer
- * to, and save one idempotent write for it.
+ * Both halves are memoized steps, which is the difference between an INSERT and
+ * an UPDATE by id. The handler between them is replayed from the top on every
+ * attempt, so an unmemoized open would insert a second row per attempt rather
+ * than close the first.
+ *
+ * The close carries the attempt in its step id, which is what lets a retry
+ * correct a verdict an earlier attempt wrote while a plain replay leaves the row
+ * alone. A close memoized under a fixed id would freeze the first verdict; an
+ * unmemoized close would rewrite the row on every replay, and each replay reads
+ * its work back out of the memo, so the duration it records is near zero.
  *
  * Each attempt times its own work. The handle's start time came out of the memo
  * with the row's id, so a duration taken from it would grow with everything that
@@ -131,9 +135,9 @@ async function closeStepLogQuietly(
  *
  * The two have opposite failure policies. A refused open fails the node, since
  * nothing has happened yet and Inngest's retry of it costs one wasted call. A
- * refused close is swallowed, because a run that did its work has not failed
- * because a row could not be closed. The price is a row left open, which the run
- * panel shows.
+ * refused close is swallowed inside its own step, because a run that did its
+ * work has not failed because a row could not be closed. The price is a row left
+ * open, which the run panel shows.
  */
 export async function runWithStepLog<T extends StepResult>(
   target: {
@@ -151,42 +155,35 @@ export async function runWithStepLog<T extends StepResult>(
   const startedAt = Date.now();
   const elapsed = () => Date.now() - startedAt;
 
+  // One attempt closes the row down one path, so the two callers below share an
+  // id. The step answers null because a memoized value has to be JSON-safe.
+  const closeOnce = (close: StepLogClose) =>
+    runtime.run(
+      `node:${context.nodeId}:log-close:${runtime.attempt}`,
+      async () => {
+        await closeStepLogQuietly(store, context, handle, close, elapsed());
+        return null;
+      }
+    );
+
   try {
     const result = await work();
 
     if (result.success) {
       // A success logs its payload. A step reporting success without one has
       // nothing but the envelope to show.
-      await closeStepLogQuietly(
-        store,
-        context,
-        handle,
-        { status: "success", output: result.data ?? result },
-        elapsed()
-      );
+      await closeOnce({ status: "success", output: result.data ?? result });
     } else {
-      await closeStepLogQuietly(
-        store,
-        context,
-        handle,
-        {
-          status: "error",
-          output: result.error,
-          error: result.error.message,
-        },
-        elapsed()
-      );
+      await closeOnce({
+        status: "error",
+        output: result.error,
+        error: result.error.message,
+      });
     }
 
     return result;
   } catch (error) {
-    await closeStepLogQuietly(
-      store,
-      context,
-      handle,
-      { status: "error", error: getErrorMessage(error) },
-      elapsed()
-    );
+    await closeOnce({ status: "error", error: getErrorMessage(error) });
     throw error;
   }
 }

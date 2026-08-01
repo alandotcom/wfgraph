@@ -168,6 +168,9 @@ async function executeWorkflowInner(
     await scheduler.runAll(
       lifecycleNodes.map((lifecycleNode) => lifecycleNode.id)
     );
+    // Every Wait the fan-out reached was held back, so the branches that suspend
+    // nothing are finished by now and the run may park.
+    await scheduler.drainDeferredWaits();
 
     const finalSuccess = traversal.allSucceeded();
     const finalOutput = traversal.deterministicTerminalOutput();

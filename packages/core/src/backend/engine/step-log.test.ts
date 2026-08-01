@@ -86,13 +86,14 @@ describe("the duration a closed row carries", () => {
     vi.useRealTimers();
   });
 
-  it("times each attempt's own work rather than everything since the row opened", async () => {
+  it("leaves the row alone when the body replays inside one attempt", async () => {
     vi.useFakeTimers();
     const store = createRecordingWorkflowStore();
+    const memo = new Map<string, unknown>();
     const target = {
       store,
       context,
-      runtime: createInMemoryWorkflowRuntime({ memo: new Map() }),
+      runtime: createInMemoryWorkflowRuntime({ memo }),
       input: {},
     };
 
@@ -103,9 +104,38 @@ describe("the duration a closed row carries", () => {
 
     // The run parks on a Wait downstream, and an hour later the whole body is
     // replayed: same memo, so the open is a hit and the row is the same one.
+    // The work comes back out of the memo, so a second close would record the
+    // near-zero elapsed of a replay over the 200 the attempt really took.
     vi.advanceTimersByTime(3_600_000);
 
-    await runWithStepLog(target, () => {
+    await runWithStepLog(target, () => answer());
+
+    const closes = store.callsOf("completeStepLog");
+    expect(closes.map((close) => close.logId)).toEqual(["log_1"]);
+    expect(closes.map((close) => close.durationMs)).toEqual([200]);
+  });
+
+  it("times each attempt's own work rather than everything since the row opened", async () => {
+    vi.useFakeTimers();
+    const store = createRecordingWorkflowStore();
+    const memo = new Map<string, unknown>();
+    const target = (attempt: number) => ({
+      store,
+      context,
+      runtime: createInMemoryWorkflowRuntime({ memo, attempt }),
+      input: {},
+    });
+
+    await runWithStepLog(target(0), () => {
+      vi.advanceTimersByTime(200);
+      return answer();
+    });
+
+    // A retry an hour on, which reaches the same row and is entitled to correct
+    // what the first attempt wrote.
+    vi.advanceTimersByTime(3_600_000);
+
+    await runWithStepLog(target(1), () => {
       vi.advanceTimersByTime(5);
       return answer();
     });
