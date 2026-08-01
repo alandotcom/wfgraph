@@ -14,6 +14,7 @@ import {
 } from "@rova/shared/extensions/catalog";
 import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
 import type { IntegrationConfig } from "@rova/shared/types/integration";
+import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrations/cipher";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import type { RovaRuntime } from "#src/backend/runtime";
 import { getAppLogger } from "#src/backend/lib/logger";
@@ -59,6 +60,23 @@ function mapIntegrationConfig(
 }
 
 /**
+ * Either way a credential read fails, as the one failure a node understands.
+ *
+ * The message is all that separates the two, so it is the only argument; the
+ * tag itself reaches the log through the error value.
+ */
+const unavailable =
+  (
+    logger: ReturnType<typeof getAppLogger>,
+    integrationId: string,
+    message: string
+  ) =>
+  (error: unknown): Effect.Effect<never, CredentialsUnavailable> => {
+    logger.error("Could not read the integration credentials", { error });
+    return Effect.fail(new CredentialsUnavailable({ integrationId, message }));
+  };
+
+/**
  * An integration's credentials, or nothing when no row carries that id.
  *
  * A row that is missing answers with no credentials, because a step configured
@@ -84,14 +102,17 @@ export function fetchCredentials(
       Effect.flatMap(IntegrationRepo, (repo) => repo.findById(integrationId)),
       services
     ).pipe(
-      Effect.catchTag("DatabaseError", (error) => {
-        logger.error("Could not read the integration", { error });
-        return Effect.fail(
-          new CredentialsUnavailable({
-            integrationId,
-            message: `Could not read the credentials for integration "${integrationId}".`,
-          })
-        );
+      Effect.catchTags({
+        DatabaseError: unavailable(
+          logger,
+          integrationId,
+          `Could not read the credentials for integration "${integrationId}".`
+        ),
+        EncryptionKeyMismatch: unavailable(
+          logger,
+          integrationId,
+          ENCRYPTION_KEY_MISMATCH_MESSAGE
+        ),
       })
     );
 

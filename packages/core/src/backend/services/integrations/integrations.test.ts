@@ -17,7 +17,12 @@ import {
   stubIntegrationRepo,
 } from "#src/backend/lib/effect/test-layers";
 import {
+  ENCRYPTION_KEY_MISMATCH_MESSAGE,
+  EncryptionKeyMismatch,
+} from "#src/backend/services/integrations/cipher";
+import {
   getIntegration,
+  getIntegrations,
   postIntegrations,
   postIntegrationsTest,
   postIntegrationTest,
@@ -217,6 +222,84 @@ const unreadableIntegrationRepo = stubIntegrationRepo({
         cause: new Error("terminating connection due to administrator command"),
       })
     ),
+});
+
+/**
+ * A repository whose rows were sealed under a key this process is not running
+ * with, which is what a rotated `encryption.key` looks like from above.
+ */
+const keyMismatch = Effect.fail(
+  new EncryptionKeyMismatch({ cause: new Error("bad auth tag") })
+);
+
+const keyMismatchRepo = stubIntegrationRepo({
+  listByType: () => keyMismatch,
+  findById: () => keyMismatch,
+  update: () => keyMismatch,
+});
+
+/** Every read path answers the one sentence a person can act on. */
+describe("a rotated encryption key", () => {
+  layer(SilentAppLoggerLayer)((it) => {
+    // This case spells the words out, where the three below compare against the
+    // exported constant. Asserting only the constant would let it agree with
+    // itself whatever it said, so one case has to hold the wording.
+    it.effect("names the key and both ways out of it, when listing", () =>
+      Effect.gen(function* () {
+        const failure = yield* getIntegrations().pipe(
+          Effect.provide(keyMismatchRepo),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, InternalFailure);
+        assert.include(failure.error, "encryption.key");
+        assert.include(failure.error, "start the app with that key");
+        assert.include(failure.error, "delete the connections");
+      })
+    );
+
+    it.effect("says so when one integration is read", () =>
+      Effect.gen(function* () {
+        const failure = yield* getIntegration("int_1").pipe(
+          Effect.provide(Layer.mergeAll(keyMismatchRepo, slackCatalog)),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, InternalFailure);
+        assert.strictEqual(failure.error, ENCRYPTION_KEY_MISMATCH_MESSAGE);
+      })
+    );
+
+    // An update reads the stored row first, to merge the masked secrets back in,
+    // so it hits the same wall before it writes anything.
+    it.effect("says so when an update reads the row it would merge into", () =>
+      Effect.gen(function* () {
+        const failure = yield* putIntegration("int_1", {
+          name: "Slack Updated",
+        }).pipe(
+          Effect.provide(Layer.mergeAll(keyMismatchRepo, slackCatalog)),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, InternalFailure);
+        assert.strictEqual(failure.error, ENCRYPTION_KEY_MISMATCH_MESSAGE);
+      })
+    );
+
+    // A connection test relays what the row's read said, and this is the one
+    // thing it can say that a fixed sentence would have hidden.
+    it.effect("says so when a saved connection is tested", () =>
+      Effect.gen(function* () {
+        const failure = yield* postIntegrationTest("int_1").pipe(
+          Effect.provide(Layer.mergeAll(keyMismatchRepo, assembledSlack)),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, InternalFailure);
+        assert.strictEqual(failure.error, ENCRYPTION_KEY_MISMATCH_MESSAGE);
+      })
+    );
+  });
 });
 
 /**

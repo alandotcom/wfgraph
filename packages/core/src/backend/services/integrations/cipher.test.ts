@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   assertValidEncryptionKey,
@@ -15,6 +16,13 @@ function envelope(config: Record<string, string>): [string, string, string] {
   const [iv, authTag, ciphertext] = cipher.seal(config).split(":");
   return [iv, authTag, ciphertext];
 }
+
+/** The config `open` answered with, for a case that expects it to answer. */
+const open = (stored: unknown) => Effect.runSync(cipher.open(stored));
+
+/** The failure `open` left with, for a case that expects it to fail. */
+const openFailure = (stored: unknown) =>
+  Effect.runSync(cipher.open(stored).pipe(Effect.flip));
 
 // An absent key sends the reader to their secret store and a malformed one to the
 // value they already have, so the two are told apart rather than merged.
@@ -46,7 +54,7 @@ describe("sealing and opening a config", () => {
   it("gives back what was sealed", () => {
     const config = { API_KEY: "secret", ACCOUNT_SID: "AC123" };
 
-    expect(cipher.open(cipher.seal(config))).toEqual(config);
+    expect(open(cipher.seal(config))).toEqual(config);
   });
 
   // The IV is fresh per seal, so two rows holding one credential do not hold one
@@ -63,10 +71,10 @@ describe("sealing and opening a config", () => {
 // whole process, and that is what the last two cases hold to a refusal.
 describe("opening something this key cannot read", () => {
   it("answers an empty config for a column holding no envelope", () => {
-    expect(cipher.open(null)).toEqual({});
-    expect(cipher.open({ API_KEY: "never sealed" })).toEqual({});
-    expect(cipher.open("not-an-envelope")).toEqual({});
-    expect(cipher.open("zz:zz:zz")).toEqual({});
+    expect(open(null)).toEqual({});
+    expect(open({ API_KEY: "never sealed" })).toEqual({});
+    expect(open("not-an-envelope")).toEqual({});
+    expect(open("zz:zz:zz")).toEqual({});
   });
 
   // Buffer.from truncates invalid hex rather than refusing it, so a short field
@@ -74,30 +82,32 @@ describe("opening something this key cannot read", () => {
   it("answers an empty config for an envelope of the wrong shape", () => {
     const [iv, authTag, ciphertext] = envelope({ API_KEY: "secret" });
 
-    expect(cipher.open(`${iv.slice(2)}:${authTag}:${ciphertext}`)).toEqual({});
-    expect(cipher.open(`${iv}:${authTag.slice(2)}:${ciphertext}`)).toEqual({});
-    expect(cipher.open(`${iv}:${authTag}:${ciphertext}:extra`)).toEqual({});
+    expect(open(`${iv.slice(2)}:${authTag}:${ciphertext}`)).toEqual({});
+    expect(open(`${iv}:${authTag.slice(2)}:${ciphertext}`)).toEqual({});
+    expect(open(`${iv}:${authTag}:${ciphertext}:extra`)).toEqual({});
   });
 
-  it("refuses an envelope another key sealed", () => {
+  // The failure travels the Effect's error channel, so a service reading a row
+  // catches it by tag beside the query's own failure instead of having a throw
+  // cross the seam as a defect.
+  it("fails with the tagged mismatch for an envelope another key sealed", () => {
     const sealed = createIntegrationCipher({ key: OTHER_KEY }).seal({
       API_KEY: "secret",
     });
 
-    expect(() => cipher.open(sealed)).toThrow(EncryptionKeyMismatch);
-    expect(() => cipher.open(sealed)).toThrow("encryption.key");
+    expect(openFailure(sealed)).toBeInstanceOf(EncryptionKeyMismatch);
   });
 
   // Same key, altered ciphertext: GCM refuses it on the same tag check and the
   // read cannot tell the two apart. Refusing suits both, since a row nobody wrote
   // is not a row to show either.
-  it("refuses an envelope whose ciphertext was altered", () => {
+  it("fails for an envelope whose ciphertext was altered", () => {
     const [iv, authTag, ciphertext] = envelope({ API_KEY: "secret" });
     const altered = ciphertext.startsWith("0")
       ? `1${ciphertext.slice(1)}`
       : `0${ciphertext.slice(1)}`;
 
-    expect(() => cipher.open(`${iv}:${authTag}:${altered}`)).toThrow(
+    expect(openFailure(`${iv}:${authTag}:${altered}`)).toBeInstanceOf(
       EncryptionKeyMismatch
     );
   });

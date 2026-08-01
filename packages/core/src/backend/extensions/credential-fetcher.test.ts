@@ -6,6 +6,10 @@ import {
   fetchCredentials,
 } from "#src/backend/extensions/credential-fetcher";
 import { DatabaseError } from "#src/backend/lib/effect/database";
+import {
+  ENCRYPTION_KEY_MISMATCH_MESSAGE,
+  EncryptionKeyMismatch,
+} from "#src/backend/services/integrations/cipher";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 
 /**
@@ -37,6 +41,31 @@ describe("fetchCredentials", () => {
       failure: {
         _tag: "CredentialsUnavailable",
         integrationId: "int_missing",
+      },
+    });
+  });
+
+  // Both failures reach the step as `CredentialsUnavailable`, so the message is
+  // the only thing a reader can tell them apart by.
+  it("names the key when the stored row was sealed under another one", async () => {
+    const runtime = stubRovaRuntime({
+      integrationRepo: {
+        findById: () =>
+          Effect.fail(
+            new EncryptionKeyMismatch({ cause: new Error("bad auth tag") })
+          ),
+      },
+    });
+
+    const outcome = await runtime.runPromise(
+      Effect.result(fetchCredentials(emptyExtensionCatalog, runtime, "int_1"))
+    );
+
+    expect(outcome).toMatchObject({
+      failure: {
+        _tag: "CredentialsUnavailable",
+        integrationId: "int_1",
+        message: ENCRYPTION_KEY_MISMATCH_MESSAGE,
       },
     });
   });

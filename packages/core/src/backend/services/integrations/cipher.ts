@@ -8,6 +8,7 @@
  */
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { Effect, Schema } from "effect";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { IntegrationConfig } from "@rova/shared/types/integration";
 
@@ -67,28 +68,41 @@ export function assertValidEncryptionKey(
  * process holding the wrong `encryption.key`, which is why it leaves the read
  * rather than becoming one more empty config.
  */
-export class EncryptionKeyMismatch extends Error {
-  constructor(options: { cause: unknown }) {
-    super(
-      "Stored integration credentials do not decrypt under this process's encryption.key. They were sealed under a different key; start the app with that key, or delete the connections and enter their credentials again.",
-      options
-    );
-    this.name = "EncryptionKeyMismatch";
+export class EncryptionKeyMismatch extends Schema.TaggedErrorClass<EncryptionKeyMismatch>()(
+  "EncryptionKeyMismatch",
+  {
+    cause: Schema.Defect(),
   }
-}
+) {}
+
+/**
+ * What a person can do about a key mismatch, for whoever the failure reaches.
+ *
+ * A constant rather than the class's `message`, since a `Schema.TaggedErrorClass`
+ * declares no message field and its `.message` is always the empty string. Every
+ * handler that translates this failure words it from here.
+ */
+export const ENCRYPTION_KEY_MISMATCH_MESSAGE =
+  "Stored integration credentials do not decrypt under this process's encryption.key. They were sealed under a different key; start the app with that key, or delete the connections and enter their credentials again.";
 
 /** Turns a config into the one column it is stored in, and back. */
 export type IntegrationCipher = {
+  /**
+   * Synchronous: `assertValidEncryptionKey` ran at construction, so
+   * `createCipheriv` gets a 32-byte key here and a fresh IV on every call.
+   */
   seal: (config: IntegrationConfig) => string;
   /**
    * An empty config when the column holds something that is not one of these
    * envelopes, so that a corrupted row is a connection the editor can still show
-   * and repair. A well-formed envelope that will not authenticate throws
+   * and repair. A well-formed envelope that will not authenticate fails with
    * `EncryptionKeyMismatch` instead: every row in the database is then unreadable,
    * and answering an empty config for all of them looks like connections nobody
    * filled in.
    */
-  open: (stored: unknown) => IntegrationConfig;
+  open: (
+    stored: unknown
+  ) => Effect.Effect<IntegrationConfig, EncryptionKeyMismatch>;
 };
 
 export function createIntegrationCipher(
@@ -101,18 +115,23 @@ export function createIntegrationCipher(
     seal: (value) => encrypt(key, JSON.stringify(value)),
     open: (stored) => {
       if (typeof stored !== "string") {
-        return {};
+        return Effect.succeed({});
       }
 
+      // `decrypt` throws for both unreadable cases and the sort happens here:
+      // the key failure leaves, and anything else is a row the editor can still
+      // show and repair.
       try {
-        return toIntegrationConfig(JSON.parse(decrypt(key, stored)));
+        return Effect.succeed(
+          toIntegrationConfig(JSON.parse(decrypt(key, stored)))
+        );
       } catch (error) {
         if (error instanceof EncryptionKeyMismatch) {
-          throw error;
+          return Effect.fail(error);
         }
 
         cipherLogger.error("Failed to decrypt integration config", { error });
-        return {};
+        return Effect.succeed({});
       }
     },
   };

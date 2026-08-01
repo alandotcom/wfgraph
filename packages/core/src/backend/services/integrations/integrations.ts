@@ -19,6 +19,7 @@ import {
 } from "@rova/shared/extensions/catalog";
 import type { IntegrationConfig } from "@rova/shared/types/integration";
 import { getErrorMessage } from "@rova/shared/utils";
+import { ENCRYPTION_KEY_MISMATCH_MESSAGE } from "#src/backend/services/integrations/cipher";
 import {
   createSecretConfigKeyTest,
   maskIntegrationConfig,
@@ -140,6 +141,21 @@ function toIntegrationWithConfig(
     config: maskIntegrationConfig(catalog, input.type, input.config),
   };
 }
+
+/**
+ * Both ways a read of this repository fails, for `Effect.catchTags`.
+ *
+ * Only the query failure's wording changes per endpoint, which is why it is the
+ * one argument. `postIntegrationTest` spells its pair out instead, because it
+ * answers a query failure differently from every other read.
+ */
+const onReadFailure = (logger: EffectLogger, databaseMessage: string) => ({
+  DatabaseError: internalFailure(logger, databaseMessage),
+  EncryptionKeyMismatch: internalFailure(
+    logger,
+    ENCRYPTION_KEY_MISMATCH_MESSAGE
+  ),
+});
 
 /**
  * How a connection test words the log line for something that threw.
@@ -280,10 +296,7 @@ export const getIntegrations = Effect.fn("getIntegrations")(function* (
   const integrations = yield* repo
     .listByType(type)
     .pipe(
-      Effect.catchTag(
-        "DatabaseError",
-        internalFailure(logger, "Failed to get integrations")
-      )
+      Effect.catchTags(onReadFailure(logger, "Failed to get integrations"))
     );
 
   return integrations.map(toIntegrationSummary);
@@ -298,12 +311,7 @@ export const getIntegration = Effect.fn("getIntegration")(function* (
 
   const integration = yield* repo
     .findById(integrationId)
-    .pipe(
-      Effect.catchTag(
-        "DatabaseError",
-        internalFailure(logger, "Failed to get integration")
-      )
-    );
+    .pipe(Effect.catchTags(onReadFailure(logger, "Failed to get integration")));
 
   if (!integration) {
     yield* logger.warn("Integration not found");
@@ -323,14 +331,11 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
   const repo = yield* IntegrationRepo;
   const { catalog } = yield* Extensions;
   const logger = (yield* AppLogger).get("integrations").with({ integrationId });
-  const onDatabaseError = internalFailure(
-    logger,
-    "Failed to update integration"
-  );
+  const onRepoFailure = onReadFailure(logger, "Failed to update integration");
 
   const existingIntegration = yield* repo
     .findById(integrationId)
-    .pipe(Effect.catchTag("DatabaseError", onDatabaseError));
+    .pipe(Effect.catchTags(onRepoFailure));
 
   if (!existingIntegration) {
     yield* logger.warn("Integration not found for update");
@@ -358,7 +363,7 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
 
   const integration = yield* repo
     .update(integrationId, updatePayload)
-    .pipe(Effect.catchTag("DatabaseError", onDatabaseError));
+    .pipe(Effect.catchTags(onRepoFailure));
 
   if (!integration) {
     yield* logger.warn("Integration not found for update");
@@ -413,15 +418,20 @@ export const postIntegrationTest = Effect.fn("postIntegrationTest")(function* (
   const repo = yield* IntegrationRepo;
   const logger = (yield* AppLogger).get("integrations").with({ integrationId });
 
-  // A database failure here is reported the way a failing test is, so the row
-  // that could not be read says why rather than answering a fixed sentence.
-  const integration = yield* repo
-    .findById(integrationId)
-    .pipe(
-      Effect.catchTag("DatabaseError", ({ cause }) =>
-        testFailure(logger, describeSavedTestFailure)(cause)
-      )
-    );
+  // The one read that does not take `onReadFailure`: a database failure here is
+  // reported the way a failing test is, so the row that could not be read says
+  // why. The key failure keeps the shared sentence, since its `cause` is a GCM
+  // tag check saying nothing a person can act on.
+  const integration = yield* repo.findById(integrationId).pipe(
+    Effect.catchTags({
+      DatabaseError: ({ cause }) =>
+        testFailure(logger, describeSavedTestFailure)(cause),
+      EncryptionKeyMismatch: internalFailure(
+        logger,
+        ENCRYPTION_KEY_MISMATCH_MESSAGE
+      ),
+    })
+  );
 
   if (!integration) {
     yield* logger.warn("Integration not found for test");
