@@ -4,7 +4,7 @@
  * ISO string) runs on the way in and out rather than on the bare schema. A
  * schema from another library validates on the way in and passes through on the
  * way out, because that is the whole of what Standard Schema publishes. README's
- * "Writing a step" section owns the full contract.
+ * "Schemas at a step boundary" section owns the full contract.
  */
 
 import { Effect, Result, Schema } from "effect";
@@ -67,9 +67,10 @@ export class StepFailure extends Schema.TaggedErrorClass<StepFailure>()(
 /**
  * The one argument a step's handler is called with.
  *
- * `TCredentials` is the integration's own credential vocabulary, which a handler
- * names by annotating its bag `StepBag<TInput, CredentialsOf<typeof fields>>`.
- * The default is the open record, for a step belonging to no integration.
+ * `TCredentials` is the integration's own credential vocabulary, which
+ * `defineIntegration` infers for a handler written inline. A helper that takes
+ * the bag rather than a handler names it, as `acuity/client.ts` does. The default
+ * is the open record, for a step belonging to no integration.
  */
 export type StepBag<
   TInput,
@@ -85,8 +86,8 @@ export type StepBag<
    * it. Yielding it more than once fetches once.
    *
    * A store that refuses the read fails with `CredentialsUnavailable`. Let it
-   * through: `defineStep` turns it into a retry rather than a failed node, and
-   * catching it would spend the run on a condition that clears on its own.
+   * through: Rova turns it into a retry rather than a failed node, and catching
+   * it would spend the run on a condition that clears on its own.
    */
   readonly credentials: Effect.Effect<TCredentials, CredentialsUnavailable>;
   /**
@@ -103,13 +104,9 @@ export type StepBag<
 /**
  * A handler, as `defineStep` takes it.
  *
- * The bag is typed with the open credential record rather than with a type
- * parameter, and an author who wants their integration's own vocabulary annotates
- * the parameter with `StepBag<TInput, CredentialsOf<typeof fields>>`. Inferring
- * that vocabulary here instead would cost the inline handler its parameter type:
- * a type parameter appearing only inside a context-sensitive argument cannot be
- * inferred before that argument is typed, so TypeScript falls back to `any` and
- * the whole handler goes unchecked.
+ * The bag carries the open credential record here, because this is the erased
+ * shape every action is built through. `defineIntegration` is where an action's
+ * own vocabulary is inferred, and it types each handler before erasing to this.
  */
 export type StepHandler<TInput, TOutput> = (
   bag: StepBag<TInput>

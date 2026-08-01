@@ -87,7 +87,7 @@ that step's output in the runs panel.
 
 The form is derived from the step's `input` schema, so a `configFields` entry states
 only what the schema cannot and merges into the derived field of the same key. Write
-none and the schema's own list is the form. README's "Writing a step" owns the rule.
+none and the schema's own list is the form. README's "The config form" owns the rule.
 
 | Type                | Description                                | Templates |
 | ------------------- | ------------------------------------------ | --------- |
