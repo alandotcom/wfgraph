@@ -49,6 +49,31 @@ describe("a graph built in process", () => {
     expect(parsed.nodes).toHaveLength(1);
   });
 
+  // The samples the Test Run overlay keeps sit on the entry node beside the
+  // rules, so a save carries them and a duplicated workflow opens on them.
+  it("accepts an entry node carrying test-run payloads", () => {
+    const parsed = parseSerializedWorkflowGraph(
+      graphWithNode({
+        id: "n1",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Appointment",
+          type: "lifecycle",
+          config: {
+            testPayloads: {
+              byEvent: {
+                "app/appointment.created": { appointment: { id: "appt_1" } },
+              },
+              manual: undefined,
+            },
+          },
+        },
+      })
+    );
+
+    expect(parsed.nodes).toHaveLength(1);
+  });
+
   // The outer `type` attribute is what React Flow's `nodeTypes` map dispatches
   // on, and `data.type` is what every validator and the engine read. The two
   // must agree on the same three-arm union, or a graph can decode clean while

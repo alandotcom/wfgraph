@@ -1,6 +1,10 @@
 import { Effect } from "effect";
-import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import {
+  AppLogger,
+  type EffectLogger,
+} from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
+import { InvalidInput } from "#src/backend/lib/effect/failures";
 import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
@@ -16,12 +20,17 @@ import {
 import type { JsonObject } from "@rova/shared/types/json";
 import { asNonEmptyString } from "@rova/shared/types/string";
 import { getValueByPath } from "@rova/shared/utils/object-path";
-import type { WorkflowExecuteResponse } from "@rova/shared/lifecycle/execution-contracts";
+import type {
+  WorkflowExecuteResponse,
+  WorkflowExecutionIgnoredReason,
+} from "@rova/shared/lifecycle/execution-contracts";
+import type { WorkflowMode } from "@rova/shared/graph/types";
 import {
   emptyLifecycleRules,
   type LifecycleRules,
   manualStartAllowed,
   resolveCorrelationPath,
+  unknownEventMessage,
 } from "@rova/shared/lifecycle/lifecycle-rules";
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
@@ -38,21 +47,26 @@ const loggerFor = (workflowId: string) =>
  * found there is the entity. That is what makes a test run supersede the run it is
  * testing rather than sit beside it.
  *
- * The body stands in for one of the Start Events rather than all of them, so the
- * paths are tried in turn and the first that finds a value wins. A payload
- * answering none of them falls back to the workflow itself (CONTEXT.md), and the
- * fallback is namespaced because this entity space is shared with values a sender
- * controls: a bare id would let a payload claim to be the workflow's own entity.
+ * A run naming its Event is read at that Event's path alone. One that names none
+ * stands in for any of the Start Events, so their paths are tried in turn and the
+ * first that finds a value wins. A payload answering none of them falls back to
+ * the workflow itself (CONTEXT.md), and the fallback is namespaced because this
+ * entity space is shared with values a sender controls: a bare id would let a
+ * payload claim to be the workflow's own entity.
  */
 function readManualEntityValue(input: {
   workflowId: string;
   rules: LifecycleRules;
   payload: JsonObject;
   catalog: ExtensionCatalog;
+  eventName?: string;
 }): string {
   const { catalog } = input;
+  const candidates = input.eventName
+    ? [input.eventName]
+    : input.rules.startEvents;
 
-  for (const eventName of input.rules.startEvents) {
+  for (const eventName of candidates) {
     const path = resolveCorrelationPath({
       rules: input.rules,
       eventName,
@@ -71,6 +85,47 @@ function readManualEntityValue(input: {
   return `workflow:${input.workflowId}`;
 }
 
+/** The Start Events a workflow takes, as the refusal sentence lists them. */
+function formatEventList(startEvents: readonly string[]): string {
+  return startEvents.length > 0
+    ? startEvents.map((name) => `"${name}"`).join(", ")
+    : "none";
+}
+
+/**
+ * A start this workflow does not take, recorded and answered.
+ *
+ * No Execution row, because no run began: the timeline carries the refusal, and
+ * the response says which rule turned it away.
+ */
+const refuseManualStart = Effect.fn("refuseManualStart")(function* (input: {
+  workflowId: string;
+  runMode: WorkflowMode;
+  reason: Extract<
+    WorkflowExecutionIgnoredReason,
+    "manual_start_not_allowed" | "start_event_required"
+  >;
+  logger: EffectLogger;
+}) {
+  const { workflowId, runMode, reason } = input;
+  yield* input.logger.info("Refused a manual run", { reason });
+
+  const repo = yield* ExecutionRepo;
+  yield* repo.recordAuditEvent({
+    workflowId,
+    eventType: "run_refused",
+    message: buildIgnoredRunAuditMessage({ startSource: "manual", reason }),
+    metadata: { reason, startSource: "manual", runMode },
+  });
+
+  const response: WorkflowExecuteResponse = {
+    status: "ignored",
+    runMode,
+    reason,
+  };
+  return response;
+});
+
 /**
  * A manual run: the Run button, and the one entrypoint that names a workflow
  * rather than an Event.
@@ -86,6 +141,12 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
        * contract.
        */
       input?: JsonObject;
+      /**
+       * The Start Event this run stands in for, which the engine routes an Event
+       * Split on. Absent is the plain manual start, and the graphs it can travel
+       * are the ones holding no such node.
+       */
+      eventName?: string;
     }
   ) {
     const logger = yield* loggerFor(workflowId);
@@ -101,6 +162,46 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
     const payload = body.input ?? {};
     const runMode = workflow.mode;
     const rules = preflight.lifecycleRules ?? emptyLifecycleRules;
+    const extensions = yield* Extensions;
+    const eventName = body.eventName;
+
+    // The Event gate comes before every lifecycle question below, because a
+    // request naming an Event this workflow does not take, or carrying a payload
+    // that Event refuses, is malformed rather than declined. It leaves no row and
+    // answers 400, which is the same verdict the Event listener reaches on the
+    // delivery path.
+    if (eventName) {
+      if (!rules.startEvents.includes(eventName)) {
+        return yield* new InvalidInput({
+          error: `"${eventName}" does not start this workflow. Its Start Events are ${formatEventList(rules.startEvents)}.`,
+        });
+      }
+
+      const definition = extensions.eventByName(eventName);
+      if (!definition) {
+        return yield* new InvalidInput({
+          error: unknownEventMessage(eventName),
+        });
+      }
+
+      const rejection = yield* definition.decodePayload(payload).pipe(
+        Effect.match({
+          onSuccess: () => undefined,
+          onFailure: (rejected) => rejected,
+        })
+      );
+      if (rejection) {
+        // The sentence the caller reads names the Event; the operator's line
+        // carries the detail, which quotes paths rather than values.
+        yield* logger.info("Refused a manual run payload", {
+          eventName,
+          error: rejection.detail,
+        });
+        return yield* new InvalidInput({
+          error: `Payload refused for Event "${eventName}": ${rejection.error}`,
+        });
+      }
+    }
 
     if (workflow.isPaused) {
       const ignoredExecution = yield* recordPausedRunIgnored({
@@ -120,36 +221,30 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
     }
 
     if (!manualStartAllowed(preflight.lifecycleRules)) {
-      yield* logger.info("Refused a manual run", {
-        reason: "manual_start_not_allowed",
-      });
-
-      const repo = yield* ExecutionRepo;
-      yield* repo.recordAuditEvent({
+      return yield* refuseManualStart({
         workflowId,
-        eventType: "run_refused",
-        message: buildIgnoredRunAuditMessage({
-          startSource: "manual",
-          reason: "manual_start_not_allowed",
-        }),
-        metadata: {
-          reason: "manual_start_not_allowed",
-          startSource: "manual",
-          runMode,
-        },
-      });
-
-      const response: WorkflowExecuteResponse = {
-        status: "ignored",
         runMode,
         reason: "manual_start_not_allowed",
-      };
-      return response;
+        logger,
+      });
+    }
+
+    // A run with no Event leaves an Event Split by no outlet, so everything
+    // behind the split would go unrun with nothing said. Refusing here is what
+    // turns that silence into a line the builder can read.
+    if (!eventName && preflight.hasEventSplit) {
+      return yield* refuseManualStart({
+        workflowId,
+        runMode,
+        reason: "start_event_required",
+        logger,
+      });
     }
 
     yield* logger.info("Workflow execute request received", {
       workflowName: workflow.name,
       runMode,
+      eventName,
       payloadKeys: Object.keys(payload),
     });
 
@@ -162,11 +257,13 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
       concurrency: rules.concurrency,
       start: {
         source: "manual",
+        eventName,
         entityValue: readManualEntityValue({
           workflowId,
           rules,
           payload,
-          catalog: (yield* Extensions).catalog,
+          catalog: extensions.catalog,
+          eventName,
         }),
       },
       runMode,

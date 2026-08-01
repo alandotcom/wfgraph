@@ -86,7 +86,9 @@ at its next step boundary.
 
 **Arriving Event**:
 The Event that put a run where it is: the Start Event it began on, and the
-Cancel Event once it has taken the Canceled outlet. A manual run has none. A
+Cancel Event once it has taken the Canceled outlet. A manual run names one of
+the Start Events to stand in for, or none at all, and one naming none reaches an
+Event Split and stops there, which is why such a graph refuses it outright. A
 Condition node reads it as a field of its own, which is what lets one branch
 answer several Events, since an outlet is one outlet however many feed it. Once
 such a Condition has decided, the editor offers the nodes on each of its lines
@@ -104,8 +106,9 @@ its place. Quiet: no outlet fires, and run history records the status.
 **Refused Start**:
 A start that opened no Execution, because first-wins Concurrency found a run
 for the entity already going, the payload carried nothing at the Correlation
-Path Concurrency needs, or a manual start was not allowed. Recorded as an
-audit row with no Execution behind it.
+Path Concurrency needs, a manual start was not allowed, or a manual start named
+no Event into a graph that splits on one. Recorded as an audit row with no
+Execution behind it.
 
 **Canceled Branch**:
 The branch behind the Canceled outlet. Runs inside the same Execution, so it

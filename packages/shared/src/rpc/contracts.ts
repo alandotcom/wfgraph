@@ -456,6 +456,12 @@ export const rpcContract = {
             // stores it in the JSONB `workflow_executions.input` column. The
             // schema names that, so everything downstream reads `JsonObject`.
             input: Schema.optionalKey(jsonObjectSchema),
+            /**
+             * Which Start Event this run stands in for. The engine routes an
+             * Event Split on it, so a run that names none takes no branch out of
+             * one. Absent is the plain manual start.
+             */
+            eventName: Schema.optionalKey(NonEmptyTrimmedString),
           })
         )
       )

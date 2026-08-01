@@ -25,6 +25,10 @@ import { useDomEvent } from "#src/hooks/effects";
 import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
+import {
+  TestRunOverlay,
+  type TestRunRequest,
+} from "#src/components/overlays/test-run-overlay";
 import { WorkflowIssuesOverlay } from "#src/components/overlays/workflow-issues-overlay";
 import { Button } from "#src/components/ui/button";
 import { ButtonGroup } from "#src/components/ui/button-group";
@@ -86,7 +90,11 @@ import {
   propertiesPanelActiveTabAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import type {
+  WorkflowEdge,
+  WorkflowNode,
+  WorkflowNodeData,
+} from "@rova/shared/graph/types";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { findAction, findIntegration } from "@rova/shared/extensions/catalog";
 import { flattenConfigFields } from "@rova/shared/plugins/action-fields";
@@ -95,6 +103,17 @@ import {
   type MissingRequiredFieldInfo,
 } from "@rova/shared/actions/action-config-validation";
 import { findTemplateTokens } from "@rova/shared/graph/node-references";
+import { isEventSplitNode } from "@rova/shared/lifecycle/event-split";
+import {
+  initialLifecycleRules,
+  manualStartAllowed,
+} from "@rova/shared/lifecycle/lifecycle-rules";
+import {
+  findEntryNode,
+  nextTestPayloads,
+  readEntryLifecycleRules,
+  readEntryTestPayloads,
+} from "#src/lib/test-payload";
 
 // The `satisfies` is the exhaustiveness check: a reason added to the shared
 // union fails to compile here until it has user-facing copy.
@@ -108,15 +127,20 @@ const IGNORED_REASON_MESSAGES = {
     "This payload carries nothing at the workflow's Correlation Path, and its Concurrency needs an entity to compare.",
   manual_start_not_allowed:
     "This workflow does not list manual runs as a start source.",
+  start_event_required:
+    "This workflow splits on the Event a run is on, so a run has to name one.",
 } satisfies Record<WorkflowExecutionIgnoredReason, string>;
+
+/** The graph store's node writer, as everything in this file passes it around. */
+type UpdateNodeData = (update: {
+  id: string;
+  data: Partial<WorkflowNodeData>;
+}) => void;
 
 // Helper functions to reduce complexity
 function updateNodesStatus(
   nodes: WorkflowNode[],
-  updateNodeData: (update: {
-    id: string;
-    data: { status?: "idle" | "running" | "success" | "error" | "cancelled" };
-  }) => void,
+  updateNodeData: UpdateNodeData,
   status: "idle" | "running" | "success" | "error" | "cancelled"
 ) {
   for (const node of nodes) {
@@ -321,14 +345,40 @@ function getMissingIntegrations(
   );
 }
 
+/**
+ * Keeps this run's payload on the entry node, so the Test Run overlay opens on
+ * it next time. The write goes through the graph store, which is what the
+ * autosave queue watches.
+ */
+function rememberTestPayload(input: {
+  nodes: WorkflowNode[];
+  updateNodeData: UpdateNodeData;
+  request: TestRunRequest;
+}) {
+  const entryNode = findEntryNode(input.nodes);
+  if (!entryNode) {
+    return;
+  }
+
+  input.updateNodeData({
+    id: entryNode.id,
+    data: {
+      config: {
+        ...entryNode.data.config,
+        testPayloads: nextTestPayloads(
+          readEntryTestPayloads(input.nodes),
+          input.request
+        ),
+      },
+    },
+  });
+}
+
 type ExecuteWorkflowRunParams = {
   /** The run mutation, with its variables already bound by the caller. */
   runWorkflow: () => Promise<WorkflowExecuteResult>;
   nodes: WorkflowNode[];
-  updateNodeData: (update: {
-    id: string;
-    data: { status?: "idle" | "running" | "success" | "error" | "cancelled" };
-  }) => void;
+  updateNodeData: UpdateNodeData;
   setIsExecuting: (value: boolean) => void;
   setSelectedExecutionId: (value: string | null) => void;
 };
@@ -404,10 +454,7 @@ type WorkflowHandlerParams = {
   workflowName: string;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
-  updateNodeData: (update: {
-    id: string;
-    data: { status?: "idle" | "running" | "success" | "error" | "cancelled" };
-  }) => void;
+  updateNodeData: UpdateNodeData;
   isExecuting: boolean;
   setIsExecuting: (value: boolean) => void;
   setCurrentWorkflowName: (name: string) => void;
@@ -508,11 +555,16 @@ function useWorkflowHandlers({
     });
   };
 
-  const executeWorkflow = async () => {
+  const executeWorkflow = async (request: TestRunRequest) => {
     if (!currentWorkflowId) {
       toast.error("Please save the workflow before executing");
       return;
     }
+
+    // The sample is kept on the entry node, so the next run of this workflow
+    // opens on what this one sent. Autosave carries it; the run itself travels
+    // on the request and waits for no save.
+    rememberTestPayload({ nodes, updateNodeData, request });
 
     // Switch to Runs tab when starting a run
     setActiveTab("runs");
@@ -524,13 +576,31 @@ function useWorkflowHandlers({
     setIsExecuting(true);
     await executeWorkflowRun({
       runWorkflow: () =>
-        runWorkflow.mutateAsync({ workflowId: currentWorkflowId, input: {} }),
+        runWorkflow.mutateAsync({
+          workflowId: currentWorkflowId,
+          input: request.input,
+          ...(request.eventName ? { eventName: request.eventName } : {}),
+        }),
       nodes,
       updateNodeData,
       setIsExecuting,
       setSelectedExecutionId,
     });
     // Don't set executing to false here - let polling handle it
+  };
+
+  const openTestRunOverlay = () => {
+    const rules = readEntryLifecycleRules(nodes) ?? initialLifecycleRules;
+
+    openOverlay(TestRunOverlay, {
+      startEvents: rules.startEvents,
+      allowManualStart: manualStartAllowed(rules),
+      hasEventSplit: nodes.some(isEventSplitNode),
+      savedPayloads: readEntryTestPayloads(nodes),
+      onRun: (request: TestRunRequest) => {
+        void executeWorkflow(request);
+      },
+    });
   };
 
   const handleGoToStep = (nodeId: string, fieldKey?: string) => {
@@ -574,13 +644,13 @@ function useWorkflowHandlers({
           missingIntegrations,
         },
         onGoToStep: handleGoToStep,
-        onRunAnyway: hasBlockingIssues ? undefined : () => executeWorkflow(),
+        onRunAnyway: hasBlockingIssues ? undefined : openTestRunOverlay,
         allowRunAnyway: !hasBlockingIssues,
       });
       return;
     }
 
-    await executeWorkflow();
+    openTestRunOverlay();
   };
 
   return {

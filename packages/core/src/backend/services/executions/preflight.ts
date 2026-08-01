@@ -18,6 +18,7 @@ import {
   type LifecycleRules,
   readLifecycleRules,
 } from "@rova/shared/lifecycle/lifecycle-rules";
+import { isEventSplitNode } from "@rova/shared/lifecycle/event-split";
 import type {
   SerializedWorkflowGraph,
   WorkflowNode,
@@ -31,6 +32,13 @@ export type WorkflowExecutionPreflight = {
   workflowGraph: SerializedWorkflowGraph;
   /** The entry node's Lifecycle Rules, absent when it carries none. */
   lifecycleRules: LifecycleRules | undefined;
+  /**
+   * Whether the graph holds an Event Split, which routes on the Event a run is
+   * on. A start that names no Event reaches such a node and leaves by no outlet,
+   * so the manual entrypoint refuses one rather than opening a run that stops
+   * halfway.
+   */
+  hasEventSplit: boolean;
 };
 
 /**
@@ -151,6 +159,7 @@ function checkGraphAndCatalog(input: {
     workflowGraph: graphValidation.graph,
     workflowNodes: graphValidation.nodes,
     lifecycleRules: readLifecycleRules(lifecycleNode?.data.config),
+    hasEventSplit: graphValidation.nodes.some(isEventSplitNode),
   };
 }
 
@@ -206,6 +215,7 @@ export const runWorkflowExecutionPreflight = Effect.fn(
   const preflight: WorkflowExecutionPreflight = {
     workflowGraph: check.workflowGraph,
     lifecycleRules: check.lifecycleRules,
+    hasEventSplit: check.hasEventSplit,
   };
   return preflight;
 });

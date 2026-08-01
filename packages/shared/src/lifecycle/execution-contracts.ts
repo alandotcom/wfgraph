@@ -59,12 +59,16 @@ export type WorkflowExecutionStartSource =
  *   while Concurrency compares, so there was no entity to be one-at-a-time about.
  * - `manual_start_not_allowed`: the workflow's Lifecycle Rules do not list manual
  *   runs as a start source.
+ * - `start_event_required`: the graph holds an Event Split, which routes on the
+ *   Event a run is on, and this start named none. Such a run reaches the split
+ *   and stops there, so it is refused instead of started.
  */
 export const WORKFLOW_EXECUTION_IGNORED_REASONS = [
   "workflow_paused",
   "concurrency_first_wins",
   "entity_value_missing",
   "manual_start_not_allowed",
+  "start_event_required",
 ] as const;
 
 export type WorkflowExecutionIgnoredReason =

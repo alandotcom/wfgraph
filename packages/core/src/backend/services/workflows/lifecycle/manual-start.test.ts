@@ -1,12 +1,13 @@
 // `it` comes from the `layer` callback below, typed with the services that layer
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import type { Workflow } from "#src/backend/lib/db/schema";
+import { defineEvent } from "#src/backend/extensions/define-event";
 import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
-  stubExtensionCatalog,
+  stubExtensions,
   stubInngestClient,
   stubIntegrationRepo,
   stubWorkflowRepo,
@@ -14,7 +15,9 @@ import {
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { WorkflowExecution } from "#src/backend/services/executions/repo/contracts";
 import { postWorkflowExecute } from "#src/backend/services/workflows/lifecycle/manual-start";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
 import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
+import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 
 function graphWithRules(rules: LifecycleRules) {
@@ -144,16 +147,80 @@ function makeRepo() {
   };
 }
 
-const catalogLayer = stubExtensionCatalog({
-  events: [
-    {
-      name: "app/appointment.created",
-      label: "Appointment created",
-      correlationPath: "appointment.id",
-      payloadFields: [],
-    },
-  ],
+/**
+ * The Event as the app defines it, which is what the payload gate decodes
+ * against. The catalog metadata beside it is what the entity read uses, so a
+ * test naming an Event needs both halves to agree.
+ */
+const appointmentCreated = defineEvent({
+  name: "app/appointment.created",
+  label: "Appointment created",
+  correlationPath: "appointment.id",
+  schema: Schema.Struct({
+    appointment: Schema.Struct({
+      id: Schema.String,
+      startsAt: Schema.String,
+    }),
+  }),
 });
+
+const catalogLayer = stubExtensions({
+  catalog: {
+    events: [
+      {
+        name: "app/appointment.created",
+        label: "Appointment created",
+        correlationPath: "appointment.id",
+        payloadFields: [],
+      },
+    ],
+    actions: [],
+    integrations: [],
+  },
+  events: [appointmentCreated],
+  eventByName: (name) =>
+    name === appointmentCreated.name ? appointmentCreated : undefined,
+});
+
+const validPayload = {
+  appointment: { id: "appt_1", startsAt: "2026-08-01T18:00:00.000Z" },
+};
+
+/** A graph whose split routes on the Event a run arrived on. */
+function graphWithEventSplit() {
+  return createSerializedWorkflowGraph({
+    nodes: [
+      {
+        id: "lifecycle-1",
+        type: "lifecycle",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Appointment",
+          type: "lifecycle",
+          config: { lifecycleRules: startRules },
+        },
+      },
+      {
+        id: "split-1",
+        type: "action",
+        position: { x: 0, y: 200 },
+        data: {
+          label: "Event Split",
+          type: "action",
+          config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
+        },
+      },
+    ],
+    edges: [
+      {
+        id: "edge-1",
+        source: "lifecycle-1",
+        target: "split-1",
+        sourceHandle: LIFECYCLE_STARTED_HANDLE,
+      },
+    ],
+  });
+}
 
 function workflowLayer(workflow: Workflow) {
   return stubWorkflowRepo({ findById: () => Effect.succeed(workflow) });
@@ -305,6 +372,126 @@ describe("postWorkflowExecute", () => {
         assert.isUndefined(audit?.executionId);
         assert.strictEqual(audit?.metadata?.reason, "manual_start_not_allowed");
         assert.include(audit?.message, "does not list manual runs");
+      })
+    );
+
+    // The Event is what an Event Split routes on, so a run naming one travels
+    // the same branches the real arrival would.
+    it.effect("carries the Event it stands in for onto the run", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+
+        const response = yield* postWorkflowExecute("wf_1", {
+          input: validPayload,
+          eventName: "app/appointment.created",
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(repo.layer, workflowLayer(workflowRow()))
+          )
+        );
+
+        assert.strictEqual(response.status, "running");
+        assert.strictEqual(
+          repo.starts[0]?.execution.startEventName,
+          "app/appointment.created"
+        );
+        assert.strictEqual(repo.starts[0]?.execution.entityValue, "appt_1");
+      })
+    );
+
+    // Naming an Event the workflow does not start on is a malformed request
+    // rather than a lifecycle decision, so it leaves no row at all.
+    it.effect("refuses an Event this workflow does not start on", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+
+        const failure = yield* postWorkflowExecute("wf_1", {
+          input: validPayload,
+          eventName: "app/appointment.cancelled",
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(repo.layer, workflowLayer(workflowRow()))
+          ),
+          Effect.flip
+        );
+
+        assert.strictEqual(failure.kind, "invalid");
+        assert.include(failure.payload.error, "does not start this workflow");
+        assert.deepStrictEqual(repo.starts, []);
+        assert.deepStrictEqual(repo.audits, []);
+      })
+    );
+
+    // The Event's own schema is the gate, the same one the delivery path runs a
+    // real arrival through.
+    it.effect("refuses a payload the Event's schema turns away", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+
+        const failure = yield* postWorkflowExecute("wf_1", {
+          input: { appointment: { id: "appt_1" } },
+          eventName: "app/appointment.created",
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(repo.layer, workflowLayer(workflowRow()))
+          ),
+          Effect.flip
+        );
+
+        assert.strictEqual(failure.kind, "invalid");
+        assert.include(
+          failure.payload.error,
+          'Payload refused for Event "app/appointment.created"'
+        );
+        assert.deepStrictEqual(repo.starts, []);
+      })
+    );
+
+    // Such a run reaches the split and leaves by no outlet, so everything behind
+    // it would go unrun with nothing said.
+    it.effect("refuses an Event-less run into a graph that splits", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+
+        const response = yield* postWorkflowExecute("wf_1", {}).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              repo.layer,
+              workflowLayer(workflowRow({ graph: graphWithEventSplit() }))
+            )
+          )
+        );
+
+        assert.deepStrictEqual(response, {
+          status: "ignored",
+          runMode: "live",
+          reason: "start_event_required",
+        });
+        assert.deepStrictEqual(repo.starts, []);
+        assert.strictEqual(
+          repo.audits[0]?.metadata?.reason,
+          "start_event_required"
+        );
+      })
+    );
+
+    it.effect("starts a run that names its Event into the same graph", () =>
+      Effect.gen(function* () {
+        const repo = makeRepo();
+
+        const response = yield* postWorkflowExecute("wf_1", {
+          input: validPayload,
+          eventName: "app/appointment.created",
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              repo.layer,
+              workflowLayer(workflowRow({ graph: graphWithEventSplit() }))
+            )
+          )
+        );
+
+        assert.strictEqual(response.status, "running");
       })
     );
   });

@@ -1,5 +1,5 @@
 import { compact } from "es-toolkit/array";
-import type { JsonValue } from "#src/types/json";
+import type { JsonObject, JsonValue } from "#src/types/json";
 
 /**
  * Reads a dot-separated path out of a value that arrived as JSON: a webhook
@@ -51,4 +51,43 @@ export function getValueByPath(
   }
 
   return current;
+}
+
+/**
+ * Writes a dot-separated path into a JSON object, building the objects the path
+ * walks through. The test-payload form is the caller: it holds one flat value per
+ * declared field path and this is what assembles them into the nested payload an
+ * Event declares.
+ *
+ * Every segment addresses an object key, so a numeric segment builds a key rather
+ * than an array index. Whatever sat at a segment that is not an object is
+ * replaced, because a path the caller asked for wins over a value that cannot
+ * hold it.
+ */
+export function setValueByPath(
+  target: JsonObject,
+  path: string,
+  value: JsonValue
+): JsonObject {
+  const segments = compact(path.trim().split("."));
+  const leaf = segments.pop();
+  if (!leaf) {
+    return target;
+  }
+
+  let current = target;
+  for (const segment of segments) {
+    const existing = current[segment];
+    const next =
+      existing !== null &&
+      typeof existing === "object" &&
+      !Array.isArray(existing)
+        ? existing
+        : {};
+    current[segment] = next;
+    current = next;
+  }
+
+  current[leaf] = value;
+  return target;
 }

@@ -147,6 +147,10 @@ export function buildIgnoredRunAuditMessage(input: {
     return `Refused a start from ${named}: nothing at this workflow's Correlation Path, and Concurrency needs an entity to compare`;
   }
 
+  if (input.reason === "start_event_required") {
+    return `Refused a start from ${named}: this workflow splits on the Event a run is on, and this start named none`;
+  }
+
   return `Refused a start from ${named}: this workflow does not list manual runs as a start source`;
 }
 

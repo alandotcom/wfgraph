@@ -26,6 +26,7 @@
 import { Schema } from "effect";
 import { listOf, NonEmptyTrimmedString, unknownRest } from "#src/types/schema";
 import { lifecycleRulesSchema } from "#src/lifecycle/lifecycle-rules";
+import { testPayloadsSchema } from "#src/lifecycle/test-payloads";
 
 /**
  * What the entry node carries.
@@ -38,10 +39,12 @@ import { lifecycleRulesSchema } from "#src/lifecycle/lifecycle-rules";
  *
  * The payload a run receives belongs to the Event that started or canceled it, so
  * the Events name its shape and the editor derives the fields it offers from
- * them. The rules are the whole of what this node stores.
+ * them. Beside the rules sit the test-run samples, which are editor data the
+ * delivery path never reads.
  */
 const workflowLifecycleConfigSchema = Schema.Struct({
   lifecycleRules: Schema.optional(lifecycleRulesSchema),
+  testPayloads: Schema.optional(testPayloadsSchema),
 }).annotate({
   message: "Lifecycle config must be an object",
 });
