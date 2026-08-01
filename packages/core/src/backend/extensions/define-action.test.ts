@@ -181,6 +181,31 @@ describe("defineAction", () => {
 });
 
 describe("defineAction with an output schema", () => {
+  // Without `NoInfer` on the handler the schemas stop being the source of truth:
+  // an action answering with fewer fields than `output` declares would make the
+  // schema answer to the handler, and the editor would then offer a field the
+  // run never produces.
+  it("refuses a handler that answers with less than its output schema declares", () => {
+    const build = () =>
+      defineAction({
+        id: "appointments/cancel",
+        label: "Cancel",
+        description: "Cancels an appointment",
+        input: z.object({ appointmentId: z.string() }),
+        // @ts-expect-error the handler below drops `cancelledAt`
+        output: z.object({
+          appointmentId: z.string(),
+          status: z.string(),
+          cancelledAt: z.iso.datetime(),
+        }),
+        handler({ input }) {
+          return { appointmentId: input.appointmentId, status: "cancelled" };
+        },
+      });
+
+    expect(build).toBeTypeOf("function");
+  });
+
   const timestamps = Schema.Struct({
     at: Schema.String.pipe(
       Schema.decodeTo(Schema.Date, SchemaTransformation.dateFromString)
@@ -633,8 +658,18 @@ describe("defineAction with Arktype schemas", () => {
         hasPermanentDeferral: "boolean",
         createdAt: type("string.date.iso").configure({ format: "date-time" }),
       }),
+      // Answers the shape the schema declares. It never runs here: what this
+      // case reads is the field list derived from `output`.
       handler() {
-        return {} as Record<string, unknown>;
+        return {
+          uuid: "u_1",
+          firstName: "Ada",
+          email: "ada@example.com",
+          dateOfBirth: null,
+          bloodType: "O" as const,
+          hasPermanentDeferral: false,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        };
       },
     });
 

@@ -165,7 +165,15 @@ export type DefineActionInputWithOutput<
    * `outputFields` via `~standard.jsonSchema.output()` and types the return.
    */
   output: OutputSchema<TOutput>;
-  handler: ActionHandler<TInput, TOutput>;
+  /**
+   * Where the work is.
+   *
+   * `NoInfer` is what keeps the schemas the source of truth. Without it the
+   * handler's own return is an inference site too, so an action answering with
+   * fewer fields than `output` declares makes the schema answer to the handler
+   * and the editor then offers a field no run produces.
+   */
+  handler: ActionHandler<NoInfer<TInput>, NoInfer<TOutput>>;
 };
 
 function normalizeActionIdentity(
@@ -222,7 +230,7 @@ function buildAction<TInput extends Record<string, unknown>>(
       ? encodeThroughOutputSchema(subject, outputSchema)
       : undefined;
 
-  return (app) => async (rawInput, steps) => {
+  return (app) => async (rawInput, node) => {
     const context = readStepContext(rawInput._context);
     if (!context) {
       return failedStep(missingContextMessage(subject));
@@ -242,7 +250,7 @@ function buildAction<TInput extends Record<string, unknown>>(
           context,
           readIntegrationId(rawInput.integrationId)
         ),
-        step: nodeStepApi(app, steps),
+        step: nodeStepApi(app, node?.steps),
       });
 
       if (!encodeOutput) {
