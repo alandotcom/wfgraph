@@ -11,12 +11,7 @@ import {
   type ConditionFieldType,
   EVENT_NAME_FIELD_PATH,
 } from "@rova/shared/conditions/conditions";
-import {
-  entryOutletsReaching,
-  LIFECYCLE_CANCELED_HANDLE,
-  LIFECYCLE_STARTED_HANDLE,
-} from "@rova/shared/lifecycle/lifecycle-outlets";
-import { readLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
+import { eventsReaching } from "@rova/shared/graph/events-reaching";
 import type {
   ReferenceField,
   UpstreamField,
@@ -142,50 +137,14 @@ function unionPayloadFields(events: readonly EventMetadata[]): SourcedField[] {
   );
 }
 
-/**
- * The Events that can put a run at this node, in the order the rules name them.
- *
- * Which of them reaches a node depends on the outlet it sits behind: the Start
- * Event behind Started, the Cancel Events behind Canceled. A node the entry node
- * reaches through no named outlet is reached by none of them, since the save
- * refuses an entry-node edge naming no outlet.
- *
- * An Event the catalog has never heard of is skipped. Saving refuses a rules
- * declaration naming one, so it belongs to a graph that cannot run, and the
- * picker's job is to offer what it can name.
- */
-function entryEventsReaching(input: {
-  entryNode: WorkflowNode;
-  targetNodeId: string;
-  edges: WorkflowEdge[];
-}): EventMetadata[] {
-  const rules = readLifecycleRules(input.entryNode.data.config);
-  if (!rules) {
-    return [];
-  }
-
-  const outlets = entryOutletsReaching({
-    entryNodeId: input.entryNode.id,
-    targetNodeId: input.targetNodeId,
-    edges: input.edges,
+/** The Events that could have put a run at this node, as the picker asks it. */
+function eventsReachingTarget(request: FieldRequest): EventMetadata[] {
+  return eventsReaching({
+    targetNodeId: request.targetNodeId,
+    nodes: request.nodes,
+    edges: request.edges,
+    catalog: getExtensionCatalog(),
   });
-
-  const catalog = getExtensionCatalog();
-  return compact(
-    [
-      ...(outlets.has(LIFECYCLE_STARTED_HANDLE) ? rules.startEvents : []),
-      ...(outlets.has(LIFECYCLE_CANCELED_HANDLE) ? rules.cancelEvents : []),
-    ].map((name) => findEvent(catalog, name))
-  );
-}
-
-/** What the entry node offers a particular node downstream of it. */
-function getEntryNodeOutputFields(input: {
-  entryNode: WorkflowNode;
-  targetNodeId: string;
-  edges: WorkflowEdge[];
-}): SourcedField[] {
-  return unionPayloadFields(entryEventsReaching(input));
 }
 
 function getPluginActionOutputFields(actionType: string): ReferenceField[] {
@@ -222,11 +181,13 @@ export function getNodeDisplayName(node: WorkflowNode): string {
  * Where in the graph the fields are being asked for.
  *
  * The entry node is the reason this exists: what it offers depends on the node
- * asking, because the outlet between the two decides which Events' payloads can
- * arrive. Every other node answers from its own config or its catalog entry.
+ * asking, because the path between the two decides which Events could have put a
+ * run there. Every other node answers from its own config or its catalog entry.
+ * The nodes come along because that path is read off their configs.
  */
 export type FieldRequest = {
   targetNodeId: string;
+  nodes: readonly WorkflowNode[];
   edges: WorkflowEdge[];
 };
 
@@ -243,12 +204,10 @@ export function getNodeOutputFields(
     }
   }
 
+  // The entry node's output is the payload of whichever Event put the run here,
+  // so what it offers is the union of the Events that still could have.
   if (node.data.type === "lifecycle") {
-    return getEntryNodeOutputFields({
-      entryNode: node,
-      targetNodeId: request.targetNodeId,
-      edges: request.edges,
-    });
+    return unionPayloadFields(eventsReachingTarget(request));
   }
 
   // An action type the catalog cannot find -- a stale graph naming a plugin
@@ -279,7 +238,7 @@ export function getUpstreamFields(input: {
 }): UpstreamField[] {
   // The one narrowing: an entry node's answer names the node asking, so the id has
   // to be a string by the time the fields are read.
-  const { currentNodeId, edges } = input;
+  const { currentNodeId, nodes, edges } = input;
   if (!currentNodeId) {
     return [];
   }
@@ -289,6 +248,7 @@ export function getUpstreamFields(input: {
 
     return getNodeOutputFields(node, {
       targetNodeId: currentNodeId,
+      nodes,
       edges,
     }).map(({ sourceLabel, ...field }) => ({
       ...field,
@@ -378,7 +338,7 @@ function eventNameConditionField(input: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
 }): ConditionSelectableField[] {
-  const { currentNodeId, edges } = input;
+  const { currentNodeId, nodes, edges } = input;
   const entryNode = getUpstreamNodes(input).find(
     (node) => node.data.type === "lifecycle"
   );
@@ -386,9 +346,9 @@ function eventNameConditionField(input: {
     return [];
   }
 
-  const events = entryEventsReaching({
-    entryNode,
+  const events = eventsReachingTarget({
     targetNodeId: currentNodeId,
+    nodes,
     edges,
   });
   if (events.length < 2) {

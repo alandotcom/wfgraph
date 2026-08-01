@@ -129,6 +129,7 @@ export function TemplateAutocomplete({
 
       for (const field of getNodeOutputFields(node, {
         targetNodeId: currentNodeId,
+        nodes,
         edges,
       })) {
         nextOptions.push({
@@ -150,7 +151,7 @@ export function TemplateAutocomplete({
     // A stable sort, so the fields a typed target actually wants come first while
     // each node's own fields stay in schema order behind them.
     return nextOptions.toSorted((a, b) => a.rank - b.rank);
-  }, [upstreamNodes, fieldType, currentNodeId, edges]);
+  }, [upstreamNodes, fieldType, currentNodeId, nodes, edges]);
 
   const filteredOptions = useMemo(() => {
     const trimmedFilter = filter.trim().toLowerCase();

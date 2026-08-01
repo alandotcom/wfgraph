@@ -6,6 +6,11 @@ import {
   getUpstreamNodes,
 } from "#src/lib/upstream-node-fields";
 import {
+  type ConditionModel,
+  EVENT_NAME_FIELD_PATH,
+  serializeConditionModel,
+} from "@rova/shared/conditions/conditions";
+import {
   type ActionMetadata,
   emptyExtensionCatalog,
   type EventMetadata,
@@ -423,6 +428,106 @@ describe("upstream-node-fields", () => {
       ["bookedBy", "app/appointment.created"],
       ["movedBy", "app/appointment.rescheduled"],
     ]);
+  });
+
+  // A Condition that splits the Cancel Events leaves one Event on each of its
+  // lines, so the node behind a line reads that Event's payload alone and has
+  // nothing left to select between.
+  it("offers one Event's fields behind a Condition that named it", () => {
+    surface.events = [
+      anEvent({
+        name: "app/appointment.canceled",
+        schema: Schema.Struct({
+          appointmentId: Schema.String.annotate({ description: "Which one" }),
+          reason: Schema.String.annotate({ description: "Why" }),
+        }),
+      }),
+      anEvent({
+        name: "app/appointment.rescheduled",
+        schema: Schema.Struct({
+          appointmentId: Schema.String.annotate({ description: "Which one" }),
+          movedBy: Schema.String.annotate({ description: "Who moved it" }),
+        }),
+      }),
+    ];
+
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "rule-1",
+              field: EVENT_NAME_FIELD_PATH,
+              fieldType: "string",
+              operator: "equals",
+              value: "app/appointment.canceled",
+            },
+          ],
+        },
+      ],
+    };
+
+    const nodes: WorkflowNode[] = [
+      anEntryNode({
+        cancelEvents: [
+          "app/appointment.canceled",
+          "app/appointment.rescheduled",
+        ],
+      }),
+      createNode({
+        id: "which-1",
+        type: "action",
+        label: "Which Event",
+        config: {
+          actionType: "Condition",
+          conditionModel: serializeConditionModel(model),
+        },
+      }),
+      createNode({
+        id: "on-canceled",
+        type: "action",
+        label: "Apologise",
+        config: { actionType: "Condition" },
+      }),
+    ];
+
+    const edges: WorkflowEdge[] = [
+      createEdge({
+        id: "e1",
+        source: "lifecycle-1",
+        sourceHandle: LIFECYCLE_CANCELED_HANDLE,
+        target: "which-1",
+      }),
+      createEdge({
+        id: "e2",
+        source: "which-1",
+        sourceHandle: "true",
+        target: "on-canceled",
+      }),
+    ];
+
+    // One Event reaching it, so its fields sit under the node's own name rather
+    // than in per-Event sections.
+    expect(
+      getUpstreamFields({ currentNodeId: "on-canceled", nodes, edges })
+        .filter((field) => field.sourceNodeId === "lifecycle-1")
+        .map((field) => [field.path, field.sourceNodeName])
+    ).toEqual([
+      ["appointmentId", "Lifecycle"],
+      ["reason", "Lifecycle"],
+    ]);
+
+    expect(
+      getUpstreamConditionFields({
+        currentNodeId: "on-canceled",
+        nodes,
+        edges,
+      }).some((field) => field.path === EVENT_NAME_FIELD_PATH)
+    ).toBe(false);
   });
 
   it("offers the Event name where more than one Event reaches the node", () => {

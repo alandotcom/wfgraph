@@ -90,9 +90,8 @@ export class Traversal {
 
   /**
    * Runs `work` with the node marked as running, and answers `false` for a node
-   * that was already running: two branches arriving at one node execute it once.
-   * The mark comes off however the work ends, since a node whose work threw is
-   * no longer running.
+   * already running, so a node scheduled twice executes once. The mark comes off
+   * however the work ends, since a node whose work threw is no longer running.
    */
   async withNodeInProgress(
     nodeId: string,

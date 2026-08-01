@@ -75,7 +75,9 @@ at its next step boundary.
 The Event that put a run where it is: the Start Event it began on, and the
 Cancel Event once it has taken the Canceled outlet. A manual run has none. A
 Condition node reads it as a field of its own, which is what lets one branch
-answer several Events, since an outlet is one outlet however many feed it.
+answer several Events, since an outlet is one outlet however many feed it. Once
+such a Condition has decided, the editor offers the nodes on each of its lines
+only the Events still possible there.
 
 **Concurrency**:
 How many Executions may exist per Entity Value: one at a time with newest
