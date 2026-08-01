@@ -38,8 +38,8 @@ export function TemplateBadgeTextarea({
     handleBlur,
     handleFocus,
     handleInput,
+    handleKeyDown,
     handlePaste,
-    insertLineBreak,
     nodes,
     showAutocomplete,
   } = useTemplateBadgeField({
@@ -67,12 +67,7 @@ export function TemplateBadgeTextarea({
           onBlur={handleBlur}
           onFocus={handleFocus}
           onInput={handleInput}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              insertLineBreak();
-            }
-          }}
+          onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           ref={attachEditor}
           role="textbox"

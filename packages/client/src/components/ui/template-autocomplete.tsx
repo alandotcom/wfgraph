@@ -195,6 +195,18 @@ export function TemplateAutocomplete({
       ? 0
       : Math.min(selectedIndex, filteredOptions.length - 1);
 
+  // A typed target whose menu is empty says so, because the reason is a fact
+  // about the payloads rather than about what was typed: nothing upstream is a
+  // length of time, or an instant. A menu with nothing to say stays closed.
+  const emptyMessage =
+    fieldType && options.length === 0
+      ? fieldType === "duration"
+        ? "No field upstream is a duration. Type a value like 24h."
+        : "No field upstream is a date and time. Type one, like 2026-03-10T09:00:00Z."
+      : null;
+
+  const hasRowsToShow = filteredOptions.length > 0 || emptyMessage !== null;
+
   // Handle keyboard navigation
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -226,7 +238,11 @@ export function TemplateAutocomplete({
     [filteredOptions, selectedOptionIndex, onSelect, onClose]
   );
 
-  useDomEvent(window, "keydown", handleKeyDown, { enabled: isOpen });
+  // Armed on exactly the condition that draws the menu below. A listener living
+  // past that point takes the arrow and Escape keys from a field showing nothing.
+  useDomEvent(window, "keydown", handleKeyDown, {
+    enabled: isOpen && hasRowsToShow,
+  });
 
   // Keyboard navigation can walk the highlight past the edge of the scroll box,
   // and only the DOM knows where that edge is.
@@ -238,21 +254,7 @@ export function TemplateAutocomplete({
     }
   });
 
-  // A typed target whose menu is empty says so, because the reason is a fact
-  // about the payloads rather than about what was typed: nothing upstream is a
-  // length of time, or an instant. A menu with nothing to say stays closed.
-  const emptyMessage =
-    fieldType && options.length === 0
-      ? fieldType === "duration"
-        ? "No field upstream is a duration. Type a value like 24h."
-        : "No field upstream is a date and time. Type one, like 2026-03-10T09:00:00Z."
-      : null;
-
-  if (
-    !isOpen ||
-    typeof document === "undefined" ||
-    (filteredOptions.length === 0 && !emptyMessage)
-  ) {
+  if (!(isOpen && hasRowsToShow) || typeof document === "undefined") {
     return null;
   }
 

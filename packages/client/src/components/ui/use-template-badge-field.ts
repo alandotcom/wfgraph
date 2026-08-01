@@ -5,6 +5,7 @@ import { nodesAtom } from "#src/lib/workflow-graph-store";
 import { findTemplateTokens } from "@rova/shared/graph/node-references";
 import {
   type BadgeEditor,
+  type BadgeRange,
   createBadgeEditor,
 } from "./template-badge-dom";
 
@@ -90,12 +91,20 @@ export function useTemplateBadgeField(input: {
     }
   });
 
-  /** Show or hide the autocomplete based on a trailing `@word`. */
-  const syncAutocomplete = useCallback((text: string) => {
-    const lastAtSign = text.lastIndexOf("@");
-    const filter = lastAtSign === -1 ? null : text.slice(lastAtSign + 1);
+  /** Show or hide the autocomplete based on the `@word` being typed. */
+  const syncAutocomplete = useCallback((text: string, caretOffset: number) => {
+    const typed = text.slice(0, caretOffset);
+    const lastAtSign = typed.lastIndexOf("@");
+    const filter = lastAtSign === -1 ? null : typed.slice(lastAtSign + 1);
 
-    if (filter === null || filter.includes(" ")) {
+    // Every stored token carries an @ of its own. Opening the menu against one
+    // offers to splice a second token into the middle of the first, and an open
+    // menu holds the arrow and Escape keys away from the field.
+    const insideToken = findTemplateTokens(text).some(
+      (token) => lastAtSign >= token.start && lastAtSign < token.end
+    );
+
+    if (filter === null || insideToken || filter.includes(" ")) {
       setShowAutocomplete(false);
       return;
     }
@@ -136,7 +145,7 @@ export function useTemplateBadgeField(input: {
     onChange?.(nextValue);
 
     if (before === after) {
-      syncAutocomplete(nextValue);
+      syncAutocomplete(nextValue, editor.readCaret()?.offset ?? nextValue.length);
       return;
     }
 
@@ -221,6 +230,84 @@ export function useTemplateBadgeField(input: {
     }
   }, [handleInput]);
 
+  /** Take a badge out whole, leaving the caret where it stood. */
+  const removeBadge = useCallback(
+    (badge: BadgeRange) => {
+      const editor = editorRef.current;
+      if (!editor) {
+        return;
+      }
+
+      const text = editor.readText();
+      const nextValue = text.slice(0, badge.start) + text.slice(badge.end);
+
+      knownTextRef.current = nextValue;
+      onChange?.(nextValue);
+      setShowAutocomplete(false);
+      editor.render(nextValue, {
+        caretOffset: badge.start,
+        focused: true,
+        nodes,
+        placeholder,
+      });
+    },
+    [nodes, onChange, placeholder]
+  );
+
+  /**
+   * The keys that would otherwise meet a badge as a `contenteditable="false"`
+   * span, where each browser has its own idea of what should happen. Answering
+   * them here is what makes a badge behave as one character in all of them.
+   */
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      const editor = editorRef.current;
+      if (!editor) {
+        return;
+      }
+
+      if (multiline && event.key === "Enter") {
+        event.preventDefault();
+        insertLineBreak();
+        return;
+      }
+
+      // A modifier asks for something wider than one character, such as
+      // deleting a whole word. The browser handles those better than a rule
+      // written per key here would.
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+        return;
+      }
+
+      const reachesBackward = event.key === "Backspace" || event.key === "ArrowLeft";
+      const reachesForward = event.key === "Delete" || event.key === "ArrowRight";
+      if (!(reachesBackward || reachesForward)) {
+        return;
+      }
+
+      const caret = editor.readCaret();
+      if (!caret?.collapsed) {
+        return;
+      }
+
+      const badge = reachesBackward ? caret.badgeBefore : caret.badgeAfter;
+      if (!badge) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (event.key === "ArrowLeft") {
+        editor.setCaretOffset(badge.start);
+      } else if (event.key === "ArrowRight") {
+        editor.setCaretOffset(badge.end);
+      } else {
+        removeBadge(badge);
+      }
+    },
+    [insertLineBreak, multiline, removeBadge]
+  );
+
   return {
     attachEditor,
     autocompleteFilter,
@@ -229,8 +316,8 @@ export function useTemplateBadgeField(input: {
     handleFocus,
     handleInput,
     handleAutocompleteSelect,
+    handleKeyDown,
     handlePaste,
-    insertLineBreak,
     closeAutocomplete: useCallback(() => setShowAutocomplete(false), []),
     nodes,
     showAutocomplete,

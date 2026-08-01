@@ -17,6 +17,10 @@ import type { WorkflowNode } from "@rova/shared/graph/types";
  * `data-template` attribute keeps the raw token, so reading the field back
  * yields the token and not the label the user can see. A badge shows the node's
  * *current* label, which is why renaming a node has to redraw them.
+ *
+ * A badge is one atomic unit, as wide as the raw token it stands for, with a
+ * caret position at each of its two edges. Every offset this module takes or
+ * returns counts in those units.
  */
 
 export type BadgeEditorOptions = {
@@ -42,6 +46,20 @@ export type RenderOptions = {
   caretOffset?: number;
 };
 
+/** Half-open range of one badge, in the units `readText` produces. */
+export type BadgeRange = { start: number; end: number };
+
+/** Where the caret is and what it can act on, for a key handler above. */
+export type CaretContext = {
+  offset: number;
+  /** False while the user has a range selected, which the keys leave alone. */
+  collapsed: boolean;
+  /** The badge ending at the caret, which Backspace removes. */
+  badgeBefore: BadgeRange | null;
+  /** The badge starting at the caret, which Delete removes. */
+  badgeAfter: BadgeRange | null;
+};
+
 export type BadgeEditor = {
   /** Draw `text`, replacing whatever is there. */
   render(text: string, options: RenderOptions): void;
@@ -49,6 +67,10 @@ export type BadgeEditor = {
   rerender(nodes: WorkflowNode[]): void;
   /** The raw template string the field currently holds. */
   readText(): string;
+  /** Null when the selection is somewhere other than this field. */
+  readCaret(): CaretContext | null;
+  /** Offsets outside the text, and inside a badge, snap to the nearest edge. */
+  setCaretOffset(offset: number): void;
   /** Insert at the caret, as the browser would for a paste. */
   insertText(text: string): boolean;
   insertLineBreak(): boolean;
@@ -56,6 +78,9 @@ export type BadgeEditor = {
 
 /** Marks the prompt text shown in an empty, unfocused field. */
 const PLACEHOLDER_ATTRIBUTE = "data-placeholder";
+
+/** Marks the line an empty field shows its caret on. Not the user's text. */
+const FILLER_ATTRIBUTE = "data-filler";
 
 const LIVE_BADGE_CLASS =
   "inline-flex items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-blue-600 dark:text-blue-400 font-mono text-xs border border-blue-500/20 mx-0.5";
@@ -111,50 +136,86 @@ function templateOf(node: Node): string | null {
 }
 
 /**
+ * One stretch of the field, carrying the text it contributes and the offset it
+ * starts at. A badge and a line break are single units; the empty text nodes
+ * around them are units of their own, zero wide, and are the caret's only
+ * foothold where two badges meet.
+ */
+type Unit =
+  | { kind: "text"; node: Text; start: number; text: string }
+  | { kind: "badge"; node: HTMLElement; start: number; text: string }
+  | { kind: "break"; node: HTMLElement; start: number; text: string };
+
+function unitEnd(unit: Unit): number {
+  return unit.start + unit.text.length;
+}
+
+/**
+ * The field's contents, in order, with a running offset.
+ *
+ * The one traversal every answer is derived from. A badge's own label is not the
+ * field's text, so the walk stops at a badge rather than descending into it;
+ * reading the label back would double-count it and leave the caret arithmetic
+ * pointing inside a span the browser will not type into.
+ */
+function scanUnits(container: HTMLElement, multiline: boolean): Unit[] {
+  const units: Unit[] = [];
+  let start = 0;
+
+  function push(unit: Unit) {
+    units.push(unit);
+    start += unit.text.length;
+  }
+
+  function visit(node: Node) {
+    if (node instanceof Text) {
+      push({ kind: "text", node, start, text: node.data });
+      return;
+    }
+
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+
+    const template = templateOf(node);
+    if (template !== null) {
+      push({ kind: "badge", node, start, text: template });
+      return;
+    }
+
+    if (
+      node.hasAttribute(PLACEHOLDER_ATTRIBUTE) ||
+      node.hasAttribute(FILLER_ATTRIBUTE)
+    ) {
+      return;
+    }
+
+    if (node.tagName === "BR") {
+      push({ kind: "break", node, start, text: multiline ? "\n" : "" });
+      return;
+    }
+
+    for (const child of Array.from(node.childNodes)) {
+      visit(child);
+    }
+  }
+
+  for (const child of Array.from(container.childNodes)) {
+    visit(child);
+  }
+
+  return units;
+}
+
+/**
  * The raw template string a field holds: literals as typed, badges as the token
  * they stand for, line breaks as newlines. Placeholder text is not the user's
  * text and never appears.
  */
 function readTextFrom(container: HTMLElement, multiline: boolean): string {
-  const walker = document.createTreeWalker(
-    container,
-    NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
-    null
-  );
-  let result = "";
-  let node = walker.nextNode();
-
-  while (node) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      // A badge's text is the node's label, which the token already carries,
-      // and a placeholder is not the user's text at all.
-      let parent = node.parentElement;
-      let isDecoration = false;
-      while (parent && parent !== container) {
-        if (
-          parent.getAttribute("data-template") ||
-          parent.hasAttribute(PLACEHOLDER_ATTRIBUTE)
-        ) {
-          isDecoration = true;
-          break;
-        }
-        parent = parent.parentElement;
-      }
-      if (!isDecoration) {
-        result += node.textContent;
-      }
-    } else {
-      const template = templateOf(node);
-      if (template) {
-        result += template;
-      } else if (multiline && node instanceof HTMLElement && node.tagName === "BR") {
-        result += "\n";
-      }
-    }
-    node = walker.nextNode();
-  }
-
-  return result;
+  return scanUnits(container, multiline)
+    .map((unit) => unit.text)
+    .join("");
 }
 
 export function createBadgeEditor(
@@ -164,104 +225,128 @@ export function createBadgeEditor(
   const multiline = options.multiline ?? false;
   let lastRenderOptions: RenderOptions = { focused: false, nodes: [] };
 
-  function walk(): TreeWalker {
-    return document.createTreeWalker(
-      container,
-      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
-      null
+  function totalLength(units: Unit[]): number {
+    const last = units.at(-1);
+    return last ? unitEnd(last) : 0;
+  }
+
+  /**
+   * Where a DOM point falls in the field's text.
+   *
+   * A point on an element names a child index rather than a character, which is
+   * the shape a selection takes after the browser deletes a badge, so it
+   * resolves to where the first unit at or after that child begins.
+   */
+  function offsetOfPoint(
+    units: Unit[],
+    node: Node,
+    nodeOffset: number
+  ): number {
+    const textUnit = units.find(
+      (unit) => unit.kind === "text" && unit.node === node
     );
+    if (textUnit) {
+      return textUnit.start + Math.min(nodeOffset, textUnit.text.length);
+    }
+
+    const enclosing = units.find(
+      (unit) => unit.kind !== "text" && unit.node.contains(node)
+    );
+    if (enclosing) {
+      return nodeOffset === 0 ? enclosing.start : unitEnd(enclosing);
+    }
+
+    if (node instanceof HTMLElement) {
+      const children = Array.from(node.childNodes);
+      for (const child of children.slice(nodeOffset)) {
+        const following = units.find(
+          (unit) => unit.node === child || child.contains(unit.node)
+        );
+        if (following) {
+          return following.start;
+        }
+      }
+
+      const last = units.findLast((unit) => node.contains(unit.node));
+      return last ? unitEnd(last) : totalLength(units);
+    }
+
+    return totalLength(units);
   }
 
-  function isLineBreak(node: Node): boolean {
-    return multiline && node instanceof HTMLElement && node.tagName === "BR";
+  function badgeAt(units: Unit[], edge: "end" | "start", offset: number) {
+    const unit = units.find(
+      (candidate) =>
+        candidate.kind === "badge" &&
+        (edge === "start" ? candidate.start : unitEnd(candidate)) === offset
+    );
+    return unit ? { end: unitEnd(unit), start: unit.start } : null;
   }
 
-  /** The caret's position, counting a badge as its whole raw token. */
-  function readCaretOffset(): number | null {
+  function readCaret(): CaretContext | null {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) {
       return null;
     }
 
     const range = selection.getRangeAt(0);
-    const walker = walk();
-    let offset = 0;
-    let node = walker.nextNode();
-
-    while (node) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        if (node === range.endContainer) {
-          return offset + range.endOffset;
-        }
-        offset += (node.textContent || "").length;
-      } else {
-        const template = templateOf(node);
-        if (template) {
-          const reached =
-            node === range.endContainer ||
-            (node instanceof HTMLElement && node.contains(range.endContainer));
-          offset += template.length;
-          if (reached) {
-            return offset;
-          }
-        } else if (isLineBreak(node)) {
-          const reached =
-            node === range.endContainer ||
-            (node instanceof HTMLElement && node.contains(range.endContainer));
-          if (reached) {
-            return offset;
-          }
-          offset += 1;
-        }
-      }
-      node = walker.nextNode();
+    if (!container.contains(range.endContainer)) {
+      return null;
     }
 
-    return offset;
+    const units = scanUnits(container, multiline);
+    const offset = offsetOfPoint(units, range.endContainer, range.endOffset);
+
+    return {
+      badgeAfter: badgeAt(units, "start", offset),
+      badgeBefore: badgeAt(units, "end", offset),
+      collapsed: range.collapsed,
+      offset,
+    };
   }
 
-    /** Focus without re-firing focus on an element that already has it. */
+  /** Focus without re-firing focus on an element that already has it. */
   function focusContainer() {
     if (document.activeElement !== container) {
       container.focus();
     }
   }
 
-  function placeCaret(targetOffset: number) {
-    const walker = walk();
-    let offset = 0;
-    let target: Node | null = null;
-    let withinTarget = 0;
-    let node = walker.nextNode();
-
-    while (node) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        const length = (node.textContent || "").length;
-        if (offset + length >= targetOffset) {
-          target = node;
-          withinTarget = targetOffset - offset;
-          break;
-        }
-        offset += length;
-      } else {
-        const template = templateOf(node);
-        const width = template ? template.length : isLineBreak(node) ? 1 : 0;
-        if (width > 0 && offset + width >= targetOffset) {
-          // A badge is atomic, so the caret goes after it rather than inside.
-          target = node.nextSibling;
-          withinTarget = 0;
-          if (!target && node.parentNode) {
-            target = document.createTextNode("");
-            node.parentNode.appendChild(target);
-          }
-          break;
-        }
-        offset += width;
-      }
-      node = walker.nextNode();
+  /**
+   * A text node the caret can occupy at `offset`.
+   *
+   * Only a text unit is eligible, and a badge's label is not one, so the caret
+   * lands in editable content every time. The last unit spanning the offset
+   * wins, which is the empty node `draw` leaves against each badge.
+   */
+  function caretPointAt(
+    units: Unit[],
+    offset: number
+  ): { node: Text; offset: number } | null {
+    const pierced = units.find(
+      (unit) =>
+        unit.kind === "badge" && offset > unit.start && offset < unitEnd(unit)
+    );
+    if (pierced) {
+      return caretPointAt(units, pierced.start);
     }
 
-    if (!target) {
+    const spanning = units.findLast(
+      (unit) =>
+        unit.kind === "text" && unit.start <= offset && offset <= unitEnd(unit)
+    );
+
+    return spanning?.kind === "text"
+      ? { node: spanning.node, offset: offset - spanning.start }
+      : null;
+  }
+
+  function placeCaret(targetOffset: number) {
+    const units = scanUnits(container, multiline);
+    const offset = Math.max(0, Math.min(targetOffset, totalLength(units)));
+    const point = caretPointAt(units, offset);
+
+    if (!point) {
       focusContainer();
       return;
     }
@@ -269,18 +354,20 @@ export function createBadgeEditor(
     const range = document.createRange();
     const selection = window.getSelection();
     try {
-      range.setStart(
-        target,
-        Math.min(withinTarget, target.textContent?.length || 0)
-      );
+      range.setStart(point.node, point.offset);
       range.collapse(true);
       selection?.removeAllRanges();
       selection?.addRange(range);
       focusContainer();
     } catch {
-      // A stale node can survive the walk; focusing is still better than not.
+      // A stale node can survive the scan; focusing is still better than not.
       focusContainer();
     }
+  }
+
+  /** A caret needs a text node to sit in, and a badge or a break offers none. */
+  function appendCaretStop() {
+    container.appendChild(document.createTextNode(""));
   }
 
   function appendLiteral(text: string) {
@@ -295,7 +382,9 @@ export function createBadgeEditor(
         container.appendChild(document.createTextNode(line));
       }
       if (index < lines.length - 1) {
+        appendCaretStop();
         container.appendChild(document.createElement("br"));
+        appendCaretStop();
       }
     });
   }
@@ -303,7 +392,9 @@ export function createBadgeEditor(
   function draw(text: string, renderOptions: RenderOptions) {
     lastRenderOptions = renderOptions;
 
-    const caretOffset = renderOptions.caretOffset ?? readCaretOffset();
+    const caretOffset = renderOptions.focused
+      ? (renderOptions.caretOffset ?? readCaret()?.offset ?? null)
+      : null;
 
     container.innerHTML = "";
 
@@ -337,12 +428,19 @@ export function createBadgeEditor(
         segment.token,
         renderOptions.nodes
       );
+      appendCaretStop();
       container.appendChild(badge);
+      appendCaretStop();
     }
 
-    // An empty focused field still needs somewhere to put the caret.
-    if (container.innerHTML === "" && renderOptions.focused) {
-      container.appendChild(document.createElement("br"));
+    // An empty focused field still needs a line to show its caret on. The break
+    // is marked so `scanUnits` passes over it rather than reading it as a
+    // newline the user typed.
+    if (!text) {
+      const filler = document.createElement("br");
+      filler.setAttribute(FILLER_ATTRIBUTE, "");
+      appendCaretStop();
+      container.appendChild(filler);
     }
 
     if (renderOptions.focused && caretOffset !== null) {
@@ -363,6 +461,8 @@ export function createBadgeEditor(
       });
     },
     readText: () => readTextFrom(container, multiline),
+    readCaret,
+    setCaretOffset: placeCaret,
     insertText(text: string) {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) {
@@ -392,6 +492,7 @@ export function createBadgeEditor(
       const trailingText = document.createTextNode("");
       range.insertNode(lineBreak);
       lineBreak.parentNode?.insertBefore(trailingText, lineBreak.nextSibling);
+      lineBreak.parentNode?.insertBefore(document.createTextNode(""), lineBreak);
       range.setStart(trailingText, 0);
       range.collapse(true);
       selection.removeAllRanges();

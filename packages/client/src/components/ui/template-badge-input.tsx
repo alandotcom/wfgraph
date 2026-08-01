@@ -39,6 +39,7 @@ export function TemplateBadgeInput({
     handleBlur,
     handleFocus,
     handleInput,
+    handleKeyDown,
     handlePaste,
     nodes,
     showAutocomplete,
@@ -61,6 +62,7 @@ export function TemplateBadgeInput({
           onBlur={handleBlur}
           onFocus={handleFocus}
           onInput={handleInput}
+          onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           ref={attachEditor}
           role="textbox"

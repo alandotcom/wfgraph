@@ -484,6 +484,40 @@ describe("Template badge autocomplete", () => {
       expect(badge?.textContent).toBe("Send Message.status");
     });
   });
+
+  it("stays closed for the @ inside a badge already placed", async () => {
+    const view = render(
+      <ControlledTemplateBadgeInput onValueChange={() => {}} />
+    );
+
+    const textbox = view.getByRole("textbox");
+    typeAtSymbol(textbox);
+    fireEvent.mouseDown(await waitFor(() => findTimestampOption()));
+    await waitFor(() => {
+      expect(textbox.querySelector("[data-template]")).toBeTruthy();
+    });
+
+    // Every stored token carries an @ of its own, and it is not an invitation
+    // to pick a second field. An open menu holds the arrow and Escape keys.
+    textbox.append(document.createTextNode("abc"));
+    fireEvent.input(textbox);
+
+    expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(true);
+  });
+
+  it("leaves the keys alone while it has no row to show", async () => {
+    const view = render(
+      <ControlledTemplateBadgeInput onValueChange={() => {}} />
+    );
+
+    const textbox = view.getByRole("textbox");
+    fireEvent.focus(textbox);
+    textbox.textContent = "@zzz";
+    fireEvent.input(textbox);
+
+    await waitFor(() => expect(menuRows()).toHaveLength(0));
+    expect(fireEvent.keyDown(window, { key: "Escape" })).toBe(true);
+  });
 });
 
 describe("Template badge rendering", () => {
