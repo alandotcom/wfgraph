@@ -1,13 +1,23 @@
+import { compact, uniq } from "es-toolkit";
 import { X } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import { Button } from "#src/components/ui/button";
 import { WarningCallout } from "#src/components/ui/callout";
 import { Checkbox } from "#src/components/ui/checkbox";
-import { Input } from "#src/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "#src/components/ui/select";
 import { Label } from "#src/components/ui/label";
 import { Radio, RadioGroup } from "#src/components/ui/radio-group";
 import { getExtensionCatalog } from "#src/lib/extensions";
-import { findEvent } from "@rova/shared/extensions/catalog";
+import {
+  type ExtensionCatalog,
+  findEvent,
+} from "@rova/shared/extensions/catalog";
 import { cn } from "@rova/shared/utils";
 import {
   checkLifecycleRules,
@@ -127,6 +137,7 @@ export function LifecyclePanel({
             {startPathRequest.eventName}
           </p>
           <CorrelationPathInput
+            catalog={catalog}
             disabled={disabled}
             onCommit={setCorrelationPath}
             request={startPathRequest}
@@ -214,6 +225,7 @@ export function LifecyclePanel({
         />
         {rules.cancelEvents.map((eventName) => (
           <ChosenCancelEvent
+            catalog={catalog}
             disabled={disabled}
             eventName={eventName}
             key={eventName}
@@ -289,6 +301,7 @@ function ChosenCancelEvent({
   eventName,
   label,
   request,
+  catalog,
   onCommitPath,
   onRemove,
   disabled,
@@ -296,6 +309,7 @@ function ChosenCancelEvent({
   eventName: string;
   label: string | undefined;
   request: CorrelationPathRequest;
+  catalog: ExtensionCatalog;
   onCommitPath: (eventName: string, path: string) => void;
   onRemove: () => void;
   disabled: boolean;
@@ -319,6 +333,7 @@ function ChosenCancelEvent({
         </Button>
       </div>
       <CorrelationPathInput
+        catalog={catalog}
         disabled={disabled}
         onCommit={onCommitPath}
         request={request}
@@ -347,35 +362,90 @@ function ChosenCancelEvent({
  */
 function CorrelationPathInput({
   request,
+  catalog,
   disabled,
   onCommit,
 }: {
   request: CorrelationPathRequest;
+  catalog: ExtensionCatalog;
   disabled: boolean;
   onCommit: (eventName: string, path: string) => void;
 }) {
   const inputId = useId();
   const { eventName, declaredPath, suppliedPath } = request;
+  const paths = correlationPathChoices(
+    catalog,
+    eventName,
+    declaredPath,
+    suppliedPath
+  );
 
   return (
     <div className="space-y-1">
       <Label className="sr-only" htmlFor={inputId}>
         {eventName}
       </Label>
-      <Input
+      <Select
         disabled={disabled}
-        id={inputId}
-        onChange={(event) => onCommit(eventName, event.target.value)}
-        placeholder={declaredPath ?? "appointment.id"}
-        value={suppliedPath ?? ""}
-      />
+        // Choosing the path the Event already declares is the same as declaring
+        // no override, so it commits the empty string and the declaration stands.
+        onValueChange={(next) =>
+          onCommit(
+            eventName,
+            next === declaredPath || next === NO_PATH_CHOICE ? "" : next
+          )
+        }
+        value={suppliedPath ?? declaredPath ?? NO_PATH_CHOICE}
+      >
+        <SelectTrigger className="w-full" id={inputId}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {declaredPath ? null : (
+            // An Event declaring no path has none to choose back to, so this is
+            // the only way to undo a choice and leave the workflow saying so.
+            <SelectItem value={NO_PATH_CHOICE}>Choose a path</SelectItem>
+          )}
+          {paths.map((path) => (
+            <SelectItem key={path} value={path}>
+              {path}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       <p className="text-muted-foreground text-xs">
         {declaredPath
           ? `Runs are matched on this payload path. The Event declares ${declaredPath}; a path here is read instead.`
-          : "Runs are matched on this payload path. This Event declares none, so enter the one holding the value that identifies the entity."}
+          : "Runs are matched on this payload path. This Event declares none, so choose the one holding the value that identifies the entity."}
       </p>
     </div>
   );
+}
+
+/** What an Event declaring no path sits at until a builder chooses one. */
+const NO_PATH_CHOICE = "__none__";
+
+/** The payload paths that can identify an entity, which is what a run matches on. */
+const IDENTIFYING_FIELD_TYPES = new Set(["string", "number"]);
+
+/**
+ * The payload paths this Event offers, plus any path already in effect.
+ *
+ * A path the Event does not declare is kept rather than dropped, so a workflow
+ * saved against an older payload shape shows what it is matching on instead of
+ * appearing to match on something else.
+ */
+function correlationPathChoices(
+  catalog: ExtensionCatalog,
+  eventName: string,
+  declaredPath: string | undefined,
+  suppliedPath: string | undefined
+): string[] {
+  const offered = (findEvent(catalog, eventName)?.payloadFields ?? [])
+    .filter((field) => IDENTIFYING_FIELD_TYPES.has(field.type ?? ""))
+    .map((field) => field.path);
+
+  return uniq(compact([...offered, declaredPath, suppliedPath]));
 }
 
 /**

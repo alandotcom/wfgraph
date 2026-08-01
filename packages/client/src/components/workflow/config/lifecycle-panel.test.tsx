@@ -18,7 +18,7 @@ import type { WorkflowNode } from "@rova/shared/graph/types";
 
 // The Events a panel offers come from the server's catalog. One declares its own
 // Correlation Path and one leaves it to the builder, which is the difference the
-// path input exists for.
+// path picker exists for. The payload fields are what the picker lists.
 vi.mock("#src/lib/extensions", () => ({
   getExtensionCatalog: () => ({
     events: [
@@ -26,12 +26,18 @@ vi.mock("#src/lib/extensions", () => ({
         name: "app/appointment.created",
         label: "Appointment created",
         correlationPath: "appointment.id",
-        payloadFields: [],
+        payloadFields: [
+          { path: "appointment.id", type: "string" },
+          { path: "patient.id", type: "string" },
+        ],
       },
       {
         name: "ops/nightly.swept",
         label: "Nightly sweep",
-        payloadFields: [],
+        payloadFields: [
+          { path: "sweep.id", type: "string" },
+          { path: "sweep.count", type: "number" },
+        ],
       },
     ],
     actions: [],
@@ -119,6 +125,44 @@ function chooseEvent(view: RenderResult, label: string, query: string) {
     throw new Error(`No Event matched "${query}" in the ${label} picker`);
   }
   fireEvent.click(option);
+}
+
+/**
+ * One Event's Correlation Path picker, found by the Event's name.
+ *
+ * The name is the picker's accessible label, carried by a visually hidden
+ * `<Label>`, because the Event's own heading is the caller's to render.
+ */
+function pathPicker(view: RenderResult, eventName: string): HTMLElement {
+  return view.getByLabelText(eventName);
+}
+
+/** What a closed picker shows, which is the label of the path in force. */
+function pathInForce(view: RenderResult, eventName: string): string {
+  return pathPicker(view, eventName).textContent ?? "";
+}
+
+/**
+ * Open one Event's Correlation Path picker and take the option named.
+ *
+ * Base UI mounts the popup only while it is open, so the options are looked up
+ * after the trigger rather than up front. The press starts with a pointer event:
+ * an option ignores a click that began nowhere on it, which is how it survives a
+ * popup opening under a stationary cursor.
+ */
+function choosePath(view: RenderResult, eventName: string, option: string) {
+  fireEvent.click(pathPicker(view, eventName));
+
+  const choice = view.getByRole("option", { name: option });
+  fireEvent.pointerDown(choice);
+  fireEvent.click(choice);
+}
+
+/** Every path the picker offers, in the order it lists them. */
+function pathChoices(view: RenderResult, eventName: string): string[] {
+  fireEvent.click(pathPicker(view, eventName));
+
+  return view.getAllByRole("option").map((option) => option.textContent ?? "");
 }
 
 describe("LifecyclePanel", () => {
@@ -381,9 +425,9 @@ describe("LifecyclePanel Cancel Events", () => {
   });
 
   // The path is what an arriving payload is compared against, so every chosen
-  // Event gets an editable one: an Event declaring the wrong field for this
+  // Event gets a picker of its own: an Event declaring the wrong field for this
   // workflow would otherwise be a rule the builder can read and cannot fix.
-  it("gives each chosen Event an editable path, defaulted to its declaration", () => {
+  it("gives each chosen Event a picker, defaulted to its declaration", () => {
     const view = render(
       <ControlledPanel
         initialConfig={{
@@ -396,18 +440,11 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    const declared = view.getByLabelText(
-      "app/appointment.created"
-    ) as HTMLInputElement;
-    expect(declared.value).toBe("");
-    expect(declared.placeholder).toBe("appointment.id");
-
-    expect(
-      (view.getByLabelText("ops/nightly.swept") as HTMLInputElement).value
-    ).toBe("");
+    expect(pathInForce(view, "app/appointment.created")).toBe("appointment.id");
+    expect(pathInForce(view, "ops/nightly.swept")).toBe("Choose a path");
   });
 
-  it("shows the builder's override in the field", () => {
+  it("shows the builder's override in the picker", () => {
     const view = render(
       <ControlledPanel
         initialConfig={{
@@ -421,13 +458,11 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    expect(
-      (view.getByLabelText("ops/nightly.swept") as HTMLInputElement).value
-    ).toBe("sweep.id");
+    expect(pathInForce(view, "ops/nightly.swept")).toBe("sweep.id");
   });
 
   // The Event Author's declaration is a default the workflow may disagree with,
-  // and a builder who cannot type over it has to ask for a second Event.
+  // and a builder who cannot choose past it has to ask for a second Event.
   it("writes an override for an Event that declares its own path", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
@@ -445,9 +480,7 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    fireEvent.change(view.getByLabelText("app/appointment.created"), {
-      target: { value: "patient.id" },
-    });
+    choosePath(view, "app/appointment.created", "patient.id");
 
     await waitFor(() => {
       expect(rulesOf(latest).correlationPaths).toEqual({
@@ -491,9 +524,9 @@ describe("LifecyclePanel Cancel Events", () => {
 });
 
 describe("LifecyclePanel Correlation Paths", () => {
-  // The Event Author declared no path, so the builder supplies one, trimmed and
-  // keyed by the Event it belongs to.
-  it("commits a trimmed path as it is typed", async () => {
+  // The Event Author declared no path, so the builder chooses one from the
+  // payload, keyed by the Event it belongs to.
+  it("commits the payload path the builder chose", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
         startEvent: "ops/nightly.swept",
@@ -510,11 +543,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    // No blur: Cmd+S is a capture-phase listener the focused field never sees,
-    // so a value committed only on blur is a value the save does not carry.
-    fireEvent.change(view.getByLabelText("ops/nightly.swept"), {
-      target: { value: " sweep.id " },
-    });
+    choosePath(view, "ops/nightly.swept", "sweep.id");
 
     await waitFor(() => {
       expect(rulesOf(latest).correlationPaths).toEqual({
@@ -523,6 +552,8 @@ describe("LifecyclePanel Correlation Paths", () => {
     });
   });
 
+  // An Event declaring no path of its own is cleared back to the prompt, which
+  // is what leaves the workflow saying it has no path to match on.
   it("clears one path and keeps the others", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
@@ -544,9 +575,40 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    const input = view.getByLabelText("ops/nightly.swept");
-    fireEvent.change(input, { target: { value: "  " } });
-    fireEvent.blur(input);
+    choosePath(view, "ops/nightly.swept", "Choose a path");
+
+    await waitFor(() => {
+      expect(rulesOf(latest).correlationPaths).toEqual({
+        "vendor/thing.happened": "thing.id",
+      });
+    });
+  });
+
+  // The other route back to no override, for an Event carrying a declaration:
+  // choosing the path it already declares says the same thing an override for
+  // that path would, so the workflow stores nothing and the declaration stands.
+  it("stores no override when the declared path is the one chosen", async () => {
+    let latest: Record<string, unknown> = {
+      lifecycleRules: {
+        startEvent: "app/appointment.created",
+        cancelEvents: [],
+        concurrency: "newest-wins",
+        correlationPaths: {
+          "app/appointment.created": "patient.id",
+          "vendor/thing.happened": "thing.id",
+        },
+      },
+    };
+    const view = render(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    choosePath(view, "app/appointment.created", "appointment.id");
 
     await waitFor(() => {
       expect(rulesOf(latest).correlationPaths).toEqual({
@@ -575,13 +637,36 @@ describe("LifecyclePanel Correlation Paths", () => {
       />
     );
 
-    const input = view.getByLabelText("ops/nightly.swept");
-    fireEvent.change(input, { target: { value: "" } });
-    fireEvent.blur(input);
+    choosePath(view, "ops/nightly.swept", "Choose a path");
 
     await waitFor(() => {
       expect(rulesOf(latest).correlationPaths).toBeUndefined();
     });
+  });
+
+  // A workflow saved against an older payload shape keeps matching on the path
+  // it was saved with, so the picker lists that path rather than dropping it and
+  // appearing to match on the declaration.
+  it("keeps a stored path this Event no longer declares", () => {
+    const view = render(
+      <ControlledPanel
+        initialConfig={{
+          lifecycleRules: {
+            startEvent: "app/appointment.created",
+            cancelEvents: [],
+            concurrency: "newest-wins",
+            correlationPaths: { "app/appointment.created": "legacy.reference" },
+          },
+        }}
+      />
+    );
+
+    expect(pathInForce(view, "app/appointment.created")).toBe(
+      "legacy.reference"
+    );
+    expect(pathChoices(view, "app/appointment.created")).toContain(
+      "legacy.reference"
+    );
   });
 
   // F1's repro, entirely through the panel: an override written while
@@ -612,9 +697,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       expect(rulesOf(latest).concurrency).toBe("newest-wins");
     });
 
-    fireEvent.change(view.getByLabelText("app/appointment.created"), {
-      target: { value: "patient.id" },
-    });
+    choosePath(view, "app/appointment.created", "patient.id");
     await waitFor(() => {
       expect(rulesOf(latest).correlationPaths).toEqual({
         "app/appointment.created": "patient.id",
@@ -633,10 +716,11 @@ describe("LifecyclePanel Correlation Paths", () => {
     expect(view.queryByLabelText("app/appointment.created")).toBeNull();
   });
 
-  // An Event carrying its own path still gets a field, seeded with nothing: the
-  // declaration is what an empty field means, so the panel writes no override for
-  // a builder who only opened it.
-  it("offers a field for a Start Event that declares its own path", () => {
+  // An Event carrying its own path still gets a picker, standing at that
+  // declaration and writing nothing: a builder who only opened the panel has
+  // stated no override.
+  it("offers a picker for a Start Event that declares its own path", () => {
+    const onConfigChange = vi.fn();
     const view = render(
       <ControlledPanel
         initialConfig={{
@@ -646,14 +730,12 @@ describe("LifecyclePanel Correlation Paths", () => {
             concurrency: "newest-wins",
           },
         }}
+        onConfigChange={onConfigChange}
       />
     );
 
-    const input = view.getByLabelText(
-      "app/appointment.created"
-    ) as HTMLInputElement;
-    expect(input.value).toBe("");
-    expect(input.placeholder).toBe("appointment.id");
+    expect(pathInForce(view, "app/appointment.created")).toBe("appointment.id");
+    expect(onConfigChange).not.toHaveBeenCalled();
     expect(view.queryByText("This will not save")).toBeNull();
   });
 
