@@ -54,22 +54,35 @@ export function openStepLog(target: {
   });
 }
 
+/** The close as the store takes it, with the elapsed the caller measured. */
+function writeStepLogClose(
+  store: WorkflowStore,
+  handle: WorkflowStepLogHandle,
+  close: StepLogClose,
+  durationMs: number
+): Promise<void> {
+  return store.completeStepLog({
+    logId: handle.logId,
+    durationMs,
+    status: close.status,
+    output: close.output,
+    error: close.error,
+  });
+}
+
 /**
- * Closes a row `openStepLog` opened. The handle is what carries the row's id and
- * its start time across whatever happened in between, a suspension included.
+ * Closes a row `openStepLog` opened, timed from the moment the row was opened.
+ *
+ * That is what a row spanning a suspension measures: the Wait node opens its row
+ * on one side of the suspension and closes it on the other, so the duration it
+ * means to record is how long the run was parked.
  */
 export function closeStepLog(
   store: WorkflowStore,
   handle: WorkflowStepLogHandle,
   close: StepLogClose
 ): Promise<void> {
-  return store.completeStepLog({
-    logId: handle.logId,
-    startTime: handle.startTime,
-    status: close.status,
-    output: close.output,
-    error: close.error,
-  });
+  return writeStepLogClose(store, handle, close, Date.now() - handle.startTime);
 }
 
 /**
@@ -81,10 +94,11 @@ async function closeStepLogQuietly(
   store: WorkflowStore,
   context: NodeContext,
   handle: WorkflowStepLogHandle,
-  close: StepLogClose
+  close: StepLogClose,
+  durationMs: number
 ): Promise<void> {
   try {
-    await closeStepLog(store, handle, close);
+    await writeStepLogClose(store, handle, close, durationMs);
   } catch (error) {
     // The row is now stuck at `running` and the usual cause is the database
     // itself, so the line names the run rather than only the row: in an outage
@@ -111,6 +125,10 @@ async function closeStepLogQuietly(
  * first attempt's verdict on a row a later attempt has since changed the answer
  * to, and save one idempotent write for it.
  *
+ * Each attempt times its own work. The handle's start time came out of the memo
+ * with the row's id, so a duration taken from it would grow with everything that
+ * happened between the two attempts, a wait included.
+ *
  * The two have opposite failure policies. A refused open fails the node, since
  * nothing has happened yet and Inngest's retry of it costs one wasted call. A
  * refused close is swallowed, because a run that did its work has not failed
@@ -130,6 +148,8 @@ export async function runWithStepLog<T extends StepResult>(
   const handle = await runtime.run(`node:${context.nodeId}:log-open`, () =>
     openStepLog(target)
   );
+  const startedAt = Date.now();
+  const elapsed = () => Date.now() - startedAt;
 
   try {
     const result = await work();
@@ -137,24 +157,36 @@ export async function runWithStepLog<T extends StepResult>(
     if (result.success) {
       // A success logs its payload. A step reporting success without one has
       // nothing but the envelope to show.
-      await closeStepLogQuietly(store, context, handle, {
-        status: "success",
-        output: result.data ?? result,
-      });
+      await closeStepLogQuietly(
+        store,
+        context,
+        handle,
+        { status: "success", output: result.data ?? result },
+        elapsed()
+      );
     } else {
-      await closeStepLogQuietly(store, context, handle, {
-        status: "error",
-        output: result.error,
-        error: result.error.message,
-      });
+      await closeStepLogQuietly(
+        store,
+        context,
+        handle,
+        {
+          status: "error",
+          output: result.error,
+          error: result.error.message,
+        },
+        elapsed()
+      );
     }
 
     return result;
   } catch (error) {
-    await closeStepLogQuietly(store, context, handle, {
-      status: "error",
-      error: getErrorMessage(error),
-    });
+    await closeStepLogQuietly(
+      store,
+      context,
+      handle,
+      { status: "error", error: getErrorMessage(error) },
+      elapsed()
+    );
     throw error;
   }
 }

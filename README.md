@@ -560,9 +560,9 @@ handler: async ({ input, readCredentials }) => {
 | Fails with `StepFailure` | Fails by a throw              |
 
 The rest of the contract is identical. One case is worth knowing: `readCredentials` rejects with the failure
-a refused credential store raises, and Rova reads that rejection as a condition that
-clears on its own, so it retries the node. A handler that catches around the await has
-decided otherwise, so catch narrowly.
+a refused credential store raises, and Rova fails the node on it, naming the store in the
+message. A handler that catches around the await turns that into whatever it answers next,
+so catch narrowly.
 
 ### The config form
 

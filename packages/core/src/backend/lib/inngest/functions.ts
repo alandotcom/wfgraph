@@ -37,7 +37,7 @@ export async function buildInngestFunctions(
 
   return [
     createWorkflowRunFunction(client, {
-      actions: createWorkflowActions(extensions, runtime, middleware),
+      actions: () => createWorkflowActions(extensions, runtime, middleware),
       store: createDbWorkflowStore(runtime),
     }),
     ...extensions.events.map((event) =>

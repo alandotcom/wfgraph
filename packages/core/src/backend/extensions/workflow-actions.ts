@@ -11,7 +11,10 @@
 import { Cause, Effect } from "effect";
 import { findAction } from "@rova/shared/extensions/catalog";
 import { literalFieldKeys } from "@rova/shared/plugins/action-fields";
-import { fetchCredentials } from "#src/backend/extensions/credential-fetcher";
+import {
+  fetchCredentials,
+  type WorkflowCredentials,
+} from "#src/backend/extensions/credential-fetcher";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { StepEnvironment } from "#src/backend/extensions/steps/step-runner";
 import type { WorkflowActions } from "#src/backend/engine/actions";
@@ -26,15 +29,38 @@ export function createWorkflowActions(
   runtime: RovaRuntime,
   middleware: readonly BaseMiddleware[] = []
 ): WorkflowActions {
+  // One query per integration for the life of this surface, which the app builds
+  // per invocation of the workflow function. A durable runtime re-runs that body
+  // once per step of the run, and every handler reads its credentials before its
+  // first `step.run`, so a read that remembers nothing is a query per node per
+  // step. The values are decrypted secrets: they stay in this closure and never
+  // reach `runtime.run`, which would write them into the run's stored state.
+  const credentialsByIntegration = new Map<string, WorkflowCredentials>();
+
   const app: StepEnvironment = {
     // Which stored key holds which credential is the integration's own
     // declaration, which the catalog carries, so the surface a node was
     // assembled with is the one its secrets are read through.
     credentialsFor: (integrationId) =>
-      fetchCredentials(extensions.catalog, runtime, integrationId),
+      Effect.suspend(() => {
+        const known = credentialsByIntegration.get(integrationId);
+        if (known) {
+          return Effect.succeed(known);
+        }
+
+        // Only an answer is kept. A refused read is left for the next node to
+        // ask again, since a store that was briefly unreachable clears.
+        return Effect.tap(
+          fetchCredentials(extensions.catalog, runtime, integrationId),
+          (credentials) =>
+            Effect.sync(() =>
+              credentialsByIntegration.set(integrationId, credentials)
+            )
+        );
+      }),
     // The whole step runs against the app's services, and the failure it could
-    // not answer for arrives here as a rejected promise, which is what the
-    // engine's durable runtime reads as a step to run again.
+    // not answer for arrives here as a rejected promise, which the engine
+    // records as the node's failure.
     runStep: (effect) => runStepToCompletion(runtime, effect),
   };
 

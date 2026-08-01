@@ -31,11 +31,11 @@ export type StepEnvironment = {
    * Runs the assembled step, and is where a typed failure it could not answer
    * for becomes a rejected promise.
    *
-   * The engine's durable runtime reads that rejection as a step to retry, which
-   * is the whole of how a transient failure gets a second attempt. Everything a
-   * step can answer for -- a config the schema refuses, a vendor that said no --
-   * is already the `StepResult` envelope by the time this is called and fails
-   * the node once.
+   * The engine closes the node's run-log row on that rejection and records the
+   * node failed, so a credential store that refused the read fails the node the
+   * once. Everything a step can answer for -- a config the schema refuses, a
+   * vendor that said no -- is already the `StepResult` envelope by the time this
+   * is called, and fails the node the same way.
    *
    * An app runs the step to completion, uninterrupted, and a shutdown waits it
    * out: a handler that lost its answer partway would be run again by that

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { InngestTestEngine } from "@inngest/test";
+import { InngestTestEngine, InngestTestRun } from "@inngest/test";
 import { Inngest } from "inngest";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
@@ -28,10 +28,13 @@ vi.mock("#src/backend/engine/core", () => ({
 const testActions = noWorkflowActions;
 const testStore = noopWorkflowStore;
 
+/** Records how often the app was asked for a surface, which is per invocation. */
+const buildTestActions = vi.fn(() => testActions);
+
 function createTestFunction() {
   return createWorkflowRunFunction(
     new Inngest({ id: "workflow-function-test", isDev: true }),
-    { actions: testActions, store: testStore }
+    { actions: buildTestActions, store: testStore }
   );
 }
 
@@ -120,9 +123,53 @@ describe("the workflow run function", () => {
     // for it rather than on one of its own.
     expect(store).toBe(testStore);
     // And the dispatch port the app built, which is where an action id becomes
-    // work.
+    // work. It is asked for per invocation of the body, because the surface
+    // holds an integration's credentials for its own lifetime.
     expect(actions).toBe(testActions);
+    expect(buildTestActions).toHaveBeenCalledTimes(1);
     expect(result).toEqual(expectedResult);
+  });
+
+  /**
+   * The run already recorded its terminal status, inside a memoized step, so a
+   * further attempt of this body replays that write from the memo and reaches a
+   * database that refuses to move a terminal row. A Wait node on the way would
+   * find `createWaitState` declining to park the run at all.
+   */
+  it("ends a run that failed without asking for another attempt", async () => {
+    executeWorkflowMock.mockResolvedValueOnce({
+      success: false,
+      outputs: {},
+      results: {
+        email_1: { success: false, error: { message: "the vendor said no" } },
+      },
+    });
+
+    const testEngine = new InngestTestEngine({
+      function: createTestFunction(),
+      events: [
+        {
+          name: "workflow/run.requested",
+          data: {
+            graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+            executionId: "exec_123",
+            workflowId: "workflow_123",
+          },
+        },
+      ],
+    });
+    // The rejected checkpoint rather than `execute`, which hands back the error
+    // alone: whether Inngest will try again is the assertion here.
+    const { result } = await new InngestTestRun({ testEngine }).waitFor(
+      "function-rejected"
+    );
+
+    expect(result.retriable).toBe(false);
+    // The nodes that failed are named, which is the whole of what the attempt
+    // shows in Inngest.
+    expect(result.error).toMatchObject({
+      message: "email_1: the vendor said no",
+    });
   });
 
   it("runtime.step maps onto step.run so node work is memoized across replays", async () => {

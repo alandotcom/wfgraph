@@ -27,9 +27,9 @@ export type WorkflowCredentials = Record<string, string | undefined>;
  * The credential store could not be read, which is nothing about the run.
  *
  * It travels the step's error channel rather than the `StepResult` envelope, so
- * the step rejects where the envelope would have failed the node once: a
- * database that was briefly unreachable clears on its own, and the durable
- * runtime's retry of the rejected step is what waits for it.
+ * the step rejects rather than answering. The engine reads that rejection as the
+ * node's failure, and the message names the store rather than anything the
+ * builder configured.
  */
 export class CredentialsUnavailable extends Schema.TaggedErrorClass<CredentialsUnavailable>()(
   "CredentialsUnavailable",
@@ -63,8 +63,8 @@ function mapIntegrationConfig(
  *
  * A row that is missing answers with no credentials, because a step configured
  * with no integration is a step working against a public API. A store that
- * refuses the read answers with `CredentialsUnavailable`, which the step's
- * caller retries.
+ * refuses the read answers with `CredentialsUnavailable`, which fails the node
+ * that asked.
  */
 export function fetchCredentials(
   catalog: ExtensionCatalog,

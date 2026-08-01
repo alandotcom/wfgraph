@@ -105,3 +105,37 @@ it costs nothing and carries the latest verdict.
 
 Only the open stays a step, which is what its INSERT needs. The paragraph above
 stands as the reasoning at the time.
+
+## Amendment, 2026-08-01
+
+Three things about the boundary the wrapper left behind.
+
+**A run that recorded a terminal status is not retried.** Both exits of
+`executeWorkflow` write that record inside a memoized step, and
+`ExecutionRepo.finishRun` updates an in-flight row alone, so a further attempt
+of the function body replays the write from the memo and would be refused by the
+database if it did not. A Wait node reached on such an attempt cannot park
+either: `createWaitState` answers nothing once the execution row is terminal.
+The handler therefore ends a failed run with Inngest's `NonRetriableError`.
+`retries: 4` is unchanged and still governs a step, which is where ADR-0009 put
+node-level retry.
+
+**A closed row carries the elapsed of the attempt that closed it.** The open is
+memoized, so the handle a replay reads back holds the clock of whichever attempt
+inserted the row. The close derived its duration from that handle, and an early
+node's row therefore grew with every wait the run sat through. The store is now
+handed a duration rather than a start time. A Wait node's row still measures from
+its own open, which is the whole time the run was parked.
+
+**A refused credential read fails the node.** The wrapper's removal changed this
+without the headers saying so: the rejection used to land in the node's memoized
+step, and it now passes through `runWithStepLog`, which closes the row as an
+error. Restoring the retry means opening a step boundary of its own for the read
+inside `buildStep`, which nothing else needs; the contract is stated as it now
+behaves instead, in `step-runner.ts`, `credential-fetcher.ts`, `define-step.ts`
+and README.
+
+Nothing new is memoized by any of the three. The surface a run's steps are
+dispatched through now holds one credential read per integration, built per
+invocation of the function body and never routed through `runtime.run`, which
+would write decrypted secrets into the run's stored state.

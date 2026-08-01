@@ -187,8 +187,8 @@ export type StepBag<
    * it. Yielding it more than once fetches once.
    *
    * A store that refuses the read fails with `CredentialsUnavailable`. Let it
-   * through: Rova turns it into a retry rather than a failed node, and catching
-   * it would spend the run on a condition that clears on its own.
+   * through: the node then fails on the store's own message, and catching it
+   * would report an outage as something this step decided.
    */
   readonly credentials: Effect.Effect<TCredentials, CredentialsUnavailable>;
   /**
@@ -196,8 +196,8 @@ export type StepBag<
    *
    * One fetch behind both: awaiting this after yielding `credentials` reaches
    * the value already read. It rejects with the `CredentialsUnavailable` itself,
-   * which `defineStep` recognises and turns into the same retry, so a handler
-   * that does not catch it gets that behaviour for free.
+   * which `defineStep` recognises and fails the node with, so a handler that
+   * does not catch it gets that behaviour for free.
    */
   readonly readCredentials: () => Promise<TCredentials>;
   /**
@@ -337,9 +337,10 @@ export type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> & {
 /**
  * What a handler threw, as the failure the rest of the step runs on.
  *
- * A credential read that was refused stays what it is, so the runtime retries
- * the node rather than failing it. A handler awaiting `readCredentials` and not
- * catching gets that for free; one that catches has decided otherwise.
+ * A credential read that was refused stays what it is, so the node fails on the
+ * store's own message rather than on a config the builder could fix. A handler
+ * awaiting `readCredentials` and not catching gets that for free; one that
+ * catches has decided otherwise.
  */
 function stepFailureFrom(
   subject: string
@@ -453,8 +454,8 @@ export function buildStep<TInput, TOutput>(
       Effect.map((data): StepResult => ({ success: true, data })),
       // Only the failure this step can answer for becomes the envelope. A
       // `CredentialsUnavailable` stays in the error channel, where the app's
-      // `runStep` turns it into a rejection the durable runtime retries: a node
-      // whose secrets were unreadable for a moment has not failed.
+      // `runStep` turns it into a rejection, and the engine fails the node on
+      // it: the message then names the credential store rather than the step.
       Effect.catchTag(
         "StepFailure",
         (failure): Effect.Effect<StepResult> =>
@@ -518,8 +519,8 @@ function readCredentials(
  * `Effect.runPromise` would reject with a fiber failure wrapping the cause, and
  * a handler catching that could not tell a refused credential store from
  * anything else. Matching first and rejecting by hand is what keeps
- * `CredentialsUnavailable` recognisable to `toStepFailure`, which is what turns
- * it back into a retry.
+ * `CredentialsUnavailable` recognisable to `toStepFailure`, which is what keeps
+ * it out of the `StepResult` envelope.
  */
 function runToPromise<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
   return Effect.runPromise(

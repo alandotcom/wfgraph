@@ -54,7 +54,12 @@ export type StartStepLogInput = {
 
 export type CompleteStepLogInput = {
   logId: string;
-  startTime: number;
+  /**
+   * Milliseconds the work this row covers took, measured by the caller. The row
+   * cannot be timed from its own open here: that write is a memoized step, so
+   * its clock belongs to whichever attempt inserted the row.
+   */
+  durationMs: number;
   status: "success" | "error";
   output?: unknown;
   error?: string;

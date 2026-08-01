@@ -279,6 +279,71 @@ describe("workflow engine replay safety", () => {
     expect(memo.has("node:email_1:log-open")).toBe(true);
   });
 
+  /**
+   * A node that failed and then succeeded on a second pass of the body, which is
+   * what a retry of the whole function produces.
+   *
+   * The node's row carries the second verdict, because its close is an UPDATE by
+   * id that no memo covers. The run's terminal row carries the first and cannot
+   * be moved: that write is a memoized step, and `finishRun` updates an in-flight
+   * row alone, so the correction is refused twice over. That is the whole reason
+   * `workflow-function.ts` ends a failed run non-retriably.
+   */
+  it("closes a node's row with the later verdict, while the run row keeps the first", async () => {
+    let attempts = 0;
+    const flaky = vi.fn<() => Record<string, unknown>>(() => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("the vendor said no");
+      }
+      return { sent: true };
+    });
+    const flakyActions = createWorkflowActions(
+      assembleExtensions({
+        actions: [
+          aHostAction(EMAIL_ACTION_ID, "Send Email", flaky),
+          aHostAction(FOLLOWUP_ACTION_ID, "Send Followup", followupAction),
+        ],
+      }),
+      stubRovaRuntime()
+    );
+    const memo = new Map<string, unknown>();
+
+    const first = await executeWorkflow(
+      waitGraphInput,
+      createReplayRuntime(memo),
+      store,
+      flakyActions
+    );
+    const second = await executeWorkflow(
+      waitGraphInput,
+      createReplayRuntime(memo),
+      store,
+      flakyActions
+    );
+
+    expect(first.success).toBe(false);
+    expect(second.success).toBe(true);
+
+    // Handles are handed out in order, so the row opened for the email node is
+    // the one its two closes name.
+    const emailRowIndex = store
+      .callsOf("startStepLog")
+      .findIndex((open) => open.nodeId === "email_1");
+    const emailRowId = `log_${emailRowIndex + 1}`;
+    const emailCloses = store
+      .callsOf("completeStepLog")
+      .filter((close) => close.logId === emailRowId);
+
+    expect(emailCloses.map((close) => close.status)).toEqual([
+      "error",
+      "success",
+    ]);
+    expect(store.callsOf("completeRun").map((run) => run.status)).toEqual([
+      "failed",
+    ]);
+  });
+
   it("creates the wait state and terminal run record exactly once across a replay", async () => {
     const memo = new Map<string, unknown>();
 

@@ -1,4 +1,4 @@
-import type { Inngest, InngestFunction } from "inngest";
+import { type Inngest, type InngestFunction, NonRetriableError } from "inngest";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import { executionError } from "#src/backend/engine/contracts";
 import {
@@ -89,7 +89,14 @@ async function workflowRunRequestedHandler({
         message = failed.join("; ");
       }
     }
-    throw new Error(message);
+    // Both of the engine's exits write the run's terminal row inside a memoized
+    // step, so another attempt of this body reads that write back out of the
+    // memo and the row keeps the verdict it already has. `finishRun` updates an
+    // in-flight row alone, so a corrective write is refused in any case, and a
+    // Wait node reached on the way would find `createWaitState` declining to
+    // park a terminal run. What a retry can still mend is a step, and Inngest
+    // retries one inside the body without ever reaching this line.
+    throw new NonRetriableError(message);
   }
   return result;
 }
@@ -114,8 +121,14 @@ async function workflowRunRequestedHandler({
 export function createWorkflowRunFunction(
   client: Inngest,
   input: {
-    /** Where an action id becomes work, built by the app from its own surface. */
-    actions: WorkflowActions;
+    /**
+     * Where an action id becomes work, built by the app from its own surface.
+     *
+     * Called once per invocation of the body rather than once per process: the
+     * surface holds an integration's credentials for its own lifetime, and a
+     * decrypted secret must not outlive the invocation that read it.
+     */
+    actions: () => WorkflowActions;
     /** Where a run's rows go, built by the app from its own runtime. */
     store: WorkflowStore;
   }
@@ -124,13 +137,15 @@ export function createWorkflowRunFunction(
     {
       id: "workflow-run",
       name: "Workflow run",
-      // A retry resumes at the step that failed rather than replaying the graph
-      // from the trigger, so this is not 0: without it a single transient fault
-      // - a provider 502, a blip writing a step log - ends the whole run with no
-      // second attempt.
+      // The count a step is retried under. Inngest re-runs this body to retry
+      // one, resuming at the step that failed rather than replaying the graph's
+      // work, so this is not 0: without it a single transient fault - a provider
+      // 502, a blip writing a step log - ends the node on its first refusal. A
+      // run that recorded a terminal status ends non-retriably instead and
+      // spends none of these.
       //
       // What is remembered is what a handler put in its own `step.run`, plus the
-      // run-log rows the engine writes around it. Rova wraps no handler body
+      // run-log row the engine opens around it. Rova wraps no handler body
       // (ADR-0009), so a handler that wraps nothing repeats its work on every
       // attempt.
       //
@@ -150,7 +165,7 @@ export function createWorkflowRunFunction(
     async (context) =>
       await workflowRunRequestedHandler({
         ...context,
-        actions: input.actions,
+        actions: input.actions(),
         store: input.store,
       })
   );

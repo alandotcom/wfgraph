@@ -7,7 +7,8 @@
  * what an operator has to work with.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { runWithStepLog } from "#src/backend/engine/step-log";
 import type { WorkflowStore } from "#src/backend/engine/store";
@@ -66,5 +67,51 @@ describe("runWithStepLog", () => {
         status: "success",
       })
     );
+  });
+});
+
+/**
+ * A row's duration is the work one attempt did.
+ *
+ * The open is memoized, so the handle a replay reads back carries the clock of
+ * whichever attempt inserted the row. A duration taken from it would count the
+ * wait the run sat through as well, and an early node's row would grow toward
+ * the whole run's elapsed time.
+ */
+describe("the duration a closed row carries", () => {
+  const answer = () =>
+    Promise.resolve({ success: true, data: { sid: "SM1" } } as const);
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("times each attempt's own work rather than everything since the row opened", async () => {
+    vi.useFakeTimers();
+    const store = createRecordingWorkflowStore();
+    const target = {
+      store,
+      context,
+      runtime: createInMemoryWorkflowRuntime({ memo: new Map() }),
+      input: {},
+    };
+
+    await runWithStepLog(target, () => {
+      vi.advanceTimersByTime(200);
+      return answer();
+    });
+
+    // The run parks on a Wait downstream, and an hour later the whole body is
+    // replayed: same memo, so the open is a hit and the row is the same one.
+    vi.advanceTimersByTime(3_600_000);
+
+    await runWithStepLog(target, () => {
+      vi.advanceTimersByTime(5);
+      return answer();
+    });
+
+    const closes = store.callsOf("completeStepLog");
+    expect(closes.map((close) => close.logId)).toEqual(["log_1", "log_1"]);
+    expect(closes.map((close) => close.durationMs)).toEqual([200, 5]);
   });
 });
