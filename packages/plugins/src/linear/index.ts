@@ -14,8 +14,6 @@ import {
   type CredentialFields,
   type CredentialsOf,
   defineIntegration,
-  defineStep,
-  type StepBag,
   StepFailure,
 } from "@rova/core/plugin";
 import { Effect, Schema } from "effect";
@@ -138,46 +136,6 @@ function firstTeamId(client: LinearClient): Effect.Effect<string, StepFailure> {
 }
 
 /**
- * Named rather than written inline, so a test can run it with a bag it
- * supplies.
- */
-export const createTicketHandler = Effect.fn(function* (
-  bag: StepBag<typeof createTicketInput.Type, LinearCredentials>
-) {
-  const { input } = bag;
-  const credentials = yield* bag.credentials;
-  const apiKey = credentials.LINEAR_API_KEY;
-
-  if (!apiKey) {
-    return yield* new StepFailure({
-      message:
-        "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
-    });
-  }
-
-  const client = new LinearClient({ apiKey });
-  const teamId = credentials.LINEAR_TEAM_ID || (yield* firstTeamId(client));
-
-  // Linear answers a mutation with a payload holding a promise for the issue it
-  // made, so the issue is two awaits away from the call.
-  const issue = yield* callLinear("Failed to create ticket", async () => {
-    const created = await client.createIssue({
-      title: input.ticketTitle,
-      description: input.ticketDescription,
-      teamId,
-    });
-
-    return created.issue ? await created.issue : undefined;
-  });
-
-  if (!issue) {
-    return yield* new StepFailure({ message: "Failed to create issue" });
-  }
-
-  return { id: issue.id, url: issue.url, title: issue.title };
-});
-
-/**
  * The filter Linear's GraphQL API takes, built from the fields the user filled
  * in. A blank field contributes nothing, and "any" is how the status select
  * spells "do not filter on status".
@@ -206,55 +164,6 @@ function buildIssueFilter(
   return Object.keys(filter).length > 0 ? filter : undefined;
 }
 
-/**
- * Named rather than written inline, so a test can run it with a bag it
- * supplies.
- */
-export const findIssuesHandler = Effect.fn(function* (
-  bag: StepBag<typeof findIssuesInput.Type, LinearCredentials>
-) {
-  const { input } = bag;
-  const credentials = yield* bag.credentials;
-  const apiKey = credentials.LINEAR_API_KEY;
-
-  if (!apiKey) {
-    return yield* new StepFailure({
-      message:
-        "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
-    });
-  }
-
-  const client = new LinearClient({ apiKey });
-
-  // Everything the Linear SDK does is a Promise that throws, and an issue's
-  // state is a second request behind the issue, so the whole read is one call.
-  const issues = yield* Effect.tryPromise({
-    try: async () => {
-      const found = await client.issues({ filter: buildIssueFilter(input) });
-
-      return await Promise.all(
-        found.nodes.map(async (issue) => {
-          const state = issue.state ? await issue.state : undefined;
-          return {
-            id: issue.id,
-            title: issue.title,
-            url: issue.url,
-            state: state?.name || "Unknown",
-            priority: issue.priority,
-            assigneeId: issue.assigneeId ?? null,
-          };
-        })
-      );
-    },
-    catch: (error) =>
-      new StepFailure({
-        message: `Failed to find issues: ${describeLinearFailure(error)}`,
-      }),
-  });
-
-  return { issues, count: issues.length };
-});
-
 export const linear = defineIntegration({
   type: "linear",
   label: "Linear",
@@ -264,10 +173,9 @@ export const linear = defineIntegration({
   test: async () => (await import("#src/linear/test")).testLinear,
 
   actions: {
-    "create-ticket": defineStep({
+    "create-ticket": {
       label: "Create Ticket",
       description: "Create an issue in Linear",
-      category: "Linear",
       input: createTicketInput,
       output: createTicketOutput,
       configFields: [
@@ -289,13 +197,45 @@ export const linear = defineIntegration({
           example: "Users are unable to click the login button on mobile.",
         },
       ],
-      handler: createTicketHandler,
-    }),
+      handler: Effect.fn(function* (bag) {
+        const { input } = bag;
+        const credentials = yield* bag.credentials;
+        const apiKey = credentials.LINEAR_API_KEY;
 
-    "find-issues": defineStep({
+        if (!apiKey) {
+          return yield* new StepFailure({
+            message:
+              "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
+          });
+        }
+
+        const client = new LinearClient({ apiKey });
+        const teamId =
+          credentials.LINEAR_TEAM_ID || (yield* firstTeamId(client));
+
+        // Linear answers a mutation with a payload holding a promise for the
+        // issue it made, so the issue is two awaits away from the call.
+        const issue = yield* callLinear("Failed to create ticket", async () => {
+          const created = await client.createIssue({
+            title: input.ticketTitle,
+            description: input.ticketDescription,
+            teamId,
+          });
+
+          return created.issue ? await created.issue : undefined;
+        });
+
+        if (!issue) {
+          return yield* new StepFailure({ message: "Failed to create issue" });
+        }
+
+        return { id: issue.id, url: issue.url, title: issue.title };
+      }),
+    },
+
+    "find-issues": {
       label: "Find Issues",
       description: "Search for issues in Linear",
-      category: "Linear",
       input: findIssuesInput,
       output: findIssuesOutput,
       configFields: [
@@ -333,7 +273,51 @@ export const linear = defineIntegration({
           placeholder: "bug, feature, etc. or {{NodeName.label}}",
         },
       ],
-      handler: findIssuesHandler,
-    }),
+      handler: Effect.fn(function* (bag) {
+        const { input } = bag;
+        const credentials = yield* bag.credentials;
+        const apiKey = credentials.LINEAR_API_KEY;
+
+        if (!apiKey) {
+          return yield* new StepFailure({
+            message:
+              "LINEAR_API_KEY is not configured. Please add it in Project Integrations.",
+          });
+        }
+
+        const client = new LinearClient({ apiKey });
+
+        // Everything the Linear SDK does is a Promise that throws, and an
+        // issue's state is a second request behind the issue, so the whole read
+        // is one call.
+        const issues = yield* Effect.tryPromise({
+          try: async () => {
+            const found = await client.issues({
+              filter: buildIssueFilter(input),
+            });
+
+            return await Promise.all(
+              found.nodes.map(async (issue) => {
+                const state = issue.state ? await issue.state : undefined;
+                return {
+                  id: issue.id,
+                  title: issue.title,
+                  url: issue.url,
+                  state: state?.name || "Unknown",
+                  priority: issue.priority,
+                  assigneeId: issue.assigneeId ?? null,
+                };
+              })
+            );
+          },
+          catch: (error) =>
+            new StepFailure({
+              message: `Failed to find issues: ${describeLinearFailure(error)}`,
+            }),
+        });
+
+        return { issues, count: issues.length };
+      }),
+    },
   },
 });

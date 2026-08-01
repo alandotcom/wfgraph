@@ -18,7 +18,6 @@ import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
-import { defineStep } from "#src/backend/extensions/steps/define-step";
 import { executeWorkflow } from "#src/backend/engine/core";
 import {
   createRecordingWorkflowStore,
@@ -315,10 +314,9 @@ describe("a Date-bearing step output across a replay", () => {
     description: "Answers with a timestamp",
     credentials: {},
     actions: {
-      "read-clock": defineStep({
+      "read-clock": {
         label: "Read Clock",
         description: "Answers with the time it read",
-        category: "Clock",
         input: Schema.Struct({}),
         output: Schema.Struct({
           at: Schema.String.annotate({
@@ -334,11 +332,10 @@ describe("a Date-bearing step output across a replay", () => {
             at: new Date("2026-03-01T10:00:00Z"),
           });
         }),
-      }),
-      "echo-clock": defineStep({
+      },
+      "echo-clock": {
         label: "Echo",
         description: "Records what the template resolved to",
-        category: "Clock",
         input: Schema.Struct({ seen: Schema.String }),
         output: Schema.Struct({
           seen: Schema.String.annotate({ description: "What it was handed" }),
@@ -355,7 +352,7 @@ describe("a Date-bearing step output across a replay", () => {
           echoed.push(bag.input.seen);
           return yield* Effect.succeed({ seen: bag.input.seen });
         }),
-      }),
+      },
     },
   });
 

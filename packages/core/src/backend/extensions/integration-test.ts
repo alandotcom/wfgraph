@@ -14,12 +14,21 @@ export type IntegrationTestResult =
   | { success: true; details?: Record<string, unknown> }
   | { success: false; error: string; details?: Record<string, unknown> };
 
-export type IntegrationTestFunction = (
-  credentials: Record<string, string>
-) => Promise<IntegrationTestResult>;
+/**
+ * `TCredentials` is the integration's own vocabulary, so a test reads the same
+ * keys its handlers do. The default is the open record, for a caller holding an
+ * integration whose vocabulary it does not know. Its values are optional because
+ * an operator may have filled in part of the form, which is the same reason
+ * `CredentialsOf` describes a partial record.
+ */
+export type IntegrationTestFunction<
+  TCredentials = Record<string, string | undefined>,
+> = (credentials: TCredentials) => Promise<IntegrationTestResult>;
 
 /**
  * Loading is deferred, so declaring a test costs nothing until someone runs it
  * and the vendor code behind it stays out of the process until then.
  */
-export type IntegrationTestLoader = () => Promise<IntegrationTestFunction>;
+export type IntegrationTestLoader<
+  TCredentials = Record<string, string | undefined>,
+> = () => Promise<IntegrationTestFunction<TCredentials>>;

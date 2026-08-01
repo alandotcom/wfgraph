@@ -411,26 +411,23 @@ this. An Event Author designs against that shape.
 
 The server half builds against `@rova/core/plugin` alone, so an outside package is written
 the same way. That surface exports `defineIntegration`, `CredentialFields`, `CredentialsOf`,
-`checkIntegration`, `defineStep`, `StepFailure`, `StepBag`, `IntegrationTestResult`,
-`callExternal`, `callExternalAsync`, and `ExternalTransport`.
+`checkIntegration`, `StepFailure`, `StepBag`, `IntegrationTestResult`, `callExternal`,
+`callExternalAsync`, and `ExternalTransport`. `@rova/core/testing` is a second entry, and
+holds `runAction`, `actionData` and `actionError` for the integration's own suite.
 
 The browser half is the one gap. `@rova/plugins/ui` exports the built-in icons and output
 renderers as one record, keyed by integration type. The editor imports that record by name
 and provides it through React context, so today that record is reachable from inside this
 repository alone.
 
-An integration is one `defineIntegration` value. It holds:
-
-- the credential form;
-- one `defineStep` for each action;
-- a loader for the connection test.
+An integration is one `defineIntegration` value. It holds the credential form, an action
+per record key, and a loader for the connection test.
 
 ```ts
 import {
   type CredentialFields,
   type CredentialsOf,
   defineIntegration,
-  defineStep,
   StepFailure,
 } from "@rova/core/plugin";
 import { Effect, Schema } from "effect";
@@ -458,10 +455,9 @@ export const myService = defineIntegration({
   // The record key is the action slug, and its only home. Assembly computes the
   // action id "my-service/do-something".
   actions: {
-    "do-something": defineStep({
+    "do-something": {
       label: "Do Something",
       description: "What this action does",
-      category: "My Service",
       input: Schema.Struct({ text: Schema.String }),
       output: Schema.Struct({
         id: Schema.String.annotate({ description: "Item ID" }),
@@ -486,14 +482,23 @@ export const myService = defineIntegration({
 
         return { id: yield* createThing(apiKey, bag.input.text) };
       }),
-    }),
+    },
   },
 });
 ```
 
-**`defineStep` owns everything around the handler:** the config decode, the credential
-fetch, the run log rows, and the `StepResult` envelope the engine reads. A handler answers
-its output alone.
+**`defineIntegration` owns everything around the handler:** the config decode, the
+credential fetch, the run log rows, and the `StepResult` envelope the engine reads. A
+handler answers its output alone.
+
+**An action is an object literal, and it stays inline.** That is what types its handler:
+`bag.input` comes from that action's own `input` schema and `bag.credentials` from the
+integration's own `credentials` record, with no annotation written anywhere. Lifting an
+action, or its handler, into a `const` above the call loses the contextual type that does
+it, so both are written where they are read.
+
+**`category` defaults to the integration's `label`.** An action wanting a different
+heading in the selector still writes one.
 
 **A handler takes one bag**, holding `input` (the decoded config), the credential reads,
 and the run's identity: `runMode`, `executionId`, `nodeId`, `nodeName`, `nodeType`,
@@ -527,7 +532,7 @@ handler: async ({ input, readCredentials }) => {
 | Fails with `StepFailure` | Fails by a throw              |
 
 The rest of the contract is identical. One case is worth knowing: `readCredentials` rejects with the failure
-a refused credential store raises, and `defineStep` reads that rejection as a condition that
+a refused credential store raises, and Rova reads that rejection as a condition that
 clears on its own, so it retries the node. A handler that catches around the await has
 decided otherwise, so catch narrowly.
 
@@ -545,22 +550,36 @@ Order follows your entries, and Rova draws each key you left out after them, in 
 order. A group takes its position from your list, because its placement is a decision you
 make.
 
-The bag of a handler carries the open credential record, where each key is
-`string | undefined`. For your own vocabulary, annotate the bag and lift the handler out of
-the step:
+### Testing an integration
+
+`@rova/core/testing` runs one action the way a workflow runs it, through the config decode,
+the credential fetch, the handler and the output encode:
 
 ```ts
-const doSomethingHandler = Effect.fn(function* (
-  bag: StepBag<typeof doSomethingInput.Type, MyServiceCredentials>
-) {
-  const { MY_SERVICE_API_KEY } = yield* bag.credentials;
-  // ...
-});
+import { actionData, actionError, runAction } from "@rova/core/testing";
+
+it.effect("sends the message", () =>
+  Effect.gen(function* () {
+    const answer = actionData(
+      yield* runAction(myService, "do-something", {
+        input: { text: "hello" }, // the resolved config, as a builder typed it
+        credentials: { MY_SERVICE_API_KEY: "key_1" },
+      })
+    );
+
+    expect(answer).toEqual({ id: "item_1" });
+  })
+);
 ```
 
-A misspelled key then fails to compile. You annotate rather than rely on inference, because
-a type parameter that appears inside a context-sensitive argument alone would cost an inline
-handler its parameter type and leave the whole handler unchecked.
+The slug is held to the actions the integration declared, so a renamed action fails to
+compile rather than leaving a case that covers nothing. `actionData` throws for a step that
+gave up and `actionError` throws for one that did not, so neither hides the other's
+outcome. `input` is the encoded side: a schema that transforms decodes it on the way in, so
+a case supplies the text a builder would have typed.
+
+`credentials` takes an `Effect` as well as a record, which is what a case pins the lazy
+read with: a handler that decides it has nothing to send never runs it.
 
 ### Schemas at a step boundary
 
@@ -644,6 +663,7 @@ layer, the config field types, and the test pattern.
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@rova/core`         | The one host-facing entry. `defineEvent` and `defineAction` author the vocabulary. `createRovaApp` builds the application, with `RovaAppOptions`, `RovaApp` and the config types. `createRequestListener` mounts it on Express, Fastify or `node:http`. |
 | `@rova/core/plugin`  | What an integration package builds against                                                                                                                                                                                                              |
+| `@rova/core/testing` | `runAction`, `actionData` and `actionError`, for that package's own suite                                                                                                                                                                               |
 | `@rova/core/migrate` | `migrateRovaDatabase`, for migrations without an application                                                                                                                                                                                            |
 | `@rova/client`       | `clientBundle`, the built editor, passed to `createRovaApp` as `client`                                                                                                                                                                                 |
 | `@rova/plugins`      | The built-in integrations as values, by name and as `builtInIntegrations`                                                                                                                                                                               |

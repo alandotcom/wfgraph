@@ -84,12 +84,13 @@ time.
 `@rova/example-app` is written in it, which makes "an adopter needs no Effect" enforceable
 rather than promised. In `packages/` it is a devDependency of `core` and `shared` only.
 
-**The authoring vocabulary is four functions**, all in
+**The authoring vocabulary is three functions**, all in
 `packages/core/src/backend/extensions/` and all walked through in README: `defineEvent` and
-`defineAction` for a host, `defineIntegration` and `defineStep` for an integration. Nothing
-registers on import. README's "Writing a step" section owns the canonical JSON codec
-contract a step boundary runs both directions through; `steps/define-step.ts`'s header
-states the invariant in brief.
+`defineAction` for a host, `defineIntegration` for an integration. Nothing registers on
+import. An integration's actions are object literals inside that one call, and `defineStep`
+is the internal builder each is mapped through, reachable from no entry. README's "Writing
+an integration" section owns the canonical JSON codec contract a step boundary runs both
+directions through; `steps/define-step.ts`'s header states the invariant in brief.
 
 **The extension surface is one JSON catalog, served on one route** (ADR-0008). A test that
 needs one provides `stubExtensions` or `stubExtensionCatalog` from

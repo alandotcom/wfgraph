@@ -7,7 +7,6 @@ import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
-import { defineStep } from "#src/backend/extensions/steps/define-step";
 import { Effect, Schema } from "effect";
 import { unknownRest } from "@rova/shared/types/schema";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
@@ -46,10 +45,9 @@ const notify = defineIntegration({
   description: "A step with a literal config field",
   credentials: {},
   actions: {
-    send: defineStep({
+    send: {
       label: "Send Notification",
       description: "Records the config it was handed",
-      category: "Notify",
       input: Schema.Struct({
         subject: Schema.optionalKey(Schema.String),
         testEmailTo: Schema.optionalKey(Schema.String),
@@ -70,7 +68,7 @@ const notify = defineIntegration({
         capturedStepInput = { ...bag.input };
         return yield* Effect.succeed({ ok: true });
       }),
-    }),
+    },
   },
 });
 

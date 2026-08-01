@@ -6,13 +6,16 @@
  * promise; add it only when a plugin cannot be written without it.
  *
  * What is below is the whole of it, for a file that runs on the server. An
- * integration is a `defineIntegration` holding its credential fields and a
- * `defineStep` per action; a step is an input schema, an output schema, the
- * metadata the editor draws the action with, and a handler; and a connection
- * test, which answers the credentials UI over a Promise, so it calls out through
- * `callExternalAsync`. There is nothing to register: an integration is a value a
- * host passes to `createRovaApp`, and the credential fetch and the run logging
- * are `defineStep`'s business.
+ * integration is one `defineIntegration` call: a credential record, and an
+ * action per record key holding an input schema, an output schema, the metadata
+ * the editor draws it with, and a handler. A connection test answers the
+ * credentials UI over a Promise, so it calls out through `callExternalAsync`.
+ * There is nothing to register: an integration is a value a host passes to
+ * `createRovaApp`, and the credential fetch and the run logging are
+ * `defineIntegration`'s business.
+ *
+ * An integration's own suite drives an action through `@rova/core/testing`,
+ * which is a separate entry because nothing in it runs in a server.
  *
  * Effect is optional here. Schemas may come from any Standard Schema library and
  * a handler may be an `async` function, so an integration can be written without
@@ -29,12 +32,11 @@ export {
   checkIntegration,
   type CredentialsOf,
   defineIntegration,
+  type Integration,
   type IntegrationDefinition,
 } from "#src/backend/extensions/define-integration";
 export type { CredentialFields } from "@rova/shared/extensions/catalog";
 export {
-  type ActionStep,
-  defineStep,
   type StepBag,
   StepFailure,
 } from "#src/backend/extensions/steps/define-step";

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
+import { actionData, actionError, runAction } from "@rova/core/testing";
 import { Effect } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
 import { beforeEach, vi } from "vitest";
-import { createTicketHandler } from "#src/linear/index";
+import { linear } from "#src/linear/index";
 
 // This step's seam is the Linear SDK, which it constructs itself, so the
 // constructor is what the test replaces. What the SDK puts on the wire is
@@ -38,31 +38,6 @@ function credentialsRead(
   };
 }
 
-/** The one argument a handler takes: this case's config, and the run around it. */
-function bagFor<TInput>(
-  input: TInput,
-  credentials: Effect.Effect<Record<string, string | undefined>>
-) {
-  return {
-    input,
-    runMode: "live" as const,
-    nodeId: "n1",
-    nodeName: "Linear",
-    nodeType: "action",
-    integrationId: "int_linear",
-    credentials,
-    readCredentials: () => Effect.runPromise(credentials),
-  };
-}
-
-/** A step that succeeds fails the flip, which is what makes the test say so. */
-const failure = Effect.flip;
-
-// Nothing here reaches the network, because the SDK is stubbed above. The
-// transport is provided all the same, since that is what a handler declares it
-// needs and the compiler holds the test to it.
-const withTransport = Effect.provide(FetchHttpClient.layer);
-
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.teams.mockResolvedValue({ nodes: [{ id: "team_first" }] });
@@ -75,7 +50,7 @@ beforeEach(() => {
   });
 });
 
-describe("createTicketHandler", () => {
+describe("linear/create-ticket", () => {
   it.effect("files under the team the integration names", () =>
     Effect.gen(function* () {
       const { credentials } = credentialsRead({
@@ -83,11 +58,11 @@ describe("createTicketHandler", () => {
         LINEAR_TEAM_ID: "team_named",
       });
 
-      const result = yield* createTicketHandler(
-        bagFor(
-          { ticketTitle: "Bug report", ticketDescription: "It broke" },
-          credentials
-        )
+      const result = actionData(
+        yield* runAction(linear, "create-ticket", {
+          input: { ticketTitle: "Bug report", ticketDescription: "It broke" },
+          credentials,
+        })
       );
 
       expect(mocks.teams).toHaveBeenCalledTimes(0);
@@ -101,16 +76,17 @@ describe("createTicketHandler", () => {
         url: "https://linear.app/team/issue/ABC-1",
         title: "Bug report",
       });
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("falls back to the workspace's first team", () =>
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* createTicketHandler(
-        bagFor({ ticketTitle: "Bug report" }, credentials)
-      );
+      yield* runAction(linear, "create-ticket", {
+        input: { ticketTitle: "Bug report" },
+        credentials,
+      });
 
       expect(mocks.teams).toHaveBeenCalledWith({ first: 1 });
       expect(mocks.createIssue).toHaveBeenCalledWith({
@@ -118,7 +94,7 @@ describe("createTicketHandler", () => {
         description: undefined,
         teamId: "team_first",
       });
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("says so when the workspace has no team to file under", () =>
@@ -126,13 +102,16 @@ describe("createTicketHandler", () => {
       mocks.teams.mockResolvedValue({ nodes: [] });
       const { credentials } = credentialsRead();
 
-      const error = yield* failure(
-        createTicketHandler(bagFor({ ticketTitle: "Bug report" }, credentials))
+      const error = actionError(
+        yield* runAction(linear, "create-ticket", {
+          input: { ticketTitle: "Bug report" },
+          credentials,
+        })
       );
 
       expect(error.message).toBe("No teams found in Linear workspace");
       expect(mocks.createIssue).toHaveBeenCalledTimes(0);
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("says so when the mutation answered with no issue", () =>
@@ -140,12 +119,15 @@ describe("createTicketHandler", () => {
       mocks.createIssue.mockResolvedValue({ issue: undefined });
       const { credentials } = credentialsRead();
 
-      const error = yield* failure(
-        createTicketHandler(bagFor({ ticketTitle: "Bug report" }, credentials))
+      const error = actionError(
+        yield* runAction(linear, "create-ticket", {
+          input: { ticketTitle: "Bug report" },
+          credentials,
+        })
       );
 
       expect(error.message).toBe("Failed to create issue");
-    }).pipe(withTransport)
+    })
   );
 
   // Linear throws a wrapper carrying the GraphQL errors, and the specific one
@@ -158,26 +140,32 @@ describe("createTicketHandler", () => {
       });
       const { credentials } = credentialsRead();
 
-      const error = yield* failure(
-        createTicketHandler(bagFor({ ticketTitle: "Bug report" }, credentials))
+      const error = actionError(
+        yield* runAction(linear, "create-ticket", {
+          input: { ticketTitle: "Bug report" },
+          credentials,
+        })
       );
 
       expect(error.message).toBe("Failed to create ticket: Team not found");
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("says which credential is missing before reaching Linear", () =>
     Effect.gen(function* () {
       const { credentials } = credentialsRead({});
 
-      const error = yield* failure(
-        createTicketHandler(bagFor({ ticketTitle: "Bug report" }, credentials))
+      const error = actionError(
+        yield* runAction(linear, "create-ticket", {
+          input: { ticketTitle: "Bug report" },
+          credentials,
+        })
       );
 
       expect(error.message).toBe(
         "LINEAR_API_KEY is not configured. Please add it in Project Integrations."
       );
       expect(mocks.createIssue).toHaveBeenCalledTimes(0);
-    }).pipe(withTransport)
+    })
   );
 });

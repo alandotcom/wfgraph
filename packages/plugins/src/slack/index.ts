@@ -12,8 +12,6 @@ import {
   type CredentialFields,
   type CredentialsOf,
   defineIntegration,
-  defineStep,
-  type StepBag,
   StepFailure,
 } from "@rova/core/plugin";
 import { Effect, Schema } from "effect";
@@ -79,60 +77,6 @@ function resolveSlackTestBehavior(
   return value === "send_message" ? "send_message" : "log_only";
 }
 
-/**
- * Named rather than written inline, so a test can run it with a bag it
- * supplies: what this step decides is whether to post at all, and that decision
- * is here.
- */
-export const sendSlackMessageHandler = Effect.fn(function* (
-  bag: StepBag<typeof sendSlackMessageInput.Type, SlackCredentials>
-) {
-  const { input } = bag;
-  const testBehavior = resolveSlackTestBehavior(input.testBehavior);
-
-  // A test run posts nothing unless the builder asked it to. The answer is a
-  // success carrying the reason, so the run shows what happened rather than an
-  // error someone has to interpret.
-  if (bag.runMode === "test" && testBehavior === "log_only") {
-    return {
-      ts: "",
-      channel: input.slackChannel,
-      reasonCode: "test_mode_log_only",
-    };
-  }
-
-  const credentials = yield* bag.credentials;
-  const apiKey = credentials.SLACK_API_KEY;
-
-  if (!apiKey) {
-    return yield* new StepFailure({
-      message:
-        "SLACK_API_KEY is not configured. Please add it in Project Integrations.",
-    });
-  }
-
-  const posted = yield* callSlack(
-    apiKey,
-    "chat.postMessage",
-    postMessageSchema,
-    {
-      body: {
-        channel: input.slackChannel,
-        text: input.slackMessage,
-      },
-    }
-  ).pipe(
-    Effect.mapError(
-      (error) =>
-        new StepFailure({
-          message: `Failed to send Slack message: ${describeSlackFailure(error)}`,
-        })
-    )
-  );
-
-  return { ts: posted.ts, channel: posted.channel };
-});
-
 export const slack = defineIntegration({
   type: "slack",
   label: "Slack",
@@ -144,10 +88,9 @@ export const slack = defineIntegration({
   test: async () => (await import("#src/slack/test")).testSlack,
 
   actions: {
-    "send-message": defineStep({
+    "send-message": {
       label: "Send Slack Message",
       description: "Send a message to a Slack channel",
-      category: "Slack",
       input: sendSlackMessageInput,
       output: sendSlackMessageOutput,
       configFields: [
@@ -180,7 +123,54 @@ export const slack = defineIntegration({
           ],
         },
       ],
-      handler: sendSlackMessageHandler,
-    }),
+      handler: Effect.fn(function* (bag) {
+        const { input } = bag;
+        const testBehavior = resolveSlackTestBehavior(input.testBehavior);
+
+        // A test run posts nothing unless the builder asked it to. The answer
+        // is a success carrying the reason, so the run shows what happened
+        // rather than an error someone has to interpret.
+        if (bag.runMode === "test" && testBehavior === "log_only") {
+          return {
+            ts: "",
+            channel: input.slackChannel,
+            reasonCode: "test_mode_log_only",
+          };
+        }
+
+        // Read late, so a test run deciding it has nothing to post never
+        // touches the integration's secrets.
+        const credentials = yield* bag.credentials;
+        const apiKey = credentials.SLACK_API_KEY;
+
+        if (!apiKey) {
+          return yield* new StepFailure({
+            message:
+              "SLACK_API_KEY is not configured. Please add it in Project Integrations.",
+          });
+        }
+
+        const posted = yield* callSlack(
+          apiKey,
+          "chat.postMessage",
+          postMessageSchema,
+          {
+            body: {
+              channel: input.slackChannel,
+              text: input.slackMessage,
+            },
+          }
+        ).pipe(
+          Effect.mapError(
+            (error) =>
+              new StepFailure({
+                message: `Failed to send Slack message: ${describeSlackFailure(error)}`,
+              })
+          )
+        );
+
+        return { ts: posted.ts, channel: posted.channel };
+      }),
+    },
   },
 });

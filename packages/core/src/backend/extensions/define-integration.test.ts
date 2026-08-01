@@ -5,38 +5,48 @@ import {
   defineIntegration,
 } from "#src/backend/extensions/define-integration";
 import type { CredentialFields } from "@rova/shared/extensions/catalog";
-import { defineStep } from "#src/backend/extensions/steps/define-step";
 
 const twilioCredentialFields = {
   TWILIO_ACCOUNT_SID: { label: "Account SID", type: "text" },
   TWILIO_AUTH_TOKEN: { label: "Auth Token", type: "password" },
 } satisfies CredentialFields;
 
-const sendSms = defineStep({
-  label: "Send SMS",
-  description: "Sends a message",
-  category: "Twilio",
-  input: Schema.Struct({ to: Schema.String }),
-  output: Schema.Struct({
-    sid: Schema.String.annotate({ description: "Message SID" }),
-  }),
-  configFields: [{ key: "to", label: "To", type: "template-input" }],
-  handler: Effect.fn(function* () {
-    return yield* Effect.succeed({ sid: "SM1" });
-  }),
-});
+/**
+ * The whole definition, written the way an author writes one.
+ *
+ * The action stays inline. A hoisted action literal has no contextual type, so
+ * its `configFields` widen and it stops fitting the slot it was written for,
+ * which is the same reason a handler is written inline.
+ */
+function aTwilio(overrides: { category?: string } = {}) {
+  return defineIntegration({
+    type: "twilio",
+    label: "Twilio",
+    description: "Send SMS messages",
+    credentials: twilioCredentialFields,
+    actions: {
+      "send-sms": {
+        label: "Send SMS",
+        description: "Sends a message",
+        category: overrides.category,
+        input: Schema.Struct({ to: Schema.String }),
+        output: Schema.Struct({
+          sid: Schema.String.annotate({ description: "Message SID" }),
+        }),
+        configFields: [{ key: "to", label: "To", type: "template-input" }],
+        handler: Effect.fn(function* () {
+          return yield* Effect.succeed({ sid: "SM1" });
+        }),
+      },
+    },
+  });
+}
 
 describe("defineIntegration", () => {
   // Nothing registers on import: the value is the whole of what an integration
   // is, and the line that passes it to `createRovaApp` is what turns it on.
   it("answers a value carrying the credentials and the actions it was given", () => {
-    const twilio = defineIntegration({
-      type: "twilio",
-      label: "Twilio",
-      description: "Send SMS messages",
-      credentials: twilioCredentialFields,
-      actions: { "send-sms": sendSms },
-    });
+    const twilio = aTwilio();
 
     expect(twilio.kind).toBe("integration");
     expect(twilio.type).toBe("twilio");
@@ -48,15 +58,19 @@ describe("defineIntegration", () => {
   // The slug lives in the record key alone. Nothing here computes the action id,
   // because assembly is where the type and the key are both in hand.
   it("holds no action id of its own", () => {
-    const twilio = defineIntegration({
-      type: "twilio",
-      label: "Twilio",
-      description: "Send SMS messages",
-      credentials: {},
-      actions: { "send-sms": sendSms },
-    });
+    expect(aTwilio().actions["send-sms"]).not.toHaveProperty("id");
+  });
 
-    expect(twilio.actions["send-sms"]).not.toHaveProperty("id");
+  // The heading an action is listed under in the selector. Every built-in wanted
+  // its integration's own label, so none of them says anything.
+  it("heads an action with the integration's label by default", () => {
+    expect(aTwilio().actions["send-sms"].category).toBe("Twilio");
+  });
+
+  it("lets an action name a heading of its own", () => {
+    expect(
+      aTwilio({ category: "Messaging" }).actions["send-sms"].category
+    ).toBe("Messaging");
   });
 });
 
@@ -74,5 +88,100 @@ describe("CredentialsOf", () => {
     expectTypeOf<CredentialsOf<Record<never, never>>>().toEqualTypeOf<
       Record<never, string>
     >();
+  });
+});
+
+/**
+ * What an action literal buys, which is every annotation the previous shape made
+ * an author write. These cases compile or they do not; `@ts-expect-error` is the
+ * assertion, and an error that stops being raised fails the build.
+ *
+ * Two actions with different schemas, because a record of one proves nothing
+ * about whether each entry is inferred separately.
+ */
+describe("what an action literal infers", () => {
+  it("types each handler from the integration's own credentials and that action's own input", () => {
+    const surface = defineIntegration({
+      type: "x",
+      label: "X",
+      description: "Two actions whose schemas disagree",
+      credentials: { X_KEY: { label: "Key", type: "password" } },
+      actions: {
+        first: {
+          label: "First",
+          description: "Takes a string",
+          input: Schema.Struct({ q: Schema.String }),
+          output: Schema.Struct({ ok: Schema.Boolean }),
+          handler: Effect.fn(function* (bag) {
+            expectTypeOf(bag.input).toEqualTypeOf<{ readonly q: string }>();
+            expectTypeOf(yield* bag.credentials).toEqualTypeOf<{
+              X_KEY?: string;
+            }>();
+            expectTypeOf(bag.runMode).toEqualTypeOf<"live" | "test">();
+
+            return { ok: bag.input.q.length > 0 };
+          }),
+        },
+        second: {
+          label: "Second",
+          description: "Takes a number",
+          input: Schema.Struct({ r: Schema.Number }),
+          output: Schema.Struct({ done: Schema.String }),
+          handler: (bag) => {
+            // @ts-expect-error `q` is the first action's key, not this one's
+            const wrongKey: unknown = bag.input.q;
+
+            return { done: `${String(bag.input.r)}${String(wrongKey ?? "")}` };
+          },
+        },
+      },
+    });
+
+    expectTypeOf<keyof typeof surface.actions>().toEqualTypeOf<
+      "first" | "second"
+    >();
+  });
+
+  it("refuses a misspelled credential, a config key no schema declares, and an output the schema does not describe", () => {
+    defineIntegration({
+      type: "x",
+      label: "X",
+      description: "Every way an action literal is wrong",
+      credentials: { X_KEY: { label: "Key", type: "password" } },
+      actions: {
+        misspeltCredential: {
+          label: "A",
+          description: "Reads a credential it never declared",
+          input: Schema.Struct({ q: Schema.String }),
+          output: Schema.Struct({ ok: Schema.Boolean }),
+          handler: Effect.fn(function* (bag) {
+            const credentials = yield* bag.credentials;
+            // @ts-expect-error the record declares X_KEY and nothing else
+            const wrongKey: unknown = credentials.X_KE;
+
+            return { ok: wrongKey === undefined };
+          }),
+        },
+        unknownConfigKey: {
+          label: "B",
+          description: "Draws a field its handler could never read",
+          input: Schema.Struct({ q: Schema.String }),
+          output: Schema.Struct({ ok: Schema.Boolean }),
+          configFields: [
+            // @ts-expect-error `nope` is not a key of this action's input schema
+            { key: "nope", label: "Nope", type: "text" },
+          ],
+          handler: () => ({ ok: true }),
+        },
+        wrongOutput: {
+          label: "C",
+          description: "Answers a shape its output schema does not describe",
+          input: Schema.Struct({ s: Schema.String }),
+          output: Schema.Struct({ n: Schema.Number }),
+          // @ts-expect-error the output schema says `{ n: number }`
+          handler: (bag) => ({ n: bag.input.s }),
+        },
+      },
+    });
   });
 });

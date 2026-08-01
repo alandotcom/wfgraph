@@ -7,9 +7,9 @@ import {
   defineIntegration,
   type IntegrationDefinition,
 } from "#src/backend/extensions/define-integration";
+import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
 import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
-import { defineStep } from "#src/backend/extensions/steps/define-step";
 
 const appointmentPayload = Schema.Struct({
   appointment: Schema.Struct({
@@ -47,37 +47,38 @@ const sendSmsHandler = Effect.fn(function* () {
 });
 
 /**
- * A step whose schemas and config form agree, which is what the two checks over
- * an action's schemas are satisfied by. A case exercising one of them writes its
- * own `defineStep` with the schemas that break it.
+ * An integration whose one action's schemas and config form agree, which is what
+ * the two checks over an action's schemas are satisfied by. A case exercising one
+ * of them writes its own `defineIntegration` with the schemas that break it.
+ *
+ * The action is written inline rather than hoisted into a helper: a hoisted
+ * action literal has no contextual type, so its config fields widen and it stops
+ * fitting the slot it was written for.
  */
-function aStep() {
-  return defineStep({
-    label: "Send SMS",
-    description: "Sends a message",
-    category: "Twilio",
-    input: Schema.Struct({ to: Schema.String }),
-    output: Schema.Struct({
-      sid: Schema.String.annotate({ description: "Message SID" }),
-    }),
-    configFields: [
-      { key: "to", label: "To", type: "template-input", required: true },
-    ],
-    handler: sendSmsHandler,
-  });
-}
-
 function aDefinition(
   type: string,
-  overrides: Partial<IntegrationDefinition> = {}
+  overrides: { slug?: string; test?: IntegrationTestLoader } = {}
 ): IntegrationDefinition {
   return defineIntegration({
     type,
     label: type,
     description: `The ${type} integration`,
     credentials: {},
-    actions: { "send-sms": aStep() },
-    ...overrides,
+    test: overrides.test,
+    actions: {
+      [overrides.slug ?? "send-sms"]: {
+        label: "Send SMS",
+        description: "Sends a message",
+        input: Schema.Struct({ to: Schema.String }),
+        output: Schema.Struct({
+          sid: Schema.String.annotate({ description: "Message SID" }),
+        }),
+        configFields: [
+          { key: "to", label: "To", type: "template-input", required: true },
+        ],
+        handler: sendSmsHandler,
+      },
+    },
   });
 }
 
@@ -289,7 +290,7 @@ describe("assembleExtensions checks", () => {
           aDefinition("twilio"),
           // A second definition of one type collides on its actions too, so this
           // one declares a different action and leaves the type as the only clash.
-          aDefinition("twilio", { actions: { "lookup-number": aStep() } }),
+          aDefinition("twilio", { slug: "lookup-number" }),
         ],
       })
     ).toThrow('Two integrations are defined with the type "twilio"');
@@ -354,7 +355,9 @@ describe("assembleExtensions and an integration definition", () => {
       id: "twilio/send-sms",
       label: "Send SMS",
       description: "Sends a message",
-      category: "Twilio",
+      // The action named no heading, so it takes the integration's own label,
+      // which this fixture spells with its type.
+      category: "twilio",
       integration: "twilio",
       configFields: [
         { key: "to", label: "To", type: "template-input", required: true },
@@ -408,10 +411,14 @@ describe("assembleExtensions and an integration definition", () => {
   it("carries the credential form into the catalog", () => {
     const { catalog } = assembleExtensions({
       integrations: [
-        aDefinition("twilio", {
+        defineIntegration({
+          type: "twilio",
+          label: "Twilio",
+          description: "Sends messages",
           credentials: {
             TWILIO_AUTH_TOKEN: { label: "Auth Token", type: "password" },
           },
+          actions: {},
         }),
       ],
     });
@@ -428,12 +435,15 @@ describe("assembleExtensions and an integration definition", () => {
     expect(() =>
       assembleExtensions({
         integrations: [
-          aDefinition("twilio", {
+          defineIntegration({
+            type: "twilio",
+            label: "Twilio",
+            description: "Sends messages",
+            credentials: {},
             actions: {
-              "send-sms": defineStep({
+              "send-sms": {
                 label: "Send SMS",
                 description: "Sends a message",
-                category: "Twilio",
                 input: Schema.Struct({ to: Schema.String }),
                 // `Schema.Number` admits NaN and the two infinities, which JSON
                 // Schema cannot express, so the field is dropped from the
@@ -452,7 +462,7 @@ describe("assembleExtensions and an integration definition", () => {
                   },
                 ],
                 handler: () => Effect.succeed({ sid: "SM1", attempts: 1 }),
-              }),
+              },
             },
           }),
         ],
@@ -469,12 +479,15 @@ describe("assembleExtensions and an integration definition", () => {
     expect(() =>
       assembleExtensions({
         integrations: [
-          aDefinition("twilio", {
+          defineIntegration({
+            type: "twilio",
+            label: "Twilio",
+            description: "Sends messages",
+            credentials: {},
             actions: {
-              "send-sms": defineStep({
+              "send-sms": {
                 label: "Send SMS",
                 description: "Sends a message",
-                category: "Twilio",
                 input: Schema.Struct({ to: Schema.String }),
                 output: Schema.Struct({
                   sid: Schema.String.annotate({ description: "Message SID" }),
@@ -489,7 +502,7 @@ describe("assembleExtensions and an integration definition", () => {
                   },
                 ],
                 handler: sendSmsHandler,
-              }),
+              },
             },
           }),
         ],
@@ -501,12 +514,15 @@ describe("assembleExtensions and an integration definition", () => {
     expect(() =>
       assembleExtensions({
         integrations: [
-          aDefinition("twilio", {
+          defineIntegration({
+            type: "twilio",
+            label: "Twilio",
+            description: "Sends messages",
+            credentials: {},
             actions: {
-              "send-sms": defineStep({
+              "send-sms": {
                 label: "Send SMS",
                 description: "Sends a message",
-                category: "Twilio",
                 input: Schema.Struct({ to: Schema.String }),
                 output: Schema.Struct({
                   sid: Schema.String.annotate({ description: "Message SID" }),
@@ -521,7 +537,7 @@ describe("assembleExtensions and an integration definition", () => {
                   },
                 ],
                 handler: sendSmsHandler,
-              }),
+              },
             },
           }),
         ],

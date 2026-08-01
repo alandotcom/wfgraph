@@ -1,9 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
-import { isEffectSchema } from "@rova/core/plugin";
-import { Effect, Schema } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { actionData, actionError, runAction } from "@rova/core/testing";
+import { Effect } from "effect";
 import { beforeEach, vi } from "vitest";
-import { sendSmsHandler, twilio } from "#src/twilio/index";
+import { twilio } from "#src/twilio/index";
 
 // What this step decides is whether and what to send, so the seam under it is
 // the Twilio client. What that client puts on the wire is covered separately in
@@ -26,7 +25,7 @@ const TWILIO_CREDENTIALS = {
  * The credentials a run would have fetched, and a count of the times the step
  * asked for them.
  *
- * `defineStep` hands the fetch over as an effect rather than a value, so a step
+ * A step hands its handler the fetch as an effect rather than a value, so a step
  * that decides it has nothing to send never reads the integration's secrets.
  * The count is what pins that.
  */
@@ -44,31 +43,6 @@ function credentialsRead(
   };
 }
 
-function bagFor<TInput>(
-  input: TInput,
-  runMode: "live" | "test",
-  credentials: Effect.Effect<Record<string, string | undefined>>
-) {
-  return {
-    input,
-    runMode,
-    nodeId: "n1",
-    nodeName: "SMS",
-    nodeType: "action",
-    integrationId: "int_twilio",
-    credentials,
-    readCredentials: () => Effect.runPromise(credentials),
-  };
-}
-
-/** A step that succeeds fails the flip, which is what makes the test say so. */
-const failure = Effect.flip;
-
-// Nothing here reaches the network, because the client is stubbed above. The
-// transport is provided all the same, since that is what a handler declares it
-// needs and the compiler holds the test to it.
-const withTransport = Effect.provide(FetchHttpClient.layer);
-
 beforeEach(() => {
   vi.clearAllMocks();
   // Answer the way Twilio does, in its own snake_case, so the step's reading of
@@ -85,13 +59,23 @@ beforeEach(() => {
   );
 });
 
-describe("sendSmsHandler", () => {
+/**
+ * The action as an integration binds it, which is the whole path a run takes:
+ * the config decode, the credential fetch, the handler, the output encode and
+ * the envelope. `input` is therefore the resolved config the engine builds,
+ * which is the text a builder typed rather than what the schema decodes it to.
+ */
+describe("the send-sms action", () => {
   it.effect("logs only in test mode by default and skips external calls", () =>
     Effect.gen(function* () {
       const { reads, credentials } = credentialsRead();
 
-      const result = yield* sendSmsHandler(
-        bagFor({ smsTo: "+15550001111", smsBody: "Hello" }, "test", credentials)
+      const result = actionData(
+        yield* runAction(twilio, "send-sms", {
+          input: { smsTo: "+15550001111", smsBody: "Hello" },
+          credentials,
+          runMode: "test",
+        })
       );
 
       expect(result).toEqual({
@@ -102,24 +86,24 @@ describe("sendSmsHandler", () => {
       });
       expect(reads.count).toBe(0);
       expect(mocks.createMessage).toHaveBeenCalledTimes(0);
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("routes to configured test phone in test mode", () =>
     Effect.gen(function* () {
       const { reads, credentials } = credentialsRead();
 
-      const result = yield* sendSmsHandler(
-        bagFor(
-          {
+      const result = actionData(
+        yield* runAction(twilio, "send-sms", {
+          input: {
             smsTo: "+15550001111",
             smsBody: "Hello",
             testBehavior: "send_to_test_phone",
             testPhoneTo: "  +15557654321 ",
           },
-          "test",
-          credentials
-        )
+          credentials,
+          runMode: "test",
+        })
       );
 
       expect(reads.count).toBe(1);
@@ -141,7 +125,7 @@ describe("sendSmsHandler", () => {
         from: "+15551234567",
         messagingServiceSid: null,
       });
-    }).pipe(withTransport)
+    })
   );
 
   // The REST names differ from the SDK's camelCase options, and the response
@@ -156,24 +140,21 @@ describe("sendSmsHandler", () => {
           TWILIO_AUTH_TOKEN: "auth-token",
         });
 
-        const result = yield* sendSmsHandler(
-          bagFor(
-            {
+        const result = actionData(
+          yield* runAction(twilio, "send-sms", {
+            input: {
               smsTo: "+15550001111",
               smsBody: "Hello",
               smsMessagingServiceSid: "MG999",
               smsStatusCallback: "https://example.com/status",
-              // The comma-splitting is a transform on the input schema, so what
-              // a handler receives is the list rather than the text a builder
-              // typed.
-              smsMediaUrls: [
-                "https://example.com/a.png",
-                "https://example.com/b.png",
-              ],
+              // The comma-splitting is a transform on the input schema, so the
+              // one line a builder typed reaches the handler as the list, with
+              // the padding and the empty entry gone.
+              smsMediaUrls:
+                " https://example.com/a.png , ,https://example.com/b.png ",
             },
-            "live",
-            credentials
-          )
+            credentials,
+          })
         );
 
         expect(mocks.createMessage).toHaveBeenCalledWith(
@@ -197,24 +178,24 @@ describe("sendSmsHandler", () => {
           from: null,
           messagingServiceSid: "MG999",
         });
-      }).pipe(withTransport)
+      })
   );
 
   it.effect("falls back to log-only when test phone is invalid", () =>
     Effect.gen(function* () {
       const { reads, credentials } = credentialsRead();
 
-      const result = yield* sendSmsHandler(
-        bagFor(
-          {
+      const result = actionData(
+        yield* runAction(twilio, "send-sms", {
+          input: {
             smsTo: "+15550001111",
             smsBody: "Hello",
             testBehavior: "send_to_test_phone",
             testPhoneTo: "not-a-phone",
           },
-          "test",
-          credentials
-        )
+          credentials,
+          runMode: "test",
+        })
       );
 
       expect(result).toEqual({
@@ -225,7 +206,7 @@ describe("sendSmsHandler", () => {
       });
       expect(reads.count).toBe(0);
       expect(mocks.createMessage).toHaveBeenCalledTimes(0);
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("fails with the message the system's refusal carries", () =>
@@ -235,39 +216,33 @@ describe("sendSmsHandler", () => {
       );
       const { credentials } = credentialsRead();
 
-      const error = yield* failure(
-        sendSmsHandler(
-          bagFor(
-            { smsTo: "+15550001111", smsBody: "Hello" },
-            "live",
-            credentials
-          )
-        )
+      const error = actionError(
+        yield* runAction(twilio, "send-sms", {
+          input: { smsTo: "+15550001111", smsBody: "Hello" },
+          credentials,
+        })
       );
 
       expect(error.message).toBe("Invalid parameter: To");
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("says which credentials are missing before reaching Twilio", () =>
     Effect.gen(function* () {
       const { credentials } = credentialsRead({});
 
-      const error = yield* failure(
-        sendSmsHandler(
-          bagFor(
-            { smsTo: "+15550001111", smsBody: "Hello" },
-            "live",
-            credentials
-          )
-        )
+      const error = actionError(
+        yield* runAction(twilio, "send-sms", {
+          input: { smsTo: "+15550001111", smsBody: "Hello" },
+          credentials,
+        })
       );
 
       expect(error.message).toBe(
         "TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are required. Add them in Project Integrations."
       );
       expect(mocks.createMessage).toHaveBeenCalledTimes(0);
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("refuses a send with no sender configured anywhere", () =>
@@ -277,98 +252,45 @@ describe("sendSmsHandler", () => {
         TWILIO_AUTH_TOKEN: "auth-token",
       });
 
-      const error = yield* failure(
-        sendSmsHandler(
-          bagFor(
-            { smsTo: "+15550001111", smsBody: "Hello" },
-            "live",
-            credentials
-          )
-        )
+      const error = actionError(
+        yield* runAction(twilio, "send-sms", {
+          input: { smsTo: "+15550001111", smsBody: "Hello" },
+          credentials,
+        })
       );
 
       expect(error.message).toBe(
         "Either From number or Messaging Service SID is required. Configure one in the action or integration settings."
       );
       expect(mocks.createMessage).toHaveBeenCalledTimes(0);
-    }).pipe(withTransport)
+    })
   );
-});
 
-/**
- * The step as `assembleExtensions` binds it, which is the whole path a run takes:
- * the config decode, the handler, and the envelope. The credential fetch is the
- * one thing not exercised here, because a test run in log-only mode decides it has
- * nothing to send before asking for a secret.
- *
- * The default test run is the case that matters. It is what pressing "Test" on a
- * freshly configured Send SMS node does, with the behaviour left at its default and
- * no test phone typed in, and the config the engine builds for it carries only the
- * keys the node holds a value for.
- */
-describe("the send-sms step as an integration binds it", () => {
-  // What the app supplies a step definition: the credential store and the
-  // runtime the step runs on. This node names no integration, so nothing is
-  // read, and the handler asks for no app service, so Effect's own runtime is
-  // all it takes to run.
-  const run = twilio.actions["send-sms"].implement("twilio/send-sms")({
-    credentialsFor: () => Effect.succeed({}),
-    runStep: (effect) => Effect.runPromise(effect),
-  });
-
-  it("answers the log-only success a default test run expects", async () => {
-    const result = await run({
-      actionType: "twilio/send-sms",
-      smsTo: "+15550001111",
-      smsBody: "Hello",
-      testBehavior: "log_only",
-      _context: {
-        executionId: "exec_1",
-        nodeId: "n1",
-        nodeName: "SMS",
-        nodeType: "twilio/send-sms",
+  // What pressing "Test" on a freshly configured Send SMS node does, with the
+  // behaviour left at its default and no test phone typed in. The envelope is
+  // asserted whole here, since that is what the engine reads.
+  it.effect("answers the log-only success a default test run expects", () =>
+    Effect.gen(function* () {
+      const result = yield* runAction(twilio, "send-sms", {
+        input: {
+          smsTo: "+15550001111",
+          smsBody: "Hello",
+          testBehavior: "log_only",
+        },
         runMode: "test",
-      },
-    });
+        node: { executionId: "exec_1" },
+      });
 
-    expect(result).toEqual({
-      success: true,
-      data: {
-        sid: "twilio:test-log-only:exec_1",
-        status: "queued",
-        to: "+15550001111",
-        reasonCode: "test_mode_log_only",
-      },
-    });
-    expect(mocks.createMessage).not.toHaveBeenCalled();
-  });
-
-  // Read through the step's own input schema, which is the object its config
-  // decode runs: one text field carries the list, and the handler receives the
-  // list rather than the text a builder typed.
-  it("splits the Media URLs field a builder typed as one line", () => {
-    // A step's schemas are typed as any Standard Schema, and only Effect's
-    // carries the transform this case is about.
-    const schema = twilio.actions["send-sms"].input;
-    if (!isEffectSchema<unknown, never>(schema)) {
-      throw new Error(
-        'Action "twilio/send-sms" no longer holds an Effect schema'
-      );
-    }
-
-    const decodeConfig = Schema.decodeUnknownSync(Schema.toCodecJson(schema));
-
-    expect(
-      decodeConfig({
-        smsTo: "+15550001111",
-        smsBody: "Hello",
-        smsMediaUrls:
-          " https://example.com/a.png , ,https://example.com/b.png ",
-      })
-    ).toEqual({
-      smsTo: "+15550001111",
-      smsBody: "Hello",
-      smsMediaUrls: ["https://example.com/a.png", "https://example.com/b.png"],
-    });
-  });
+      expect(result).toEqual({
+        success: true,
+        data: {
+          sid: "twilio:test-log-only:exec_1",
+          status: "queued",
+          to: "+15550001111",
+          reasonCode: "test_mode_log_only",
+        },
+      });
+      expect(mocks.createMessage).not.toHaveBeenCalled();
+    })
+  );
 });

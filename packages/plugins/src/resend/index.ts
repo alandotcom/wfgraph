@@ -13,9 +13,7 @@ import {
   type CredentialFields,
   type CredentialsOf,
   defineIntegration,
-  defineStep,
   type JsonObject,
-  type StepBag,
   StepFailure,
 } from "@rova/core/plugin";
 import { omitBy } from "es-toolkit/object";
@@ -255,92 +253,6 @@ function buildEmailPayload(
       );
 }
 
-/**
- * Named rather than written inline, so a test can run it with a bag it
- * supplies: what this step decides is whether and where to send, and every one
- * of those decisions is here.
- */
-export const sendEmailHandler = Effect.fn(function* (
-  bag: StepBag<typeof sendEmailInput.Type, ResendCredentials>
-) {
-  const { input } = bag;
-
-  // The run's own id doubles as the idempotency key: a step Inngest re-runs
-  // sends the same key, and Resend replays its first answer rather than sending
-  // a second email.
-  const idempotencyKey = bag.executionId;
-  const syntheticIdSuffix = idempotencyKey ?? "no_execution";
-  const testBehavior = resolveResendTestBehavior(input.testBehavior);
-
-  // A test run either sends nothing at all or sends to one address the user
-  // nominated. Both answers are a success carrying the reason, so the run shows
-  // what happened rather than an error the user has to interpret.
-  if (bag.runMode === "test" && testBehavior === "log_only") {
-    return {
-      id: `resend:test-log-only:${syntheticIdSuffix}`,
-      reasonCode: "test_mode_log_only",
-    };
-  }
-
-  const testRecipient = input.testEmailTo?.trim() ?? "";
-  const routeToTestRecipient =
-    bag.runMode === "test" && testBehavior === "send_to_test_email";
-
-  if (routeToTestRecipient && testRecipient.length === 0) {
-    return {
-      id: `resend:test-log-fallback:${syntheticIdSuffix}`,
-      reasonCode: "test_mode_log_fallback_missing_test_email",
-    };
-  }
-
-  if (routeToTestRecipient && !isValidTestEmailAddress(testRecipient)) {
-    return {
-      id: `resend:test-log-fallback:${syntheticIdSuffix}`,
-      reasonCode: "test_mode_log_fallback_invalid_test_email",
-    };
-  }
-
-  const credentials = yield* bag.credentials;
-  const apiKey = credentials.RESEND_API_KEY;
-
-  if (!apiKey) {
-    return yield* new StepFailure({
-      message:
-        "RESEND_API_KEY is not configured. Please add it in Project Integrations.",
-    });
-  }
-
-  const senderEmail = input.emailFrom || credentials.RESEND_FROM_EMAIL;
-
-  if (!senderEmail) {
-    return yield* new StepFailure({
-      message:
-        "No sender is configured. Please add it in the action or in Project Integrations.",
-    });
-  }
-
-  // A test send goes to the nominated address alone: carrying the real cc and
-  // bcc over would mail the people the run was meant to spare.
-  const payload = yield* buildEmailPayload(
-    input,
-    senderEmail,
-    routeToTestRecipient
-      ? { to: testRecipient }
-      : { to: input.emailTo, cc: input.emailCc, bcc: input.emailBcc }
-  );
-
-  const sent = yield* sendResendEmail(apiKey, payload, idempotencyKey).pipe(
-    Effect.mapError(
-      (error) =>
-        new StepFailure({
-          message: `Failed to send email: ${describeResendFailure(error)}`,
-        })
-    )
-  );
-
-  return { id: sent.id };
-});
-
 export const resend = defineIntegration({
   type: "resend",
   label: "Resend",
@@ -350,10 +262,9 @@ export const resend = defineIntegration({
   test: async () => (await import("#src/resend/test")).testResend,
 
   actions: {
-    "send-email": defineStep({
+    "send-email": {
       label: "Send Email",
       description: "Send an email via Resend",
-      category: "Resend",
       input: sendEmailInput,
       output: sendEmailOutput,
       configFields: [
@@ -517,7 +428,91 @@ export const resend = defineIntegration({
           ],
         },
       ],
-      handler: sendEmailHandler,
-    }),
+      handler: Effect.fn(function* (bag) {
+        const { input } = bag;
+
+        // The run's own id doubles as the idempotency key: a step Inngest
+        // re-runs sends the same key, and Resend replays its first answer
+        // rather than sending a second email.
+        const idempotencyKey = bag.executionId;
+        const syntheticIdSuffix = idempotencyKey ?? "no_execution";
+        const testBehavior = resolveResendTestBehavior(input.testBehavior);
+
+        // A test run either sends nothing at all or sends to one address the
+        // user nominated. Both answers are a success carrying the reason, so
+        // the run shows what happened rather than an error the user has to
+        // interpret.
+        if (bag.runMode === "test" && testBehavior === "log_only") {
+          return {
+            id: `resend:test-log-only:${syntheticIdSuffix}`,
+            reasonCode: "test_mode_log_only",
+          };
+        }
+
+        const testRecipient = input.testEmailTo?.trim() ?? "";
+        const routeToTestRecipient =
+          bag.runMode === "test" && testBehavior === "send_to_test_email";
+
+        if (routeToTestRecipient && testRecipient.length === 0) {
+          return {
+            id: `resend:test-log-fallback:${syntheticIdSuffix}`,
+            reasonCode: "test_mode_log_fallback_missing_test_email",
+          };
+        }
+
+        if (routeToTestRecipient && !isValidTestEmailAddress(testRecipient)) {
+          return {
+            id: `resend:test-log-fallback:${syntheticIdSuffix}`,
+            reasonCode: "test_mode_log_fallback_invalid_test_email",
+          };
+        }
+
+        // Read late, so a test run deciding it has nothing to send never
+        // touches the integration's secrets.
+        const credentials = yield* bag.credentials;
+        const apiKey = credentials.RESEND_API_KEY;
+
+        if (!apiKey) {
+          return yield* new StepFailure({
+            message:
+              "RESEND_API_KEY is not configured. Please add it in Project Integrations.",
+          });
+        }
+
+        const senderEmail = input.emailFrom || credentials.RESEND_FROM_EMAIL;
+
+        if (!senderEmail) {
+          return yield* new StepFailure({
+            message:
+              "No sender is configured. Please add it in the action or in Project Integrations.",
+          });
+        }
+
+        // A test send goes to the nominated address alone: carrying the real cc
+        // and bcc over would mail the people the run was meant to spare.
+        const payload = yield* buildEmailPayload(
+          input,
+          senderEmail,
+          routeToTestRecipient
+            ? { to: testRecipient }
+            : { to: input.emailTo, cc: input.emailCc, bcc: input.emailBcc }
+        );
+
+        const sent = yield* sendResendEmail(
+          apiKey,
+          payload,
+          idempotencyKey
+        ).pipe(
+          Effect.mapError(
+            (error) =>
+              new StepFailure({
+                message: `Failed to send email: ${describeResendFailure(error)}`,
+              })
+          )
+        );
+
+        return { id: sent.id };
+      }),
+    },
   },
 });

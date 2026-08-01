@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { Effect, Schema } from "effect";
 import { defineAction, defineEvent } from "#src/index";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
-import { defineStep } from "#src/backend/extensions/steps/define-step";
 import { createRovaApp, type RovaApp } from "#src/app";
 import { createApiApp, MACHINE_ROUTES } from "#src/backend/api-app";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
@@ -90,10 +89,9 @@ describe("createRovaApp mounted at the root", () => {
               TWILIO_AUTH_TOKEN: { label: "Auth Token", type: "password" },
             },
             actions: {
-              "send-sms": defineStep({
+              "send-sms": {
                 label: "Send SMS",
                 description: "Sends a message",
-                category: "Twilio",
                 input: Schema.Struct({ smsTo: Schema.String }),
                 output: Schema.Struct({
                   sid: Schema.String.annotate({ description: "Message SID" }),
@@ -109,7 +107,7 @@ describe("createRovaApp mounted at the root", () => {
                 handler: Effect.fn(function* () {
                   return yield* Effect.succeed({ sid: "SM1" });
                 }),
-              }),
+              },
             },
           }),
         ],

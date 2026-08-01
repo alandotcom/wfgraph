@@ -1,8 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
+import { actionData, actionError, runAction } from "@rova/core/testing";
 import { Effect } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
 import { beforeEach, vi } from "vitest";
-import { findIssuesHandler } from "#src/linear/index";
+import { linear } from "#src/linear/index";
 
 // This step's seam is the Linear SDK, which it constructs itself, so the
 // constructor is what the test replaces. What this step decides is which filter
@@ -25,28 +25,6 @@ function credentialsRead(
   return Effect.sync(() => values);
 }
 
-/** The one argument a handler takes: this case's config, and the run around it. */
-function bagFor<TInput>(
-  input: TInput,
-  credentials: Effect.Effect<Record<string, string | undefined>>
-) {
-  return {
-    input,
-    runMode: "live" as const,
-    nodeId: "n1",
-    nodeName: "Linear",
-    nodeType: "action",
-    integrationId: "int_linear",
-    credentials,
-    readCredentials: () => Effect.runPromise(credentials),
-  };
-}
-
-/** A step that succeeds fails the flip, which is what makes the test say so. */
-const failure = Effect.flip;
-
-const withTransport = Effect.provide(FetchHttpClient.layer);
-
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.issues.mockResolvedValue({
@@ -63,12 +41,15 @@ beforeEach(() => {
   });
 });
 
-describe("findIssuesHandler", () => {
+describe("linear/find-issues", () => {
   it.effect("flattens the issue and the state behind it", () =>
     Effect.gen(function* () {
-      const credentials = credentialsRead();
-
-      const result = yield* findIssuesHandler(bagFor({}, credentials));
+      const result = actionData(
+        yield* runAction(linear, "find-issues", {
+          input: {},
+          credentials: credentialsRead(),
+        })
+      );
 
       expect(result).toEqual({
         issues: [
@@ -83,38 +64,33 @@ describe("findIssuesHandler", () => {
         ],
         count: 1,
       });
-    }).pipe(withTransport)
+    })
   );
 
   // Every blank field would otherwise become a filter matching nothing, and
   // "any" is how the status select spells "do not filter on status".
   it.effect("asks for no filter when nothing was filled in", () =>
     Effect.gen(function* () {
-      const credentials = credentialsRead();
-
-      yield* findIssuesHandler(
-        bagFor({ linearStatus: "any", linearLabel: "" }, credentials)
-      );
+      yield* runAction(linear, "find-issues", {
+        input: { linearStatus: "any", linearLabel: "" },
+        credentials: credentialsRead(),
+      });
 
       expect(mocks.issues).toHaveBeenCalledWith({ filter: undefined });
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("builds Linear's filter shape from the fields given", () =>
     Effect.gen(function* () {
-      const credentials = credentialsRead();
-
-      yield* findIssuesHandler(
-        bagFor(
-          {
-            linearAssigneeId: "user_1",
-            linearTeamId: "team_1",
-            linearStatus: "in_progress",
-            linearLabel: "bug",
-          },
-          credentials
-        )
-      );
+      yield* runAction(linear, "find-issues", {
+        input: {
+          linearAssigneeId: "user_1",
+          linearTeamId: "team_1",
+          linearStatus: "in_progress",
+          linearLabel: "bug",
+        },
+        credentials: credentialsRead(),
+      });
 
       expect(mocks.issues).toHaveBeenCalledWith({
         filter: {
@@ -124,7 +100,7 @@ describe("findIssuesHandler", () => {
           labels: { name: { eqIgnoreCase: "bug" } },
         },
       });
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("names an issue with no state rather than dropping it", () =>
@@ -141,9 +117,13 @@ describe("findIssuesHandler", () => {
           },
         ],
       });
-      const credentials = credentialsRead();
 
-      const result = yield* findIssuesHandler(bagFor({}, credentials));
+      const result = actionData(
+        yield* runAction(linear, "find-issues", {
+          input: {},
+          credentials: credentialsRead(),
+        })
+      );
 
       expect(result.issues[0]).toEqual({
         id: "issue_2",
@@ -153,7 +133,7 @@ describe("findIssuesHandler", () => {
         priority: 0,
         assigneeId: null,
       });
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("reports the GraphQL error Linear threw", () =>
@@ -165,26 +145,33 @@ describe("findIssuesHandler", () => {
           errors: [{ message: "Authentication required" }],
         },
       });
-      const credentials = credentialsRead();
 
-      const error = yield* failure(findIssuesHandler(bagFor({}, credentials)));
+      const error = actionError(
+        yield* runAction(linear, "find-issues", {
+          input: {},
+          credentials: credentialsRead(),
+        })
+      );
 
       expect(error.message).toBe(
         "Failed to find issues: Authentication required"
       );
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("says which credential is missing before reaching Linear", () =>
     Effect.gen(function* () {
-      const credentials = credentialsRead({});
-
-      const error = yield* failure(findIssuesHandler(bagFor({}, credentials)));
+      const error = actionError(
+        yield* runAction(linear, "find-issues", {
+          input: {},
+          credentials: credentialsRead({}),
+        })
+      );
 
       expect(error.message).toBe(
         "LINEAR_API_KEY is not configured. Please add it in Project Integrations."
       );
       expect(mocks.issues).toHaveBeenCalledTimes(0);
-    }).pipe(withTransport)
+    })
   );
 });

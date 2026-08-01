@@ -124,7 +124,7 @@ export type StepHandler<TInput, TOutput> = (
  * already works. Nothing else differs: the config decode, the credential fetch
  * and the output encode are the same either way.
  */
-type HandlerAnswer<TOutput> =
+export type HandlerAnswer<TOutput> =
   | TOutput
   | Promise<TOutput>
   | Effect.Effect<
@@ -166,15 +166,20 @@ export type ActionConfigFieldFor<TInput> =
  * declares the action, so a step carries everything except its own name and
  * `implement` is where the two meet.
  */
-export type ActionStep = {
+export type ActionStep<TOutput = unknown> = {
   readonly label: string;
   readonly description: string;
   readonly category: string;
   readonly configFields: readonly ActionConfigField[];
   /** The config shape, which the form is derived from. */
   readonly input: InputSchema<unknown>;
-  /** What the handler answers, which the editor's field list comes from. */
-  readonly output: OutputSchema<unknown>;
+  /**
+   * What the handler answers, which the editor's field list comes from.
+   *
+   * `TOutput` is carried so a test driving an action by slug knows what that
+   * action answers with. Assembly reads the erased `ActionStep` and never asks.
+   */
+  readonly output: OutputSchema<TOutput>;
   /** The engine's entry point, once the integration has named the action. */
   readonly implement: (actionId: string) => StepFactory;
 };
@@ -203,7 +208,7 @@ type StepSchemas<TInput, TOutput> = {
   readonly output: OutputSchema<TOutput>;
 };
 
-type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> & {
+export type ActionStepInput<TInput, TOutput> = StepSchemas<TInput, TOutput> & {
   readonly label: string;
   readonly description: string;
   readonly category: string;
@@ -398,7 +403,7 @@ function buildStep<TInput, TOutput>(
  */
 export function defineStep<TInput, TOutput>(
   definition: ActionStepInput<TInput, TOutput>
-): ActionStep {
+): ActionStep<TOutput> {
   return {
     label: definition.label,
     description: definition.description,

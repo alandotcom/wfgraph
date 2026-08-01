@@ -2,7 +2,6 @@ import { Effect, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
-import { defineStep } from "#src/backend/extensions/steps/define-step";
 import {
   extractRequiredIntegrationIds,
   validateWorkflowIntegrations,
@@ -60,10 +59,9 @@ const twilio = defineIntegration({
   description: "Sends messages",
   credentials: {},
   actions: {
-    "send-sms": defineStep({
+    "send-sms": {
       label: "Send SMS",
       description: "Sends a message",
-      category: "Twilio",
       input: Schema.Struct({ smsTo: Schema.String }),
       output: Schema.Struct({
         sid: Schema.String.annotate({ description: "Message SID" }),
@@ -74,7 +72,7 @@ const twilio = defineIntegration({
       handler: Effect.fn(function* () {
         return yield* Effect.succeed({ sid: "SM1" });
       }),
-    }),
+    },
   },
 });
 

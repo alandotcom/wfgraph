@@ -13,13 +13,24 @@
  */
 
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
-import type { ActionStep } from "#src/backend/extensions/steps/define-step";
+import {
+  type ActionConfigFieldFor,
+  type ActionStep,
+  type ActionStepInput,
+  defineStep,
+  type HandlerAnswer,
+  type StepBag,
+} from "#src/backend/extensions/steps/define-step";
+import type { InputSchema } from "#src/backend/extensions/schema-io";
 import {
   type CredentialFields,
   formatActionId,
 } from "@rova/shared/extensions/catalog";
 import type { ReferenceField } from "@rova/shared/graph/node-references";
-import { requireOutputFieldsFromSchema } from "@rova/shared/graph/output-fields";
+import {
+  type OutputSchema,
+  requireOutputFieldsFromSchema,
+} from "@rova/shared/graph/output-fields";
 
 /**
  * The credential keys a handler of this integration may read.
@@ -57,15 +68,168 @@ export type IntegrationDefinition = {
   readonly actions: Readonly<Record<string, ActionStep>>;
 };
 
+/**
+ * The half of an action carrying its input: the schema, the form fields held to
+ * that schema's keys, and the handler.
+ *
+ * Split from its output half so that `TOutputs` below gets an inference site of
+ * its own. One mapped type holding both leaves `TOutputs` at its constraint,
+ * which silently retires the `NoInfer` that keeps the output schema, rather than
+ * the handler's return, the source of truth.
+ */
+type ActionInputSide<TCredentials, TInput, TOutput> = {
+  readonly label: string;
+  readonly description: string;
+  /** Defaults to the integration's own label, which is the usual heading. */
+  readonly category?: string;
+  readonly input: InputSchema<TInput>;
+  readonly configFields?: readonly ActionConfigFieldFor<TInput>[];
+  readonly handler: (
+    bag: StepBag<NoInfer<TInput>, TCredentials>
+  ) => HandlerAnswer<TOutput>;
+};
+
+type ActionOutputSide<TOutput> = {
+  readonly output: OutputSchema<TOutput>;
+};
+
+type IntegrationActions<TCredentials, TInputs, TOutputs> = {
+  readonly [K in keyof TInputs]: ActionInputSide<
+    TCredentials,
+    TInputs[K],
+    K extends keyof TOutputs ? NoInfer<TOutputs[K]> : never
+  >;
+} & {
+  readonly [K in keyof TOutputs]: ActionOutputSide<TOutputs[K]>;
+};
+
+/**
+ * An integration with its action slugs and their output types still in hand.
+ *
+ * Assembly reads the erased `IntegrationDefinition` and asks for none of this.
+ * It is here for a caller naming an action by slug, which is what `runAction`
+ * in `@rova/core/testing` does.
+ */
+export type Integration<
+  TInputs extends Record<string, unknown> = Record<string, unknown>,
+  TOutputs extends Record<string, unknown> = Record<string, unknown>,
+> = Omit<IntegrationDefinition, "actions"> & {
+  readonly actions: {
+    readonly [K in keyof TInputs]: ActionStep<
+      K extends keyof TOutputs ? TOutputs[K] : never
+    >;
+  };
+};
+
+/**
+ * Declare an integration: its credentials, its actions, and the connection test
+ * behind them.
+ *
+ * An action is an object literal, so the credential vocabulary and each action's
+ * own input type reach its handler without an annotation. A handler naming a
+ * credential the record never declared fails to compile, as does a config field
+ * naming a key the input schema never declared.
+ *
+ * @example
+ * ```ts
+ * export const myService = defineIntegration({
+ *   type: "my-service",
+ *   label: "My Service",
+ *   description: "Does a thing",
+ *   credentials: { MY_SERVICE_API_KEY: { label: "API Key", type: "password" } },
+ *   actions: {
+ *     "send-thing": {
+ *       label: "Send Thing",
+ *       description: "Sends a thing",
+ *       input: Schema.Struct({ to: Schema.String }),
+ *       output: Schema.Struct({ id: Schema.String }),
+ *       handler: Effect.fn(function* (bag) {
+ *         const { MY_SERVICE_API_KEY } = yield* bag.credentials;
+ *         return yield* sendThing(MY_SERVICE_API_KEY, bag.input.to);
+ *       }),
+ *     },
+ *   },
+ * });
+ * ```
+ */
+export function defineIntegration<
+  const TCredentials extends CredentialFields,
+  TInputs extends Record<string, unknown>,
+  TOutputs extends Record<string, unknown>,
+>(input: {
+  readonly type: string;
+  readonly label: string;
+  readonly description: string;
+  readonly credentials: TCredentials;
+  readonly test?: IntegrationTestLoader<CredentialsOf<TCredentials>>;
+  readonly actions: IntegrationActions<
+    CredentialsOf<TCredentials>,
+    TInputs,
+    TOutputs
+  >;
+}): Integration<TInputs, TOutputs>;
+/**
+ * The body runs on the erased shape. The signature above has said everything the
+ * types have to say, and an overload is what hands the body the widened record
+ * without an assertion at each of the seven members.
+ */
 export function defineIntegration(input: {
   readonly type: string;
   readonly label: string;
   readonly description: string;
   readonly credentials: CredentialFields;
   readonly test?: IntegrationTestLoader;
-  readonly actions: Readonly<Record<string, ActionStep>>;
+  readonly actions: Readonly<Record<string, unknown>>;
 }): IntegrationDefinition {
-  return { kind: "integration", ...input };
+  const actions: Record<string, ActionStep> = {};
+
+  for (const [slug, action] of Object.entries(input.actions)) {
+    if (!isDeclaredAction(action)) {
+      throw new Error(
+        `Integration "${input.type}" declares the action "${slug}" without an input schema, an output schema, or a handler. All three are what an action is.`
+      );
+    }
+
+    actions[slug] = defineStep({
+      ...action,
+      // An action's heading is its integration's label unless it says otherwise,
+      // which is what every built-in wanted and none of them had to write.
+      category: action.category ?? input.label,
+    });
+  }
+
+  return {
+    kind: "integration",
+    type: input.type,
+    label: input.label,
+    description: input.description,
+    credentials: input.credentials,
+    test: input.test,
+    actions,
+  };
+}
+
+/** One action with its inference done, as `defineStep` takes it. */
+type DeclaredAction = Omit<ActionStepInput<unknown, unknown>, "category"> & {
+  readonly category?: string;
+};
+
+/**
+ * Whether an entry of the actions record is an action at all.
+ *
+ * The signature above has already held every entry to its shape, so this only
+ * answers false for a caller with no types: TypeScript cannot relate the generic
+ * record it checked to the erased one the body reads, and a check the run time
+ * can make is what bridges them without an assertion.
+ */
+function isDeclaredAction(value: unknown): value is DeclaredAction {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "input" in value &&
+    "output" in value &&
+    "handler" in value
+  );
 }
 
 /** One action of an integration, named and with its field list derived. */

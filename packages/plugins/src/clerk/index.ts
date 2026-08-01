@@ -13,8 +13,6 @@ import {
   type CredentialFields,
   type CredentialsOf,
   defineIntegration,
-  defineStep,
-  type StepBag,
   StepFailure,
 } from "@rova/core/plugin";
 import { omitBy } from "es-toolkit/object";
@@ -115,175 +113,6 @@ const deleteUserOutput = Schema.Struct({
   deleted: Schema.Boolean.annotate({ description: "Deletion success" }),
 });
 
-/**
- * Each handler is named rather than written inline, so a test can run it with a
- * bag it supplies.
- */
-export const clerkGetUserHandler = Effect.fn(function* (
-  bag: StepBag<typeof getUserInput.Type, ClerkCredentials>
-) {
-  const { input } = bag;
-  const credentials = yield* bag.credentials;
-  const secretKey = credentials.CLERK_SECRET_KEY;
-
-  if (!secretKey) {
-    return yield* new StepFailure({
-      message:
-        "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-    });
-  }
-
-  if (!input.userId) {
-    return yield* new StepFailure({ message: "User ID is required." });
-  }
-
-  const clerk = createClerkBackendClient(secretKey);
-  const user = yield* Effect.tryPromise({
-    try: () => clerk.users.getUser(input.userId),
-    catch: (error) =>
-      new StepFailure({
-        message: `Failed to get user: ${getClerkApiErrorMessage(error)}`,
-      }),
-  });
-
-  return toClerkUserData(toClerkApiUser(user));
-});
-
-export const clerkCreateUserHandler = Effect.fn(function* (
-  bag: StepBag<typeof createUserInput.Type, ClerkCredentials>
-) {
-  const { input } = bag;
-  const credentials = yield* bag.credentials;
-  const secretKey = credentials.CLERK_SECRET_KEY;
-
-  if (!secretKey) {
-    return yield* new StepFailure({
-      message:
-        "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-    });
-  }
-
-  if (!input.emailAddress) {
-    return yield* new StepFailure({ message: "Email address is required." });
-  }
-
-  const publicMetadata = yield* parseClerkMetadata(
-    input.publicMetadata,
-    "publicMetadata"
-  );
-  const privateMetadata = yield* parseClerkMetadata(
-    input.privateMetadata,
-    "privateMetadata"
-  );
-
-  const clerk = createClerkBackendClient(secretKey);
-  // Clerk reads an absent field and a null one differently, so the fields the
-  // user left blank are dropped rather than sent empty.
-  const createPayload = omitBy(
-    {
-      emailAddress: [input.emailAddress],
-      firstName: input.firstName,
-      lastName: input.lastName,
-      password: input.password,
-      publicMetadata,
-      privateMetadata,
-    },
-    isNil
-  );
-
-  const user = yield* Effect.tryPromise({
-    try: () => clerk.users.createUser(createPayload),
-    catch: (error) =>
-      new StepFailure({
-        message: `Failed to create user: ${getClerkApiErrorMessage(error)}`,
-      }),
-  });
-
-  return toClerkUserData(toClerkApiUser(user));
-});
-
-export const clerkUpdateUserHandler = Effect.fn(function* (
-  bag: StepBag<typeof updateUserInput.Type, ClerkCredentials>
-) {
-  const { input } = bag;
-  const credentials = yield* bag.credentials;
-  const secretKey = credentials.CLERK_SECRET_KEY;
-
-  if (!secretKey) {
-    return yield* new StepFailure({
-      message:
-        "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-    });
-  }
-
-  if (!input.userId) {
-    return yield* new StepFailure({ message: "User ID is required." });
-  }
-
-  const publicMetadata = yield* parseClerkMetadata(
-    input.publicMetadata,
-    "publicMetadata"
-  );
-  const privateMetadata = yield* parseClerkMetadata(
-    input.privateMetadata,
-    "privateMetadata"
-  );
-
-  const clerk = createClerkBackendClient(secretKey);
-  // An update sends only the fields the user filled in, so a blank box leaves
-  // what Clerk already holds alone rather than clearing it.
-  const updatePayload = omitBy(
-    {
-      firstName: input.firstName,
-      lastName: input.lastName,
-      publicMetadata,
-      privateMetadata,
-    },
-    isNil
-  );
-
-  const user = yield* Effect.tryPromise({
-    try: () => clerk.users.updateUser(input.userId, updatePayload),
-    catch: (error) =>
-      new StepFailure({
-        message: `Failed to update user: ${getClerkApiErrorMessage(error)}`,
-      }),
-  });
-
-  return toClerkUserData(toClerkApiUser(user));
-});
-
-export const clerkDeleteUserHandler = Effect.fn(function* (
-  bag: StepBag<typeof deleteUserInput.Type, ClerkCredentials>
-) {
-  const { input } = bag;
-  const credentials = yield* bag.credentials;
-  const secretKey = credentials.CLERK_SECRET_KEY;
-
-  if (!secretKey) {
-    return yield* new StepFailure({
-      message:
-        "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
-    });
-  }
-
-  if (!input.userId) {
-    return yield* new StepFailure({ message: "User ID is required." });
-  }
-
-  const clerk = createClerkBackendClient(secretKey);
-
-  yield* Effect.tryPromise({
-    try: () => clerk.users.deleteUser(input.userId),
-    catch: (error) =>
-      new StepFailure({
-        message: `Failed to delete user: ${getClerkApiErrorMessage(error)}`,
-      }),
-  });
-
-  return { deleted: true };
-});
-
 export const clerk = defineIntegration({
   type: "clerk",
   label: "Clerk",
@@ -293,10 +122,9 @@ export const clerk = defineIntegration({
   test: async () => (await import("#src/clerk/test")).testClerk,
 
   actions: {
-    "get-user": defineStep({
+    "get-user": {
       label: "Get User",
       description: "Fetch a user by ID from Clerk",
-      category: "Clerk",
       input: getUserInput,
       output: getUserOutput,
       configFields: [
@@ -309,13 +137,38 @@ export const clerk = defineIntegration({
           required: true,
         },
       ],
-      handler: clerkGetUserHandler,
-    }),
+      handler: Effect.fn(function* (bag) {
+        const { input } = bag;
+        const credentials = yield* bag.credentials;
+        const secretKey = credentials.CLERK_SECRET_KEY;
 
-    "create-user": defineStep({
+        if (!secretKey) {
+          return yield* new StepFailure({
+            message:
+              "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+          });
+        }
+
+        if (!input.userId) {
+          return yield* new StepFailure({ message: "User ID is required." });
+        }
+
+        const client = createClerkBackendClient(secretKey);
+        const user = yield* Effect.tryPromise({
+          try: () => client.users.getUser(input.userId),
+          catch: (error) =>
+            new StepFailure({
+              message: `Failed to get user: ${getClerkApiErrorMessage(error)}`,
+            }),
+        });
+
+        return toClerkUserData(toClerkApiUser(user));
+      }),
+    },
+
+    "create-user": {
       label: "Create User",
       description: "Create a new user in Clerk",
-      category: "Clerk",
       input: createUserInput,
       output: createUserOutput,
       configFields: [
@@ -370,13 +223,63 @@ export const clerk = defineIntegration({
           ],
         },
       ],
-      handler: clerkCreateUserHandler,
-    }),
+      handler: Effect.fn(function* (bag) {
+        const { input } = bag;
+        const credentials = yield* bag.credentials;
+        const secretKey = credentials.CLERK_SECRET_KEY;
 
-    "update-user": defineStep({
+        if (!secretKey) {
+          return yield* new StepFailure({
+            message:
+              "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+          });
+        }
+
+        if (!input.emailAddress) {
+          return yield* new StepFailure({
+            message: "Email address is required.",
+          });
+        }
+
+        const publicMetadata = yield* parseClerkMetadata(
+          input.publicMetadata,
+          "publicMetadata"
+        );
+        const privateMetadata = yield* parseClerkMetadata(
+          input.privateMetadata,
+          "privateMetadata"
+        );
+
+        const client = createClerkBackendClient(secretKey);
+        // Clerk reads an absent field and a null one differently, so the fields
+        // the user left blank are dropped rather than sent empty.
+        const createPayload = omitBy(
+          {
+            emailAddress: [input.emailAddress],
+            firstName: input.firstName,
+            lastName: input.lastName,
+            password: input.password,
+            publicMetadata,
+            privateMetadata,
+          },
+          isNil
+        );
+
+        const user = yield* Effect.tryPromise({
+          try: () => client.users.createUser(createPayload),
+          catch: (error) =>
+            new StepFailure({
+              message: `Failed to create user: ${getClerkApiErrorMessage(error)}`,
+            }),
+        });
+
+        return toClerkUserData(toClerkApiUser(user));
+      }),
+    },
+
+    "update-user": {
       label: "Update User",
       description: "Update an existing user in Clerk",
-      category: "Clerk",
       input: updateUserInput,
       output: updateUserOutput,
       configFields: [
@@ -422,13 +325,59 @@ export const clerk = defineIntegration({
           ],
         },
       ],
-      handler: clerkUpdateUserHandler,
-    }),
+      handler: Effect.fn(function* (bag) {
+        const { input } = bag;
+        const credentials = yield* bag.credentials;
+        const secretKey = credentials.CLERK_SECRET_KEY;
 
-    "delete-user": defineStep({
+        if (!secretKey) {
+          return yield* new StepFailure({
+            message:
+              "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+          });
+        }
+
+        if (!input.userId) {
+          return yield* new StepFailure({ message: "User ID is required." });
+        }
+
+        const publicMetadata = yield* parseClerkMetadata(
+          input.publicMetadata,
+          "publicMetadata"
+        );
+        const privateMetadata = yield* parseClerkMetadata(
+          input.privateMetadata,
+          "privateMetadata"
+        );
+
+        const client = createClerkBackendClient(secretKey);
+        // An update sends only the fields the user filled in, so a blank box
+        // leaves what Clerk already holds alone rather than clearing it.
+        const updatePayload = omitBy(
+          {
+            firstName: input.firstName,
+            lastName: input.lastName,
+            publicMetadata,
+            privateMetadata,
+          },
+          isNil
+        );
+
+        const user = yield* Effect.tryPromise({
+          try: () => client.users.updateUser(input.userId, updatePayload),
+          catch: (error) =>
+            new StepFailure({
+              message: `Failed to update user: ${getClerkApiErrorMessage(error)}`,
+            }),
+        });
+
+        return toClerkUserData(toClerkApiUser(user));
+      }),
+    },
+
+    "delete-user": {
       label: "Delete User",
       description: "Delete a user from Clerk",
-      category: "Clerk",
       input: deleteUserInput,
       output: deleteUserOutput,
       configFields: [
@@ -441,7 +390,34 @@ export const clerk = defineIntegration({
           required: true,
         },
       ],
-      handler: clerkDeleteUserHandler,
-    }),
+      handler: Effect.fn(function* (bag) {
+        const { input } = bag;
+        const credentials = yield* bag.credentials;
+        const secretKey = credentials.CLERK_SECRET_KEY;
+
+        if (!secretKey) {
+          return yield* new StepFailure({
+            message:
+              "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations.",
+          });
+        }
+
+        if (!input.userId) {
+          return yield* new StepFailure({ message: "User ID is required." });
+        }
+
+        const client = createClerkBackendClient(secretKey);
+
+        yield* Effect.tryPromise({
+          try: () => client.users.deleteUser(input.userId),
+          catch: (error) =>
+            new StepFailure({
+              message: `Failed to delete user: ${getClerkApiErrorMessage(error)}`,
+            }),
+        });
+
+        return { deleted: true };
+      }),
+    },
   },
 });

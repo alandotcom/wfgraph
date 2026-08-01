@@ -4,11 +4,12 @@ import { defineConfig } from "tsdown";
 // host-facing entry, re-exporting the authoring vocabulary, `createRovaApp`
 // and `createRequestListener` from the internal `app.ts` and `node.ts`
 // modules; `src/plugin.ts` is what a package of integrations builds against,
-// and `src/migrate.ts` applies the migrations without building an app. Every
-// entry here is named in the "exports" map in package.json, so the emitted
-// file names have to keep matching that map.
+// `src/testing.ts` is what that package's own suite drives an action with, and
+// `src/migrate.ts` applies the migrations without building an app. Every entry
+// here is named in the "exports" map in package.json, so the emitted file names
+// have to keep matching that map.
 export default defineConfig({
-  entry: ["src/index.ts", "src/plugin.ts", "src/migrate.ts"],
+  entry: ["src/index.ts", "src/plugin.ts", "src/testing.ts", "src/migrate.ts"],
   format: "esm",
   // Selects Node-flavoured resolution and externalization, which is what a
   // server library needs. tsdown's own default is already "node"; stated here

@@ -1,8 +1,8 @@
 # Writing an integration
 
 README's "Writing an integration" is the walkthrough: the `defineIntegration` shape, what
-`defineStep` owns, the canonical JSON codec and which optional spelling goes on which side.
-This file holds what is specific to the six integrations in this directory.
+it owns around a handler, the canonical JSON codec and which optional spelling goes on which
+side. This file holds what is specific to the six integrations in this directory.
 
 ## The files
 
@@ -24,9 +24,14 @@ limit: `acuity/` has `payloads.ts` for the system's wire shapes and `shared.ts` 
 config parsers its eight actions share, `clerk/` has `types.ts`, `metadata.ts` and a
 `components/` directory for its output renderer, `linear/` an `errors.ts`. What stays in
 `index.ts` either way is the integration itself, so a reader opens one file to learn what
-it does. `acuity/` is the largest at eight actions and lays them out one after another,
-schemas then handler then step, so the `actions` record at the foot reads as a contents
-list.
+it does. `acuity/` is the largest at eight actions, with its schemas above the
+`defineIntegration` call and each action written inline in the `actions` record.
+
+**An action is an object literal and its handler is written inside it.** That is what types
+them: `bag.input` comes from that action's own `input` schema and `bag.credentials` from
+the integration's `credentials` record, with no annotation written anywhere. Lifting either
+into a `const` above the call loses the contextual type that does it, so a definition that
+compiles is one written in place. `category` defaults to the integration's `label`.
 
 ## Calling the external system
 
@@ -113,25 +118,34 @@ field-derivation test alone catches none of what an SDK type gets wrong.
 4. `pnpm run type-check && pnpm run test && pnpm run fix`.
 5. `pnpm run dev`, then add a connection, build a workflow on the action, and run it.
 
-Naming: the folder is the integration `type` in kebab-case; a handler is `[action]Handler`;
-the credential type is `[Name]Credentials`; the connection test is `test[Name]`; the icon is
+Naming: the folder is the integration `type` in kebab-case; the credential type is
+`[Name]Credentials`; the connection test is `test[Name]`; the icon is
 `[Name]Icon`; environment variables are `[NAME]_[FIELD]`.
 
 ## Testing
 
-Test the handler, not the step: it takes one bag, so a case builds the bag it wants and
-runs it. `twilio/send-sms.test.ts` is the pattern, with credentials as an `Effect.sync`
-that counts its reads and the client as the stubbed seam. That file also runs the assembled
-step through `implement`, which is the whole path a run takes.
+Drive the action, through `runAction` from `@rova/core/testing`. A handler is written
+inline and is not importable, and driving the action covers the whole path a run takes: the
+config decode, the credential fetch, the handler, the output encode and the envelope.
+`slack/send-slack-message.test.ts` is the pattern, with credentials as an `Effect.sync` that
+counts its reads and the client as the stubbed seam.
 
-A bag a case builds by hand carries `input` beside the run's identity, and fills both
-credential readers, `credentials` and `readCredentials`, because a handler may use either.
-The six here all use the Effect one, so `readCredentials: () => Effect.runPromise(credentials)`
-is the whole of what each factory adds.
+```ts
+const answer = actionData(
+  yield *
+    runAction(slack, "send-message", { input, credentials, runMode: "test" })
+);
+```
+
+The slug is held to the actions the integration declared. `input` is the encoded side, so a
+case supplies the text a builder would have typed rather than what the schema decodes it to,
+which twilio's comma-separated media list is the one example of. `actionData` throws for a
+step that gave up and `actionError` throws for one that did not, so neither hides the
+other's outcome. Passing `credentials` an `Effect` is what pins the lazy read.
 
 `[name]/index.test.ts` beside it asserts what the definition contributes: the credential
 vocabulary, the action slugs, and the field list `requireOutputFieldsFromSchema` derives from
-each output schema. What `defineStep` itself does around a handler is covered once, in
+each output schema. What Rova itself does around a handler is covered once, in
 `packages/core/src/backend/extensions/steps/define-step.test.ts`.
 
 `src/index.test.ts` runs `checkIntegration` over all six at module level, which is every

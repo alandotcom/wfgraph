@@ -1,8 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
+import { actionData, actionError, runAction } from "@rova/core/testing";
 import { Effect } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
 import { beforeEach, vi } from "vitest";
-import { sendEmailHandler } from "#src/resend/index";
+import { resend } from "#src/resend/index";
 
 // What this step decides is whether and where to send, so the seam under it is
 // the Resend client. What that client puts on the wire is covered separately in
@@ -24,7 +24,7 @@ const RESEND_CREDENTIALS = {
  * The credentials a run would have fetched, and a count of the times the step
  * asked for them.
  *
- * `defineStep` hands the fetch over as an effect rather than a value, so a step
+ * A step hands its handler the fetch as an effect rather than a value, so a step
  * that decides it has nothing to send never reads the integration's secrets.
  * The count is what pins that.
  */
@@ -42,33 +42,6 @@ function credentialsRead(
   };
 }
 
-function bagFor<TInput>(
-  input: TInput,
-  runMode: "live" | "test",
-  credentials: Effect.Effect<Record<string, string | undefined>>,
-  executionId?: string
-) {
-  return {
-    input,
-    runMode,
-    executionId,
-    nodeId: "n1",
-    nodeName: "Email",
-    nodeType: "action",
-    integrationId: "int_resend",
-    credentials,
-    readCredentials: () => Effect.runPromise(credentials),
-  };
-}
-
-/** A step that succeeds fails the flip, which is what makes the test say so. */
-const failure = Effect.flip;
-
-// Nothing here reaches the network, because the client is stubbed above. The
-// transport is provided all the same, since that is what a handler declares it
-// needs and the compiler holds the test to it.
-const withTransport = Effect.provide(FetchHttpClient.layer);
-
 /** The arguments the client was called with, as the step passed them. */
 function sentCall() {
   return mocks.sendEmail.mock.calls[0] as [
@@ -83,21 +56,21 @@ beforeEach(() => {
   mocks.sendEmail.mockReturnValue(Effect.succeed({ id: "email_123" }));
 });
 
-describe("sendEmailHandler", () => {
+describe("the send-email action", () => {
   it.effect("logs only in test mode by default and skips external calls", () =>
     Effect.gen(function* () {
       const { reads, credentials } = credentialsRead();
 
-      const result = yield* sendEmailHandler(
-        bagFor(
-          {
+      const result = actionData(
+        yield* runAction(resend, "send-email", {
+          input: {
             emailTo: "user@example.com",
             emailSubject: "Subject",
             emailBody: "Body",
           },
-          "test",
-          credentials
-        )
+          credentials,
+          runMode: "test",
+        })
       );
 
       expect(result).toEqual({
@@ -106,16 +79,16 @@ describe("sendEmailHandler", () => {
       });
       expect(reads.count).toBe(0);
       expect(mocks.sendEmail).toHaveBeenCalledTimes(0);
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("routes to test recipient in test mode and strips cc/bcc", () =>
     Effect.gen(function* () {
       const { reads, credentials } = credentialsRead();
 
-      const result = yield* sendEmailHandler(
-        bagFor(
-          {
+      const result = actionData(
+        yield* runAction(resend, "send-email", {
+          input: {
             emailTo: "real-user@example.com",
             emailCc: "cc@example.com",
             emailBcc: "bcc@example.com",
@@ -124,9 +97,9 @@ describe("sendEmailHandler", () => {
             testBehavior: "send_to_test_email",
             testEmailTo: "  qa@example.com  ",
           },
-          "test",
-          credentials
-        )
+          credentials,
+          runMode: "test",
+        })
       );
 
       expect(reads.count).toBe(1);
@@ -137,7 +110,7 @@ describe("sendEmailHandler", () => {
       expect(payload.bcc).toBeUndefined();
       expect(idempotencyKey).toBeUndefined();
       expect(result).toEqual({ id: "email_123" });
-    }).pipe(withTransport)
+    })
   );
 
   // Resend's body is snake_case where the SDK took camelCase. Getting a name
@@ -147,23 +120,20 @@ describe("sendEmailHandler", () => {
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* sendEmailHandler(
-        bagFor(
-          {
-            emailTo: "user@example.com",
-            emailSubject: "Subject",
-            emailBody: "Body",
-            emailCc: "cc@example.com",
-            emailBcc: "bcc@example.com",
-            emailReplyTo: "reply@example.com",
-            emailScheduledAt: "2026-08-01T00:00:00Z",
-            emailTopicId: "topic_1",
-            emailTags: JSON.stringify([{ name: "campaign", value: "spring" }]),
-          },
-          "live",
-          credentials
-        )
-      );
+      yield* runAction(resend, "send-email", {
+        input: {
+          emailTo: "user@example.com",
+          emailSubject: "Subject",
+          emailBody: "Body",
+          emailCc: "cc@example.com",
+          emailBcc: "bcc@example.com",
+          emailReplyTo: "reply@example.com",
+          emailScheduledAt: "2026-08-01T00:00:00Z",
+          emailTopicId: "topic_1",
+          emailTags: JSON.stringify([{ name: "campaign", value: "spring" }]),
+        },
+        credentials,
+      });
 
       const [, payload] = sentCall();
 
@@ -179,7 +149,7 @@ describe("sendEmailHandler", () => {
         topic_id: "topic_1",
         tags: [{ name: "campaign", value: "spring" }],
       });
-    }).pipe(withTransport)
+    })
   );
 
   // The run's id is the idempotency key, which is what keeps an Inngest retry
@@ -188,41 +158,35 @@ describe("sendEmailHandler", () => {
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* sendEmailHandler(
-        bagFor(
-          {
-            emailTo: "user@example.com",
-            emailSubject: "Subject",
-            emailBody: "Body",
-          },
-          "live",
-          credentials,
-          "exec_42"
-        )
-      );
+      yield* runAction(resend, "send-email", {
+        input: {
+          emailTo: "user@example.com",
+          emailSubject: "Subject",
+          emailBody: "Body",
+        },
+        credentials,
+        node: { executionId: "exec_42" },
+      });
 
       const [, , idempotencyKey] = sentCall();
       expect(idempotencyKey).toBe("exec_42");
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("sends a template as Resend's template object", () =>
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* sendEmailHandler(
-        bagFor(
-          {
-            emailTo: "user@example.com",
-            emailSubject: "Subject",
-            emailContentMode: "template",
-            emailTemplateId: "tmpl_1",
-            emailTemplateVariables: JSON.stringify({ name: "Ada" }),
-          },
-          "live",
-          credentials
-        )
-      );
+      yield* runAction(resend, "send-email", {
+        input: {
+          emailTo: "user@example.com",
+          emailSubject: "Subject",
+          emailContentMode: "template",
+          emailTemplateId: "tmpl_1",
+          emailTemplateVariables: JSON.stringify({ name: "Ada" }),
+        },
+        credentials,
+      });
 
       const [, payload] = sentCall();
 
@@ -233,25 +197,25 @@ describe("sendEmailHandler", () => {
       // A template request must carry no html/text/react, which Resend rejects.
       expect(payload.html).toBeUndefined();
       expect(payload.text).toBeUndefined();
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("falls back to log-only when test recipient is invalid", () =>
     Effect.gen(function* () {
       const { reads, credentials } = credentialsRead();
 
-      const result = yield* sendEmailHandler(
-        bagFor(
-          {
+      const result = actionData(
+        yield* runAction(resend, "send-email", {
+          input: {
             emailTo: "real-user@example.com",
             emailSubject: "Subject",
             emailBody: "Body",
             testBehavior: "send_to_test_email",
             testEmailTo: "not-an-email",
           },
-          "test",
-          credentials
-        )
+          credentials,
+          runMode: "test",
+        })
       );
 
       expect(result).toEqual({
@@ -260,55 +224,49 @@ describe("sendEmailHandler", () => {
       });
       expect(reads.count).toBe(0);
       expect(mocks.sendEmail).toHaveBeenCalledTimes(0);
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("names the content mode's missing field", () =>
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      const error = yield* failure(
-        sendEmailHandler(
-          bagFor(
-            {
-              emailTo: "user@example.com",
-              emailSubject: "Subject",
-              emailContentMode: "html",
-            },
-            "live",
-            credentials
-          )
-        )
+      const error = actionError(
+        yield* runAction(resend, "send-email", {
+          input: {
+            emailTo: "user@example.com",
+            emailSubject: "Subject",
+            emailContentMode: "html",
+          },
+          credentials,
+        })
       );
 
       expect(error.message).toBe("HTML mode requires emailHtml.");
       expect(mocks.sendEmail).toHaveBeenCalledTimes(0);
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("says which credential is missing before reaching Resend", () =>
     Effect.gen(function* () {
       const { credentials } = credentialsRead({});
 
-      const error = yield* failure(
-        sendEmailHandler(
-          bagFor(
-            {
-              emailTo: "user@example.com",
-              emailSubject: "Subject",
-              emailBody: "Body",
-            },
-            "live",
-            credentials
-          )
-        )
+      const error = actionError(
+        yield* runAction(resend, "send-email", {
+          input: {
+            emailTo: "user@example.com",
+            emailSubject: "Subject",
+            emailBody: "Body",
+          },
+          credentials,
+        })
       );
 
       expect(error.message).toBe(
         "RESEND_API_KEY is not configured. Please add it in Project Integrations."
       );
       expect(mocks.sendEmail).toHaveBeenCalledTimes(0);
-    }).pipe(withTransport)
+    })
   );
 
   it.effect("fails with the message the system's refusal carries", () =>
@@ -318,23 +276,20 @@ describe("sendEmailHandler", () => {
       );
       const { credentials } = credentialsRead();
 
-      const error = yield* failure(
-        sendEmailHandler(
-          bagFor(
-            {
-              emailTo: "user@example.com",
-              emailSubject: "Subject",
-              emailBody: "Body",
-            },
-            "live",
-            credentials
-          )
-        )
+      const error = actionError(
+        yield* runAction(resend, "send-email", {
+          input: {
+            emailTo: "user@example.com",
+            emailSubject: "Subject",
+            emailBody: "Body",
+          },
+          credentials,
+        })
       );
 
       expect(error.message).toBe(
         "Failed to send email: The `to` field is required."
       );
-    }).pipe(withTransport)
+    })
   );
 });
