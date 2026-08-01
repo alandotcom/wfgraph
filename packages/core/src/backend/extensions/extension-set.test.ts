@@ -75,7 +75,7 @@ function aDefinition(
     type,
     label: type,
     description: `The ${type} integration`,
-    credentials: [],
+    credentials: {},
     actions: { "send-sms": aStep() },
     ...overrides,
   });
@@ -409,26 +409,16 @@ describe("assembleExtensions and an integration definition", () => {
     const { catalog } = assembleExtensions({
       integrations: [
         aDefinition("twilio", {
-          credentials: [
-            {
-              label: "Auth Token",
-              type: "password",
-              configKey: "authToken",
-              envVar: "TWILIO_AUTH_TOKEN",
-            },
-          ],
+          credentials: {
+            TWILIO_AUTH_TOKEN: { label: "Auth Token", type: "password" },
+          },
         }),
       ],
     });
 
-    expect(findIntegration(catalog, "twilio")?.credentialFields).toEqual([
-      {
-        label: "Auth Token",
-        type: "password",
-        configKey: "authToken",
-        envVar: "TWILIO_AUTH_TOKEN",
-      },
-    ]);
+    expect(findIntegration(catalog, "twilio")?.credentialFields).toEqual({
+      TWILIO_AUTH_TOKEN: { label: "Auth Token", type: "password" },
+    });
   });
 
   // Check 4. The message names the action, because a schema the derivation cannot

@@ -69,14 +69,9 @@ const catalog: ExtensionCatalog = {
       type: "twilio",
       label: "Twilio",
       description: "Send SMS messages with Twilio",
-      credentialFields: [
-        {
-          label: "Account SID",
-          type: "text",
-          configKey: "accountSid",
-          envVar: "TWILIO_ACCOUNT_SID",
-        },
-      ],
+      credentialFields: {
+        TWILIO_ACCOUNT_SID: { label: "Account SID", type: "text" },
+      },
       hasTest: true,
     },
   ],
@@ -211,30 +206,17 @@ describe("credentialsFromConfig", () => {
     label: "Twilio",
     description: "Send SMS messages",
     hasTest: true,
-    credentialFields: [
-      {
-        label: "Auth Token",
-        type: "password" as const,
-        configKey: "authToken",
-        envVar: "TWILIO_AUTH_TOKEN",
-      },
-      {
-        label: "From Number",
-        type: "text" as const,
-        configKey: "fromNumber",
-        envVar: "TWILIO_FROM_NUMBER",
-      },
-      // A field an operator fills in that no handler reads as a variable: the
-      // integration stores it and nothing maps it.
-      { label: "Label", type: "text" as const, configKey: "label" },
-    ],
+    credentialFields: {
+      TWILIO_AUTH_TOKEN: { label: "Auth Token", type: "password" as const },
+      TWILIO_FROM_NUMBER: { label: "From Number", type: "text" as const },
+    },
   };
 
-  it("maps each configured key to the variable its field names", () => {
+  it("answers with the declared credentials the config holds", () => {
     expect(
       credentialsFromConfig(twilio, {
-        authToken: "secret",
-        fromNumber: "+15551234567",
+        TWILIO_AUTH_TOKEN: "secret",
+        TWILIO_FROM_NUMBER: "+15551234567",
       })
     ).toEqual({
       TWILIO_AUTH_TOKEN: "secret",
@@ -242,13 +224,15 @@ describe("credentialsFromConfig", () => {
     });
   });
 
-  // A blank value is left out rather than mapped to an empty string, so a handler
-  // asking whether a credential is configured reads an absent key.
-  it("leaves out a field with no value and one with no variable", () => {
+  // A blank value is left out rather than passed on as an empty string, so a
+  // handler asking whether a credential is configured reads an absent key. A key
+  // the integration never declared is a stored row that outlived its
+  // declaration, and it is dropped rather than handed to a handler.
+  it("leaves out a blank value and a key the integration does not declare", () => {
     expect(
       credentialsFromConfig(twilio, {
-        authToken: "secret",
-        fromNumber: "",
+        TWILIO_AUTH_TOKEN: "secret",
+        TWILIO_FROM_NUMBER: "",
         label: "Main line",
       })
     ).toEqual({ TWILIO_AUTH_TOKEN: "secret" });

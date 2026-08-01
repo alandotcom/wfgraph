@@ -1,9 +1,10 @@
 import { LinearClient, LinearErrorType } from "@linear/sdk";
 import { toLinearError } from "#src/linear/errors";
+import type { LinearCredentials } from "#src/linear/index";
 import type { IntegrationTestResult } from "@rova/core/plugin";
 
 export async function testLinear(
-  credentials: Record<string, string>
+  credentials: LinearCredentials
 ): Promise<IntegrationTestResult> {
   try {
     const apiKey = credentials.LINEAR_API_KEY;

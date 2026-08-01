@@ -10,10 +10,10 @@ const slackLike = {
   label: "Slack",
   description: "test double",
   hasTest: false,
-  credentialFields: [
-    { id: "apiKey", label: "Bot Token", type: "password", configKey: "apiKey" },
-    { id: "team", label: "Team", type: "text", configKey: "team" },
-  ],
+  credentialFields: {
+    apiKey: { label: "Bot Token", type: "password" },
+    team: { label: "Team", type: "text" },
+  },
 } as const;
 
 const withSlack: ExtensionCatalog = {

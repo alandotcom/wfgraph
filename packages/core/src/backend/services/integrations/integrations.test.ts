@@ -36,20 +36,10 @@ const slackLike: IntegrationMetadata = {
   label: "Slack",
   description: "test double",
   hasTest: false,
-  credentialFields: [
-    {
-      label: "API Key",
-      type: "password",
-      configKey: "apiKey",
-      envVar: "SLACK_API_KEY",
-    },
-    {
-      label: "Team ID",
-      type: "text",
-      configKey: "teamId",
-      envVar: "SLACK_TEAM_ID",
-    },
-  ],
+  credentialFields: {
+    SLACK_API_KEY: { label: "API Key", type: "password" },
+    SLACK_TEAM_ID: { label: "Team ID", type: "text" },
+  },
 };
 
 /**
@@ -82,8 +72,8 @@ const storedSlackIntegration: StoredIntegration = {
   name: "Slack Prod",
   type: "slack",
   config: {
-    apiKey: "stored-secret",
-    teamId: "team-old",
+    SLACK_API_KEY: "stored-secret",
+    SLACK_TEAM_ID: "team-old",
   },
   isManaged: false,
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
@@ -154,8 +144,8 @@ describe("integration service secret handling", () => {
           Effect.provide(Layer.mergeAll(repo.layer, slackCatalog))
         );
 
-        assert.strictEqual(integration.config.apiKey, "********");
-        assert.strictEqual(integration.config.teamId, "team-old");
+        assert.strictEqual(integration.config.SLACK_API_KEY, "********");
+        assert.strictEqual(integration.config.SLACK_TEAM_ID, "team-old");
       })
     );
 
@@ -168,8 +158,8 @@ describe("integration service secret handling", () => {
           const integration = yield* putIntegration("int_1", {
             name: "Slack Updated",
             config: {
-              apiKey: "********",
-              teamId: "team-new",
+              SLACK_API_KEY: "********",
+              SLACK_TEAM_ID: "team-new",
             },
           }).pipe(Effect.provide(Layer.mergeAll(repo.layer, slackCatalog)));
 
@@ -179,15 +169,15 @@ describe("integration service secret handling", () => {
               updates: {
                 name: "Slack Updated",
                 config: {
-                  apiKey: "stored-secret",
-                  teamId: "team-new",
+                  SLACK_API_KEY: "stored-secret",
+                  SLACK_TEAM_ID: "team-new",
                 },
               },
             },
           ]);
 
-          assert.strictEqual(integration.config.apiKey, "********");
-          assert.strictEqual(integration.config.teamId, "team-new");
+          assert.strictEqual(integration.config.SLACK_API_KEY, "********");
+          assert.strictEqual(integration.config.SLACK_TEAM_ID, "team-new");
         })
     );
 
@@ -197,7 +187,7 @@ describe("integration service secret handling", () => {
 
         yield* putIntegration("int_1", {
           config: {
-            apiKey: "new-secret",
+            SLACK_API_KEY: "new-secret",
           },
         }).pipe(Effect.provide(Layer.mergeAll(repo.layer, slackCatalog)));
 
@@ -206,8 +196,8 @@ describe("integration service secret handling", () => {
             integrationId: "int_1",
             updates: {
               config: {
-                apiKey: "new-secret",
-                teamId: "team-old",
+                SLACK_API_KEY: "new-secret",
+                SLACK_TEAM_ID: "team-old",
               },
             },
           },

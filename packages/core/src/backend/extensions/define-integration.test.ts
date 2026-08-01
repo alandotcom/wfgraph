@@ -1,26 +1,16 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
-  credentialFields,
   type CredentialsOf,
   defineIntegration,
 } from "#src/backend/extensions/define-integration";
+import type { CredentialFields } from "@rova/shared/extensions/catalog";
 import { defineStep } from "#src/backend/extensions/steps/define-step";
 
-const twilioCredentialFields = credentialFields([
-  {
-    label: "Account SID",
-    type: "text",
-    configKey: "accountSid",
-    envVar: "TWILIO_ACCOUNT_SID",
-  },
-  {
-    label: "Auth Token",
-    type: "password",
-    configKey: "authToken",
-    envVar: "TWILIO_AUTH_TOKEN",
-  },
-]);
+const twilioCredentialFields = {
+  TWILIO_ACCOUNT_SID: { label: "Account SID", type: "text" },
+  TWILIO_AUTH_TOKEN: { label: "Auth Token", type: "password" },
+} satisfies CredentialFields;
 
 const sendSms = defineStep({
   label: "Send SMS",
@@ -62,7 +52,7 @@ describe("defineIntegration", () => {
       type: "twilio",
       label: "Twilio",
       description: "Send SMS messages",
-      credentials: [],
+      credentials: {},
       actions: { "send-sms": sendSms },
     });
 
@@ -70,18 +60,19 @@ describe("defineIntegration", () => {
   });
 });
 
-describe("credentialFields", () => {
-  // The point of the helper: without the `const` type parameter every `envVar`
-  // widens to `string`, and the vocabulary below would describe an open record a
-  // handler could misspell a key of.
-  it("keeps each envVar a literal type, so CredentialsOf names them", () => {
+describe("CredentialsOf", () => {
+  // A record literal's keys are literal types already, which is why declaring
+  // credentials this way needs no helper to preserve them.
+  it("names the keys the credential record declared", () => {
     expectTypeOf<CredentialsOf<typeof twilioCredentialFields>>().toEqualTypeOf<{
       TWILIO_ACCOUNT_SID?: string;
       TWILIO_AUTH_TOKEN?: string;
     }>();
   });
 
-  it("answers the fields it was handed", () => {
-    expect(credentialFields([])).toEqual([]);
+  it("describes no key for an integration declaring no credentials", () => {
+    expectTypeOf<CredentialsOf<Record<never, never>>>().toEqualTypeOf<
+      Record<never, string>
+    >();
   });
 });

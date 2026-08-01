@@ -58,7 +58,7 @@ const twilio = defineIntegration({
   type: "twilio",
   label: "Twilio",
   description: "Sends messages",
-  credentials: [],
+  credentials: {},
   actions: {
     "send-sms": defineStep({
       label: "Send SMS",

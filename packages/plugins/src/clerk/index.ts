@@ -10,7 +10,7 @@
  */
 
 import {
-  credentialFields,
+  type CredentialFields,
   type CredentialsOf,
   defineIntegration,
   defineStep,
@@ -28,20 +28,18 @@ import {
 import { parseClerkMetadata } from "#src/clerk/metadata";
 import { toClerkUserData } from "#src/clerk/types";
 
-const clerkCredentialFields = credentialFields([
-  {
+const clerkCredentialFields = {
+  CLERK_SECRET_KEY: {
     label: "Secret Key",
     type: "password",
     placeholder: "sk_live_... or sk_test_...",
-    configKey: "clerkSecretKey",
-    envVar: "CLERK_SECRET_KEY",
     helpText: "Get your secret key from ",
     helpLink: {
       text: "Clerk Dashboard",
       url: "https://dashboard.clerk.com",
     },
   },
-]);
+} satisfies CredentialFields;
 
 export type ClerkCredentials = CredentialsOf<typeof clerkCredentialFields>;
 

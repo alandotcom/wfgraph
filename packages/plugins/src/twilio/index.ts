@@ -10,7 +10,7 @@
  */
 
 import {
-  credentialFields,
+  type CredentialFields,
   type CredentialsOf,
   defineIntegration,
   defineStep,
@@ -20,42 +20,34 @@ import {
 import { Effect, Schema, SchemaTransformation } from "effect";
 import { createTwilioMessage, describeTwilioFailure } from "#src/twilio/client";
 
-// `credentialFields` exists for the `const` inference: each `envVar` has to stay
-// a literal type, because the credential vocabulary below is derived from them.
-const twilioCredentialFields = credentialFields([
-  {
+// `satisfies` rather than a type annotation. Annotating the const would widen
+// each key to `string`, and the credential vocabulary below is those keys.
+const twilioCredentialFields = {
+  TWILIO_ACCOUNT_SID: {
     label: "Account SID",
     type: "text",
     placeholder: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    configKey: "accountSid",
-    envVar: "TWILIO_ACCOUNT_SID",
     helpText: "Find this in your Twilio Console.",
   },
-  {
+  TWILIO_AUTH_TOKEN: {
     label: "Auth Token",
     type: "password",
     placeholder: "••••••••",
-    configKey: "authToken",
-    envVar: "TWILIO_AUTH_TOKEN",
     helpText: "Keep this secret. Used for Basic auth to Twilio API.",
   },
-  {
+  TWILIO_FROM_NUMBER: {
     label: "Default From Number",
     type: "text",
     placeholder: "+15551234567",
-    configKey: "fromNumber",
-    envVar: "TWILIO_FROM_NUMBER",
     helpText: "Optional fallback sender number.",
   },
-  {
+  TWILIO_MESSAGING_SERVICE_SID: {
     label: "Default Messaging Service SID",
     type: "text",
     placeholder: "MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    configKey: "messagingServiceSid",
-    envVar: "TWILIO_MESSAGING_SERVICE_SID",
     helpText: "Optional fallback if From is not provided.",
   },
-]);
+} satisfies CredentialFields;
 
 export type TwilioCredentials = CredentialsOf<typeof twilioCredentialFields>;
 

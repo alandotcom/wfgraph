@@ -1,9 +1,10 @@
 import { listResendDomains, readResendError } from "#src/resend/client";
+import type { ResendCredentials } from "#src/resend/index";
 import { callExternalAsync } from "@rova/core/plugin";
 import type { IntegrationTestResult } from "@rova/core/plugin";
 
 export async function testResend(
-  credentials: Record<string, string>
+  credentials: ResendCredentials
 ): Promise<IntegrationTestResult> {
   const apiKey = credentials.RESEND_API_KEY;
 

@@ -52,9 +52,7 @@ describe("the clerk integration", () => {
   it("declares its credentials and its actions as one value", () => {
     expect(clerk.type).toBe("clerk");
     expect(clerk.test).toBeDefined();
-    expect(clerk.credentials.map((field) => field.envVar)).toEqual([
-      "CLERK_SECRET_KEY",
-    ]);
+    expect(Object.keys(clerk.credentials)).toEqual(["CLERK_SECRET_KEY"]);
     expect(Object.keys(clerk.actions)).toEqual([
       "get-user",
       "create-user",

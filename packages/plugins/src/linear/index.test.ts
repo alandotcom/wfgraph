@@ -21,7 +21,7 @@ describe("the linear integration", () => {
   it("declares its credentials and its actions as one value", () => {
     expect(linear.type).toBe("linear");
     expect(linear.test).toBeDefined();
-    expect(linear.credentials.map((field) => field.envVar)).toEqual([
+    expect(Object.keys(linear.credentials)).toEqual([
       "LINEAR_API_KEY",
       "LINEAR_TEAM_ID",
     ]);

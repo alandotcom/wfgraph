@@ -11,7 +11,7 @@
 
 import { LinearClient, type LinearDocument } from "@linear/sdk";
 import {
-  credentialFields,
+  type CredentialFields,
   type CredentialsOf,
   defineIntegration,
   defineStep,
@@ -21,29 +21,25 @@ import {
 import { Effect, Schema } from "effect";
 import { describeLinearFailure } from "#src/linear/errors";
 
-const linearCredentialFields = credentialFields([
-  {
+const linearCredentialFields = {
+  LINEAR_API_KEY: {
     label: "API Key",
     type: "password",
     placeholder: "lin_api_...",
-    configKey: "apiKey",
-    envVar: "LINEAR_API_KEY",
     helpText: "Get your API key from ",
     helpLink: {
       text: "linear.app",
       url: "https://linear.app/settings/account/security/api-keys/new",
     },
   },
-  {
+  LINEAR_TEAM_ID: {
     label: "Team ID (Optional)",
     type: "text",
     placeholder: "Will use first team if not specified",
-    configKey: "teamId",
-    envVar: "LINEAR_TEAM_ID",
     helpText:
       "The team ID to create issues in. Leave blank to use your first team.",
   },
-]);
+} satisfies CredentialFields;
 
 export type LinearCredentials = CredentialsOf<typeof linearCredentialFields>;
 

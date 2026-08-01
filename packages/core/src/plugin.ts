@@ -27,11 +27,11 @@ export type {
 } from "#src/backend/extensions/integration-test";
 export {
   checkIntegration,
-  credentialFields,
   type CredentialsOf,
   defineIntegration,
   type IntegrationDefinition,
 } from "#src/backend/extensions/define-integration";
+export type { CredentialFields } from "@rova/shared/extensions/catalog";
 export {
   type ActionStep,
   defineStep,

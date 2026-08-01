@@ -86,14 +86,9 @@ describe("createRovaApp mounted at the root", () => {
             type: "twilio",
             label: "Twilio",
             description: "Send SMS messages",
-            credentials: [
-              {
-                label: "Auth Token",
-                type: "password",
-                configKey: "authToken",
-                envVar: "TWILIO_AUTH_TOKEN",
-              },
-            ],
+            credentials: {
+              TWILIO_AUTH_TOKEN: { label: "Auth Token", type: "password" },
+            },
             actions: {
               "send-sms": defineStep({
                 label: "Send SMS",

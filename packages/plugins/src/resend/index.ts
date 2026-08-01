@@ -10,7 +10,7 @@
  */
 
 import {
-  credentialFields,
+  type CredentialFields,
   type CredentialsOf,
   defineIntegration,
   defineStep,
@@ -23,28 +23,24 @@ import { isNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema } from "effect";
 import { describeResendFailure, sendResendEmail } from "#src/resend/client";
 
-const resendCredentialFields = credentialFields([
-  {
+const resendCredentialFields = {
+  RESEND_API_KEY: {
     label: "API Key",
     type: "password",
     placeholder: "re_...",
-    configKey: "apiKey",
-    envVar: "RESEND_API_KEY",
     helpText: "Get your API key from ",
     helpLink: {
       text: "resend.com/api-keys",
       url: "https://resend.com/api-keys",
     },
   },
-  {
+  RESEND_FROM_EMAIL: {
     label: "Default Sender",
     type: "text",
     placeholder: "Your Name <noreply@yourdomain.com>",
-    configKey: "fromEmail",
-    envVar: "RESEND_FROM_EMAIL",
     helpText: "The name and email that will appear as the sender",
   },
-]);
+} satisfies CredentialFields;
 
 export type ResendCredentials = CredentialsOf<typeof resendCredentialFields>;
 

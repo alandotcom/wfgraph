@@ -35,9 +35,9 @@ export function createSecretConfigKeyTest(
   }
 
   const secretKeys = new Set(
-    integration.credentialFields
-      .filter((field) => field.type === "password")
-      .map((field) => field.configKey)
+    Object.entries(integration.credentialFields)
+      .filter(([, field]) => field.type === "password")
+      .map(([key]) => key)
   );
   return (key) => secretKeys.has(key);
 }

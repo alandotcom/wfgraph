@@ -36,7 +36,7 @@ describe("the acuity integration", () => {
     expect(acuity.type).toBe("acuity");
     expect(acuity.label).toBe("Acuity");
     expect(acuity.test).toBeDefined();
-    expect(acuity.credentials.map((field) => field.envVar)).toEqual([
+    expect(Object.keys(acuity.credentials)).toEqual([
       "ACUITY_USER_ID",
       "ACUITY_API_KEY",
     ]);

@@ -44,7 +44,7 @@ const notify = defineIntegration({
   type: "notify",
   label: "Notify",
   description: "A step with a literal config field",
-  credentials: [],
+  credentials: {},
   actions: {
     send: defineStep({
       label: "Send Notification",

@@ -1,9 +1,10 @@
 import { Acuity, AcuityError } from "@fountain-bio/acuity";
 import { getAcuityErrorMessage } from "#src/acuity/client";
+import type { AcuityCredentials } from "#src/acuity/index";
 import type { IntegrationTestResult } from "@rova/core/plugin";
 
 export async function testAcuity(
-  credentials: Record<string, string>
+  credentials: AcuityCredentials
 ): Promise<IntegrationTestResult> {
   try {
     const userId = credentials.ACUITY_USER_ID?.trim();

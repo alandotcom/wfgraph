@@ -9,7 +9,7 @@
  */
 
 import {
-  credentialFields,
+  type CredentialFields,
   type CredentialsOf,
   defineIntegration,
   defineStep,
@@ -19,20 +19,18 @@ import {
 import { Effect, Schema } from "effect";
 import { callSlack, describeSlackFailure } from "#src/slack/client";
 
-const slackCredentialFields = credentialFields([
-  {
+const slackCredentialFields = {
+  SLACK_API_KEY: {
     label: "Bot Token",
     type: "password",
     placeholder: "xoxb-...",
-    configKey: "apiKey",
-    envVar: "SLACK_API_KEY",
     helpText: "Create a Slack app and get your Bot Token from ",
     helpLink: {
       text: "api.slack.com/apps",
       url: "https://api.slack.com/apps",
     },
   },
-]);
+} satisfies CredentialFields;
 
 export type SlackCredentials = CredentialsOf<typeof slackCredentialFields>;
 

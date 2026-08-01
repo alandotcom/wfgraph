@@ -15,35 +15,23 @@
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
 import type { ActionStep } from "#src/backend/extensions/steps/define-step";
 import {
-  type CredentialFieldMetadata,
+  type CredentialFields,
   formatActionId,
 } from "@rova/shared/extensions/catalog";
 import type { ReferenceField } from "@rova/shared/graph/node-references";
 import { requireOutputFieldsFromSchema } from "@rova/shared/graph/output-fields";
 
 /**
- * An integration's credential form, with each `envVar` kept as a literal type.
- *
- * A plain array literal widens every `envVar` to `string`, which would leave
- * `CredentialsOf` describing an open record and a handler free to misspell a key.
- * This is a `const` type parameter and an identity function: it exists for that
- * inference and does nothing at run time.
- */
-export function credentialFields<
-  const TFields extends readonly CredentialFieldMetadata[],
->(fields: TFields): TFields {
-  return fields;
-}
-
-/**
  * The credential keys a handler of this integration may read.
  *
- * Every value is optional because an operator may have filled in part of the
- * form: a handler decides what it can do without, and says so in the message it
- * fails with.
+ * The keys come off the record the integration declared, so a handler naming one
+ * it never declared fails to compile. Every value is optional because an operator
+ * may have filled in part of the form: a handler decides what it can do without,
+ * and says so in the message it fails with.
  */
-export type CredentialsOf<TFields extends readonly CredentialFieldMetadata[]> =
-  Partial<Record<Extract<TFields[number]["envVar"], string>, string>>;
+export type CredentialsOf<TFields extends CredentialFields> = Partial<
+  Record<Extract<keyof TFields, string>, string>
+>;
 
 export type IntegrationDefinition = {
   readonly kind: "integration";
@@ -56,7 +44,7 @@ export type IntegrationDefinition = {
   readonly type: string;
   readonly label: string;
   readonly description: string;
-  readonly credentials: readonly CredentialFieldMetadata[];
+  readonly credentials: CredentialFields;
   /**
    * What "Test connection" calls, absent when the integration offers none.
    *
@@ -73,7 +61,7 @@ export function defineIntegration(input: {
   readonly type: string;
   readonly label: string;
   readonly description: string;
-  readonly credentials: readonly CredentialFieldMetadata[];
+  readonly credentials: CredentialFields;
   readonly test?: IntegrationTestLoader;
   readonly actions: Readonly<Record<string, ActionStep>>;
 }): IntegrationDefinition {

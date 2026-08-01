@@ -13,7 +13,7 @@ describe("the resend integration", () => {
   it("declares its credentials and its actions as one value", () => {
     expect(resend.type).toBe("resend");
     expect(resend.test).toBeDefined();
-    expect(resend.credentials.map((field) => field.envVar)).toEqual([
+    expect(Object.keys(resend.credentials)).toEqual([
       "RESEND_API_KEY",
       "RESEND_FROM_EMAIL",
     ]);

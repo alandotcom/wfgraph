@@ -27,7 +27,7 @@ import type {
   ListAppointmentsParams,
 } from "@fountain-bio/acuity";
 import {
-  credentialFields,
+  type CredentialFields,
   type CredentialsOf,
   defineIntegration,
   defineStep,
@@ -53,24 +53,20 @@ import {
   requiredInteger,
 } from "#src/acuity/shared";
 
-const acuityCredentialFields = credentialFields([
-  {
+const acuityCredentialFields = {
+  ACUITY_USER_ID: {
     label: "User ID",
     type: "text",
     placeholder: "12345678",
-    configKey: "userId",
-    envVar: "ACUITY_USER_ID",
     helpText: "Your Acuity User ID used as Basic auth username.",
   },
-  {
+  ACUITY_API_KEY: {
     label: "API Key",
     type: "password",
     placeholder: "••••••••",
-    configKey: "apiKey",
-    envVar: "ACUITY_API_KEY",
     helpText: "Your Acuity API key used as Basic auth password.",
   },
-]);
+} satisfies CredentialFields;
 
 export type AcuityCredentials = CredentialsOf<typeof acuityCredentialFields>;
 

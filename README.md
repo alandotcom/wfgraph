@@ -410,7 +410,7 @@ this. An Event Author designs against that shape.
 ## Writing an integration
 
 The server half builds against `@rova/core/plugin` alone, so an outside package is written
-the same way. That surface exports `defineIntegration`, `credentialFields`, `CredentialsOf`,
+the same way. That surface exports `defineIntegration`, `CredentialFields`, `CredentialsOf`,
 `checkIntegration`, `defineStep`, `StepFailure`, `StepBag`, `IntegrationTestResult`,
 `callExternal`, `callExternalAsync`, and `ExternalTransport`.
 
@@ -427,7 +427,7 @@ An integration is one `defineIntegration` value. It holds:
 
 ```ts
 import {
-  credentialFields,
+  type CredentialFields,
   type CredentialsOf,
   defineIntegration,
   defineStep,
@@ -437,16 +437,12 @@ import { Effect, Schema } from "effect";
 // Your own client over `callExternal`. It answers an Effect the handler yields.
 import { createThing } from "#src/my-service/client";
 
-// An identity function with a `const` type parameter. It keeps each `envVar` a
-// literal type, which is the vocabulary below.
-const myServiceCredentials = credentialFields([
-  {
-    label: "API Key",
-    type: "password",
-    configKey: "apiKey", // where the value is stored
-    envVar: "MY_SERVICE_API_KEY", // what a handler reads it as
-  },
-]);
+// The key names the credential: it is where the stored config holds the value
+// and what a handler reads it under. The dialog asks in the order written here.
+// `satisfies` rather than an annotation, which would widen `type` to `string`.
+const myServiceCredentials = {
+  MY_SERVICE_API_KEY: { label: "API Key", type: "password" },
+} satisfies CredentialFields;
 
 /** The keys a handler can read. A misspelled one fails to compile. */
 export type MyServiceCredentials = CredentialsOf<typeof myServiceCredentials>;

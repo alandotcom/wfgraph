@@ -51,12 +51,8 @@ export type ActionMetadata = {
 };
 
 /**
- * One credential the integrations dialog asks an operator for.
- *
- * A credential has two names, and they answer different questions: `configKey`
- * is where the value is stored and what the form keys its input by, `envVar` is
- * the name a handler reads it under. Assembly refuses a field missing the
- * second, since `credentialsFromConfig` has no other route to a handler.
+ * One credential the integrations dialog asks an operator for, as the form draws
+ * it. What the credential is called lives in the key of the record below.
  */
 export type CredentialFieldMetadata = {
   readonly label: string;
@@ -64,17 +60,24 @@ export type CredentialFieldMetadata = {
   readonly placeholder?: string;
   readonly helpText?: string;
   readonly helpLink?: { readonly text: string; readonly url: string };
-  /** Which key of the stored integration config the value goes to. */
-  readonly configKey: string;
-  /** The environment variable a handler reads the value as. */
-  readonly envVar?: string;
 };
+
+/**
+ * An integration's credential form, keyed by the credential's name.
+ *
+ * One key answers both questions a credential raises: where the stored config
+ * holds the value, and what a handler reads it under. The form asks in the order
+ * the keys were written.
+ */
+export type CredentialFields = Readonly<
+  Record<string, CredentialFieldMetadata>
+>;
 
 export type IntegrationMetadata = {
   readonly type: string;
   readonly label: string;
   readonly description: string;
-  readonly credentialFields: readonly CredentialFieldMetadata[];
+  readonly credentialFields: CredentialFields;
   /** Whether "Test connection" has anything to call. */
   readonly hasTest: boolean;
 };
@@ -155,16 +158,16 @@ export function actionsByCategory(
 }
 
 /**
- * A stored integration config as the environment-variable names a handler reads
- * it by.
+ * A stored integration config, narrowed to the credentials the integration
+ * declares.
  *
- * Every mapping an integration has is in its credential fields: each one names a
- * config key and the variable that key's value arrives as. An integration the
+ * The stored row is whatever was written to it, so a key the integration no
+ * longer declares is dropped here rather than handed on. An integration the
  * catalog has never heard of contributes nothing, which is what happens when a
  * stored row outlives the integration a host passed to `createRovaApp`.
  *
- * A blank value is left out rather than mapped to an empty string, so a handler
- * asking whether a credential is configured reads an absent key.
+ * A blank value is left out rather than passed on as an empty string, so a
+ * handler asking whether a credential is configured reads an absent key.
  */
 export function credentialsFromConfig(
   integration: IntegrationMetadata | undefined,
@@ -172,10 +175,10 @@ export function credentialsFromConfig(
 ): Record<string, string> {
   const credentials: Record<string, string> = {};
 
-  for (const field of integration?.credentialFields ?? []) {
-    const value = config[field.configKey];
-    if (field.envVar && value) {
-      credentials[field.envVar] = value;
+  for (const key of Object.keys(integration?.credentialFields ?? {})) {
+    const value = config[key];
+    if (value) {
+      credentials[key] = value;
     }
   }
 

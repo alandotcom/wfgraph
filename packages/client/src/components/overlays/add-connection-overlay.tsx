@@ -281,32 +281,32 @@ export function ConfigureConnectionOverlay({
       return null;
     }
 
-    return formFields.map((field) => {
+    return Object.entries(formFields).map(([configKey, field]) => {
       if (field.type === "password") {
         return (
           <SecretField
-            configKey={field.configKey}
-            fieldId={field.configKey}
+            configKey={configKey}
+            fieldId={configKey}
             helpLink={field.helpLink}
             helpText={field.helpText}
-            key={field.configKey}
+            key={configKey}
             label={field.label}
             onChange={updateConfig}
             placeholder={field.placeholder}
-            value={config[field.configKey] || ""}
+            value={config[configKey] || ""}
           />
         );
       }
 
       return (
-        <div className="space-y-2" key={field.configKey}>
-          <Label htmlFor={field.configKey}>{field.label}</Label>
+        <div className="space-y-2" key={configKey}>
+          <Label htmlFor={configKey}>{field.label}</Label>
           <Input
-            id={field.configKey}
-            onChange={(e) => updateConfig(field.configKey, e.target.value)}
+            id={configKey}
+            onChange={(e) => updateConfig(configKey, e.target.value)}
             placeholder={field.placeholder}
             type={field.type}
-            value={config[field.configKey] || ""}
+            value={config[configKey] || ""}
           />
           {(field.helpText || field.helpLink) && (
             <p className="text-muted-foreground text-xs">

@@ -1,8 +1,9 @@
 import { createClerkBackendClient, getClerkApiErrorMessage } from "./client";
+import type { ClerkCredentials } from "#src/clerk/index";
 import type { IntegrationTestResult } from "@rova/core/plugin";
 
 export async function testClerk(
-  credentials: Record<string, string>
+  credentials: ClerkCredentials
 ): Promise<IntegrationTestResult> {
   try {
     const secretKey = credentials.CLERK_SECRET_KEY;

@@ -313,7 +313,7 @@ describe("a Date-bearing step output across a replay", () => {
     type: "acuity",
     label: "Clock",
     description: "Answers with a timestamp",
-    credentials: [],
+    credentials: {},
     actions: {
       "read-clock": defineStep({
         label: "Read Clock",

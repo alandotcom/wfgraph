@@ -11,7 +11,7 @@ describe("the twilio integration", () => {
     expect(twilio.type).toBe("twilio");
     expect(twilio.label).toBe("Twilio");
     expect(twilio.test).toBeDefined();
-    expect(twilio.credentials.map((field) => field.envVar)).toEqual([
+    expect(Object.keys(twilio.credentials)).toEqual([
       "TWILIO_ACCOUNT_SID",
       "TWILIO_AUTH_TOKEN",
       "TWILIO_FROM_NUMBER",

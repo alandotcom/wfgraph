@@ -170,26 +170,6 @@ function assertDistinctActionIds(actions: readonly ActionMetadata[]): void {
   }
 }
 
-/**
- * A credential a handler cannot read is a form field that goes nowhere.
- *
- * `credentialsFromConfig` keys a handler's credentials by `envVar` and by
- * nothing else, so a field without one renders an input, stores an encrypted
- * value, and reaches no handler. The failure would surface as an integration
- * that says it is configured while every call comes back unauthorized.
- */
-function assertCredentialsAreReadable(
-  integration: IntegrationDefinition
-): void {
-  for (const field of integration.credentials) {
-    if (!field.envVar) {
-      throw new Error(
-        `Integration "${integration.type}" declares the credential "${field.configKey}" with no envVar. A handler reads its credentials by envVar, so a field without one is stored and never read.`
-      );
-    }
-  }
-}
-
 /** The field types the editor draws with a template picker. */
 const TEMPLATE_FIELD_TYPES = new Set<ActionConfigFieldBase["type"]>([
   "template-input",
@@ -272,8 +252,6 @@ function readIntegration(
   integration: IntegrationDefinition,
   into: Assembly
 ): IntegrationMetadata {
-  assertCredentialsAreReadable(integration);
-
   for (const { id, step, outputFields } of checkIntegration(integration)) {
     into.actions.push({
       id,

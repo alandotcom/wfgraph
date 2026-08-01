@@ -178,7 +178,7 @@ describe("validateWorkflowActionConfigs", () => {
           type: "twilio",
           label: "Twilio",
           description: "Send SMS messages",
-          credentials: [],
+          credentials: {},
           actions: {
             "send-sms": defineStep({
               label: "Send SMS",

@@ -41,14 +41,9 @@ const served: ExtensionCatalog = {
       type: "twilio",
       label: "Twilio",
       description: "Send SMS messages with Twilio",
-      credentialFields: [
-        {
-          label: "Auth Token",
-          type: "password",
-          configKey: "authToken",
-          envVar: "TWILIO_AUTH_TOKEN",
-        },
-      ],
+      credentialFields: {
+        TWILIO_AUTH_TOKEN: { label: "Auth Token", type: "password" },
+      },
       hasTest: true,
     },
   ],

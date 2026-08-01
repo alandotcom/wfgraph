@@ -4,6 +4,7 @@ import {
   describeSlackFailure,
   readSlackError,
 } from "#src/slack/client";
+import type { SlackCredentials } from "#src/slack/index";
 import { callExternalAsync } from "@rova/core/plugin";
 import type { IntegrationTestResult } from "@rova/core/plugin";
 
@@ -14,7 +15,7 @@ const authTestSchema = Schema.Struct({
 });
 
 export async function testSlack(
-  credentials: Record<string, string>
+  credentials: SlackCredentials
 ): Promise<IntegrationTestResult> {
   const apiKey = credentials.SLACK_API_KEY;
 

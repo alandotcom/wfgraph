@@ -3,11 +3,12 @@ import {
   fetchTwilioAccount,
   readTwilioError,
 } from "#src/twilio/client";
+import type { TwilioCredentials } from "#src/twilio/index";
 import { callExternalAsync } from "@rova/core/plugin";
 import type { IntegrationTestResult } from "@rova/core/plugin";
 
 export async function testTwilio(
-  credentials: Record<string, string>
+  credentials: TwilioCredentials
 ): Promise<IntegrationTestResult> {
   const accountSid = credentials.TWILIO_ACCOUNT_SID;
   const authToken = credentials.TWILIO_AUTH_TOKEN;

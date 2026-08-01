@@ -12,7 +12,10 @@
  */
 
 import { Schema } from "effect";
-import type { ExtensionCatalog } from "#src/extensions/catalog";
+import type {
+  CredentialFieldMetadata,
+  ExtensionCatalog,
+} from "#src/extensions/catalog";
 import type { ActionConfigField } from "#src/plugins/action-fields";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 import type { ReferenceField } from "#src/graph/node-references";
@@ -109,23 +112,26 @@ const actionMetadataSchema = Schema.Struct({
   outputFields: Schema.Array(referenceFieldWireSchema),
 });
 
-const credentialFieldMetadataSchema = Schema.Struct({
-  label: Schema.String,
-  type: Schema.Literals(["text", "password", "url"]),
-  placeholder: Schema.optionalKey(Schema.String),
-  helpText: Schema.optionalKey(Schema.String),
-  helpLink: Schema.optionalKey(
-    Schema.Struct({ text: Schema.String, url: Schema.String })
-  ),
-  configKey: Schema.String,
-  envVar: Schema.optionalKey(Schema.String),
-});
+// Annotated, like its neighbours above: this shape is restated from
+// `catalog.ts`, and the annotation is what fails the build when the two drift.
+const credentialFieldMetadataSchema: Schema.Codec<CredentialFieldMetadata> =
+  Schema.Struct({
+    label: Schema.String,
+    type: Schema.Literals(["text", "password", "url"]),
+    placeholder: Schema.optionalKey(Schema.String),
+    helpText: Schema.optionalKey(Schema.String),
+    helpLink: Schema.optionalKey(
+      Schema.Struct({ text: Schema.String, url: Schema.String })
+    ),
+  });
 
 const integrationMetadataSchema = Schema.Struct({
   type: NonEmptyTrimmedString,
   label: NonEmptyTrimmedString,
   description: Schema.String,
-  credentialFields: Schema.Array(credentialFieldMetadataSchema),
+  // A record, so the credential's name is its key. JSON preserves the order the
+  // integration wrote, which is the order the connection dialog asks in.
+  credentialFields: Schema.Record(Schema.String, credentialFieldMetadataSchema),
   hasTest: Schema.Boolean,
 });
 

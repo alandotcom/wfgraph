@@ -40,7 +40,7 @@ const served: ExtensionCatalog = {
       type: "twilio",
       label: "Twilio",
       description: "Send SMS messages with Twilio",
-      credentialFields: [],
+      credentialFields: {},
       hasTest: true,
     },
   ],

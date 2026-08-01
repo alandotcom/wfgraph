@@ -8,9 +8,7 @@ describe("the slack integration", () => {
   it("declares its credentials and its actions as one value", () => {
     expect(slack.type).toBe("slack");
     expect(slack.test).toBeDefined();
-    expect(slack.credentials.map((field) => field.envVar)).toEqual([
-      "SLACK_API_KEY",
-    ]);
+    expect(Object.keys(slack.credentials)).toEqual(["SLACK_API_KEY"]);
     expect(Object.keys(slack.actions)).toEqual(["send-message"]);
   });
 
