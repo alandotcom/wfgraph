@@ -23,12 +23,27 @@ function buildNode(
   };
 }
 
-function buildEdge(id: string, source: string, target: string): WorkflowEdge {
+function buildEdge(
+  id: string,
+  source: string,
+  target: string,
+  sourceHandle?: string
+): WorkflowEdge {
   return {
     id,
     source,
     target,
+    sourceHandle,
   };
+}
+
+function positionX(nodes: WorkflowNode[], id: string): number {
+  const node = nodes.find((candidate) => candidate.id === id);
+  if (!node) {
+    throw new Error(`no node ${id} in the layout result`);
+  }
+
+  return node.position.x;
 }
 
 describe("layoutWorkflowNodes", () => {
@@ -64,6 +79,46 @@ describe("layoutWorkflowNodes", () => {
 
     expect(second.nodes.map((node) => node.position)).toEqual(
       first.nodes.map((node) => node.position)
+    );
+  });
+
+  test("puts the Started branch left of the Canceled branch", async () => {
+    // The ids sort the other way round, so an id tie-break would flip the two
+    // branches and cross both edges under the entry node.
+    const nodes = [
+      buildNode("lifecycle", { x: 0, y: 0 }, "lifecycle"),
+      buildNode("z-started", { x: 0, y: 300 }),
+      buildNode("a-canceled", { x: 300, y: 300 }),
+    ];
+    const edges = [
+      buildEdge("e1", "lifecycle", "z-started", "started"),
+      buildEdge("e2", "lifecycle", "a-canceled", "canceled"),
+    ];
+
+    const result = await layoutWorkflowNodes({ nodes, edges });
+
+    expect(positionX(result.nodes, "z-started")).toBeLessThan(
+      positionX(result.nodes, "a-canceled")
+    );
+  });
+
+  test("puts the True branch left of the False branch", async () => {
+    const nodes = [
+      buildNode("lifecycle", { x: 0, y: 0 }, "lifecycle"),
+      buildNode("condition", { x: 0, y: 300 }),
+      buildNode("z-true", { x: 0, y: 600 }),
+      buildNode("a-false", { x: 300, y: 600 }),
+    ];
+    const edges = [
+      buildEdge("e1", "lifecycle", "condition", "started"),
+      buildEdge("e2", "condition", "z-true", "true"),
+      buildEdge("e3", "condition", "a-false", "false"),
+    ];
+
+    const result = await layoutWorkflowNodes({ nodes, edges });
+
+    expect(positionX(result.nodes, "z-true")).toBeLessThan(
+      positionX(result.nodes, "a-false")
     );
   });
 

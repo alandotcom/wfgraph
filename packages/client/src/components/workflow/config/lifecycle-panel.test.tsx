@@ -18,7 +18,8 @@ import type { WorkflowNode } from "@rova/shared/graph/types";
 
 // The Events a panel offers come from the server's catalog. One declares its own
 // Correlation Path and one leaves it to the builder, which is the difference the
-// path picker exists for. The payload fields are what the picker lists.
+// path picker exists for. The payload fields are what the picker lists, and the
+// object and array paths among them are what it has to leave out.
 vi.mock("#src/lib/extensions", () => ({
   getExtensionCatalog: () => ({
     events: [
@@ -27,7 +28,10 @@ vi.mock("#src/lib/extensions", () => ({
         label: "Appointment created",
         correlationPath: "appointment.id",
         payloadFields: [
+          { path: "appointment", type: "object" },
           { path: "appointment.id", type: "string" },
+          { path: "appointment.duration", type: "number" },
+          { path: "appointment.attendees", type: "array" },
           { path: "patient.id", type: "string" },
         ],
       },
@@ -642,6 +646,29 @@ describe("LifecyclePanel Correlation Paths", () => {
     await waitFor(() => {
       expect(rulesOf(latest).correlationPaths).toBeUndefined();
     });
+  });
+
+  // A Correlation Path names the value identifying one entity, so a path holding
+  // a whole object or a list of them is no candidate and never reaches the list.
+  // The payload declares one of each beside the fields that can be matched on.
+  it("offers only the payload paths that can identify an entity", () => {
+    const view = render(
+      <ControlledPanel
+        initialConfig={{
+          lifecycleRules: {
+            startEvent: "app/appointment.created",
+            cancelEvents: [],
+            concurrency: "newest-wins",
+          },
+        }}
+      />
+    );
+
+    expect(pathChoices(view, "app/appointment.created")).toEqual([
+      "appointment.id",
+      "appointment.duration",
+      "patient.id",
+    ]);
   });
 
   // A workflow saved against an older payload shape keeps matching on the path

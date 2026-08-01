@@ -2,6 +2,10 @@ import dagre from "@dagrejs/dagre";
 import { hierarchy, tree } from "d3-hierarchy";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 import {
+  LIFECYCLE_CANCELED_HANDLE,
+  LIFECYCLE_STARTED_HANDLE,
+} from "@rova/shared/lifecycle/lifecycle-outlets";
+import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "./workflow-node-dimensions";
@@ -188,16 +192,33 @@ function layoutWorkflowNodesWithDagre(input: {
   return { nodes, changed };
 }
 
+/**
+ * Where each branching handle sits across the bottom of the node that draws it:
+ * a Condition node puts True left of False, the Lifecycle node puts Started left
+ * of Canceled. Siblings are only ever compared under one parent, so the two
+ * pairs share their ranks without meeting.
+ */
+const HANDLE_SORT_RANK = new Map<string, number>([
+  ["true", 0],
+  ["false", 1],
+  [LIFECYCLE_STARTED_HANDLE, 0],
+  [LIFECYCLE_CANCELED_HANDLE, 1],
+]);
+
+const UNRANKED_HANDLE = 2;
+
+/**
+ * A subtree's place among its siblings, left to right.
+ *
+ * Ordering by anything else lets a reflow put the Canceled branch left of the
+ * Started one, which crosses both edges under the entry node.
+ */
 function getTreeSortRank(sourceHandle: string | null | undefined): number {
-  if (sourceHandle === "true") {
-    return 0;
+  if (!sourceHandle) {
+    return UNRANKED_HANDLE;
   }
 
-  if (sourceHandle === "false") {
-    return 1;
-  }
-
-  return 2;
+  return HANDLE_SORT_RANK.get(sourceHandle) ?? UNRANKED_HANDLE;
 }
 
 function buildTreeLayoutData(input: {

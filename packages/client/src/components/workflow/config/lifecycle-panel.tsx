@@ -343,22 +343,21 @@ function ChosenCancelEvent({
 }
 
 /**
- * One Event's Correlation Path field for this workflow, written through on
- * every keystroke.
+ * One Event's Correlation Path for this workflow, chosen out of the paths that
+ * Event's payload carries.
  *
- * Write-through rather than commit-on-blur, because Cmd+S is a capture-phase
- * listener that a focused field never sees: a blur-committed draft was saved as
- * whatever the field held before it was typed in, and the refusal that came back
- * named a path the builder could read on the screen. The autosave is debounced,
- * so a keystroke costs no request of its own. The write trims, so a path is
- * stored the way the payload walker will read it.
+ * A path is a value the payload walker reads, so the Event's own field list is
+ * the whole of what can be valid, and typing one was how a builder learned
+ * otherwise from a run that never matched.
  *
- * The Event Author's declaration is the placeholder rather than the value: an
- * empty field means the declaration stands, and seeding it would write an
- * override on mount for a builder who only opened the panel.
+ * The trigger shows the path in force rather than an empty field, so a builder
+ * reads what the workflow matches on without knowing whether it came from the
+ * declaration or from an override. Choosing the declared path commits no
+ * override, which is what keeps a builder who only opened the panel from
+ * writing one.
  *
  * The caller renders the Event's own heading; this owns the field and its help
- * line alone, with the Event's name kept as the input's accessible label.
+ * line alone, with the Event's name kept as the picker's accessible label.
  */
 function CorrelationPathInput({
   request,
