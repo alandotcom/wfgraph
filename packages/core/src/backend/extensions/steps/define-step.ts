@@ -483,29 +483,9 @@ function buildStep<TInput, TOutput>(
 /**
  * Build a step from its schemas, its metadata, and its handler.
  *
- * @example
- * ```ts
- * export const myIntegration = defineIntegration({
- *   type: "my-service",
- *   label: "My Service",
- *   description: "Does a thing",
- *   credentials: myServiceCredentialFields,
- *   actions: {
- *     "send-thing": defineStep({
- *       label: "Send Thing",
- *       description: "Sends a thing",
- *       category: "My Service",
- *       input: Schema.Struct({ to: Schema.String }),
- *       output: Schema.Struct({ id: Schema.String }),
- *       configFields: [{ key: "to", label: "To", type: "template-input" }],
- *       handler: Effect.fn(function* (bag) {
- *         const credentials = yield* bag.credentials;
- *         return yield* sendThing(credentials.MY_SERVICE_API_KEY, bag.input.to);
- *       }),
- *     }),
- *   },
- * });
- * ```
+ * Internal: an integration declares an action as an object literal and
+ * `defineIntegration` maps each one through here. README's "Writing an
+ * integration" and the example on `defineIntegration` own the authoring shape.
  */
 export function defineStep<TInput, TOutput>(
   definition: ActionStepInput<TInput, TOutput>

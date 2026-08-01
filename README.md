@@ -528,8 +528,8 @@ Three rules:
 - **A `StepFailure` fails the node once.** It travels back as a value rather than a throw,
   so a system that refused a request does not spend the retry budget on an answer that will
   not change. Anything else that throws inside is a step the runtime retries.
-- **A handler that wraps nothing still writes memoized log rows.** The run panel then shows
-  one row for however many times the work ran, so the log is not evidence it ran once.
+- **A handler that wraps nothing still opens one memoized log row.** The run panel then
+  shows one row for however many times the work ran, so the log is not evidence it ran once.
 
 `docs/adr/0009` is why this is the author's job rather than Rova's.
 

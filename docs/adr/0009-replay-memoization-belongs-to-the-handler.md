@@ -93,3 +93,15 @@ The residual risk `retries: 4` already named is unchanged: a non-idempotent call
 that fails after its side effect landed is sent again on the retry. An idempotency
 key passed to the vendor is still the answer to that, and `callExternal` still
 carries one.
+
+## Amendment, 2026-08-01
+
+The close is no longer memoized. It was, on the reasoning above that a replay
+should not repeat the update, and that traded one idempotent write for the row's
+accuracy: a node that failed and then succeeded on a retry kept the first
+attempt's error row and its message for good, because the memoized close never
+ran again. `closeStepLogQuietly` is an UPDATE keyed by the row id, so repeating
+it costs nothing and carries the latest verdict.
+
+Only the open stays a step, which is what its INSERT needs. The paragraph above
+stands as the reasoning at the time.

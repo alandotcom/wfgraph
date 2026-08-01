@@ -38,9 +38,8 @@ import type { Traversal } from "#src/backend/engine/traversal";
 import { executeWaitAction } from "#src/backend/engine/wait";
 
 /**
- * What a node's memoized work reports back to the traversal. It travels through
- * the durable runtime (and therefore through JSON), so it carries only the
- * routing facts the scheduler needs, never live objects or callbacks.
+ * What a node's work reports back to the traversal: the routing facts the
+ * scheduler needs and nothing else.
  */
 type NodeWorkOutcome = {
   result: ExecutionResult;
@@ -293,10 +292,9 @@ export class NodeScheduler {
   /**
    * The node's own work: the Lifecycle Node's step, the action step, or the wait.
    *
-   * This is the unit the durable runtime memoizes, so it deliberately does not
-   * schedule downstream nodes - Inngest forbids nesting one step inside
-   * another. Whatever the traversal needs afterwards travels back in the
-   * returned outcome, which crosses a step boundary and stays JSON-safe.
+   * It schedules no downstream node. A handler's own `step.run` calls are steps,
+   * and Inngest forbids nesting one step inside another, so what the traversal
+   * needs afterwards travels back in the returned outcome.
    */
   private async runNodeWork(
     node: WorkflowNode,
@@ -479,9 +477,7 @@ export class NodeScheduler {
   }
 
   /**
-   * Records a node's outcome and schedules its downstream branches. Runs
-   * outside the node's step so descendants become sibling steps rather than
-   * nested ones.
+   * Records a node's outcome and schedules its downstream branches.
    */
   private async executeNodeInner(
     nodeId: string,
