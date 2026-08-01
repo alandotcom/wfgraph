@@ -68,8 +68,6 @@ export async function recordRunCompleted(input: {
   status: TraversalTerminalStatus;
   output: unknown;
   error?: string;
-  startTime: number;
-  duration: number;
   resultCount: number;
   runMode: "live" | "test";
   logger: RunLogger;
@@ -82,7 +80,6 @@ export async function recordRunCompleted(input: {
       status: input.status,
       output: input.output,
       error: input.error,
-      startTime: input.startTime,
     });
     input.logger.debug("Updated execution record", { status: input.status });
   } catch (error) {
@@ -98,7 +95,6 @@ export async function recordRunCompleted(input: {
       eventType: RUN_COMPLETED_AUDIT_EVENT[input.status],
       message: buildRunCompletedMessage(input.runMode, input.status),
       metadata: {
-        duration: input.duration,
         resultCount: input.resultCount,
         runMode: input.runMode,
       },
@@ -123,7 +119,6 @@ export async function recordRunFailed(input: {
   status: "failed" | "canceled";
   cancelled: boolean;
   error: string;
-  startTime: number;
   runMode: "live" | "test";
   logger: RunLogger;
 }) {
@@ -134,7 +129,6 @@ export async function recordRunFailed(input: {
       executionId: input.executionId,
       status: input.status,
       error: input.error,
-      startTime: input.startTime,
     });
   } catch (logError) {
     input.logger.error("Failed to persist fatal execution error", {

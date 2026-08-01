@@ -116,8 +116,6 @@ export type CompleteRunInput = {
   status: "completed" | "failed" | "canceled";
   output?: unknown;
   error?: string;
-  /** Epoch milliseconds the run started, used to derive its duration. */
-  startTime: number;
 };
 
 export type WorkflowStore = {

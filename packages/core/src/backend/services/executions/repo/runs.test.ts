@@ -50,3 +50,24 @@ describe("requestCancelForEntity", () => {
     expect(statements[0]).toContain('"cancel_requested_at" is null');
   });
 });
+
+describe("finishRun", () => {
+  // The engine's function body is replayed on every attempt and after every
+  // wait, so any elapsed it measures itself covers the last attempt alone. A run
+  // that retried four times recorded 23ms against 4m46s of wall clock. The row
+  // already holds when it started, so the duration is derived where both
+  // timestamps live and no clock crosses the replay boundary.
+  it("derives the duration from the row's own started_at", async () => {
+    const { database, statements } = captureStatements();
+
+    await Effect.runPromise(
+      makeRunsMethods(database).finishRun({
+        executionId: "exec_1",
+        status: "failed",
+        error: "boom",
+      })
+    );
+
+    expect(statements[0]).toMatch(/"duration" = [^,]*started_at/i);
+  });
+});

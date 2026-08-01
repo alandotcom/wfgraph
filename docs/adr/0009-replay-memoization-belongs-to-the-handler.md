@@ -139,3 +139,20 @@ Nothing new is memoized by any of the three. The surface a run's steps are
 dispatched through now holds one credential read per integration, built per
 invocation of the function body and never routed through `runtime.run`, which
 would write decrypted secrets into the run's stored state.
+
+## Amendment, 2026-08-01
+
+The execution row carried the same defect as the step-log rows above, with the
+sign reversed, and an end-to-end run against Inngest is what found it. A run
+whose second node failed four times recorded a duration of 23ms against 4m46s of
+wall clock, beside a `started_at` and a `completedAt` that spanned the whole run.
+`executeWorkflow` took its start from a `Date.now()` in the function body, which
+a durable runtime re-runs on every attempt, so the elapsed covered the last
+attempt alone. A run parked at a Wait understated the same way.
+
+`finishRun` now derives the duration in SQL from the row's own `started_at`, and
+the whole chain from `executeWorkflow` down to the repository stopped carrying a
+start time. Memoizing the start in a step of its own was the alternative; putting
+it where both timestamps already live costs no step and leaves no clock able to
+cross a replay. The body still reads its own clock for one log line, named
+`attemptMs` for what it measures.

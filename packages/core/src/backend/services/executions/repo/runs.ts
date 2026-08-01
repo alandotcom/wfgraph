@@ -9,6 +9,7 @@ import {
   ne,
   or,
   type SQL,
+  sql,
 } from "drizzle-orm";
 import type { Effect } from "effect";
 import { workflowExecutions, workflows } from "#src/backend/lib/db/schema";
@@ -201,7 +202,6 @@ export type RunsRepoMethods = {
     status: "completed" | "failed" | "canceled";
     output?: JsonValue;
     error?: string;
-    durationMs: number;
   }) => Effect.Effect<boolean, DatabaseError>;
 };
 
@@ -477,7 +477,11 @@ export function makeRunsMethods(
             error: input.error,
             waitingAt: null,
             completedAt: new Date(),
-            duration: input.durationMs.toString(),
+            // Derived here rather than passed in, because the caller's clock is
+            // the workflow function body, which a durable runtime re-runs on
+            // every attempt and after every wait. The row holds when it started,
+            // so both ends of the elapsed come from the same place.
+            duration: sql`round(extract(epoch from ((now() at time zone 'utc') - ${workflowExecutions.startedAt})) * 1000)::text`,
           })
           .where(inFlightExecution(input.executionId))
           .returning({ id: workflowExecutions.id });

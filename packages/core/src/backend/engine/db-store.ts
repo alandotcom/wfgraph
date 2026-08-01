@@ -44,7 +44,6 @@ export function createDbWorkflowStore(runtime: RovaRuntime): WorkflowStore {
           status: input.status,
           output: redactSensitiveData(input.output),
           error: input.error,
-          durationMs: Date.now() - input.startTime,
         })
       );
 

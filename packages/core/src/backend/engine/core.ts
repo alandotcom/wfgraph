@@ -115,7 +115,10 @@ async function executeWorkflowInner(
     requestPayload: requestPayload ?? startPayload,
   });
 
-  const workflowStartTime = Date.now();
+  // This body is re-run on every attempt and after every wait, so this clock
+  // measures the current attempt alone. The run's own elapsed is derived from
+  // its stored `started_at` where the row is closed.
+  const attemptStartTime = Date.now();
   const traversal = new Traversal(nodes, edges);
 
   const nodesWithIncoming = new Set(edges.map((e) => e.target));
@@ -159,7 +162,6 @@ async function executeWorkflowInner(
     );
 
     const finalSuccess = traversal.allSucceeded();
-    const duration = Date.now() - workflowStartTime;
     const finalOutput = traversal.deterministicTerminalOutput();
     // A cancel outranks what the nodes did: the run reached the end of the
     // Canceled branch, and that is the whole of what it means to be canceled.
@@ -174,7 +176,7 @@ async function executeWorkflowInner(
       success: finalSuccess,
       status: terminalStatus,
       resultCount: traversal.resultCount,
-      durationMs: duration,
+      attemptMs: Date.now() - attemptStartTime,
     });
 
     // Wrapped as a durable step so the terminal record and its audit event are
@@ -187,8 +189,6 @@ async function executeWorkflowInner(
         status: terminalStatus,
         output: finalOutput,
         error: traversal.firstFailureMessage(),
-        startTime: workflowStartTime,
-        duration,
         resultCount: traversal.resultCount,
         runMode,
         logger: executionLogger,
@@ -221,7 +221,6 @@ async function executeWorkflowInner(
         status: terminalStatus,
         cancelled,
         error: errorMessage,
-        startTime: workflowStartTime,
         runMode,
         logger: executionLogger,
       })
