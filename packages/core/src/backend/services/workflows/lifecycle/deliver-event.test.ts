@@ -91,13 +91,13 @@ const appointmentCanceled = {
 const payload = { appointment: { id: "appt_8813" } };
 
 const startRules: LifecycleRules = {
-  startEvent: "app/appointment.created",
+  startEvents: ["app/appointment.created"],
   cancelEvents: [],
   concurrency: "unlimited",
 };
 
 const cancelRules: LifecycleRules = {
-  startEvent: "app/appointment.created",
+  startEvents: ["app/appointment.created"],
   cancelEvents: ["app/appointment.canceled"],
   concurrency: "unlimited",
 };
@@ -206,6 +206,46 @@ describe("applyLifecycleRules", () => {
         assert.strictEqual(
           startWithConcurrencyMock.mock.calls[0]?.[0].start.entityValue,
           "appt_8813"
+        );
+      })
+    );
+
+    // A workflow answering an appointment being booked and being moved lists
+    // both, and either one starts a run. Both read the same entity, so
+    // newest-wins is what ends the run the earlier Event began.
+    it.effect("starts a run on any of several Start Events", () =>
+      Effect.gen(function* () {
+        const outcome = yield* applyLifecycleRules({
+          subscriber: subscriber(),
+          event: appointmentCanceled,
+          payload,
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubWorkflowRepo({
+                findById: () =>
+                  Effect.succeed(
+                    createWorkflow({
+                      rules: {
+                        startEvents: [
+                          "app/appointment.created",
+                          "app/appointment.canceled",
+                        ],
+                        cancelEvents: [],
+                        concurrency: "newest-wins",
+                      },
+                    })
+                  ),
+              }),
+              unreachedRunSeams
+            )
+          )
+        );
+
+        assert.strictEqual(outcome.kind, "started");
+        assert.strictEqual(
+          startWithConcurrencyMock.mock.calls[0]?.[0].start.eventName,
+          "app/appointment.canceled"
         );
       })
     );

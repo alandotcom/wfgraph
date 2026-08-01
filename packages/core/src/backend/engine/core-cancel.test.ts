@@ -108,7 +108,7 @@ function createLifecycleNode(id: string): WorkflowNode {
       type: "lifecycle",
       config: {
         lifecycleRules: {
-          startEvent: "app/appointment.created",
+          startEvents: ["app/appointment.created"],
           cancelEvents: ["app/appointment.canceled"],
           concurrency: "unlimited",
         },

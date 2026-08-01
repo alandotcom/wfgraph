@@ -55,7 +55,7 @@ describe("validateWorkflowEvents - lifecycle role", () => {
       validateWorkflowEvents(
         [
           lifecycleNode({
-            startEvent: "app/appointment.created",
+            startEvents: ["app/appointment.created"],
             cancelEvents: [],
             concurrency: "newest-wins",
           }),
@@ -69,7 +69,7 @@ describe("validateWorkflowEvents - lifecycle role", () => {
     const result = validateWorkflowEvents(
       [
         lifecycleNode({
-          startEvent: "app/appointment.moved",
+          startEvents: ["app/appointment.moved"],
           cancelEvents: [],
           concurrency: "unlimited",
         }),
@@ -147,7 +147,7 @@ describe("validateWorkflowEvents - wait subscription", () => {
     const result = validateWorkflowEvents(
       [
         lifecycleNode({
-          startEvent: "app/appointment.created",
+          startEvents: ["app/appointment.created"],
           cancelEvents: [],
           concurrency: "unlimited",
         }),

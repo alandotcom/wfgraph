@@ -182,11 +182,11 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    chooseEvent(view, "Start Event", "Appointment created");
+    chooseEvent(view, "Start Events", "Appointment created");
 
     await waitFor(() => {
       expect(rulesOf(latest)).toEqual({
-        startEvent: "app/appointment.created",
+        startEvents: ["app/appointment.created"],
         cancelEvents: [],
         concurrency: "unlimited",
         allowManualStart: true,
@@ -209,21 +209,9 @@ describe("LifecyclePanel", () => {
 
     expect(onUpdateConfig).not.toHaveBeenCalled();
 
-    chooseEvent(view, "Start Event", "Appointment created");
+    chooseEvent(view, "Start Events", "Appointment created");
 
     expect(onUpdateConfig).toHaveBeenCalledTimes(1);
-  });
-
-  // The clear button only makes sense once there is a selection to clear;
-  // Base UI unmounts it until then.
-  it("shows no clear button while the Start Event is unset", () => {
-    const view = render(
-      <LifecyclePanel config={{}} disabled={false} onUpdateConfig={vi.fn()} />
-    );
-
-    expect(
-      view.queryByRole("button", { name: "Clear the selection" })
-    ).toBeNull();
   });
 
   // The trigger button is the pointer path into a picker's full list, beside
@@ -254,18 +242,19 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    chooseEvent(view, "Start Event", "ops/nightly");
+    chooseEvent(view, "Start Events", "ops/nightly");
 
     await waitFor(() => {
-      expect(rulesOf(latest).startEvent).toBe("ops/nightly.swept");
+      expect(rulesOf(latest).startEvents).toEqual(["ops/nightly.swept"]);
     });
   });
 
-  // One Start Event, so a second pick is the choice rather than a second entry.
-  it("replaces the Start Event rather than adding to it", async () => {
+  // Several Start Events is the point: an appointment being booked and being
+  // moved both start a run of one workflow.
+  it("adds a second Start Event beside the first", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvent: "app/appointment.created",
+        startEvents: ["app/appointment.created"],
         cancelEvents: [],
         concurrency: "unlimited",
         allowManualStart: true,
@@ -280,10 +269,13 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    chooseEvent(view, "Start Event", "Nightly sweep");
+    chooseEvent(view, "Start Events", "Nightly sweep");
 
     await waitFor(() => {
-      expect(rulesOf(latest).startEvent).toBe("ops/nightly.swept");
+      expect(rulesOf(latest).startEvents).toEqual([
+        "app/appointment.created",
+        "ops/nightly.swept",
+      ]);
     });
   });
 
@@ -292,7 +284,7 @@ describe("LifecyclePanel", () => {
     async (label, value) => {
       let latest: Record<string, unknown> = {
         lifecycleRules: {
-          startEvent: "app/appointment.created",
+          startEvents: ["app/appointment.created"],
           cancelEvents: [],
           concurrency: value === "unlimited" ? "newest-wins" : "unlimited",
         },
@@ -316,10 +308,10 @@ describe("LifecyclePanel", () => {
     }
   );
 
-  it("turns manual runs off and clears the Start Event", async () => {
+  it("turns manual runs off and drops the Start Event", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvent: "app/appointment.created",
+        startEvents: ["app/appointment.created"],
         cancelEvents: [],
         concurrency: "unlimited",
         allowManualStart: true,
@@ -339,9 +331,11 @@ describe("LifecyclePanel", () => {
       expect(rulesOf(latest).allowManualStart).toBe(false);
     });
 
-    fireEvent.click(view.getByRole("button", { name: "Clear the selection" }));
+    fireEvent.click(
+      view.getByRole("button", { name: "Remove app/appointment.created" })
+    );
     await waitFor(() => {
-      expect(rulesOf(latest).startEvent).toBeUndefined();
+      expect(rulesOf(latest).startEvents).toEqual([]);
     });
   });
 
@@ -351,7 +345,7 @@ describe("LifecyclePanel", () => {
     // leaving that silence to be read as a missing feature.
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvent: "app/appointment.created",
+        startEvents: ["app/appointment.created"],
         cancelEvents: [],
         concurrency: "unlimited",
         allowManualStart: true,
@@ -368,7 +362,9 @@ describe("LifecyclePanel", () => {
 
     expect(view.queryByText(/described by nothing/)).toBeNull();
 
-    fireEvent.click(view.getByRole("button", { name: "Clear the selection" }));
+    fireEvent.click(
+      view.getByRole("button", { name: "Remove app/appointment.created" })
+    );
 
     await waitFor(() => {
       expect(view.getByText(/described by nothing/)).toBeTruthy();
@@ -380,6 +376,7 @@ describe("LifecyclePanel Cancel Events", () => {
   it("writes a cancel Event pick to lifecycleRules.cancelEvents", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
+        startEvents: [],
         cancelEvents: [],
         concurrency: "unlimited",
         allowManualStart: true,
@@ -404,6 +401,7 @@ describe("LifecyclePanel Cancel Events", () => {
   it("drops a chosen cancel Event when its row is removed", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
+        startEvents: [],
         cancelEvents: ["app/appointment.created", "ops/nightly.swept"],
         concurrency: "unlimited",
         allowManualStart: true,
@@ -436,6 +434,7 @@ describe("LifecyclePanel Cancel Events", () => {
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
+            startEvents: [],
             cancelEvents: ["app/appointment.created", "ops/nightly.swept"],
             concurrency: "unlimited",
             allowManualStart: true,
@@ -453,6 +452,7 @@ describe("LifecyclePanel Cancel Events", () => {
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
+            startEvents: [],
             cancelEvents: ["ops/nightly.swept"],
             concurrency: "unlimited",
             allowManualStart: true,
@@ -470,6 +470,7 @@ describe("LifecyclePanel Cancel Events", () => {
   it("writes an override for an Event that declares its own path", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
+        startEvents: [],
         cancelEvents: ["app/appointment.created"],
         concurrency: "unlimited",
         allowManualStart: true,
@@ -498,7 +499,7 @@ describe("LifecyclePanel Cancel Events", () => {
   it("shows the shared refusal when a pick gives one Event both roles", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvent: "app/appointment.created",
+        startEvents: ["app/appointment.created"],
         cancelEvents: [],
         concurrency: "unlimited",
         allowManualStart: true,
@@ -533,7 +534,7 @@ describe("LifecyclePanel Correlation Paths", () => {
   it("commits the payload path the builder chose", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvent: "ops/nightly.swept",
+        startEvents: ["ops/nightly.swept"],
         cancelEvents: [],
         concurrency: "newest-wins",
       },
@@ -561,7 +562,7 @@ describe("LifecyclePanel Correlation Paths", () => {
   it("clears one path and keeps the others", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvent: "ops/nightly.swept",
+        startEvents: ["ops/nightly.swept"],
         cancelEvents: [],
         concurrency: "newest-wins",
         correlationPaths: {
@@ -594,7 +595,7 @@ describe("LifecyclePanel Correlation Paths", () => {
   it("stores no override when the declared path is the one chosen", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvent: "app/appointment.created",
+        startEvents: ["app/appointment.created"],
         cancelEvents: [],
         concurrency: "newest-wins",
         correlationPaths: {
@@ -626,7 +627,7 @@ describe("LifecyclePanel Correlation Paths", () => {
   it("collapses to no paths at all when the last one clears", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvent: "ops/nightly.swept",
+        startEvents: ["ops/nightly.swept"],
         cancelEvents: [],
         concurrency: "newest-wins",
         correlationPaths: { "ops/nightly.swept": "sweep.id" },
@@ -656,7 +657,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
-            startEvent: "app/appointment.created",
+            startEvents: ["app/appointment.created"],
             cancelEvents: [],
             concurrency: "newest-wins",
           },
@@ -679,7 +680,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
-            startEvent: "app/appointment.created",
+            startEvents: ["app/appointment.created"],
             cancelEvents: [],
             concurrency: "newest-wins",
             correlationPaths: { "app/appointment.created": "legacy.reference" },
@@ -703,7 +704,7 @@ describe("LifecyclePanel Correlation Paths", () => {
   it("prunes a stale start override on a switch back to Unlimited with no cancels", async () => {
     let latest: Record<string, unknown> = {
       lifecycleRules: {
-        startEvent: "app/appointment.created",
+        startEvents: ["app/appointment.created"],
         cancelEvents: [],
         concurrency: "unlimited",
         allowManualStart: true,
@@ -752,7 +753,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
-            startEvent: "app/appointment.created",
+            startEvents: ["app/appointment.created"],
             cancelEvents: [],
             concurrency: "newest-wins",
           },
@@ -772,7 +773,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
-            startEvent: "ops/nightly.swept",
+            startEvents: ["ops/nightly.swept"],
             cancelEvents: [],
             concurrency: "unlimited",
           },
@@ -791,6 +792,7 @@ describe("LifecyclePanel Correlation Paths", () => {
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
+            startEvents: [],
             cancelEvents: ["ops/nightly.swept"],
             concurrency: "unlimited",
             allowManualStart: true,
@@ -812,7 +814,7 @@ describe("LifecyclePanel Correlation Paths", () => {
         <ControlledPanel
           initialConfig={{
             lifecycleRules: {
-              startEvent: "app/appointment.created",
+              startEvents: ["app/appointment.created"],
               cancelEvents: [],
               concurrency: "unlimited",
               allowManualStart: true,
@@ -835,6 +837,7 @@ describe("LifecyclePanel refusals", () => {
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
+            startEvents: [],
             cancelEvents: [],
             concurrency: "unlimited",
             allowManualStart: false,
@@ -856,7 +859,7 @@ describe("LifecyclePanel refusals", () => {
       <ControlledPanel
         initialConfig={{
           lifecycleRules: {
-            startEvent: "app/appointment.moved",
+            startEvents: ["app/appointment.moved"],
             cancelEvents: [],
             concurrency: "unlimited",
           },

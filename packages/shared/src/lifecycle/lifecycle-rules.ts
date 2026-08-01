@@ -30,13 +30,14 @@ export type Concurrency = typeof concurrencySchema.Type;
 
 export const lifecycleRulesSchema = Schema.Struct({
   /**
-   * The Event that starts a run, absent when no Event does.
+   * The Events that start a run, empty when no Event does.
    *
-   * One rather than a list, because everything downstream of the entry node is
-   * written against the payload that started the run: a second Start Event would
-   * mean a builder addressing only the fields the two happen to share.
+   * Several of them is how one workflow answers an appointment being booked and
+   * being moved: both runs walk the same graph, and newest-wins Concurrency ends
+   * the one already going. What a node behind Started may address is then the
+   * union of their payloads, with `$event.name` selecting between them.
    */
-  startEvent: Schema.optional(NonEmptyTrimmedString),
+  startEvents: Schema.Array(NonEmptyTrimmedString),
   /** Event names that route in-flight runs to the Canceled outlet. */
   cancelEvents: Schema.Array(NonEmptyTrimmedString),
   concurrency: concurrencySchema,
@@ -73,6 +74,7 @@ export type LifecycleRules = typeof lifecycleRulesSchema.Type;
  * what answers the other one.
  */
 export const emptyLifecycleRules: LifecycleRules = {
+  startEvents: [],
   cancelEvents: [],
   concurrency: "unlimited",
 };
@@ -123,7 +125,7 @@ export function resolveCorrelationPath(input: {
 
 /** Whether anything at all can start a run of this workflow. */
 export function hasStartSource(rules: LifecycleRules): boolean {
-  return rules.startEvent !== undefined || rules.allowManualStart === true;
+  return rules.startEvents.length > 0 || rules.allowManualStart === true;
 }
 
 /**
@@ -177,7 +179,7 @@ export type CorrelationPathRequest = {
  * Concurrency compares it directly. A Cancel Event compares it too, at one remove:
  * the value a start reads lands on the execution row, and that row is what a
  * cancel's own Entity Value is matched against. So a workflow with a Cancel Event
- * needs its Start Event's path exactly as much as one with Concurrency set,
+ * needs its Start Events' paths exactly as much as one with Concurrency set,
  * whatever Concurrency itself says.
  */
 function startMatchesByEntityValue(rules: LifecycleRules): boolean {
@@ -241,20 +243,15 @@ export function eventsNeedingCorrelationPath(input: {
 }): CorrelationPathRequest[] {
   const { rules, catalog } = input;
 
-  const start = rules.startEvent
-    ? correlationPathRequestFor({
-        rules,
-        catalog,
-        eventName: rules.startEvent,
-        role: "start",
-      })
-    : undefined;
+  const starts = rules.startEvents.map((eventName) =>
+    correlationPathRequestFor({ rules, catalog, eventName, role: "start" })
+  );
 
   const cancels = rules.cancelEvents.map((eventName) =>
     correlationPathRequestFor({ rules, catalog, eventName, role: "cancel" })
   );
 
-  return compact([start, ...cancels]);
+  return compact([...starts, ...cancels]);
 }
 
 /**
@@ -276,8 +273,10 @@ export function pruneCorrelationPaths(rules: LifecycleRules): LifecycleRules {
   }
 
   const needed = new Set(rules.cancelEvents);
-  if (rules.startEvent && startMatchesByEntityValue(rules)) {
-    needed.add(rules.startEvent);
+  if (startMatchesByEntityValue(rules)) {
+    for (const eventName of rules.startEvents) {
+      needed.add(eventName);
+    }
   }
 
   const next = Object.fromEntries(
@@ -305,14 +304,18 @@ export function checkLifecycleRules(input: {
 }): LifecycleRulesCheck {
   const { rules, catalog } = input;
 
-  // ADR-0007 rejects one Event holding both roles rather than picking a winner.
-  if (rules.startEvent && rules.cancelEvents.includes(rules.startEvent)) {
+  // ADR-0007 rejects one Event holding both roles rather than picking a winner,
+  // which with two lists is where they intersect.
+  const bothRoles = rules.startEvents.find((eventName) =>
+    rules.cancelEvents.includes(eventName)
+  );
+  if (bothRoles) {
     return refuse(
-      `Event "${rules.startEvent}" cannot both start and cancel runs of this workflow. Give it one role, or start on one Event and cancel on another.`
+      `Event "${bothRoles}" cannot both start and cancel runs of this workflow. Give it one role, or start on one Event and cancel on another.`
     );
   }
 
-  const named = compact([rules.startEvent, ...rules.cancelEvents]);
+  const named = [...rules.startEvents, ...rules.cancelEvents];
   for (const name of named) {
     if (!findEvent(catalog, name)) {
       return refuse(unknownEventMessage(name));

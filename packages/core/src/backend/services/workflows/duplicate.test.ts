@@ -25,7 +25,7 @@ const sourceGraph = createSerializedWorkflowGraph({
         type: "lifecycle",
         config: {
           lifecycleRules: {
-            startEvent: "app/appointment.created",
+            startEvents: ["app/appointment.created"],
             cancelEvents: [],
             concurrency: "newest-wins",
           },
@@ -137,7 +137,7 @@ describe("postWorkflowDuplicate", () => {
         // copy starts on the same Event as its source.
         assert.deepStrictEqual(nodeConfig(storedGraph, 0), {
           lifecycleRules: {
-            startEvent: "app/appointment.created",
+            startEvents: ["app/appointment.created"],
             cancelEvents: [],
             concurrency: "newest-wins",
           },

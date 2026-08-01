@@ -34,11 +34,13 @@ const loggerFor = (workflowId: string) =>
  * Which entity a manual run is about.
  *
  * A manual run stands in for an Event, so it is about whatever its payload is
- * about: the Start Event's Correlation Path is read against the body and the value
+ * about: a Start Event's Correlation Path is read against the body and the value
  * found there is the entity. That is what makes a test run supersede the run it is
  * testing rather than sit beside it.
  *
- * A payload carrying none falls back to the workflow itself (CONTEXT.md), and the
+ * The body stands in for one of the Start Events rather than all of them, so the
+ * paths are tried in turn and the first that finds a value wins. A payload
+ * answering none of them falls back to the workflow itself (CONTEXT.md), and the
  * fallback is namespaced because this entity space is shared with values a sender
  * controls: a bare id would let a payload claim to be the workflow's own entity.
  */
@@ -49,23 +51,24 @@ function readManualEntityValue(input: {
   catalog: ExtensionCatalog;
 }): string {
   const { catalog } = input;
-  const fallback = `workflow:${input.workflowId}`;
 
-  const eventName = input.rules.startEvent;
-  if (!eventName) {
-    return fallback;
+  for (const eventName of input.rules.startEvents) {
+    const path = resolveCorrelationPath({
+      rules: input.rules,
+      eventName,
+      declaredPath: findEvent(catalog, eventName)?.correlationPath,
+    });
+    if (!path) {
+      continue;
+    }
+
+    const value = asNonEmptyString(getValueByPath(input.payload, path));
+    if (value) {
+      return value;
+    }
   }
 
-  const path = resolveCorrelationPath({
-    rules: input.rules,
-    eventName,
-    declaredPath: findEvent(catalog, eventName)?.correlationPath,
-  });
-  if (!path) {
-    return fallback;
-  }
-
-  return asNonEmptyString(getValueByPath(input.payload, path)) ?? fallback;
+  return `workflow:${input.workflowId}`;
 }
 
 /**

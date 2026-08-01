@@ -82,7 +82,7 @@ function entryNode(correlationPaths: Record<string, string>): WorkflowNode {
       type: "lifecycle",
       config: {
         lifecycleRules: {
-          startEvent: "billing/payment.settled",
+          startEvents: ["billing/payment.settled"],
           cancelEvents: [],
           concurrency: "unlimited",
           correlationPaths,

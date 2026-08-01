@@ -1,6 +1,5 @@
 import {
   Combobox,
-  ComboboxClear,
   ComboboxContent,
   ComboboxEmpty,
   ComboboxInput,
@@ -43,17 +42,14 @@ function sameEvent(a: EventChoice, b: EventChoice): boolean {
 function EventComboboxBody({
   inputId,
   placeholder,
-  clearable,
 }: {
   inputId: string;
   placeholder: string;
-  clearable: boolean;
 }) {
   return (
     <>
       <ComboboxInputGroup>
         <ComboboxInput id={inputId} placeholder={placeholder} />
-        {clearable ? <ComboboxClear aria-label="Clear the selection" /> : null}
         <ComboboxTrigger aria-label="Show the Events" />
       </ComboboxInputGroup>
       <ComboboxContent>
@@ -76,51 +72,12 @@ function EventComboboxBody({
 }
 
 /**
- * One Event out of the catalog, searched rather than laid out.
+ * Several Events out of the catalog, with the chosen ones rendered by the
+ * caller.
  *
  * An app declares as many Events as it likes, so the list is the part that has
  * to scale: a row of chips is unreadable past a handful and offers no way to
  * find one by name.
- */
-export function EventCombobox({
-  choices,
-  value,
-  onValueChange,
-  disabled,
-  inputId,
-  placeholder = "Search Events",
-}: {
-  choices: readonly EventChoice[];
-  value: string | undefined;
-  onValueChange: (eventName: string | undefined) => void;
-  disabled: boolean;
-  inputId: string;
-  placeholder?: string;
-}) {
-  const selected = choices.find((choice) => choice.name === value) ?? null;
-
-  return (
-    <Combobox<EventChoice>
-      disabled={disabled}
-      filter={matchesQuery}
-      isItemEqualToValue={sameEvent}
-      items={choices}
-      itemToStringLabel={(choice) => choice.label}
-      onValueChange={(next) => onValueChange(next?.name)}
-      value={selected}
-    >
-      <EventComboboxBody
-        clearable
-        inputId={inputId}
-        placeholder={placeholder}
-      />
-    </Combobox>
-  );
-}
-
-/**
- * Several Events out of the catalog, with the chosen ones rendered by the
- * caller.
  *
  * The list marks what is already chosen and picking it again takes it off, so
  * the input stays a search box: each selection carries a line of its own beneath
@@ -156,11 +113,7 @@ export function EventMultiCombobox({
       onValueChange={(next) => onValueChange(next.map((choice) => choice.name))}
       value={selected}
     >
-      <EventComboboxBody
-        clearable={false}
-        inputId={inputId}
-        placeholder={placeholder}
-      />
+      <EventComboboxBody inputId={inputId} placeholder={placeholder} />
     </Combobox>
   );
 }

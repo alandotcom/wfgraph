@@ -107,13 +107,13 @@ function startedEdge(target: string): WorkflowEdge {
   });
 }
 
-/** An entry node whose rules start on this Event and cancel on those. */
+/** An entry node whose rules start on these Events and cancel on those. */
 function anEntryNode(input: {
-  startEvent?: string;
+  startEvents?: string[];
   cancelEvents?: string[];
 }): WorkflowNode {
   const lifecycleRules: LifecycleRules = {
-    ...(input.startEvent ? { startEvent: input.startEvent } : {}),
+    startEvents: input.startEvents ?? [],
     cancelEvents: input.cancelEvents ?? [],
     concurrency: "unlimited",
   };
@@ -163,7 +163,7 @@ describe("upstream-node-fields", () => {
     ];
 
     const nodes: WorkflowNode[] = [
-      anEntryNode({ startEvent: "app/appointment.created" }),
+      anEntryNode({ startEvents: ["app/appointment.created"] }),
       createNode({
         id: "call-1",
         type: "action",
@@ -235,7 +235,7 @@ describe("upstream-node-fields", () => {
     const fields = getUpstreamConditionFields({
       currentNodeId: "condition-1",
       nodes: [
-        anEntryNode({ startEvent: "app/appointment.created" }),
+        anEntryNode({ startEvents: ["app/appointment.created"] }),
         createNode({
           id: "condition-1",
           type: "action",
@@ -282,7 +282,7 @@ describe("upstream-node-fields", () => {
 
     const nodes: WorkflowNode[] = [
       anEntryNode({
-        startEvent: "app/appointment.created",
+        startEvents: ["app/appointment.created"],
         cancelEvents: ["app/appointment.canceled"],
       }),
       createNode({
@@ -345,7 +345,7 @@ describe("upstream-node-fields", () => {
 
     const nodes: WorkflowNode[] = [
       anEntryNode({
-        startEvent: "app/appointment.created",
+        startEvents: ["app/appointment.created"],
         cancelEvents: [
           "app/appointment.canceled",
           "app/appointment.rescheduled",
@@ -376,6 +376,52 @@ describe("upstream-node-fields", () => {
       ["occurredAt", "Carried by every Event"],
       ["reason", "app/appointment.canceled"],
       ["rescheduledBy", "app/appointment.rescheduled"],
+    ]);
+  });
+
+  // Two Start Events is how one workflow answers an appointment being booked and
+  // being moved, so a node behind Started faces the same question as one behind
+  // Canceled.
+  it("offers a node behind Started the union of the Start Events' fields", () => {
+    surface.events = [
+      anEvent({
+        name: "app/appointment.created",
+        schema: Schema.Struct({
+          appointmentId: Schema.String.annotate({ description: "Which one" }),
+          bookedBy: Schema.String.annotate({ description: "Who booked it" }),
+        }),
+      }),
+      anEvent({
+        name: "app/appointment.rescheduled",
+        schema: Schema.Struct({
+          appointmentId: Schema.String.annotate({ description: "Which one" }),
+          movedBy: Schema.String.annotate({ description: "Who moved it" }),
+        }),
+      }),
+    ];
+
+    const nodes: WorkflowNode[] = [
+      anEntryNode({
+        startEvents: ["app/appointment.created", "app/appointment.rescheduled"],
+      }),
+      createNode({
+        id: "action-1",
+        type: "action",
+        label: "Decide",
+        config: { actionType: "Condition" },
+      }),
+    ];
+
+    expect(
+      getUpstreamFields({
+        currentNodeId: "action-1",
+        nodes,
+        edges: [startedEdge("action-1")],
+      }).map((field) => [field.path, field.sourceNodeName])
+    ).toEqual([
+      ["appointmentId", "Carried by every Event"],
+      ["bookedBy", "app/appointment.created"],
+      ["movedBy", "app/appointment.rescheduled"],
     ]);
   });
 
@@ -448,7 +494,7 @@ describe("upstream-node-fields", () => {
     const fields = getUpstreamConditionFields({
       currentNodeId: "action-1",
       nodes: [
-        anEntryNode({ startEvent: "app/appointment.created" }),
+        anEntryNode({ startEvents: ["app/appointment.created"] }),
         createNode({
           id: "action-1",
           type: "action",
@@ -472,7 +518,7 @@ describe("upstream-node-fields", () => {
       getUpstreamFields({
         currentNodeId: "action-1",
         nodes: [
-          anEntryNode({ startEvent: "app/never.declared" }),
+          anEntryNode({ startEvents: ["app/never.declared"] }),
           createNode({
             id: "action-1",
             type: "action",
@@ -556,7 +602,7 @@ describe("upstream-node-fields", () => {
     const fields = getUpstreamFields({
       currentNodeId: "action-1",
       nodes: [
-        anEntryNode({ startEvent: "app/appointment.created" }),
+        anEntryNode({ startEvents: ["app/appointment.created"] }),
         createNode({
           id: "action-1",
           type: "action",

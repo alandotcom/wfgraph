@@ -42,8 +42,8 @@ type LifecycleNodeProps = NodeProps & {
 export function getStartSummary(config: WorkflowNodeData["config"]): string {
   const rules = readLifecycleRules(config);
 
-  if (rules?.startEvent) {
-    return `On ${rules.startEvent}`;
+  if (rules?.startEvents.length) {
+    return `On ${rules.startEvents.join(", ")}`;
   }
 
   return manualStartAllowed(rules)

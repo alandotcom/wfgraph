@@ -255,7 +255,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       };
     }
 
-    if (rules.startEvent !== input.event.name) {
+    if (!rules.startEvents.includes(input.event.name)) {
       return { kind: "waits_only" as const, workflowId: workflow.id };
     }
 

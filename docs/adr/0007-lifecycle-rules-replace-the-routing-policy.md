@@ -66,3 +66,25 @@ builder's. That ownership split is the part of ADR 0001 this decision keeps.
 - A start with no payload (schedule, manual) uses the workflow itself as its
   Entity Value, so newest-wins supersedes a still-running tick and first-wins
   skips a tick while one runs.
+
+## Amendment, 2026-07-31: the run carries the Event it arrived on
+
+The implementation had narrowed "which Events start a run" to one name, on the
+grounds that everything downstream of the entry node is written against one
+payload and a second Start Event would leave a builder addressing only the
+fields the two share. That reasoning held while a node could be offered nothing
+but the intersection.
+
+Three changes remove it. A rule about a field the run's payload lacks now reads
+false on its own, so offering a field only some Events declare breaks nothing. A
+node is offered the union of the payloads that can reach it, sectioned by the
+Events declaring each path. And the Event a run arrived on travels as its own
+CEL root, `event.name`, so a rule can select between them; a Condition node
+behind the Canceled outlet needed that already, since one outlet serves every
+Cancel Event.
+
+`startEvents` is a list. The one-role rule stands as the intersection of the two
+lists. Concurrency stays one setting for the whole workflow, so under newest-wins
+every Start Event displaces the in-flight run for that entity, which is what
+makes a reschedule rebuild a reminder chain rather than needing a second
+workflow of its own.

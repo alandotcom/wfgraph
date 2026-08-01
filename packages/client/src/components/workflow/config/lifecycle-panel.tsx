@@ -29,7 +29,7 @@ import {
   pruneCorrelationPaths,
   readLifecycleRules,
 } from "@rova/shared/lifecycle/lifecycle-rules";
-import { EventCombobox, EventMultiCombobox } from "./event-combobox";
+import { EventMultiCombobox } from "./event-combobox";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 /**
@@ -71,8 +71,8 @@ export function LifecyclePanel({
   // Event matches by entity, prunes through `pruneCorrelationPaths`: an override
   // for an Event that just lost its reason to have one should not keep governing
   // runs once its own control has left the screen.
-  const setStartEvent = (eventName: string | undefined) => {
-    write(pruneCorrelationPaths({ ...rules, startEvent: eventName }));
+  const setStartEvents = (eventNames: string[]) => {
+    write(pruneCorrelationPaths({ ...rules, startEvents: eventNames }));
   };
 
   const setCancelEvents = (eventNames: string[]) => {
@@ -98,52 +98,47 @@ export function LifecyclePanel({
     });
   };
 
-  // Each request is looked up directly, by the Event and role the control beside
-  // it owns, rather than found in a list: `correlationPathRequestFor` answers
-  // undefined for a Start Event nothing currently compares, which is what leaves
-  // an unlimited workflow unasked about a value nothing reads.
-  const startPathRequest = rules.startEvent
-    ? correlationPathRequestFor({
-        rules,
-        catalog,
-        eventName: rules.startEvent,
-        role: "start",
-      })
-    : undefined;
-
   return (
     <div className="space-y-4">
       <EventField
-        help="A run starts when this Event arrives."
+        help="A run starts when one of these Events arrives. Naming several is how one workflow answers an appointment being booked and being moved: Concurrency decides what happens to the run already going."
         hasEvents={catalog.events.length > 0}
         inputId={startEventId}
-        label="Start Event"
+        label="Start Events"
       >
-        <EventCombobox
+        <EventMultiCombobox
           choices={catalog.events}
           disabled={disabled}
           inputId={startEventId}
-          onValueChange={setStartEvent}
-          value={rules.startEvent}
+          onValueChange={setStartEvents}
+          value={rules.startEvents}
         />
-      </EventField>
-
-      {startPathRequest ? (
-        <div className="rounded-md border bg-muted/30 p-3">
-          <p
-            className="mb-1 truncate font-mono text-xs"
-            title={startPathRequest.eventName}
-          >
-            {startPathRequest.eventName}
-          </p>
-          <CorrelationPathInput
+        {/* Each request is looked up by the Event and role the control owns
+            rather than found in a list: `correlationPathRequestFor` answers
+            undefined for a Start Event nothing currently compares, which is what
+            leaves an unlimited workflow unasked about a value nothing reads. */}
+        {rules.startEvents.map((eventName) => (
+          <ChosenEvent
             catalog={catalog}
             disabled={disabled}
-            onCommit={setCorrelationPath}
-            request={startPathRequest}
+            eventName={eventName}
+            key={eventName}
+            label={findEvent(catalog, eventName)?.label}
+            onCommitPath={setCorrelationPath}
+            onRemove={() =>
+              setStartEvents(
+                rules.startEvents.filter((entry) => entry !== eventName)
+              )
+            }
+            request={correlationPathRequestFor({
+              rules,
+              catalog,
+              eventName,
+              role: "start",
+            })}
           />
-        </div>
-      ) : null}
+        ))}
+      </EventField>
 
       <div className="space-y-2">
         <Label id={concurrencyLabelId}>Concurrency</Label>
@@ -197,10 +192,10 @@ export function LifecyclePanel({
             Event starts a run.
           </p>
           {/* The editor derives what downstream nodes may reference from the
-              Start Event's payload, and a manual run carries whatever its caller
+              Start Events' payloads, and a manual run carries whatever its caller
               posted. Saying so is what keeps the picker's silence from reading as
               a missing feature. */}
-          {rules.startEvent === undefined ? (
+          {rules.startEvents.length === 0 ? (
             <p className="text-muted-foreground text-xs">
               A manual run's payload is described by nothing, so downstream
               nodes are offered no fields to reference. Add a Start Event to
@@ -224,7 +219,7 @@ export function LifecyclePanel({
           value={rules.cancelEvents}
         />
         {rules.cancelEvents.map((eventName) => (
-          <ChosenCancelEvent
+          <ChosenEvent
             catalog={catalog}
             disabled={disabled}
             eventName={eventName}
@@ -290,14 +285,15 @@ function EventField({
 }
 
 /**
- * One chosen Cancel Event, with the path its Entity Value is read at.
+ * One chosen Event, with the path its Entity Value is read at.
  *
  * The path is what an arriving payload is compared against, so it is editable
  * here rather than reported here: an Event declaring the wrong field for this
- * workflow would otherwise be a rule the builder can read and cannot fix. A
- * cancel role always matches by entity, so `request` is never absent.
+ * workflow would otherwise be a rule the builder can read and cannot fix. An
+ * absent `request` is a Start Event nothing currently compares by entity, which
+ * has a role to show and no path to ask for.
  */
-function ChosenCancelEvent({
+function ChosenEvent({
   eventName,
   label,
   request,
@@ -308,7 +304,7 @@ function ChosenCancelEvent({
 }: {
   eventName: string;
   label: string | undefined;
-  request: CorrelationPathRequest;
+  request: CorrelationPathRequest | undefined;
   catalog: ExtensionCatalog;
   onCommitPath: (eventName: string, path: string) => void;
   onRemove: () => void;
@@ -332,12 +328,14 @@ function ChosenCancelEvent({
           <X className="size-3.5" />
         </Button>
       </div>
-      <CorrelationPathInput
-        catalog={catalog}
-        disabled={disabled}
-        onCommit={onCommitPath}
-        request={request}
-      />
+      {request ? (
+        <CorrelationPathInput
+          catalog={catalog}
+          disabled={disabled}
+          onCommit={onCommitPath}
+          request={request}
+        />
+      ) : null}
     </div>
   );
 }

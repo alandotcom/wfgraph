@@ -59,14 +59,23 @@ outlets, Started and Canceled. Scheduled and manual runs enter as start
 sources on this node. An unconnected outlet ends the run quietly.
 
 **Start Event**:
-The one Event the Lifecycle Rules name as starting a run; a workflow has at
-most one. When it arrives, Concurrency applies first, then a new Execution
-enters through the Started outlet carrying the payload.
+An Event the Lifecycle Rules name as starting a run. When one arrives,
+Concurrency applies first, then a new Execution enters through the Started
+outlet carrying the payload. A workflow may name several, which is how one
+graph answers an appointment being booked and being moved; a node behind
+Started is then offered the union of their payloads, and the Arriving Event
+tells them apart.
 
 **Cancel Event**:
 An Event the Lifecycle Rules list as canceling runs. When one arrives, every
 in-flight Execution with an equal Entity Value jumps to the Canceled outlet
 at its next step boundary.
+
+**Arriving Event**:
+The Event that put a run where it is: the Start Event it began on, and the
+Cancel Event once it has taken the Canceled outlet. A manual run has none. A
+Condition node reads it as a field of its own, which is what lets one branch
+answer several Events, since an outlet is one outlet however many feed it.
 
 **Concurrency**:
 How many Executions may exist per Entity Value: one at a time with newest

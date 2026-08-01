@@ -23,7 +23,7 @@ describe("getStartSummary", () => {
     expect(
       getStartSummary({
         lifecycleRules: {
-          startEvent: "app/appointment.created",
+          startEvents: ["app/appointment.created"],
           cancelEvents: [],
           concurrency: "unlimited",
         },
@@ -37,6 +37,7 @@ describe("getStartSummary", () => {
     expect(
       getStartSummary({
         lifecycleRules: {
+          startEvents: [],
           cancelEvents: [],
           concurrency: "unlimited",
           allowManualStart: false,

@@ -39,7 +39,7 @@ describe("deriveEventSubscriptions", () => {
       workflowId: "wf_1",
       nodes: [
         lifecycleNode({
-          startEvent: "app/appointment.created",
+          startEvents: ["app/appointment.created"],
           cancelEvents: ["app/appointment.canceled"],
           concurrency: "newest-wins",
         }),
@@ -69,7 +69,7 @@ describe("deriveEventSubscriptions", () => {
       workflowId: "wf_1",
       nodes: [
         lifecycleNode({
-          startEvent: "app/appointment.created",
+          startEvents: ["app/appointment.created"],
           cancelEvents: [],
           concurrency: "unlimited",
         }),
@@ -95,7 +95,7 @@ describe("deriveEventSubscriptions", () => {
       nodes: [
         waitNode({ id: "wait-1", waitFor: ["ops/nightly.swept"] }),
         lifecycleNode({
-          startEvent: "app/appointment.created",
+          startEvents: ["app/appointment.created"],
           cancelEvents: [],
           concurrency: "unlimited",
           correlationPaths: {
@@ -130,7 +130,7 @@ describe("deriveEventSubscriptions", () => {
       workflowId: "wf_1",
       nodes: [
         lifecycleNode({
-          startEvent: "app/appointment.created",
+          startEvents: ["app/appointment.created"],
           cancelEvents: ["app/appointment.canceled"],
           concurrency: "unlimited",
           correlationPaths: { "app/appointment.canceled": "patient.id" },
@@ -151,7 +151,7 @@ describe("deriveEventSubscriptions", () => {
       workflowId: "wf_1",
       nodes: [
         lifecycleNode({
-          startEvent: "app/appointment.created",
+          startEvents: ["app/appointment.created"],
           cancelEvents: [],
           concurrency: "unlimited",
         }),
@@ -170,7 +170,7 @@ describe("deriveEventSubscriptions", () => {
       workflowId: "wf_1",
       nodes: [
         lifecycleNode({
-          startEvent: "app/appointment.created",
+          startEvents: ["app/appointment.created"],
           cancelEvents: [],
           concurrency: "unlimited",
         }),

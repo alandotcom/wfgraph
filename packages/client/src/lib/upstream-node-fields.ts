@@ -172,10 +172,10 @@ function entryEventsReaching(input: {
 
   const catalog = getExtensionCatalog();
   return compact(
-    compact([
-      outlets.has(LIFECYCLE_STARTED_HANDLE) && rules.startEvent,
+    [
+      ...(outlets.has(LIFECYCLE_STARTED_HANDLE) ? rules.startEvents : []),
       ...(outlets.has(LIFECYCLE_CANCELED_HANDLE) ? rules.cancelEvents : []),
-    ]).map((name) => findEvent(catalog, name))
+    ].map((name) => findEvent(catalog, name))
   );
 }
 

@@ -399,12 +399,12 @@ downstream reads that JSON directly. A transform rewrites what the sender sent, 
 
 A Workflow Builder declares the Lifecycle Rules in the Lifecycle panel:
 
-- which Event starts a run;
+- which Events start a run;
 - which Events cancel one;
 - the concurrency policy that applies to each Entity Value.
 
-`CONTEXT.md` defines Lifecycle Node, Start Event, Cancel Events, Concurrency, Precedence,
-Refused Start, and Execution status in full. `docs/adr/0007` says why the model looks like
+`CONTEXT.md` defines Lifecycle Node, Start Event, Cancel Events, Arriving Event, Concurrency,
+Precedence, Refused Start, and Execution status in full. `docs/adr/0007` says why the model looks like
 this. An Event Author designs against that shape.
 
 ## Writing an integration

@@ -48,7 +48,7 @@ function graphWith(rules: LifecycleRules): Workflow["graph"] {
 }
 
 const startAndCancel: LifecycleRules = {
-  startEvent: "app/appointment.created",
+  startEvents: ["app/appointment.created"],
   cancelEvents: ["app/appointment.canceled"],
   concurrency: "newest-wins",
 };
@@ -96,7 +96,7 @@ describe("patchWorkflow", () => {
 
         yield* patchWorkflow("wf_1", {
           graph: graphWith({
-            startEvent: "app/appointment.created",
+            startEvents: ["app/appointment.created"],
             cancelEvents: [],
             concurrency: "newest-wins",
           }),
