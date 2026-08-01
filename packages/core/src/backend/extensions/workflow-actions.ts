@@ -15,11 +15,16 @@ import { fetchCredentials } from "#src/backend/extensions/credential-fetcher";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { StepEnvironment } from "#src/backend/extensions/steps/step-runner";
 import type { WorkflowActions } from "#src/backend/engine/actions";
+import {
+  type BaseMiddleware,
+  stepContextFor,
+} from "#src/backend/extensions/middleware";
 import type { RovaRuntime } from "#src/backend/runtime";
 
 export function createWorkflowActions(
   extensions: ExtensionSet,
-  runtime: RovaRuntime
+  runtime: RovaRuntime,
+  middleware: readonly BaseMiddleware[] = []
 ): WorkflowActions {
   const app: StepEnvironment = {
     // Which stored key holds which credential is the integration's own
@@ -46,6 +51,9 @@ export function createWorkflowActions(
         literalConfigKeys: literalFieldKeys(action.configFields),
       };
     },
+    // Run per node rather than once per app: a middleware is told which action it
+    // is serving, so it may answer differently for one.
+    contextFor: (actionType) => stepContextFor(middleware, actionType),
   };
 }
 

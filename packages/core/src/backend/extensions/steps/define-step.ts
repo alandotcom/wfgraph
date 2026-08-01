@@ -46,7 +46,11 @@ import type {
   ActionConfigFieldBase,
   ActionConfigFieldGroup,
 } from "@rova/shared/plugins/action-fields";
-import type { NodeSteps, StepResult } from "@rova/shared/actions/step-result";
+import type {
+  NodeRuntime,
+  NodeSteps,
+  StepResult,
+} from "@rova/shared/actions/step-result";
 
 /**
  * Why a step could not do its work, in the words the run log shows.
@@ -384,7 +388,7 @@ function buildStep<TInput, TOutput>(
     encodeOutput: (value: unknown) => Result.Result<unknown, string>,
     rawInput: Record<string, unknown>,
     context: StepContext | undefined,
-    steps: NodeSteps | undefined
+    node: NodeRuntime | undefined
   ): Effect.Effect<StepResult, CredentialsUnavailable> {
     const toFailure = stepFailureFrom(subject);
 
@@ -414,10 +418,14 @@ function buildStep<TInput, TOutput>(
       const answer = yield* Effect.try({
         try: () =>
           definition.handler({
+            // What the host's middleware added sits under the bag's own keys, so
+            // a handler destructures it beside `input`. Rova's own names are
+            // written after it, and win.
+            ...node?.ctx,
             ...toHandlerBag(input, context, integrationId),
             credentials,
             readCredentials: () => runToPromise(credentials),
-            step: nodeStepApi(app, steps),
+            step: nodeStepApi(app, node?.steps),
           }),
         catch: toFailure,
       });

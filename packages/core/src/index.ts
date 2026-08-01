@@ -20,6 +20,7 @@ export {
 } from "#src/backend/extensions/define-action";
 
 export {
+  BaseMiddleware,
   createRovaApp,
   type DatabaseRuntimeConfig,
   type EncryptionRuntimeConfig,
@@ -32,6 +33,7 @@ export {
   type RovaExtensions,
   type RovaInngestConfig,
   type RovaLogger,
+  type TransformStepInputArgs,
 } from "#src/app";
 
 export {

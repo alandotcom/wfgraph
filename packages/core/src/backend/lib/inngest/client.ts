@@ -1,6 +1,7 @@
 import { Inngest } from "inngest";
 import { serve as serveInngest } from "inngest/hono";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
+import type { BaseMiddleware } from "#src/backend/extensions/middleware";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { RovaRuntime } from "#src/backend/runtime";
 
@@ -136,7 +137,8 @@ export type InngestSurface = {
 };
 
 export function createInngestSurface(
-  config: RovaInngestConfig
+  config: RovaInngestConfig,
+  middleware: readonly BaseMiddleware[] = []
 ): InngestSurface {
   const signingKey = config.signingKey ?? process.env.INNGEST_SIGNING_KEY;
   const client = createInngestClient(config, signingKey);
@@ -147,7 +149,7 @@ export function createInngestSurface(
     serve: async (runtime) =>
       serveInngest({
         client,
-        functions: await buildInngestFunctions(client, runtime),
+        functions: await buildInngestFunctions(client, runtime, middleware),
         // As of v4 the signing keys and base URL live on the client, so what
         // is left for `serve()` is where Inngest should call back.
         serveOrigin: config.serveOrigin,

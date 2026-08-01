@@ -705,11 +705,58 @@ Each export except `createRequestListener` runs on a runtime with `Request` and 
 A published wrapper would charge an options type that reaccumulates each parameter the
 server of the host takes.
 
+### Middleware
+
+What every handler is given beside its own config: a database client, a
+tenant-scoped logger, whatever your application already has. Inngest's shape, so
+a middleware you have written for Inngest reads the same here.
+
+```ts
+import { BaseMiddleware, createRovaApp } from "@rova/core";
+
+class PrismaMiddleware extends BaseMiddleware {
+  id = "prisma";
+
+  transformStepInput(args) {
+    return { ...args, ctx: { ...args.ctx, prisma } };
+  }
+}
+
+const rova = await createRovaApp({
+  middleware: [new PrismaMiddleware()],
+  extensions: { events, actions, integrations },
+});
+```
+
+A handler then destructures it beside `input`:
+
+```ts
+handler({ input, prisma }) {
+  return prisma.appointment.update({ where: { id: input.appointmentId }, ... });
+}
+```
+
+They run in the order you list them and the last to run wins, so a middleware
+later in the list overwrites a key an earlier one set. The hook is told which
+`actionType` it is serving, so one that serves some actions and not others reads
+that and answers its arguments unchanged for the rest.
+
+Two things to know. What a middleware adds travels beside the node's input record
+rather than inside it, so it never reaches the run log: a client written there
+would be stored as jsonb, read back as `{}`, and shown to whoever opens the run
+panel. And Rova's own names are written after yours, so a middleware cannot
+displace `input`, `step` or the run's identity.
+
+The values are typed as an open record on the bag. An integration is defined
+before any app exists, so Rova cannot carry your middleware's types into a
+plugin's handler; a host that wants them narrows what it destructures.
+
 ### createRovaApp options
 
 | Option                              | Required | Description                                                                           |
 | ----------------------------------- | -------- | ------------------------------------------------------------------------------------- |
 | `basePath`                          | No       | Path the host mounts Rova at (default `/`)                                            |
+| `middleware`                        | No       | What every handler is given beside its config; see "Middleware" above                 |
 | `auth`                              | Yes      | Predicate that decides who reaches the editor, or `"external"`                        |
 | `database.url`                      | Yes¹     | PostgreSQL connection string                                                          |
 | `database.host` and co.             | Yes¹     | `host`, `port`, `user`, `password`, `database`, in place of a URL                     |
