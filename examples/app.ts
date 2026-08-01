@@ -138,11 +138,11 @@ const cancelAppointmentAction = defineAction({
     reason: z.string(),
     cancelledAt: z.iso.datetime(),
   }),
-  handler({ payload }) {
+  handler({ input }) {
     return {
-      appointmentId: payload.appointmentId,
+      appointmentId: input.appointmentId,
       status: "cancelled",
-      reason: payload.reason,
+      reason: input.reason,
       cancelledAt: new Date().toISOString(),
     };
   },

@@ -508,7 +508,7 @@ describe("createRovaApp configuration", () => {
       output: Schema.Struct({
         id: Schema.String.annotate({ description: "What it echoed" }),
       }),
-      handler: ({ payload }) => ({ id: payload.id }),
+      handler: ({ input }) => ({ id: input.id }),
     });
 
     const first = await createRovaApp({

@@ -2,8 +2,8 @@ import { Acuity, AcuityError } from "@fountain-bio/acuity";
 import {
   type CredentialsUnavailable,
   getErrorMessage,
+  type StepBag,
   StepFailure,
-  type StepRunContext,
 } from "@rova/core/plugin";
 import { Effect } from "effect";
 import type { AcuityCredentials } from "#src/acuity/index";
@@ -12,17 +12,17 @@ import type { AcuityCredentials } from "#src/acuity/index";
  * The Acuity SDK, built from the step's own credentials, or the failure that
  * says which of them is missing.
  *
- * It takes the whole context rather than the credentials, so fetching them is
- * part of the one line every handler opens with. Every step starts here, which
+ * It takes the handler's whole bag rather than the credentials, so fetching them
+ * is part of the one line every handler opens with. Every step starts here, which
  * is what makes the check on them written once and reported the same way.
  *
  * A store that could not be read is passed on rather than turned into a
  * `StepFailure`: that failure is the one a step is retried for.
  */
 export function createAcuityClient(
-  context: StepRunContext<AcuityCredentials>
+  bag: StepBag<unknown, AcuityCredentials>
 ): Effect.Effect<Acuity, StepFailure | CredentialsUnavailable> {
-  return Effect.flatMap(context.credentials, (credentials) => {
+  return Effect.flatMap(bag.credentials, (credentials) => {
     const userId = credentials.ACUITY_USER_ID?.trim();
     const apiKey = credentials.ACUITY_API_KEY?.trim();
 

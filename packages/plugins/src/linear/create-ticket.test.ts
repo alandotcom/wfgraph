@@ -38,10 +38,13 @@ function credentialsRead(
   };
 }
 
-function contextFor(
+/** The one argument a handler takes: this case's config, and the run around it. */
+function bagFor<TInput>(
+  input: TInput,
   credentials: Effect.Effect<Record<string, string | undefined>>
 ) {
   return {
+    input,
     runMode: "live" as const,
     nodeId: "n1",
     nodeName: "Linear",
@@ -81,8 +84,10 @@ describe("createTicketHandler", () => {
       });
 
       const result = yield* createTicketHandler(
-        { ticketTitle: "Bug report", ticketDescription: "It broke" },
-        contextFor(credentials)
+        bagFor(
+          { ticketTitle: "Bug report", ticketDescription: "It broke" },
+          credentials
+        )
       );
 
       expect(mocks.teams).toHaveBeenCalledTimes(0);
@@ -104,8 +109,7 @@ describe("createTicketHandler", () => {
       const { credentials } = credentialsRead();
 
       yield* createTicketHandler(
-        { ticketTitle: "Bug report" },
-        contextFor(credentials)
+        bagFor({ ticketTitle: "Bug report" }, credentials)
       );
 
       expect(mocks.teams).toHaveBeenCalledWith({ first: 1 });
@@ -123,10 +127,7 @@ describe("createTicketHandler", () => {
       const { credentials } = credentialsRead();
 
       const error = yield* failure(
-        createTicketHandler(
-          { ticketTitle: "Bug report" },
-          contextFor(credentials)
-        )
+        createTicketHandler(bagFor({ ticketTitle: "Bug report" }, credentials))
       );
 
       expect(error.message).toBe("No teams found in Linear workspace");
@@ -140,10 +141,7 @@ describe("createTicketHandler", () => {
       const { credentials } = credentialsRead();
 
       const error = yield* failure(
-        createTicketHandler(
-          { ticketTitle: "Bug report" },
-          contextFor(credentials)
-        )
+        createTicketHandler(bagFor({ ticketTitle: "Bug report" }, credentials))
       );
 
       expect(error.message).toBe("Failed to create issue");
@@ -161,10 +159,7 @@ describe("createTicketHandler", () => {
       const { credentials } = credentialsRead();
 
       const error = yield* failure(
-        createTicketHandler(
-          { ticketTitle: "Bug report" },
-          contextFor(credentials)
-        )
+        createTicketHandler(bagFor({ ticketTitle: "Bug report" }, credentials))
       );
 
       expect(error.message).toBe("Failed to create ticket: Team not found");
@@ -176,10 +171,7 @@ describe("createTicketHandler", () => {
       const { credentials } = credentialsRead({});
 
       const error = yield* failure(
-        createTicketHandler(
-          { ticketTitle: "Bug report" },
-          contextFor(credentials)
-        )
+        createTicketHandler(bagFor({ ticketTitle: "Bug report" }, credentials))
       );
 
       expect(error.message).toBe(

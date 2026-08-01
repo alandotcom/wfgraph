@@ -35,8 +35,8 @@ export {
 export {
   type ActionStep,
   defineStep,
+  type StepBag,
   StepFailure,
-  type StepRunContext,
 } from "#src/backend/extensions/steps/define-step";
 /**
  * The failure a credential read can end in, for a helper that yields

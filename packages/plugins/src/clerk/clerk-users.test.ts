@@ -65,10 +65,13 @@ function credentialsRead(
   return Effect.sync(() => values);
 }
 
-function contextFor(
+/** The one argument a handler takes: this case's config, and the run around it. */
+function bagFor<TInput>(
+  input: TInput,
   credentials: Effect.Effect<Record<string, string | undefined>>
 ) {
   return {
+    input,
     runMode: "live" as const,
     nodeId: "n1",
     nodeName: "Clerk",
@@ -106,8 +109,7 @@ describe("clerkGetUserHandler", () => {
       const credentials = credentialsRead();
 
       const result = yield* clerkGetUserHandler(
-        { userId: "user_1" },
-        contextFor(credentials)
+        bagFor({ userId: "user_1" }, credentials)
       );
 
       expect(mocks.getUser).toHaveBeenCalledWith("user_1");
@@ -120,7 +122,7 @@ describe("clerkGetUserHandler", () => {
       const credentials = credentialsRead({});
 
       const error = yield* failure(
-        clerkGetUserHandler({ userId: "user_1" }, contextFor(credentials))
+        clerkGetUserHandler(bagFor({ userId: "user_1" }, credentials))
       );
 
       expect(error.message).toBe(
@@ -135,7 +137,7 @@ describe("clerkGetUserHandler", () => {
       const credentials = credentialsRead();
 
       const error = yield* failure(
-        clerkGetUserHandler({ userId: "" }, contextFor(credentials))
+        clerkGetUserHandler(bagFor({ userId: "" }, credentials))
       );
 
       expect(error.message).toBe("User ID is required.");
@@ -154,7 +156,7 @@ describe("clerkGetUserHandler", () => {
       const credentials = credentialsRead();
 
       const error = yield* failure(
-        clerkGetUserHandler({ userId: "user_missing" }, contextFor(credentials))
+        clerkGetUserHandler(bagFor({ userId: "user_missing" }, credentials))
       );
 
       expect(error.message).toBe("Failed to get user: Not Found");
@@ -168,12 +170,14 @@ describe("clerkCreateUserHandler", () => {
       const credentials = credentialsRead();
 
       const result = yield* clerkCreateUserHandler(
-        {
-          emailAddress: "ada@example.com",
-          firstName: "Ada",
-          publicMetadata: '{"role":"admin"}',
-        },
-        contextFor(credentials)
+        bagFor(
+          {
+            emailAddress: "ada@example.com",
+            firstName: "Ada",
+            publicMetadata: '{"role":"admin"}',
+          },
+          credentials
+        )
       );
 
       expect(mocks.createUser).toHaveBeenCalledWith({
@@ -190,7 +194,7 @@ describe("clerkCreateUserHandler", () => {
       const credentials = credentialsRead();
 
       const error = yield* failure(
-        clerkCreateUserHandler({ emailAddress: "" }, contextFor(credentials))
+        clerkCreateUserHandler(bagFor({ emailAddress: "" }, credentials))
       );
 
       expect(error.message).toBe("Email address is required.");
@@ -206,8 +210,10 @@ describe("clerkCreateUserHandler", () => {
 
       const error = yield* failure(
         clerkCreateUserHandler(
-          { emailAddress: "ada@example.com", privateMetadata: "[1, 2]" },
-          contextFor(credentials)
+          bagFor(
+            { emailAddress: "ada@example.com", privateMetadata: "[1, 2]" },
+            credentials
+          )
         )
       );
 
@@ -225,8 +231,7 @@ describe("clerkCreateUserHandler", () => {
 
       const error = yield* failure(
         clerkCreateUserHandler(
-          { emailAddress: "ada@example.com" },
-          contextFor(credentials)
+          bagFor({ emailAddress: "ada@example.com" }, credentials)
         )
       );
 
@@ -245,8 +250,7 @@ describe("clerkUpdateUserHandler", () => {
       const credentials = credentialsRead();
 
       const result = yield* clerkUpdateUserHandler(
-        { userId: "user_1", lastName: "Byron" },
-        contextFor(credentials)
+        bagFor({ userId: "user_1", lastName: "Byron" }, credentials)
       );
 
       expect(mocks.updateUser).toHaveBeenCalledWith("user_1", {
@@ -261,7 +265,7 @@ describe("clerkUpdateUserHandler", () => {
       const credentials = credentialsRead();
 
       const error = yield* failure(
-        clerkUpdateUserHandler({ userId: "" }, contextFor(credentials))
+        clerkUpdateUserHandler(bagFor({ userId: "" }, credentials))
       );
 
       expect(error.message).toBe("User ID is required.");
@@ -275,8 +279,7 @@ describe("clerkUpdateUserHandler", () => {
 
       const error = yield* failure(
         clerkUpdateUserHandler(
-          { userId: "user_1", publicMetadata: "not json" },
-          contextFor(credentials)
+          bagFor({ userId: "user_1", publicMetadata: "not json" }, credentials)
         )
       );
 
@@ -291,7 +294,7 @@ describe("clerkUpdateUserHandler", () => {
       const credentials = credentialsRead();
 
       const error = yield* failure(
-        clerkUpdateUserHandler({ userId: "user_1" }, contextFor(credentials))
+        clerkUpdateUserHandler(bagFor({ userId: "user_1" }, credentials))
       );
 
       expect(error.message).toBe("Failed to update user: 422");
@@ -305,8 +308,7 @@ describe("clerkDeleteUserHandler", () => {
       const credentials = credentialsRead();
 
       const result = yield* clerkDeleteUserHandler(
-        { userId: "user_1" },
-        contextFor(credentials)
+        bagFor({ userId: "user_1" }, credentials)
       );
 
       expect(mocks.deleteUser).toHaveBeenCalledWith("user_1");
@@ -319,7 +321,7 @@ describe("clerkDeleteUserHandler", () => {
       const credentials = credentialsRead();
 
       const error = yield* failure(
-        clerkDeleteUserHandler({ userId: "" }, contextFor(credentials))
+        clerkDeleteUserHandler(bagFor({ userId: "" }, credentials))
       );
 
       expect(error.message).toBe("User ID is required.");
@@ -335,7 +337,7 @@ describe("clerkDeleteUserHandler", () => {
       const credentials = credentialsRead();
 
       const error = yield* failure(
-        clerkDeleteUserHandler({ userId: "user_1" }, contextFor(credentials))
+        clerkDeleteUserHandler(bagFor({ userId: "user_1" }, credentials))
       );
 
       expect(error.message).toBe("Failed to delete user: Not Found");

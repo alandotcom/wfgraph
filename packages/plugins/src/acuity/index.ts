@@ -10,7 +10,7 @@
  * The actions run down the file one after another -- two schemas, the handler, the
  * step built from them -- and the `actions` record at the foot is the contents list.
  * Each handler is a named export rather than a function written into its
- * `defineStep`, so a test can run it with a context it supplies.
+ * `defineStep`, so a test can run it with a bag it supplies.
  *
  * The output schemas describe the SDK's resources rather than borrowing their
  * types, and they describe every field the SDK sends. A step hands the SDK's object
@@ -31,8 +31,8 @@ import {
   type CredentialsOf,
   defineIntegration,
   defineStep,
+  type StepBag,
   StepFailure,
-  type StepRunContext,
 } from "@rova/core/plugin";
 import { Effect, Schema } from "effect";
 import { callAcuity, createAcuityClient } from "#src/acuity/client";
@@ -132,10 +132,9 @@ const listAppointmentTypesOutput = Schema.Struct({
 
 /** The action takes no configuration, so the whole of it is the read. */
 export const listAppointmentTypesHandler = Effect.fn(function* (
-  _input: typeof listAppointmentTypesInput.Type,
-  context: StepRunContext<AcuityCredentials>
+  bag: StepBag<typeof listAppointmentTypesInput.Type, AcuityCredentials>
 ) {
-  const client = yield* createAcuityClient(context);
+  const client = yield* createAcuityClient(bag);
 
   const appointmentTypes = yield* callAcuity(
     "Failed to list appointment types.",
@@ -181,10 +180,10 @@ const listAppointmentsOutput = Schema.Struct({
  * says for itself what is wrong with it.
  */
 export const listAppointmentsHandler = Effect.fn(function* (
-  input: typeof listAppointmentsInput.Type,
-  context: StepRunContext<AcuityCredentials>
+  bag: StepBag<typeof listAppointmentsInput.Type, AcuityCredentials>
 ) {
-  const client = yield* createAcuityClient(context);
+  const { input } = bag;
+  const client = yield* createAcuityClient(bag);
 
   // Read in the order the form lists them, so a config with two bad fields
   // reports the one nearer the top of the panel.
@@ -326,10 +325,10 @@ const getAppointmentOutput = Schema.Struct({
 });
 
 export const getAppointmentHandler = Effect.fn(function* (
-  input: typeof getAppointmentInput.Type,
-  context: StepRunContext<AcuityCredentials>
+  bag: StepBag<typeof getAppointmentInput.Type, AcuityCredentials>
 ) {
-  const client = yield* createAcuityClient(context);
+  const { input } = bag;
+  const client = yield* createAcuityClient(bag);
 
   const appointmentId = yield* requiredInteger(
     input.appointmentId,
@@ -396,10 +395,10 @@ const getAvailabilityDatesOutput = Schema.Struct({
 });
 
 export const getAvailabilityDatesHandler = Effect.fn(function* (
-  input: typeof getAvailabilityDatesInput.Type,
-  context: StepRunContext<AcuityCredentials>
+  bag: StepBag<typeof getAvailabilityDatesInput.Type, AcuityCredentials>
 ) {
-  const client = yield* createAcuityClient(context);
+  const { input } = bag;
+  const client = yield* createAcuityClient(bag);
 
   const appointmentTypeID = yield* requiredInteger(
     input.appointmentTypeId,
@@ -482,10 +481,10 @@ const getAvailabilityTimesOutput = Schema.Struct({
 });
 
 export const getAvailabilityTimesHandler = Effect.fn(function* (
-  input: typeof getAvailabilityTimesInput.Type,
-  context: StepRunContext<AcuityCredentials>
+  bag: StepBag<typeof getAvailabilityTimesInput.Type, AcuityCredentials>
 ) {
-  const client = yield* createAcuityClient(context);
+  const { input } = bag;
+  const client = yield* createAcuityClient(bag);
 
   const appointmentTypeID = yield* requiredInteger(
     input.appointmentTypeId,
@@ -595,10 +594,10 @@ const createAppointmentOutput = Schema.Struct({
  * itself what is wrong with it.
  */
 export const createAppointmentHandler = Effect.fn(function* (
-  input: typeof createAppointmentInput.Type,
-  context: StepRunContext<AcuityCredentials>
+  bag: StepBag<typeof createAppointmentInput.Type, AcuityCredentials>
 ) {
-  const client = yield* createAcuityClient(context);
+  const { input } = bag;
+  const client = yield* createAcuityClient(bag);
 
   const appointmentTypeID = yield* requiredInteger(
     input.appointmentTypeId,
@@ -763,10 +762,10 @@ const rescheduleAppointmentOutput = Schema.Struct({
 });
 
 export const rescheduleAppointmentHandler = Effect.fn(function* (
-  input: typeof rescheduleAppointmentInput.Type,
-  context: StepRunContext<AcuityCredentials>
+  bag: StepBag<typeof rescheduleAppointmentInput.Type, AcuityCredentials>
 ) {
-  const client = yield* createAcuityClient(context);
+  const { input } = bag;
+  const client = yield* createAcuityClient(bag);
 
   const appointmentId = yield* requiredInteger(
     input.appointmentId,
@@ -856,10 +855,10 @@ const cancelAppointmentOutput = Schema.Struct({
 });
 
 export const cancelAppointmentHandler = Effect.fn(function* (
-  input: typeof cancelAppointmentInput.Type,
-  context: StepRunContext<AcuityCredentials>
+  bag: StepBag<typeof cancelAppointmentInput.Type, AcuityCredentials>
 ) {
-  const client = yield* createAcuityClient(context);
+  const { input } = bag;
+  const client = yield* createAcuityClient(bag);
 
   const appointmentId = yield* requiredInteger(
     input.appointmentId,

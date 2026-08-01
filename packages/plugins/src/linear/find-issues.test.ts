@@ -25,10 +25,13 @@ function credentialsRead(
   return Effect.sync(() => values);
 }
 
-function contextFor(
+/** The one argument a handler takes: this case's config, and the run around it. */
+function bagFor<TInput>(
+  input: TInput,
   credentials: Effect.Effect<Record<string, string | undefined>>
 ) {
   return {
+    input,
     runMode: "live" as const,
     nodeId: "n1",
     nodeName: "Linear",
@@ -65,7 +68,7 @@ describe("findIssuesHandler", () => {
     Effect.gen(function* () {
       const credentials = credentialsRead();
 
-      const result = yield* findIssuesHandler({}, contextFor(credentials));
+      const result = yield* findIssuesHandler(bagFor({}, credentials));
 
       expect(result).toEqual({
         issues: [
@@ -90,8 +93,7 @@ describe("findIssuesHandler", () => {
       const credentials = credentialsRead();
 
       yield* findIssuesHandler(
-        { linearStatus: "any", linearLabel: "" },
-        contextFor(credentials)
+        bagFor({ linearStatus: "any", linearLabel: "" }, credentials)
       );
 
       expect(mocks.issues).toHaveBeenCalledWith({ filter: undefined });
@@ -103,13 +105,15 @@ describe("findIssuesHandler", () => {
       const credentials = credentialsRead();
 
       yield* findIssuesHandler(
-        {
-          linearAssigneeId: "user_1",
-          linearTeamId: "team_1",
-          linearStatus: "in_progress",
-          linearLabel: "bug",
-        },
-        contextFor(credentials)
+        bagFor(
+          {
+            linearAssigneeId: "user_1",
+            linearTeamId: "team_1",
+            linearStatus: "in_progress",
+            linearLabel: "bug",
+          },
+          credentials
+        )
       );
 
       expect(mocks.issues).toHaveBeenCalledWith({
@@ -139,7 +143,7 @@ describe("findIssuesHandler", () => {
       });
       const credentials = credentialsRead();
 
-      const result = yield* findIssuesHandler({}, contextFor(credentials));
+      const result = yield* findIssuesHandler(bagFor({}, credentials));
 
       expect(result.issues[0]).toEqual({
         id: "issue_2",
@@ -163,9 +167,7 @@ describe("findIssuesHandler", () => {
       });
       const credentials = credentialsRead();
 
-      const error = yield* failure(
-        findIssuesHandler({}, contextFor(credentials))
-      );
+      const error = yield* failure(findIssuesHandler(bagFor({}, credentials)));
 
       expect(error.message).toBe(
         "Failed to find issues: Authentication required"
@@ -177,9 +179,7 @@ describe("findIssuesHandler", () => {
     Effect.gen(function* () {
       const credentials = credentialsRead({});
 
-      const error = yield* failure(
-        findIssuesHandler({}, contextFor(credentials))
-      );
+      const error = yield* failure(findIssuesHandler(bagFor({}, credentials)));
 
       expect(error.message).toBe(
         "LINEAR_API_KEY is not configured. Please add it in Project Integrations."

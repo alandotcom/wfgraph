@@ -15,8 +15,8 @@ import {
   type CredentialsOf,
   defineIntegration,
   defineStep,
+  type StepBag,
   StepFailure,
-  type StepRunContext,
 } from "@rova/core/plugin";
 import { Effect, Schema } from "effect";
 import { describeLinearFailure } from "#src/linear/errors";
@@ -142,14 +142,14 @@ function firstTeamId(client: LinearClient): Effect.Effect<string, StepFailure> {
 }
 
 /**
- * Named rather than written inline, so a test can run it with a context it
+ * Named rather than written inline, so a test can run it with a bag it
  * supplies.
  */
 export const createTicketHandler = Effect.fn(function* (
-  input: typeof createTicketInput.Type,
-  context: StepRunContext<LinearCredentials>
+  bag: StepBag<typeof createTicketInput.Type, LinearCredentials>
 ) {
-  const credentials = yield* context.credentials;
+  const { input } = bag;
+  const credentials = yield* bag.credentials;
   const apiKey = credentials.LINEAR_API_KEY;
 
   if (!apiKey) {
@@ -211,14 +211,14 @@ function buildIssueFilter(
 }
 
 /**
- * Named rather than written inline, so a test can run it with a context it
+ * Named rather than written inline, so a test can run it with a bag it
  * supplies.
  */
 export const findIssuesHandler = Effect.fn(function* (
-  input: typeof findIssuesInput.Type,
-  context: StepRunContext<LinearCredentials>
+  bag: StepBag<typeof findIssuesInput.Type, LinearCredentials>
 ) {
-  const credentials = yield* context.credentials;
+  const { input } = bag;
+  const credentials = yield* bag.credentials;
   const apiKey = credentials.LINEAR_API_KEY;
 
   if (!apiKey) {

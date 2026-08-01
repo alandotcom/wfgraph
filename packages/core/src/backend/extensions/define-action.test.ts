@@ -18,7 +18,7 @@ import type {
 import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import {
   type ActionDefinition,
-  type ActionRunContext,
+  type ActionBag,
   defineAction,
 } from "#src/backend/extensions/define-action";
 
@@ -36,12 +36,12 @@ function run(action: ActionDefinition) {
 }
 
 /** One call through the whole seam, with the context the engine always supplies. */
-function call(action: ActionDefinition, payload: Record<string, unknown> = {}) {
-  return run(action)({ ...payload, _context: stepContext });
+function call(action: ActionDefinition, config: Record<string, unknown> = {}) {
+  return run(action)({ ...config, _context: stepContext });
 }
 
 describe("defineAction", () => {
-  it("validates payload with the input schema and runs the handler with the typed payload", async () => {
+  it("validates config with the input schema and runs the handler with the typed input", async () => {
     const action = defineAction({
       id: "custom/echo",
       label: "Echo",
@@ -49,8 +49,8 @@ describe("defineAction", () => {
       input: z.object({
         text: z.string().trim().min(1),
       }),
-      handler({ payload }) {
-        return { text: payload.text };
+      handler({ input }) {
+        return { text: input.text };
       },
     });
 
@@ -60,7 +60,7 @@ describe("defineAction", () => {
     });
   });
 
-  it("returns a failure result when payload does not match the input schema", async () => {
+  it("returns a failure result when config does not match the input schema", async () => {
     const action = defineAction({
       id: "custom/requires-text",
       label: "Requires Text",
@@ -287,10 +287,7 @@ describe("defineAction with an output schema", () => {
  */
 describe("defineAction as the engine calls it", () => {
   const handler = vi.fn<
-    (input: {
-      payload: Record<string, unknown>;
-      context: ActionRunContext;
-    }) => Record<string, unknown>
+    (bag: ActionBag<Record<string, unknown>>) => Record<string, unknown>
   >(() => ({ ok: true }));
 
   function notify() {
@@ -322,9 +319,9 @@ describe("defineAction as the engine calls it", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  // The connection reaches the handler through its context, not its payload: an
-  // author reads the id to look their own credentials up with.
-  it("moves the connection out of the payload and into the context", async () => {
+  // The connection reaches the handler beside its config rather than inside it:
+  // an author reads the id to look their own credentials up with.
+  it("keeps the connection out of the config the handler reads", async () => {
     const action = notify();
 
     await run(action)({
@@ -336,8 +333,9 @@ describe("defineAction as the engine calls it", () => {
     });
 
     expect(handler).toHaveBeenCalledWith({
-      payload: { actionId: "billing/notify", to: "someone" },
-      context: { ...stepContext, integrationId: "int_9" },
+      input: { actionId: "billing/notify", to: "someone" },
+      ...stepContext,
+      integrationId: "int_9",
     });
   });
 
@@ -350,7 +348,7 @@ describe("defineAction as the engine calls it", () => {
 
       await run(action)({ _context: stepContext, integrationId, to: "x" });
 
-      expect(handler.mock.calls[0]?.[0].context.integrationId).toBeUndefined();
+      expect(handler.mock.calls[0]?.[0].integrationId).toBeUndefined();
     }
   });
 
@@ -363,7 +361,7 @@ describe("defineAction as the engine calls it", () => {
       _context: { nodeId: "n1", nodeName: "Notify", nodeType: "action" },
     });
 
-    expect(handler.mock.calls[0]?.[0].context.runMode).toBe("live");
+    expect(handler.mock.calls[0]?.[0].runMode).toBe("live");
   });
 });
 
@@ -381,8 +379,8 @@ describe("defineAction bridges the schema it is given", () => {
       label: "Effect Bridge",
       description: "Tests that defineAction bridges what it is handed",
       input: schema,
-      handler({ payload }) {
-        return { echo: payload.text };
+      handler({ input }) {
+        return { echo: input.text };
       },
     });
 
@@ -407,8 +405,8 @@ describe("defineAction bridges the schema it is given", () => {
       label: "Zod Bridge",
       description: "Tests that defineAction passes Zod through",
       input: schema,
-      handler({ payload }) {
-        return { echo: payload.text };
+      handler({ input }) {
+        return { echo: input.text };
       },
     });
 
@@ -439,8 +437,8 @@ describe("defineAction with Effect schemas", () => {
         tone: Schema.Literals(["warm", "cool"]),
         note: Schema.optionalKey(Schema.String),
       }),
-      handler({ payload }) {
-        return { echo: payload.name };
+      handler({ input }) {
+        return { echo: input.name };
       },
     });
 
@@ -500,8 +498,8 @@ describe("defineAction with Effect schemas", () => {
           Schema.decodeTo(Schema.Date, SchemaTransformation.dateFromString)
         ),
       }),
-      handler({ payload }) {
-        return { year: payload.at.getUTCFullYear() };
+      handler({ input }) {
+        return { year: input.at.getUTCFullYear() };
       },
     });
 
@@ -511,7 +509,7 @@ describe("defineAction with Effect schemas", () => {
     });
   });
 
-  it("validates the payload before the handler sees it", async () => {
+  it("validates the config before the handler sees it", async () => {
     const action = defineAction({
       id: "effect/validate-test",
       label: "Effect Validate",
@@ -519,8 +517,8 @@ describe("defineAction with Effect schemas", () => {
       input: Schema.Struct({
         text: Schema.String.check(Schema.isMinLength(1)),
       }),
-      handler({ payload }) {
-        return { echo: payload.text };
+      handler({ input }) {
+        return { echo: input.text };
       },
     });
 
@@ -660,7 +658,7 @@ describe("defineAction with Arktype schemas", () => {
     expect(fields.find((f) => f.path === "createdAt")?.type).toBe("timestamp");
   });
 
-  it("validates the payload with an Arktype schema", async () => {
+  it("validates the config with an Arktype schema", async () => {
     const action = defineAction({
       id: "arktype/validate-test",
       label: "Arktype Validate",
@@ -668,8 +666,8 @@ describe("defineAction with Arktype schemas", () => {
       input: type({
         text: "string > 0",
       }),
-      handler({ payload }) {
-        return { echo: payload.text };
+      handler({ input }) {
+        return { echo: input.text };
       },
     });
 

@@ -21,11 +21,11 @@ import {
 } from "#src/backend/extensions/steps/step-handler";
 import {
   failedStep,
-  type HandlerRunContext,
+  type HandlerBag,
   handlerErrorMessage,
   invalidConfigMessage,
   missingContextMessage,
-  toHandlerRunContext,
+  toHandlerBag,
 } from "#src/backend/extensions/steps/step-boundary";
 import type {
   StepEnvironment,
@@ -65,53 +65,54 @@ export class StepFailure extends Schema.TaggedErrorClass<StepFailure>()(
 ) {}
 
 /**
- * What the handler is told about the run it is part of.
+ * The one argument a step's handler is called with.
  *
  * `TCredentials` is the integration's own credential vocabulary, which a handler
- * names by annotating this parameter with `CredentialsOf<typeof fields>`. The
- * default is the open record, for a step belonging to no integration.
+ * names by annotating its bag `StepBag<TInput, CredentialsOf<typeof fields>>`.
+ * The default is the open record, for a step belonging to no integration.
  */
-export type StepRunContext<TCredentials = WorkflowCredentials> =
-  HandlerRunContext & {
-    /**
-     * The integration's credentials, fetched the first time the handler asks and
-     * not at all if it never does.
-     *
-     * A step that decides it has nothing to send -- a test run in log-only mode,
-     * say -- should not read an integration's secrets to reach that conclusion,
-     * so the fetch is an effect the handler yields rather than a value handed to
-     * it. Yielding it more than once fetches once.
-     *
-     * A store that refuses the read fails with `CredentialsUnavailable`. Let it
-     * through: `defineStep` turns it into a retry rather than a failed node, and
-     * catching it would spend the run on a condition that clears on its own.
-     */
-    readonly credentials: Effect.Effect<TCredentials, CredentialsUnavailable>;
-    /**
-     * The same read for a handler written as a plain async function.
-     *
-     * One fetch behind both: awaiting this after yielding `credentials` reaches
-     * the value already read. It rejects with the `CredentialsUnavailable` itself,
-     * which `defineStep` recognises and turns into the same retry, so a handler
-     * that does not catch it gets that behaviour for free.
-     */
-    readonly readCredentials: () => Promise<TCredentials>;
-  };
+export type StepBag<
+  TInput,
+  TCredentials = WorkflowCredentials,
+> = HandlerBag<TInput> & {
+  /**
+   * The integration's credentials, fetched the first time the handler asks and
+   * not at all if it never does.
+   *
+   * A step that decides it has nothing to send -- a test run in log-only mode,
+   * say -- should not read an integration's secrets to reach that conclusion,
+   * so the fetch is an effect the handler yields rather than a value handed to
+   * it. Yielding it more than once fetches once.
+   *
+   * A store that refuses the read fails with `CredentialsUnavailable`. Let it
+   * through: `defineStep` turns it into a retry rather than a failed node, and
+   * catching it would spend the run on a condition that clears on its own.
+   */
+  readonly credentials: Effect.Effect<TCredentials, CredentialsUnavailable>;
+  /**
+   * The same read for a handler written as a plain async function.
+   *
+   * One fetch behind both: awaiting this after yielding `credentials` reaches
+   * the value already read. It rejects with the `CredentialsUnavailable` itself,
+   * which `defineStep` recognises and turns into the same retry, so a handler
+   * that does not catch it gets that behaviour for free.
+   */
+  readonly readCredentials: () => Promise<TCredentials>;
+};
 
 /**
  * A handler, as `defineStep` takes it.
  *
- * The context is typed with the open credential record rather than with a type
+ * The bag is typed with the open credential record rather than with a type
  * parameter, and an author who wants their integration's own vocabulary annotates
- * the parameter with `StepRunContext<CredentialsOf<typeof fields>>`. Inferring
- * that vocabulary here instead would cost the inline handler its parameter types:
+ * the parameter with `StepBag<TInput, CredentialsOf<typeof fields>>`. Inferring
+ * that vocabulary here instead would cost the inline handler its parameter type:
  * a type parameter appearing only inside a context-sensitive argument cannot be
- * inferred before that argument is typed, so TypeScript falls back to `any` for
- * both parameters and the whole handler goes unchecked.
+ * inferred before that argument is typed, so TypeScript falls back to `any` and
+ * the whole handler goes unchecked.
  */
 export type StepHandler<TInput, TOutput> = (
-  input: TInput,
-  context: StepRunContext
+  bag: StepBag<TInput>
 ) => HandlerAnswer<TOutput>;
 
 /**
@@ -307,8 +308,8 @@ function buildStep<TInput, TOutput>(
       // for one.
       const answer = yield* Effect.try({
         try: () =>
-          definition.handler(input, {
-            ...toHandlerRunContext(context, integrationId),
+          definition.handler({
+            ...toHandlerBag(input, context, integrationId),
             credentials,
             readCredentials: () => runToPromise(credentials),
           }),
@@ -386,9 +387,9 @@ function buildStep<TInput, TOutput>(
  *       input: Schema.Struct({ to: Schema.String }),
  *       output: Schema.Struct({ id: Schema.String }),
  *       configFields: [{ key: "to", label: "To", type: "template-input" }],
- *       handler: Effect.fn(function* (input, context) {
- *         const credentials = yield* context.credentials;
- *         return yield* sendThing(credentials.MY_SERVICE_API_KEY, input.to);
+ *       handler: Effect.fn(function* (bag) {
+ *         const credentials = yield* bag.credentials;
+ *         return yield* sendThing(credentials.MY_SERVICE_API_KEY, bag.input.to);
  *       }),
  *     }),
  *   },

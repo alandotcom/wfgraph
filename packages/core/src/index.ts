@@ -14,8 +14,8 @@ export {
 // a Correlation Path may be.
 export type { StringPath as EventStringPath } from "@rova/shared/types/payload-path";
 export {
+  type ActionBag,
   type ActionDefinition,
-  type ActionRunContext,
   defineAction,
 } from "#src/backend/extensions/define-action";
 

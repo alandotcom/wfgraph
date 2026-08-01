@@ -44,11 +44,13 @@ function credentialsRead(
   };
 }
 
-function contextFor(
+function bagFor<TInput>(
+  input: TInput,
   runMode: "live" | "test",
   credentials: Effect.Effect<Record<string, string | undefined>>
 ) {
   return {
+    input,
     runMode,
     nodeId: "n1",
     nodeName: "SMS",
@@ -89,8 +91,7 @@ describe("sendSmsHandler", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = yield* sendSmsHandler(
-        { smsTo: "+15550001111", smsBody: "Hello" },
-        contextFor("test", credentials)
+        bagFor({ smsTo: "+15550001111", smsBody: "Hello" }, "test", credentials)
       );
 
       expect(result).toEqual({
@@ -109,13 +110,16 @@ describe("sendSmsHandler", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = yield* sendSmsHandler(
-        {
-          smsTo: "+15550001111",
-          smsBody: "Hello",
-          testBehavior: "send_to_test_phone",
-          testPhoneTo: "  +15557654321 ",
-        },
-        contextFor("test", credentials)
+        bagFor(
+          {
+            smsTo: "+15550001111",
+            smsBody: "Hello",
+            testBehavior: "send_to_test_phone",
+            testPhoneTo: "  +15557654321 ",
+          },
+          "test",
+          credentials
+        )
       );
 
       expect(reads.count).toBe(1);
@@ -153,19 +157,23 @@ describe("sendSmsHandler", () => {
         });
 
         const result = yield* sendSmsHandler(
-          {
-            smsTo: "+15550001111",
-            smsBody: "Hello",
-            smsMessagingServiceSid: "MG999",
-            smsStatusCallback: "https://example.com/status",
-            // The comma-splitting is a transform on the input schema, so what a
-            // handler receives is the list rather than the text a builder typed.
-            smsMediaUrls: [
-              "https://example.com/a.png",
-              "https://example.com/b.png",
-            ],
-          },
-          contextFor("live", credentials)
+          bagFor(
+            {
+              smsTo: "+15550001111",
+              smsBody: "Hello",
+              smsMessagingServiceSid: "MG999",
+              smsStatusCallback: "https://example.com/status",
+              // The comma-splitting is a transform on the input schema, so what
+              // a handler receives is the list rather than the text a builder
+              // typed.
+              smsMediaUrls: [
+                "https://example.com/a.png",
+                "https://example.com/b.png",
+              ],
+            },
+            "live",
+            credentials
+          )
         );
 
         expect(mocks.createMessage).toHaveBeenCalledWith(
@@ -197,13 +205,16 @@ describe("sendSmsHandler", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = yield* sendSmsHandler(
-        {
-          smsTo: "+15550001111",
-          smsBody: "Hello",
-          testBehavior: "send_to_test_phone",
-          testPhoneTo: "not-a-phone",
-        },
-        contextFor("test", credentials)
+        bagFor(
+          {
+            smsTo: "+15550001111",
+            smsBody: "Hello",
+            testBehavior: "send_to_test_phone",
+            testPhoneTo: "not-a-phone",
+          },
+          "test",
+          credentials
+        )
       );
 
       expect(result).toEqual({
@@ -226,8 +237,11 @@ describe("sendSmsHandler", () => {
 
       const error = yield* failure(
         sendSmsHandler(
-          { smsTo: "+15550001111", smsBody: "Hello" },
-          contextFor("live", credentials)
+          bagFor(
+            { smsTo: "+15550001111", smsBody: "Hello" },
+            "live",
+            credentials
+          )
         )
       );
 
@@ -241,8 +255,11 @@ describe("sendSmsHandler", () => {
 
       const error = yield* failure(
         sendSmsHandler(
-          { smsTo: "+15550001111", smsBody: "Hello" },
-          contextFor("live", credentials)
+          bagFor(
+            { smsTo: "+15550001111", smsBody: "Hello" },
+            "live",
+            credentials
+          )
         )
       );
 
@@ -262,8 +279,11 @@ describe("sendSmsHandler", () => {
 
       const error = yield* failure(
         sendSmsHandler(
-          { smsTo: "+15550001111", smsBody: "Hello" },
-          contextFor("live", credentials)
+          bagFor(
+            { smsTo: "+15550001111", smsBody: "Hello" },
+            "live",
+            credentials
+          )
         )
       );
 

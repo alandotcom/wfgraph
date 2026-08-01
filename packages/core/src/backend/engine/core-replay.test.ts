@@ -351,9 +351,9 @@ describe("a Date-bearing step output across a replay", () => {
             required: true,
           },
         ],
-        handler: Effect.fn(function* (config) {
-          echoed.push(config.seen);
-          return yield* Effect.succeed({ seen: config.seen });
+        handler: Effect.fn(function* (bag) {
+          echoed.push(bag.input.seen);
+          return yield* Effect.succeed({ seen: bag.input.seen });
         }),
       }),
     },

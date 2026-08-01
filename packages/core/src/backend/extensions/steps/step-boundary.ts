@@ -3,9 +3,8 @@
  *
  * `defineAction` and `defineStep` stay two functions, because an Internal
  * Extension and an External one are two concepts. What sits between the engine's
- * input record and the handler is one thing, and it is here: the run context a
- * handler is told about, and the sentences the run log shows where the boundary
- * refuses.
+ * input record and the handler is one thing, and it is here: the bag a handler
+ * is handed, and the sentences the run log shows where the boundary refuses.
  *
  * `subject` is the phrase each sentence names the offender by, `Step
  * "twilio/send-sms"` or `Action "appointments/cancel"`, the same phrase
@@ -17,13 +16,18 @@ import { getErrorMessage } from "@rova/shared/utils";
 import type { StepResult } from "@rova/shared/actions/step-result";
 
 /**
- * What every handler is told about the run it is part of.
+ * The one argument every handler is called with: its config, and the run it is
+ * part of.
  *
+ * One bag rather than two parameters, which is the shape Inngest uses and the
+ * shape a later value can be added to without moving anything an author wrote.
  * `defineStep` adds the credential reads to this. `defineAction` publishes it as
  * it stands, since a host's action belongs to no integration and has nothing to
  * read.
  */
-export type HandlerRunContext = {
+export type HandlerBag<TInput> = {
+  /** The node's resolved config, decoded through the schema the author declared. */
+  readonly input: TInput;
   /** `"test"` when the editor is running the workflow, `"live"` otherwise. */
   readonly runMode: "live" | "test";
   readonly executionId?: string;
@@ -35,17 +39,20 @@ export type HandlerRunContext = {
 };
 
 /**
- * The run context a handler reads, out of the one the engine sent.
+ * The bag a handler reads, out of the decoded config and the context the engine
+ * sent.
  *
  * `runMode` is the only field carrying a default: the engine may leave it empty,
  * and a handler deciding whether to touch a real external system has to be told
  * something.
  */
-export function toHandlerRunContext(
+export function toHandlerBag<TInput>(
+  input: TInput,
   context: StepContext,
   integrationId: string | undefined
-): HandlerRunContext {
+): HandlerBag<TInput> {
   return {
+    input,
     runMode: context.runMode ?? "live",
     executionId: context.executionId,
     nodeId: context.nodeId,

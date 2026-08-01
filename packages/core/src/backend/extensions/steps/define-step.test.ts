@@ -48,10 +48,10 @@ describe("defineStep", () => {
     input,
     output,
     configFields: [{ key: "to", label: "To", type: "template-input" }],
-    handler: Effect.fn(function* (config, context) {
-      const credentials = yield* context.credentials;
+    handler: Effect.fn(function* (bag) {
+      const credentials = yield* bag.credentials;
       // A second read to show the fetch is memoised, not repeated.
-      yield* context.credentials;
+      yield* bag.credentials;
 
       if (!credentials.API_KEY) {
         return yield* new StepFailure({
@@ -59,7 +59,7 @@ describe("defineStep", () => {
         });
       }
 
-      return { id: `${credentials.API_KEY}-1`, sentTo: config.to };
+      return { id: `${credentials.API_KEY}-1`, sentTo: bag.input.to };
     }),
   });
 
@@ -119,8 +119,8 @@ describe("defineStep", () => {
       input,
       output,
       configFields: [],
-      handler: Effect.fn(function* (config) {
-        return yield* Effect.succeed({ id: "fixed", sentTo: config.to });
+      handler: Effect.fn(function* (bag) {
+        return yield* Effect.succeed({ id: "fixed", sentTo: bag.input.to });
       }),
     });
 
@@ -181,9 +181,9 @@ describe("defineStep", () => {
       input,
       output,
       configFields: [],
-      handler: Effect.fn(function* (config, context) {
-        modes.push(context.runMode);
-        return yield* Effect.succeed({ id: "x", sentTo: config.to });
+      handler: Effect.fn(function* (bag) {
+        modes.push(bag.runMode);
+        return yield* Effect.succeed({ id: "x", sentTo: bag.input.to });
       }),
     }).implement(actionId)(runner);
 
@@ -259,11 +259,11 @@ describe("defineStep and a credential store that refuses the read", () => {
     input,
     output,
     configFields: [],
-    handler: Effect.fn(function* (config, context) {
-      const credentials = yield* context.credentials;
+    handler: Effect.fn(function* (bag) {
+      const credentials = yield* bag.credentials;
       return yield* Effect.succeed({
         id: `${credentials.API_KEY}`,
-        sentTo: config.to,
+        sentTo: bag.input.to,
       });
     }),
   });
@@ -287,8 +287,8 @@ describe("defineStep and a credential store that refuses the read", () => {
       input,
       output,
       configFields: [],
-      handler: Effect.fn(function* (config) {
-        return yield* Effect.succeed({ id: "fixed", sentTo: config.to });
+      handler: Effect.fn(function* (bag) {
+        return yield* Effect.succeed({ id: "fixed", sentTo: bag.input.to });
       }),
     });
 
@@ -335,9 +335,9 @@ describe("defineStep and a credential store that refuses the read", () => {
       input,
       output,
       configFields: [],
-      handler: async (config, context) => {
-        const credentials = await context.readCredentials();
-        return { id: `${credentials.API_KEY}`, sentTo: config.to };
+      handler: async (bag) => {
+        const credentials = await bag.readCredentials();
+        return { id: `${credentials.API_KEY}`, sentTo: bag.input.to };
       },
     });
 
@@ -385,9 +385,9 @@ describe("defineStep and the JSON codec", () => {
       input: Schema.Struct({ urls: commaSeparated }),
       output: Schema.Struct({ count: Schema.Finite }),
       configFields: [{ key: "urls", label: "URLs", type: "text" }],
-      handler: Effect.fn(function* (config) {
-        received = config.urls;
-        return yield* Effect.succeed({ count: config.urls.length });
+      handler: Effect.fn(function* (bag) {
+        received = bag.input.urls;
+        return yield* Effect.succeed({ count: bag.input.urls.length });
       }),
     });
 
@@ -474,8 +474,8 @@ describe("defineStep and an optional config field", () => {
       input: optionalInput,
       output: Schema.Struct({ note: Schema.String }),
       configFields: [],
-      handler: Effect.fn(function* (decoded) {
-        return yield* Effect.succeed({ note: decoded.note ?? "blank" });
+      handler: Effect.fn(function* (bag) {
+        return yield* Effect.succeed({ note: bag.input.note ?? "blank" });
       }),
     }).implement("demo/optional")(runner)({ ...config, _context: CONTEXT });
   }
@@ -688,7 +688,7 @@ describe("defineStep and a schema from another library", () => {
       note: z.string().optional(),
     }),
     output: z.object({ id: z.string().describe("Id") }),
-    handler: (config) => Effect.succeed({ id: `sent-${config.to}` }),
+    handler: (bag) => Effect.succeed({ id: `sent-${bag.input.to}` }),
   });
 
   const run = step.implement("demo/foreign")(runner);
@@ -739,8 +739,8 @@ describe("defineStep and an input schema that declares a rest", () => {
       ]),
       output: Schema.Struct({ id: Schema.String }),
       configFields: [],
-      handler: Effect.fn(function* (config) {
-        received = config;
+      handler: Effect.fn(function* (bag) {
+        received = bag.input;
         return yield* Effect.succeed({ id: "1" });
       }),
     });
@@ -768,9 +768,9 @@ describe("defineStep and a handler that is not an Effect", () => {
     ...METADATA,
     input: z.object({ to: z.string().describe("Recipient") }),
     output: z.object({ id: z.string().describe("Id") }),
-    handler: async (config, context) => {
-      const credentials = await context.readCredentials();
-      return { id: `${credentials.API_KEY}-${config.to}` };
+    handler: async (bag) => {
+      const credentials = await bag.readCredentials();
+      return { id: `${credentials.API_KEY}-${bag.input.to}` };
     },
   });
 
@@ -787,10 +787,10 @@ describe("defineStep and a handler that is not an Effect", () => {
       ...METADATA,
       input: z.object({ to: z.string() }),
       output: z.object({ id: z.string().describe("Id") }),
-      handler: async (config, context) => {
-        await context.readCredentials();
-        const credentials = await context.readCredentials();
-        return { id: `${credentials.API_KEY}-${config.to}` };
+      handler: async (bag) => {
+        await bag.readCredentials();
+        const credentials = await bag.readCredentials();
+        return { id: `${credentials.API_KEY}-${bag.input.to}` };
       },
     });
 
@@ -831,7 +831,7 @@ describe("defineStep and a handler that is not an Effect", () => {
       ...METADATA,
       input: z.object({ to: z.string() }),
       output: z.object({ id: z.string().describe("Id") }),
-      handler: (config) => ({ id: config.to.toUpperCase() }),
+      handler: (bag) => ({ id: bag.input.to.toUpperCase() }),
     });
 
     expect(

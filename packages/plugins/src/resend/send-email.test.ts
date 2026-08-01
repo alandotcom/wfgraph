@@ -42,12 +42,14 @@ function credentialsRead(
   };
 }
 
-function contextFor(
+function bagFor<TInput>(
+  input: TInput,
   runMode: "live" | "test",
   credentials: Effect.Effect<Record<string, string | undefined>>,
   executionId?: string
 ) {
   return {
+    input,
     runMode,
     executionId,
     nodeId: "n1",
@@ -87,12 +89,15 @@ describe("sendEmailHandler", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = yield* sendEmailHandler(
-        {
-          emailTo: "user@example.com",
-          emailSubject: "Subject",
-          emailBody: "Body",
-        },
-        contextFor("test", credentials)
+        bagFor(
+          {
+            emailTo: "user@example.com",
+            emailSubject: "Subject",
+            emailBody: "Body",
+          },
+          "test",
+          credentials
+        )
       );
 
       expect(result).toEqual({
@@ -109,16 +114,19 @@ describe("sendEmailHandler", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = yield* sendEmailHandler(
-        {
-          emailTo: "real-user@example.com",
-          emailCc: "cc@example.com",
-          emailBcc: "bcc@example.com",
-          emailSubject: "Subject",
-          emailBody: "Body",
-          testBehavior: "send_to_test_email",
-          testEmailTo: "  qa@example.com  ",
-        },
-        contextFor("test", credentials)
+        bagFor(
+          {
+            emailTo: "real-user@example.com",
+            emailCc: "cc@example.com",
+            emailBcc: "bcc@example.com",
+            emailSubject: "Subject",
+            emailBody: "Body",
+            testBehavior: "send_to_test_email",
+            testEmailTo: "  qa@example.com  ",
+          },
+          "test",
+          credentials
+        )
       );
 
       expect(reads.count).toBe(1);
@@ -140,18 +148,21 @@ describe("sendEmailHandler", () => {
       const { credentials } = credentialsRead();
 
       yield* sendEmailHandler(
-        {
-          emailTo: "user@example.com",
-          emailSubject: "Subject",
-          emailBody: "Body",
-          emailCc: "cc@example.com",
-          emailBcc: "bcc@example.com",
-          emailReplyTo: "reply@example.com",
-          emailScheduledAt: "2026-08-01T00:00:00Z",
-          emailTopicId: "topic_1",
-          emailTags: JSON.stringify([{ name: "campaign", value: "spring" }]),
-        },
-        contextFor("live", credentials)
+        bagFor(
+          {
+            emailTo: "user@example.com",
+            emailSubject: "Subject",
+            emailBody: "Body",
+            emailCc: "cc@example.com",
+            emailBcc: "bcc@example.com",
+            emailReplyTo: "reply@example.com",
+            emailScheduledAt: "2026-08-01T00:00:00Z",
+            emailTopicId: "topic_1",
+            emailTags: JSON.stringify([{ name: "campaign", value: "spring" }]),
+          },
+          "live",
+          credentials
+        )
       );
 
       const [, payload] = sentCall();
@@ -178,12 +189,16 @@ describe("sendEmailHandler", () => {
       const { credentials } = credentialsRead();
 
       yield* sendEmailHandler(
-        {
-          emailTo: "user@example.com",
-          emailSubject: "Subject",
-          emailBody: "Body",
-        },
-        contextFor("live", credentials, "exec_42")
+        bagFor(
+          {
+            emailTo: "user@example.com",
+            emailSubject: "Subject",
+            emailBody: "Body",
+          },
+          "live",
+          credentials,
+          "exec_42"
+        )
       );
 
       const [, , idempotencyKey] = sentCall();
@@ -196,14 +211,17 @@ describe("sendEmailHandler", () => {
       const { credentials } = credentialsRead();
 
       yield* sendEmailHandler(
-        {
-          emailTo: "user@example.com",
-          emailSubject: "Subject",
-          emailContentMode: "template",
-          emailTemplateId: "tmpl_1",
-          emailTemplateVariables: JSON.stringify({ name: "Ada" }),
-        },
-        contextFor("live", credentials)
+        bagFor(
+          {
+            emailTo: "user@example.com",
+            emailSubject: "Subject",
+            emailContentMode: "template",
+            emailTemplateId: "tmpl_1",
+            emailTemplateVariables: JSON.stringify({ name: "Ada" }),
+          },
+          "live",
+          credentials
+        )
       );
 
       const [, payload] = sentCall();
@@ -223,14 +241,17 @@ describe("sendEmailHandler", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = yield* sendEmailHandler(
-        {
-          emailTo: "real-user@example.com",
-          emailSubject: "Subject",
-          emailBody: "Body",
-          testBehavior: "send_to_test_email",
-          testEmailTo: "not-an-email",
-        },
-        contextFor("test", credentials)
+        bagFor(
+          {
+            emailTo: "real-user@example.com",
+            emailSubject: "Subject",
+            emailBody: "Body",
+            testBehavior: "send_to_test_email",
+            testEmailTo: "not-an-email",
+          },
+          "test",
+          credentials
+        )
       );
 
       expect(result).toEqual({
@@ -248,12 +269,15 @@ describe("sendEmailHandler", () => {
 
       const error = yield* failure(
         sendEmailHandler(
-          {
-            emailTo: "user@example.com",
-            emailSubject: "Subject",
-            emailContentMode: "html",
-          },
-          contextFor("live", credentials)
+          bagFor(
+            {
+              emailTo: "user@example.com",
+              emailSubject: "Subject",
+              emailContentMode: "html",
+            },
+            "live",
+            credentials
+          )
         )
       );
 
@@ -268,12 +292,15 @@ describe("sendEmailHandler", () => {
 
       const error = yield* failure(
         sendEmailHandler(
-          {
-            emailTo: "user@example.com",
-            emailSubject: "Subject",
-            emailBody: "Body",
-          },
-          contextFor("live", credentials)
+          bagFor(
+            {
+              emailTo: "user@example.com",
+              emailSubject: "Subject",
+              emailBody: "Body",
+            },
+            "live",
+            credentials
+          )
         )
       );
 
@@ -293,12 +320,15 @@ describe("sendEmailHandler", () => {
 
       const error = yield* failure(
         sendEmailHandler(
-          {
-            emailTo: "user@example.com",
-            emailSubject: "Subject",
-            emailBody: "Body",
-          },
-          contextFor("live", credentials)
+          bagFor(
+            {
+              emailTo: "user@example.com",
+              emailSubject: "Subject",
+              emailBody: "Body",
+            },
+            "live",
+            credentials
+          )
         )
       );
 

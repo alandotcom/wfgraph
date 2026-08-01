@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  type ActionRunContext,
+  type ActionBag,
   defineAction,
 } from "#src/backend/extensions/define-action";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
@@ -27,10 +27,7 @@ const NOTIFY_ACTION_ID = "notify/send";
 
 /** What the host action under test answers with, per case. */
 const handlerFn = vi.fn<
-  (input: {
-    payload: Record<string, unknown>;
-    context: ActionRunContext;
-  }) => Record<string, unknown>
+  (bag: ActionBag<Record<string, unknown>>) => Record<string, unknown>
 >(() => ({ donorId: "d_123", name: "Test Donor" }));
 
 /** The resolved config the consumer action was handed, for the template cases. */
@@ -69,8 +66,8 @@ const notify = defineIntegration({
           literal: true,
         },
       ],
-      handler: Effect.fn(function* (input) {
-        capturedStepInput = { ...input };
+      handler: Effect.fn(function* (bag) {
+        capturedStepInput = { ...bag.input };
         return yield* Effect.succeed({ ok: true });
       }),
     }),
@@ -154,8 +151,8 @@ const actions = createWorkflowActions(
         // Every case hands this action a config of its own, so the shape stays
         // open: a declared field list would decode the keys under test away.
         input: Schema.StructWithRest(Schema.Struct({}), unknownRest),
-        handler: ({ payload }) => {
-          capturedPayload = payload;
+        handler: ({ input }) => {
+          capturedPayload = input;
           return {};
         },
       }),
@@ -210,11 +207,9 @@ describe("host action execution", () => {
     );
 
     expect(handlerFn.mock.calls[0]?.[0]).toMatchObject({
-      context: {
-        executionId: "exec_123",
-        nodeId: "action_1",
-        nodeName: "Look Up Donor",
-      },
+      executionId: "exec_123",
+      nodeId: "action_1",
+      nodeName: "Look Up Donor",
     });
   });
 

@@ -36,9 +36,9 @@ const step = defineStep({
   configFields: [
     { key: "url", label: "URL", type: "template-input", required: true },
   ],
-  handler: Effect.fn(function* (config) {
+  handler: Effect.fn(function* (bag) {
     const client = yield* HttpClient.HttpClient;
-    const response = yield* client.get(config.url).pipe(Effect.orDie);
+    const response = yield* client.get(bag.input.url).pipe(Effect.orDie);
     const body = yield* response.json.pipe(Effect.orDie);
 
     return { id: String((body as { id: unknown }).id) };

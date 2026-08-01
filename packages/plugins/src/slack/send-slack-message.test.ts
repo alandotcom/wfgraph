@@ -39,11 +39,13 @@ function credentialsRead(
   };
 }
 
-function contextFor(
+function bagFor<TInput>(
+  input: TInput,
   runMode: "live" | "test",
   credentials: Effect.Effect<Record<string, string | undefined>>
 ) {
   return {
+    input,
     runMode,
     nodeId: "n1",
     nodeName: "Slack",
@@ -75,8 +77,11 @@ describe("sendSlackMessageHandler", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = yield* sendSlackMessageHandler(
-        { slackChannel: "#alerts", slackMessage: "Hello world" },
-        contextFor("test", credentials)
+        bagFor(
+          { slackChannel: "#alerts", slackMessage: "Hello world" },
+          "test",
+          credentials
+        )
       );
 
       expect(result).toEqual({
@@ -96,12 +101,15 @@ describe("sendSlackMessageHandler", () => {
         const { reads, credentials } = credentialsRead();
 
         const result = yield* sendSlackMessageHandler(
-          {
-            slackChannel: "#alerts",
-            slackMessage: "Hello world",
-            testBehavior: "send_message",
-          },
-          contextFor("test", credentials)
+          bagFor(
+            {
+              slackChannel: "#alerts",
+              slackMessage: "Hello world",
+              testBehavior: "send_message",
+            },
+            "test",
+            credentials
+          )
         );
 
         expect(reads.count).toBe(1);
@@ -122,12 +130,15 @@ describe("sendSlackMessageHandler", () => {
         const { credentials } = credentialsRead();
 
         yield* sendSlackMessageHandler(
-          {
-            slackChannel: "#alerts",
-            slackMessage: "Hello world",
-            testBehavior: "log_only",
-          },
-          contextFor("live", credentials)
+          bagFor(
+            {
+              slackChannel: "#alerts",
+              slackMessage: "Hello world",
+              testBehavior: "log_only",
+            },
+            "live",
+            credentials
+          )
         );
 
         expect(mocks.callSlack).toHaveBeenCalledTimes(1);
@@ -143,8 +154,11 @@ describe("sendSlackMessageHandler", () => {
 
       const error = yield* failure(
         sendSlackMessageHandler(
-          { slackChannel: "#nope", slackMessage: "Hello world" },
-          contextFor("live", credentials)
+          bagFor(
+            { slackChannel: "#nope", slackMessage: "Hello world" },
+            "live",
+            credentials
+          )
         )
       );
 
@@ -160,8 +174,11 @@ describe("sendSlackMessageHandler", () => {
 
       const error = yield* failure(
         sendSlackMessageHandler(
-          { slackChannel: "#alerts", slackMessage: "Hello world" },
-          contextFor("live", credentials)
+          bagFor(
+            { slackChannel: "#alerts", slackMessage: "Hello world" },
+            "live",
+            credentials
+          )
         )
       );
 

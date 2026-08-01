@@ -144,7 +144,8 @@ in the file then throws at collection.
 with no explicit provider computes its `defaultValue` and stores it on the reference object
 itself, for the life of the process. `FetchHttpClient.Fetch` defaults to `globalThis.fetch`,
 so a suite stubbing the global per test would have every case after the first running
-against the first case's stub. `packages/plugins/src/vendor-http.ts` provides that reference
+against the first case's stub. `ExternalTransport`
+(`packages/core/src/backend/extensions/steps/external-transport.ts`) provides that reference
 explicitly, with a function reading the global per call, which is what makes fetch stubbing
 work at all.
 

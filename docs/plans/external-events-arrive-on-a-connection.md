@@ -14,7 +14,7 @@ run.
 **Many connections already work in storage.** `integrations` (`packages/core/src/backend/lib/db/schema.ts:64`)
 gives each row an `id` and a `name`, and it declares no unique index on `type`. An action
 node stores an `integrationId` and the handler reads it from its run context
-(`packages/core/src/backend/extensions/define-action.ts`, `ActionRunContext.integrationId`).
+(`packages/core/src/backend/extensions/define-action.ts`, `ActionBag.integrationId`).
 
 **Events reach Rova through Inngest only.** An Event is a listener function built from
 its definition (`packages/core/src/backend/lib/inngest/event-listener-function.ts`), and

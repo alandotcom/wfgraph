@@ -15,8 +15,8 @@ import {
   defineIntegration,
   defineStep,
   type JsonObject,
+  type StepBag,
   StepFailure,
-  type StepRunContext,
 } from "@rova/core/plugin";
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
@@ -260,25 +260,26 @@ function buildEmailPayload(
 }
 
 /**
- * Named rather than written inline, so a test can run it with a context it
+ * Named rather than written inline, so a test can run it with a bag it
  * supplies: what this step decides is whether and where to send, and every one
  * of those decisions is here.
  */
 export const sendEmailHandler = Effect.fn(function* (
-  input: typeof sendEmailInput.Type,
-  context: StepRunContext<ResendCredentials>
+  bag: StepBag<typeof sendEmailInput.Type, ResendCredentials>
 ) {
+  const { input } = bag;
+
   // The run's own id doubles as the idempotency key: a step Inngest re-runs
   // sends the same key, and Resend replays its first answer rather than sending
   // a second email.
-  const idempotencyKey = context.executionId;
+  const idempotencyKey = bag.executionId;
   const syntheticIdSuffix = idempotencyKey ?? "no_execution";
   const testBehavior = resolveResendTestBehavior(input.testBehavior);
 
   // A test run either sends nothing at all or sends to one address the user
   // nominated. Both answers are a success carrying the reason, so the run shows
   // what happened rather than an error the user has to interpret.
-  if (context.runMode === "test" && testBehavior === "log_only") {
+  if (bag.runMode === "test" && testBehavior === "log_only") {
     return {
       id: `resend:test-log-only:${syntheticIdSuffix}`,
       reasonCode: "test_mode_log_only",
@@ -287,7 +288,7 @@ export const sendEmailHandler = Effect.fn(function* (
 
   const testRecipient = input.testEmailTo?.trim() ?? "";
   const routeToTestRecipient =
-    context.runMode === "test" && testBehavior === "send_to_test_email";
+    bag.runMode === "test" && testBehavior === "send_to_test_email";
 
   if (routeToTestRecipient && testRecipient.length === 0) {
     return {
@@ -303,7 +304,7 @@ export const sendEmailHandler = Effect.fn(function* (
     };
   }
 
-  const credentials = yield* context.credentials;
+  const credentials = yield* bag.credentials;
   const apiKey = credentials.RESEND_API_KEY;
 
   if (!apiKey) {

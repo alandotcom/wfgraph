@@ -22,11 +22,11 @@ import {
 } from "#src/backend/extensions/steps/step-handler";
 import {
   failedStep,
-  type HandlerRunContext,
+  type HandlerBag,
   handlerErrorMessage,
   invalidConfigMessage,
   missingContextMessage,
-  toHandlerRunContext,
+  toHandlerBag,
 } from "#src/backend/extensions/steps/step-boundary";
 import { encodeThroughOutputSchema } from "#src/backend/extensions/steps/output-encoding";
 import type { StepFactory } from "#src/backend/extensions/steps/step-runner";
@@ -44,12 +44,12 @@ import {
 } from "@rova/shared/graph/output-fields";
 
 /**
- * What the handler is told about the run it is part of.
+ * The one argument an action's handler is called with.
  *
- * The step half calls this `StepRunContext` and adds the credentials an action
- * has no integration to read. Both are the one context in `step-boundary.ts`.
+ * The step half calls this `StepBag` and adds the credentials an action has no
+ * integration to read. Both are the one bag in `step-boundary.ts`.
  */
-export type ActionRunContext = HandlerRunContext;
+export type ActionBag<TInput> = HandlerBag<TInput>;
 
 /** What a host writes to describe an action's identity and presentation. */
 export type ActionIdentity = {
@@ -117,18 +117,15 @@ export type ActionDefinition = ActionIdentity & {
 /**
  * The handler, in the two forms an author writes it.
  *
- * It answers the payload rather than an envelope: `defineAction` builds the
+ * It answers its output rather than an envelope: `defineAction` builds the
  * `{ success, data }` wrapper the engine reads, the same way `defineStep` does.
  * To fail the node, throw -- the message becomes the run log's sentence.
  */
-type ActionHandler<TPayload, TOutput> = (input: {
-  /** Config values validated against `input`. */
-  payload: TPayload;
-  /** Which node, which run, and which connection this is running as. */
-  context: ActionRunContext;
-}) => TOutput | Promise<TOutput>;
+type ActionHandler<TInput, TOutput> = (
+  bag: ActionBag<TInput>
+) => TOutput | Promise<TOutput>;
 
-export type DefineActionInput<TPayload extends Record<string, unknown>> =
+export type DefineActionInput<TInput extends Record<string, unknown>> =
   ActionIdentity & {
     /**
      * The schema that validates the resolved config values before they reach
@@ -139,26 +136,26 @@ export type DefineActionInput<TPayload extends Record<string, unknown>> =
      * representation. A field's human-readable label comes from its
      * `description`: an annotation in Effect Schema, `.describe()` in Zod.
      */
-    input: InputSchema<TPayload>;
+    input: InputSchema<TInput>;
 
     /**
      * Where the work is. An action with no `output` is addressable by node and
      * not by field, so what this answers is passed on untyped and unencoded.
      */
-    handler: ActionHandler<TPayload, unknown>;
+    handler: ActionHandler<TInput, unknown>;
   };
 
 export type DefineActionInputWithOutput<
-  TPayload extends Record<string, unknown>,
+  TInput extends Record<string, unknown>,
   TOutput extends Record<string, unknown>,
 > = ActionIdentity & {
-  input: InputSchema<TPayload>;
+  input: InputSchema<TInput>;
   /**
    * The schema describing what the handler answers with. Auto-derives
    * `outputFields` via `~standard.jsonSchema.output()` and types the return.
    */
   output: OutputSchema<TOutput>;
-  handler: ActionHandler<TPayload, TOutput>;
+  handler: ActionHandler<TInput, TOutput>;
 };
 
 function normalizeActionIdentity(
@@ -201,11 +198,11 @@ function normalizeActionIdentity(
  * `output-fields.ts` makes for the field list -- what a schema cannot say about
  * itself is not said.
  */
-function buildAction<TPayload extends Record<string, unknown>>(
+function buildAction<TInput extends Record<string, unknown>>(
   actionId: string,
-  input: InputSchema<TPayload>,
+  input: InputSchema<TInput>,
   outputSchema: OutputSchema<Record<string, unknown>> | undefined,
-  handler: ActionHandler<TPayload, unknown>
+  handler: ActionHandler<TInput, unknown>
 ): StepFactory {
   const subject = `Action "${actionId}"`;
   const readConfig = buildConfigReader(input);
@@ -227,15 +224,15 @@ function buildAction<TPayload extends Record<string, unknown>>(
     }
 
     try {
-      const data = await handler({
-        payload: parsed.success,
-        // The connection reaches the handler through its context rather than its
-        // payload, which is why the read happens here and not in the config.
-        context: toHandlerRunContext(
+      // The connection reaches the handler beside its config rather than inside
+      // it, which is why the read happens here and not in the config.
+      const data = await handler(
+        toHandlerBag(
+          parsed.success,
           context,
           readIntegrationId(rawInput.integrationId)
-        ),
-      });
+        )
+      );
 
       if (!encodeOutput) {
         return { success: true, data };
@@ -259,7 +256,7 @@ function buildAction<TPayload extends Record<string, unknown>>(
  *
  * Actions are the executable steps in a workflow. When a workflow reaches an
  * action node, the engine resolves template variables in the config, validates
- * the result against `input`, and calls `handler` with the typed payload. What
+ * the result against `input`, and calls `handler` with the typed config. What
  * the handler answers becomes the node's output; throwing fails the node with
  * the thrown message.
  *
@@ -285,23 +282,23 @@ function buildAction<TPayload extends Record<string, unknown>>(
  *     appointmentId: Schema.String,
  *     status: Schema.String,
  *   }),
- *   handler({ payload }) {
- *     return { appointmentId: payload.appointmentId, status: "cancelled" };
+ *   handler({ input }) {
+ *     return { appointmentId: input.appointmentId, status: "cancelled" };
  *   },
  * });
  * ```
  */
 export function defineAction<
-  TPayload extends Record<string, unknown>,
+  TInput extends Record<string, unknown>,
   TOutput extends Record<string, unknown>,
->(input: DefineActionInputWithOutput<TPayload, TOutput>): ActionDefinition;
-export function defineAction<TPayload extends Record<string, unknown>>(
-  input: DefineActionInput<TPayload>
+>(input: DefineActionInputWithOutput<TInput, TOutput>): ActionDefinition;
+export function defineAction<TInput extends Record<string, unknown>>(
+  input: DefineActionInput<TInput>
 ): ActionDefinition;
-export function defineAction<TPayload extends Record<string, unknown>>(
+export function defineAction<TInput extends Record<string, unknown>>(
   definition:
-    | DefineActionInput<TPayload>
-    | DefineActionInputWithOutput<TPayload, Record<string, unknown>>
+    | DefineActionInput<TInput>
+    | DefineActionInputWithOutput<TInput, Record<string, unknown>>
 ): ActionDefinition {
   // The one place a schema is bridged. Effect's bridge assigns onto the schema
   // rather than wrapping it, so `definition.input` below is the same object,

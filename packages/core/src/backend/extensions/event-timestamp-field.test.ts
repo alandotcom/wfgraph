@@ -62,7 +62,7 @@ const echoAction = defineAction({
   output: Schema.Struct({
     startsAt: Schema.String.annotate({ description: "The value handed in" }),
   }),
-  handler: ({ payload: handed }) => ({ startsAt: handed.startsAt }),
+  handler: ({ input: handed }) => ({ startsAt: handed.startsAt }),
 });
 
 // The engine reaches an action's step through the dispatch port the app builds,

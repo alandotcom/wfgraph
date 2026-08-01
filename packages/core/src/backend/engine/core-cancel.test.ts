@@ -48,9 +48,9 @@ const actions = createWorkflowActions(
         // Each case hands this action a config of its own, so the shape stays
         // open: a declared field list would decode the keys under test away.
         input: Schema.StructWithRest(Schema.Struct({}), unknownRest),
-        handler: ({ payload }) => {
-          const label = String(payload.label ?? "");
-          recorded[label] = payload;
+        handler: ({ input }) => {
+          const label = String(input.label ?? "");
+          recorded[label] = input;
           return { seen: label };
         },
       }),

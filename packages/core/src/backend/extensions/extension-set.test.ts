@@ -38,7 +38,7 @@ function anAction(id: string, category = "Appointments") {
     description: `The ${id} action`,
     category,
     input: Schema.Struct({ appointmentId: Schema.String }),
-    handler: ({ payload }) => ({ echoed: payload }),
+    handler: ({ input }) => ({ echoed: input }),
   });
 }
 

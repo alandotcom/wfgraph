@@ -14,8 +14,8 @@ import {
   type CredentialsOf,
   defineIntegration,
   defineStep,
+  type StepBag,
   StepFailure,
-  type StepRunContext,
 } from "@rova/core/plugin";
 import { omitBy } from "es-toolkit/object";
 import { isNil } from "es-toolkit/predicate";
@@ -119,13 +119,13 @@ const deleteUserOutput = Schema.Struct({
 
 /**
  * Each handler is named rather than written inline, so a test can run it with a
- * context it supplies.
+ * bag it supplies.
  */
 export const clerkGetUserHandler = Effect.fn(function* (
-  input: typeof getUserInput.Type,
-  context: StepRunContext<ClerkCredentials>
+  bag: StepBag<typeof getUserInput.Type, ClerkCredentials>
 ) {
-  const credentials = yield* context.credentials;
+  const { input } = bag;
+  const credentials = yield* bag.credentials;
   const secretKey = credentials.CLERK_SECRET_KEY;
 
   if (!secretKey) {
@@ -152,10 +152,10 @@ export const clerkGetUserHandler = Effect.fn(function* (
 });
 
 export const clerkCreateUserHandler = Effect.fn(function* (
-  input: typeof createUserInput.Type,
-  context: StepRunContext<ClerkCredentials>
+  bag: StepBag<typeof createUserInput.Type, ClerkCredentials>
 ) {
-  const credentials = yield* context.credentials;
+  const { input } = bag;
+  const credentials = yield* bag.credentials;
   const secretKey = credentials.CLERK_SECRET_KEY;
 
   if (!secretKey) {
@@ -205,10 +205,10 @@ export const clerkCreateUserHandler = Effect.fn(function* (
 });
 
 export const clerkUpdateUserHandler = Effect.fn(function* (
-  input: typeof updateUserInput.Type,
-  context: StepRunContext<ClerkCredentials>
+  bag: StepBag<typeof updateUserInput.Type, ClerkCredentials>
 ) {
-  const credentials = yield* context.credentials;
+  const { input } = bag;
+  const credentials = yield* bag.credentials;
   const secretKey = credentials.CLERK_SECRET_KEY;
 
   if (!secretKey) {
@@ -256,10 +256,10 @@ export const clerkUpdateUserHandler = Effect.fn(function* (
 });
 
 export const clerkDeleteUserHandler = Effect.fn(function* (
-  input: typeof deleteUserInput.Type,
-  context: StepRunContext<ClerkCredentials>
+  bag: StepBag<typeof deleteUserInput.Type, ClerkCredentials>
 ) {
-  const credentials = yield* context.credentials;
+  const { input } = bag;
+  const credentials = yield* bag.credentials;
   const secretKey = credentials.CLERK_SECRET_KEY;
 
   if (!secretKey) {

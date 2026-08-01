@@ -111,10 +111,13 @@ function credentialsRead(
   return Effect.sync(() => values);
 }
 
-function contextFor(
+/** The one argument a handler takes, around the input the case is about. */
+function bagFor<TInput>(
+  input: TInput,
   credentials: Effect.Effect<Record<string, string | undefined>>
 ) {
   return {
+    input,
     runMode: "live" as const,
     nodeId: "n1",
     nodeName: "Acuity",
@@ -151,8 +154,7 @@ describe("listAppointmentTypesHandler", () => {
   it.effect("counts what Acuity listed", () =>
     Effect.gen(function* () {
       const result = yield* listAppointmentTypesHandler(
-        {},
-        contextFor(withCredentials())
+        bagFor({}, withCredentials())
       );
 
       // The handler hands Acuity's own object back. What it omitted stays omitted:
@@ -171,7 +173,7 @@ describe("listAppointmentTypesHandler", () => {
       const credentials = credentialsRead({ ACUITY_USER_ID: "12345678" });
 
       const error = yield* failure(
-        listAppointmentTypesHandler({}, contextFor(credentials))
+        listAppointmentTypesHandler(bagFor({}, credentials))
       );
 
       expect(error.message).toBe(
@@ -190,7 +192,7 @@ describe("listAppointmentTypesHandler", () => {
         mocks.types.mockRejectedValue({});
 
         const error = yield* failure(
-          listAppointmentTypesHandler({}, contextFor(withCredentials()))
+          listAppointmentTypesHandler(bagFor({}, withCredentials()))
         );
 
         expect(error.message).toBe("Failed to list appointment types.");
@@ -202,20 +204,22 @@ describe("listAppointmentsHandler", () => {
   it.effect("sends Acuity's own parameter names", () =>
     Effect.gen(function* () {
       const result = yield* listAppointmentsHandler(
-        {
-          appointmentTypeId: "12345",
-          calendarId: "67890",
-          minDate: "2026-03-01",
-          maxDate: "2026-03-31",
-          timezone: "America/New_York",
-          email: "ada@example.com",
-          phone: "+15551234567",
-          canceled: "true",
-          showAll: "false",
-          limit: "50",
-          page: 2,
-        },
-        contextFor(withCredentials())
+        bagFor(
+          {
+            appointmentTypeId: "12345",
+            calendarId: "67890",
+            minDate: "2026-03-01",
+            maxDate: "2026-03-31",
+            timezone: "America/New_York",
+            email: "ada@example.com",
+            phone: "+15551234567",
+            canceled: "true",
+            showAll: "false",
+            limit: "50",
+            page: 2,
+          },
+          withCredentials()
+        )
       );
 
       expect(mocks.list).toHaveBeenCalledWith({
@@ -239,8 +243,7 @@ describe("listAppointmentsHandler", () => {
   it.effect("leaves out the filters that were not filled in", () =>
     Effect.gen(function* () {
       yield* listAppointmentsHandler(
-        { canceled: "", showAll: "", calendarId: "" },
-        contextFor(withCredentials())
+        bagFor({ canceled: "", showAll: "", calendarId: "" }, withCredentials())
       );
 
       expect(mocks.list).toHaveBeenCalledWith({
@@ -263,8 +266,7 @@ describe("listAppointmentsHandler", () => {
     Effect.gen(function* () {
       const error = yield* failure(
         listAppointmentsHandler(
-          { calendarId: "not-a-number" },
-          contextFor(withCredentials())
+          bagFor({ calendarId: "not-a-number" }, withCredentials())
         )
       );
 
@@ -277,8 +279,7 @@ describe("listAppointmentsHandler", () => {
     Effect.gen(function* () {
       const error = yield* failure(
         listAppointmentsHandler(
-          { canceled: "maybe" },
-          contextFor(withCredentials())
+          bagFor({ canceled: "maybe" }, withCredentials())
         )
       );
 
@@ -293,8 +294,10 @@ describe("getAppointmentHandler", () => {
   it.effect("offers the id and datetime beside the appointment", () =>
     Effect.gen(function* () {
       const result = yield* getAppointmentHandler(
-        { appointmentId: "987", pastFormAnswers: "true" },
-        contextFor(withCredentials())
+        bagFor(
+          { appointmentId: "987", pastFormAnswers: "true" },
+          withCredentials()
+        )
       );
 
       expect(mocks.get).toHaveBeenCalledWith(987, { pastFormAnswers: true });
@@ -310,8 +313,7 @@ describe("getAppointmentHandler", () => {
     Effect.gen(function* () {
       const error = yield* failure(
         getAppointmentHandler(
-          { appointmentId: "  " },
-          contextFor(withCredentials())
+          bagFor({ appointmentId: "  " }, withCredentials())
         )
       );
 
@@ -325,13 +327,15 @@ describe("getAvailabilityDatesHandler", () => {
   it.effect("sends the month and type Acuity asks for", () =>
     Effect.gen(function* () {
       const result = yield* getAvailabilityDatesHandler(
-        {
-          month: "2026-03",
-          appointmentTypeId: "12345",
-          calendarId: "67890",
-          timezone: "America/New_York",
-        },
-        contextFor(withCredentials())
+        bagFor(
+          {
+            month: "2026-03",
+            appointmentTypeId: "12345",
+            calendarId: "67890",
+            timezone: "America/New_York",
+          },
+          withCredentials()
+        )
       );
 
       expect(mocks.dates).toHaveBeenCalledWith({
@@ -348,8 +352,7 @@ describe("getAvailabilityDatesHandler", () => {
     Effect.gen(function* () {
       const error = yield* failure(
         getAvailabilityDatesHandler(
-          { month: "  ", appointmentTypeId: "12345" },
-          contextFor(withCredentials())
+          bagFor({ month: "  ", appointmentTypeId: "12345" }, withCredentials())
         )
       );
 
@@ -367,12 +370,14 @@ describe("getAvailabilityTimesHandler", () => {
   it.effect("reads the ignore list as the numbers Acuity takes", () =>
     Effect.gen(function* () {
       const result = yield* getAvailabilityTimesHandler(
-        {
-          date: "2026-03-15",
-          appointmentTypeId: "12345",
-          ignoreAppointmentIds: " 111 , 222 ",
-        },
-        contextFor(withCredentials())
+        bagFor(
+          {
+            date: "2026-03-15",
+            appointmentTypeId: "12345",
+            ignoreAppointmentIds: " 111 , 222 ",
+          },
+          withCredentials()
+        )
       );
 
       expect(mocks.times).toHaveBeenCalledWith({
@@ -390,12 +395,14 @@ describe("getAvailabilityTimesHandler", () => {
     Effect.gen(function* () {
       const error = yield* failure(
         getAvailabilityTimesHandler(
-          {
-            date: "2026-03-15",
-            appointmentTypeId: "12345",
-            ignoreAppointmentIds: "111,abc",
-          },
-          contextFor(withCredentials())
+          bagFor(
+            {
+              date: "2026-03-15",
+              appointmentTypeId: "12345",
+              ignoreAppointmentIds: "111,abc",
+            },
+            withCredentials()
+          )
         )
       );
 
@@ -409,8 +416,7 @@ describe("getAvailabilityTimesHandler", () => {
     Effect.gen(function* () {
       const error = yield* failure(
         getAvailabilityTimesHandler(
-          { date: "", appointmentTypeId: "12345" },
-          contextFor(withCredentials())
+          bagFor({ date: "", appointmentTypeId: "12345" }, withCredentials())
         )
       );
 
@@ -425,21 +431,23 @@ describe("createAppointmentHandler", () => {
   it.effect("sends the booking and the mutation flags separately", () =>
     Effect.gen(function* () {
       const result = yield* createAppointmentHandler(
-        {
-          datetime: "2026-03-15T15:00:00-04:00",
-          appointmentTypeId: "12345",
-          firstName: "Ada",
-          lastName: "Lovelace",
-          email: "ada@example.com",
-          phone: "+15551234567",
-          calendarId: "67890",
-          notes: "Bring records",
-          smsOptIn: "true",
-          customFieldsJson: '[{"fieldID":1234,"value":"Some answer"}]',
-          admin: "true",
-          noEmail: "false",
-        },
-        contextFor(withCredentials())
+        bagFor(
+          {
+            datetime: "2026-03-15T15:00:00-04:00",
+            appointmentTypeId: "12345",
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: "ada@example.com",
+            phone: "+15551234567",
+            calendarId: "67890",
+            notes: "Bring records",
+            smsOptIn: "true",
+            customFieldsJson: '[{"fieldID":1234,"value":"Some answer"}]',
+            admin: "true",
+            noEmail: "false",
+          },
+          withCredentials()
+        )
       );
 
       expect(mocks.create).toHaveBeenCalledWith(
@@ -469,16 +477,18 @@ describe("createAppointmentHandler", () => {
     Effect.gen(function* () {
       const error = yield* failure(
         createAppointmentHandler(
-          {
-            datetime: "2026-03-15T15:00:00-04:00",
-            appointmentTypeId: "12345",
-            firstName: "Ada",
-            lastName: "Lovelace",
-            email: "ada@example.com",
-            phone: "+15551234567",
-            customFieldsJson: "not json",
-          },
-          contextFor(withCredentials())
+          bagFor(
+            {
+              datetime: "2026-03-15T15:00:00-04:00",
+              appointmentTypeId: "12345",
+              firstName: "Ada",
+              lastName: "Lovelace",
+              email: "ada@example.com",
+              phone: "+15551234567",
+              customFieldsJson: "not json",
+            },
+            withCredentials()
+          )
         )
       );
 
@@ -493,15 +503,17 @@ describe("createAppointmentHandler", () => {
     Effect.gen(function* () {
       const error = yield* failure(
         createAppointmentHandler(
-          {
-            datetime: "2026-03-15T15:00:00-04:00",
-            appointmentTypeId: "12345",
-            firstName: "Ada",
-            lastName: "  ",
-            email: "ada@example.com",
-            phone: "+15551234567",
-          },
-          contextFor(withCredentials())
+          bagFor(
+            {
+              datetime: "2026-03-15T15:00:00-04:00",
+              appointmentTypeId: "12345",
+              firstName: "Ada",
+              lastName: "  ",
+              email: "ada@example.com",
+              phone: "+15551234567",
+            },
+            withCredentials()
+          )
         )
       );
 
@@ -513,15 +525,17 @@ describe("createAppointmentHandler", () => {
     Effect.gen(function* () {
       const error = yield* failure(
         createAppointmentHandler(
-          {
-            datetime: "2026-03-15T15:00:00-04:00",
-            appointmentTypeId: "12345",
-            firstName: "Ada",
-            lastName: "Lovelace",
-            email: "ada@example.com",
-            phone: "",
-          },
-          contextFor(withCredentials())
+          bagFor(
+            {
+              datetime: "2026-03-15T15:00:00-04:00",
+              appointmentTypeId: "12345",
+              firstName: "Ada",
+              lastName: "Lovelace",
+              email: "ada@example.com",
+              phone: "",
+            },
+            withCredentials()
+          )
         )
       );
 
@@ -533,15 +547,17 @@ describe("createAppointmentHandler", () => {
     Effect.gen(function* () {
       const error = yield* failure(
         createAppointmentHandler(
-          {
-            datetime: " ",
-            appointmentTypeId: "12345",
-            firstName: "Ada",
-            lastName: "Lovelace",
-            email: "ada@example.com",
-            phone: "+15551234567",
-          },
-          contextFor(withCredentials())
+          bagFor(
+            {
+              datetime: " ",
+              appointmentTypeId: "12345",
+              firstName: "Ada",
+              lastName: "Lovelace",
+              email: "ada@example.com",
+              phone: "+15551234567",
+            },
+            withCredentials()
+          )
         )
       );
 
@@ -554,14 +570,16 @@ describe("rescheduleAppointmentHandler", () => {
   it.effect("sends the new datetime and the mutation flags", () =>
     Effect.gen(function* () {
       const result = yield* rescheduleAppointmentHandler(
-        {
-          appointmentId: "987",
-          datetime: "2026-03-16T10:00:00-04:00",
-          calendarId: "67890",
-          admin: "true",
-          noEmail: "true",
-        },
-        contextFor(withCredentials())
+        bagFor(
+          {
+            appointmentId: "987",
+            datetime: "2026-03-16T10:00:00-04:00",
+            calendarId: "67890",
+            admin: "true",
+            noEmail: "true",
+          },
+          withCredentials()
+        )
       );
 
       expect(mocks.reschedule).toHaveBeenCalledWith(
@@ -577,8 +595,7 @@ describe("rescheduleAppointmentHandler", () => {
     Effect.gen(function* () {
       const error = yield* failure(
         rescheduleAppointmentHandler(
-          { appointmentId: "987", datetime: "" },
-          contextFor(withCredentials())
+          bagFor({ appointmentId: "987", datetime: "" }, withCredentials())
         )
       );
 
@@ -592,14 +609,16 @@ describe("cancelAppointmentHandler", () => {
   it.effect("sends the note and the flags Acuity takes", () =>
     Effect.gen(function* () {
       const result = yield* cancelAppointmentHandler(
-        {
-          appointmentId: "987",
-          cancelNote: "Client rescheduled by phone",
-          noShow: "false",
-          admin: "true",
-          noEmail: "true",
-        },
-        contextFor(withCredentials())
+        bagFor(
+          {
+            appointmentId: "987",
+            cancelNote: "Client rescheduled by phone",
+            noShow: "false",
+            admin: "true",
+            noEmail: "true",
+          },
+          withCredentials()
+        )
       );
 
       expect(mocks.cancel).toHaveBeenCalledWith(
@@ -621,8 +640,7 @@ describe("cancelAppointmentHandler", () => {
 
       const error = yield* failure(
         cancelAppointmentHandler(
-          { appointmentId: "987" },
-          contextFor(withCredentials())
+          bagFor({ appointmentId: "987" }, withCredentials())
         )
       );
 
@@ -641,8 +659,7 @@ describe("cancelAppointmentHandler", () => {
 
       const error = yield* failure(
         cancelAppointmentHandler(
-          { appointmentId: "987" },
-          contextFor(withCredentials())
+          bagFor({ appointmentId: "987" }, withCredentials())
         )
       );
 
@@ -684,8 +701,7 @@ describe("an appointment through the encode", () => {
     () =>
       Effect.gen(function* () {
         const result = yield* getAppointmentHandler(
-          { appointmentId: "987" },
-          contextFor(withCredentials())
+          bagFor({ appointmentId: "987" }, withCredentials())
         );
 
         const encoded = (yield* Effect.promise(() =>
@@ -704,8 +720,7 @@ describe("an appointment through the encode", () => {
   it.effect("keeps every appointment on the way out of list-appointments", () =>
     Effect.gen(function* () {
       const result = yield* listAppointmentsHandler(
-        {},
-        contextFor(withCredentials())
+        bagFor({}, withCredentials())
       );
 
       const encoded = (yield* Effect.promise(() =>
@@ -722,23 +737,26 @@ describe("an appointment through the encode", () => {
     () =>
       Effect.gen(function* () {
         const created = yield* createAppointmentHandler(
-          {
-            datetime: "2026-03-15T15:00:00-04:00",
-            appointmentTypeId: "12345",
-            firstName: "Ada",
-            lastName: "Lovelace",
-            email: "ada@example.com",
-            phone: "+15555550123",
-          },
-          contextFor(withCredentials())
+          bagFor(
+            {
+              datetime: "2026-03-15T15:00:00-04:00",
+              appointmentTypeId: "12345",
+              firstName: "Ada",
+              lastName: "Lovelace",
+              email: "ada@example.com",
+              phone: "+15555550123",
+            },
+            withCredentials()
+          )
         );
         const rescheduled = yield* rescheduleAppointmentHandler(
-          { appointmentId: "987", datetime: "2026-03-16T15:00:00-04:00" },
-          contextFor(withCredentials())
+          bagFor(
+            { appointmentId: "987", datetime: "2026-03-16T15:00:00-04:00" },
+            withCredentials()
+          )
         );
         const canceled = yield* cancelAppointmentHandler(
-          { appointmentId: "987" },
-          contextFor(withCredentials())
+          bagFor({ appointmentId: "987" }, withCredentials())
         );
 
         for (const [slug, result] of [
@@ -761,8 +779,7 @@ describe("an appointment through the encode", () => {
   it.effect("keeps a sparse appointment type on the way out", () =>
     Effect.gen(function* () {
       const result = yield* listAppointmentTypesHandler(
-        {},
-        contextFor(withCredentials())
+        bagFor({}, withCredentials())
       );
 
       const encoded = (yield* Effect.promise(() =>

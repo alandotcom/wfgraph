@@ -13,8 +13,8 @@ import {
   type CredentialsOf,
   defineIntegration,
   defineStep,
+  type StepBag,
   StepFailure,
-  type StepRunContext,
 } from "@rova/core/plugin";
 import { Effect, Schema } from "effect";
 import { callSlack, describeSlackFailure } from "#src/slack/client";
@@ -82,20 +82,20 @@ function resolveSlackTestBehavior(
 }
 
 /**
- * Named rather than written inline, so a test can run it with a context it
+ * Named rather than written inline, so a test can run it with a bag it
  * supplies: what this step decides is whether to post at all, and that decision
  * is here.
  */
 export const sendSlackMessageHandler = Effect.fn(function* (
-  input: typeof sendSlackMessageInput.Type,
-  context: StepRunContext<SlackCredentials>
+  bag: StepBag<typeof sendSlackMessageInput.Type, SlackCredentials>
 ) {
+  const { input } = bag;
   const testBehavior = resolveSlackTestBehavior(input.testBehavior);
 
   // A test run posts nothing unless the builder asked it to. The answer is a
   // success carrying the reason, so the run shows what happened rather than an
   // error someone has to interpret.
-  if (context.runMode === "test" && testBehavior === "log_only") {
+  if (bag.runMode === "test" && testBehavior === "log_only") {
     return {
       ts: "",
       channel: input.slackChannel,
@@ -103,7 +103,7 @@ export const sendSlackMessageHandler = Effect.fn(function* (
     };
   }
 
-  const credentials = yield* context.credentials;
+  const credentials = yield* bag.credentials;
   const apiKey = credentials.SLACK_API_KEY;
 
   if (!apiKey) {

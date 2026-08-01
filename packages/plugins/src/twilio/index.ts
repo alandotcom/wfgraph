@@ -14,8 +14,8 @@ import {
   type CredentialsOf,
   defineIntegration,
   defineStep,
+  type StepBag,
   StepFailure,
-  type StepRunContext,
 } from "@rova/core/plugin";
 import { Effect, Schema, SchemaTransformation } from "effect";
 import { createTwilioMessage, describeTwilioFailure } from "#src/twilio/client";
@@ -144,21 +144,21 @@ function resolveTwilioTestBehavior(
 }
 
 /**
- * Named rather than written inline, so a test can run it with a context it
+ * Named rather than written inline, so a test can run it with a bag it
  * supplies: what this step decides is which of five things to send, and every
  * one of those decisions is here.
  */
 export const sendSmsHandler = Effect.fn(function* (
-  input: typeof sendSmsInput.Type,
-  context: StepRunContext<TwilioCredentials>
+  bag: StepBag<typeof sendSmsInput.Type, TwilioCredentials>
 ) {
-  const executionId = context.executionId ?? "no_execution";
+  const { input } = bag;
+  const executionId = bag.executionId ?? "no_execution";
   const testBehavior = resolveTwilioTestBehavior(input.testBehavior);
 
   // A test run either sends nothing at all or sends to one number the builder
   // nominated. Both answers are a success carrying the reason, so the run shows
   // what happened rather than an error someone has to interpret.
-  if (context.runMode === "test" && testBehavior === "log_only") {
+  if (bag.runMode === "test" && testBehavior === "log_only") {
     return {
       sid: `twilio:test-log-only:${executionId}`,
       status: "queued",
@@ -169,7 +169,7 @@ export const sendSmsHandler = Effect.fn(function* (
 
   const testPhone = input.testPhoneTo?.trim() ?? "";
   const routeToTestPhone =
-    context.runMode === "test" && testBehavior === "send_to_test_phone";
+    bag.runMode === "test" && testBehavior === "send_to_test_phone";
 
   if (routeToTestPhone && testPhone.length === 0) {
     return {
@@ -191,7 +191,7 @@ export const sendSmsHandler = Effect.fn(function* (
 
   // A key this integration never declares is a compile error here rather than an
   // undefined at run time.
-  const credentials = yield* context.credentials;
+  const credentials = yield* bag.credentials;
   const accountSid = credentials.TWILIO_ACCOUNT_SID;
   const authToken = credentials.TWILIO_AUTH_TOKEN;
 
