@@ -114,7 +114,7 @@ describe("the workflow run function", () => {
     expect(runtime).toMatchObject({
       sleep: expect.any(Function),
       waitForEvent: expect.any(Function),
-      step: expect.any(Function),
+      run: expect.any(Function),
     });
     // A live run must be recorded: the handler runs on the store the app built
     // for it rather than on one of its own.
@@ -132,7 +132,7 @@ describe("the workflow run function", () => {
       .mockResolvedValue("memoized-result");
 
     const work = () => Promise.resolve("fresh-result");
-    const result = await runtime.step("node:action_1", work);
+    const result = await runtime.run("node:action_1", work);
 
     expect(runSpy).toHaveBeenCalledTimes(1);
     expect(runSpy).toHaveBeenCalledWith("node:action_1", work);

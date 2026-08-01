@@ -37,7 +37,7 @@ export type WorkflowExecutionRuntime = {
    * Return plain objects, arrays, strings, numbers, booleans, and null - and
    * carry timestamps as ISO strings.
    */
-  step: <T>(stepId: string, fn: () => Promise<T>) => Promise<T>;
+  run: <T>(stepId: string, fn: () => Promise<T>) => Promise<T>;
   runId?: string;
 };
 
@@ -103,7 +103,7 @@ export function createInMemoryWorkflowRuntime(
       return Promise.resolve(resumeEvent);
     },
 
-    step: async <T>(stepId: string, fn: () => Promise<T>): Promise<T> => {
+    run: async <T>(stepId: string, fn: () => Promise<T>): Promise<T> => {
       if (memo.has(stepId)) {
         // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a step id always maps back to that step's own result type
         return memo.get(stepId) as T;

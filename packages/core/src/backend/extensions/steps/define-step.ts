@@ -46,7 +46,7 @@ import type {
   ActionConfigFieldBase,
   ActionConfigFieldGroup,
 } from "@rova/shared/plugins/action-fields";
-import type { StepResult } from "@rova/shared/actions/step-result";
+import type { NodeSteps, StepResult } from "@rova/shared/actions/step-result";
 
 /**
  * Why a step could not do its work, in the words the run log shows.
@@ -63,6 +63,103 @@ export class StepFailure extends Schema.TaggedErrorClass<StepFailure>()(
     message: Schema.String,
   }
 ) {}
+
+/**
+ * How a handler remembers work across a replay.
+ *
+ * A durable runtime re-runs the whole workflow function every time a run
+ * resumes, so anything with a side effect goes inside `run` or it happens again
+ * on every attempt. Rova wraps no handler body for you: that is Inngest's model,
+ * and an author who reaches a system twice is an author who did not say so here.
+ *
+ * INVARIANT: what `run` answers round-trips through JSON on its way into the
+ * runtime's storage. A `Date`, `Map`, `Set` or class instance inside it either
+ * changes shape or throws when the run resumes.
+ *
+ * A `StepFailure` travels back as a failure value rather than as a throw, so a
+ * node a system refused fails once instead of spending the retry budget on an
+ * answer that will not change. Anything else a handler throws is a step that
+ * failed, which the runtime retries.
+ */
+export type NodeStepApi = {
+  run: StepRunner;
+};
+
+type StepRunner = {
+  <A>(
+    stepId: string,
+    work: Effect.Effect<A, StepFailure, HttpClient.HttpClient>
+  ): Effect.Effect<A, StepFailure, HttpClient.HttpClient>;
+  <A>(stepId: string, work: () => Promise<A>): Promise<A>;
+};
+
+/** What a memoized step stores, which has to be JSON. */
+type RememberedStep<A> =
+  | { ok: true; value: A }
+  | { ok: false; message: string };
+
+/**
+ * The author's `step`, over the node's durable runtime.
+ *
+ * Both arms reach the same memoized call. The Effect arm runs its work to an
+ * `Either` inside the step, so the value the runtime stores is a success either
+ * way and a `StepFailure` is re-raised on the far side rather than read as a
+ * step to run again.
+ */
+export function nodeStepApi(
+  app: StepEnvironment,
+  steps: NodeSteps | undefined
+): NodeStepApi {
+  // A caller with no durable runtime runs the work where it stands, which is
+  // what an in-process test wants and what the engine hands a disabled node.
+  const remember = <T>(stepId: string, work: () => Promise<T>): Promise<T> =>
+    steps ? steps.run(stepId, work) : work();
+
+  function run<A>(
+    stepId: string,
+    work: Effect.Effect<A, StepFailure, HttpClient.HttpClient>
+  ): Effect.Effect<A, StepFailure, HttpClient.HttpClient>;
+  function run<A>(stepId: string, work: () => Promise<A>): Promise<A>;
+  function run<A>(
+    stepId: string,
+    work:
+      | Effect.Effect<A, StepFailure, HttpClient.HttpClient>
+      | (() => Promise<A>)
+  ): Effect.Effect<A, StepFailure, HttpClient.HttpClient> | Promise<A> {
+    if (typeof work === "function") {
+      return remember(stepId, work);
+    }
+
+    return Effect.suspend(() =>
+      Effect.flatMap(
+        Effect.promise(() =>
+          // A plain shape rather than the `Result` itself: what the runtime
+          // stores round-trips through JSON, and an Effect data type does not
+          // survive that.
+          remember(stepId, () =>
+            app.runStep(
+              Effect.map(
+                Effect.result(Effect.provide(work, ExternalTransport)),
+                (answered): RememberedStep<A> =>
+                  Result.isFailure(answered)
+                    ? { ok: false, message: answered.failure.message }
+                    : { ok: true, value: answered.success }
+              )
+            )
+          )
+        ),
+        (answered) =>
+          answered.ok
+            ? Effect.succeed(answered.value)
+            : // Rebuilt rather than passed on: the value crossed JSON, so what
+              // arrives on a replay is the message and not the class.
+              Effect.fail(new StepFailure({ message: answered.message }))
+      )
+    );
+  }
+
+  return { run };
+}
 
 /**
  * The one argument a step's handler is called with.
@@ -99,6 +196,11 @@ export type StepBag<
    * that does not catch it gets that behaviour for free.
    */
   readonly readCredentials: () => Promise<TCredentials>;
+  /**
+   * Where work with a side effect goes, so a replay reuses it rather than doing
+   * it again. Nothing outside it is remembered.
+   */
+  readonly step: NodeStepApi;
 };
 
 /**
@@ -281,7 +383,8 @@ function buildStep<TInput, TOutput>(
     subject: string,
     encodeOutput: (value: unknown) => Result.Result<unknown, string>,
     rawInput: Record<string, unknown>,
-    context: StepContext | undefined
+    context: StepContext | undefined,
+    steps: NodeSteps | undefined
   ): Effect.Effect<StepResult, CredentialsUnavailable> {
     const toFailure = stepFailureFrom(subject);
 
@@ -314,6 +417,7 @@ function buildStep<TInput, TOutput>(
             ...toHandlerBag(input, context, integrationId),
             credentials,
             readCredentials: () => runToPromise(credentials),
+            step: nodeStepApi(app, steps),
           }),
         catch: toFailure,
       });
@@ -358,14 +462,15 @@ function buildStep<TInput, TOutput>(
       ? encodeThroughOutputSchema(subject, definition.output)
       : Result.succeed;
 
-    return (app) => (rawInput) =>
+    return (app) => (rawInput, steps) =>
       app.runStep(
         runStep(
           app,
           subject,
           encodeOutput,
           rawInput,
-          readStepContext(rawInput._context)
+          readStepContext(rawInput._context),
+          steps
         )
       );
   };

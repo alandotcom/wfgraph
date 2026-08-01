@@ -501,10 +501,37 @@ it, so both are written where they are read.
 heading in the selector still writes one.
 
 **A handler takes one bag**, holding `input` (the decoded config), the credential reads,
-and the run's identity: `runMode`, `executionId`, `nodeId`, `nodeName`, `nodeType`,
+`step`, and the run's identity: `runMode`, `executionId`, `nodeId`, `nodeName`,
 `integrationId`. `defineAction` calls its handler the same way. One object rather than two
 parameters is Inngest's shape, and it takes a later value with no new position for an author
 to learn.
+
+### What is remembered across a replay
+
+A durable runtime re-runs the whole workflow function every time a run resumes, after a
+sleep, after a wait, after a retry. **Rova wraps no handler body.** Work with a side effect
+goes inside `step.run` or it happens again on every attempt:
+
+```ts
+const posted = yield* bag.step.run("post", callSlack(apiKey, ...));
+```
+
+You name the work; Rova prefixes the node it belongs to, so two nodes running the same
+action never read one another's stored result. Wrap the call out to the system and leave
+parsing, branching and shaping outside it: those are cheap to repeat, and keeping them out
+keeps the stored value small.
+
+Three rules:
+
+- **What `step.run` answers must be JSON.** A `Date`, `Map`, `Set` or class instance inside
+  it changes shape when the run resumes. Carry a timestamp as an ISO string.
+- **A `StepFailure` fails the node once.** It travels back as a value rather than a throw,
+  so a system that refused a request does not spend the retry budget on an answer that will
+  not change. Anything else that throws inside is a step the runtime retries.
+- **A handler that wraps nothing still writes memoized log rows.** The run panel then shows
+  one row for however many times the work ran, so the log is not evidence it ran once.
+
+`docs/adr/0009` is why this is the author's job rather than Rova's.
 
 ### Effect handler or async handler
 

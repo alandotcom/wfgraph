@@ -138,13 +138,18 @@ const cancelAppointmentAction = defineAction({
     reason: z.string(),
     cancelledAt: z.iso.datetime(),
   }),
-  handler({ input }) {
-    return {
-      appointmentId: input.appointmentId,
-      status: "cancelled",
-      reason: input.reason,
-      cancelledAt: new Date().toISOString(),
-    };
+  // The cancellation goes inside `step.run`, so a retry of a later node replays
+  // this answer rather than cancelling a second time. Rova wraps no handler body:
+  // work with a side effect says so here or it happens again on every attempt.
+  handler({ input, step }) {
+    return step.run("cancel", () =>
+      Promise.resolve({
+        appointmentId: input.appointmentId,
+        status: "cancelled",
+        reason: input.reason,
+        cancelledAt: new Date().toISOString(),
+      })
+    );
   },
 });
 

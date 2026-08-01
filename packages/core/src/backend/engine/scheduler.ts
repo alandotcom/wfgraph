@@ -9,7 +9,7 @@
 import { stripInternalFields } from "#src/backend/extensions/steps/step-handler";
 import { withSpan } from "#src/backend/lib/telemetry";
 import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
-import type { StepResult } from "@rova/shared/actions/step-result";
+import type { NodeSteps, StepResult } from "@rova/shared/actions/step-result";
 import type { ConditionBranch, WorkflowNode } from "@rova/shared/graph/types";
 import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
 import { type JsonObject, readJsonValue } from "@rova/shared/types/json";
@@ -62,19 +62,6 @@ function readConfigString(
   return typeof value === "string" ? value : undefined;
 }
 
-/**
- * Whether this node is the Wait step, which the engine runs itself. It is also
- * what keeps a Wait node out of the node-level step wrapper: a wait suspends the
- * run, and Inngest forbids a sleep or a wait inside a step.
- */
-function isWaitNode(node: WorkflowNode): boolean {
-  return (
-    node.data.type === "action" &&
-    readConfigString(node.data.config, "actionType") ===
-      BUILT_IN_ACTION_IDS.wait
-  );
-}
-
 /** What the run log and the trace call a node. */
 function getNodeName(node: WorkflowNode, actions: WorkflowActions): string {
   if (node.data.label) {
@@ -119,6 +106,7 @@ type ActionStepInput = {
   context: NodeContext;
   store: WorkflowStore;
   actions: WorkflowActions;
+  runtime: WorkflowExecutionRuntime;
 };
 
 /**
@@ -144,7 +132,8 @@ function executeActionStep(input: ActionStepInput): Promise<ActionStepOutcome> {
 async function executeActionStepInner(
   input: ActionStepInput
 ): Promise<ActionStepOutcome> {
-  const { actionType, config, outputs, context, store, actions } = input;
+  const { actionType, config, outputs, context, store, actions, runtime } =
+    input;
 
   const stepInput: Record<string, unknown> = {
     ...config,
@@ -169,6 +158,7 @@ async function executeActionStepInner(
       {
         store,
         context,
+        runtime,
         input: {
           condition: evaluatedCondition,
           ...(typeof originalExpression === "string"
@@ -200,11 +190,18 @@ async function executeActionStepInner(
     };
   }
 
+  // Rova namespaces the id, so an author writes "post" and two nodes running
+  // the same action do not write to one another's memoized result.
+  const steps: NodeSteps = {
+    run: (stepId, work) =>
+      runtime.run(`node:${context.nodeId}:${stepId}`, work),
+  };
+
   const result = await runWithStepLog(
     // The rows carry the input as the node was configured, minus the three keys
     // the engine's own dispatch owns.
-    { store, context, input: stripInternalFields(stepInput) },
-    () => Promise.resolve(stepFunction(stepInput))
+    { store, context, runtime, input: stripInternalFields(stepInput) },
+    () => Promise.resolve(stepFunction(stepInput, steps))
   );
 
   return { result };
@@ -348,6 +345,7 @@ export class NodeScheduler {
         {
           store,
           context: lifecycleContext,
+          runtime,
           input: { lifecycleData },
         },
         () => Promise.resolve({ success: true as const, data: lifecycleData })
@@ -438,6 +436,7 @@ export class NodeScheduler {
           config: processedConfig,
           outputs: traversal.outputs,
           context: stepContext,
+          runtime,
           store,
           actions,
         });
@@ -476,30 +475,6 @@ export class NodeScheduler {
   }
 
   /**
-   * Runs a node's work through the durable runtime so a replay reuses the
-   * stored result instead of repeating the side effect.
-   *
-   * Two shapes stay unwrapped: disabled nodes (nothing happens, nothing to
-   * remember) and Wait nodes (they suspend the run through runtime.sleep /
-   * runtime.waitForEvent, which cannot sit inside a step - executeWaitAction
-   * memoizes its own persistence segments around those wait boundaries).
-   */
-  private runNodeWorkMemoized(
-    nodeId: string,
-    node: WorkflowNode,
-    nodeName: string,
-    namedNodeLogger: RunLogger
-  ): Promise<NodeWorkOutcome> {
-    if (isWaitNode(node) || node.data.enabled === false) {
-      return this.runNodeWork(node, nodeName, namedNodeLogger);
-    }
-
-    return this.input.runtime.step(`node:${nodeId}`, () =>
-      this.runNodeWork(node, nodeName, namedNodeLogger)
-    );
-  }
-
-  /**
    * Records a node's outcome and schedules its downstream branches. Runs
    * outside the node's step so descendants become sibling steps rather than
    * nested ones.
@@ -513,12 +488,7 @@ export class NodeScheduler {
     const { traversal, cancelBoundary } = this.input;
 
     try {
-      const outcome = await this.runNodeWorkMemoized(
-        nodeId,
-        node,
-        nodeName,
-        namedNodeLogger
-      );
+      const outcome = await this.runNodeWork(node, nodeName, namedNodeLogger);
       const { result } = outcome;
 
       // A node with no action type never produced an output, so it is recorded

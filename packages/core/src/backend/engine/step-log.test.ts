@@ -8,6 +8,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { runWithStepLog } from "#src/backend/engine/step-log";
 import type { WorkflowStore } from "#src/backend/engine/store";
 
@@ -41,13 +42,16 @@ beforeEach(() => {
   loggerWarnMock.mockClear();
 });
 
+/** What the two writes are wrapped in. This file is about the writes, not replay. */
+const runtime = createInMemoryWorkflowRuntime();
+
 describe("runWithStepLog", () => {
   // The row is now stuck at `running`, and the usual cause is the database
   // itself: a row id alone can only be resolved against the table that just
   // refused a write, and an outage produces a burst of them.
   it("names the run and the node when the closing write fails", async () => {
     const result = await runWithStepLog(
-      { store: storeRefusingTheClose(), context, input: {} },
+      { store: storeRefusingTheClose(), context, runtime, input: {} },
       () => Promise.resolve({ success: true, data: { sid: "SM1" } } as const)
     );
 

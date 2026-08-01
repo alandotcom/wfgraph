@@ -150,22 +150,20 @@ export const slack = defineIntegration({
           });
         }
 
-        const posted = yield* callSlack(
-          apiKey,
-          "chat.postMessage",
-          postMessageSchema,
-          {
+        const posted = yield* bag.step.run(
+          "post",
+          callSlack(apiKey, "chat.postMessage", postMessageSchema, {
             body: {
               channel: input.slackChannel,
               text: input.slackMessage,
             },
-          }
-        ).pipe(
-          Effect.mapError(
-            (error) =>
-              new StepFailure({
-                message: `Failed to send Slack message: ${describeSlackFailure(error)}`,
-              })
+          }).pipe(
+            Effect.mapError(
+              (error) =>
+                new StepFailure({
+                  message: `Failed to send Slack message: ${describeSlackFailure(error)}`,
+                })
+            )
           )
         );
 

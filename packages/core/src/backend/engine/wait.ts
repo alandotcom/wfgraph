@@ -135,7 +135,7 @@ async function executeWaitActionInner(
   const read = readWaitConfig(input.config);
   if (!read.valid) {
     const errorMessage = `Wait node configuration is invalid: ${read.error}`;
-    await runtime.step(`wait-invalid-config-${context.nodeId}`, async () => {
+    await runtime.run(`wait-invalid-config-${context.nodeId}`, async () => {
       const earlyLog = await openStepLog({ store, context, input: {} });
       await closeStepLog(store, earlyLog, {
         status: "error",
@@ -151,7 +151,7 @@ async function executeWaitActionInner(
 
   // The "step started" row is written once and its id is replayed from the
   // memoized step return, so the branches below always close the same row.
-  const startLog = await runtime.step(`wait-start-log-${context.nodeId}`, () =>
+  const startLog = await runtime.run(`wait-start-log-${context.nodeId}`, () =>
     openStepLog({
       store,
       context,
@@ -320,7 +320,7 @@ async function executeDelayWait(
 
   // Everything before the sleep is one durable step: a replay must not resolve
   // a fresh target time or insert a second wait-state row.
-  const prepared = await runtime.step(
+  const prepared = await runtime.run(
     `wait-delay-prepare-${context.nodeId}`,
     () => prepareDelayWait(branch)
   );
@@ -348,7 +348,7 @@ async function executeDelayWait(
     throw error;
   }
 
-  const output = await runtime.step(
+  const output = await runtime.run(
     `wait-delay-resume-${context.nodeId}`,
     async () => {
       await store.markWaitStateStatus({
@@ -503,7 +503,7 @@ async function executeEventWait(
   const { context, runtime, store, workflowId, startLog } = branch;
   const { executionId } = context;
 
-  const prepared = await runtime.step(
+  const prepared = await runtime.run(
     `wait-event-prepare-${context.nodeId}`,
     () => prepareEventWait(branch)
   );
@@ -549,7 +549,7 @@ async function executeEventWait(
   // the memoized `waitForEvent` result, so a replay reads the same verdict.
   const canceled = !timedOut && signal?.signalType === "lifecycle-cancel";
 
-  const resumed = await runtime.step(
+  const resumed = await runtime.run(
     `wait-event-resume-${context.nodeId}`,
     async () => {
       await store.markWaitStateStatus({

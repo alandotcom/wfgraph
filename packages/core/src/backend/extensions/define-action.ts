@@ -28,6 +28,10 @@ import {
   missingContextMessage,
   toHandlerBag,
 } from "#src/backend/extensions/steps/step-boundary";
+import {
+  nodeStepApi,
+  type NodeStepApi,
+} from "#src/backend/extensions/steps/define-step";
 import { encodeThroughOutputSchema } from "#src/backend/extensions/steps/output-encoding";
 import type { StepFactory } from "#src/backend/extensions/steps/step-runner";
 import type { ActionConfigField } from "@rova/shared/plugins/action-fields";
@@ -49,7 +53,13 @@ import {
  * The step half calls this `StepBag` and adds the credentials an action has no
  * integration to read. Both are the one bag in `step-boundary.ts`.
  */
-export type ActionBag<TInput> = HandlerBag<TInput>;
+export type ActionBag<TInput> = HandlerBag<TInput> & {
+  /**
+   * Where work with a side effect goes, so a replay reuses it rather than doing
+   * it again. Nothing outside it is remembered.
+   */
+  readonly step: NodeStepApi;
+};
 
 /** What a host writes to describe an action's identity and presentation. */
 export type ActionIdentity = {
@@ -212,7 +222,7 @@ function buildAction<TInput extends Record<string, unknown>>(
       ? encodeThroughOutputSchema(subject, outputSchema)
       : undefined;
 
-  return () => async (rawInput) => {
+  return (app) => async (rawInput, steps) => {
     const context = readStepContext(rawInput._context);
     if (!context) {
       return failedStep(missingContextMessage(subject));
@@ -226,13 +236,14 @@ function buildAction<TInput extends Record<string, unknown>>(
     try {
       // The connection reaches the handler beside its config rather than inside
       // it, which is why the read happens here and not in the config.
-      const data = await handler(
-        toHandlerBag(
+      const data = await handler({
+        ...toHandlerBag(
           parsed.success,
           context,
           readIntegrationId(rawInput.integrationId)
-        )
-      );
+        ),
+        step: nodeStepApi(app, steps),
+      });
 
       if (!encodeOutput) {
         return { success: true, data };

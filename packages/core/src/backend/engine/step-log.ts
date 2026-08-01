@@ -17,6 +17,7 @@ import type {
   WorkflowStepLogHandle,
   WorkflowStore,
 } from "#src/backend/engine/store";
+import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 
 const stepLogLogger = getAppLogger("workflow", "step-log");
 
@@ -103,24 +104,29 @@ async function closeStepLogQuietly(
 /**
  * Opens a run-log row, runs the work, and closes the row with what it answered.
  *
- * The two writes have opposite failure policies, and the split is what keeps a
- * node's side effect at-most-once. A refused open fails the node, since nothing
- * has happened yet and Inngest's retry of it costs one wasted call. A refused
- * close is swallowed, because this whole call sits inside the node's memoized
- * step: a throw once the work has succeeded discards the result the runtime was
- * about to store and re-runs the node, sending a second SMS in order to record
- * the first. The price is a row left open, which the run panel shows.
+ * Each write is its own memoized step, and the open one has to be: the handler
+ * between them is replayed from the top on every attempt, so an unmemoized open
+ * would insert a second row per attempt rather than close the first.
+ *
+ * The two still have opposite failure policies. A refused open fails the node,
+ * since nothing has happened yet and Inngest's retry of it costs one wasted
+ * call. A refused close is swallowed, because a run that did its work has not
+ * failed because a row could not be closed. The price is a row left open, which
+ * the run panel shows.
  */
 export async function runWithStepLog<T extends StepResult>(
   target: {
     store: WorkflowStore;
     context: NodeContext;
+    runtime: WorkflowExecutionRuntime;
     input: unknown;
   },
   work: () => Promise<T>
 ): Promise<T> {
-  const { store, context } = target;
-  const handle = await openStepLog(target);
+  const { store, context, runtime } = target;
+  const handle = await runtime.run(`node:${context.nodeId}:log-open`, () =>
+    openStepLog(target)
+  );
 
   try {
     const result = await work();
@@ -128,12 +134,12 @@ export async function runWithStepLog<T extends StepResult>(
     if (result.success) {
       // A success logs its payload. A step reporting success without one has
       // nothing but the envelope to show.
-      await closeStepLogQuietly(store, context, handle, {
+      await closeOnce(runtime, store, context, handle, {
         status: "success",
         output: result.data ?? result,
       });
     } else {
-      await closeStepLogQuietly(store, context, handle, {
+      await closeOnce(runtime, store, context, handle, {
         status: "error",
         output: result.error,
         error: result.error.message,
@@ -142,10 +148,26 @@ export async function runWithStepLog<T extends StepResult>(
 
     return result;
   } catch (error) {
-    await closeStepLogQuietly(store, context, handle, {
+    await closeOnce(runtime, store, context, handle, {
       status: "error",
       error: getErrorMessage(error),
     });
     throw error;
   }
+}
+
+/**
+ * Closes the row inside the node's own memoized step, so a replay reuses the
+ * write rather than repeating it.
+ */
+function closeOnce(
+  runtime: WorkflowExecutionRuntime,
+  store: WorkflowStore,
+  context: NodeContext,
+  handle: WorkflowStepLogHandle,
+  close: StepLogClose
+): Promise<void> {
+  return runtime.run(`node:${context.nodeId}:log-close`, () =>
+    closeStepLogQuietly(store, context, handle, close)
+  );
 }

@@ -151,8 +151,10 @@ explicitly, with a function reading the global per call, which is what makes fet
 work at all.
 
 **Inngest shapes the workflow engine.** `step.*` inside `step.run()` is a runtime error, so
-Wait nodes stay outside the node-level step wrapper. Retries are function-level, each step
-carrying its own counter. Step results round-trip through JSON, so a node output has to be
+a Wait node suspends outside any step. Rova wraps no handler body (ADR-0009): work with a
+side effect goes in the handler's own `step.run`, and a `StepFailure` travels back as a
+value so a refused call fails the node once rather than four times. Retries are
+function-level, each step carrying its own counter. Step results round-trip through JSON, so a node output has to be
 JSON-safe: no `Date`, `Map`, or `Set`.
 
 **happy-dom belongs to the client project alone.** `vitest.config.ts` declares two projects:

@@ -154,15 +154,18 @@ export const clerk = defineIntegration({
         }
 
         const client = createClerkBackendClient(secretKey);
-        const user = yield* Effect.tryPromise({
-          try: () => client.users.getUser(input.userId),
-          catch: (error) =>
-            new StepFailure({
-              message: `Failed to get user: ${getClerkApiErrorMessage(error)}`,
-            }),
-        });
-
-        return toClerkUserData(toClerkApiUser(user));
+        // The flattening runs inside the step because what a step remembers
+        // round-trips through JSON, and Clerk's SDK answers a class instance.
+        return yield* bag.step.run(
+          "get-user",
+          Effect.tryPromise({
+            try: () => client.users.getUser(input.userId),
+            catch: (error) =>
+              new StepFailure({
+                message: `Failed to get user: ${getClerkApiErrorMessage(error)}`,
+              }),
+          }).pipe(Effect.map((user) => toClerkUserData(toClerkApiUser(user))))
+        );
       }),
     },
 
@@ -265,15 +268,16 @@ export const clerk = defineIntegration({
           isNil
         );
 
-        const user = yield* Effect.tryPromise({
-          try: () => client.users.createUser(createPayload),
-          catch: (error) =>
-            new StepFailure({
-              message: `Failed to create user: ${getClerkApiErrorMessage(error)}`,
-            }),
-        });
-
-        return toClerkUserData(toClerkApiUser(user));
+        return yield* bag.step.run(
+          "create-user",
+          Effect.tryPromise({
+            try: () => client.users.createUser(createPayload),
+            catch: (error) =>
+              new StepFailure({
+                message: `Failed to create user: ${getClerkApiErrorMessage(error)}`,
+              }),
+          }).pipe(Effect.map((user) => toClerkUserData(toClerkApiUser(user))))
+        );
       }),
     },
 
@@ -363,15 +367,16 @@ export const clerk = defineIntegration({
           isNil
         );
 
-        const user = yield* Effect.tryPromise({
-          try: () => client.users.updateUser(input.userId, updatePayload),
-          catch: (error) =>
-            new StepFailure({
-              message: `Failed to update user: ${getClerkApiErrorMessage(error)}`,
-            }),
-        });
-
-        return toClerkUserData(toClerkApiUser(user));
+        return yield* bag.step.run(
+          "update-user",
+          Effect.tryPromise({
+            try: () => client.users.updateUser(input.userId, updatePayload),
+            catch: (error) =>
+              new StepFailure({
+                message: `Failed to update user: ${getClerkApiErrorMessage(error)}`,
+              }),
+          }).pipe(Effect.map((user) => toClerkUserData(toClerkApiUser(user))))
+        );
       }),
     },
 
@@ -408,13 +413,18 @@ export const clerk = defineIntegration({
 
         const client = createClerkBackendClient(secretKey);
 
-        yield* Effect.tryPromise({
-          try: () => client.users.deleteUser(input.userId),
-          catch: (error) =>
-            new StepFailure({
-              message: `Failed to delete user: ${getClerkApiErrorMessage(error)}`,
-            }),
-        });
+        // Clerk's deleted-object answer is a class instance and this step
+        // reports on none of it, so nothing of it is remembered.
+        yield* bag.step.run(
+          "delete-user",
+          Effect.tryPromise({
+            try: () => client.users.deleteUser(input.userId),
+            catch: (error) =>
+              new StepFailure({
+                message: `Failed to delete user: ${getClerkApiErrorMessage(error)}`,
+              }),
+          }).pipe(Effect.asVoid)
+        );
 
         return { deleted: true };
       }),

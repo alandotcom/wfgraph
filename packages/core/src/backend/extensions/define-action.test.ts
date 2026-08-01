@@ -336,6 +336,7 @@ describe("defineAction as the engine calls it", () => {
       input: { actionId: "billing/notify", to: "someone" },
       ...stepContext,
       integrationId: "int_9",
+      step: { run: expect.any(Function) },
     });
   });
 

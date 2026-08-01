@@ -103,7 +103,7 @@ export class CancelBoundary {
     }
 
     const { runtime, store, executionId } = this.input;
-    const pending = await runtime.step(`lifecycle-check-${nodeId}`, () =>
+    const pending = await runtime.run(`lifecycle-check-${nodeId}`, () =>
       store.readPendingCancel(executionId)
     );
 

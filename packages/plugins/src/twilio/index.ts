@@ -308,20 +308,23 @@ export const twilio = defineIntegration({
         // Twilio's own parameter names, so this reads like its documentation.
         // The client drops the ones left undefined and expands MediaUrl into
         // the repeated key the form encoding uses for a list.
-        const message = yield* createTwilioMessage(
-          { accountSid, authToken },
-          {
-            To: recipient,
-            Body: input.smsBody,
-            From: senderFrom || undefined,
-            MessagingServiceSid: senderMessagingServiceSid || undefined,
-            StatusCallback: input.smsStatusCallback || undefined,
-            MediaUrl: mediaUrls.length > 0 ? [...mediaUrls] : undefined,
-          }
-        ).pipe(
-          Effect.mapError(
-            (error) =>
-              new StepFailure({ message: describeTwilioFailure(error) })
+        const message = yield* bag.step.run(
+          "send",
+          createTwilioMessage(
+            { accountSid, authToken },
+            {
+              To: recipient,
+              Body: input.smsBody,
+              From: senderFrom || undefined,
+              MessagingServiceSid: senderMessagingServiceSid || undefined,
+              StatusCallback: input.smsStatusCallback || undefined,
+              MediaUrl: mediaUrls.length > 0 ? [...mediaUrls] : undefined,
+            }
+          ).pipe(
+            Effect.mapError(
+              (error) =>
+                new StepFailure({ message: describeTwilioFailure(error) })
+            )
           )
         );
 

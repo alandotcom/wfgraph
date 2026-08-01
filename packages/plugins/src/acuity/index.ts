@@ -271,9 +271,11 @@ export const acuity = defineIntegration({
       handler: Effect.fn(function* (bag) {
         const client = yield* createAcuityClient(bag);
 
-        const appointmentTypes = yield* callAcuity(
-          "Failed to list appointment types.",
-          () => client.appointments.types()
+        const appointmentTypes = yield* bag.step.run(
+          "list-types",
+          callAcuity("Failed to list appointment types.", () =>
+            client.appointments.types()
+          )
         );
 
         return { appointmentTypes, count: appointmentTypes.length };
@@ -412,9 +414,11 @@ export const acuity = defineIntegration({
           page,
         };
 
-        const appointments = yield* callAcuity(
-          "Failed to list appointments.",
-          () => client.appointments.list(params)
+        const appointments = yield* bag.step.run(
+          "list-appointments",
+          callAcuity("Failed to list appointments.", () =>
+            client.appointments.list(params)
+          )
         );
 
         return { appointments, count: appointments.length };
@@ -458,9 +462,11 @@ export const acuity = defineIntegration({
           "Include Past Form Answers"
         );
 
-        const appointment = yield* callAcuity(
-          "Failed to fetch appointment.",
-          () => client.appointments.get(appointmentId, { pastFormAnswers })
+        const appointment = yield* bag.step.run(
+          "get-appointment",
+          callAcuity("Failed to fetch appointment.", () =>
+            client.appointments.get(appointmentId, { pastFormAnswers })
+          )
         );
 
         // The id and the datetime sit beside the appointment as well as inside it,
@@ -533,9 +539,11 @@ export const acuity = defineIntegration({
           timezone: input.timezone,
         };
 
-        const dates = yield* callAcuity(
-          "Failed to fetch availability dates.",
-          () => client.availability.dates(params)
+        const dates = yield* bag.step.run(
+          "get-dates",
+          callAcuity("Failed to fetch availability dates.", () =>
+            client.availability.dates(params)
+          )
         );
 
         return { dates, count: dates.length };
@@ -615,9 +623,11 @@ export const acuity = defineIntegration({
           ignoreAppointmentIDs,
         };
 
-        const slots = yield* callAcuity(
-          "Failed to fetch availability times.",
-          () => client.availability.times(params)
+        const slots = yield* bag.step.run(
+          "get-times",
+          callAcuity("Failed to fetch availability times.", () =>
+            client.availability.times(params)
+          )
         );
 
         return { slots, count: slots.length };
@@ -764,9 +774,11 @@ export const acuity = defineIntegration({
           fields,
         };
 
-        const appointment = yield* callAcuity(
-          "Failed to create appointment.",
-          () => client.appointments.create(payload, { admin, noEmail })
+        const appointment = yield* bag.step.run(
+          "create-appointment",
+          callAcuity("Failed to create appointment.", () =>
+            client.appointments.create(payload, { admin, noEmail })
+          )
         );
 
         // The id and the datetime sit beside the appointment as well as inside it,
@@ -832,14 +844,15 @@ export const acuity = defineIntegration({
           "Suppress Acuity Emails"
         );
 
-        const appointment = yield* callAcuity(
-          "Failed to reschedule appointment.",
-          () =>
+        const appointment = yield* bag.step.run(
+          "reschedule-appointment",
+          callAcuity("Failed to reschedule appointment.", () =>
             client.appointments.reschedule(
               appointmentId,
               { datetime: input.datetime, calendarID },
               { admin, noEmail }
             )
+          )
         );
 
         // The id and the datetime sit beside the appointment as well as inside it,
@@ -896,14 +909,15 @@ export const acuity = defineIntegration({
           "Suppress Acuity Emails"
         );
 
-        const appointment = yield* callAcuity(
-          "Failed to cancel appointment.",
-          () =>
+        const appointment = yield* bag.step.run(
+          "cancel-appointment",
+          callAcuity("Failed to cancel appointment.", () =>
             client.appointments.cancel(
               appointmentId,
               { cancelNote: input.cancelNote, noShow },
               { admin, noEmail }
             )
+          )
         );
 
         // The id and the flag sit beside the appointment as well as inside it,

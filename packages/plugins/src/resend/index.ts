@@ -498,16 +498,15 @@ export const resend = defineIntegration({
             : { to: input.emailTo, cc: input.emailCc, bcc: input.emailBcc }
         );
 
-        const sent = yield* sendResendEmail(
-          apiKey,
-          payload,
-          idempotencyKey
-        ).pipe(
-          Effect.mapError(
-            (error) =>
-              new StepFailure({
-                message: `Failed to send email: ${describeResendFailure(error)}`,
-              })
+        const sent = yield* bag.step.run(
+          "send",
+          sendResendEmail(apiKey, payload, idempotencyKey).pipe(
+            Effect.mapError(
+              (error) =>
+                new StepFailure({
+                  message: `Failed to send email: ${describeResendFailure(error)}`,
+                })
+            )
           )
         );
 

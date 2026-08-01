@@ -65,7 +65,7 @@ async function workflowRunRequestedHandler({
       }),
     // Memoization boundary: Inngest stores the result under `stepId`, so work
     // already done in an earlier attempt is replayed instead of repeated.
-    step: (stepId, fn) => step.run(stepId, fn),
+    run: (stepId, fn) => step.run(stepId, fn),
   };
 
   // The engine persists nothing and implements nothing on its own: the store
@@ -124,12 +124,15 @@ export function createWorkflowRunFunction(
     {
       id: "workflow-run",
       name: "Workflow run",
-      // Each node runs inside its own memoized step, so a retry resumes at the
-      // step that failed instead of replaying the graph from the trigger. That
-      // is what makes retrying safe here, and it is why this is not 0: without
-      // it a single transient fault - a provider 502, a blip writing a step log
-      // - ends the whole run with no second attempt. Every plugin action
-      // depends on this.
+      // A retry resumes at the step that failed rather than replaying the graph
+      // from the trigger, so this is not 0: without it a single transient fault
+      // - a provider 502, a blip writing a step log - ends the whole run with no
+      // second attempt.
+      //
+      // What is remembered is what a handler put in its own `step.run`, plus the
+      // run-log rows the engine writes around it. Rova wraps no handler body
+      // (ADR-0009), so a handler that wraps nothing repeats its work on every
+      // attempt.
       //
       // The residual risk is a non-idempotent step that fails *after* its side
       // effect landed (a send that times out waiting for the response): the

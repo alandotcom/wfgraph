@@ -211,25 +211,34 @@ export const linear = defineIntegration({
 
         const client = new LinearClient({ apiKey });
         const teamId =
-          credentials.LINEAR_TEAM_ID || (yield* firstTeamId(client));
+          credentials.LINEAR_TEAM_ID ||
+          (yield* bag.step.run("first-team", firstTeamId(client)));
 
         // Linear answers a mutation with a payload holding a promise for the
-        // issue it made, so the issue is two awaits away from the call.
-        const issue = yield* callLinear("Failed to create ticket", async () => {
-          const created = await client.createIssue({
-            title: input.ticketTitle,
-            description: input.ticketDescription,
-            teamId,
-          });
+        // issue it made, so the issue is two awaits away from the call. The
+        // three fields are read inside the step because what a step remembers
+        // round-trips through JSON, and the SDK's issue is a class instance.
+        const issue = yield* bag.step.run(
+          "create-ticket",
+          callLinear("Failed to create ticket", async () => {
+            const created = await client.createIssue({
+              title: input.ticketTitle,
+              description: input.ticketDescription,
+              teamId,
+            });
+            const made = created.issue ? await created.issue : undefined;
 
-          return created.issue ? await created.issue : undefined;
-        });
+            return made
+              ? { id: made.id, url: made.url, title: made.title }
+              : undefined;
+          })
+        );
 
         if (!issue) {
           return yield* new StepFailure({ message: "Failed to create issue" });
         }
 
-        return { id: issue.id, url: issue.url, title: issue.title };
+        return issue;
       }),
     },
 
@@ -290,31 +299,34 @@ export const linear = defineIntegration({
         // Everything the Linear SDK does is a Promise that throws, and an
         // issue's state is a second request behind the issue, so the whole read
         // is one call.
-        const issues = yield* Effect.tryPromise({
-          try: async () => {
-            const found = await client.issues({
-              filter: buildIssueFilter(input),
-            });
+        const issues = yield* bag.step.run(
+          "find-issues",
+          Effect.tryPromise({
+            try: async () => {
+              const found = await client.issues({
+                filter: buildIssueFilter(input),
+              });
 
-            return await Promise.all(
-              found.nodes.map(async (issue) => {
-                const state = issue.state ? await issue.state : undefined;
-                return {
-                  id: issue.id,
-                  title: issue.title,
-                  url: issue.url,
-                  state: state?.name || "Unknown",
-                  priority: issue.priority,
-                  assigneeId: issue.assigneeId ?? null,
-                };
-              })
-            );
-          },
-          catch: (error) =>
-            new StepFailure({
-              message: `Failed to find issues: ${describeLinearFailure(error)}`,
-            }),
-        });
+              return await Promise.all(
+                found.nodes.map(async (issue) => {
+                  const state = issue.state ? await issue.state : undefined;
+                  return {
+                    id: issue.id,
+                    title: issue.title,
+                    url: issue.url,
+                    state: state?.name || "Unknown",
+                    priority: issue.priority,
+                    assigneeId: issue.assigneeId ?? null,
+                  };
+                })
+              );
+            },
+            catch: (error) =>
+              new StepFailure({
+                message: `Failed to find issues: ${describeLinearFailure(error)}`,
+              }),
+          })
+        );
 
         return { issues, count: issues.length };
       }),

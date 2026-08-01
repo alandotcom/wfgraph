@@ -179,7 +179,7 @@ async function executeWorkflowInner(
 
     // Wrapped as a durable step so the terminal record and its audit event are
     // written exactly once, even though the body replays after every wait.
-    await runtime.step("workflow-run-completed", () =>
+    await runtime.run("workflow-run-completed", () =>
       recordRunCompleted({
         store,
         executionId,
@@ -213,7 +213,7 @@ async function executeWorkflowInner(
     const terminalStatus = cancelled ? "canceled" : "failed";
 
     // Same exactly-once treatment as the success path above.
-    await runtime.step("workflow-run-failed", () =>
+    await runtime.run("workflow-run-failed", () =>
       recordRunFailed({
         store,
         executionId,

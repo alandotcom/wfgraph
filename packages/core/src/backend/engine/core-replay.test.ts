@@ -92,17 +92,36 @@ const followupAction = vi.fn<() => Record<string, unknown>>(() => ({
 }));
 const branchAction = vi.fn<() => Record<string, unknown>>(() => ({ ok: true }));
 
+/**
+ * A host action whose work is inside `step.run`, which is the whole of what
+ * makes it happen once across a replay. Rova wraps no handler body.
+ */
 function aHostAction(
   id: string,
   label: string,
-  handler: () => Record<string, unknown>
+  work: () => Record<string, unknown>
 ) {
   return defineAction({
     id,
     label,
     description: `Test ${label} action`,
     input: Schema.Struct({}),
-    handler,
+    handler: (bag) => bag.step.run("work", () => Promise.resolve(work())),
+  });
+}
+
+/** The same action with its work left unwrapped, which a replay repeats. */
+function anUnwrappedHostAction(
+  id: string,
+  label: string,
+  work: () => Record<string, unknown>
+) {
+  return defineAction({
+    id,
+    label,
+    description: `Test ${label} action`,
+    input: Schema.Struct({}),
+    handler: work,
   });
 }
 
@@ -206,14 +225,56 @@ describe("workflow engine replay safety", () => {
       actions
     );
 
-    expect(memo.has("node:lifecycle_1")).toBe(true);
-    expect(memo.has("node:email_1")).toBe(true);
-    expect(memo.has("node:followup_1")).toBe(true);
-    // The Wait node itself is never wrapped - it suspends the run, and a step
-    // cannot contain a sleep. Its persistence segments are memoized instead.
-    expect(memo.has("node:wait_1")).toBe(false);
+    // What a node memoizes is its own run-log rows and whatever its handler put
+    // in `step.run`, each under that node's id. Nothing wraps the handler body.
+    expect(memo.has("node:email_1:log-open")).toBe(true);
+    expect(memo.has("node:email_1:log-close")).toBe(true);
+    expect(memo.has("node:email_1:work")).toBe(true);
+    expect(memo.has("node:followup_1:work")).toBe(true);
+    expect(memo.has("node:lifecycle_1:log-open")).toBe(true);
+    // A Wait node suspends the run, so a step cannot contain it. Its own
+    // persistence segments are memoized around the suspension instead.
+    expect(memo.has("node:wait_1:log-open")).toBe(false);
     expect(memo.has("wait-delay-prepare-wait_1")).toBe(true);
     expect(memo.has("wait-delay-resume-wait_1")).toBe(true);
+  });
+
+  // The other half of the contract, and the trap worth knowing: Rova wraps no
+  // handler body, so work left outside `step.run` happens again on every attempt
+  // while the node's log rows stay memoized. The run panel then shows one row for
+  // however many times the work ran.
+  it("repeats an unwrapped handler on a replay, under one log row", async () => {
+    const unwrapped = vi.fn<() => Record<string, unknown>>(() => ({
+      sent: true,
+    }));
+    const bare = createWorkflowActions(
+      assembleExtensions({
+        actions: [
+          anUnwrappedHostAction(EMAIL_ACTION_ID, "Send Email", unwrapped),
+          aHostAction(FOLLOWUP_ACTION_ID, "Send Followup", followupAction),
+        ],
+      }),
+      stubRovaRuntime()
+    );
+    const memo = new Map<string, unknown>();
+
+    await executeWorkflow(
+      waitGraphInput,
+      createReplayRuntime(memo),
+      store,
+      bare
+    );
+    await executeWorkflow(
+      waitGraphInput,
+      createReplayRuntime(memo),
+      store,
+      bare
+    );
+
+    expect(unwrapped).toHaveBeenCalledTimes(2);
+    expect(memo.has("node:email_1:work")).toBe(false);
+    // One row all the same, because the two writes around the handler are steps.
+    expect(memo.has("node:email_1:log-open")).toBe(true);
   });
 
   it("creates the wait state and terminal run record exactly once across a replay", async () => {
@@ -270,8 +331,8 @@ describe("workflow engine replay safety", () => {
 
     expect(first.success).toBe(true);
     expect(branchAction).toHaveBeenCalledTimes(3);
-    expect(memo.has("node:left_1")).toBe(true);
-    expect(memo.has("node:right_1")).toBe(true);
+    expect(memo.has("node:left_1:work")).toBe(true);
+    expect(memo.has("node:right_1:work")).toBe(true);
 
     await executeWorkflow(
       fanOutInput,
@@ -327,6 +388,9 @@ describe("a Date-bearing step output across a replay", () => {
           ),
         }),
         configFields: [],
+        // Deliberately outside `step.run`: reading a clock is pure, and a `Date`
+        // put through a step comes back a string on the replay, which the output
+        // schema's encode then refuses.
         handler: Effect.fn(function* () {
           return yield* Effect.succeed({
             at: new Date("2026-03-01T10:00:00Z"),
@@ -349,8 +413,13 @@ describe("a Date-bearing step output across a replay", () => {
           },
         ],
         handler: Effect.fn(function* (bag) {
-          echoed.push(bag.input.seen);
-          return yield* Effect.succeed({ seen: bag.input.seen });
+          return yield* bag.step.run(
+            "record",
+            Effect.sync(() => {
+              echoed.push(bag.input.seen);
+              return { seen: bag.input.seen };
+            })
+          );
         }),
       },
     },
