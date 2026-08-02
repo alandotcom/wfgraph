@@ -49,12 +49,6 @@ export function actionTypeOf(
   return readConfigString(node.data.config, "actionType");
 }
 
-export function integrationIdOf(
-  node: NodeConfigSource | undefined
-): string | undefined {
-  return readConfigString(node?.data.config, "integrationId");
-}
-
 export function isWaitActionType(value: unknown): boolean {
   return value === BUILT_IN_ACTION_IDS.wait;
 }

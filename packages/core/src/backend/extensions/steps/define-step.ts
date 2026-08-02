@@ -48,7 +48,6 @@ import type {
 } from "@rova/shared/plugins/action-fields";
 import type { NodeSteps, StepResult } from "@rova/shared/actions/step-result";
 import type { JsonSafe } from "@rova/shared/types/json";
-import { getErrorMessage } from "@rova/shared/utils";
 
 /**
  * Why a step could not do its work, in the words the run log shows.
@@ -74,21 +73,15 @@ export class StepFailure extends Schema.TaggedErrorClass<StepFailure>()(
  * on every attempt. Rova wraps no handler body for you: that is Inngest's model,
  * and an author who reaches a system twice is an author who did not say so here.
  *
- * The Effect overload is the internal shape: integrations yield it. The Promise
- * overload is a thin adapter for a host's `defineAction` (`Effect.tryPromise`
- * in, `runToPromise` out). Both memoize through the same `RememberedStep`
- * envelope.
+ * The Effect overload is the internal shape: integrations yield it and memoize
+ * through a `RememberedStep` envelope so a `StepFailure` fails once. The Promise
+ * overload is a thin adapter for a host's `defineAction`: it memoizes the bare
+ * value, and a throw leaves no stored entry so a function-level retry re-runs.
  *
  * What `run` answers round-trips through JSON on its way into the runtime's
  * storage, and `JsonSafe` is the compiler holding both forms to that. A `Date`,
  * `Map` or `Set` in the answer is refused where it is written, with the offending
  * field named.
- *
- * A `StepFailure` travels back as a failure value rather than as a throw, so a
- * node a system refused fails once instead of spending the retry budget on an
- * answer that will not change. Anything else an Effect handler throws is a step
- * that failed, which the runtime retries. A Promise handed to `run` that rejects
- * becomes a `StepFailure`, so the Promise adapter shares that fail-once path.
  */
 export type NodeStepApi = {
   run: StepRunner;
@@ -120,9 +113,11 @@ type DurableRemember = <T>(
 /**
  * The author's `step`, over the node's durable runtime.
  *
- * Effect is the one execution shape. A Promise overload lifts with
- * `Effect.tryPromise` and answers with `runToPromise`, so a host's
- * `defineAction` stays Promise-first without a second memoization path.
+ * Effect is the primary execution shape: work runs to a `RememberedStep`
+ * envelope so a `StepFailure` is stored once and re-raised on replay rather
+ * than retried. The Promise overload is a thin adapter for host `defineAction`:
+ * it memoizes the bare value, and a throw escapes without a stored entry so a
+ * function-level retry re-runs the step (Inngest's model for transient errors).
  */
 export function nodeStepApi(
   app: StepEnvironment,
@@ -137,7 +132,7 @@ export function nodeStepApi(
     memoize ? memoize(stepId, work) : work();
 
   /**
-   * The one memoized path. Work is run to a `Result` inside the step, so the
+   * Effect memoization. Work is run to a `Result` inside the step, so the
    * value the runtime stores is a success either way and a `StepFailure` is
    * re-raised on the far side rather than read as a step to run again.
    */
@@ -184,30 +179,15 @@ export function nodeStepApi(
       | (() => Promise<A>)
   ): Effect.Effect<A, StepFailure, HttpClient.HttpClient> | Promise<A> {
     if (typeof work === "function") {
-      return runToPromise(
-        runEffect(
-          stepId,
-          Effect.tryPromise({
-            try: work,
-            catch: (error) =>
-              error instanceof StepFailure
-                ? error
-                : new StepFailure({ message: stepRunErrorMessage(error) }),
-          })
-        )
-      );
+      // Bare-value memoization: a throw must not leave a stored entry, or a
+      // function-level retry would replay the failure instead of re-running.
+      return remember(stepId, work);
     }
 
     return runEffect(stepId, work);
   }
 
   return { run };
-}
-
-/** A throw inside a Promise `step.run`, as the sentence the run log shows. */
-function stepRunErrorMessage(error: unknown): string {
-  const message = getErrorMessage(error);
-  return message === "Unknown error" ? "Step failed." : message;
 }
 
 /**
@@ -217,8 +197,7 @@ function stepRunErrorMessage(error: unknown): string {
  * a handler catching that could not tell a refused credential store from
  * anything else. Matching first and rejecting by hand is what keeps
  * `CredentialsUnavailable` recognisable to `stepFailureFrom`, which is what
- * keeps it out of the `StepResult` envelope. The Promise `step.run` adapter
- * uses the same seam so a `StepFailure` stays a `StepFailure`.
+ * keeps it out of the `StepResult` envelope.
  */
 function runToPromise<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
   return Effect.runPromise(

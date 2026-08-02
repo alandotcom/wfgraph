@@ -1,34 +1,26 @@
+/**
+ * Public barrel for the conditions package surface.
+ *
+ * Prefer a specific submodule (`condition-model`, `condition-schema`, …) when
+ * the caller already knows which layer it needs; this file keeps the historical
+ * `@rova/shared/conditions/conditions` import path stable.
+ */
+
 export {
   CONDITION_CONTEXT_ROOT,
   EVENT_CONTEXT_ROOT,
   EVENT_NAME_FIELD_PATH,
-  type BooleanConditionRule,
-  type BooleanOperator,
-  type ConditionCompileResult,
   type ConditionFieldDefinition,
   type ConditionFieldType,
-  type ConditionGroup,
   type ConditionModel,
-  type ConditionModelParseResult,
   type ConditionRule,
-  type GroupLogic,
-  type NullCheckConditionRule,
-  type NullCheckOperator,
-  type NumberConditionRule,
-  type NumberOperator,
-  type StringConditionRule,
-  type StringOperator,
   type TimeUnit,
-  type TimestampAbsoluteConditionRule,
   type TimestampAbsoluteOperator,
-  type TimestampOperator,
-  type TimestampRelativeConditionRule,
   type TimestampRelativeOperator,
   collectTimestampFieldPaths,
   createDefaultConditionModel,
   createDefaultConditionRule,
   isNullCheckConditionRule,
-  isNullCheckOperator,
   isTimestampAbsoluteConditionRule,
   isTimestampRelativeConditionRule,
   reconcileModelWithFields,

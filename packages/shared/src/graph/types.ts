@@ -25,9 +25,6 @@ export type PersistedNodeData = {
   enabled?: boolean;
 };
 
-/** Alias kept for call sites that mean the persisted shape. */
-export type WorkflowNodeData = PersistedNodeData;
-
 /**
  * A graph node without React Flow. Positions and ids are required after decode;
  * bookkeeping fields the editor round-trips stay optional.

@@ -900,11 +900,11 @@ describe("what step.run accepts", () => {
 });
 
 /**
- * The Promise `step.run` adapter shares the Effect memoization path, including
- * fail-once for a rejection inside the work.
+ * The Promise `step.run` adapter memoizes the bare value. A throw leaves no
+ * stored entry so a function-level retry re-runs the work (Inngest's model).
  */
 describe("Promise step.run adapter", () => {
-  it("memoizes a host-style Promise factory through the Effect path", async () => {
+  it("memoizes a host-style Promise factory as the bare value", async () => {
     let calls = 0;
     const step = defineStep({
       ...METADATA,
@@ -936,32 +936,48 @@ describe("Promise step.run adapter", () => {
     expect(first).toEqual({ success: true, data: { id: "made-someone" } });
     expect(second).toEqual(first);
     expect(calls).toBe(1);
-    // RememberedStep envelope, not the bare payload — same shape as Effect run.
-    expect(remembered.get("create")).toEqual({
-      ok: true,
-      value: { id: "made-someone" },
-    });
+    expect(remembered.get("create")).toEqual({ id: "made-someone" });
   });
 
-  it("turns a rejected Promise inside step.run into the node's one failure", async () => {
+  it("does not memoize a thrown Promise step", async () => {
+    let calls = 0;
     const step = defineStep({
       ...METADATA,
       input: z.object({ to: z.string() }),
       output: z.object({ id: z.string() }),
       handler: ({ step: nodeStep }) =>
         nodeStep.run("create", async () => {
-          throw new Error("The system said no.");
+          calls += 1;
+          if (calls === 1) {
+            throw new Error("transient");
+          }
+          return { id: "recovered" };
         }),
     });
 
-    expect(
-      await step.implement("demo/promise-fail")(runner)({
-        to: "someone",
-        _context: CONTEXT,
-      })
-    ).toEqual({
+    const remembered = new Map<string, unknown>();
+    const steps = {
+      run: async <T>(stepId: string, work: () => Promise<T>) => {
+        if (remembered.has(stepId)) {
+          return remembered.get(stepId) as T;
+        }
+        const value = await work();
+        remembered.set(stepId, value);
+        return value;
+      },
+    };
+
+    const run = step.implement("demo/promise-retry")(runner);
+    const first = await run({ to: "someone", _context: CONTEXT }, steps);
+    const second = await run({ to: "someone", _context: CONTEXT }, steps);
+
+    expect(first).toEqual({
       success: false,
-      error: { message: "The system said no." },
+      error: { message: "transient" },
     });
+    expect(second).toEqual({ success: true, data: { id: "recovered" } });
+    expect(calls).toBe(2);
+    expect(remembered.has("create")).toBe(true);
+    expect(remembered.get("create")).toEqual({ id: "recovered" });
   });
 });

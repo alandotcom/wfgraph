@@ -22,7 +22,12 @@ import type {
   WorkflowNode,
   WorkflowVisibility,
 } from "#src/lib/workflow-graph-types";
-import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
+import {
+  toEditorEdge,
+  toEditorNode,
+  toPersistedEdge,
+  toPersistedNode,
+} from "#src/lib/workflow-graph-types";
 
 export type { WorkflowVisibility } from "#src/lib/workflow-graph-types";
 
@@ -231,8 +236,8 @@ function toGraphPayload(input: {
   }
 
   return createSerializedWorkflowGraph({
-    nodes: input.nodes ?? [],
-    edges: input.edges ?? [],
+    nodes: (input.nodes ?? []).map(toPersistedNode),
+    edges: (input.edges ?? []).map(toPersistedEdge),
   });
 }
 
