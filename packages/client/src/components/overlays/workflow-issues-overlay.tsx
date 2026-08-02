@@ -1,6 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import { Button } from "#src/components/ui/button";
 import { IntegrationIcon } from "#src/components/ui/integration-icon";
+import { useConnectionRepair } from "#src/hooks/use-connection-repair";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { ConfigureConnectionOverlay } from "./add-connection-overlay";
 import { ConfigurationOverlay } from "./configuration-overlay";
@@ -55,6 +56,7 @@ export function WorkflowIssuesOverlay({
 }: WorkflowIssuesOverlayProps) {
   const { push, closeAll } = useOverlay();
   const isMobile = useIsMobile();
+  const repairAgainstConnectionList = useConnectionRepair();
 
   const { brokenReferences, missingRequiredFields, missingIntegrations } =
     issues;
@@ -77,14 +79,15 @@ export function WorkflowIssuesOverlay({
     }
   };
 
-  const openConnectionOverlay = (integrationType: string) => {
-    // The write refreshes the connection list itself, which is what lets the
-    // nodes flagged here stop being flagged.
-    push(ConfigureConnectionOverlay, { type: integrationType });
-  };
-
   const handleAddIntegration = (integrationType: string) => {
-    openConnectionOverlay(integrationType);
+    push(ConfigureConnectionOverlay, {
+      type: integrationType,
+      // The repair is what clears the issue. One integration type is listed
+      // once here however many nodes need it, so the fix is the graph rather
+      // than any one node, and the write's own list refresh leaves each node's
+      // stored id as it was.
+      onSuccess: () => void repairAgainstConnectionList(),
+    });
   };
 
   const handleRunAnyway = () => {

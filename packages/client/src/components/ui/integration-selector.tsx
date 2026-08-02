@@ -1,21 +1,14 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSetAtom } from "jotai";
-import {
-  AlertTriangle,
-  Check,
-  Circle,
-  Pencil,
-  Plus,
-  Settings,
-} from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { partition } from "es-toolkit/array";
+import { AlertTriangle, Check, Circle, Pencil, Plus, Settings } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { ConfigureConnectionOverlay } from "#src/components/overlays/add-connection-overlay";
 import { EditConnectionOverlay } from "#src/components/overlays/edit-connection-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { Button } from "#src/components/ui/button";
+import { useConnectionRepair } from "#src/hooks/use-connection-repair";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
-import { repairIntegrationsAtom } from "#src/lib/workflow-graph-store";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { findIntegration } from "@rova/shared/extensions/catalog";
 import { cn } from "@rova/shared/utils";
@@ -29,6 +22,67 @@ type IntegrationSelectorProps = {
   onAddConnection?: () => void;
 };
 
+type ConnectionRowProps = {
+  integration: Integration;
+  /** The connection's own name, or the integration's label as a stand-in. */
+  displayName: string;
+  /** Whether the node this selector writes to names this connection. */
+  selected: boolean;
+  className: string;
+  disabled?: boolean;
+  onSelect: () => void;
+  onEdit: () => void;
+};
+
+/**
+ * One connection, and whether the node points at it.
+ *
+ * Written once for every count of connections. Reading `selected` is the whole
+ * contract: a row that drew a check from the connection's existence claimed a
+ * node was bound when its config named nothing, and the pre-run check said
+ * otherwise.
+ */
+function ConnectionRow({
+  displayName,
+  selected,
+  className,
+  disabled,
+  onSelect,
+  onEdit,
+}: ConnectionRowProps) {
+  return (
+    <div className={cn(className, disabled && "cursor-not-allowed opacity-50")}>
+      <button
+        aria-checked={selected}
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        disabled={disabled}
+        onClick={onSelect}
+        role="radio"
+        type="button"
+      >
+        {selected ? (
+          <Check className="size-4 shrink-0 text-green-600" />
+        ) : (
+          <Circle className="size-4 shrink-0 text-muted-foreground" />
+        )}
+        <span className="truncate">{displayName}</span>
+      </button>
+      <Button
+        className="size-6 shrink-0"
+        disabled={disabled}
+        onClick={(e) => {
+          e.stopPropagation();
+          onEdit();
+        }}
+        size="icon"
+        variant="ghost"
+      >
+        <Pencil className="size-3" />
+      </Button>
+    </div>
+  );
+}
+
 export function IntegrationSelector({
   integrationType,
   value,
@@ -38,8 +92,7 @@ export function IntegrationSelector({
   onAddConnection,
 }: IntegrationSelectorProps) {
   const { push } = useOverlay();
-  const queryClient = useQueryClient();
-  const repairIntegrations = useSetAtom(repairIntegrationsAtom);
+  const repairAgainstConnectionList = useConnectionRepair();
   const { data: allIntegrations = [], isPending } = useQuery(
     integrationsQueryOptions()
   );
@@ -49,23 +102,11 @@ export function IntegrationSelector({
     [allIntegrations, integrationType]
   );
 
-  // Editing the connection list is the only moment a node elsewhere in the
-  // graph can newly be pointing at something that no longer exists, so the
-  // repair runs from here rather than from an effect watching for the mismatch.
-  //
-  // `fetchQuery` rather than `ensureQueryData`: the latter hands back whatever
-  // is cached without consulting staleness, so it would only be correct while
-  // some selector happens to be mounted and observing the entry the write just
-  // invalidated. Repairing against a pre-write list is what points a node at a
-  // connection that is gone.
-  const repairAgainstConnectionList = useCallback(async () => {
-    repairIntegrations(
-      await queryClient.fetchQuery(integrationsQueryOptions())
-    );
-  }, [queryClient, repairIntegrations]);
-
   const handleNewIntegrationCreated = useCallback(
     async (integrationId: string) => {
+      // Editing the connection list is the only moment a node elsewhere in the
+      // graph can newly be pointing at something that no longer exists, so the
+      // repair runs from here rather than from an effect watching for it.
       await repairAgainstConnectionList();
       onChange(integrationId);
     },
@@ -114,160 +155,81 @@ export function IntegrationSelector({
 
   const catalogEntry = findIntegration(getExtensionCatalog(), integrationType);
   const integrationLabel = catalogEntry?.label || integrationType;
-
-  // Separate managed and manual integrations for AI Gateway
-  const managedIntegrations = integrations.filter((i) => i.isManaged);
-  const manualIntegrations = integrations.filter((i) => !i.isManaged);
+  const nameOf = (integration: Integration) =>
+    integration.name || `${integrationLabel} API Key`;
 
   // No integrations - show add button
   if (integrations.length === 0) {
     return (
-      <>
-        <Button
-          className="w-full justify-start gap-2 border-orange-500/50 bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 dark:text-orange-400"
-          disabled={disabled}
-          onClick={handleAddConnection}
-          variant="outline"
-        >
-          <AlertTriangle className="size-4" />
-          <span className="flex-1 text-left">
-            Add {integrationLabel} connection
-          </span>
-          <Plus className="size-4" />
-        </Button>
-      </>
+      <Button
+        className="w-full justify-start gap-2 border-orange-500/50 bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 dark:text-orange-400"
+        disabled={disabled}
+        onClick={handleAddConnection}
+        variant="outline"
+      >
+        <AlertTriangle className="size-4" />
+        <span className="flex-1 text-left">
+          Add {integrationLabel} connection
+        </span>
+        <Plus className="size-4" />
+      </Button>
     );
   }
 
   // Single integration - show as outlined field (not radio-style)
   if (integrations.length === 1) {
     const integration = integrations[0];
-    const displayName = integration.name || `${integrationLabel} API Key`;
 
     return (
-      <>
-        <div
-          className={cn(
-            "flex h-9 w-full items-center gap-2 rounded-md border px-3 text-sm",
-            disabled && "cursor-not-allowed opacity-50"
-          )}
-        >
-          <Check className="size-4 shrink-0 text-green-600" />
-          <span className="flex-1 truncate">{displayName}</span>
-          <Button
-            className="size-6 shrink-0"
-            disabled={disabled}
-            onClick={() => openEditConnectionOverlay(integration)}
-            size="icon"
-            variant="ghost"
-          >
-            <Pencil className="size-3" />
-          </Button>
-        </div>
-      </>
+      <div role="radiogroup">
+        <ConnectionRow
+          className="flex h-9 w-full items-center gap-2 rounded-md border px-3 text-sm"
+          disabled={disabled}
+          displayName={nameOf(integration)}
+          integration={integration}
+          onEdit={() => openEditConnectionOverlay(integration)}
+          onSelect={() => onChange(integration.id)}
+          selected={value === integration.id}
+        />
+      </div>
     );
   }
 
-  // Multiple integrations or AI Gateway with option to add managed key
+  // Managed connections come first, which is the only thing the split decides.
+  const [managed, manual] = partition(integrations, (i) => Boolean(i.isManaged));
+
   return (
-    <>
-      <div className="flex flex-col gap-1">
-        {/* Show managed integrations first */}
-        {managedIntegrations.map((integration) => {
-          const isSelected = value === integration.id;
-          const displayName = integration.name || `${integrationLabel} API Key`;
-          return (
-            <div
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-[13px] py-1.5 text-sm transition-colors",
-                isSelected ? "bg-primary/10 text-primary" : "hover:bg-muted/50",
-                disabled && "cursor-not-allowed opacity-50"
-              )}
-              key={integration.id}
-            >
-              <button
-                className="flex flex-1 items-center gap-2 text-left"
-                disabled={disabled}
-                onClick={() => onChange(integration.id)}
-                type="button"
-              >
-                {isSelected ? (
-                  <Check className="size-4 shrink-0" />
-                ) : (
-                  <Circle className="size-4 shrink-0 text-muted-foreground" />
-                )}
-                <span className="truncate">{displayName}</span>
-              </button>
-              <Button
-                className="size-6 shrink-0"
-                disabled={disabled}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openEditConnectionOverlay(integration);
-                }}
-                size="icon"
-                variant="ghost"
-              >
-                <Pencil className="size-3" />
-              </Button>
-            </div>
-          );
-        })}
-
-        {/* Show manual integrations */}
-        {manualIntegrations.map((integration) => {
-          const isSelected = value === integration.id;
-          const displayName = integration.name || `${integrationLabel} API Key`;
-          return (
-            <div
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-[13px] py-1.5 text-sm transition-colors",
-                isSelected ? "bg-primary/10 text-primary" : "hover:bg-muted/50",
-                disabled && "cursor-not-allowed opacity-50"
-              )}
-              key={integration.id}
-            >
-              <button
-                className="flex flex-1 items-center gap-2 text-left"
-                disabled={disabled}
-                onClick={() => onChange(integration.id)}
-                type="button"
-              >
-                {isSelected ? (
-                  <Check className="size-4 shrink-0" />
-                ) : (
-                  <Circle className="size-4 shrink-0 text-muted-foreground" />
-                )}
-                <span className="truncate">{displayName}</span>
-              </button>
-              <Button
-                className="size-6 shrink-0"
-                disabled={disabled}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openEditConnectionOverlay(integration);
-                }}
-                size="icon"
-                variant="ghost"
-              >
-                <Pencil className="size-3" />
-              </Button>
-            </div>
-          );
-        })}
-
-        {onOpenSettings && (
-          <button
-            className="flex w-full items-center gap-2 rounded-md px-[13px] py-1.5 text-muted-foreground text-sm transition-colors hover:bg-muted/50 hover:text-foreground"
+    <div className="flex flex-col gap-1" role="radiogroup">
+      {[...managed, ...manual].map((integration) => {
+        const selected = value === integration.id;
+        return (
+          <ConnectionRow
+            className={cn(
+              "flex w-full items-center gap-2 rounded-md px-[13px] py-1.5 text-sm transition-colors",
+              selected ? "bg-primary/10 text-primary" : "hover:bg-muted/50"
+            )}
             disabled={disabled}
-            onClick={onOpenSettings}
-            type="button"
-          >
-            <Settings className="size-4 shrink-0" />
-            <span>Manage all connections</span>
-          </button>
-        )}
-      </div>
-    </>
+            displayName={nameOf(integration)}
+            integration={integration}
+            key={integration.id}
+            onEdit={() => openEditConnectionOverlay(integration)}
+            onSelect={() => onChange(integration.id)}
+            selected={selected}
+          />
+        );
+      })}
+
+      {onOpenSettings && (
+        <button
+          className="flex w-full items-center gap-2 rounded-md px-[13px] py-1.5 text-muted-foreground text-sm transition-colors hover:bg-muted/50 hover:text-foreground"
+          disabled={disabled}
+          onClick={onOpenSettings}
+          type="button"
+        >
+          <Settings className="size-4 shrink-0" />
+          <span>Manage all connections</span>
+        </button>
+      )}
+    </div>
   );
 }
