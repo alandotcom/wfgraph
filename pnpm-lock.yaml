@@ -105,9 +105,6 @@ importers:
       '@testing-library/react':
         specifier: 'catalog:'
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@types/bcryptjs':
-        specifier: ^3.0.0
-        version: 3.0.0
       '@types/d3-hierarchy':
         specifier: ^3.1.7
         version: 3.1.7
@@ -2740,10 +2737,6 @@ packages:
 
   '@types/babel__traverse@7.28.0':
     resolution: {integrity: sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q==}
-
-  '@types/bcryptjs@3.0.0':
-    resolution: {integrity: sha512-WRZOuCuaz8UcZZE4R5HXTco2goQSI2XxjGY3hbM/xDvwmqFWd4ivooImsMx65OKM6CtNKbnZ5YL+YwAwK7c1dg==}
-    deprecated: This is a stub types definition. bcryptjs provides its own type definitions, so you do not need this installed.
 
   '@types/body-parser@1.19.6':
     resolution: {integrity: sha512-HLFeCYgz89uk22N5Qg3dvGvsv46B8GLvKKo1zKG4NybA8U2DiEO3w9lqGg29t/tfLRJpJ6iQxnVw4OnB7MoM9g==}
@@ -7552,10 +7545,6 @@ snapshots:
   '@types/babel__traverse@7.28.0':
     dependencies:
       '@babel/types': 7.29.7
-
-  '@types/bcryptjs@3.0.0':
-    dependencies:
-      bcryptjs: 3.0.3
 
   '@types/body-parser@1.19.6':
     dependencies:
