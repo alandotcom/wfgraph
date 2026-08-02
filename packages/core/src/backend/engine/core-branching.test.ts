@@ -75,6 +75,27 @@ function createConditionNode(
   };
 }
 
+// An ordinary action node, which routes nothing: its one outgoing edge is what
+// the run does next.
+function createWrappedActionNode(id: string): WorkflowNode {
+  return {
+    id,
+    type: "action",
+    position: { x: 100, y: 100 },
+    data: {
+      label: "Wrapped Output",
+      type: "action",
+      config: { actionType: WRAPPED_ACTION_ID },
+    },
+  };
+}
+
+// The toggle the config panel writes. The engine skips the node's work and
+// emits a null output in its place.
+function disableNode(node: WorkflowNode): WorkflowNode {
+  return { ...node, data: { ...node.data, enabled: false } };
+}
+
 // A condition that reads a timestamp field off the payload. Building the CEL
 // from the model is what saving a workflow enforces, so these two stay in step
 // the way a real node's do.
@@ -127,21 +148,6 @@ function createTimestampConditionNode(input: {
   };
 }
 
-function createUnknownActionNode(id: string): WorkflowNode {
-  return {
-    id,
-    type: "action",
-    position: { x: 100, y: 100 },
-    data: {
-      label: id,
-      type: "action",
-      config: {
-        actionType: "Unknown Action",
-      },
-    },
-  };
-}
-
 function createConditionBranchEdge(input: {
   id: string;
   source: string;
@@ -161,45 +167,6 @@ describe("executeWorkflow branch traversal", () => {
 
   beforeEach(() => {
     store = createRecordingWorkflowStore();
-  });
-
-  it("does not execute a join node until all inbound dependencies are downstream-ready", async () => {
-    const graph = createSerializedWorkflowGraph({
-      nodes: [
-        createLifecycleNode("lifecycle_1"),
-        createConditionNode("action_success", true),
-        createUnknownActionNode("action_failure"),
-        createConditionNode("join_node", true),
-      ],
-      edges: [
-        {
-          id: "edge_t_s",
-          source: "lifecycle_1",
-          sourceHandle: "started",
-          target: "action_success",
-        },
-        {
-          id: "edge_t_f",
-          source: "lifecycle_1",
-          sourceHandle: "started",
-          target: "action_failure",
-        },
-        { id: "edge_s_j", source: "action_success", target: "join_node" },
-        { id: "edge_f_j", source: "action_failure", target: "join_node" },
-      ],
-    });
-
-    const result = await executeWorkflow(
-      { graph, executionId: "exec_join", workflowId: "workflow_join" },
-      createInMemoryWorkflowRuntime(),
-      store,
-      actions
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.results.action_success?.success).toBe(true);
-    expect(result.results.action_failure?.success).toBe(false);
-    expect(result.results.join_node).toBeUndefined();
   });
 
   it("executes only the true branch when condition evaluates true", async () => {
@@ -253,6 +220,95 @@ describe("executeWorkflow branch traversal", () => {
     });
     expect(result.results.true_node?.success).toBe(true);
     expect(result.results.false_node).toBeUndefined();
+  });
+
+  it("stops the branch at a disabled Condition rather than taking both", async () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createLifecycleNode("lifecycle_1"),
+        disableNode(createConditionNode("condition_node", true)),
+        createConditionNode("true_node", true),
+        createConditionNode("false_node", true),
+      ],
+      edges: [
+        {
+          id: "edge_t_c",
+          source: "lifecycle_1",
+          sourceHandle: "started",
+          target: "condition_node",
+        },
+        createConditionBranchEdge({
+          id: "edge_c_true",
+          source: "condition_node",
+          target: "true_node",
+          branch: "true",
+        }),
+        createConditionBranchEdge({
+          id: "edge_c_false",
+          source: "condition_node",
+          target: "false_node",
+          branch: "false",
+        }),
+      ],
+    });
+
+    const result = await executeWorkflow(
+      {
+        graph,
+        executionId: "exec_condition_disabled",
+        workflowId: "workflow_condition",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.results.condition_node?.success).toBe(true);
+    // Both edges below the node name a branch its decision would have picked
+    // between. Taking either without a decision is a guess, and taking both
+    // sends the true message and the false one to the same person.
+    expect(result.results.true_node).toBeUndefined();
+    expect(result.results.false_node).toBeUndefined();
+  });
+
+  // The other half of the rule above. A disabled node that decides nothing about
+  // routing hands the run straight on, because its one outgoing edge is what
+  // comes next rather than a branch it would have chosen.
+  it("carries on through a disabled action node", async () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createLifecycleNode("lifecycle_1"),
+        disableNode(createWrappedActionNode("disabled_action")),
+        createConditionNode("below_node", true),
+      ],
+      edges: [
+        {
+          id: "edge_l_a",
+          source: "lifecycle_1",
+          sourceHandle: "started",
+          target: "disabled_action",
+        },
+        { id: "edge_a_b", source: "disabled_action", target: "below_node" },
+      ],
+    });
+
+    const result = await executeWorkflow(
+      {
+        graph,
+        executionId: "exec_disabled_action",
+        workflowId: "workflow_disabled_action",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.results.below_node?.success).toBe(true);
+    // The null output is what keeps a template addressing this node resolving
+    // rather than failing the node below it.
+    expect(executionData(result.results.disabled_action)).toBeNull();
   });
 
   it("executes only the false branch when condition evaluates false", async () => {
@@ -726,20 +782,24 @@ describe("executeWorkflow Event Split traversal", () => {
     store = createRecordingWorkflowStore();
   });
 
-  function createSplitGraph() {
+  function createSplitNode(): WorkflowNode {
+    return {
+      id: "split_1",
+      type: "action",
+      position: { x: 100, y: 100 },
+      data: {
+        label: "Split on Event",
+        type: "action",
+        config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
+      },
+    };
+  }
+
+  function createSplitGraph(split: WorkflowNode = createSplitNode()) {
     return createSerializedWorkflowGraph({
       nodes: [
         createLifecycleNode("lifecycle_1"),
-        {
-          id: "split_1",
-          type: "action",
-          position: { x: 100, y: 100 },
-          data: {
-            label: "Split on Event",
-            type: "action",
-            config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
-          },
-        },
+        split,
         createConditionNode("on_created", true),
         createConditionNode("on_rescheduled", true),
       ],
@@ -788,6 +848,26 @@ describe("executeWorkflow Event Split traversal", () => {
       success: true,
       data: { event: "app/appointment.rescheduled" },
     });
+  });
+
+  it("stops the branch at a disabled Event Split rather than firing every outlet", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createSplitGraph(disableNode(createSplitNode())),
+        executionId: "exec_split_disabled",
+        workflowId: "workflow_split",
+        startEventName: "app/appointment.rescheduled",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.results.split_1?.success).toBe(true);
+    // One arrival would otherwise run the branch for every Event at once.
+    expect(result.results.on_created).toBeUndefined();
+    expect(result.results.on_rescheduled).toBeUndefined();
   });
 
   it("ends the run where no outlet claims the Event", async () => {

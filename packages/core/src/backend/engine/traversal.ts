@@ -4,6 +4,12 @@
  *
  * Holding it in one value is what lets `markReadyForDownstream` state the rule a
  * scheduler has to follow. The scheduler itself is in `core.ts`.
+ *
+ * A node is reached only by the one node above it, right after that node
+ * releases it: `validateSingleIncomingEdgePerNode` caps every node at one
+ * incoming edge on every save path, so a saved graph is a forest rooted at its
+ * entry nodes. Nothing here checks a node's readiness, because there is no
+ * second way in for that check to catch.
  */
 
 import { omit } from "es-toolkit";
@@ -50,7 +56,6 @@ export class Traversal {
   private readonly nodes: readonly WorkflowNode[];
   private readonly nodeMap: Map<string, WorkflowNode>;
   private readonly edgesBySource = new Map<string, WorkflowEdge[]>();
-  private readonly edgesByTarget = new Map<string, string[]>();
   private readonly completedNodes = new Set<string>();
   private readonly inheritedOutputKeys = new Set<string>();
   private readonly inProgressNodes = new Set<string>();
@@ -64,10 +69,6 @@ export class Traversal {
       const sourceEdges = this.edgesBySource.get(edge.source) || [];
       sourceEdges.push(edge);
       this.edgesBySource.set(edge.source, sourceEdges);
-
-      const sources = this.edgesByTarget.get(edge.target) || [];
-      sources.push(edge.source);
-      this.edgesByTarget.set(edge.target, sources);
     }
   }
 
@@ -115,24 +116,6 @@ export class Traversal {
     }
 
     return true;
-  }
-
-  /**
-   * The nodes an incoming edge points from, and which of those have not yet
-   * released this one. A node with anything missing is not ready to run, and the
-   * source that is still outstanding schedules it when it releases.
-   */
-  dependenciesOf(nodeId: string): {
-    dependencies: string[];
-    missing: string[];
-  } {
-    const dependencies = this.edgesByTarget.get(nodeId) ?? [];
-    return {
-      dependencies,
-      missing: dependencies.filter(
-        (dependency) => !this.downstreamReadyNodes.has(dependency)
-      ),
-    };
   }
 
   /** The nodes this one hands on to, along the edges the route names. */

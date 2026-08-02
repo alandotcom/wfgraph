@@ -46,7 +46,6 @@ const executionResultSchema = Schema.Union([
   Schema.Struct({
     success: Schema.Literal(true),
     data: Schema.optionalKey(Schema.MutableJson),
-    haltBranch: Schema.optionalKey(Schema.Boolean),
   }),
 ]);
 

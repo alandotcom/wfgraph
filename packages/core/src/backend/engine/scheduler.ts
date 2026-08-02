@@ -48,10 +48,17 @@ type NodeWorkOutcome = {
   unconfigured?: boolean;
   /**
    * The branch a Condition node picked. Absent on every other node, and absent
-   * on a disabled Condition node, which evaluated nothing and therefore fans
-   * out to every branch below it.
+   * on a disabled Condition node, which evaluated nothing and halts its branch
+   * where it stands.
    */
   conditionValue?: boolean;
+  /**
+   * Whether the run stops below this node. A Wait that was skipped or woken by
+   * a cancel says so, a disabled routing node says so, and a branch that was
+   * handed to a durable run of its own says so because that run already walked
+   * everything underneath.
+   */
+  haltBranch?: boolean;
 };
 
 function readConfigString(
@@ -104,9 +111,11 @@ type ActionStepOutcome = {
  * Two nodes are the exception to following every edge. A normal start leaves the
  * entry node by the Started outlet, and the Canceled outlet's branch is reached
  * only by a run a Cancel Event claimed. An Event Split leaves by the outlet
- * naming the Event the run arrived on. A disabled node decided nothing, so it
- * fans out like any other. The Condition node is decided above this, because its
- * branch is a value its own step produced.
+ * naming the Event the run arrived on. A disabled action node decided nothing,
+ * so it fans out like any other. `runNodeWork` halts a disabled routing node's
+ * branch, so every node reaching here is one the run is travelling through. The
+ * Condition node is decided above this, because its branch is a value its own
+ * step produced.
  */
 function downstreamRoute(
   node: WorkflowNode,
@@ -116,25 +125,44 @@ function downstreamRoute(
     return { kind: "outlet", outlet: LIFECYCLE_STARTED_HANDLE };
   }
 
-  if (node.data.enabled !== false && isEventSplitNode(node)) {
+  if (isEventSplitNode(node)) {
     return { kind: "event", eventName };
   }
 
   return { kind: "all" };
 }
 
-/**
- * Whether this node is the one that suspends the run.
- *
- * A disabled node answers false: `runNodeWork` skips its work, so it parks
- * nothing and the scheduler has no reason to hold it back.
- */
+/** The action id this node runs, absent on a node that runs no action. */
+function actionTypeOf(node: WorkflowNode): string | undefined {
+  return node.data.type === "action"
+    ? readConfigString(node.data.config, "actionType")
+    : undefined;
+}
+
+/** Whether this node is the one that suspends the run. */
 function isWaitNode(node: WorkflowNode): boolean {
-  return (
-    node.data.enabled !== false &&
-    node.data.type === "action" &&
-    node.data.config?.actionType === BUILT_IN_ACTION_IDS.wait
-  );
+  return actionTypeOf(node) === BUILT_IN_ACTION_IDS.wait;
+}
+
+function isConditionNode(node: WorkflowNode): boolean {
+  return actionTypeOf(node) === BUILT_IN_ACTION_IDS.condition;
+}
+
+/**
+ * Whether this node's own outcome picks which of its edges the run takes. A
+ * Condition evaluates its expression and leaves by `true` or `false`; an Event
+ * Split leaves by the outlet naming the Event that arrived.
+ *
+ * A Lifecycle Node also has named outlets and is excluded, because what picks
+ * its outlet is how the run started and whether a Cancel Event claimed it,
+ * neither of which is the node's own work.
+ *
+ * Disabled, such a node decides nothing, and every edge below it stays a branch
+ * it would have chosen between, so its branch stops there: following all of
+ * them at once is how both sides of a Condition reach the same person.
+ */
+function isRoutingNode(node: WorkflowNode): boolean {
+  return isConditionNode(node) || isEventSplitNode(node);
 }
 
 /** Everything the dispatch below needs from the run it is part of. */
@@ -354,16 +382,13 @@ export class NodeScheduler {
       return;
     }
 
-    const { dependencies, missing } = traversal.dependenciesOf(nodeId);
-    if (missing.length > 0) {
-      nodeLogger.debug("Waiting for dependencies before execution", {
-        dependencies,
-        missingDependencies: missing,
-      });
-      return;
-    }
-
-    if (isWaitNode(node) && !this.drainedWaits.has(nodeId)) {
+    // A disabled Wait parks nothing, so the scheduler has no reason to hold it
+    // back and it runs where it stands.
+    if (
+      node.data.enabled !== false &&
+      isWaitNode(node) &&
+      !this.drainedWaits.has(nodeId)
+    ) {
       this.deferredWaits.add(nodeId);
       nodeLogger.debug(
         "Holding wait node until every other branch has drained"
@@ -372,10 +397,7 @@ export class NodeScheduler {
     }
 
     const nodeName = getNodeName(node, actions);
-    const actionType =
-      node.data.type === "action"
-        ? readConfigString(node.data.config, "actionType")
-        : undefined;
+    const actionType = actionTypeOf(node);
     const namedNodeLogger = nodeLogger.with({
       nodeName,
       nodeType: node.data.type,
@@ -423,10 +445,13 @@ export class NodeScheduler {
       startPayload,
     } = this.input;
 
-    // Disabled nodes emit a null output so downstream templates don't hard-fail.
+    // A disabled node emits a null output, which keeps a template below it
+    // resolving. A disabled routing node also stops its branch, for the reason
+    // `isRoutingNode` gives.
     if (node.data.enabled === false) {
-      namedNodeLogger.info("Skipping disabled node");
-      return { result: { success: true, data: null } };
+      const haltBranch = isRoutingNode(node);
+      namedNodeLogger.info("Skipping disabled node", { haltBranch });
+      return { result: { success: true, data: null }, haltBranch };
     }
 
     let result: ExecutionResult = {
@@ -434,6 +459,7 @@ export class NodeScheduler {
       error: { message: "Node execution did not produce a result." },
     };
     let conditionValue: boolean | undefined;
+    let haltBranch = false;
 
     if (node.data.type === "lifecycle") {
       namedNodeLogger.debug("Executing lifecycle node");
@@ -521,7 +547,7 @@ export class NodeScheduler {
           return await this.handOffBranch(node, actionLogger);
         }
 
-        const waitResult = await executeWaitAction({
+        const waitOutcome = await executeWaitAction({
           config: processedConfig,
           context: stepContext,
           runtime,
@@ -532,12 +558,13 @@ export class NodeScheduler {
             resolveTemplateString(value, traversal.outputs),
         });
 
+        const waitResult = waitOutcome.result;
         if (waitResult.success) {
-          result = {
-            success: true,
-            data: waitResult,
-            haltBranch: waitResult.haltBranch === true,
-          };
+          // The whole envelope becomes the node's output, as it does for every
+          // other action, so a template behind a Wait addresses the wait's own
+          // fields rather than reaching through `data`.
+          result = { success: true, data: waitResult };
+          haltBranch = waitOutcome.haltBranch;
         } else {
           actionLogger.error("Wait failed", {
             nodeId: node.id,
@@ -588,7 +615,7 @@ export class NodeScheduler {
       };
     }
 
-    return { result, conditionValue };
+    return { result, conditionValue, haltBranch };
   }
 
   /**
@@ -626,11 +653,8 @@ export class NodeScheduler {
       await this.sweepKilledBranchWork();
       namedNodeLogger.info("Branch run was cancelled");
       return {
-        result: {
-          success: true,
-          data: { branchCancelled: true },
-          haltBranch: true,
-        },
+        result: { success: true, data: { branchCancelled: true } },
+        haltBranch: true,
       };
     }
 
@@ -640,9 +664,9 @@ export class NodeScheduler {
       success: true as const,
       data: null,
     };
-    return {
-      result: own.success ? { ...own, haltBranch: true } : own,
-    };
+    // The branch run walked everything below this node, so this run schedules
+    // none of it. A Wait that failed keeps reading as a failure on both sides.
+    return { result: own, haltBranch: own.success };
   }
 
   /**
@@ -709,7 +733,7 @@ export class NodeScheduler {
 
       namedNodeLogger.info("Node execution completed", {
         success: result.success,
-        haltBranch: result.success && result.haltBranch === true,
+        haltBranch: outcome.haltBranch === true,
         error: executionError(result),
       });
 
@@ -724,21 +748,14 @@ export class NodeScheduler {
       if (result.success) {
         let shouldContinueDownstream = true;
 
-        if (result.haltBranch) {
+        if (outcome.haltBranch) {
           namedNodeLogger.info(
             "Skipping downstream nodes because step requested halt"
           );
           shouldContinueDownstream = false;
         }
 
-        // A disabled Condition node evaluated nothing, so it fans out to every
-        // branch instead of picking one.
-        const isConditionNode =
-          node.data.enabled !== false &&
-          node.data.type === "action" &&
-          node.data.config?.actionType === BUILT_IN_ACTION_IDS.condition;
-
-        if (isConditionNode && shouldContinueDownstream) {
+        if (isConditionNode(node) && shouldContinueDownstream) {
           const conditionResult = outcome.conditionValue;
           namedNodeLogger.debug("Condition node result", {
             conditionResult,

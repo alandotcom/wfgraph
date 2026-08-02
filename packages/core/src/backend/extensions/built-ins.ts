@@ -46,10 +46,12 @@ export const builtInActions: readonly ActionMetadata[] = [
     description: "Delay execution or wait for an Event",
     category: "System",
     configFields: [],
-    // What both modes leave behind, plus the arriving Event's payload for an
-    // event wait. `payload` is offered as one object rather than as leaves: the
-    // node may park on several Events, and which one wakes it is not known until
-    // it does, so a builder addresses `payload.<field>` themselves.
+    // What both modes leave behind, plus the arriving Event's name and payload
+    // for an event wait. `payload` is offered as one object rather than as
+    // leaves, because each Event the node parks on carries its own payload
+    // shape and the catalog has one field list for the node. A builder writes
+    // `payload.<field>` themselves, and reads `event` to learn which Event
+    // arrived.
     outputFields: [
       {
         path: "waitType",
@@ -66,6 +68,11 @@ export const builtInActions: readonly ActionMetadata[] = [
         description: "When the run left the wait",
         type: "timestamp",
         format: "timestamp",
+      },
+      {
+        path: "event",
+        description: "The name of the Event that resumed the run",
+        type: "string",
       },
       {
         path: "payload",

@@ -85,6 +85,20 @@ function readWaitSignal(resumeEvent: unknown) {
   return readJsonObject(readJsonObject(resumeEvent)?.data);
 }
 
+/**
+ * Which Event woke a parked run, off the signal envelope `sendWaitSignal` built,
+ * and `null` for an envelope that named none.
+ *
+ * A wait subscribes to several Events at once, and this is the only thing that
+ * says which of them arrived. The caller decides what an unnamed one means: the
+ * node's output leaves the field out rather than carrying a null, since the
+ * catalog offers it as a string a condition can compare.
+ */
+function readWaitEventName(signal: JsonObject | null): string | null {
+  const eventType = signal?.eventType;
+  return typeof eventType === "string" ? eventType : null;
+}
+
 function readWaitGateMode(config: WaitConfig): "require_actual_wait" | "off" {
   return config.waitGateMode === "require_actual_wait"
     ? "require_actual_wait"
@@ -99,9 +113,22 @@ function readAllowedHoursConfig(config: WaitConfig) {
   };
 }
 
+/**
+ * What the Wait node leaves behind: its own outcome, and whether the run should
+ * stop below it.
+ *
+ * The two are separate because they travel different distances. The outcome is
+ * the node's, and it is stored and read back. Halting is the scheduler's, read
+ * a few lines from where this is returned and never persisted.
+ */
+export type WaitOutcome = {
+  result: ExecutionResult;
+  haltBranch: boolean;
+};
+
 export function executeWaitAction(
   input: WaitActionInput
-): Promise<ExecutionResult> {
+): Promise<WaitOutcome> {
   const waitType = input.config.waitMode === "event" ? "event" : "delay";
 
   return withSpan(
@@ -117,7 +144,7 @@ export function executeWaitAction(
 
 async function executeWaitActionInner(
   input: WaitActionInput
-): Promise<ExecutionResult> {
+): Promise<WaitOutcome> {
   const {
     context,
     runtime,
@@ -144,7 +171,10 @@ async function executeWaitActionInner(
       return { logged: true };
     });
 
-    return { success: false, error: { message: errorMessage } };
+    return {
+      result: { success: false, error: { message: errorMessage } },
+      haltBranch: false,
+    };
   }
 
   const config = read.config;
@@ -314,7 +344,7 @@ async function prepareDelayWait(
 
 async function executeDelayWait(
   branch: WaitBranchContext
-): Promise<ExecutionResult> {
+): Promise<WaitOutcome> {
   const { context, runtime, store, workflowId, startLog } = branch;
   const { executionId } = context;
 
@@ -326,11 +356,17 @@ async function executeDelayWait(
   );
 
   if (prepared.status === "error") {
-    return { success: false, error: { message: prepared.error } };
+    return {
+      result: { success: false, error: { message: prepared.error } },
+      haltBranch: false,
+    };
   }
 
   if (prepared.status === "skipped") {
-    return { success: true, data: prepared.output, haltBranch: true };
+    return {
+      result: { success: true, data: prepared.output },
+      haltBranch: true,
+    };
   }
 
   try {
@@ -382,7 +418,7 @@ async function executeDelayWait(
     }
   );
 
-  return { success: true, data: output };
+  return { result: { success: true, data: output }, haltBranch: false };
 }
 
 /**
@@ -499,7 +535,7 @@ async function prepareEventWait(
 
 async function executeEventWait(
   branch: WaitBranchContext
-): Promise<ExecutionResult> {
+): Promise<WaitOutcome> {
   const { context, runtime, store, workflowId, startLog } = branch;
   const { executionId } = context;
 
@@ -509,7 +545,10 @@ async function executeEventWait(
   );
 
   if (prepared.status === "error") {
-    return { success: false, error: { message: prepared.error } };
+    return {
+      result: { success: false, error: { message: prepared.error } },
+      haltBranch: false,
+    };
   }
 
   let timedOut = false;
@@ -548,6 +587,7 @@ async function executeEventWait(
   // Derived outside the step for the same reason `timedOut` is: both come off
   // the memoized `waitForEvent` result, so a replay reads the same verdict.
   const canceled = !timedOut && signal?.signalType === "lifecycle-cancel";
+  const resumeEventName = readWaitEventName(signal);
 
   const resumed = await runtime.run(
     `wait-event-resume-${context.nodeId}`,
@@ -600,7 +640,12 @@ async function executeEventWait(
         : {
             ...base,
             ...(carriesPayload
-              ? { payload: readJsonObject(signal?.payload) ?? {} }
+              ? {
+                  ...(resumeEventName === null
+                    ? {}
+                    : { event: resumeEventName }),
+                  payload: readJsonObject(signal?.payload) ?? {},
+                }
               : {}),
           };
 
@@ -615,9 +660,8 @@ async function executeEventWait(
   // graph is sent to the Canceled outlet by the boundary read at this node,
   // which happens before the halt is consulted, and a branch run has no boundary
   // of its own and would otherwise carry on for a run already ending.
-  if (resumed.skipOnTimeout || canceled) {
-    return { success: true, data: resumed.output, haltBranch: true };
-  }
-
-  return { success: true, data: resumed.output };
+  return {
+    result: { success: true, data: resumed.output },
+    haltBranch: resumed.skipOnTimeout || canceled,
+  };
 }

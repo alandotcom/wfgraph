@@ -87,6 +87,11 @@ const DEFAULT_MAX_INVOCATIONS = 200;
  * and blocked is the absence of activity, so it is measured rather than
  * signalled. Five turns is slack for the in-memory awaits a store adapter makes
  * between two step calls.
+ *
+ * A branch crossing a macrotask of its own between two step calls reads the
+ * same way as a branch that has stopped, so the pass ends early and the clock
+ * that branch resumes against is wrong. Issue #16 holds what that costs and
+ * what fixing it takes.
  */
 const QUIET_TURNS = 5;
 

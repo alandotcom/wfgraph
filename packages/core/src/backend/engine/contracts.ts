@@ -18,14 +18,14 @@ export type RunLogger = ReturnType<ReturnType<typeof getAppLogger>["with"]>;
  *
  * A step's own envelope, so a dispatched action's answer needs no translation to
  * become a node outcome and `{ success: true, error: "..." }` does not compile.
- * `haltBranch` is how a node that succeeded says nothing below it should run,
- * which is what a skipped Wait answers with. It sits on the success arm alone:
- * a node that failed has already stopped everything below it, so the flag on a
- * failure would carry no meaning for a reader to act on.
+ * The engine's own name for it, so this module and the Wait node below it can be
+ * read without the authoring vocabulary that `StepResult` belongs to.
+ *
+ * Whether a node stops the run below it is absent here on purpose. That decision
+ * is the scheduler's, it is read a few lines from where it is made, and this
+ * value is persisted and crosses the branch hand-off as JSON.
  */
-export type ExecutionResult =
-  | Extract<StepResult, { success: false }>
-  | (Extract<StepResult, { success: true }> & { haltBranch?: boolean });
+export type ExecutionResult = StepResult;
 
 /**
  * What each finished node left behind, keyed by node id.

@@ -81,11 +81,27 @@ function createWaitNode(
   };
 }
 
+// A node below the wait, so whether the wait halted its branch is a fact about
+// what ran rather than a flag on the wait's own result.
+function createAfterWaitNode(): WorkflowNode {
+  return {
+    id: "after_wait",
+    type: "action",
+    position: { x: 0, y: 0 },
+    data: {
+      label: "After Wait",
+      type: "action",
+      config: { actionType: "Condition", condition: true },
+    },
+  };
+}
+
 function createWaitGraph(config: Record<string, unknown>) {
   return createSerializedWorkflowGraph({
     nodes: [
       createLifecycleNode("lifecycle_1"),
       createWaitNode("wait_1", config),
+      createAfterWaitNode(),
     ],
     edges: [
       {
@@ -94,6 +110,7 @@ function createWaitGraph(config: Record<string, unknown>) {
         sourceHandle: "started",
         target: "wait_1",
       },
+      { id: "edge_2", source: "wait_1", target: "after_wait" },
     ],
   });
 }
@@ -131,7 +148,10 @@ function matchOn(field: string, value: string): string {
  * `workflow/wait.signal` envelope, with the arriving Event's payload inside it.
  * The nesting is what the node's output has to strip.
  */
-function waitResumeSignal(payload: JsonObject) {
+function waitResumeSignal(
+  payload: JsonObject,
+  eventType = "billing/payment.settled"
+) {
   return {
     name: "workflow/wait.signal",
     id: "evt_signal",
@@ -140,7 +160,7 @@ function waitResumeSignal(payload: JsonObject) {
       executionId: "exec_wait",
       nodeId: "wait_1",
       token: "token_1",
-      eventType: "billing/payment.settled",
+      eventType,
       signalType: "wait-resume",
       payload,
     },
@@ -156,12 +176,14 @@ function waitOutput(result: { results: Record<string, ExecutionResult> }) {
   return nodeData?.data as Record<string, unknown>;
 }
 
-/** Whether the wait node halted its branch, which only a node that succeeded can. */
+/**
+ * Whether the wait node halted its branch, read the way a builder would see it:
+ * the node below the wait never ran.
+ */
 function waitHaltedBranch(result: {
   results: Record<string, ExecutionResult>;
 }): boolean {
-  const nodeResult = result.results.wait_1;
-  return nodeResult?.success ? nodeResult.haltBranch === true : false;
+  return result.results.after_wait === undefined;
 }
 
 function runWait(options: RunWaitOptions) {
@@ -307,8 +329,13 @@ describe("wait node - event mode", () => {
     expect(waitOutput(result)).toMatchObject({
       waitType: "event",
       timedOut: false,
+      event: "billing/payment.settled",
       payload: { approved: true },
     });
+    // An ordinary resume carries the run on, which is what makes the halting
+    // assertions elsewhere in this file mean something.
+    expect(waitHaltedBranch(result)).toBe(false);
+    expect(result.results.after_wait?.success).toBe(true);
 
     const resumeToken = store.callsOf("createWaitState")[0]?.resumeToken;
     expect(typeof resumeToken).toBe("string");
@@ -353,6 +380,33 @@ describe("wait node - event mode", () => {
     expect(resolveOutputPath(nodeOutput, "waitType")).toBe("event");
   });
 
+  // A wait holds a race between the Events it subscribes to, and the payloads of
+  // two Events can be shaped alike. Naming the winner is the only thing that
+  // lets a Condition below the wait tell them apart.
+  it("names which of several subscribed Events resumed the run", async () => {
+    const { execution } = runWait({
+      config: {
+        waitMode: "event",
+        waitFor: [
+          { event: "billing/payment.settled" },
+          { event: "billing/payment.failed" },
+        ],
+        waitTimeout: "7d",
+      },
+      store,
+      resumeEvent: waitResumeSignal({ id: "pay_1" }, "billing/payment.failed"),
+    });
+    const result = await execution;
+
+    expect(waitOutput(result).event).toBe("billing/payment.failed");
+
+    // The path the catalog offers, walked the way the condition builder walks it.
+    const nodeOutput = result.outputs.wait_1?.data ?? null;
+    expect(resolveOutputPath(nodeOutput, "event")).toBe(
+      "billing/payment.failed"
+    );
+  });
+
   // A resume that carried no payload still answers an object, so a template
   // reaching into it resolves to nothing rather than failing the node.
   it("outputs an empty payload when the signal carried none", async () => {
@@ -395,6 +449,9 @@ describe("wait node - event mode", () => {
       timedOut: false,
     });
     expect(waitOutput(result)).not.toHaveProperty("payload");
+    // A cancel wake is not one of the Events the builder subscribed to, so the
+    // node names none.
+    expect(waitOutput(result)).not.toHaveProperty("event");
     expect(store.callsOf("markWaitStateStatus")[0]?.status).toBe("cancelled");
     expect(runtime.waits.at(0)?.options.ifExpression).toContain(
       'async.data.signalType == "lifecycle-cancel"'
