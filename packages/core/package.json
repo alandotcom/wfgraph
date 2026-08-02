@@ -54,7 +54,7 @@
     "graphology": "catalog:",
     "graphology-dag": "^0.4.1",
     "hono": "^4.12.32",
-    "inngest": "^4.13.0",
+    "inngest": "^4.14.0",
     "nanoid": "catalog:",
     "postgres": "catalog:"
   },

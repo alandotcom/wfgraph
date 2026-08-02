@@ -51,7 +51,7 @@
     "vitest": "^4.1.10"
   },
   "optionalDependencies": {
-    "inngest-cli": "^1.38.1"
+    "inngest-cli": "^1.40.0"
   },
   "engines": {
     "node": ">=24"
