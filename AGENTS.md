@@ -300,3 +300,18 @@ behaviour; nothing in them is enforced by lint or tests.
 - `docs/agents/issue-tracker.md` — issues are GitHub issues on `alandotcom/rova`, via `gh`.
 - `docs/agents/triage-labels.md` — the five triage roles, each label equal to its name.
 - `docs/agents/domain.md` — single-context: one `CONTEXT.md` and `docs/adr/` at the root.
+
+## Cursor Cloud specific instructions
+
+### Runtime services
+
+`pnpm run dev` starts the three processes (example app `:4017`, Vite client `:5173`, Inngest CLI `:8388`). Postgres must already be listening on host port `55437` with db/user/password `workflow`/`workflow`/`workflow` (see `docker-compose.yml`). Apply migrations once with `pnpm run db:migrate` before first boot.
+
+The app refuses to start without `INTEGRATION_ENCRYPTION_KEY` (64-char hex). Put it in gitignored `.env.local` at the repo root; `examples/app.ts` also falls back to `DATABASE_URL=postgresql://workflow:workflow@localhost:55437/workflow_builder`.
+
+### Cloud VM gotchas
+
+- **Node 24 is required** (`engines` / `.node-version`). The Cloud Agent image may expose an older Node ahead of nvm on `PATH` (e.g. `/exec-daemon/node`). Prefer the nvm Node 24 binary first: `export PATH="$HOME/.nvm/versions/node/v24.18.1/bin:$PATH"` (or whatever `nvm which 24` returns).
+- **Docker is often unavailable** in this VM. When `docker compose` cannot start Postgres, install/run a local PostgreSQL cluster on port `55437` with the same credentials as `docker-compose.yml`.
+- **`pnpm run type-check` needs `@rova/client`'s `dist`.** The root `tsconfig` maps `@rova/shared|core|plugins` to source, but `@rova/client` resolves through package `exports` to `dist/`. Run `pnpm run build` (or at least the client package build) once after a clean install before type-check; lint/test do not need it. Standard commands live in the "Required checks before finishing" section above and in `.github/workflows/pr-checks.yml`.
+- For driving a real workflow against Inngest (not vitest), use `.claude/skills/live-run/SKILL.md`.
