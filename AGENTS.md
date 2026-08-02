@@ -67,7 +67,7 @@ something to learn:
   process, and under a canonical JSON codec the two swap places. All three cases are worked
   in `packages/core/src/backend/extensions/steps/define-step.test.ts`.
 - Annotate the base type before any check, or the annotation lands on the check and a
-  wrong-typed value never reaches it. `packages/shared/src/conditions/conditions.ts` is the
+  wrong-typed value never reaches it. `packages/shared/src/conditions/condition-schema.ts` is the
   worked example.
 
 **A message never quotes the value it rejected.** Render a decode failure a person will read
