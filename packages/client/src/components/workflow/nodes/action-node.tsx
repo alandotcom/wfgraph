@@ -43,6 +43,7 @@ import {
   isEventSplitActionType,
 } from "@rova/shared/lifecycle/event-split";
 import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
+import { eventSplitCardWidth } from "#src/components/workflow/workflow-node-dimensions";
 import { useAfterPaint, useNowMs } from "#src/hooks/effects";
 import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
 import {
@@ -438,13 +439,6 @@ type ActionNodeProps = NodeProps & {
 const CONDITION_TRUE_HANDLE_LEFT = "38%";
 const CONDITION_FALSE_HANDLE_LEFT = "62%";
 
-/**
- * How wide one Event Split outlet's slot is, in pixels. Wide enough for the chip
- * naming its Event, which is why the card grows with its outlets rather than
- * spacing them inside the width every other node has.
- */
-const EVENT_SPLIT_OUTLET_WIDTH = 132;
-
 /** Where one outlet's handle sits, as a percentage of the card's own width. */
 function eventSplitOutletLeft(index: number, count: number): string {
   return `${((index + 0.5) / count) * 100}%`;
@@ -625,7 +619,7 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
       // class names, which is what `undefined` leaves standing.
       style={
         isEventSplitAction && splitOutlets.length > 1
-          ? { width: splitOutlets.length * EVENT_SPLIT_OUTLET_WIDTH }
+          ? { width: eventSplitCardWidth(splitOutlets.length) }
           : undefined
       }
       status={status}

@@ -1,10 +1,50 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type {
   WorkflowEdge,
   WorkflowNode,
   WorkflowNodeType,
 } from "@rova/shared/graph/types";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
+import { eventSplitOutlet } from "@rova/shared/lifecycle/event-split";
 import { layoutWorkflowNodes } from "./workflow-layout";
+import {
+  eventSplitCardWidth,
+  WORKFLOW_NODE_WIDTH,
+} from "./workflow-node-dimensions";
+
+/**
+ * An Event Split's outlets are the Events reaching it, which the layout reads
+ * through the catalog. These are the two an `EVENT_SPLIT_EVENTS` graph declares.
+ */
+const CREATED_EVENT = "app/appointment.created";
+const RESCHEDULED_EVENT = "app/appointment.rescheduled";
+const CONFIRMED_EVENT = "app/appointment.confirmed";
+
+// The names are spelled out again below because vitest lifts this call above
+// the constants, which would still be in their dead zone when it runs.
+vi.mock("#src/lib/extensions", () => ({
+  getExtensionCatalog: () => ({
+    integrations: [],
+    actions: [],
+    events: [
+      {
+        name: "app/appointment.created",
+        label: "Appointment created",
+        payloadFields: [],
+      },
+      {
+        name: "app/appointment.rescheduled",
+        label: "Appointment rescheduled",
+        payloadFields: [],
+      },
+      {
+        name: "app/appointment.confirmed",
+        label: "Appointment confirmed",
+        payloadFields: [],
+      },
+    ],
+  }),
+}));
 
 function buildNode(
   id: string,
@@ -19,6 +59,43 @@ function buildNode(
       label: id,
       type,
       status: "idle",
+    },
+  };
+}
+
+/** An entry node whose Started outlet hands on the Events named. */
+function buildEntryNode(
+  id: string,
+  position: { x: number; y: number },
+  startEvents: string[]
+): WorkflowNode {
+  const node = buildNode(id, position, "lifecycle");
+  return {
+    ...node,
+    data: {
+      ...node.data,
+      config: {
+        lifecycleRules: {
+          startEvents,
+          cancelEvents: [],
+          concurrency: "newest-wins",
+          allowManualStart: true,
+        },
+      },
+    },
+  };
+}
+
+function buildEventSplitNode(
+  id: string,
+  position: { x: number; y: number }
+): WorkflowNode {
+  const node = buildNode(id, position);
+  return {
+    ...node,
+    data: {
+      ...node.data,
+      config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
     },
   };
 }
@@ -155,6 +232,187 @@ describe("layoutWorkflowNodes", () => {
     for (const node of result.nodes) {
       expect(Number.isFinite(node.position.x)).toBe(true);
       expect(Number.isFinite(node.position.y)).toBe(true);
+    }
+  });
+
+  test("puts a split's children under the outlets that feed them", async () => {
+    // The ids sort the other way round, so ordering on one would cross both
+    // edges under the split.
+    const nodes = [
+      buildEntryNode("entry", { x: 0, y: 0 }, [
+        CREATED_EVENT,
+        RESCHEDULED_EVENT,
+      ]),
+      buildEventSplitNode("split", { x: 0, y: 300 }),
+      buildNode("z-created", { x: 300, y: 600 }),
+      buildNode("a-rescheduled", { x: 0, y: 600 }),
+    ];
+    const edges = [
+      buildEdge("e1", "entry", "split", "started"),
+      buildEdge("e2", "split", "z-created", eventSplitOutlet(CREATED_EVENT)),
+      buildEdge(
+        "e3",
+        "split",
+        "a-rescheduled",
+        eventSplitOutlet(RESCHEDULED_EVENT)
+      ),
+    ];
+
+    const result = await layoutWorkflowNodes({ nodes, edges });
+
+    expect(positionX(result.nodes, "z-created")).toBeLessThan(
+      positionX(result.nodes, "a-rescheduled")
+    );
+  });
+
+  test.for([
+    [CREATED_EVENT, RESCHEDULED_EVENT],
+    [CREATED_EVENT, RESCHEDULED_EVENT, CONFIRMED_EVENT],
+  ])("leaves a split room for the width it draws at", async (startEvents) => {
+    const nodes = [
+      buildEntryNode("entry", { x: 0, y: 0 }, startEvents),
+      buildEventSplitNode("split", { x: 0, y: 300 }),
+      buildNode("sibling", { x: 300, y: 300 }),
+    ];
+    const edges = [
+      buildEdge("e1", "entry", "split", "started"),
+      buildEdge("e2", "entry", "sibling", "started"),
+    ];
+
+    const result = await layoutWorkflowNodes({ nodes, edges });
+
+    // The gap between the two left edges covers the split's whole card, so the
+    // wider it draws the further its neighbour sits.
+    const splitWidth = eventSplitCardWidth(startEvents.length);
+    expect(splitWidth).toBeGreaterThan(WORKFLOW_NODE_WIDTH);
+    expect(
+      positionX(result.nodes, "sibling") - positionX(result.nodes, "split")
+    ).toBeGreaterThanOrEqual(splitWidth);
+  });
+
+  test("orders two branches off one outlet by where they already sit", async () => {
+    // The left-hand target carries the id that sorts later, so a tie broken on
+    // an id would swap the pair.
+    const nodes = [
+      buildNode("entry", { x: 0, y: 0 }, "lifecycle"),
+      buildNode("z-left", { x: 0, y: 300 }),
+      buildNode("a-right", { x: 400, y: 300 }),
+    ];
+    const edges = [
+      buildEdge("e1", "entry", "a-right", "started"),
+      buildEdge("e2", "entry", "z-left", "started"),
+    ];
+
+    const result = await layoutWorkflowNodes({ nodes, edges });
+
+    expect(positionX(result.nodes, "z-left")).toBeLessThan(
+      positionX(result.nodes, "a-right")
+    );
+  });
+
+  test("orders two branches sitting at one place by how they were wired", async () => {
+    const buildGraph = (firstTarget: string, secondTarget: string) => ({
+      nodes: [
+        buildNode("entry", { x: 0, y: 0 }, "lifecycle"),
+        buildNode("one", { x: 200, y: 300 }),
+        buildNode("two", { x: 200, y: 300 }),
+      ],
+      edges: [
+        buildEdge("e1", "entry", firstTarget, "started"),
+        buildEdge("e2", "entry", secondTarget, "started"),
+      ],
+    });
+
+    const wiredOneFirst = await layoutWorkflowNodes(buildGraph("one", "two"));
+    expect(positionX(wiredOneFirst.nodes, "one")).toBeLessThan(
+      positionX(wiredOneFirst.nodes, "two")
+    );
+
+    const wiredTwoFirst = await layoutWorkflowNodes(buildGraph("two", "one"));
+    expect(positionX(wiredTwoFirst.nodes, "two")).toBeLessThan(
+      positionX(wiredTwoFirst.nodes, "one")
+    );
+  });
+
+  test("centres a parent over its children", async () => {
+    const nodes = [
+      buildNode("entry", { x: 0, y: 0 }, "lifecycle"),
+      buildNode("left", { x: 0, y: 300 }),
+      buildNode("right", { x: 400, y: 300 }),
+    ];
+    const edges = [
+      buildEdge("e1", "entry", "left", "started"),
+      buildEdge("e2", "entry", "right", "canceled"),
+    ];
+
+    const result = await layoutWorkflowNodes({ nodes, edges });
+
+    expect(positionX(result.nodes, "entry")).toBeGreaterThan(
+      positionX(result.nodes, "left")
+    );
+    expect(positionX(result.nodes, "entry")).toBeLessThan(
+      positionX(result.nodes, "right")
+    );
+  });
+
+  test("centres a parent over its children on the dagre path too", async () => {
+    // The join is what sends this graph down the fallback. Which of the two
+    // branches lands left is dagre's own ordering pass to decide, so the case
+    // asks only that the parent sits between them.
+    const nodes = [
+      buildNode("entry", { x: 0, y: 0 }, "lifecycle"),
+      buildNode("left", { x: 0, y: 300 }),
+      buildNode("right", { x: 400, y: 300 }),
+      buildNode("join", { x: 200, y: 600 }),
+    ];
+    const edges = [
+      buildEdge("e1", "entry", "left", "started"),
+      buildEdge("e2", "entry", "right", "canceled"),
+      buildEdge("e3", "left", "join"),
+      buildEdge("e4", "right", "join"),
+    ];
+
+    const result = await layoutWorkflowNodes({ nodes, edges });
+
+    const branches = [
+      positionX(result.nodes, "left"),
+      positionX(result.nodes, "right"),
+    ];
+    expect(positionX(result.nodes, "entry")).toBeGreaterThan(
+      Math.min(...branches)
+    );
+    expect(positionX(result.nodes, "entry")).toBeLessThan(
+      Math.max(...branches)
+    );
+  });
+
+  test("lays out the same shape the same way whatever the ids are", async () => {
+    const buildGraph = (suffix: string, join: boolean) => {
+      const id = (name: string) => `${name}${suffix}`;
+      return {
+        nodes: [
+          buildNode(id("entry"), { x: 0, y: 0 }, "lifecycle"),
+          buildNode(id("left"), { x: 0, y: 300 }),
+          buildNode(id("right"), { x: 400, y: 300 }),
+          buildNode(id("last"), { x: 200, y: 600 }),
+        ],
+        edges: [
+          buildEdge(id("e1"), id("entry"), id("left"), "started"),
+          buildEdge(id("e2"), id("entry"), id("right"), "canceled"),
+          buildEdge(id("e3"), id("left"), id("last")),
+          // A second edge into the last node sends the graph down the fallback.
+          ...(join ? [buildEdge(id("e4"), id("right"), id("last"))] : []),
+        ],
+      };
+    };
+
+    for (const join of [false, true]) {
+      const first = await layoutWorkflowNodes(buildGraph("-aaa", join));
+      const second = await layoutWorkflowNodes(buildGraph("-zzz", join));
+
+      expect(second.nodes.map((node) => node.position)).toEqual(
+        first.nodes.map((node) => node.position)
+      );
     }
   });
 

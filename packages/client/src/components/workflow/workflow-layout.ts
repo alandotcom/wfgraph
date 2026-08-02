@@ -1,11 +1,18 @@
 import dagre from "@dagrejs/dagre";
 import { hierarchy, tree } from "d3-hierarchy";
+import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import {
+  eventSplitOutlet,
+  eventSplitOutletEvent,
+  isEventSplitNode,
+} from "@rova/shared/lifecycle/event-split";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
 } from "@rova/shared/lifecycle/lifecycle-outlets";
 import {
+  eventSplitCardWidth,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "./workflow-node-dimensions";
@@ -63,15 +70,24 @@ type LayoutSpacing = {
   rankSpacing: number;
 };
 
+/**
+ * The graph as both algorithms read it.
+ *
+ * `nodes` is left to right by where the nodes sit now, and each node's out-edges
+ * are already in the order their handles are drawn. Both orders decide what ends
+ * up left of what, so they are settled once rather than per algorithm.
+ */
+type LayoutModel = {
+  nodes: WorkflowNode[];
+  widthById: Map<string, number>;
+  outEdgesBySource: Map<string, WorkflowEdge[]>;
+};
+
 function hasPositionChanged(
   current: WorkflowNode["position"],
   next: WorkflowNode["position"]
 ): boolean {
   return current.x !== next.x || current.y !== next.y;
-}
-
-function sortById<T extends { id: string }>(items: T[]): T[] {
-  return items.toSorted((a, b) => a.id.localeCompare(b.id));
 }
 
 function getEdgeWeight(edge: WorkflowEdge): number {
@@ -81,6 +97,12 @@ function getEdgeWeight(edge: WorkflowEdge): number {
 
   if (edge.sourceHandle === "false") {
     return 3;
+  }
+
+  // An Event Split's outlets are all branches, with no trunk among them to keep
+  // straighter than the rest.
+  if (eventSplitOutletEvent(edge.sourceHandle)) {
+    return 4;
   }
 
   return 6;
@@ -114,9 +136,125 @@ function getLayoutNode(
   return { x: label.x, y: label.y };
 }
 
-function layoutWorkflowNodesWithDagre(input: {
+/**
+ * Where each branching handle sits across the bottom of the node that draws it:
+ * a Condition node puts True left of False, the Lifecycle node puts Started left
+ * of Canceled. Siblings are only ever compared under one parent, so the two
+ * pairs share their ranks without meeting.
+ */
+const HANDLE_SORT_RANK = new Map<string, number>([
+  ["true", 0],
+  ["false", 1],
+  [LIFECYCLE_STARTED_HANDLE, 0],
+  [LIFECYCLE_CANCELED_HANDLE, 1],
+]);
+
+/** A handle the node draws no slot for sorts after every one it does. */
+const UNRANKED_HANDLE = Number.MAX_SAFE_INTEGER;
+
+/**
+ * How wide a node draws, and where each of its handles sits across the bottom.
+ *
+ * An Event Split draws a handle per Event that can reach it and grows wide
+ * enough to hold them, so both answers come from the one walk that finds those
+ * Events. Every other node is the standard width and draws the fixed pair above.
+ */
+function readNodeShape(input: {
+  node: WorkflowNode;
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+}): { width: number; handleRanks: Map<string, number> } {
+  if (!isEventSplitNode(input.node)) {
+    return { width: WORKFLOW_NODE_WIDTH, handleRanks: HANDLE_SORT_RANK };
+  }
+
+  const outlets = eventsReachingTarget({
+    targetNodeId: input.node.id,
+    nodes: input.nodes,
+    edges: input.edges,
+  });
+
+  return {
+    width: eventSplitCardWidth(outlets.length),
+    handleRanks: new Map(
+      outlets.map((event, index) => [eventSplitOutlet(event.name), index])
+    ),
+  };
+}
+
+/**
+ * One node's out-edges, left to right.
+ *
+ * The handle comes first, so a branch lands under the handle drawing it. Where
+ * two edges leave the same handle the graph says nothing about which belongs
+ * left, so the tie goes to where the targets already sit, and two at the same
+ * place keep the order they were wired in, `toSorted` being stable. Nothing here
+ * reads a node id: those are nanoids, so ordering on one decides left from right
+ * at random and can flip between reflows.
+ */
+function sortOutEdges(input: {
+  edges: readonly WorkflowEdge[];
+  ranks: Map<string, number>;
+  positionXById: Map<string, number>;
+}): WorkflowEdge[] {
+  const rankOf = (edge: WorkflowEdge) =>
+    input.ranks.get(edge.sourceHandle ?? "") ?? UNRANKED_HANDLE;
+  const positionXOf = (nodeId: string) => input.positionXById.get(nodeId) ?? 0;
+
+  return input.edges.toSorted((a, b) => {
+    const rankDiff = rankOf(a) - rankOf(b);
+    if (rankDiff !== 0) {
+      return rankDiff;
+    }
+
+    return positionXOf(a.target) - positionXOf(b.target);
+  });
+}
+
+function buildLayoutModel(input: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+}): LayoutModel {
+  const positionXById = new Map(
+    input.nodes.map((node) => [node.id, node.position.x])
+  );
+
+  const outEdgesBySource = new Map<string, WorkflowEdge[]>(
+    input.nodes.map((node) => [node.id, []])
+  );
+  for (const edge of input.edges) {
+    outEdgesBySource.get(edge.source)?.push(edge);
+  }
+
+  const widthById = new Map<string, number>();
+  for (const node of input.nodes) {
+    const shape = readNodeShape({
+      node,
+      nodes: input.nodes,
+      edges: input.edges,
+    });
+    widthById.set(node.id, shape.width);
+
+    outEdgesBySource.set(
+      node.id,
+      sortOutEdges({
+        edges: outEdgesBySource.get(node.id) ?? [],
+        ranks: shape.handleRanks,
+        positionXById,
+      })
+    );
+  }
+
+  return {
+    nodes: input.nodes.toSorted((a, b) => a.position.x - b.position.x),
+    widthById,
+    outEdgesBySource,
+  };
+}
+
+function layoutWorkflowNodesWithDagre(input: {
+  nodes: WorkflowNode[];
+  model: LayoutModel;
   spacing: LayoutSpacing;
 }): {
   nodes: WorkflowNode[];
@@ -132,9 +270,10 @@ function layoutWorkflowNodesWithDagre(input: {
     compound: false,
   });
 
+  // No `align`: the aligned variants pin a parent to one edge of its subtree,
+  // which leaves every edge under a branching node sweeping sideways.
   graph.setGraph({
     rankdir: LAYOUT_DIRECTION,
-    align: "UL",
     nodesep: input.spacing.nodeSpacing,
     ranksep: input.spacing.rankSpacing,
     marginx: GRAPH_MARGIN,
@@ -142,24 +281,24 @@ function layoutWorkflowNodesWithDagre(input: {
   });
   graph.setDefaultEdgeLabel(() => ({}));
 
-  const sortedNodes = sortById(input.nodes);
-  const nodeMap = new Map(sortedNodes.map((node) => [node.id, node]));
+  const widthOf = (nodeId: string) =>
+    input.model.widthById.get(nodeId) ?? WORKFLOW_NODE_WIDTH;
 
-  for (const node of sortedNodes) {
+  for (const node of input.model.nodes) {
     graph.setNode(node.id, {
-      width: WORKFLOW_NODE_WIDTH,
+      width: widthOf(node.id),
       height: WORKFLOW_NODE_HEIGHT,
     });
   }
 
-  for (const edge of sortById(input.edges)) {
-    if (!(nodeMap.has(edge.source) && nodeMap.has(edge.target))) {
-      continue;
+  // dagre seeds its ordering pass from insertion order, so nodes and edges go in
+  // the left-to-right order the canvas already draws them in.
+  for (const node of input.model.nodes) {
+    for (const edge of input.model.outEdgesBySource.get(node.id) ?? []) {
+      graph.setEdge(edge.source, edge.target, {
+        weight: getEdgeWeight(edge),
+      });
     }
-
-    graph.setEdge(edge.source, edge.target, {
-      weight: getEdgeWeight(edge),
-    });
   }
 
   dagre.layout(graph);
@@ -173,7 +312,7 @@ function layoutWorkflowNodesWithDagre(input: {
     }
 
     const nextPosition = {
-      x: Math.round(layoutNode.x - WORKFLOW_NODE_WIDTH / 2),
+      x: Math.round(layoutNode.x - widthOf(node.id) / 2),
       y: Math.round(layoutNode.y - WORKFLOW_NODE_HEIGHT / 2),
     };
 
@@ -192,84 +331,31 @@ function layoutWorkflowNodesWithDagre(input: {
   return { nodes, changed };
 }
 
-/**
- * Where each branching handle sits across the bottom of the node that draws it:
- * a Condition node puts True left of False, the Lifecycle node puts Started left
- * of Canceled. Siblings are only ever compared under one parent, so the two
- * pairs share their ranks without meeting.
- */
-const HANDLE_SORT_RANK = new Map<string, number>([
-  ["true", 0],
-  ["false", 1],
-  [LIFECYCLE_STARTED_HANDLE, 0],
-  [LIFECYCLE_CANCELED_HANDLE, 1],
-]);
-
-const UNRANKED_HANDLE = 2;
-
-/**
- * A subtree's place among its siblings, left to right.
- *
- * Ordering by anything else lets a reflow put the Canceled branch left of the
- * Started one, which crosses both edges under the entry node.
- */
-function getTreeSortRank(sourceHandle: string | null | undefined): number {
-  if (!sourceHandle) {
-    return UNRANKED_HANDLE;
-  }
-
-  return HANDLE_SORT_RANK.get(sourceHandle) ?? UNRANKED_HANDLE;
-}
-
 function buildTreeLayoutData(input: {
   nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
+  model: LayoutModel;
 }): TreeNodeData | null {
-  const nodeIds = new Set(input.nodes.map((node) => node.id));
-  const inDegree = new Map<string, number>();
-  const edgesBySource = new Map<string, WorkflowEdge[]>();
+  const inDegree = new Map<string, number>(
+    input.nodes.map((node) => [node.id, 0])
+  );
 
-  for (const node of input.nodes) {
-    inDegree.set(node.id, 0);
-    edgesBySource.set(node.id, []);
-  }
+  for (const edges of input.model.outEdgesBySource.values()) {
+    for (const edge of edges) {
+      if (edge.source === edge.target) {
+        return null;
+      }
 
-  for (const edge of input.edges) {
-    if (!(nodeIds.has(edge.source) && nodeIds.has(edge.target))) {
-      continue;
-    }
+      inDegree.set(edge.target, (inDegree.get(edge.target) ?? 0) + 1);
 
-    if (edge.source === edge.target) {
-      return null;
-    }
-
-    edgesBySource.get(edge.source)?.push(edge);
-    inDegree.set(edge.target, (inDegree.get(edge.target) ?? 0) + 1);
-
-    if ((inDegree.get(edge.target) ?? 0) > 1) {
-      return null;
+      if ((inDegree.get(edge.target) ?? 0) > 1) {
+        return null;
+      }
     }
   }
 
-  for (const [sourceId, edges] of edgesBySource) {
-    edgesBySource.set(
-      sourceId,
-      edges.toSorted((a, b) => {
-        const rankDiff =
-          getTreeSortRank(a.sourceHandle ?? null) -
-          getTreeSortRank(b.sourceHandle ?? null);
-        if (rankDiff !== 0) {
-          return rankDiff;
-        }
-
-        return a.target.localeCompare(b.target);
-      })
-    );
-  }
-
-  const roots = input.nodes
-    .filter((node) => (inDegree.get(node.id) ?? 0) === 0)
-    .toSorted((a, b) => a.id.localeCompare(b.id));
+  const roots = input.model.nodes.filter(
+    (node) => (inDegree.get(node.id) ?? 0) === 0
+  );
 
   if (roots.length === 0) {
     return null;
@@ -286,7 +372,7 @@ function buildTreeLayoutData(input: {
     visitStack.add(nodeId);
     seen.add(nodeId);
 
-    const childEdges = edgesBySource.get(nodeId) ?? [];
+    const childEdges = input.model.outEdgesBySource.get(nodeId) ?? [];
     const children: TreeNodeData[] = [];
 
     for (const edge of childEdges) {
@@ -329,7 +415,7 @@ function buildTreeLayoutData(input: {
 
 function layoutWorkflowNodesWithHierarchy(input: {
   nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
+  model: LayoutModel;
   spacing: LayoutSpacing;
 }): {
   nodes: WorkflowNode[];
@@ -337,20 +423,34 @@ function layoutWorkflowNodesWithHierarchy(input: {
 } | null {
   const treeData = buildTreeLayoutData({
     nodes: input.nodes,
-    edges: input.edges,
+    model: input.model,
   });
 
   if (!treeData) {
     return null;
   }
 
+  const widthOf = (nodeId: string) =>
+    input.model.widthById.get(nodeId) ?? WORKFLOW_NODE_WIDTH;
+
   const root = hierarchy(treeData, (node) => node.children ?? []);
+  // `nodeSize` is one size for every node, so a node wider than the rest asks
+  // for its room through `separation`, which answers a centre-to-centre distance
+  // in those units. Two default-width siblings come to 1, the pair of them a gap
+  // apart, and cousins to the same 1.4 that a fixed separation used to give.
+  const unitWidth = WORKFLOW_NODE_WIDTH + input.spacing.nodeSpacing;
   const treeLayout = tree<TreeNodeData>()
-    .nodeSize([
-      WORKFLOW_NODE_WIDTH + input.spacing.nodeSpacing,
-      WORKFLOW_NODE_HEIGHT + input.spacing.rankSpacing,
-    ])
-    .separation((a, b) => (a.parent === b.parent ? 1 : 1.4));
+    .nodeSize([unitWidth, WORKFLOW_NODE_HEIGHT + input.spacing.rankSpacing])
+    .separation((a, b) => {
+      const gap =
+        a.parent === b.parent
+          ? input.spacing.nodeSpacing
+          : input.spacing.nodeSpacing * 2;
+
+      return (
+        (widthOf(a.data.id) / 2 + widthOf(b.data.id) / 2 + gap) / unitWidth
+      );
+    });
 
   treeLayout(root);
 
@@ -367,7 +467,7 @@ function layoutWorkflowNodesWithHierarchy(input: {
     const centerX = descendant.x ?? 0;
     const centerY = descendant.y ?? 0;
     topLeftById.set(descendant.data.id, {
-      x: centerX - WORKFLOW_NODE_WIDTH / 2,
+      x: centerX - widthOf(descendant.data.id) / 2,
       y: centerY - WORKFLOW_NODE_HEIGHT / 2,
     });
   }
@@ -427,10 +527,14 @@ export function layoutWorkflowNodes(input: {
       layoutableNodeIds.has(edge.source) && layoutableNodeIds.has(edge.target)
   );
   const spacing = getLayoutSpacing(input.availableWidth);
+  const model = buildLayoutModel({
+    nodes: layoutableNodes,
+    edges: layoutableEdges,
+  });
 
   const treeLayoutResult = layoutWorkflowNodesWithHierarchy({
     nodes: layoutableNodes,
-    edges: layoutableEdges,
+    model,
     spacing,
   });
 
@@ -438,7 +542,7 @@ export function layoutWorkflowNodes(input: {
     treeLayoutResult ??
     layoutWorkflowNodesWithDagre({
       nodes: layoutableNodes,
-      edges: layoutableEdges,
+      model,
       spacing,
     });
 
