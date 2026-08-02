@@ -536,36 +536,45 @@ Three rules:
 
 `docs/adr/0009` is why this is the author's job rather than Rova's.
 
-### Effect handler or async handler
+### Effect for integrations, Promise for host actions
 
-The six built-ins use an Effect, because `callExternal` answers one and a handler yields it
-directly. An Effect handler fails with a `StepFailure`, and `HttpClient.HttpClient` is the
-one service it may ask for. A host's own action takes the same three shapes, and
-`@rova/core` exports `StepFailure` for the Effect one.
+**Integrations author with Effect.** The six built-ins and anything built against
+`@rova/core/plugin` use `Effect.fn`, because `callExternal` answers an Effect and a handler
+yields it directly. Fail with a `StepFailure`. Durable work is
+`yield* bag.step.run(id, effect)`. Credentials are `yield* bag.credentials`. Do not reach for
+`readCredentials`, `callExternalAsync`, or a Promise factory for `step.run` in an integration
+handler — those are the host bridge.
 
-An `async` handler fails by a throw, and the message becomes the sentence in the run log:
+**Host `defineAction` stays Promise-first.** An adopter needs no Effect. An `async` handler
+fails by a throw, and the message becomes the sentence in the run log. Durable work is
+`step.run(id, () => promise)`. A connection test is also a Promise seam and uses
+`callExternalAsync`.
 
 ```ts
-handler: async ({ input, readCredentials }) => {
+// Host defineAction — Promise-first, no Effect required.
+handler: async ({ input, readCredentials, step }) => {
   const { MY_SERVICE_API_KEY } = await readCredentials();
   if (!MY_SERVICE_API_KEY) {
     throw new Error("MY_SERVICE_API_KEY is not configured.");
   }
 
-  return { id: await createThing(MY_SERVICE_API_KEY, input.text) };
+  return step.run("create", () => createThing(MY_SERVICE_API_KEY, input.text));
 },
 ```
 
-| Effect handler           | Async handler                 |
-| ------------------------ | ----------------------------- |
-| `yield* bag.credentials` | `await bag.readCredentials()` |
-| `callExternal`           | `callExternalAsync`           |
-| Fails with `StepFailure` | Fails by a throw              |
+| Integration (`@rova/core/plugin`) | Host `defineAction`                     |
+| --------------------------------- | --------------------------------------- |
+| `Effect.fn` handler               | `async` / plain function                |
+| `yield* bag.credentials`          | `await bag.readCredentials()`           |
+| `callExternal`                    | `callExternalAsync`                     |
+| `yield* bag.step.run(id, effect)` | `await bag.step.run(id, () => promise)` |
+| Fails with `StepFailure`          | Fails by a throw                        |
 
-The rest of the contract is identical. One case is worth knowing: `readCredentials` rejects with the failure
-a refused credential store raises, and Rova fails the node on it, naming the store in the
-message. A handler that catches around the await turns that into whatever it answers next,
-so catch narrowly.
+Internally both arms of `step.run` share one Effect memoization path; the Promise overload is
+a thin adapter. The rest of the contract (config decode, output encode, run log) is identical.
+One case is worth knowing: `readCredentials` rejects with the failure a refused credential
+store raises, and Rova fails the node on it, naming the store in the message. A handler that
+catches around the await turns that into whatever it answers next, so catch narrowly.
 
 ### The config form
 
