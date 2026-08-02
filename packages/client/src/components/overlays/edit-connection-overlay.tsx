@@ -60,7 +60,6 @@ function SecretField({
   const isMobile = useIsMobile();
   const hasNewValue = value.length > 0;
 
-  // Show "Configured" state until user clicks Change
   if (!(isEditing || hasNewValue)) {
     return (
       <div className="space-y-2">
@@ -258,7 +257,6 @@ export function EditConnectionOverlay({
     });
   };
 
-  // Render config fields
   const renderConfigFields = () => {
     if (!formFields) {
       return null;

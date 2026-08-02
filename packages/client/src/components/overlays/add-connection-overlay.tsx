@@ -275,7 +275,6 @@ export function ConfigureConnectionOverlay({
     testNewCredentials.mutate({ type, config });
   };
 
-  // Render config fields
   const renderConfigFields = () => {
     if (!formFields) {
       return null;

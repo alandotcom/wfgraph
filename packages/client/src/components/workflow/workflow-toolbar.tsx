@@ -178,7 +178,6 @@ function readConfigString(
   return typeof value === "string" ? value : undefined;
 }
 
-// Extract template variables from a string and check if they reference existing nodes
 function extractTemplateReferences(
   value: unknown
 ): Array<{ nodeId: string; displayText: string }> {
@@ -195,7 +194,6 @@ function extractTemplateReferences(
   }));
 }
 
-// Recursively extract all template references from a config object
 function extractAllTemplateReferences(
   config: Record<string, unknown>,
   prefix = ""
@@ -226,7 +224,6 @@ function extractAllTemplateReferences(
   return results;
 }
 
-// Get broken template references for workflow nodes
 function getBrokenTemplateReferences(
   nodes: WorkflowNode[]
 ): BrokenTemplateReferenceInfo[] {
@@ -234,7 +231,6 @@ function getBrokenTemplateReferences(
   const brokenByNode: BrokenTemplateReferenceInfo[] = [];
 
   for (const node of nodes) {
-    // Skip disabled nodes
     if (node.data.enabled === false) {
       continue;
     }
@@ -248,7 +244,6 @@ function getBrokenTemplateReferences(
     const brokenRefs = allRefs.filter((ref) => !nodeIds.has(ref.nodeId));
 
     if (brokenRefs.length > 0) {
-      // Get action for label lookups
       const actionType = readConfigString(config, "actionType");
       const action = actionType
         ? findAction(getExtensionCatalog(), actionType)
@@ -259,7 +254,6 @@ function getBrokenTemplateReferences(
         nodeId: node.id,
         nodeLabel: node.data.label || action?.label || "Unnamed Step",
         brokenReferences: brokenRefs.map((ref) => {
-          // Look up human-readable field label
           const configField = flatFields.find((f) => f.key === ref.field);
           return {
             fieldKey: ref.field,
@@ -275,7 +269,6 @@ function getBrokenTemplateReferences(
   return brokenByNode;
 }
 
-// Get missing required fields for workflow nodes
 function getMissingRequiredFields(
   nodes: WorkflowNode[]
 ): MissingRequiredFieldInfo[] {
@@ -297,7 +290,6 @@ function getMissingIntegrations(
   const missingByType = new Map<string, string[]>();
 
   for (const node of nodes) {
-    // Skip disabled nodes
     if (node.data.enabled === false) {
       continue;
     }
@@ -315,8 +307,7 @@ function getMissingIntegrations(
       continue;
     }
 
-    // Check if this node has a valid integrationId configured
-    // The integration must exist (not just be configured)
+    // Absent or deleted connection id both count as missing.
     const configuredIntegrationId = readConfigString(
       node.data.config,
       "integrationId"
@@ -390,10 +381,9 @@ async function executeWorkflowRun({
   setIsExecuting,
   setSelectedExecutionId,
 }: ExecuteWorkflowRunParams) {
-  // Set all nodes to idle first
   updateNodesStatus(nodes, updateNodeData, "idle");
 
-  // Immediately set the Lifecycle Node to running for instant visual feedback
+  // Instant visual feedback before the first poll lands.
   for (const node of nodes) {
     if (node.data.type === "lifecycle") {
       updateNodeData({ id: node.id, data: { status: "running" } });
@@ -624,14 +614,12 @@ function useWorkflowHandlers({
     if (isExecuting) {
       return;
     }
-    // Collect all workflow issues at once
     const brokenRefs = getBrokenTemplateReferences(nodes);
     const missingFields = getMissingRequiredFields(nodes);
     const missingIntegrations = getMissingIntegrations(nodes, userIntegrations);
     const hasBlockingIssues =
       missingFields.length > 0 || missingIntegrations.length > 0;
 
-    // If there are any issues, show the workflow issues overlay
     if (
       brokenRefs.length > 0 ||
       missingFields.length > 0 ||
@@ -889,7 +877,6 @@ function isTextEntry(target: HTMLElement): boolean {
   );
 }
 
-// Toolbar Actions Component - handles add step, undo/redo, save, and run buttons
 function ToolbarActions({
   workflowId,
   state,
@@ -937,32 +924,27 @@ function ToolbarActions({
   };
 
   const handleAddStep = () => {
-    // Get the ReactFlow wrapper (the visible canvas container)
     const flowWrapper = document.querySelector(".react-flow");
     if (!flowWrapper) {
       return;
     }
 
     const rect = flowWrapper.getBoundingClientRect();
-    // Calculate center in absolute screen coordinates
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
 
-    // Convert to flow coordinates
     const position = screenToFlowPosition({ x: centerX, y: centerY });
 
-    // Adjust for node dimensions to center it properly
     position.x -= WORKFLOW_NODE_WIDTH / 2;
     position.y -= WORKFLOW_NODE_HEIGHT / 2;
 
-    // Check if there's already a node at this position
-    const offset = 20; // Offset distance in pixels
-    const threshold = 20; // How close nodes need to be to be considered overlapping
+    const offset = 20;
+    const threshold = 20;
 
     const finalPosition = { ...position };
     let hasOverlap = true;
     let attempts = 0;
-    const maxAttempts = 20; // Prevent infinite loop
+    const maxAttempts = 20;
 
     while (hasOverlap && attempts < maxAttempts) {
       hasOverlap = state.nodes.some((node) => {
@@ -972,14 +954,12 @@ function ToolbarActions({
       });
 
       if (hasOverlap) {
-        // Offset diagonally down-right
         finalPosition.x += offset;
         finalPosition.y += offset;
         attempts += 1;
       }
     }
 
-    // Create new action node
     const newNode: WorkflowNode = {
       id: nanoid(),
       type: "action",
@@ -1138,7 +1118,6 @@ function ToolbarActions({
   );
 }
 
-// Save Button Component
 function SaveButton({
   state,
   handleSave,
@@ -1169,7 +1148,6 @@ function SaveButton({
   );
 }
 
-// Run Button Group Component
 function RunButtonGroup({
   state,
   actions,
@@ -1203,7 +1181,6 @@ function RunButtonGroup({
   );
 }
 
-// Duplicate button for read-only/public workflow views
 function DuplicateButton({
   isDuplicating,
   onDuplicate,
@@ -1230,7 +1207,6 @@ function DuplicateButton({
   );
 }
 
-// Workflow Menu Component
 function WorkflowMenuComponent({
   workflowId,
   state,

@@ -4,10 +4,6 @@ import { cn } from "@rova/shared/utils";
 import { useOverlay, useOverlayPosition } from "./overlay-provider";
 import type { OverlayHeaderProps } from "./types";
 
-/**
- * Standardized header component for overlays.
- * Automatically shows back button when overlay is pushed onto stack.
- */
 export function OverlayHeader({
   title,
   description,
@@ -19,8 +15,6 @@ export function OverlayHeader({
 }: OverlayHeaderProps & { overlayId?: string }) {
   const { pop, closeAll } = useOverlay();
 
-  // Determine if we should show back button based on stack position
-  // This can be overridden by the prop
   const showBackButton = showBackButtonProp ?? false;
 
   const handleBack = () => {
@@ -78,10 +72,7 @@ export function OverlayHeader({
   );
 }
 
-/**
- * Smart header that automatically determines back button visibility
- * based on the overlay's position in the stack.
- */
+/** Back button follows stack depth unless the caller overrides it. */
 export function SmartOverlayHeader({
   overlayId,
   showBackButton: showBackButtonProp,

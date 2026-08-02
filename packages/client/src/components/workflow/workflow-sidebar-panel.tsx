@@ -68,7 +68,6 @@ export function WorkflowSidebarPanel() {
 
   useDomEvent(window, "keydown", handleToggleShortcut);
 
-  // Handle panel resize
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -81,7 +80,6 @@ export function WorkflowSidebarPanel() {
         }
         const newWidth =
           ((window.innerWidth - moveEvent.clientX) / window.innerWidth) * 100;
-        // Clamp between 20% and 50%
         setPanelWidth(Math.min(50, Math.max(20, newWidth)));
       };
 

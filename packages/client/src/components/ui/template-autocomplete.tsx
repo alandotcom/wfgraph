@@ -207,7 +207,6 @@ export function TemplateAutocomplete({
 
   const hasRowsToShow = filteredOptions.length > 0 || emptyMessage !== null;
 
-  // Handle keyboard navigation
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       switch (e.key) {
@@ -258,10 +257,10 @@ export function TemplateAutocomplete({
     return null;
   }
 
-  // Ensure position is within viewport
+  // Menu is w-80 (320px); leave ~300px above the bottom edge.
   const adjustedPosition = {
-    top: Math.min(position.top, window.innerHeight - 300), // Keep 300px from bottom
-    left: Math.min(position.left, window.innerWidth - 320), // Keep menu (320px wide) within viewport
+    top: Math.min(position.top, window.innerHeight - 300),
+    left: Math.min(position.left, window.innerWidth - 320),
   };
 
   const menuContent = (

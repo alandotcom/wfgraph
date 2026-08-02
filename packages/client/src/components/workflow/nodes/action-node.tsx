@@ -373,11 +373,9 @@ const ProviderLogo = ({ actionType }: { actionType: string }) => {
     }
   }
 
-  // Fallback for unknown actions
   return <Zap className="size-12 text-amber-300" strokeWidth={1.5} />;
 };
 
-// Model badge component for AI nodes
 const ModelBadge = ({ model }: { model: string }) => {
   if (!model) {
     return null;
@@ -390,7 +388,6 @@ const ModelBadge = ({ model }: { model: string }) => {
   );
 };
 
-// Generated image thumbnail with zoom dialog
 function GeneratedImageThumbnail({ base64 }: { base64: string }) {
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -501,7 +498,6 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
       ? readBase64ImageOutput(nodeLog?.output)
       : null;
 
-  // Handle empty action type (new node without selected action)
   if (!actionType) {
     const isDisabled = data.enabled === false;
     return (
@@ -535,14 +531,12 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
     );
   }
 
-  // Get human-readable label from registry if no custom label is set
   const actionInfo = findAction(getExtensionCatalog(), actionType);
   const displayTitle = data.label || actionInfo?.label || actionType;
   const displayDescription =
     data.description || getIntegrationFromActionType(actionType);
 
   const needsIntegration = requiresIntegration(actionType);
-  // Check both that integrationId is set AND that it exists in available integrations
   const configuredIntegrationId = readOptionalConfigString(
     data.config,
     "integrationId"
@@ -550,11 +544,10 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   const hasValidIntegration =
     configuredIntegrationId &&
     availableIntegrationIds.has(configuredIntegrationId);
-  // Only show missing indicator after integrations have been loaded
+  // Wait for the connection list before claiming one is missing.
   const integrationMissing =
     integrationsLoaded && needsIntegration && !hasValidIntegration;
 
-  // Get model for AI nodes
   const getAiModel = (): string | null => {
     if (actionType === "Generate Text") {
       return readConfigString(data.config, "aiModel", "meta/llama-4-scout");

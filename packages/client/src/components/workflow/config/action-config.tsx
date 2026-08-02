@@ -586,7 +586,6 @@ function useCategoryData(): Record<string, CategoryActionOption[]> {
   }, []);
 }
 
-// Get category for an action type (supports both new IDs, labels, and legacy labels)
 function getCategoryForAction(actionType: string): string | null {
   return findAction(getExtensionCatalog(), actionType)?.category ?? null;
 }
@@ -614,7 +613,6 @@ export function ActionConfig({
   const { push } = useOverlay();
 
   const handleCategoryChange = (newCategory: string) => {
-    // Auto-select the first action in the new category
     const firstAction = categories[newCategory]?.[0];
     if (firstAction) {
       onUpdateConfig({ actionType: firstAction.id });
@@ -625,7 +623,6 @@ export function ActionConfig({
     onUpdateConfig({ actionType: value });
   };
 
-  // Get dynamic config fields for plugin actions
   const catalogAction = actionType
     ? findAction(getExtensionCatalog(), actionType)
     : undefined;
@@ -634,7 +631,6 @@ export function ActionConfig({
   // action alike.
   const integrationType = catalogAction?.integration;
 
-  // Check if there are existing connections for this integration type
   const hasExistingConnections = globalIntegrations.some(
     (integration) => integration.type === integrationType
   );
