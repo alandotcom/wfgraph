@@ -37,6 +37,7 @@
       "@rova/shared/*": ["./packages/shared/src/*"],
       "@rova/core": ["./packages/core/src/index.ts"],
       "@rova/core/*": ["./packages/core/src/*"],
+      "@rova/client": ["./packages/client/src/index.ts"],
       "@rova/plugins": ["./packages/plugins/src/index.ts"],
       "@rova/plugins/*": ["./packages/plugins/src/*"]
     }

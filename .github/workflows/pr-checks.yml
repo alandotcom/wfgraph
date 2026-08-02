@@ -37,13 +37,6 @@ jobs:
       - name: Run lint
         run: pnpm run lint
 
-      # `@rova/client` publishes through package exports to dist/, and
-      # examples/app.ts imports that entry. The root tsconfig maps shared/core/
-      # plugins to source, but client is not on that list, so typecheck needs
-      # the built declarations (AGENTS.md).
-      - name: Build client package
-        run: pnpm --filter @rova/client build
-
       - name: Run type check
         run: pnpm run typecheck
 
