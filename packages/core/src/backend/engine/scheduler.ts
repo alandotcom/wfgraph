@@ -37,6 +37,12 @@ import {
 } from "#src/backend/engine/templates";
 import type { Traversal, TraversalRoute } from "#src/backend/engine/traversal";
 import { executeWaitAction } from "#src/backend/engine/wait";
+import {
+  actionTypeOf,
+  isConditionNode,
+  isWaitNode,
+  readConfigString,
+} from "@rova/shared/graph/node-config";
 
 /**
  * What a node's work reports back to the traversal: the routing facts the
@@ -60,14 +66,6 @@ type NodeWorkOutcome = {
    */
   haltBranch?: boolean;
 };
-
-function readConfigString(
-  config: Record<string, unknown> | undefined,
-  key: string
-): string | undefined {
-  const value = config?.[key];
-  return typeof value === "string" ? value : undefined;
-}
 
 /** What the run log and the trace call a node. */
 function getNodeName(node: WorkflowNode, actions: WorkflowActions): string {
@@ -130,22 +128,6 @@ function downstreamRoute(
   }
 
   return { kind: "all" };
-}
-
-/** The action id this node runs, absent on a node that runs no action. */
-function actionTypeOf(node: WorkflowNode): string | undefined {
-  return node.data.type === "action"
-    ? readConfigString(node.data.config, "actionType")
-    : undefined;
-}
-
-/** Whether this node is the one that suspends the run. */
-function isWaitNode(node: WorkflowNode): boolean {
-  return actionTypeOf(node) === BUILT_IN_ACTION_IDS.wait;
-}
-
-function isConditionNode(node: WorkflowNode): boolean {
-  return actionTypeOf(node) === BUILT_IN_ACTION_IDS.condition;
 }
 
 /**

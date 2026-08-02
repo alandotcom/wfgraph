@@ -3,7 +3,7 @@ import type {
   WorkflowEdge,
   WorkflowNode,
   WorkflowNodeType,
-} from "@rova/shared/graph/types";
+} from "#src/lib/workflow-graph-types";
 import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
 import { eventSplitOutlet } from "@rova/shared/lifecycle/event-split";
 import { layoutWorkflowNodes } from "./workflow-layout";

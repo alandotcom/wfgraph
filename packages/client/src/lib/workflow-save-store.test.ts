@@ -13,7 +13,7 @@ import {
   saveWorkflowAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "./workflow-save-test-support";
 
 type Deferred = {

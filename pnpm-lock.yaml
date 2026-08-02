@@ -464,9 +464,6 @@ importers:
       '@standard-schema/spec':
         specifier: 'catalog:'
         version: 1.1.0
-      '@xyflow/react':
-        specifier: 'catalog:'
-        version: 12.11.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       arktype:
         specifier: 'catalog:'
         version: 2.2.3

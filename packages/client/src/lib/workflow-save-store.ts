@@ -9,7 +9,7 @@ import type {
   WorkflowMode,
   WorkflowNode,
   WorkflowVisibility,
-} from "@rova/shared/graph/types";
+} from "#src/lib/workflow-graph-types";
 
 /**
  * Identity of the workflow open in the editor, and the single path by which it

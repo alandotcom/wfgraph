@@ -47,6 +47,10 @@ import { ConditionBuilderRow } from "./condition-builder-row";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { WaitEventSelect } from "./wait-event-select";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
+import {
+  readConfigString,
+  readConfigStringOr,
+} from "@rova/shared/graph/node-config";
 
 type ActionConfigProps = {
   config: Record<string, unknown>;
@@ -61,15 +65,6 @@ type CategoryActionOption = {
   logoUrl?: string;
   integration?: string;
 };
-
-function readConfigString(
-  config: Record<string, unknown> | undefined,
-  key: string,
-  fallback = ""
-): string {
-  const value = config?.[key];
-  return typeof value === "string" ? value : fallback;
-}
 
 function OptionLogo({
   logoUrl,
@@ -146,7 +141,7 @@ function ConditionFields({
       fields={fields}
       label="Condition"
       onChange={handleChange}
-      value={readConfigString(config, "conditionModel")}
+      value={readConfigString(config, "conditionModel") ?? ""}
     />
   );
 }
@@ -204,7 +199,7 @@ type WaitFieldProps = {
 };
 
 function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
-  const waitGateMode = readConfigString(config, "waitGateMode", "off");
+  const waitGateMode = readConfigStringOr(config, "waitGateMode", "off");
   const configuredWaitUntil = readConfigString(config, "waitUntil");
   const configuredWaitDuration = readConfigString(config, "waitDuration");
   const delayTimingMode = readWaitDelayTiming(config);
@@ -332,7 +327,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           onValueChange={(value) =>
             onUpdateConfig({ waitAllowedHoursMode: value })
           }
-          value={readConfigString(config, "waitAllowedHoursMode", "off")}
+          value={readConfigStringOr(config, "waitAllowedHoursMode", "off")}
         >
           <SelectTrigger className="w-full" id="waitAllowedHoursMode">
             <SelectValue placeholder="Select window mode" />
@@ -390,7 +385,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           disabled={disabled}
           id="waitTimezone"
           onValueChange={(value) => onUpdateConfig({ waitTimezone: value })}
-          value={readConfigString(config, "waitTimezone", "UTC")}
+          value={readConfigStringOr(config, "waitTimezone", "UTC")}
         />
         <p className="text-muted-foreground text-xs">
           Used when the target date/time does not include an offset.
@@ -435,7 +430,7 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           onValueChange={(value) =>
             onUpdateConfig({ waitTimeoutBehavior: value })
           }
-          value={readConfigString(config, "waitTimeoutBehavior", "continue")}
+          value={readConfigStringOr(config, "waitTimeoutBehavior", "continue")}
         >
           <SelectTrigger className="w-full" id="waitTimeoutBehavior">
             <SelectValue placeholder="Select timeout behavior" />
@@ -462,7 +457,7 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
  * before a builder ever meets it.
  */
 function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
-  const waitMode = readConfigString(config, "waitMode", "delay");
+  const waitMode = readConfigStringOr(config, "waitMode", "delay");
 
   // Switching mode drops the keys the shape being left owned, the same rule the
   // timing selector below follows: a run never reads a value from a shape the
@@ -477,7 +472,8 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
     onUpdateConfig({
       ...cleared,
       waitMode: value,
-      ...(value === "event" && !readConfigString(config, "waitTimeout").trim()
+      ...(value === "event" &&
+      !(readConfigString(config, "waitTimeout") ?? "").trim()
         ? { waitTimeout: DEFAULT_WAIT_TIMEOUT }
         : {}),
     });
@@ -809,7 +805,7 @@ export function ActionConfig({
 
       {/* System actions - hardcoded config fields */}
       <SystemActionFields
-        actionType={readConfigString(config, "actionType")}
+        actionType={readConfigString(config, "actionType") ?? ""}
         config={config}
         disabled={disabled}
         onUpdateConfig={onUpdateConfig}

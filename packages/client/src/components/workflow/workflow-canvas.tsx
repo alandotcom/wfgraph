@@ -45,7 +45,7 @@ import {
   rightPanelWidthAtom,
   showMinimapAtom,
 } from "#src/lib/workflow-ui-store";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { normalizeSourceHandleForConnection as normalizeSourceHandle } from "./connection-handle";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";

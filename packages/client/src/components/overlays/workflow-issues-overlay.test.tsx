@@ -16,7 +16,7 @@ import {
   nodesAtom,
 } from "#src/lib/workflow-graph-store";
 import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**
  * The dialog offers to fix the missing connection it reports, and the fix has to

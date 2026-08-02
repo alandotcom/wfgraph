@@ -7,6 +7,7 @@ import {
   findAction,
 } from "@rova/shared/extensions/catalog";
 import type { WorkflowNode } from "@rova/shared/graph/types";
+import { readConfigTrimmedString } from "@rova/shared/graph/node-config";
 
 /** As much of a catalog entry as the checks below read. */
 type ResolvedAction = {
@@ -69,13 +70,6 @@ function shouldEnforceStrictValidation(
   return !["0", "false", "no", "off"].includes(configured);
 }
 
-function readConfigString(
-  config: Record<string, unknown> | undefined,
-  key: string
-): string | undefined {
-  const value = config?.[key];
-  return typeof value === "string" ? value.trim() : undefined;
-}
 
 function extractRequiredIntegrationRequirements(
   nodes: WorkflowNode[],
@@ -88,7 +82,7 @@ function extractRequiredIntegrationRequirements(
       continue;
     }
 
-    const actionType = readConfigString(node.data.config, "actionType");
+    const actionType = readConfigTrimmedString(node.data.config, "actionType");
     // Which integration an action needs is the catalog's answer, the same for a
     // plugin action and a host's own.
     const requiredType = actionType
@@ -98,7 +92,7 @@ function extractRequiredIntegrationRequirements(
       continue;
     }
 
-    const integrationId = readConfigString(node.data.config, "integrationId");
+    const integrationId = readConfigTrimmedString(node.data.config, "integrationId");
     if (!integrationId) {
       continue;
     }

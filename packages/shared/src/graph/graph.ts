@@ -8,6 +8,7 @@ import {
   workflowNodeAttributesSchema,
 } from "#src/graph/schemas";
 import type {
+  PersistedNodeData,
   SerializedWorkflowEdge,
   SerializedWorkflowGraph,
   SerializedWorkflowNode,
@@ -56,17 +57,88 @@ function isWorkflowNodeType(value: unknown): value is WorkflowNodeType {
   return value === "lifecycle" || value === "action" || value === "add";
 }
 
+/**
+ * Drop editor/run overlay keys that StructWithRest may have admitted from an
+ * old row or an in-process React Flow export.
+ */
+function toPersistedNodeData(data: {
+  label: string;
+  description?: string;
+  type: WorkflowNodeType;
+  config?: unknown;
+  enabled?: boolean;
+  status?: unknown;
+}): PersistedNodeData {
+  const persisted: PersistedNodeData = {
+    label: data.label,
+    type: data.type,
+  };
+  if (data.description !== undefined) {
+    persisted.description = data.description;
+  }
+  if (
+    typeof data.config === "object" &&
+    data.config !== null &&
+    !Array.isArray(data.config)
+  ) {
+    persisted.config = { ...data.config };
+  }
+  if (data.enabled !== undefined) {
+    persisted.enabled = data.enabled;
+  }
+  return persisted;
+}
+
+/** Node shape accepted at the encode boundary (editor may still carry status). */
+export type WorkflowGraphNodeInput = {
+  id: string;
+  position: { x: number; y: number };
+  data: {
+    label: string;
+    description?: string;
+    type: WorkflowNodeType;
+    config?: unknown;
+    enabled?: boolean;
+    status?: unknown;
+  };
+  type?: string;
+  selected?: boolean;
+  dragging?: boolean;
+  width?: number;
+  height?: number;
+  measured?: { width?: number; height?: number };
+};
+
+function readOptionalBoolean(
+  record: { readonly [key: string]: unknown },
+  key: string
+): boolean | undefined {
+  const value = record[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
 function parseNodeAttributes(attributes: unknown): WorkflowNode {
   const parsed = decodeNodeAttributes(attributes);
 
   return {
-    ...parsed,
+    id: parsed.id,
+    type: parsed.type,
     position: parsed.position ?? { x: 0, y: 0 },
+    data: toPersistedNodeData(parsed.data),
+    selected: readOptionalBoolean(parsed, "selected"),
   };
 }
 
 function parseEdgeAttributes(attributes: unknown): WorkflowEdge {
-  return decodeEdgeAttributes(attributes);
+  const parsed = decodeEdgeAttributes(attributes);
+  return {
+    id: parsed.id,
+    source: parsed.source,
+    target: parsed.target,
+    sourceHandle: parsed.sourceHandle,
+    targetHandle: parsed.targetHandle,
+    data: parsed.data,
+  };
 }
 
 function toNodeFromSerialized(
@@ -107,7 +179,7 @@ function toEdgeFromSerialized(
 }
 
 export function createSerializedWorkflowGraph(input: {
-  nodes: WorkflowNode[];
+  nodes: WorkflowGraphNodeInput[];
   edges: WorkflowEdge[];
   attributes?: Record<string, unknown>;
 }): SerializedWorkflowGraph {
@@ -121,7 +193,10 @@ export function createSerializedWorkflowGraph(input: {
   }
 
   for (const node of input.nodes) {
-    graph.mergeNode(node.id, node);
+    graph.mergeNode(node.id, {
+      ...node,
+      data: toPersistedNodeData(node.data),
+    });
   }
 
   for (const edge of input.edges) {

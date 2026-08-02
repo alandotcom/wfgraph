@@ -22,7 +22,6 @@
   },
   "devDependencies": {
     "@standard-schema/spec": "catalog:",
-    "@xyflow/react": "catalog:",
     "arktype": "catalog:",
     "zod": "catalog:"
   }

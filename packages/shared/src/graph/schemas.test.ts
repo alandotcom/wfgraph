@@ -2,7 +2,11 @@ import { Result, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { rejectUnknownKeys } from "#src/types/schema";
 import { formatSchemaFailure } from "#src/types/schema-message";
-import { parseSerializedWorkflowGraph } from "#src/graph/graph";
+import {
+  createSerializedWorkflowGraph,
+  parseSerializedWorkflowGraph,
+  toWorkflowGraphData,
+} from "#src/graph/graph";
 import { workflowNodeDataSchema } from "#src/graph/schemas";
 
 /** A one-node graph, in the shape `graph.export()` hands over. */
@@ -103,6 +107,104 @@ describe("a graph built in process", () => {
         })
       )
     ).toThrow(/finite/);
+  });
+});
+
+describe("persisted node data", () => {
+  it("strips run status when encoding and when loading", () => {
+    const encoded = createSerializedWorkflowGraph({
+      nodes: [
+        {
+          id: "n1",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Send email",
+            type: "action",
+            status: "running",
+            config: { actionType: "resend/send-email" },
+          },
+        },
+      ],
+      edges: [],
+    });
+
+    expect(encoded.nodes[0]?.attributes.data).not.toHaveProperty("status");
+
+    const loaded = toWorkflowGraphData(
+      parseSerializedWorkflowGraph(
+        graphWithNode({
+          id: "n1",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Send email",
+            type: "action",
+            status: "success",
+            config: { actionType: "resend/send-email" },
+          },
+        })
+      )
+    );
+
+    expect(loaded.nodes[0]?.data).not.toHaveProperty("status");
+    expect(loaded.nodes[0]?.data.config).toMatchObject({
+      actionType: "resend/send-email",
+    });
+  });
+
+  it("accepts a closed Condition config and rejects a stray key", () => {
+    const ok = parseSerializedWorkflowGraph(
+      graphWithNode({
+        id: "n1",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "If",
+          type: "action",
+          config: { actionType: "Condition", condition: "true" },
+        },
+      })
+    );
+    expect(ok.nodes).toHaveLength(1);
+
+    expect(() =>
+      parseSerializedWorkflowGraph(
+        graphWithNode({
+          id: "n1",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "If",
+            type: "action",
+            config: {
+              actionType: "Condition",
+              condition: "true",
+              stray: true,
+            },
+          },
+        })
+      )
+    ).toThrow(/stray|Unexpected key/i);
+  });
+
+  it("keeps plugin action fields in the open config arm", () => {
+    const parsed = parseSerializedWorkflowGraph(
+      graphWithNode({
+        id: "n1",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Email",
+          type: "action",
+          config: {
+            actionType: "resend/send-email",
+            integrationId: "int_1",
+            to: "a@example.com",
+          },
+        },
+      })
+    );
+
+    expect(parsed.nodes[0]?.attributes.data.config).toMatchObject({
+      actionType: "resend/send-email",
+      to: "a@example.com",
+    });
   });
 });
 

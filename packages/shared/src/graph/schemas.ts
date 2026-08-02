@@ -21,13 +21,17 @@
  * React Flow writes its own bookkeeping onto both, and the editor round-trips
  * fields this schema has never heard of. An index signature skips the
  * excess-property check, so those stay open under the same decode options.
+ *
+ * Run `status` and editor `onClick` are not part of this schema. Old rows that
+ * still carry `status` on node data are admitted by `StructWithRest` and stripped
+ * in `graph.ts` before a node becomes `PersistedNodeData`.
  */
 
 import { Schema } from "effect";
+import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import { listOf, NonEmptyTrimmedString, unknownRest } from "#src/types/schema";
 import { lifecycleRulesSchema } from "#src/lifecycle/lifecycle-rules";
 import { testPayloadsSchema } from "#src/lifecycle/test-payloads";
-
 /**
  * What the entry node carries.
  *
@@ -52,9 +56,6 @@ const workflowLifecycleConfigSchema = Schema.Struct({
 const workflowNodeDataBaseFields = {
   label: Schema.String,
   description: Schema.optional(Schema.String),
-  status: Schema.optional(
-    Schema.Literals(["idle", "running", "success", "error", "cancelled"])
-  ),
   enabled: Schema.optional(Schema.Boolean),
 };
 
@@ -67,26 +68,110 @@ const workflowLifecycleNodeDataSchema = Schema.StructWithRest(
   unknownRest
 );
 
+const conditionActionConfigSchema = Schema.Struct({
+  actionType: Schema.Literal(BUILT_IN_ACTION_IDS.condition),
+  /**
+   * What the engine evaluates: a CEL string from the editor, or a literal
+   * boolean used by tests and short-circuit fixtures.
+   */
+  condition: Schema.optional(Schema.Union([Schema.String, Schema.Boolean])),
+  /** Serialized ConditionModel the editor edits. */
+  conditionModel: Schema.optional(Schema.String),
+  integrationId: Schema.optional(Schema.String),
+}).annotate({
+  message: "Condition config must be an object",
+});
+
 /**
- * The two node kinds whose config is an open bag, one arm each.
+ * Wait config on the wire is open beside a typed actionType.
  *
- * A single arm declaring `Schema.Literals(["action", "add"])` would describe
- * the same values, and would cost every failure message. Effect narrows a union
- * to the arms whose literal-valued fields match the input, and a field holding
- * a union of literals is not one of those: the arm would be tried against every
- * node, so a Lifecycle Node with a bad config would be told about `"action" |
- * "add"` as well. One literal per arm is what makes the selection engage.
+ * `readWaitConfig` is the closed decode a run uses; the graph must still load a
+ * retired `waitMode: "hook"` row so that path can refuse it at execution rather
+ * than at autosave. Named keys are the ones the editor writes today.
  */
-function nodeDataWithConfigBag<Type extends string>(type: Type) {
-  return Schema.StructWithRest(
-    Schema.Struct({
-      ...workflowNodeDataBaseFields,
-      type: Schema.Literal(type),
-      config: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
-    }),
-    unknownRest
-  );
-}
+const waitActionConfigSchema = Schema.StructWithRest(
+  Schema.Struct({
+    actionType: Schema.Literal(BUILT_IN_ACTION_IDS.wait),
+    integrationId: Schema.optional(Schema.String),
+    waitDelayTimingMode: Schema.optional(Schema.String),
+    waitMode: Schema.optional(Schema.String),
+    waitFor: Schema.optional(Schema.Unknown),
+    waitTimeout: Schema.optional(Schema.String),
+    waitTimeoutBehavior: Schema.optional(Schema.String),
+    waitDuration: Schema.optional(Schema.String),
+    waitUntil: Schema.optional(Schema.String),
+    waitOffset: Schema.optional(Schema.String),
+    waitGateMode: Schema.optional(Schema.String),
+    waitAllowedHoursMode: Schema.optional(Schema.String),
+    waitAllowedStartTime: Schema.optional(Schema.String),
+    waitAllowedEndTime: Schema.optional(Schema.String),
+    waitTimezone: Schema.optional(Schema.String),
+  }),
+  unknownRest
+).annotate({
+  message: "Wait config must be an object",
+});
+
+const eventSplitActionConfigSchema = Schema.Struct({
+  actionType: Schema.Literal(BUILT_IN_ACTION_IDS.eventSplit),
+  integrationId: Schema.optional(Schema.String),
+}).annotate({
+  message: "Event Split config must be an object",
+});
+
+/**
+ * Plugin and host action configs: `actionType` / `integrationId` are named;
+ * catalog fields stay in the rest. Built-in ids are refused here so a Condition
+ * / Wait / Event Split config that fails its closed arm cannot fall through
+ * into this open one.
+ */
+const pluginActionTypeSchema = NonEmptyTrimmedString.check(
+  Schema.makeFilter((value: string) => {
+    if (
+      value === BUILT_IN_ACTION_IDS.condition ||
+      value === BUILT_IN_ACTION_IDS.wait ||
+      value === BUILT_IN_ACTION_IDS.eventSplit
+    ) {
+      return "Built-in action configs use their own schema arm";
+    }
+    return true;
+  })
+);
+
+const pluginActionConfigSchema = Schema.StructWithRest(
+  Schema.Struct({
+    actionType: Schema.optional(pluginActionTypeSchema),
+    integrationId: Schema.optional(Schema.String),
+  }),
+  unknownRest
+);
+
+const workflowActionConfigSchema = Schema.Union([
+  conditionActionConfigSchema,
+  waitActionConfigSchema,
+  eventSplitActionConfigSchema,
+  pluginActionConfigSchema,
+]).annotate({
+  message: "Action config must be an object",
+});
+
+const workflowActionNodeDataSchema = Schema.StructWithRest(
+  Schema.Struct({
+    ...workflowNodeDataBaseFields,
+    type: Schema.Literal("action"),
+    config: Schema.optional(workflowActionConfigSchema),
+  }),
+  unknownRest
+);
+
+const workflowAddNodeDataSchema = Schema.StructWithRest(
+  Schema.Struct({
+    ...workflowNodeDataBaseFields,
+    type: Schema.Literal("add"),
+    config: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  }),
+  unknownRest
+);
 
 /**
  * The message is the bound on what a rejection may say.
@@ -101,8 +186,8 @@ function nodeDataWithConfigBag<Type extends string>(type: Type) {
  */
 export const workflowNodeDataSchema = Schema.Union([
   workflowLifecycleNodeDataSchema,
-  nodeDataWithConfigBag("action"),
-  nodeDataWithConfigBag("add"),
+  workflowActionNodeDataSchema,
+  workflowAddNodeDataSchema,
 ]).annotate({
   message: 'Node data needs a type of "lifecycle", "action", or "add"',
 });

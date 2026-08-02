@@ -1,7 +1,8 @@
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { findAction } from "@rova/shared/extensions/catalog";
 import { parseTemplate, type TemplateToken } from "@rova/shared/graph/node-references";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { readConfigString } from "@rova/shared/graph/node-config";
 
 /**
  * The contentEditable behind the template fields, as plain DOM.
@@ -87,13 +88,6 @@ const LIVE_BADGE_CLASS =
 const BROKEN_BADGE_CLASS =
   "inline-flex items-center gap-1 rounded bg-red-500/10 px-1.5 py-0.5 text-red-600 dark:text-red-400 font-mono text-xs border border-red-500/20 mx-0.5";
 
-function readConfigString(
-  config: Record<string, unknown> | undefined,
-  key: string
-): string | undefined {
-  const value = config?.[key];
-  return typeof value === "string" ? value : undefined;
-}
 
 /**
  * Badge text for a token. The label baked into the token can be stale, so the

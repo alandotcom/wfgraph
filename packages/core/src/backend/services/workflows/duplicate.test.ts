@@ -162,7 +162,7 @@ describe("postWorkflowDuplicate", () => {
       })
     );
 
-    it.effect("gives every copied node a fresh id and an idle status", () =>
+    it.effect("gives every copied node a fresh id without run status", () =>
       Effect.gen(function* () {
         const repo = makeWorkflowRepo();
 
@@ -176,7 +176,7 @@ describe("postWorkflowDuplicate", () => {
         assert.notInclude(copiedIds, "lifecycle-1");
         assert.notInclude(copiedIds, "action-1");
         for (const node of storedGraph.nodes) {
-          assert.strictEqual(node.attributes.data.status, "idle");
+          assert.isUndefined(node.attributes.data.status);
         }
       })
     );

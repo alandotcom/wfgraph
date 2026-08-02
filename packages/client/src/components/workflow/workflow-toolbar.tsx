@@ -94,7 +94,7 @@ import type {
   WorkflowEdge,
   WorkflowNode,
   WorkflowNodeData,
-} from "@rova/shared/graph/types";
+} from "#src/lib/workflow-graph-types";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { findAction, findIntegration } from "@rova/shared/extensions/catalog";
 import { flattenConfigFields } from "@rova/shared/plugins/action-fields";
@@ -108,6 +108,7 @@ import {
   initialLifecycleRules,
   manualStartAllowed,
 } from "@rova/shared/lifecycle/lifecycle-rules";
+import { readConfigString } from "@rova/shared/graph/node-config";
 import {
   findEntryNode,
   nextTestPayloads,
@@ -169,14 +170,6 @@ type BrokenTemplateReferenceInfo = {
     displayText: string;
   }>;
 };
-
-function readConfigString(
-  config: Record<string, unknown> | undefined,
-  key: string
-): string | undefined {
-  const value = config?.[key];
-  return typeof value === "string" ? value : undefined;
-}
 
 // Extract template variables from a string and check if they reference existing nodes
 function extractTemplateReferences(

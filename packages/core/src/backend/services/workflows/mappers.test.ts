@@ -82,7 +82,7 @@ describe("withDefaultLifecycleNode", () => {
     // The entry node starts with nothing configured: what starts a run is the
     // Lifecycle Rules the panel writes, and it has not been near this graph yet.
     expect(node?.config).toEqual({});
-    expect(node?.status).toBe("idle");
+    expect(node).not.toHaveProperty("status");
   });
 
   it("hands back a graph that already has nodes", () => {

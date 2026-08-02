@@ -4,7 +4,7 @@ import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
 } from "@rova/shared/lifecycle/lifecycle-outlets";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
 import { eventSplitOutlet } from "@rova/shared/lifecycle/event-split";
 import {

@@ -22,7 +22,7 @@ import type {
   WorkflowEdge,
   WorkflowNode,
   WorkflowNodeData,
-} from "@rova/shared/graph/types";
+} from "#src/lib/workflow-graph-types";
 
 /**
  * The graph the editor is showing, and every operation that may change it.

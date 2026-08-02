@@ -1,6 +1,7 @@
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { findAction } from "@rova/shared/extensions/catalog";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { readConfigString } from "@rova/shared/graph/node-config";
 
 /**
  * Keeping a node's `integrationId` pointing at a connection that still exists.
@@ -22,13 +23,6 @@ import type { WorkflowNode } from "@rova/shared/graph/types";
 
 type IntegrationLike = { id: string; type: string };
 
-function readConfigString(
-  config: Record<string, unknown> | undefined,
-  key: string
-): string | undefined {
-  const value = config?.[key];
-  return typeof value === "string" ? value : undefined;
-}
 
 /**
  * The kind of connection an action needs, which is the catalog's answer for every

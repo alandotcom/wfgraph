@@ -32,7 +32,6 @@ function stripIntegrationIds(nodes: WorkflowNode[]): WorkflowNode[] {
       if (updatedData.config) {
         updatedData.config = omit(updatedData.config, ["integrationId"]);
       }
-      updatedData.status = "idle";
       newNode.data = updatedData;
     }
     return newNode;
