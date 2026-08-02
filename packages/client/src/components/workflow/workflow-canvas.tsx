@@ -222,7 +222,6 @@ export function WorkflowCanvas() {
 
   useDomEvent(window, "keydown", handleUndoRedoShortcut);
 
-  // Keyboard shortcut for fit view (Cmd+/ or Ctrl+/)
   const handleFitViewShortcut = useCallback(
     (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "/") {
@@ -311,12 +310,10 @@ export function WorkflowCanvas() {
       const sourceNodeId = connection.source;
       const targetNodeId = connection.target;
 
-      // Ensure we have both source and target
       if (!(sourceNodeId && targetNodeId)) {
         return false;
       }
 
-      // Prevent self-connections
       if (sourceNodeId === targetNodeId) {
         return false;
       }
@@ -507,14 +504,12 @@ export function WorkflowCanvas() {
         clientY
       );
 
-      // Get the position in the flow coordinate system
       const position = screenToFlowPosition({
         x: adjustedX,
         y: adjustedY,
       });
 
-      // Center the node vertically at the cursor position
-      // Node height is 192px (h-48 in Tailwind)
+      // Center vertically on the cursor; node height is h-48 (192px).
       const nodeHeight = 192;
       position.y -= nodeHeight / 2;
 
@@ -542,7 +537,6 @@ export function WorkflowCanvas() {
         selectOnlyNode(newNode.id);
       }, 50);
 
-      // Create connection from the source node to the new node
       const sourceId = fromSource ? sourceNodeId : newNode.id;
       const targetId = fromSource ? newNode.id : sourceNodeId;
       const sourceHandle = normalizeSourceHandleForConnection(
@@ -558,7 +552,6 @@ export function WorkflowCanvas() {
         targetHandle,
       });
 
-      // Set flag to prevent immediate deselection
       justCreatedNodeFromConnection.current = true;
       setTimeout(() => {
         justCreatedNodeFromConnection.current = false;
@@ -583,11 +576,10 @@ export function WorkflowCanvas() {
         return;
       }
 
-      // Get client position first
       const { clientX, clientY } = getClientPosition(event);
 
-      // For touch events, use elementFromPoint to get the actual element at the touch position
-      // For mouse events, use event.target as before
+      // Touch ends on a different target than the drag started on, so hit-test
+      // the release point; mouse can use event.target.
       let target: Element | null;
       if ("changedTouches" in event) {
         target = document.elementFromPoint(clientX, clientY);
@@ -607,7 +599,6 @@ export function WorkflowCanvas() {
       const nodeElement = target.closest(".react-flow__node");
       const isHandle = target.closest(".react-flow__handle");
 
-      // Create connection on edge dragged over node release
       if (nodeElement && !isHandle && connectingHandleType.current) {
         handleConnectionToExistingNode(nodeElement);
         connectingNodeId.current = null;

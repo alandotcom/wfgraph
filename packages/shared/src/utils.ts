@@ -80,18 +80,14 @@ function readMessageAt(
 }
 
 /**
- * Extract a meaningful error message from various error types.
- * Handles Error instances, objects with message/error properties, strings,
- * and nested error structures common in API/provider SDKs.
- * Note: This is synchronous - use getErrorMessageAsync for Promise errors.
+ * A readable sentence from a thrown value of unknown shape. Synchronous: a
+ * Promise needs `getErrorMessageAsync`.
  */
 export function getErrorMessage(error: unknown): string {
-  // Handle null/undefined
   if (error === null || error === undefined) {
     return "Unknown error";
   }
 
-  // Handle Error instances (and their subclasses)
   if (error instanceof Error) {
     // A `Schema.TaggedErrorClass` declares no message field, so its `.message`
     // is the empty string and its `.name` is the tag. Falling back to the name
@@ -99,14 +95,12 @@ export function getErrorMessage(error: unknown): string {
     // a blank, on both sides of the colon.
     const message = error.message || error.name;
 
-    // Some errors have a cause property with more details
     if (error.cause instanceof Error) {
       return `${message}: ${error.cause.message || error.cause.name}`;
     }
     return message;
   }
 
-  // Handle strings
   if (typeof error === "string") {
     return error;
   }
@@ -152,27 +146,22 @@ export function getErrorMessage(error: unknown): string {
 }
 
 /**
- * Async version that handles Promise errors by awaiting them first.
- * Use this in catch blocks where the error might be a Promise.
+ * Same as `getErrorMessage`, waiting on a Promise or thenable first.
  */
 export async function getErrorMessageAsync(error: unknown): Promise<string> {
-  // If error is a Promise, await it to get the actual error
   if (error instanceof Promise) {
     try {
       const resolvedValue = await error;
-      // The promise resolved - check if it contains error info
       return getErrorMessage(resolvedValue);
     } catch (rejectedError) {
       return getErrorMessage(rejectedError);
     }
   }
 
-  // Check if it's a thenable (Promise-like): any object carrying a callable
-  // `then`, which is the one member that makes a value awaitable.
+  // Any object carrying a callable `then` is awaitable the same way.
   if (typeof readValueAt(error, ["then"]) === "function") {
     try {
       const resolvedValue = await Promise.resolve(error);
-      // The promise resolved - check if it contains error info
       return getErrorMessage(resolvedValue);
     } catch (rejectedError) {
       return getErrorMessage(rejectedError);

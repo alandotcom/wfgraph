@@ -141,7 +141,6 @@ export function WorkflowContextMenu({
     return null;
   }
 
-  // Check if the node is the Lifecycle Node (can't be deleted)
   const isLifecycleNode = Boolean(
     menuState.nodeId &&
     nodes.find((n) => n.id === menuState.nodeId)?.data.type === "lifecycle"
@@ -228,7 +227,6 @@ function MenuItem({
   );
 }
 
-// Hook helpers for using with React Flow
 export function useContextMenuHandlers(
   screenToFlowPosition: (position: { x: number; y: number }) => XYPosition,
   setMenuState: (state: ContextMenuState) => void

@@ -33,9 +33,8 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
     })
   );
 
-  // Get integrations with their labels, sorted by label then name. A stored
-  // connection whose type is not in the catalog goes by its type and offers no
-  // test: this build does not hold the integration it names.
+  // A stored connection whose type is not in the catalog goes by its type and
+  // offers no test: this build does not hold the integration it names.
   const integrationsWithLabels = useMemo(() => {
     const filterLower = filter.toLowerCase();
 

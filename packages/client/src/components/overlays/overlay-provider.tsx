@@ -179,5 +179,4 @@ export function useOverlayPosition(overlayId: string) {
   };
 }
 
-// Export context for advanced use cases
 export { OverlayContext };

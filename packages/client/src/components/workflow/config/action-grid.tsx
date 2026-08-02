@@ -186,7 +186,6 @@ export function ActionGrid({
       groups[category].push(action);
     }
 
-    // Sort categories: System first, then alphabetically
     const sortedCategories = Object.keys(groups).toSorted((a, b) => {
       if (a === "System") {
         return -1;
@@ -203,7 +202,6 @@ export function ActionGrid({
     }));
   }, [filteredActions]);
 
-  // Filter groups based on hidden state
   const visibleGroups = useMemo(() => {
     if (showHidden) {
       return groupedActions;

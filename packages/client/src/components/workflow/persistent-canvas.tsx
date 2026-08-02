@@ -8,7 +8,6 @@ export function PersistentCanvas() {
     select: (state) => state.location.pathname,
   });
 
-  // Show canvas only on workflow editor pages.
   const showCanvas = WORKFLOW_EDITOR_PATH_PATTERN.test(pathname);
 
   if (!showCanvas) {

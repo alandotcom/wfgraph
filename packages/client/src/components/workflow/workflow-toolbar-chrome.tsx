@@ -189,32 +189,27 @@ export function ToolbarActions({
   };
 
   const handleAddStep = () => {
-    // Get the ReactFlow wrapper (the visible canvas container)
     const flowWrapper = document.querySelector(".react-flow");
     if (!flowWrapper) {
       return;
     }
 
     const rect = flowWrapper.getBoundingClientRect();
-    // Calculate center in absolute screen coordinates
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
 
-    // Convert to flow coordinates
     const position = screenToFlowPosition({ x: centerX, y: centerY });
 
-    // Adjust for node dimensions to center it properly
     position.x -= WORKFLOW_NODE_WIDTH / 2;
     position.y -= WORKFLOW_NODE_HEIGHT / 2;
 
-    // Check if there's already a node at this position
-    const offset = 20; // Offset distance in pixels
-    const threshold = 20; // How close nodes need to be to be considered overlapping
+    const offset = 20;
+    const threshold = 20;
 
     const finalPosition = { ...position };
     let hasOverlap = true;
     let attempts = 0;
-    const maxAttempts = 20; // Prevent infinite loop
+    const maxAttempts = 20;
 
     while (hasOverlap && attempts < maxAttempts) {
       hasOverlap = state.nodes.some((node) => {
@@ -224,14 +219,12 @@ export function ToolbarActions({
       });
 
       if (hasOverlap) {
-        // Offset diagonally down-right
         finalPosition.x += offset;
         finalPosition.y += offset;
         attempts += 1;
       }
     }
 
-    // Create new action node
     const newNode: WorkflowNode = {
       id: nanoid(),
       type: "action",

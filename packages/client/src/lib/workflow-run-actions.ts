@@ -98,10 +98,9 @@ export async function executeWorkflowRun({
   setIsExecuting,
   setSelectedExecutionId,
 }: ExecuteWorkflowRunParams) {
-  // Set all nodes to idle first
   updateNodesStatus(nodes, updateNodeData, "idle");
 
-  // Immediately set the Lifecycle Node to running for instant visual feedback
+  // Instant visual feedback before the first poll lands.
   for (const node of nodes) {
     if (node.data.type === "lifecycle") {
       updateNodeData({ id: node.id, data: { status: "running" } });

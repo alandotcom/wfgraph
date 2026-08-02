@@ -219,7 +219,6 @@ function applyOperatorValueToCondition(
 ): ConditionRule | null {
   const base = { id: condition.id, field: condition.field };
 
-  // Null-check operators work with any field type
   if (isNullCheckOperatorValue(operatorValue)) {
     return {
       ...base,

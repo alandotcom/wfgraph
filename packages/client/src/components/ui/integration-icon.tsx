@@ -7,7 +7,6 @@ interface IntegrationIconProps {
   className?: string;
 }
 
-// Special icons for integrations without plugins
 const SPECIAL_ICONS: Record<
   string,
   React.ComponentType<{ className?: string }>
@@ -21,7 +20,6 @@ export function IntegrationIcon({
 }: IntegrationIconProps) {
   const integrationUi = useIntegrationUi();
 
-  // Check for special icons first (integrations without plugins)
   const SpecialIcon = SPECIAL_ICONS[integration];
   if (SpecialIcon) {
     return <SpecialIcon className={cn("text-foreground", className)} />;
@@ -34,6 +32,5 @@ export function IntegrationIcon({
     return <PluginIcon className={cn("text-foreground", className)} />;
   }
 
-  // Fallback for unknown integrations
   return <HelpCircle className={cn("text-foreground", className)} />;
 }
