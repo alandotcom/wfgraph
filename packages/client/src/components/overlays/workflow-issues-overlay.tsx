@@ -8,40 +8,10 @@ import { ConfigurationOverlay } from "./configuration-overlay";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
 import type { OverlayComponentProps } from "./types";
-
-type BrokenReference = {
-  nodeId: string;
-  nodeLabel: string;
-  brokenReferences: {
-    fieldKey: string;
-    fieldLabel: string;
-    displayText: string;
-  }[];
-};
-
-type MissingRequiredField = {
-  nodeId: string;
-  nodeLabel: string;
-  missingFields: {
-    fieldKey: string;
-    fieldLabel: string;
-  }[];
-};
-
-type MissingIntegration = {
-  integrationType: string;
-  integrationLabel: string;
-  nodeNames: string[];
-};
-
-type WorkflowIssues = {
-  brokenReferences: BrokenReference[];
-  missingRequiredFields: MissingRequiredField[];
-  missingIntegrations: MissingIntegration[];
-};
+import type { WorkflowIssuesOverlayModel } from "@rova/shared/graph/workflow-issues";
 
 type WorkflowIssuesOverlayProps = OverlayComponentProps<{
-  issues: WorkflowIssues;
+  issues: WorkflowIssuesOverlayModel;
   onGoToStep: (nodeId: string, fieldKey?: string) => void;
   onRunAnyway?: () => void;
   allowRunAnyway?: boolean;

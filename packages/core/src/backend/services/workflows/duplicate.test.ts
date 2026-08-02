@@ -40,7 +40,10 @@ const sourceGraph = createSerializedWorkflowGraph({
         label: "Send email",
         type: "action",
         status: "success",
-        config: { actionId: "resend/send-email", integrationId: "int_live" },
+        config: {
+          actionType: "resend/send-email",
+          integrationId: "int_live",
+        },
       },
     },
   ],
@@ -143,7 +146,7 @@ describe("postWorkflowDuplicate", () => {
           },
         });
         assert.deepStrictEqual(nodeConfig(storedGraph, 1), {
-          actionId: "resend/send-email",
+          actionType: "resend/send-email",
         });
       })
     );

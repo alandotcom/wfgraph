@@ -23,7 +23,6 @@ import { readConfigString } from "@rova/shared/graph/node-config";
 
 type IntegrationLike = { id: string; type: string };
 
-
 /**
  * The kind of connection an action needs, which is the catalog's answer for every
  * action alike: a plugin action names the integration it belongs to, and a host's

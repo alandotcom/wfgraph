@@ -17,6 +17,15 @@ import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 
 /**
+ * Fresh ids for every node. Connection ids stay until after prepareGraphSave:
+ * the copy is checked while it still names the source's connections, then the
+ * keys are stripped before the row is written so the copy starts unbound.
+ */
+function withFreshNodeIds(nodes: WorkflowNode[]): WorkflowNode[] {
+  return nodes.map((node) => ({ ...node, id: nanoid() }));
+}
+
+/**
  * A copy points at no integration: connections are per-workflow, so the person
  * who copies one picks its credentials again.
  *
@@ -25,16 +34,16 @@ import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
  */
 function stripIntegrationIds(nodes: WorkflowNode[]): WorkflowNode[] {
   return nodes.map((node) => {
-    const newNode: WorkflowNode = { ...node, id: nanoid() };
-    const currentData = newNode.data;
-    if (currentData) {
-      const updatedData = { ...currentData };
-      if (updatedData.config) {
-        updatedData.config = omit(updatedData.config, ["integrationId"]);
-      }
-      newNode.data = updatedData;
+    if (!node.data.config) {
+      return node;
     }
-    return newNode;
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        config: omit(node.data.config, ["integrationId"]),
+      },
+    };
   });
 }
 
@@ -86,7 +95,7 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
     }
 
     const { nodes: oldNodes, edges: oldEdges } = sourceValidation;
-    const newNodes = stripIntegrationIds(oldNodes);
+    const newNodes = withFreshNodeIds(oldNodes);
     const newEdges = updateEdgeReferences(oldEdges, oldNodes, newNodes);
     const newGraph = createSerializedWorkflowGraph({
       nodes: newNodes,
@@ -111,6 +120,8 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
     // function built rather than one it read. Checking it here is what turns our
     // own bug into a failure the caller can read instead of a row no screen can
     // load afterwards, and it derives the copy's own subscription rows.
+    // Connection ids are still present so the unconfigured check does not refuse
+    // a copy of a complete source; they are stripped before the insert below.
     const prepared = yield* prepareGraphSave({ graph: newGraph }).pipe(
       Effect.catchIf(
         (failure) => "error" in failure,
@@ -131,11 +142,17 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
       )
     );
 
+    const unboundGraph = createSerializedWorkflowGraph({
+      nodes: stripIntegrationIds(prepared.nodes),
+      edges: newEdges,
+      attributes: prepared.graph.attributes,
+    });
+
     const newWorkflow = yield* repo.insert({
       id: newWorkflowId,
       name: workflowName,
       description: sourceWorkflow.description,
-      graph: prepared.graph,
+      graph: unboundGraph,
       mode: sourceWorkflow.mode,
       visibility: "private",
       // A copy starts paused. It names the same Start Event as its source, so an

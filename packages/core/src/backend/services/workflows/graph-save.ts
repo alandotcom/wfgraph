@@ -11,9 +11,9 @@
  *
  * The order is deliberate and the reason is the message a builder reads. The graph
  * has to parse before anything can be said about its nodes; a node's own
- * configuration is next, because a half-built node is the ordinary state of an
- * editor session; and the integration references come last because that check is
- * the one that costs a query.
+ * configuration (required fields, then conditions) is next, because a half-built
+ * node is the ordinary state of an editor session; and the integration references
+ * come last because that check is the one that costs a query.
  */
 
 import { Effect } from "effect";
@@ -23,6 +23,7 @@ import {
   IntegrationValidationFailed,
   InvalidInput,
 } from "#src/backend/lib/effect/failures";
+import { validateWorkflowActionConfigs } from "#src/backend/services/workflows/validation/workflow-action-validation";
 import { validateWorkflowConditionConfigs } from "#src/backend/services/workflows/validation/workflow-conditions-validation";
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { validateWorkflowIntegrations } from "#src/backend/services/workflows/validation/workflow-integration-validation";
@@ -71,8 +72,10 @@ export const prepareGraphSave = Effect.fn("prepareGraphSave")(
     const { nodes, edges, graph } = graphValidation;
 
     // In this order, and no further than the first refusal: a later check reads a
-    // graph the one before it has already vouched for.
+    // graph the one before it has already vouched for. Required fields sit with
+    // preflight so a graph that cannot run also cannot save.
     for (const check of [
+      () => validateWorkflowActionConfigs(nodes, catalog),
       () => validateWorkflowConditionConfigs(nodes),
       () => validateWorkflowEvents(nodes, catalog),
       () => validateEventSplitOutlets(nodes, edges, catalog),
@@ -86,6 +89,8 @@ export const prepareGraphSave = Effect.fn("prepareGraphSave")(
 
     // The only way this fails is the integration rows it reads, so a rejected
     // query arrives here as the same database failure a repository answers with.
+    // An unconfigured connection is InvalidInput; a present-but-bad id is the
+    // typed integration failure.
     const integrations = yield* IntegrationRepo;
     const integrationValidation = yield* validateWorkflowIntegrations(
       nodes,
@@ -93,6 +98,11 @@ export const prepareGraphSave = Effect.fn("prepareGraphSave")(
       integrations.typesByIds
     );
     if (!integrationValidation.valid) {
+      if (integrationValidation.reason === "unconfigured") {
+        return yield* new InvalidInput({
+          error: integrationValidation.error,
+        });
+      }
       return yield* new IntegrationValidationFailed({
         error: "Invalid integration references in workflow",
         invalidIntegrationIds: integrationValidation.invalidIds,

@@ -32,7 +32,6 @@ export type ConditionSelectableField = ConditionFieldDefinition & {
   enumValues?: string[];
 };
 
-
 /**
  * A field together with the picker section it belongs under, where that differs
  * from the name of the node producing it.

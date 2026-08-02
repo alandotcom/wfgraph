@@ -205,7 +205,11 @@ describe("validateWorkflowIntegrations", () => {
       )
     );
 
-    expect(result).toEqual({ valid: false, invalidIds: ["sms_1"] });
+    expect(result).toEqual({
+      valid: false,
+      reason: "invalid_ids",
+      invalidIds: ["sms_1"],
+    });
   });
 
   // The catalog is what a save reads. An action it holds carries the integration
@@ -224,7 +228,11 @@ describe("validateWorkflowIntegrations", () => {
       )
     );
 
-    expect(result).toEqual({ valid: false, invalidIds: ["slack_1"] });
+    expect(result).toEqual({
+      valid: false,
+      reason: "invalid_ids",
+      invalidIds: ["slack_1"],
+    });
   });
 
   it("rejects integrations with mismatched types", async () => {
@@ -241,7 +249,11 @@ describe("validateWorkflowIntegrations", () => {
       )
     );
 
-    expect(result).toEqual({ valid: false, invalidIds: ["int_1"] });
+    expect(result).toEqual({
+      valid: false,
+      reason: "invalid_ids",
+      invalidIds: ["int_1"],
+    });
   });
 
   // A missing integration and a mismatched one are different fixes, so a graph
@@ -267,7 +279,32 @@ describe("validateWorkflowIntegrations", () => {
       )
     );
 
-    expect(result).toEqual({ valid: false, invalidIds: ["missing_1"] });
+    expect(result).toEqual({
+      valid: false,
+      reason: "invalid_ids",
+      invalidIds: ["missing_1"],
+    });
+  });
+
+  it("refuses an action that needs a connection and names none", async () => {
+    const getIntegrationTypesByIds = vi.fn(() =>
+      Effect.succeed({} as Record<string, string>)
+    );
+
+    const result = await Effect.runPromise(
+      validateWorkflowIntegrations(
+        [createActionNode({ actionType: "custom/send-message" })],
+        slackCatalog,
+        getIntegrationTypesByIds
+      )
+    );
+
+    expect(result).toEqual({
+      valid: false,
+      reason: "unconfigured",
+      error: expect.stringContaining("connection"),
+    });
+    expect(getIntegrationTypesByIds).not.toHaveBeenCalled();
   });
 
   it("passes a graph naming no integration at all", async () => {
@@ -296,6 +333,19 @@ describe("validateWorkflowIntegrations", () => {
             integrationId: "missing_1",
           }),
         ],
+        slackCatalog,
+        () => Effect.succeed({}),
+        { strictValidation: false }
+      )
+    );
+
+    expect(result).toEqual({ valid: true });
+  });
+
+  it("bypasses an unconfigured connection when strict validation is off", async () => {
+    const result = await Effect.runPromise(
+      validateWorkflowIntegrations(
+        [createActionNode({ actionType: "custom/send-message" })],
         slackCatalog,
         () => Effect.succeed({}),
         { strictValidation: false }
