@@ -26,7 +26,7 @@ catalog:
   # names one @logtape/logtape range as a peer, so the pair moves as one.
   "@logtape/logtape": ^2.3.0
   "@logtape/pretty": ^2.3.0
-  "@marcbachmann/cel-js": ^7.5.1
+  "@marcbachmann/cel-js": ^7.6.1
   "@orpc/client": 2.0.0-beta.21
   "@orpc/contract": 2.0.0-beta.21
   "@orpc/experimental-effect": 2.0.0-beta.21
@@ -35,15 +35,15 @@ catalog:
   "@orpc/tanstack-query": 2.0.0-beta.21
   "@standard-schema/spec": ^1.1.0
   "@testing-library/react": ^16.3.2
-  "@types/react": ^19.2.14
-  "@xyflow/react": ^12.10.0
+  "@types/react": ^19.2.17
+  "@xyflow/react": ^12.11.2
   # The second foreign Standard Schema library the schema tests are written
   # against, beside zod below.
   arktype: ^2.2.3
   effect: 4.0.0-beta.102
-  es-toolkit: ^1.44.0
+  es-toolkit: ^1.50.0
   graphology: ^0.26.0
-  nanoid: ^5.1.6
+  nanoid: ^5.1.16
   postgres: ^3.4.9
   react: 19.2.4
   react-dom: 19.2.4
@@ -96,3 +96,4 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - "@fountain-bio/acuity@0.1.0"
+  - brace-expansion@2.1.3

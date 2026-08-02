@@ -19,7 +19,7 @@ catalogs:
       specifier: ^2.3.0
       version: 2.3.0
     '@marcbachmann/cel-js':
-      specifier: ^7.5.1
+      specifier: ^7.6.1
       version: 7.6.1
     '@orpc/client':
       specifier: 2.0.0-beta.21
@@ -46,10 +46,10 @@ catalogs:
       specifier: ^16.3.2
       version: 16.3.2
     '@types/react':
-      specifier: ^19.2.14
+      specifier: ^19.2.17
       version: 19.2.17
     '@xyflow/react':
-      specifier: ^12.10.0
+      specifier: ^12.11.2
       version: 12.11.2
     arktype:
       specifier: ^2.2.3
@@ -58,13 +58,13 @@ catalogs:
       specifier: 4.0.0-beta.102
       version: 4.0.0-beta.102
     es-toolkit:
-      specifier: ^1.44.0
+      specifier: ^1.50.0
       version: 1.50.0
     graphology:
       specifier: ^0.26.0
       version: 0.26.0
     nanoid:
-      specifier: ^5.1.6
+      specifier: ^5.1.16
       version: 5.1.16
     postgres:
       specifier: ^3.4.9
@@ -112,7 +112,7 @@ importers:
         specifier: ^3.1.7
         version: 3.1.7
       '@types/node':
-        specifier: ^24.10.13
+        specifier: ^24.13.3
         version: 24.13.3
       '@types/react':
         specifier: 'catalog:'
@@ -121,13 +121,13 @@ importers:
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.17)
       concurrently:
-        specifier: ^9.2.1
+        specifier: ^9.2.4
         version: 9.2.4
       drizzle-kit:
-        specifier: ^0.31.9
+        specifier: ^0.31.10
         version: 0.31.10
       eslint-plugin-react-hooks:
-        specifier: ^7.0.1
+        specifier: ^7.1.1
         version: 7.1.1(eslint@10.8.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)
       eslint-plugin-react-you-might-not-need-an-effect:
         specifier: 1.0.1
@@ -189,7 +189,7 @@ importers:
   packages/client:
     devDependencies:
       '@babel/core':
-        specifier: ^7.28.4
+        specifier: ^7.29.7
         version: 7.29.7(supports-color@8.1.1)
       '@base-ui/react':
         specifier: 1.6.0
@@ -228,10 +228,10 @@ importers:
         specifier: ^4.3.3
         version: 4.3.3(vite@8.1.5(@types/node@24.13.3)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
       '@tanstack/react-query':
-        specifier: ^5.90.21
+        specifier: ^5.101.4
         version: 5.101.4(react@19.2.4)
       '@tanstack/react-router':
-        specifier: ^1.159.5
+        specifier: ^1.170.18
         version: 1.170.18(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@testing-library/react':
         specifier: 'catalog:'
@@ -264,13 +264,13 @@ importers:
         specifier: 'catalog:'
         version: 1.50.0
       jotai:
-        specifier: ^2.17.1
+        specifier: ^2.20.2
         version: 2.20.2(@babel/core@7.29.7(supports-color@8.1.1))(@babel/template@7.29.7)(@types/react@19.2.17)(react@19.2.4)
       lucide-react:
         specifier: ^0.563.0
         version: 0.563.0(react@19.2.4)
       motion:
-        specifier: ^12.34.0
+        specifier: ^12.42.2
         version: 12.42.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       nanoid:
         specifier: 'catalog:'
@@ -285,7 +285,7 @@ importers:
         specifier: 19.2.4
         version: 19.2.4(react@19.2.4)
       react-grab:
-        specifier: ^0.1.14
+        specifier: ^0.1.50
         version: 0.1.50(react@19.2.4)
       sonner:
         specifier: ^2.0.7
@@ -321,7 +321,7 @@ importers:
         specifier: 'catalog:'
         version: 7.6.1
       '@opentelemetry/api':
-        specifier: ^1.9.0
+        specifier: ^1.9.1
         version: 1.9.1
       '@opentelemetry/resources':
         specifier: ^2.10.0
@@ -348,7 +348,7 @@ importers:
         specifier: ^3.0.3
         version: 3.0.3
       drizzle-orm:
-        specifier: ^0.45.1
+        specifier: ^0.45.2
         version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(bun-types@1.3.14)(postgres@3.4.9)
       effect:
         specifier: 'catalog:'
@@ -363,7 +363,7 @@ importers:
         specifier: ^0.4.1
         version: 0.4.1(graphology-types@0.24.8)
       hono:
-        specifier: ^4.11.9
+        specifier: ^4.12.32
         version: 4.12.32
       inngest:
         specifier: ^4.13.0
@@ -406,7 +406,7 @@ importers:
   packages/plugins:
     dependencies:
       '@clerk/backend':
-        specifier: ^2.30.1
+        specifier: ^2.33.6
         version: 2.33.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@fountain-bio/acuity':
         specifier: ^0.1.0
@@ -461,7 +461,7 @@ importers:
         specifier: 'catalog:'
         version: 5.1.16
       tailwind-merge:
-        specifier: ^3.4.0
+        specifier: ^3.6.0
         version: 3.6.0
     devDependencies:
       '@standard-schema/spec':
@@ -3285,8 +3285,8 @@ packages:
     resolution: {integrity: sha512-2cGmJupaNgg+QUwVLAucDuWuoMZ6EX9iHDRswZ5lsNYEmwPaRknMPCLZz07yTzVq/83p4o/wzbDZbBrTvGGTIw==}
     engines: {node: '>=18'}
 
-  brace-expansion@2.1.2:
-    resolution: {integrity: sha512-w5JZcKgdhDOgOwm8H+KgbosopHMuGcl6qbulwjtz3SM7I7P3yW1eAjzMPLrIE+NQ9vjgANKHWeMHnrT0OXW1oA==}
+  brace-expansion@2.1.4:
+    resolution: {integrity: sha512-hGfVzPxthbf3+2yjg/RBs60cB0FhqBS/zvdV/4wn4/BmN0bNMMHPc4V/BbFieqf1TKAGGAHnY4eSjajCl0f2Xg==}
 
   brace-expansion@5.0.8:
     resolution: {integrity: sha512-JZyDyq3D4AUifKTPOB7DELf6XsB3WdPuNxCtob1vFXPsSXhdAiHBWJ/tJ8HAc9aH84BK+5JFZLNkJKx3G9kzQg==}
@@ -8012,7 +8012,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  brace-expansion@2.1.2:
+  brace-expansion@2.1.4:
     dependencies:
       balanced-match: 1.0.2
 
@@ -9009,7 +9009,7 @@ snapshots:
 
   minimatch@9.0.9:
     dependencies:
-      brace-expansion: 2.1.2
+      brace-expansion: 2.1.4
 
   minipass@7.1.3: {}
 
