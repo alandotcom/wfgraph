@@ -19,8 +19,16 @@ export type WorkflowSummaryPayload = {
   updatedAt: string;
   /** Absent on a payload the viewer did not author. */
   isOwner?: boolean;
+  /** Absent until the first publish. */
+  publishedVersionId?: string;
 };
 
 export type WorkflowApiPayload = WorkflowSummaryPayload & {
   graph: SerializedWorkflowGraph;
+};
+
+/** What publish answers with: the draft payload plus the version it just pinned. */
+export type WorkflowPublishPayload = WorkflowApiPayload & {
+  publishedVersionId: string;
+  publishedVersion: number;
 };

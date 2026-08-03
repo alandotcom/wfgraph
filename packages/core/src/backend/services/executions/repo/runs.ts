@@ -269,6 +269,7 @@ export function makeRunsMethods(
             duration: workflowExecutions.duration,
             cancelRequestedAt: workflowExecutions.cancelRequestedAt,
             cancelEventName: workflowExecutions.cancelEventName,
+            workflowVersionId: workflowExecutions.workflowVersionId,
           })
           .from(workflowExecutions)
           .innerJoin(workflows, eq(workflowExecutions.workflowId, workflows.id))
@@ -287,6 +288,7 @@ export function makeRunsMethods(
           columns: {
             id: true,
             workflowId: true,
+            workflowVersionId: true,
             status: true,
             input: true,
             output: true,

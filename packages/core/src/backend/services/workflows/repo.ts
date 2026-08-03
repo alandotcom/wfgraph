@@ -2,10 +2,12 @@ import { and, arrayContains, desc, eq, ne, sql } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import {
   type Workflow,
+  type WorkflowVersion,
   workflowEventSubscriptions,
   type WorkflowMode,
   type WorkflowVisibility,
   workflows,
+  workflowVersions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
@@ -25,6 +27,7 @@ const workflowSummaryColumns = {
   isPaused: workflows.isPaused,
   mode: workflows.mode,
   visibility: workflows.visibility,
+  publishedVersionId: workflows.publishedVersionId,
   createdAt: workflows.createdAt,
   updatedAt: workflows.updatedAt,
 };
@@ -179,6 +182,49 @@ export class WorkflowRepo extends Context.Service<
       id: string;
       graph: SerializedWorkflowGraph;
     }) => Effect.Effect<Workflow | null, DatabaseError>;
+    /** The newest published version for this workflow, or null when none exist. */
+    readonly findLatestVersion: (
+      workflowId: string
+    ) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
+    /** One version by id, or null when it is gone. */
+    readonly findVersionById: (
+      versionId: string
+    ) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
+    /**
+     * The version `published_version_id` names, or null when the workflow is
+     * gone or has never been published.
+     */
+    readonly findPublishedVersion: (
+      workflowId: string
+    ) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
+    /**
+     * Point the workflow at an existing version and rewrite its subscription
+     * index from that version's graph. Used when publish dedupes onto a row that
+     * already holds the same content.
+     */
+    readonly setPublishedVersion: (input: {
+      workflowId: string;
+      versionId: string;
+      eventSubscriptions: WorkflowEventSubscriptionRow[];
+    }) => Effect.Effect<Workflow | null, DatabaseError>;
+    /**
+     * Mint a version row, point the workflow at it, and rewrite subscriptions,
+     * in one transaction.
+     */
+    readonly insertVersionAndPublish: (input: {
+      workflowId: string;
+      version: {
+        id: string;
+        version: number;
+        graph: SerializedWorkflowGraph;
+        catalogFingerprint: string;
+        graphDigest: string;
+      };
+      eventSubscriptions: WorkflowEventSubscriptionRow[];
+    }) => Effect.Effect<
+      { workflow: Workflow; version: WorkflowVersion } | null,
+      DatabaseError
+    >;
   }
 >()("@rova/core/WorkflowRepo") {}
 
@@ -364,6 +410,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                     graph: input.graph,
                     mode: input.mode,
                     visibility: input.visibility,
+                    isPaused: input.isPaused,
                   })
                   .returning();
 
@@ -451,6 +498,127 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
 
             return saved.at(0) ?? null;
           }),
+
+        findLatestVersion: (workflowId) =>
+          database.query(async (db) => {
+            const [row] = await db
+              .select()
+              .from(workflowVersions)
+              .where(eq(workflowVersions.workflowId, workflowId))
+              .orderBy(desc(workflowVersions.version))
+              .limit(1);
+
+            return row ?? null;
+          }),
+
+        findVersionById: (versionId) =>
+          database.query(async (db) => {
+            const row = await db.query.workflowVersions.findFirst({
+              where: eq(workflowVersions.id, versionId),
+            });
+
+            return row ?? null;
+          }),
+
+        findPublishedVersion: (workflowId) =>
+          database.query(async (db) => {
+            const workflow = await db.query.workflows.findFirst({
+              where: eq(workflows.id, workflowId),
+              columns: { publishedVersionId: true },
+            });
+            if (!workflow?.publishedVersionId) {
+              return null;
+            }
+
+            const row = await db.query.workflowVersions.findFirst({
+              where: eq(workflowVersions.id, workflow.publishedVersionId),
+            });
+
+            return row ?? null;
+          }),
+
+        setPublishedVersion: (input) =>
+          database.query(
+            async (db) =>
+              await db.transaction(async (tx) => {
+                const updated = await tx
+                  .update(workflows)
+                  .set({
+                    publishedVersionId: input.versionId,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(workflows.id, input.workflowId))
+                  .returning();
+
+                const workflow = updated.at(0);
+                if (!workflow) {
+                  return null;
+                }
+
+                await tx
+                  .delete(workflowEventSubscriptions)
+                  .where(
+                    eq(workflowEventSubscriptions.workflowId, input.workflowId)
+                  );
+
+                if (input.eventSubscriptions.length > 0) {
+                  await tx
+                    .insert(workflowEventSubscriptions)
+                    .values(input.eventSubscriptions);
+                }
+
+                return workflow;
+              })
+          ),
+
+        insertVersionAndPublish: (input) =>
+          database.query(
+            async (db) =>
+              await db.transaction(async (tx) => {
+                const [version] = await tx
+                  .insert(workflowVersions)
+                  .values({
+                    id: input.version.id,
+                    workflowId: input.workflowId,
+                    version: input.version.version,
+                    graph: input.version.graph,
+                    catalogFingerprint: input.version.catalogFingerprint,
+                    graphDigest: input.version.graphDigest,
+                  })
+                  .returning();
+
+                const updated = await tx
+                  .update(workflows)
+                  .set({
+                    publishedVersionId: version.id,
+                    // Keep the draft graph aligned with what was just published so
+                    // a subsequent edit starts from the published content.
+                    graph: input.version.graph,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(workflows.id, input.workflowId))
+                  .returning();
+
+                const workflow = updated.at(0);
+                if (!workflow) {
+                  return null;
+                }
+
+                await tx
+                  .delete(workflowEventSubscriptions)
+                  .where(
+                    eq(workflowEventSubscriptions.workflowId, input.workflowId)
+                  );
+
+                if (input.eventSubscriptions.length > 0) {
+                  await tx
+                    .insert(workflowEventSubscriptions)
+                    .values(input.eventSubscriptions);
+                }
+
+                return { workflow, version };
+              })
+          ),
       };
     })
   );

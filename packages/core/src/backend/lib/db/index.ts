@@ -10,11 +10,15 @@ import {
   workflowExecutions,
   workflowExecutionsRelations,
   workflows,
+  workflowVersions,
+  workflowVersionsRelations,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 
 const tables: {
   workflows: typeof workflows;
+  workflowVersions: typeof workflowVersions;
+  workflowVersionsRelations: typeof workflowVersionsRelations;
   workflowExecutions: typeof workflowExecutions;
   workflowExecutionLogs: typeof workflowExecutionLogs;
   workflowExecutionEvents: typeof workflowExecutionEvents;
@@ -24,6 +28,8 @@ const tables: {
   integrations: typeof integrations;
 } = {
   workflows,
+  workflowVersions,
+  workflowVersionsRelations,
   workflowExecutions,
   workflowExecutionLogs,
   workflowExecutionEvents,

@@ -471,11 +471,28 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     })
   );
 
+  const publishWorkflow = useMutation(
+    orpcQuery.workflow.publish.mutationOptions({
+      onSuccess: (payload) => {
+        toast.success(`Published version ${payload.publishedVersion}`);
+        void loadWorkflows();
+      },
+      meta: { errorMessage: "Failed to publish workflow. Please try again." },
+    })
+  );
+
   const handleDuplicate = () => {
     if (!currentWorkflowId) {
       return;
     }
     duplicateWorkflow.mutate({ workflowId: currentWorkflowId });
+  };
+
+  const handlePublish = () => {
+    if (!currentWorkflowId) {
+      return;
+    }
+    publishWorkflow.mutate({ workflowId: currentWorkflowId });
   };
 
   const handleSetWorkflowMode = async (mode: "live" | "test") => {
@@ -507,6 +524,8 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     loadWorkflows,
     handleDuplicate,
     isDuplicating: duplicateWorkflow.isPending,
+    handlePublish,
+    isPublishing: publishWorkflow.isPending,
     handleSetWorkflowMode,
   };
 }

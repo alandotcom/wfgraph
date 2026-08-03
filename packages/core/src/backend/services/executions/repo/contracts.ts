@@ -32,6 +32,11 @@ export type WorkflowWaitState = typeof workflowWaitStates.$inferSelect;
  */
 export type NewExecution = {
   workflowId: string;
+  /**
+   * The published version this run pins. Required for a start that will execute
+   * the graph; absent on a terminal row that never ran (paused ignore, etc.).
+   */
+  workflowVersionId?: string;
   startSource: NonNullable<WorkflowExecution["startSource"]>;
   runMode: WorkflowExecution["runMode"];
   startEventName?: string;
@@ -67,6 +72,7 @@ export type ExecutionSummary = Pick<
   WorkflowExecution,
   | "id"
   | "workflowId"
+  | "workflowVersionId"
   | "status"
   | "input"
   | "output"

@@ -21,6 +21,7 @@ type WorkflowPayloadSource = Pick<
   | "visibility"
   | "createdAt"
   | "updatedAt"
+  | "publishedVersionId"
 >;
 
 type WorkflowUpdateInput = {
@@ -51,6 +52,9 @@ export function toWorkflowSummaryPayload(
     isOwner: true,
     createdAt: workflow.createdAt.toISOString(),
     updatedAt: workflow.updatedAt.toISOString(),
+    ...(workflow.publishedVersionId
+      ? { publishedVersionId: workflow.publishedVersionId }
+      : {}),
   };
 }
 

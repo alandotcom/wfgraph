@@ -82,6 +82,12 @@ export type NodeSchedulerInput = {
   /** The Event that started the run: see `WorkflowExecutionInput.startEventName`. */
   startEventName: string | null;
   /**
+   * Catalog fingerprint the published version pinned. Compared against the live
+   * catalog when an action resolves. Absent on a legacy run that predates
+   * versioning.
+   */
+  catalogFingerprint?: string;
+  /**
    * The Wait node this run was handed, on a run that is itself a branch. It is
    * the one Wait this run enters in place rather than hands on again, which is
    * what stops a branch from handing itself off forever.
@@ -274,6 +280,7 @@ export class NodeScheduler {
           runMode,
           startPayload,
           eventName: this.currentEventName(),
+          catalogFingerprint: this.input.catalogFingerprint,
           entersInPlace: this.entersInPlace(node.id),
           handOffBranch: () => this.handOffBranch(node),
         };

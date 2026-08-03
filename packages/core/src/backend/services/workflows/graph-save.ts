@@ -36,12 +36,14 @@ import { deriveEventSubscriptions } from "#src/backend/services/workflows/lifecy
 import type { WorkflowEventSubscriptionRow } from "#src/backend/services/workflows/repo";
 import type {
   SerializedWorkflowGraph,
+  WorkflowEdge,
   WorkflowNode,
 } from "@rova/shared/graph/types";
 
 export type PreparedGraphSave = {
   graph: SerializedWorkflowGraph;
   nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
   edgeCount: number;
   /**
    * The subscription index this graph calls for, for the workflow it is being
@@ -112,6 +114,7 @@ export const prepareGraphSave = Effect.fn("prepareGraphSave")(
     const prepared: PreparedGraphSave = {
       graph,
       nodes,
+      edges,
       edgeCount: edges.length,
       subscriptionsFor: (workflowId) =>
         deriveEventSubscriptions({ workflowId, nodes }),

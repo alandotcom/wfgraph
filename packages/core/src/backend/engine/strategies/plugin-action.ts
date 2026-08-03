@@ -14,6 +14,20 @@ export function runPluginActionStep(input: ActionStepInput) {
   return Effect.gen(function* () {
     const { actionType, config, context, store, actions, runtime } = input;
 
+    if (
+      input.catalogFingerprint !== undefined &&
+      input.catalogFingerprint !== actions.catalogFingerprint()
+    ) {
+      return {
+        result: failedExecution(
+          engineFailure(
+            "failure",
+            "Extension catalog changed since this workflow version was published. Republish the workflow against the current catalog, or restore the previous deploy."
+          )
+        ),
+      };
+    }
+
     const stepInput: Record<string, unknown> = {
       ...config,
       _context: context,

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { Effect } from "effect";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { Extensions } from "#src/backend/lib/effect/extensions";
@@ -13,6 +12,7 @@ import { validateWorkflowGraph } from "#src/backend/services/workflows/validatio
 import { validateWorkflowIntegrations } from "#src/backend/services/workflows/validation/workflow-integration-validation";
 import { validateWorkflowEvents } from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { graphDigest } from "#src/backend/services/workflows/version-digest";
 import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
 import {
   type LifecycleRules,
@@ -30,6 +30,10 @@ type WorkflowForPreflight = {
 
 export type WorkflowExecutionPreflight = {
   workflowGraph: SerializedWorkflowGraph;
+  /** The published version this preflight loaded; starts pin the run to it. */
+  workflowVersionId: string;
+  /** Catalog fingerprint stored on that version. */
+  catalogFingerprint: string;
   /** The entry node's Lifecycle Rules, absent when it carries none. */
   lifecycleRules: LifecycleRules | undefined;
   /**
@@ -47,10 +51,13 @@ export type WorkflowExecutionPreflight = {
  * does.
  */
 type GraphCheck =
-  | ({
+  | {
       valid: true;
       workflowNodes: WorkflowNode[];
-    } & WorkflowExecutionPreflight)
+      workflowGraph: SerializedWorkflowGraph;
+      lifecycleRules: LifecycleRules | undefined;
+      hasEventSplit: boolean;
+    }
   | { valid: false; error: string };
 
 /**
@@ -79,12 +86,6 @@ const graphCheckMemo = new WeakMap<object, Map<string, GraphCheck>>();
  * the object a start hands to the bus. Content is what the verdict is actually
  * about, and hashing it costs a fraction of the decode it saves.
  */
-function graphDigest(graph: unknown): string {
-  return createHash("sha1")
-    .update(JSON.stringify(graph) ?? "")
-    .digest("hex");
-}
-
 function readMemo(catalog: object, key: string): GraphCheck | undefined {
   return graphCheckMemo.get(catalog)?.get(key);
 }
@@ -181,7 +182,11 @@ function checkGraphAndCatalog(input: {
  */
 export const runWorkflowExecutionPreflight = Effect.fn(
   "runWorkflowExecutionPreflight"
-)(function* (input: { workflow: WorkflowForPreflight }) {
+)(function* (input: {
+  workflow: WorkflowForPreflight;
+  workflowVersionId: string;
+  catalogFingerprint: string;
+}) {
   const { workflow } = input;
   const { catalog } = yield* Extensions;
 
@@ -219,20 +224,19 @@ export const runWorkflowExecutionPreflight = Effect.fn(
 
   const preflight: WorkflowExecutionPreflight = {
     workflowGraph: check.workflowGraph,
+    workflowVersionId: input.workflowVersionId,
+    catalogFingerprint: input.catalogFingerprint,
     lifecycleRules: check.lifecycleRules,
     hasEventSplit: check.hasEventSplit,
   };
   return preflight;
 });
-
 /**
- * The prelude the execute route needs: find the workflow it names, then check
- * that it may run. Either step's refusal is the answer the caller gets, so
- * neither is handled here.
+ * The prelude a start needs: find the workflow, load its published version, then
+ * check that version may run. A never-published workflow is refused here.
  *
- * The Event fan-out does not use this: it has the workflow's identity from the
- * subscription index already, and it turns a refusal into a skipped workflow
- * rather than into a failure a caller reads.
+ * The Event fan-out uses the same published-version load; a missing publish is a
+ * skipped workflow rather than a failure a caller reads.
  */
 export const loadWorkflowForRun = Effect.fn("loadWorkflowForRun")(function* (
   workflowId: string
@@ -244,7 +248,41 @@ export const loadWorkflowForRun = Effect.fn("loadWorkflowForRun")(function* (
     return yield* new NotFound({ error: "Workflow not found" });
   }
 
-  const preflight = yield* runWorkflowExecutionPreflight({ workflow });
+  const version = yield* repo.findPublishedVersion(workflowId);
+  if (!version) {
+    return yield* new InvalidInput({
+      error: "Workflow has not been published",
+    });
+  }
+
+  const preflight = yield* runWorkflowExecutionPreflight({
+    workflow: { graph: version.graph },
+    workflowVersionId: version.id,
+    catalogFingerprint: version.catalogFingerprint,
+  });
 
   return { workflow, preflight };
+});
+
+/**
+ * Load a subscriber's published version for an Event fan-out.
+ *
+ * Returns null when the workflow is gone or has never been published, which the
+ * fan-out turns into a skipped workflow rather than a failure.
+ */
+export const loadPublishedVersionForDelivery = Effect.fn(
+  "loadPublishedVersionForDelivery"
+)(function* (workflowId: string) {
+  const repo = yield* WorkflowRepo;
+  const workflow = yield* repo.findById(workflowId);
+  if (!workflow) {
+    return null;
+  }
+
+  const version = yield* repo.findPublishedVersion(workflowId);
+  if (!version) {
+    return null;
+  }
+
+  return { workflow, version };
 });

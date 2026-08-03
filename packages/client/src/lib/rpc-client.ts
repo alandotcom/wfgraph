@@ -52,6 +52,8 @@ export type SavedWorkflow = WorkflowData & {
   createdAt: string;
   updatedAt: string;
   isOwner?: boolean;
+  /** Absent until the first publish. */
+  publishedVersionId?: string;
 };
 
 export class ApiError extends Error {

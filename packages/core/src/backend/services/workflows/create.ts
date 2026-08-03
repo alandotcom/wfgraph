@@ -54,7 +54,8 @@ export const postWorkflowsCreate = Effect.fn("postWorkflowsCreate")(
       name: workflowName,
       description: body.description,
       graph: prepared.graph,
-      eventSubscriptions: prepared.subscriptionsFor(workflowId),
+      // Subscriptions wait for publish: an Event must not start a draft.
+      eventSubscriptions: [],
     });
 
     yield* logger.info("Workflow created", {

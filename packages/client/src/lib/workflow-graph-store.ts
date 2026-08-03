@@ -40,8 +40,22 @@ const nodesStateAtom = atom<WorkflowNode[]>([]);
 const edgesStateAtom = atom<WorkflowEdge[]>([]);
 
 /** Read-only. Mutate through the action atoms below so undo always sees it. */
-export const nodesAtom = atom((get) => get(nodesStateAtom));
-export const edgesAtom = atom((get) => get(edgesStateAtom));
+export const nodesAtom = atom(
+  (get) => get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom)
+);
+export const edgesAtom = atom(
+  (get) => get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom)
+);
+
+/**
+ * The published graph a selected run pinned, shown on the canvas instead of the
+ * draft so node statuses land on the shape the run actually walked. Cleared
+ * when the run is deselected. Never saved.
+ */
+export const executionOverlayGraphAtom = atom<{
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+} | null>(null);
 
 export const selectedNodeAtom = atom<string | null>(null);
 export const selectedEdgeAtom = atom<string | null>(null);
@@ -137,6 +151,7 @@ export const hydrateWorkflowAtom = atom(
     // Also clears undo history, so undo cannot reach back past the switch and
     // write the previous workflow's graph into this one.
     set(loadWorkflowGraphAtom, { nodes, edges: workflow.edges });
+    set(executionOverlayGraphAtom, null);
     set(selectedExecutionIdAtom, null);
     set(currentWorkflowIdAtom, workflow.id);
     set(currentWorkflowNameAtom, workflow.name);
@@ -633,18 +648,31 @@ export const setNodeStatusesAtom = atom(
       statuses.map((statusEntry) => [statusEntry.nodeId, statusEntry.status])
     );
 
-    let hasUpdates = false;
-    const nextNodes = get(nodesStateAtom).map((node) => {
-      const nextStatus = statusByNodeId.get(node.id);
-      if (!nextStatus || node.data.status === nextStatus) {
-        return node;
+    const applyStatuses = (nodes: WorkflowNode[]) => {
+      let hasUpdates = false;
+      const nextNodes = nodes.map((node) => {
+        const nextStatus = statusByNodeId.get(node.id);
+        if (!nextStatus || node.data.status === nextStatus) {
+          return node;
+        }
+
+        hasUpdates = true;
+        return { ...node, data: { ...node.data, status: nextStatus } };
+      });
+      return hasUpdates ? nextNodes : null;
+    };
+
+    const overlay = get(executionOverlayGraphAtom);
+    if (overlay) {
+      const nextNodes = applyStatuses(overlay.nodes);
+      if (nextNodes) {
+        set(executionOverlayGraphAtom, { ...overlay, nodes: nextNodes });
       }
+      return;
+    }
 
-      hasUpdates = true;
-      return { ...node, data: { ...node.data, status: nextStatus } };
-    });
-
-    if (hasUpdates) {
+    const nextNodes = applyStatuses(get(nodesStateAtom));
+    if (nextNodes) {
       set(nodesStateAtom, nextNodes);
     }
   }

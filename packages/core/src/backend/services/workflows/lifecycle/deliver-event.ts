@@ -25,6 +25,7 @@ import {
   type EventSubscriber,
   WorkflowRepo,
 } from "#src/backend/services/workflows/repo";
+import type { WorkflowVersion } from "#src/backend/lib/db/schema";
 import type { JsonObject } from "@rova/shared/types/json";
 import { getValueByPath } from "@rova/shared/utils/object-path";
 import { emptyLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
@@ -73,7 +74,7 @@ export type LifecycleDeliveryOutcome =
   | {
       kind: "skipped";
       workflowId: string;
-      reason: "workflow_gone" | "graph_unrunnable";
+      reason: "workflow_gone" | "graph_unrunnable" | "not_published";
     };
 
 /** What the wait half did, which is a count and nothing else. */
@@ -168,12 +169,19 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       return skipped(input.subscriber.id, "workflow_gone");
     }
 
+    const version = yield* repo.findPublishedVersion(input.subscriber.id);
+    if (!version) {
+      return skipped(input.subscriber.id, "not_published");
+    }
+
     // Preflight is the start branch's alone: it validates every action, condition
     // and integration reference in the graph, and a wait delivery needs none of
     // that. Its refusals are this workflow's problem rather than the Event's, so
     // they answer here instead of failing.
     const preflight = yield* runWorkflowExecutionPreflight({
-      workflow,
+      workflow: { graph: version.graph },
+      workflowVersionId: version.id,
+      catalogFingerprint: version.catalogFingerprint,
     }).pipe(
       Effect.catchTags({
         InvalidInput: (failure) =>
@@ -260,11 +268,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     }
 
     const started = yield* startWithConcurrency({
-      workflow: {
-        id: workflow.id,
-        name: workflow.name,
-        graph: preflight.workflowGraph,
-      },
+      workflow: workflowRunTarget(workflow, version, preflight.workflowGraph),
       concurrency: rules.concurrency,
       start: {
         source: "event",
@@ -365,7 +369,21 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
 
 function skipped(
   workflowId: string,
-  reason: "workflow_gone" | "graph_unrunnable"
+  reason: "workflow_gone" | "graph_unrunnable" | "not_published"
 ): LifecycleDeliveryOutcome {
   return { kind: "skipped", workflowId, reason };
+}
+
+function workflowRunTarget(
+  workflow: { id: string; name: string },
+  version: WorkflowVersion,
+  graph: WorkflowVersion["graph"]
+) {
+  return {
+    id: workflow.id,
+    name: workflow.name,
+    graph,
+    versionId: version.id,
+    catalogFingerprint: version.catalogFingerprint,
+  };
 }

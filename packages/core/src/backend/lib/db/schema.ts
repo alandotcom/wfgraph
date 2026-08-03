@@ -1,7 +1,9 @@
 import { relations, sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   index,
+  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -46,6 +48,10 @@ export const workflows = pgTable(
       .$defaultFn(() => generateId()),
     name: text("name").notNull(),
     description: text("description"),
+    /**
+     * The editable draft. A start never reads this: event and manual starts load
+     * the published version, and half-built canvas edits stay here until publish.
+     */
     graph: jsonb("graph").notNull().$type<SerializedWorkflowGraph>(),
     isPaused: boolean("is_paused").notNull().default(false),
     mode: text("mode").notNull().default("live").$type<WorkflowMode>(),
@@ -53,11 +59,60 @@ export const workflows = pgTable(
       .notNull()
       .default("private")
       .$type<WorkflowVisibility>(),
+    /**
+     * The version event and manual starts use. Null until the first publish, and
+     * a start against a never-published workflow is refused. Lazy FK: the
+     * versions table references this one the other way.
+     */
+    publishedVersionId: text("published_version_id").references(
+      (): AnyPgColumn => workflowVersions.id,
+      { onDelete: "set null" }
+    ),
     createdAt: timestamp("created_at").notNull().default(utcNow()),
     updatedAt: timestamp("updated_at").notNull().default(utcNow()),
   },
   (table) => [
     uniqueIndex("workflows_name_ci_uidx").on(sql`lower(${table.name})`),
+  ]
+);
+
+/**
+ * An immutable published graph, plus the catalog fingerprint it was sound against.
+ *
+ * Publish mints a row (or reuses one whose graph digest and fingerprint match),
+ * and every Execution pins to one. Draft saves never write here.
+ */
+export const workflowVersions = pgTable(
+  "workflow_versions",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    /** Monotonic per workflow, starting at 1. */
+    version: integer("version").notNull(),
+    graph: jsonb("graph").notNull().$type<SerializedWorkflowGraph>(),
+    /**
+     * Hash of the assembled extension catalog at publish. A deploy that changes
+     * the catalog surface fails a waking node rather than running against a
+     * different set of actions; it does not freeze host handler code.
+     */
+    catalogFingerprint: text("catalog_fingerprint").notNull(),
+    /** Content hash of `graph`, used to dedupe identical publishes. */
+    graphDigest: text("graph_digest").notNull(),
+    publishedAt: timestamp("published_at").notNull().default(utcNow()),
+  },
+  (table) => [
+    uniqueIndex("workflow_versions_workflow_id_version_uidx").on(
+      table.workflowId,
+      table.version
+    ),
+    index("workflow_versions_workflow_id_published_at_idx").on(
+      table.workflowId,
+      table.publishedAt
+    ),
   ]
 );
 
@@ -101,6 +156,15 @@ export const workflowExecutions = pgTable(
     workflowId: text("workflow_id")
       .notNull()
       .references(() => workflows.id, { onDelete: "cascade" }),
+    /**
+     * The published version this run walks. New starts always set it; readers
+     * (run panel, logs) resolve node ids against this graph, never the draft.
+     * Nullable only so older rows from before versioning remain loadable.
+     */
+    workflowVersionId: text("workflow_version_id").references(
+      () => workflowVersions.id,
+      { onDelete: "set null" }
+    ),
     workflowRunId: text("workflow_run_id"),
     status: text("status").notNull().$type<WorkflowExecutionStatus>(),
     startSource: text("start_source").$type<WorkflowExecutionStartSource>(),
@@ -376,8 +440,23 @@ export const workflowExecutionsRelations = relations(
       fields: [workflowExecutions.workflowId],
       references: [workflows.id],
     }),
+    version: one(workflowVersions, {
+      fields: [workflowExecutions.workflowVersionId],
+      references: [workflowVersions.id],
+    }),
+  })
+);
+
+export const workflowVersionsRelations = relations(
+  workflowVersions,
+  ({ one }) => ({
+    workflow: one(workflows, {
+      fields: [workflowVersions.workflowId],
+      references: [workflows.id],
+    }),
   })
 );
 
 export type Workflow = typeof workflows.$inferSelect;
+export type WorkflowVersion = typeof workflowVersions.$inferSelect;
 export type NewIntegration = typeof integrations.$inferInsert;

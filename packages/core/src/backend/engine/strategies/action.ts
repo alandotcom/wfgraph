@@ -176,6 +176,7 @@ function runAction(ctx: NodeWorkContext) {
       store,
       actions,
       eventName: ctx.eventName,
+      catalogFingerprint: ctx.catalogFingerprint,
     });
 
     const stepResult = actionOutcome.result;

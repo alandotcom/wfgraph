@@ -4,6 +4,7 @@ import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-f
 import { NotFound } from "#src/backend/lib/effect/failures";
 import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
 function toIso(value: Date | null): string | null {
   return value?.toISOString() ?? null;
@@ -18,6 +19,7 @@ const loggerFor = (executionId: string) =>
 export const getExecutionLogs = Effect.fn("getExecutionLogs")(
   function* (executionId: string) {
     const repo = yield* ExecutionRepo;
+    const workflows = yield* WorkflowRepo;
     const logger = yield* loggerFor(executionId);
 
     const execution = yield* repo.findSummaryById(executionId);
@@ -29,6 +31,10 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
 
     const logs = yield* repo.listLogs(executionId);
     const waits = yield* repo.listWaitingStates(executionId);
+
+    const version = execution.workflowVersionId
+      ? yield* workflows.findVersionById(execution.workflowVersionId)
+      : null;
 
     return {
       execution: {
@@ -42,6 +48,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
         completedAt: toIso(execution.completedAt),
         duration: execution.duration,
       },
+      ...(version ? { graph: version.graph } : {}),
       // Whatever a node was handed and answered with is shown here verbatim,
       // which is why it passes through redaction on the way out.
       logs: logs.map((log) => ({

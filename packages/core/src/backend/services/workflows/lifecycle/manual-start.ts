@@ -253,6 +253,8 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
         id: workflowId,
         name: workflow.name,
         graph: preflight.workflowGraph,
+        versionId: preflight.workflowVersionId,
+        catalogFingerprint: preflight.catalogFingerprint,
       },
       concurrency: rules.concurrency,
       start: {

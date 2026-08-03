@@ -203,6 +203,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 .insert(workflowExecutions)
                 .values({
                   workflowId: execution.workflowId,
+                  workflowVersionId: execution.workflowVersionId,
                   status: "running",
                   startSource: execution.startSource,
                   runMode: execution.runMode,

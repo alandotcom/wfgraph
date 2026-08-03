@@ -18,6 +18,7 @@ import {
   Settings2,
   Trash2,
   Undo2,
+  Upload,
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useState } from "react";
@@ -52,6 +53,33 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+
+function PublishButton({
+  isPublishing,
+  isBusy,
+  handlePublish,
+}: {
+  isPublishing: boolean;
+  isBusy: boolean;
+  handlePublish: () => void;
+}) {
+  return (
+    <Button
+      className="relative border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
+      disabled={isBusy || isPublishing}
+      onClick={handlePublish}
+      size="icon"
+      title={isPublishing ? "Publishing..." : "Publish workflow"}
+      variant="secondary"
+    >
+      {isPublishing ? (
+        <Loader2 className="size-4 animate-spin" />
+      ) : (
+        <Upload className="size-4" />
+      )}
+    </Button>
+  );
+}
 
 function SaveButton({
   state,
@@ -349,11 +377,29 @@ export function ToolbarActions({
       {/* Save - Mobile Vertical */}
       <ButtonGroup className="flex lg:hidden" orientation="vertical">
         <SaveButton handleSave={actions.handleSave} state={state} />
+        <PublishButton
+          handlePublish={actions.handlePublish}
+          isBusy={
+            state.isGenerating ||
+            state.isSaving ||
+            !state.nodes.some((node) => node.type !== "add")
+          }
+          isPublishing={actions.isPublishing}
+        />
       </ButtonGroup>
 
       {/* Save - Desktop Horizontal */}
       <ButtonGroup className="hidden lg:flex" orientation="horizontal">
         <SaveButton handleSave={actions.handleSave} state={state} />
+        <PublishButton
+          handlePublish={actions.handlePublish}
+          isBusy={
+            state.isGenerating ||
+            state.isSaving ||
+            !state.nodes.some((node) => node.type !== "add")
+          }
+          isPublishing={actions.isPublishing}
+        />
       </ButtonGroup>
 
       <RunButtonGroup actions={actions} state={state} />

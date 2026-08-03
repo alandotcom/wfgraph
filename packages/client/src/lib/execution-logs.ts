@@ -149,9 +149,20 @@ export type ExecutionWait = {
  * observers on one query key would each hold their own `refetchInterval`, and the
  * pair would drift apart into two polls of the same endpoint.
  */
+import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
+
+/**
+ * Everything the run detail view reads, off the one payload that carries it.
+ *
+ * The logs and the waits arrive together, so they are selected together: two
+ * observers on one query key would each hold their own `refetchInterval`, and the
+ * pair would drift apart into two polls of the same endpoint. `graph` is the
+ * version this run pinned, when known.
+ */
 export function toExecutionDetail(payload: RawExecutionLogs): {
   logs: ExecutionLog[];
   waits: ExecutionWait[];
+  graph?: SerializedWorkflowGraph;
 } {
   return {
     logs: toExecutionLogs(payload),
@@ -159,6 +170,9 @@ export function toExecutionDetail(payload: RawExecutionLogs): {
       ...wait,
       waitUntil: wait.waitUntil ? new Date(wait.waitUntil) : null,
     })),
+    ...(payload.graph
+      ? { graph: payload.graph as SerializedWorkflowGraph }
+      : {}),
   };
 }
 
@@ -189,6 +203,11 @@ type RawExecution = Omit<
 
 type RawExecutionLogs = {
   execution: { status: string };
+  graph?: {
+    nodes: unknown[];
+    edges: unknown[];
+    attributes?: unknown;
+  };
   logs: Array<
     Omit<ExecutionLog, "startedAt" | "completedAt"> & {
       startedAt: string;
