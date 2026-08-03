@@ -8,7 +8,6 @@
  * cancellation routes the run is `CancelBoundary`'s.
  */
 
-import { withSpan } from "#src/backend/lib/telemetry";
 import type { ConditionBranch, WorkflowNode } from "@rova/shared/graph/types";
 import {
   actionTypeOf,
@@ -17,14 +16,13 @@ import {
   readConfigString,
 } from "@rova/shared/graph/node-config";
 import { type JsonObject, readJsonValue } from "@rova/shared/types/json";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { CancelBoundary } from "#src/backend/engine/cancel-boundary";
 import {
   executionData,
   executionError,
   failedExecution,
-  type RunLogger,
 } from "#src/backend/engine/contracts";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { WorkflowStore } from "#src/backend/engine/store";
@@ -86,7 +84,6 @@ export type NodeSchedulerInput = {
    * what stops a branch from handing itself off forever.
    */
   branchEntryNodeId?: string;
-  logger: RunLogger;
 };
 
 export class NodeScheduler {
@@ -142,21 +139,20 @@ export class NodeScheduler {
   // The persisted graph is validated as a DAG before execution, so we avoid
   // per-call cycle-tracking allocations on this hot path.
   private executeNode(nodeId: string): Effect.Effect<void> {
-    const nodeLogger = this.input.logger.with({ nodeId });
     const execute = Effect.gen(
       function* (this: NodeScheduler) {
         const { traversal, actions } = this.input;
 
-        nodeLogger.debug("Executing node");
+        yield* Effect.logDebug("Executing node");
 
         if (traversal.isCompleted(nodeId)) {
-          nodeLogger.debug("Skipping node already completed");
+          yield* Effect.logDebug("Skipping node already completed");
           return;
         }
 
         const node = traversal.getNode(nodeId);
         if (!node) {
-          nodeLogger.warn("Node not found");
+          yield* Effect.logWarning("Node not found");
           return;
         }
 
@@ -168,7 +164,7 @@ export class NodeScheduler {
           !this.drainedWaits.has(nodeId)
         ) {
           this.deferredWaits.add(nodeId);
-          nodeLogger.debug(
+          yield* Effect.logDebug(
             "Holding wait node until every other branch has drained"
           );
           return;
@@ -176,57 +172,53 @@ export class NodeScheduler {
 
         const nodeName = getNodeName(node, actions);
         const actionType = actionTypeOf(node);
-        const namedNodeLogger = nodeLogger.with({
-          nodeName,
-          nodeType: node.data.type,
-        });
 
         const nodeExecution = this.executeNodeInner(
           nodeId,
           node,
-          nodeName,
-          namedNodeLogger
+          nodeName
+        ).pipe(
+          Effect.annotateLogs({
+            nodeName,
+            nodeType: node.data.type,
+          }),
+          Effect.withSpan("rova.workflow.node.execute", {
+            attributes: {
+              "rova.node.id": nodeId,
+              "rova.node.name": nodeName,
+              "rova.node.type": node.data.type,
+              ...(actionType === undefined
+                ? {}
+                : { "rova.action.type": actionType }),
+            },
+          })
         );
-        const ran = yield* traversal.withNodeInProgress(nodeId, () =>
-          Effect.flatMap(
-            Effect.promise(() =>
-              withSpan(
-                "rova.workflow.node.execute",
-                {
-                  "rova.node.id": nodeId,
-                  "rova.node.name": nodeName,
-                  "rova.node.type": node.data.type,
-                  "rova.action.type": actionType,
-                },
-                () => Effect.runPromiseExit(nodeExecution)
-              )
-            ),
-            (exit) =>
-              Exit.isSuccess(exit)
-                ? Effect.succeed(exit.value)
-                : Effect.failCause(exit.cause)
-          )
+        const ran = yield* traversal.withNodeInProgress(
+          nodeId,
+          () => nodeExecution
         );
 
         if (!ran) {
-          nodeLogger.debug("Skipping node already in progress");
+          yield* Effect.logDebug("Skipping node already in progress");
         }
       }.bind(this)
     );
 
     return Effect.catchCause(execute, (cause) =>
-      Effect.sync(() => {
-        // This is the attribution boundary: a cause becomes the node's failure
-        // value here, while sibling nodes continue.
-        nodeLogger.error("Unexpected error executing node", {
-          error: Cause.squash(cause),
-        });
-        this.input.traversal.markCompleted(
-          nodeId,
-          failedExecution(failureFromCause(cause))
-        );
-      })
-    );
+      Effect.gen(
+        function* (this: NodeScheduler) {
+          // This is the attribution boundary: a cause becomes the node's failure
+          // value here, while sibling nodes continue.
+          yield* Effect.logError("Unexpected error executing node").pipe(
+            Effect.annotateLogs({ error: Cause.squash(cause) })
+          );
+          this.input.traversal.markCompleted(
+            nodeId,
+            failedExecution(failureFromCause(cause))
+          );
+        }.bind(this)
+      )
+    ).pipe(Effect.annotateLogs({ nodeId }));
   }
 
   /**
@@ -238,8 +230,7 @@ export class NodeScheduler {
    */
   private runNodeWork(
     node: WorkflowNode,
-    nodeName: string,
-    namedNodeLogger: RunLogger
+    nodeName: string
   ): Effect.Effect<NodeWorkOutcome, EngineFailure> {
     return Effect.gen(
       function* (this: NodeScheduler) {
@@ -260,7 +251,9 @@ export class NodeScheduler {
         // `isRoutingNode` gives.
         if (node.data.enabled === false) {
           const haltBranch = isRoutingNode(node);
-          namedNodeLogger.info("Skipping disabled node", { haltBranch });
+          yield* Effect.logInfo("Skipping disabled node").pipe(
+            Effect.annotateLogs({ haltBranch })
+          );
           return { result: { success: true as const, data: null }, haltBranch };
         }
 
@@ -268,7 +261,6 @@ export class NodeScheduler {
         const ctx: NodeWorkContext = {
           node,
           nodeName,
-          logger: namedNodeLogger,
           traversal,
           runtime,
           store,
@@ -280,7 +272,7 @@ export class NodeScheduler {
           startPayload,
           eventName: this.currentEventName(),
           entersInPlace: this.entersInPlace(node.id),
-          handOffBranch: () => this.handOffBranch(node, namedNodeLogger),
+          handOffBranch: () => this.handOffBranch(node),
         };
 
         return yield* strategy.run(ctx);
@@ -301,14 +293,13 @@ export class NodeScheduler {
    * no `startBranch`, which is why the port method is read without a check.
    */
   private handOffBranch(
-    node: WorkflowNode,
-    namedNodeLogger: RunLogger
+    node: WorkflowNode
   ): Effect.Effect<NodeWorkOutcome, EngineFailure> {
     return Effect.gen(
       function* (this: NodeScheduler) {
         const { traversal, runtime } = this.input;
 
-        namedNodeLogger.info(
+        yield* Effect.logInfo(
           "Handing the branch below this wait to its own run"
         );
         const startBranch = runtime.startBranch;
@@ -332,7 +323,7 @@ export class NodeScheduler {
           // The cancellation killed the branch where it stood. Its rows are closed
           // here, and the boundary read below this node is what routes the run.
           yield* this.sweepKilledBranchWork();
-          namedNodeLogger.info("Branch run was cancelled");
+          yield* Effect.logInfo("Branch run was cancelled");
           return {
             result: {
               success: true as const,
@@ -393,17 +384,12 @@ export class NodeScheduler {
   private executeNodeInner(
     nodeId: string,
     node: WorkflowNode,
-    nodeName: string,
-    namedNodeLogger: RunLogger
+    nodeName: string
   ): Effect.Effect<void, EngineFailure> {
     const execute = Effect.gen(
       function* (this: NodeScheduler) {
         const { traversal, cancelBoundary } = this.input;
-        const outcome = yield* this.runNodeWork(
-          node,
-          nodeName,
-          namedNodeLogger
-        );
+        const outcome = yield* this.runNodeWork(node, nodeName);
         const { result } = outcome;
 
         // A node with no action type never produced an output, so it is recorded
@@ -419,9 +405,12 @@ export class NodeScheduler {
         const payload = executionData(result);
         const outputData = readJsonValue(payload);
         if (outputData === null && payload !== null) {
-          namedNodeLogger.warn(
-            "Node output is not JSON and will read as empty downstream",
-            { actionType: node.data.config?.actionType }
+          yield* Effect.logWarning(
+            "Node output is not JSON and will read as empty downstream"
+          ).pipe(
+            Effect.annotateLogs({
+              actionType: node.data.config?.actionType,
+            })
           );
         }
         traversal.markCompleted(nodeId, result, {
@@ -429,11 +418,13 @@ export class NodeScheduler {
           data: outputData,
         });
 
-        namedNodeLogger.info("Node execution completed", {
-          success: result.success,
-          haltBranch: outcome.haltBranch === true,
-          error: executionError(result),
-        });
+        yield* Effect.logInfo("Node execution completed").pipe(
+          Effect.annotateLogs({
+            success: result.success,
+            haltBranch: outcome.haltBranch === true,
+            error: executionError(result),
+          })
+        );
 
         // A claimed run takes the Canceled outlet instead of whatever came next,
         // and a node that finishes after that stops where it stands.
@@ -447,7 +438,7 @@ export class NodeScheduler {
           let shouldContinueDownstream = true;
 
           if (outcome.haltBranch) {
-            namedNodeLogger.info(
+            yield* Effect.logInfo(
               "Skipping downstream nodes because step requested halt"
             );
             shouldContinueDownstream = false;
@@ -461,33 +452,40 @@ export class NodeScheduler {
             );
 
             if (isConditionNode(node)) {
-              namedNodeLogger.debug("Condition node result", {
-                conditionResult: outcome.conditionValue,
-              });
+              yield* Effect.logDebug("Condition node result").pipe(
+                Effect.annotateLogs({
+                  conditionResult: outcome.conditionValue,
+                })
+              );
               if (route === null) {
-                namedNodeLogger.debug(
+                yield* Effect.logDebug(
                   "Condition result missing boolean value, skipping downstream nodes"
                 );
               } else if (route.kind === "condition") {
                 const nextBranch: ConditionBranch = route.branch;
                 const nextNodes = traversal.nextNodes(nodeId, route);
-                namedNodeLogger.debug(
-                  "Condition branch selected, executing downstream nodes in parallel",
-                  {
+                yield* Effect.logDebug(
+                  "Condition branch selected, executing downstream nodes in parallel"
+                ).pipe(
+                  Effect.annotateLogs({
                     selectedBranch: nextBranch,
                     nextNodeCount: nextNodes.length,
                     nextNodeIds: nextNodes,
-                  }
+                  })
                 );
                 traversal.markReadyForDownstream(nodeId);
                 yield* this.runAll(nextNodes);
               }
             } else if (route) {
               const nextNodes = traversal.nextNodes(nodeId, route);
-              namedNodeLogger.debug("Executing downstream nodes in parallel", {
-                nextNodeCount: nextNodes.length,
-                nextNodeIds: nextNodes,
-              });
+              yield* Effect.logDebug(
+                "Executing downstream nodes in parallel"
+              ).pipe(
+                Effect.annotateLogs({
+                  nextNodeCount: nextNodes.length,
+                  nextNodeIds: nextNodes,
+                })
+              );
               traversal.markReadyForDownstream(nodeId);
               yield* this.runAll(nextNodes);
             }

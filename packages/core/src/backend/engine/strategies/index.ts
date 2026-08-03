@@ -40,8 +40,8 @@ export function resolveStrategy(node: WorkflowNode): NodeStrategy {
 const unknownNodeStrategy: NodeStrategy = {
   id: "unknown",
   run: (ctx) =>
-    Effect.sync(() => {
-      ctx.logger.error("Unknown node type");
+    Effect.gen(function* () {
+      yield* Effect.logError("Unknown node type");
       return {
         result: failedExecution(
           engineFailure(

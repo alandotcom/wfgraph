@@ -9,10 +9,9 @@ import { TRACER_NAME, TRACER_VERSION } from "#src/backend/lib/telemetry";
 /**
  * Effect's spans, sent to whichever OpenTelemetry provider the host registered.
  *
- * Every `Effect.fn("name")` across the services opens a span, and Effect's own
- * tracer keeps it in process, while the engine's `withSpan` spans are exported
- * all the while. Replacing the `Tracer` reference for the whole Layer graph is
- * what puts both halves in one trace tree.
+ * Every `Effect.fn("name")` across the services and every engine
+ * `Effect.withSpan` opens on Effect's tracer. Replacing the `Tracer` reference
+ * for the whole Layer graph is what exports them in one trace tree.
  *
  * Rova starts no SDK, exporter or processor. What this reads is the global proxy
  * provider `@opentelemetry/api` always answers with, and that proxy resolves its

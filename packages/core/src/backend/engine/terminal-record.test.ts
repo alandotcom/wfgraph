@@ -1,11 +1,9 @@
-import { afterEach, describe, expect, it } from "@effect/vitest";
-import { Effect } from "effect";
-import { vi } from "vitest";
+import { describe, expect, it } from "@effect/vitest";
+import { Effect, Layer, Logger, References } from "effect";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
 import type { WorkflowStore } from "#src/backend/engine/store";
 import { recordRunCompleted } from "#src/backend/engine/terminal-record";
 import { DatabaseError } from "#src/backend/lib/effect/database";
-import { getAppLogger } from "#src/backend/lib/logger";
 
 const terminalInput = {
   executionId: "exec_1",
@@ -16,9 +14,27 @@ const terminalInput = {
   runMode: "live",
 } as const;
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+function recordingLogger() {
+  const lines: {
+    level: string;
+    message: unknown;
+    properties: Record<string, unknown>;
+  }[] = [];
+  const logger = Logger.make<unknown, void>(({ fiber, logLevel, message }) => {
+    lines.push({
+      level: logLevel,
+      message: Array.isArray(message) ? message[0] : message,
+      properties: fiber.getRef(References.CurrentLogAnnotations),
+    });
+  });
+  return {
+    lines,
+    layer: Layer.merge(
+      Logger.layer([logger]),
+      Layer.succeed(References.MinimumLogLevel, "All")
+    ),
+  };
+}
 
 describe("terminal record completion policy", () => {
   it.effect("warns and skips the audit when the database refuses", () =>
@@ -31,20 +47,23 @@ describe("terminal record completion policy", () => {
         ...recording,
         completeRun: () => Effect.fail(databaseError),
       };
-      const logger = getAppLogger("test", "terminal-record").with({
-        executionId: terminalInput.executionId,
-      });
-      const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-      const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+      const recordingLoggerLayer = recordingLogger();
 
-      yield* recordRunCompleted({ ...terminalInput, store, logger });
+      yield* recordRunCompleted({ ...terminalInput, store }).pipe(
+        Effect.provide(recordingLoggerLayer.layer)
+      );
 
-      expect(warn).toHaveBeenCalledWith("Terminal run record not written", {
-        executionId: "exec_1",
-        status: "completed",
-        error: databaseError,
-      });
-      expect(info).not.toHaveBeenCalled();
+      expect(recordingLoggerLayer.lines).toEqual([
+        {
+          level: "Warn",
+          message: "Terminal run record not written",
+          properties: {
+            executionId: "exec_1",
+            status: "completed",
+            error: databaseError,
+          },
+        },
+      ]);
       expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
     })
   );
@@ -56,19 +75,19 @@ describe("terminal record completion policy", () => {
         ...recording,
         completeRun: () => Effect.succeed(false),
       };
-      const logger = getAppLogger("test", "terminal-record").with({
-        executionId: terminalInput.executionId,
-      });
-      const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-      const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+      const recordingLoggerLayer = recordingLogger();
 
-      yield* recordRunCompleted({ ...terminalInput, store, logger });
-
-      expect(info).toHaveBeenCalledWith(
-        "Run did not claim the terminal record",
-        { status: "completed" }
+      yield* recordRunCompleted({ ...terminalInput, store }).pipe(
+        Effect.provide(recordingLoggerLayer.layer)
       );
-      expect(warn).not.toHaveBeenCalled();
+
+      expect(recordingLoggerLayer.lines).toEqual([
+        {
+          level: "Info",
+          message: "Run did not claim the terminal record",
+          properties: { status: "completed" },
+        },
+      ]);
       expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
     })
   );

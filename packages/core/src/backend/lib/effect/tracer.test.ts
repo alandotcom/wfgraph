@@ -48,6 +48,42 @@ describe("TracerBridgeLayer", () => {
     await provider.shutdown();
   });
 
+  test("preserves Effect.withSpan attributes and error recording", async () => {
+    const exporter = new InMemorySpanExporter();
+    const provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
+    trace.setGlobalTracerProvider(provider);
+
+    const failure = new Error("test failure");
+    const traced = Effect.fail(failure).pipe(
+      Effect.withSpan("test.failing", {
+        attributes: {
+          "test.attr": "fail",
+        },
+      }),
+      Effect.provide(TracerBridgeLayer)
+    );
+
+    await expect(Effect.runPromise(traced)).rejects.toBe(failure);
+    await provider.forceFlush();
+
+    const span = exporter
+      .getFinishedSpans()
+      .find((finished) => finished.name === "test.failing");
+    expect(span).toBeDefined();
+    expect(span?.attributes["test.attr"]).toBe("fail");
+    expect(span?.attributes.missing).toBeUndefined();
+    expect(span?.status).toEqual({ code: 2, message: "test failure" });
+    expect(span?.events.map((event) => event.name)).toEqual(["exception"]);
+    expect(span?.instrumentationScope).toMatchObject({
+      name: "rova-workflows",
+      version: "0.1.0",
+    });
+
+    await provider.shutdown();
+  });
+
   test("runs with no provider registered", async () => {
     const runtime = ManagedRuntime.make(TracerBridgeLayer);
 

@@ -13,7 +13,6 @@ import {
 } from "@rova/shared/lifecycle/lifecycle-outlets";
 import { readLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
 import { Effect } from "effect";
-import type { RunLogger } from "#src/backend/engine/contracts";
 import {
   type EngineFailure,
   failureFromUnknown,
@@ -30,7 +29,6 @@ export type CancelBoundaryInput = {
   runtime: WorkflowExecutionRuntime;
   store: WorkflowStore;
   executionId: string;
-  logger: RunLogger;
 };
 
 /**
@@ -166,7 +164,10 @@ export class CancelBoundary {
           return { entered: this.entered, nextNodes: [] };
         }
 
-        return { entered: true, nextNodes: this.enter(pending) };
+        return {
+          entered: true,
+          nextNodes: yield* this.enter(pending),
+        };
       }.bind(this)
     );
   }
@@ -180,34 +181,40 @@ export class CancelBoundary {
    * the payload the canceling Event carried. An outlet with no edge leaves
    * nothing to schedule, and the run ends on the status alone.
    */
-  private enter(pending: PendingCancel): readonly string[] {
-    this.entered = true;
-    this.cancelEventName = pending.eventName;
+  private enter(pending: PendingCancel): Effect.Effect<readonly string[]> {
+    return Effect.gen(
+      function* (this: CancelBoundary) {
+        this.entered = true;
+        this.cancelEventName = pending.eventName;
 
-    const { lifecycleNodes, traversal, logger } = this.input;
+        const { lifecycleNodes, traversal } = this.input;
 
-    const nextNodes: string[] = [];
-    for (const lifecycleNode of lifecycleNodes) {
-      traversal.setOutput(lifecycleNode.id, {
-        label: lifecycleNode.data.label || lifecycleNode.id,
-        data: pending.payload,
-      });
-      // The entry node may not have scheduled anything yet, and the branch's
-      // first node waits on it the way any node waits on its source.
-      traversal.markReadyForDownstream(lifecycleNode.id);
-      nextNodes.push(
-        ...traversal.nextNodes(lifecycleNode.id, {
-          kind: "outlet",
-          outlet: LIFECYCLE_CANCELED_HANDLE,
-        })
-      );
-    }
+        const nextNodes: string[] = [];
+        for (const lifecycleNode of lifecycleNodes) {
+          traversal.setOutput(lifecycleNode.id, {
+            label: lifecycleNode.data.label || lifecycleNode.id,
+            data: pending.payload,
+          });
+          // The entry node may not have scheduled anything yet, and the branch's
+          // first node waits on it the way any node waits on its source.
+          traversal.markReadyForDownstream(lifecycleNode.id);
+          nextNodes.push(
+            ...traversal.nextNodes(lifecycleNode.id, {
+              kind: "outlet",
+              outlet: LIFECYCLE_CANCELED_HANDLE,
+            })
+          );
+        }
 
-    logger.info("Entering the Canceled outlet", {
-      cancelEventName: pending.eventName,
-      nextNodeIds: nextNodes,
-    });
+        yield* Effect.logInfo("Entering the Canceled outlet").pipe(
+          Effect.annotateLogs({
+            cancelEventName: pending.eventName,
+            nextNodeIds: nextNodes,
+          })
+        );
 
-    return nextNodes;
+        return nextNodes;
+      }.bind(this)
+    );
   }
 }

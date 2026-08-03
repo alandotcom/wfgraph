@@ -10,12 +10,11 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { withSpan } from "#src/backend/lib/telemetry";
 import { type JsonObject, readJsonObject } from "@rova/shared/types/json";
 import { encodeIsoTimestamp } from "@rova/shared/types/timestamp";
 import { resolveWaitUntil } from "@rova/shared/utils/wait-time";
 import { celStringLiteral } from "@rova/shared/conditions/cel-string-literal";
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 import {
   DEFAULT_WAIT_TIMEOUT,
   readWaitConfig,
@@ -160,22 +159,14 @@ export function executeWaitAction(
   const waitType = input.config.waitMode === "event" ? "event" : "delay";
   const execute = executeWaitActionInner(input);
 
-  return Effect.flatMap(
-    Effect.promise(() =>
-      withSpan(
-        "rova.workflow.wait",
-        {
-          "rova.wait.type": waitType,
-          "rova.node.id": input.context.nodeId,
-          "rova.node.name": input.context.nodeName,
-        },
-        () => Effect.runPromiseExit(execute)
-      )
-    ),
-    (exit) =>
-      Exit.isSuccess(exit)
-        ? Effect.succeed(exit.value)
-        : Effect.failCause(exit.cause)
+  return execute.pipe(
+    Effect.withSpan("rova.workflow.wait", {
+      attributes: {
+        "rova.wait.type": waitType,
+        "rova.node.id": input.context.nodeId,
+        "rova.node.name": input.context.nodeName,
+      },
+    })
   );
 }
 

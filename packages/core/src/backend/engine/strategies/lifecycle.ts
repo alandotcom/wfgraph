@@ -10,17 +10,9 @@ import { executionResultFromStepResult } from "#src/backend/engine/contracts";
 
 function runLifecycle(ctx: NodeWorkContext) {
   return Effect.gen(function* () {
-    const {
-      node,
-      nodeName,
-      logger,
-      store,
-      runtime,
-      executionId,
-      startPayload,
-    } = ctx;
+    const { node, nodeName, store, runtime, executionId, startPayload } = ctx;
 
-    logger.debug("Executing lifecycle node");
+    yield* Effect.logDebug("Executing lifecycle node");
 
     // The entry node's output is the payload and nothing else. The Event's own
     // schema validated it at intake, which is the only gate it passes through,

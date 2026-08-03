@@ -6,16 +6,12 @@
  * calls it.
  */
 
-import type { getAppLogger } from "#src/backend/lib/logger";
 import type { StepResult } from "@rova/shared/actions/step-result";
 import type { JsonValue } from "@rova/shared/types/json";
 import {
   type EngineFailure,
   engineFailure,
 } from "#src/backend/engine/engine-failure";
-
-/** The logger a run carries, already holding that run's own fields. */
-export type RunLogger = ReturnType<ReturnType<typeof getAppLogger>["with"]>;
 
 /**
  * What one node left behind, as the traversal reads it.

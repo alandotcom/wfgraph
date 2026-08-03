@@ -9,7 +9,6 @@ import type { WorkflowActions } from "#src/backend/engine/actions";
 import type {
   ExecutionResult,
   NodeOutputs,
-  RunLogger,
 } from "#src/backend/engine/contracts";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { NodeContext } from "#src/backend/engine/step-log";
@@ -42,7 +41,6 @@ export type NodeWorkOutcome = {
 export type NodeWorkContext = {
   node: WorkflowNode;
   nodeName: string;
-  logger: RunLogger;
   traversal: Traversal;
   runtime: WorkflowExecutionRuntime;
   store: WorkflowStore;

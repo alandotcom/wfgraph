@@ -3,7 +3,6 @@
  * that walked its graph to the end and on the one that died on an error.
  */
 
-import type { RunLogger } from "#src/backend/engine/contracts";
 import type {
   CompleteRunInput,
   RecordAuditEventInput,
@@ -68,7 +67,6 @@ const TERMINAL_AUDIT_EVENT = {
  */
 function writeTerminalRecord(input: {
   store: WorkflowStore;
-  logger: RunLogger;
   run: CompleteRunInput;
   announcement: RecordAuditEventInput;
 }): Effect.Effect<void> {
@@ -76,14 +74,14 @@ function writeTerminalRecord(input: {
     const completion = yield* input.store.completeRun(input.run).pipe(
       Effect.map((claimed) => ({ kind: "answer" as const, claimed })),
       Effect.catchTag("DatabaseError", (error) =>
-        Effect.sync(() => {
-          input.logger.warn("Terminal run record not written", {
+        Effect.logWarning("Terminal run record not written").pipe(
+          Effect.annotateLogs({
             executionId: input.run.executionId,
             status: input.run.status,
             error,
-          });
-          return { kind: "database_error" as const };
-        })
+          }),
+          Effect.as({ kind: "database_error" as const })
+        )
       )
     );
 
@@ -92,17 +90,17 @@ function writeTerminalRecord(input: {
     }
 
     if (!completion.claimed) {
-      input.logger.info("Run did not claim the terminal record", {
-        status: input.run.status,
-      });
+      yield* Effect.logInfo("Run did not claim the terminal record").pipe(
+        Effect.annotateLogs({ status: input.run.status })
+      );
       return;
     }
 
     yield* Effect.catchCause(
       input.store.recordAuditEvent(input.announcement),
       (cause) =>
-        Effect.sync(() =>
-          input.logger.error("Failed to announce the run's outcome", {
+        Effect.logError("Failed to announce the run's outcome").pipe(
+          Effect.annotateLogs({
             error: Cause.squash(cause),
           })
         )
@@ -124,12 +122,10 @@ export function recordRunCompleted(input: {
   failure?: EngineFailure;
   resultCount: number;
   runMode: "live" | "test";
-  logger: RunLogger;
 }): Effect.Effect<{ status: TraversalTerminalStatus }> {
   return Effect.as(
     writeTerminalRecord({
       store: input.store,
-      logger: input.logger,
       run: {
         executionId: input.executionId,
         status: input.status,
@@ -162,12 +158,10 @@ export function recordRunFailed(input: {
   status: "failed" | "canceled";
   failure: EngineFailure;
   runMode: "live" | "test";
-  logger: RunLogger;
 }): Effect.Effect<{ status: "failed" | "canceled" }> {
   return Effect.as(
     writeTerminalRecord({
       store: input.store,
-      logger: input.logger,
       run: {
         executionId: input.executionId,
         status: input.status,

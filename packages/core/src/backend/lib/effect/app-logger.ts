@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Logger, References } from "effect";
 import { getAppLogger } from "#src/backend/lib/logger";
 
 /** Structured fields attached to one log line, the same bag logtape takes. */
@@ -47,22 +47,119 @@ export class AppLogger extends Context.Service<
   }
 >()("@rova/core/AppLogger") {}
 
-type LogtapeLogger = ReturnType<typeof getAppLogger>;
+const APP_LOG_CATEGORY_ANNOTATION = "rova.log.category";
 
-function wrapLogger(logger: LogtapeLogger): EffectLogger {
+function renderMessagePart(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  return JSON.stringify(value) ?? String(value);
+}
+
+function renderMessage(message: unknown): string {
+  return Array.isArray(message)
+    ? message.map(renderMessagePart).join(" ")
+    : renderMessagePart(message);
+}
+
+function readCategory(value: unknown): string[] {
+  if (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((part) => typeof part === "string")
+  ) {
+    return value;
+  }
+  return ["effect"];
+}
+
+function unexpectedLogLevel(_level: never): never {
+  throw new Error("Unexpected Effect log level");
+}
+
+const logtapeEffectLogger = Logger.make<unknown, void>(
+  ({ fiber, logLevel, message }) => {
+    const annotations = fiber.getRef(References.CurrentLogAnnotations);
+    const category = readCategory(annotations[APP_LOG_CATEGORY_ANNOTATION]);
+    const properties = Object.fromEntries(
+      Object.entries(annotations).filter(
+        ([key]) => key !== APP_LOG_CATEGORY_ANNOTATION
+      )
+    );
+    const lineProperties =
+      Object.keys(properties).length === 0 ? undefined : properties;
+    const logger = getAppLogger(...category);
+    const renderedMessage = renderMessage(message);
+
+    switch (logLevel) {
+      case "All":
+      case "Trace":
+      case "Debug":
+        logger.debug(renderedMessage, lineProperties);
+        break;
+      case "Info":
+        logger.info(renderedMessage, lineProperties);
+        break;
+      case "Warn":
+        logger.warn(renderedMessage, lineProperties);
+        break;
+      case "Error":
+      case "Fatal":
+        logger.error(renderedMessage, lineProperties);
+        break;
+      case "None":
+        break;
+      default:
+        unexpectedLogLevel(logLevel);
+    }
+  }
+);
+
+/**
+ * Sends Effect-native logs to the same category-aware logtape sink as the
+ * backend's direct loggers. Effect is left at its most permissive level because
+ * logtape owns the host-configured severity filter.
+ */
+const AppEffectLoggerLayer: Layer.Layer<never> = Layer.merge(
+  Logger.layer([logtapeEffectLogger]),
+  Layer.succeed(References.MinimumLogLevel, "All")
+);
+
+/** Gives every Effect-native log in an operation its logtape category. */
+export function withAppLogCategory<A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  ...category: string[]
+): Effect.Effect<A, E, R> {
+  return Effect.annotateLogs(effect, APP_LOG_CATEGORY_ANNOTATION, category);
+}
+
+function wrapLogger(
+  category: readonly string[],
+  annotations: LogProperties = {}
+): EffectLogger {
+  const annotate = (effect: Effect.Effect<void>, properties?: LogProperties) =>
+    withAppLogCategory(
+      Effect.annotateLogs(effect, { ...annotations, ...properties }),
+      ...category
+    );
+
   return {
     debug: (message, properties) =>
-      Effect.sync(() => logger.debug(message, properties)),
+      annotate(Effect.logDebug(message), properties),
     info: (message, properties) =>
-      Effect.sync(() => logger.info(message, properties)),
+      annotate(Effect.logInfo(message), properties),
     warn: (message, properties) =>
-      Effect.sync(() => logger.warn(message, properties)),
+      annotate(Effect.logWarning(message), properties),
     error: (message, properties) =>
-      Effect.sync(() => logger.error(message, properties)),
-    with: (properties) => wrapLogger(logger.with(properties)),
+      annotate(Effect.logError(message), properties),
+    with: (properties) =>
+      wrapLogger(category, { ...annotations, ...properties }),
   };
 }
 
-export const AppLoggerLayer: Layer.Layer<AppLogger> = Layer.succeed(AppLogger, {
-  get: (...category) => wrapLogger(getAppLogger(...category)),
-});
+export const AppLoggerLayer: Layer.Layer<AppLogger> = Layer.merge(
+  Layer.succeed(AppLogger, {
+    get: (...category) => wrapLogger(category),
+  }),
+  AppEffectLoggerLayer
+);

@@ -6,7 +6,6 @@
  * fills in.
  */
 
-import { withSpan } from "#src/backend/lib/telemetry";
 import { runConditionStep } from "#src/backend/engine/strategies/condition";
 import { runEventSplitStep } from "#src/backend/engine/strategies/event-split";
 import { runPluginActionStep } from "#src/backend/engine/strategies/plugin-action";
@@ -24,7 +23,7 @@ import {
 import { executeWaitAction } from "#src/backend/engine/wait";
 import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
 import { actionTypeOf, readConfigString } from "@rova/shared/graph/node-config";
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 import { failedExecution } from "#src/backend/engine/contracts";
 import {
   type EngineFailure,
@@ -64,30 +63,24 @@ function executeActionStep(
     return runPluginActionStep(input);
   });
 
-  return Effect.flatMap(
-    Effect.promise(() =>
-      withSpan(
-        "rova.workflow.action.execute",
-        {
-          "rova.action.type": input.actionType,
-          "rova.node.id": input.context.nodeId,
-          "rova.node.name": input.context.nodeName,
-        },
-        () => Effect.runPromiseExit(execute)
-      )
-    ),
-    (exit) =>
-      Exit.isSuccess(exit)
-        ? Effect.succeed(exit.value)
-        : Effect.failCause(exit.cause)
+  return execute.pipe(
+    Effect.withSpan("rova.workflow.action.execute", {
+      attributes: {
+        "rova.action.type": input.actionType,
+        "rova.node.id": input.context.nodeId,
+        "rova.node.name": input.context.nodeName,
+      },
+    })
   );
 }
 
 function runAction(ctx: NodeWorkContext) {
+  const config = ctx.node.data.config || {};
+  const actionType = readConfigString(config, "actionType");
+
   return Effect.gen(function* () {
     const {
       node,
-      logger,
       traversal,
       runtime,
       store,
@@ -98,15 +91,10 @@ function runAction(ctx: NodeWorkContext) {
       runMode,
     } = ctx;
 
-    const config = node.data.config || {};
-    const actionType = readConfigString(config, "actionType");
-    const actionLogger = logger.with({
-      actionType: actionType ?? null,
-    });
-    actionLogger.debug("Executing action node");
+    yield* Effect.logDebug("Executing action node");
 
     if (!actionType) {
-      actionLogger.error("Action node missing action type");
+      yield* Effect.logError("Action node missing action type");
       return {
         result: failedExecution(
           engineFailure(
@@ -143,7 +131,7 @@ function runAction(ctx: NodeWorkContext) {
       nodeType: actionType,
       runMode,
     };
-    actionLogger.debug("Calling executeActionStep");
+    yield* Effect.logDebug("Calling executeActionStep");
 
     if (actionType === BUILT_IN_ACTION_IDS.wait) {
       if (!ctx.entersInPlace) {
@@ -169,11 +157,13 @@ function runAction(ctx: NodeWorkContext) {
         };
       }
 
-      actionLogger.error("Wait failed", {
-        nodeId: node.id,
-        nodeLabel: node.data.label,
-        error: waitResult.error.message,
-      });
+      yield* Effect.logError("Wait failed").pipe(
+        Effect.annotateLogs({
+          nodeId: node.id,
+          nodeLabel: node.data.label,
+          error: waitResult.error.message,
+        })
+      );
       return { result: waitResult };
     }
 
@@ -196,17 +186,19 @@ function runAction(ctx: NodeWorkContext) {
       };
     }
 
-    actionLogger.error("Action step failed", {
-      actionType,
-      nodeId: node.id,
-      nodeLabel: node.data.label,
-      error: stepResult.error.message,
-    });
+    yield* Effect.logError("Action step failed").pipe(
+      Effect.annotateLogs({
+        actionType,
+        nodeId: node.id,
+        nodeLabel: node.data.label,
+        error: stepResult.error.message,
+      })
+    );
     return {
       result: stepResult,
       conditionValue: actionOutcome.conditionValue,
     };
-  });
+  }).pipe(Effect.annotateLogs({ actionType: actionType ?? null }));
 }
 
 export const actionStrategy: NodeStrategy = {
