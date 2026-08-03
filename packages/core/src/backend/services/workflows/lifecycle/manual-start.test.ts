@@ -65,6 +65,7 @@ function workflowRow(overrides: Partial<Workflow> = {}): Workflow {
     isPaused: false,
     mode: "live",
     visibility: "private",
+    publishedVersionId: "ver_1",
     createdAt: new Date("2026-02-01T00:00:00.000Z"),
     updatedAt: new Date(savedAt),
     ...overrides,
@@ -94,6 +95,7 @@ function executionRow(overrides: Partial<WorkflowExecution> = {}) {
     cancelRequestedAt: null,
     cancelEventName: null,
     cancelPayload: null,
+    workflowVersionId: "ver_1",
     ...overrides,
   } satisfies WorkflowExecution;
 }
@@ -223,7 +225,19 @@ function graphWithEventSplit() {
 }
 
 function workflowLayer(workflow: Workflow) {
-  return stubWorkflowRepo({ findById: () => Effect.succeed(workflow) });
+  return stubWorkflowRepo({
+    findById: () => Effect.succeed(workflow),
+    findPublishedVersion: () =>
+      Effect.succeed({
+        id: "ver_1",
+        workflowId: workflow.id,
+        version: 1,
+        graph: workflow.graph,
+        catalogFingerprint: "fp",
+        graphDigest: "digest",
+        publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+      }),
+  });
 }
 
 describe("postWorkflowExecute", () => {
@@ -246,6 +260,10 @@ describe("postWorkflowExecute", () => {
         );
 
         assert.strictEqual(repo.starts[0]?.execution.entityValue, "appt_1");
+        assert.strictEqual(
+          repo.starts[0]?.execution.workflowVersionId,
+          "ver_1"
+        );
         assert.deepStrictEqual(response, {
           status: "running",
           executionId: "exec_new",

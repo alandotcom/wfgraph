@@ -38,6 +38,8 @@ const workflow = {
   id: "wf_1",
   name: "Appointment Reminders",
   graph: { nodes: [], edges: [] },
+  versionId: "ver_1",
+  catalogFingerprint: "fp",
 };
 
 const eventStart = {
@@ -72,6 +74,7 @@ function createExecution(
     cancelRequestedAt: null,
     cancelEventName: null,
     cancelPayload: null,
+    workflowVersionId: null,
     ...overrides,
   };
 }
@@ -145,6 +148,7 @@ describe("startWithConcurrency", () => {
         });
         assert.strictEqual(repo.calls[0]?.concurrency, "unlimited");
         assert.strictEqual(repo.calls[0]?.execution.entityValue, "appt_8813");
+        assert.strictEqual(repo.calls[0]?.execution.workflowVersionId, "ver_1");
       })
     );
 

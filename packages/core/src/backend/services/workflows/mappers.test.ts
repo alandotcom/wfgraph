@@ -19,6 +19,7 @@ function createWorkflow(overrides: Partial<Workflow> = {}): Workflow {
     isPaused: false,
     mode: "live",
     visibility: "public",
+    publishedVersionId: null,
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-02T00:00:00.000Z"),
     ...overrides,
