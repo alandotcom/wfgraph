@@ -21,6 +21,9 @@ import {
 import type { ConditionBranch, WorkflowNode } from "@rova/shared/graph/types";
 import { isEventSplitNode } from "@rova/shared/lifecycle/event-split";
 import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
+import { Effect } from "effect";
+import { failedExecution } from "#src/backend/engine/contracts";
+import { engineFailure } from "#src/backend/engine/engine-failure";
 
 export type { NodeStrategy, NodeWorkContext, NodeWorkOutcome };
 
@@ -36,17 +39,18 @@ export function resolveStrategy(node: WorkflowNode): NodeStrategy {
 
 const unknownNodeStrategy: NodeStrategy = {
   id: "unknown",
-  run: async (ctx) => {
-    ctx.logger.error("Unknown node type");
-    return {
-      result: {
-        success: false,
-        error: {
-          message: `Unknown node type "${ctx.node.data.type}" in node "${ctx.node.data.label || ctx.node.id}". Expected "lifecycle" or "action".`,
-        },
-      },
-    };
-  },
+  run: (ctx) =>
+    Effect.sync(() => {
+      ctx.logger.error("Unknown node type");
+      return {
+        result: failedExecution(
+          engineFailure(
+            "failure",
+            `Unknown node type "${ctx.node.data.type}" in node "${ctx.node.data.label || ctx.node.id}". Expected "lifecycle" or "action".`
+          )
+        ),
+      };
+    }),
 };
 
 /**

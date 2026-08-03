@@ -13,6 +13,7 @@
  */
 
 import { omit } from "es-toolkit";
+import { Effect } from "effect";
 import { normalizeConditionBranch } from "@rova/shared/conditions/condition-branch";
 import type {
   ConditionBranch,
@@ -25,9 +26,10 @@ import type { BranchRunResult } from "#src/backend/engine/branch";
 import {
   type ExecutionResult,
   executionData,
-  executionError,
+  executionFailure,
   type NodeOutputs,
 } from "#src/backend/engine/contracts";
+import type { EngineFailure } from "#src/backend/engine/engine-failure";
 
 /** Key a node's output is stored and looked up under. */
 export function outputKey(nodeId: string): string {
@@ -100,22 +102,34 @@ export class Traversal {
    * already running, so a node scheduled twice executes once. The mark comes off
    * however the work ends, since a node whose work threw is no longer running.
    */
-  async withNodeInProgress(
+  withNodeInProgress<E, R>(
     nodeId: string,
-    work: () => Promise<void>
-  ): Promise<boolean> {
-    if (this.inProgressNodes.has(nodeId)) {
-      return false;
-    }
+    work: () => Effect.Effect<void, E, R>
+  ): Effect.Effect<boolean, E, R> {
+    const acquire = Effect.sync(() => {
+      if (this.inProgressNodes.has(nodeId)) {
+        return false;
+      }
 
-    this.inProgressNodes.add(nodeId);
-    try {
-      await work();
-    } finally {
-      this.inProgressNodes.delete(nodeId);
-    }
+      this.inProgressNodes.add(nodeId);
+      return true;
+    });
 
-    return true;
+    return Effect.flatMap(acquire, (acquired) => {
+      if (!acquired) {
+        return Effect.succeed(false);
+      }
+
+      const release = Effect.sync(() => this.inProgressNodes.delete(nodeId));
+      return Effect.matchCauseEffect(Effect.suspend(work), {
+        onFailure: (cause) =>
+          Effect.gen(function* () {
+            yield* release;
+            return yield* Effect.failCause(cause);
+          }),
+        onSuccess: () => Effect.as(release, true),
+      });
+    });
   }
 
   /** The nodes this one hands on to, along the edges the route names. */
@@ -244,9 +258,9 @@ export class Traversal {
     return Object.values(this.results).every((result) => result.success);
   }
 
-  /** The sentence the run failed with, taken from the first node that failed. */
-  firstFailureMessage(): string | undefined {
-    return executionError(
+  /** The typed failure the run ended with, taken from its first failed node. */
+  firstFailure(): EngineFailure | undefined {
+    return executionFailure(
       Object.values(this.results).find((result) => !result.success)
     );
   }

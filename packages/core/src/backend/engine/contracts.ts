@@ -9,6 +9,10 @@
 import type { getAppLogger } from "#src/backend/lib/logger";
 import type { StepResult } from "@rova/shared/actions/step-result";
 import type { JsonValue } from "@rova/shared/types/json";
+import {
+  type EngineFailure,
+  engineFailure,
+} from "#src/backend/engine/engine-failure";
 
 /** The logger a run carries, already holding that run's own fields. */
 export type RunLogger = ReturnType<ReturnType<typeof getAppLogger>["with"]>;
@@ -25,7 +29,26 @@ export type RunLogger = ReturnType<ReturnType<typeof getAppLogger>["with"]>;
  * is the scheduler's, it is read a few lines from where it is made, and this
  * value is persisted and crosses the branch hand-off as JSON.
  */
-export type ExecutionResult = StepResult;
+export type ExecutionResult =
+  | Extract<StepResult, { success: true }>
+  | { success: false; error: EngineFailure };
+
+/** A step's result as the richer failure value the engine carries internally. */
+export function executionResultFromStepResult(
+  result: StepResult
+): ExecutionResult {
+  return result.success
+    ? result
+    : {
+        success: false,
+        error: engineFailure("failure", result.error.message),
+      };
+}
+
+/** A node that failed before it could answer with a step result. */
+export function failedExecution(failure: EngineFailure): ExecutionResult {
+  return { success: false, error: failure };
+}
 
 /**
  * What each finished node left behind, keyed by node id.
@@ -45,6 +68,13 @@ export function executionError(
   return result === undefined || result.success
     ? undefined
     : result.error.message;
+}
+
+/** The typed failure a failed node left, or nothing for a successful node. */
+export function executionFailure(
+  result: ExecutionResult | undefined
+): EngineFailure | undefined {
+  return result === undefined || result.success ? undefined : result.error;
 }
 
 /** The payload a node left, or nothing for a node that failed. */

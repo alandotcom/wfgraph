@@ -24,6 +24,7 @@ import type {
   JsonObjectDraft,
   JsonValue,
 } from "@rova/shared/types/json";
+import type { EngineFailure } from "#src/backend/engine/engine-failure";
 
 /**
  * Timeline events the engine itself emits. The database accepts a wider set;
@@ -119,7 +120,7 @@ export type CompleteRunInput = {
   executionId: string;
   status: "completed" | "failed" | "canceled";
   output?: unknown;
-  error?: string;
+  failure?: EngineFailure;
 };
 
 export type WorkflowStore = {

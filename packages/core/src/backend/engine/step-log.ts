@@ -11,13 +11,18 @@
 
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { StepContext } from "#src/backend/extensions/steps/step-handler";
-import { getErrorMessage } from "@rova/shared/utils";
 import type { StepResult } from "@rova/shared/actions/step-result";
+import { Cause, Effect } from "effect";
 import type {
   WorkflowStepLogHandle,
   WorkflowStore,
 } from "#src/backend/engine/store";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
+import {
+  type EngineFailure,
+  failureFromCause,
+  failureFromUnknown,
+} from "#src/backend/engine/engine-failure";
 
 const stepLogLogger = getAppLogger("workflow", "step-log");
 
@@ -44,13 +49,17 @@ export function openStepLog(target: {
   store: WorkflowStore;
   context: NodeContext;
   input: unknown;
-}): Promise<WorkflowStepLogHandle> {
-  return target.store.startStepLog({
-    executionId: target.context.executionId,
-    nodeId: target.context.nodeId,
-    nodeName: target.context.nodeName,
-    nodeType: target.context.nodeType,
-    input: target.input,
+}): Effect.Effect<WorkflowStepLogHandle, EngineFailure> {
+  return Effect.tryPromise({
+    try: () =>
+      target.store.startStepLog({
+        executionId: target.context.executionId,
+        nodeId: target.context.nodeId,
+        nodeName: target.context.nodeName,
+        nodeType: target.context.nodeType,
+        input: target.input,
+      }),
+    catch: failureFromUnknown,
   });
 }
 
@@ -60,13 +69,17 @@ function writeStepLogClose(
   handle: WorkflowStepLogHandle,
   close: StepLogClose,
   durationMs: number
-): Promise<void> {
-  return store.completeStepLog({
-    logId: handle.logId,
-    durationMs,
-    status: close.status,
-    output: close.output,
-    error: close.error,
+): Effect.Effect<void, EngineFailure> {
+  return Effect.tryPromise({
+    try: () =>
+      store.completeStepLog({
+        logId: handle.logId,
+        durationMs,
+        status: close.status,
+        output: close.output,
+        error: close.error,
+      }),
+    catch: failureFromUnknown,
   });
 }
 
@@ -81,7 +94,7 @@ export function closeStepLog(
   store: WorkflowStore,
   handle: WorkflowStepLogHandle,
   close: StepLogClose
-): Promise<void> {
+): Effect.Effect<void, EngineFailure> {
   return writeStepLogClose(store, handle, close, Date.now() - handle.startTime);
 }
 
@@ -90,29 +103,31 @@ export function closeStepLog(
  *
  * See `runWithStepLog` for why a closing write may not fail a node.
  */
-async function closeStepLogQuietly(
+function closeStepLogQuietly(
   store: WorkflowStore,
   context: NodeContext,
   handle: WorkflowStepLogHandle,
   close: StepLogClose,
   durationMs: number
-): Promise<void> {
-  try {
-    await writeStepLogClose(store, handle, close, durationMs);
-  } catch (error) {
-    // The row is now stuck at `running` and the usual cause is the database
-    // itself, so the line names the run rather than only the row: in an outage
-    // this is a burst, and a row id can only be resolved against the table that
-    // just refused a write.
-    stepLogLogger.warn("Could not close a run-log row", {
-      logId: handle.logId,
-      executionId: context.executionId,
-      nodeId: context.nodeId,
-      nodeName: context.nodeName,
-      status: close.status,
-      error,
-    });
-  }
+): Effect.Effect<void> {
+  return Effect.catchCause(
+    writeStepLogClose(store, handle, close, durationMs),
+    (cause) =>
+      Effect.sync(() => {
+        // The row is now stuck at `running` and the usual cause is the database
+        // itself, so the line names the run rather than only the row: in an outage
+        // this is a burst, and a row id can only be resolved against the table that
+        // just refused a write.
+        stepLogLogger.warn("Could not close a run-log row", {
+          logId: handle.logId,
+          executionId: context.executionId,
+          nodeId: context.nodeId,
+          nodeName: context.nodeName,
+          status: close.status,
+          error: Cause.squash(cause),
+        });
+      })
+  );
 }
 
 /**
@@ -139,42 +154,62 @@ async function closeStepLogQuietly(
  * work has not failed because a row could not be closed. The price is a row left
  * open, which the run panel shows.
  */
-export async function runWithStepLog<T extends StepResult>(
+export function runWithStepLog<T extends StepResult, E, R>(
   target: {
     store: WorkflowStore;
     context: NodeContext;
     runtime: WorkflowExecutionRuntime;
     input: unknown;
   },
-  work: () => Promise<T>
-): Promise<T> {
-  const { store, context, runtime } = target;
-  const handle = await runtime.run(`node:${context.nodeId}:log-open`, () =>
-    openStepLog(target)
-  );
-  const startedAt = Date.now();
-  const elapsed = () => Date.now() - startedAt;
+  work: () => Effect.Effect<T, E, R>
+): Effect.Effect<T, E | EngineFailure, R> {
+  return Effect.gen(function* () {
+    const { store, context, runtime } = target;
+    const effectContext = yield* Effect.context<R>();
+    const handle = yield* Effect.tryPromise({
+      try: () =>
+        runtime.run(`node:${context.nodeId}:log-open`, () =>
+          Effect.runPromiseWith(effectContext)(openStepLog(target))
+        ),
+      catch: failureFromUnknown,
+    });
+    const startedAt = Date.now();
+    const elapsed = () => Date.now() - startedAt;
 
-  // One attempt closes the row down one path, so the two callers below share an
-  // id. The step answers null because a memoized value has to be JSON-safe.
-  const closeOnce = (close: StepLogClose) =>
-    runtime.run(
-      `node:${context.nodeId}:log-close:${runtime.attempt}`,
-      async () => {
-        await closeStepLogQuietly(store, context, handle, close, elapsed());
-        return null;
-      }
-    );
+    // One attempt closes the row down one path, so the two callers below share an
+    // id. The step answers null because a memoized value has to be JSON-safe.
+    const closeOnce = (close: StepLogClose) =>
+      Effect.tryPromise({
+        try: () =>
+          runtime.run(
+            `node:${context.nodeId}:log-close:${runtime.attempt}`,
+            () =>
+              Effect.runPromiseWith(effectContext)(
+                Effect.as(
+                  closeStepLogQuietly(store, context, handle, close, elapsed()),
+                  null
+                )
+              )
+          ),
+        catch: failureFromUnknown,
+      });
 
-  try {
-    const result = await work();
+    const result = yield* Effect.matchCauseEffect(Effect.suspend(work), {
+      onFailure: (cause) =>
+        Effect.gen(function* () {
+          const failure = failureFromCause(cause);
+          yield* closeOnce({ status: "error", error: failure.message });
+          return yield* Effect.failCause(cause);
+        }),
+      onSuccess: Effect.succeed,
+    });
 
     if (result.success) {
       // A success logs its payload. A step reporting success without one has
       // nothing but the envelope to show.
-      await closeOnce({ status: "success", output: result.data ?? result });
+      yield* closeOnce({ status: "success", output: result.data ?? result });
     } else {
-      await closeOnce({
+      yield* closeOnce({
         status: "error",
         output: result.error,
         error: result.error.message,
@@ -182,8 +217,5 @@ export async function runWithStepLog<T extends StepResult>(
     }
 
     return result;
-  } catch (error) {
-    await closeOnce({ status: "error", error: getErrorMessage(error) });
-    throw error;
-  }
+  });
 }

@@ -13,6 +13,7 @@ import type {
   ExecutionResult,
   NodeOutputs,
 } from "#src/backend/engine/contracts";
+import { engineFailureSchema } from "#src/backend/engine/engine-failure";
 
 /** What a branch run's traversal left behind, keyed the way its own was. */
 export type BranchRunResult = {
@@ -41,7 +42,7 @@ export type BranchHandoff =
 const executionResultSchema = Schema.Union([
   Schema.Struct({
     success: Schema.Literal(false),
-    error: Schema.Struct({ message: Schema.String }),
+    error: engineFailureSchema,
   }),
   Schema.Struct({
     success: Schema.Literal(true),

@@ -10,6 +10,11 @@ import type {
   WorkflowRunAuditEventType,
   WorkflowStore,
 } from "#src/backend/engine/store";
+import { Cause, Effect } from "effect";
+import {
+  type EngineFailure,
+  failureFromUnknown,
+} from "#src/backend/engine/engine-failure";
 
 /**
  * How a run that walked its graph to the end finished. `canceled` is a run that
@@ -63,14 +68,28 @@ const TERMINAL_AUDIT_EVENT = {
  * claimed the row. Resolves through any failure: an error escaping here sends
  * `core.ts` down its fatal path, which records the run a second time.
  */
-async function writeTerminalRecord(input: {
+function writeTerminalRecord(input: {
   store: WorkflowStore;
   logger: RunLogger;
   run: CompleteRunInput;
   announcement: RecordAuditEventInput;
-}): Promise<void> {
-  try {
-    const claimed = await input.store.completeRun(input.run);
+}): Effect.Effect<void> {
+  return Effect.gen(function* () {
+    const claimed = yield* Effect.catchCause(
+      Effect.tryPromise({
+        try: () => input.store.completeRun(input.run),
+        catch: failureFromUnknown,
+      }),
+      (cause) =>
+        Effect.sync(() => {
+          // The port forbids a rejection here, so this guards an adapter
+          // breaking its contract rather than an expected engine outcome.
+          input.logger.error("Failed to write the terminal run record", {
+            error: Cause.squash(cause),
+          });
+          return false;
+        })
+    );
 
     if (!claimed) {
       input.logger.info("Run did not claim the terminal record", {
@@ -78,18 +97,20 @@ async function writeTerminalRecord(input: {
       });
       return;
     }
-  } catch (error) {
-    // The port forbids a rejection here, so this guards an adapter breaking its
-    // contract rather than an outcome the engine expects.
-    input.logger.error("Failed to write the terminal run record", { error });
-    return;
-  }
 
-  try {
-    await input.store.recordAuditEvent(input.announcement);
-  } catch (error) {
-    input.logger.error("Failed to announce the run's outcome", { error });
-  }
+    yield* Effect.catchCause(
+      Effect.tryPromise({
+        try: () => input.store.recordAuditEvent(input.announcement),
+        catch: failureFromUnknown,
+      }),
+      (cause) =>
+        Effect.sync(() =>
+          input.logger.error("Failed to announce the run's outcome", {
+            error: Cause.squash(cause),
+          })
+        )
+    );
+  });
 }
 
 /**
@@ -97,76 +118,79 @@ async function writeTerminalRecord(input: {
  * graph. Runs inside a durable step, so it must stay side-effect-idempotent
  * from the caller's point of view: nothing here feeds back into the traversal.
  */
-export async function recordRunCompleted(input: {
+export function recordRunCompleted(input: {
   store: WorkflowStore;
   executionId: string;
   workflowId: string;
   status: TraversalTerminalStatus;
   output: unknown;
-  error?: string;
+  failure?: EngineFailure;
   resultCount: number;
   runMode: "live" | "test";
   logger: RunLogger;
-}) {
-  await writeTerminalRecord({
-    store: input.store,
-    logger: input.logger,
-    run: {
-      executionId: input.executionId,
-      status: input.status,
-      output: input.output,
-      error: input.error,
-    },
-    announcement: {
-      workflowId: input.workflowId,
-      executionId: input.executionId,
-      eventType: TERMINAL_AUDIT_EVENT[input.status],
-      message: buildRunCompletedMessage(input.runMode, input.status),
-      metadata: {
-        resultCount: input.resultCount,
-        runMode: input.runMode,
+}): Effect.Effect<{ status: TraversalTerminalStatus }> {
+  return Effect.as(
+    writeTerminalRecord({
+      store: input.store,
+      logger: input.logger,
+      run: {
+        executionId: input.executionId,
+        status: input.status,
+        output: input.output,
+        failure: input.failure,
       },
-    },
-  });
-
-  return { status: input.status };
+      announcement: {
+        workflowId: input.workflowId,
+        executionId: input.executionId,
+        eventType: TERMINAL_AUDIT_EVENT[input.status],
+        message: buildRunCompletedMessage(input.runMode, input.status),
+        metadata: {
+          resultCount: input.resultCount,
+          runMode: input.runMode,
+        },
+      },
+    }),
+    { status: input.status }
+  );
 }
 
 /**
  * Terminal record for a run that died on an error escaping the traversal
  * (including a cancellation while waiting).
  */
-export async function recordRunFailed(input: {
+export function recordRunFailed(input: {
   store: WorkflowStore;
   executionId: string;
   workflowId: string;
   status: "failed" | "canceled";
-  error: string;
+  failure: EngineFailure;
   runMode: "live" | "test";
   logger: RunLogger;
-}) {
-  await writeTerminalRecord({
-    store: input.store,
-    logger: input.logger,
-    run: {
-      executionId: input.executionId,
-      status: input.status,
-      error: input.error,
-    },
-    announcement: {
-      workflowId: input.workflowId,
-      executionId: input.executionId,
-      eventType: TERMINAL_AUDIT_EVENT[input.status],
-      message: buildRunFailedMessage(
-        input.runMode,
-        input.status === "canceled"
-      ),
-      metadata: {
-        error: input.error,
-        runMode: input.runMode,
+}): Effect.Effect<{ status: "failed" | "canceled" }> {
+  return Effect.as(
+    writeTerminalRecord({
+      store: input.store,
+      logger: input.logger,
+      run: {
+        executionId: input.executionId,
+        status: input.status,
+        failure: input.failure,
       },
-    },
-  });
-
-  return { status: input.status };
+      announcement: {
+        workflowId: input.workflowId,
+        executionId: input.executionId,
+        eventType: TERMINAL_AUDIT_EVENT[input.status],
+        message: buildRunFailedMessage(
+          input.runMode,
+          input.status === "canceled"
+        ),
+        metadata: {
+          error: input.failure.message,
+          failureKind: input.failure.kind,
+          runMode: input.runMode,
+        },
+      },
+    }),
+    { status: input.status }
+  );
 }

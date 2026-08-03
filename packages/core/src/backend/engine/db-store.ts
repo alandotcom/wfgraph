@@ -39,7 +39,7 @@ export function createDbWorkflowStore(runtime: RovaRuntime): WorkflowStore {
           executionId: input.executionId,
           status: input.status,
           output: redactSensitiveData(input.output),
-          error: input.error,
+          error: input.failure?.message,
         })
       );
 

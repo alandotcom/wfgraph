@@ -405,8 +405,57 @@ describe("run persistence through the store port", () => {
 
     const completions = store.callsOf("completeRun");
     expect(completions[0]?.status).toBe("failed");
-    expect(completions[0]?.error).toBe("boom");
+    expect(completions[0]?.failure).toEqual({
+      kind: "failure",
+      message: "boom",
+    });
     expect(store.callsOf("recordAuditEvent")[0]?.eventType).toBe("run_failed");
+  });
+
+  it("records an unchecked engine exception as a defect", async () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createLifecycleNode("lifecycle_1"),
+        createHostActionNode("action_1", ""),
+      ],
+      edges: [
+        {
+          id: "edge_1",
+          source: "lifecycle_1",
+          sourceHandle: "started",
+          target: "action_1",
+        },
+      ],
+    });
+    const actionsWithBrokenCatalog: typeof actions = {
+      stepFor: actions.stepFor,
+      metadataFor: () => {
+        throw new Error("catalog invariant broke");
+      },
+    };
+
+    const result = await executeWorkflow(
+      {
+        graph,
+        executionId: "exec_defect",
+        workflowId: "workflow_defect",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actionsWithBrokenCatalog
+    );
+
+    expect(result.results.action_1).toEqual({
+      success: false,
+      error: {
+        kind: "defect",
+        message: "catalog invariant broke",
+      },
+    });
+    expect(store.callsOf("completeRun")[0]?.failure).toEqual({
+      kind: "defect",
+      message: "catalog invariant broke",
+    });
   });
 
   it("labels a test-mode run in its timeline message", async () => {
@@ -549,7 +598,10 @@ describe("run persistence through the store port", () => {
     expect(result.success).toBe(false);
     expect(executionError(result.results.action_1)).toBe("boom");
     expect(store.callsOf("completeRun")).toHaveLength(1);
-    expect(store.callsOf("completeRun")[0]?.error).toBe("boom");
+    expect(store.callsOf("completeRun")[0]?.failure).toEqual({
+      kind: "failure",
+      message: "boom",
+    });
   });
 
   // Every seam failure the backend answers with is a `Schema.TaggedErrorClass`,

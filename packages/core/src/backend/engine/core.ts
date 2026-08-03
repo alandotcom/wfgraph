@@ -14,11 +14,13 @@ import type {
   WorkflowNode,
 } from "@rova/shared/graph/types";
 import type { JsonObject } from "@rova/shared/types/json";
-import { getErrorMessageAsync } from "@rova/shared/utils";
+import { Cause, Effect } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { BranchRunResult } from "#src/backend/engine/branch";
 import { CancelBoundary } from "#src/backend/engine/cancel-boundary";
 import {
+  type ExecutionResult,
+  type NodeOutputs,
   type RunLogger,
   wrapStoredOutput,
 } from "#src/backend/engine/contracts";
@@ -31,6 +33,11 @@ import {
   type TraversalTerminalStatus,
 } from "#src/backend/engine/terminal-record";
 import { Traversal } from "#src/backend/engine/traversal";
+import {
+  type EngineFailure,
+  failureFromCause,
+  failureFromUnknown,
+} from "#src/backend/engine/engine-failure";
 
 export type { WorkflowActions } from "#src/backend/engine/actions";
 export type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
@@ -88,6 +95,14 @@ type PreparedRun = {
   scheduler: NodeScheduler;
   lifecycleNodeIds: string[];
   logger: RunLogger;
+};
+
+type WorkflowExecutionResult = {
+  success: boolean;
+  results: Readonly<Record<string, ExecutionResult>>;
+  outputs: Readonly<NodeOutputs>;
+  error?: string;
+  cancelled?: boolean;
 };
 
 /**
@@ -196,7 +211,7 @@ export function executeWorkflow(
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
   actions: WorkflowActions
-) {
+): Promise<WorkflowExecutionResult> {
   return withSpan(
     "rova.workflow.execution",
     {
@@ -205,114 +220,136 @@ export function executeWorkflow(
       "rova.workflow.name": input.workflowName,
       "rova.execution.run_mode": input.runMode ?? "live",
     },
-    () => executeWorkflowInner(input, runtime, store, actions)
+    () =>
+      Effect.runPromise(executeWorkflowInner(input, runtime, store, actions))
   );
 }
 
-async function executeWorkflowInner(
+function executeWorkflowInner(
   input: WorkflowExecutionInput,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
   actions: WorkflowActions
 ) {
-  const { executionId, workflowId, runMode = "live" } = input;
-  const {
-    traversal,
-    cancelBoundary,
-    scheduler,
-    lifecycleNodeIds,
-    logger: executionLogger,
-  } = prepareRun(input, runtime, store, actions);
+  return Effect.suspend(() => {
+    const { executionId, workflowId, runMode = "live" } = input;
+    const {
+      traversal,
+      cancelBoundary,
+      scheduler,
+      lifecycleNodeIds,
+      logger: executionLogger,
+    } = prepareRun(input, runtime, store, actions);
 
-  // This body is re-run on every attempt and after every wait, so this clock
-  // measures the current attempt alone. The run's own elapsed is derived from
-  // its stored `started_at` where the row is closed.
-  const attemptStartTime = Date.now();
+    // This body is re-run on every attempt and after every wait, so this clock
+    // measures the current attempt alone. The run's own elapsed is derived from
+    // its stored `started_at` where the row is closed.
+    const attemptStartTime = Date.now();
 
-  executionLogger.info("Discovered lifecycle nodes", {
-    lifecycleNodeCount: lifecycleNodeIds.length,
-    lifecycleNodeIds,
-  });
-
-  try {
-    executionLogger.info("Starting execution from lifecycle nodes");
-    await scheduler.runAll(lifecycleNodeIds);
-    // Every Wait the fan-out reached was held back, so the branches that suspend
-    // nothing are finished by now and the run may park.
-    await scheduler.drainDeferredWaits();
-
-    const finalSuccess = traversal.allSucceeded();
-    const finalOutput = traversal.deterministicTerminalOutput();
-    // A cancel outranks what the nodes did: the run reached the end of the
-    // Canceled branch, and that is the whole of what it means to be canceled.
-    const terminalStatus: TraversalTerminalStatus =
-      cancelBoundary.hasLeftStartedBranch()
-        ? "canceled"
-        : finalSuccess
-          ? "completed"
-          : "failed";
-
-    executionLogger.info("Workflow execution completed", {
-      success: finalSuccess,
-      status: terminalStatus,
-      resultCount: traversal.resultCount,
-      attemptMs: Date.now() - attemptStartTime,
+    executionLogger.info("Discovered lifecycle nodes", {
+      lifecycleNodeCount: lifecycleNodeIds.length,
+      lifecycleNodeIds,
     });
 
-    // Wrapped as a durable step so the terminal record and its audit event are
-    // written exactly once, even though the body replays after every wait.
-    await runtime.run("workflow-run-completed", () =>
-      recordRunCompleted({
-        store,
-        executionId,
-        workflowId,
+    const execute = Effect.gen(function* () {
+      const effectContext = yield* Effect.context();
+      executionLogger.info("Starting execution from lifecycle nodes");
+      yield* scheduler.runAll(lifecycleNodeIds);
+      // Every Wait the fan-out reached was held back, so the branches that
+      // suspend nothing are finished by now and the run may park.
+      yield* scheduler.drainDeferredWaits();
+
+      const finalSuccess = traversal.allSucceeded();
+      const finalOutput = traversal.deterministicTerminalOutput();
+      // A cancel outranks what the nodes did: the run reached the end of the
+      // Canceled branch, and that is the whole of what it means to be canceled.
+      const terminalStatus: TraversalTerminalStatus =
+        cancelBoundary.hasLeftStartedBranch()
+          ? "canceled"
+          : finalSuccess
+            ? "completed"
+            : "failed";
+
+      executionLogger.info("Workflow execution completed", {
+        success: finalSuccess,
         status: terminalStatus,
-        output: finalOutput,
-        error: traversal.firstFailureMessage(),
         resultCount: traversal.resultCount,
-        runMode,
-        logger: executionLogger,
-      })
-    );
+        attemptMs: Date.now() - attemptStartTime,
+      });
 
-    return {
-      success: finalSuccess,
-      results: traversal.results,
-      outputs: traversal.outputs,
-    };
-  } catch (error) {
-    executionLogger.error("Fatal error during workflow execution", {
-      error,
+      // Wrapped as a durable step so the terminal record and its audit event are
+      // written exactly once, even though the body replays after every wait.
+      yield* Effect.tryPromise({
+        try: () =>
+          runtime.run("workflow-run-completed", () =>
+            Effect.runPromiseWith(effectContext)(
+              recordRunCompleted({
+                store,
+                executionId,
+                workflowId,
+                status: terminalStatus,
+                output: finalOutput,
+                failure: traversal.firstFailure(),
+                resultCount: traversal.resultCount,
+                runMode,
+                logger: executionLogger,
+              })
+            )
+          ),
+        catch: failureFromUnknown,
+      });
+
+      return {
+        success: finalSuccess,
+        results: traversal.results,
+        outputs: traversal.outputs,
+      };
     });
 
-    const errorMessage = await getErrorMessageAsync(error);
-    // The flag is the authority here as it is on the success path: a run is
-    // canceled because a Cancel Event claimed it, never because the text of
-    // whatever died happens to contain the word.
-    const cancelled = cancelBoundary.hasLeftStartedBranch();
-    const terminalStatus = cancelled ? "canceled" : "failed";
+    return Effect.catchCause(execute, (cause) =>
+      Effect.gen(function* () {
+        const effectContext = yield* Effect.context();
+        const failure = failureFromCause(cause);
+        executionLogger.error("Fatal error during workflow execution", {
+          error: Cause.squash(cause),
+          failureKind: failure.kind,
+        });
 
-    // Same exactly-once treatment as the success path above.
-    await runtime.run("workflow-run-failed", () =>
-      recordRunFailed({
-        store,
-        executionId,
-        workflowId,
-        status: terminalStatus,
-        error: errorMessage,
-        runMode,
-        logger: executionLogger,
+        // The flag is the authority here as it is on the success path: a run is
+        // canceled because a Cancel Event claimed it, never because the text of
+        // whatever died happens to contain the word.
+        const cancelled = cancelBoundary.hasLeftStartedBranch();
+        const terminalStatus = cancelled ? "canceled" : "failed";
+
+        // Same exactly-once treatment as the success path above.
+        yield* Effect.tryPromise({
+          try: () =>
+            runtime.run("workflow-run-failed", () =>
+              Effect.runPromiseWith(effectContext)(
+                recordRunFailed({
+                  store,
+                  executionId,
+                  workflowId,
+                  status: terminalStatus,
+                  failure,
+                  runMode,
+                  logger: executionLogger,
+                })
+              )
+            ),
+          catch: failureFromUnknown,
+        });
+
+        return {
+          success: false,
+          results: traversal.results,
+          outputs: traversal.outputs,
+          error: failure.message,
+          cancelled,
+        };
       })
     );
-
-    return {
-      success: false,
-      results: traversal.results,
-      outputs: traversal.outputs,
-      error: errorMessage,
-      cancelled,
-    };
-  }
+  });
 }
 
 /**
@@ -337,61 +374,70 @@ export function executeWorkflowBranch(
       "rova.execution.run_mode": input.runMode ?? "live",
       "rova.branch.entry_node_id": input.entryNodeId,
     },
-    () => executeWorkflowBranchInner(input, runtime, store, actions)
+    () =>
+      Effect.runPromise(
+        executeWorkflowBranchInner(input, runtime, store, actions)
+      )
   );
 }
 
-async function executeWorkflowBranchInner(
+function executeWorkflowBranchInner(
   input: WorkflowBranchInput,
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
   actions: WorkflowActions
-): Promise<BranchRunResult> {
-  const { entryNodeId, executionId } = input;
-  const { nodes, traversal, scheduler, logger } = prepareRun(
-    input,
-    runtime,
-    store,
-    actions
-  );
+): Effect.Effect<BranchRunResult, EngineFailure> {
+  return Effect.gen(function* () {
+    const { entryNodeId, executionId } = input;
+    const { nodes, traversal, scheduler, logger } = prepareRun(
+      input,
+      runtime,
+      store,
+      actions
+    );
 
-  // Templates behind the Wait address the nodes above it, which this run never
-  // walked. The store holds that view rather than the invoke payload, because an
-  // HTTP Request step's response body is what makes those outputs large. The
-  // cost is that a row whose close was refused leaves its template unresolved.
-  const upstream = await runtime.run(`branch-upstream-${entryNodeId}`, () =>
-    store.readNodeOutputs(executionId)
-  );
-
-  for (const node of nodes) {
-    const data = upstream[node.id];
-    if (node.id === entryNodeId || data === undefined) {
-      continue;
-    }
-    traversal.inheritCompleted(node.id, {
-      label: node.data.label || node.id,
-      data: wrapStoredOutput(data),
+    // Templates behind the Wait address the nodes above it, which this run never
+    // walked. The store holds that view rather than the invoke payload, because an
+    // HTTP Request step's response body is what makes those outputs large. The
+    // cost is that a row whose close was refused leaves its template unresolved.
+    const upstream = yield* Effect.tryPromise({
+      try: () =>
+        runtime.run(`branch-upstream-${entryNodeId}`, () =>
+          store.readNodeOutputs(executionId)
+        ),
+      catch: failureFromUnknown,
     });
-  }
 
-  for (const nodeId of input.releasedNodeIds) {
-    traversal.markReadyForDownstream(nodeId);
-  }
+    for (const node of nodes) {
+      const data = upstream[node.id];
+      if (node.id === entryNodeId || data === undefined) {
+        continue;
+      }
+      traversal.inheritCompleted(node.id, {
+        label: node.data.label || node.id,
+        data: wrapStoredOutput(data),
+      });
+    }
 
-  logger.info("Starting branch execution", {
-    entryNodeId,
-    inheritedNodeCount: Object.keys(upstream).length,
+    for (const nodeId of input.releasedNodeIds) {
+      traversal.markReadyForDownstream(nodeId);
+    }
+
+    logger.info("Starting branch execution", {
+      entryNodeId,
+      inheritedNodeCount: Object.keys(upstream).length,
+    });
+
+    yield* scheduler.runAll([entryNodeId]);
+    // A wait further down this branch is handed off in turn, so this run holds
+    // one pause of its own and the branch below that one holds its own.
+    yield* scheduler.drainDeferredWaits();
+
+    logger.info("Branch execution completed", {
+      entryNodeId,
+      resultCount: traversal.resultCount,
+    });
+
+    return { results: { ...traversal.results }, outputs: traversal.ownOutputs };
   });
-
-  await scheduler.runAll([entryNodeId]);
-  // A wait further down this branch is handed off in turn, so this run holds
-  // one pause of its own and the branch below that one holds its own.
-  await scheduler.drainDeferredWaits();
-
-  logger.info("Branch execution completed", {
-    entryNodeId,
-    resultCount: traversal.resultCount,
-  });
-
-  return { results: { ...traversal.results }, outputs: traversal.ownOutputs };
 }
