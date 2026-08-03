@@ -4,11 +4,13 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useAtom, useAtomValue } from "jotai";
 import { Play } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { Spinner } from "#src/components/ui/spinner";
+import { useAfterCommit } from "#src/hooks/effects";
 import {
   isRunInProgress,
   toExecutionDetail,
@@ -42,12 +44,19 @@ type OpenRun = {
 const LEFT_THE_LIST_NOTICE =
   "This run has left the runs list, so what it shows stops here. A newer start supersedes the runs going for the same entity, and the list holds the newest 50.";
 
+const workflowRouteApi = getRouteApi("/workflows/$workflowId");
+
 export function WorkflowRuns() {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [selectedExecutionId, setSelectedExecutionId] = useAtom(
     selectedExecutionIdAtom
   );
   const queryClient = useQueryClient();
+  const { executionId: deepLinkExecutionId } = workflowRouteApi.useSearch();
+  const navigate = useNavigate({ from: "/workflows/$workflowId" });
+  // The deep-link id already opened or dismissed. Back clears the run before the
+  // search param drops, and without this the next commit would reopen it.
+  const consumedDeepLinkIdRef = useRef<string | null>(null);
 
   // Which run the detail view is showing, held as the row itself. Null means the
   // list.
@@ -88,6 +97,29 @@ export function WorkflowRuns() {
   const listedRun = executions.find(
     (execution) => execution.id === activeRunId
   );
+
+  const deepLinkListed = deepLinkExecutionId
+    ? executions.some((execution) => execution.id === deepLinkExecutionId)
+    : false;
+
+  // A deep-link past the newest-50 list still needs a row shape. The logs
+  // endpoint carries a summary; once that arrives the commit below opens it.
+  const needsDeepLinkFallback =
+    deepLinkExecutionId !== undefined &&
+    !executionsQuery.isPending &&
+    !executionsQuery.isFetching &&
+    openRun?.execution.id !== deepLinkExecutionId &&
+    !deepLinkListed &&
+    (showSuperseded || supersededCount === 0);
+
+  const deepLinkFallbackQuery = useQuery({
+    ...orpcQuery.workflow.getExecutionLogs.queryOptions({
+      input: { executionId: deepLinkExecutionId ?? "" },
+      select: toExecutionDetail,
+    }),
+    enabled: needsDeepLinkFallback,
+    staleTime: 0,
+  });
 
   // Both detail queries follow the same run, so they read its status from the
   // same place: the list, which is polling anyway. Deriving it from each
@@ -150,9 +182,79 @@ export function WorkflowRuns() {
   };
 
   const handleBack = () => {
+    if (deepLinkExecutionId !== undefined) {
+      consumedDeepLinkIdRef.current = deepLinkExecutionId;
+      // Drop the deep-link so remounting the panel does not reopen this run.
+      void navigate({ search: {}, replace: true });
+    }
     setOpenRun(null);
     setSelectedExecutionId(null);
   };
+
+  // Open the run named in the URL once the list (or the logs fallback) can
+  // supply a row. useAfterCommit keeps this out of render and off a raw effect.
+  useAfterCommit(
+    [
+      deepLinkExecutionId ?? "",
+      executionsQuery.isPending ? "1" : "0",
+      executionsQuery.isFetching ? "1" : "0",
+      showSuperseded ? "1" : "0",
+      String(supersededCount),
+      executions.map((execution) => execution.id).join(","),
+      String(deepLinkFallbackQuery.dataUpdatedAt),
+      openRun?.execution.id ?? "",
+    ].join("|"),
+    () => {
+      if (deepLinkExecutionId === undefined) {
+        consumedDeepLinkIdRef.current = null;
+        return;
+      }
+      if (consumedDeepLinkIdRef.current === deepLinkExecutionId) {
+        return;
+      }
+      if (openRun?.execution.id === deepLinkExecutionId) {
+        consumedDeepLinkIdRef.current = deepLinkExecutionId;
+        return;
+      }
+      if (executionsQuery.isPending) {
+        return;
+      }
+
+      const index = executions.findIndex(
+        (execution) => execution.id === deepLinkExecutionId
+      );
+      if (index >= 0) {
+        const execution = executions[index];
+        if (!execution) {
+          return;
+        }
+        consumedDeepLinkIdRef.current = deepLinkExecutionId;
+        setOpenRun({ execution, runNumber: executions.length - index });
+        setSelectedExecutionId(deepLinkExecutionId);
+        return;
+      }
+
+      // Hidden superseded rows are the usual reason a dashboard Open is absent
+      // from the default list. Reveal them and wait for the next fetch.
+      if (!showSuperseded && supersededCount > 0) {
+        setShowSuperseded(true);
+        return;
+      }
+
+      // Still fetching the includeSuperseded list (placeholder still shows the
+      // old rows). Do not fall through to the logs summary yet.
+      if (executionsQuery.isFetching) {
+        return;
+      }
+
+      const fallback = deepLinkFallbackQuery.data?.execution;
+      if (fallback !== undefined && fallback.id === deepLinkExecutionId) {
+        consumedDeepLinkIdRef.current = deepLinkExecutionId;
+        setOpenRun({ execution: fallback, runNumber: 0 });
+        setSelectedExecutionId(deepLinkExecutionId);
+      }
+    }
+  );
 
   if (executionsQuery.isPending) {
     return (
@@ -187,7 +289,8 @@ export function WorkflowRuns() {
   // Detail view. Ahead of the empty-list branch, because a run being read keeps
   // its view whether or not the list behind it still holds a row for it.
   if (openRun) {
-    const execution = listedRun ?? openRun.execution;
+    const execution =
+      listedRun ?? detailQuery.data?.execution ?? openRun.execution;
     const runNumber = listedRun
       ? executions.length - executions.indexOf(listedRun)
       : openRun.runNumber;

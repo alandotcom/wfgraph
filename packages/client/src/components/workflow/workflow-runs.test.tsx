@@ -1,4 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+  type SearchSchemaInput,
+} from "@tanstack/react-router";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { describe, expect, it, vi } from "vitest";
@@ -25,6 +34,7 @@ type RawExecution = {
 /** What the runs endpoint is answering with, rewritten between polls. */
 const served = vi.hoisted(() => ({
   items: [] as RawExecution[],
+  supersededCount: 0,
 }));
 
 vi.mock("#src/lib/rpc-query", () => ({
@@ -41,8 +51,10 @@ vi.mock("#src/lib/rpc-query", () => ({
         }) => ({
           queryKey: ["executions", input.workflowId, input.includeSuperseded],
           queryFn: () => ({
-            items: served.items,
-            supersededCount: 0,
+            items: input.includeSuperseded
+              ? served.items
+              : served.items.filter((item) => item.status !== "superseded"),
+            supersededCount: served.supersededCount,
             refusedStarts: [],
           }),
           select,
@@ -50,12 +62,28 @@ vi.mock("#src/lib/rpc-query", () => ({
       },
       getExecutionLogs: {
         queryOptions: ({
+          input,
           select,
         }: {
+          input: { executionId: string };
           select: (payload: unknown) => unknown;
         }) => ({
-          queryKey: ["logs"],
-          queryFn: () => ({ logs: [], waits: [] }),
+          queryKey: ["logs", input.executionId],
+          queryFn: () => ({
+            execution: {
+              id: input.executionId,
+              workflowId: "wf_1",
+              status: "completed",
+              error: null,
+              startedAt: "2026-03-01T10:00:00.000Z",
+              completedAt: "2026-03-01T10:00:30.000Z",
+              duration: "30s",
+              input: {},
+              output: {},
+            },
+            logs: [],
+            waits: [],
+          }),
           select,
         }),
       },
@@ -99,22 +127,47 @@ function execution(id: string, status: string): RawExecution {
   };
 }
 
-function renderRuns() {
+function renderRuns(options?: { executionId?: string }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const store = createStore();
   store.set(currentWorkflowIdAtom, "wf_1");
 
+  const rootRoute = createRootRoute({
+    component: () => <Outlet />,
+  });
+  const workflowRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/workflows/$workflowId",
+    validateSearch: (search: { executionId?: string } & SearchSchemaInput) => ({
+      executionId:
+        typeof search.executionId === "string" && search.executionId.length > 0
+          ? search.executionId
+          : undefined,
+    }),
+    component: () => <WorkflowRuns />,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([workflowRoute]),
+    history: createMemoryHistory({
+      initialEntries: [
+        options?.executionId === undefined
+          ? "/workflows/wf_1"
+          : `/workflows/wf_1?executionId=${options.executionId}`,
+      ],
+    }),
+  });
+
   const view = render(
     <JotaiProvider store={store}>
       <QueryClientProvider client={queryClient}>
-        <WorkflowRuns />
+        <RouterProvider router={router} />
       </QueryClientProvider>
     </JotaiProvider>
   );
 
-  return { view, queryClient };
+  return { view, queryClient, router };
 }
 
 describe("WorkflowRuns", () => {
@@ -122,6 +175,7 @@ describe("WorkflowRuns", () => {
   // the detail view has to survive its row disappearing from underneath it.
   it("keeps the detail view open when its run leaves the list", async () => {
     served.items = [execution("exec_1", "running")];
+    served.supersededCount = 0;
     const { view, queryClient } = renderRuns();
 
     const row = await view.findByTestId("workflow-run-summary-row");
@@ -146,10 +200,73 @@ describe("WorkflowRuns", () => {
 
   it("says nothing about the list while the run is still in it", async () => {
     served.items = [execution("exec_1", "running")];
+    served.supersededCount = 0;
     const { view } = renderRuns();
 
     fireEvent.click(await view.findByTestId("workflow-run-summary-row"));
 
     expect(view.queryByText(/has left the runs list/)).toBeNull();
+  });
+
+  it("opens a deep-linked run that is already in the list", async () => {
+    served.items = [execution("exec_deep", "completed")];
+    served.supersededCount = 0;
+    const { view } = renderRuns({ executionId: "exec_deep" });
+
+    await waitFor(() => {
+      expect(
+        view.getByRole("button", { name: "Back to runs list" })
+      ).toBeTruthy();
+    });
+    expect(view.queryByText(/has left the runs list/)).toBeNull();
+  });
+
+  it("reveals superseded rows to open a deep-linked superseded run", async () => {
+    served.items = [
+      execution("exec_live", "completed"),
+      execution("exec_old", "superseded"),
+    ];
+    served.supersededCount = 1;
+    const { view } = renderRuns({ executionId: "exec_old" });
+
+    await waitFor(() => {
+      expect(
+        view.getByRole("button", { name: "Back to runs list" })
+      ).toBeTruthy();
+    });
+  });
+
+  it("opens a deep-linked run past the list from the logs summary", async () => {
+    served.items = [execution("exec_other", "completed")];
+    served.supersededCount = 0;
+    const { view } = renderRuns({ executionId: "exec_past_cap" });
+
+    await waitFor(() => {
+      expect(
+        view.getByRole("button", { name: "Back to runs list" })
+      ).toBeTruthy();
+    });
+    expect(view.getByText(/has left the runs list/)).toBeTruthy();
+  });
+
+  it("clears the deep-link search when going back to the list", async () => {
+    served.items = [execution("exec_deep", "completed")];
+    served.supersededCount = 0;
+    const { view, router } = renderRuns({ executionId: "exec_deep" });
+
+    await waitFor(() => {
+      expect(
+        view.getByRole("button", { name: "Back to runs list" })
+      ).toBeTruthy();
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "Back to runs list" }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({});
+    });
+    expect(
+      view.queryByRole("button", { name: "Back to runs list" })
+    ).toBeNull();
   });
 });

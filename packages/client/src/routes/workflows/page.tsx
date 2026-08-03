@@ -596,6 +596,7 @@ export default function WorkflowsPage() {
                     void navigate({
                       to: "/workflows/$workflowId",
                       params: { workflowId: run.workflowId },
+                      search: { executionId: run.id },
                     });
                   }}
                   size="sm"
