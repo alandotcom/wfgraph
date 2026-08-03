@@ -1,50 +1,51 @@
-import {
-  conditionLogger,
-  evaluateConditionExpression,
-} from "#src/backend/engine/conditions";
+import { evaluateConditionExpression } from "#src/backend/engine/conditions";
 import { runWithStepLog } from "#src/backend/engine/step-log";
 import type { ActionStepInput } from "#src/backend/engine/strategies/types";
-import type { StepResult } from "@rova/shared/actions/step-result";
+import { executionResultFromStepResult } from "#src/backend/engine/contracts";
+import { Effect } from "effect";
 
-export async function runConditionStep(
-  input: ActionStepInput
-): Promise<{ result: StepResult; conditionValue: boolean }> {
-  const { config, outputs, context, store, runtime } = input;
+export function runConditionStep(input: ActionStepInput) {
+  return Effect.gen(function* () {
+    const { config, outputs, context, store, runtime } = input;
 
-  const stepInput: Record<string, unknown> = {
-    ...config,
-    _context: context,
-  };
+    const stepInput: Record<string, unknown> = {
+      ...config,
+      _context: context,
+    };
 
-  const originalExpression = stepInput.condition;
-  const { result: evaluatedCondition } = evaluateConditionExpression(
-    originalExpression,
-    outputs,
-    config.conditionModel,
-    input.eventName
-  );
-  conditionLogger.debug("Condition evaluation result", {
-    evaluatedCondition,
-  });
+    const originalExpression = stepInput.condition;
+    const { result: evaluatedCondition } = yield* evaluateConditionExpression(
+      originalExpression,
+      outputs,
+      config.conditionModel,
+      input.eventName
+    );
+    yield* Effect.logDebug("Condition evaluation result").pipe(
+      Effect.annotateLogs({ evaluatedCondition })
+    );
 
-  const result = await runWithStepLog(
-    {
-      store,
-      context,
-      runtime,
-      input: {
-        condition: evaluatedCondition,
-        ...(typeof originalExpression === "string"
-          ? { expression: originalExpression }
-          : {}),
+    const result = yield* runWithStepLog(
+      {
+        store,
+        context,
+        runtime,
+        input: {
+          condition: evaluatedCondition,
+          ...(typeof originalExpression === "string"
+            ? { expression: originalExpression }
+            : {}),
+        },
       },
-    },
-    () =>
-      Promise.resolve({
-        success: true,
-        data: { condition: evaluatedCondition },
-      })
-  );
+      () =>
+        Effect.succeed({
+          success: true as const,
+          data: { condition: evaluatedCondition },
+        })
+    );
 
-  return { result, conditionValue: evaluatedCondition };
+    return {
+      result: executionResultFromStepResult(result),
+      conditionValue: evaluatedCondition,
+    };
+  });
 }

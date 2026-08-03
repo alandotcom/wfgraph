@@ -8,6 +8,7 @@
  */
 
 import { type JsonValue, readJsonValue } from "@rova/shared/types/json";
+import { Effect } from "effect";
 import type {
   CompleteRunInput,
   CompleteStepLogInput,
@@ -78,76 +79,91 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     },
 
     startStepLog(input) {
-      calls.push({ method: "startStepLog", input });
-      byMethod.startStepLog.push(input);
-      const logId = `log_${byMethod.startStepLog.length}`;
-      nodeOfLog.set(logId, input.nodeId);
-      return Promise.resolve({ logId, startTime: Date.now() });
+      return Effect.sync(() => {
+        calls.push({ method: "startStepLog", input });
+        byMethod.startStepLog.push(input);
+        const logId = `log_${byMethod.startStepLog.length}`;
+        nodeOfLog.set(logId, input.nodeId);
+        return { logId, startTime: Date.now() };
+      });
     },
 
     completeStepLog(input) {
-      calls.push({ method: "completeStepLog", input });
-      byMethod.completeStepLog.push(input);
-      const nodeId = nodeOfLog.get(input.logId);
-      if (nodeId && input.status === "success") {
-        nodeOutputs[nodeId] = readJsonValue(input.output);
-      }
-      return Promise.resolve();
+      return Effect.sync(() => {
+        calls.push({ method: "completeStepLog", input });
+        byMethod.completeStepLog.push(input);
+        const nodeId = nodeOfLog.get(input.logId);
+        if (nodeId && input.status === "success") {
+          nodeOutputs[nodeId] = readJsonValue(input.output);
+        }
+      });
     },
 
     recordAuditEvent(input) {
-      calls.push({ method: "recordAuditEvent", input });
-      byMethod.recordAuditEvent.push(input);
-      return Promise.resolve();
+      return Effect.sync(() => {
+        calls.push({ method: "recordAuditEvent", input });
+        byMethod.recordAuditEvent.push(input);
+      });
     },
 
     createWaitState(input) {
-      calls.push({ method: "createWaitState", input });
-      byMethod.createWaitState.push(input);
-      return Promise.resolve({
-        waitStateId: `wait_state_${byMethod.createWaitState.length}`,
+      return Effect.sync(() => {
+        calls.push({ method: "createWaitState", input });
+        byMethod.createWaitState.push(input);
+        return {
+          waitStateId: `wait_state_${byMethod.createWaitState.length}`,
+        };
       });
     },
 
     markWaitStateStatus(input) {
-      calls.push({ method: "markWaitStateStatus", input });
-      byMethod.markWaitStateStatus.push(input);
-      return Promise.resolve();
+      return Effect.sync(() => {
+        calls.push({ method: "markWaitStateStatus", input });
+        byMethod.markWaitStateStatus.push(input);
+      });
     },
 
     markExecutionRunning(input) {
-      calls.push({ method: "markExecutionRunning", input });
-      byMethod.markExecutionRunning.push(input);
-      return Promise.resolve();
+      return Effect.sync(() => {
+        calls.push({ method: "markExecutionRunning", input });
+        byMethod.markExecutionRunning.push(input);
+      });
     },
 
     readPendingCancel(executionId) {
-      const input = { executionId };
-      calls.push({ method: "readPendingCancel", input });
-      byMethod.readPendingCancel.push(input);
-      return Promise.resolve(null);
+      return Effect.sync(() => {
+        const input = { executionId };
+        calls.push({ method: "readPendingCancel", input });
+        byMethod.readPendingCancel.push(input);
+        return null;
+      });
     },
 
     completeRun(input) {
-      calls.push({ method: "completeRun", input });
-      byMethod.completeRun.push(input);
-      return Promise.resolve(true);
+      return Effect.sync(() => {
+        calls.push({ method: "completeRun", input });
+        byMethod.completeRun.push(input);
+        return true;
+      });
     },
 
     // Answered from the rows this adapter was asked to close, which is the
     // database's own answer in miniature: a branch run reads what the run above
     // it wrote, and a node whose row never closed is absent here too.
     readNodeOutputs(executionId) {
-      const input = { executionId };
-      calls.push({ method: "readNodeOutputs", input });
-      byMethod.readNodeOutputs.push(input);
-      return Promise.resolve({ ...nodeOutputs });
+      return Effect.sync(() => {
+        const input = { executionId };
+        calls.push({ method: "readNodeOutputs", input });
+        byMethod.readNodeOutputs.push(input);
+        return { ...nodeOutputs };
+      });
     },
 
     cancelOpenWork(input) {
-      calls.push({ method: "cancelOpenWork", input });
-      byMethod.cancelOpenWork.push(input);
-      return Promise.resolve();
+      return Effect.sync(() => {
+        calls.push({ method: "cancelOpenWork", input });
+        byMethod.cancelOpenWork.push(input);
+      });
     },
   };
 }

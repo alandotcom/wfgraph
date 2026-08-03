@@ -171,7 +171,6 @@ export function stubStepEnvironment(
 ): StepEnvironment {
   return {
     credentialsFor: () => Effect.succeed({}),
-    runStep: (effect) => Effect.runPromise(effect),
     ...overrides,
   };
 }
@@ -359,10 +358,10 @@ export function stubInngestClient(
  * A whole `RovaRuntime`, for a test standing up something the app builds from
  * its own.
  *
- * Three things take the runtime rather than a service: the engine's Postgres
- * store, the dispatch port's credential fetch, and the Inngest function list.
- * Each is a Promise boundary the run engine sits behind, so a test of one has no
- * Effect to provide Layers to and needs the runtime itself.
+ * Two app-owned boundaries take the runtime rather than a service: the dispatch
+ * port's credential fetch and the Inngest function list that runs the engine
+ * Effect. A test of either is checking runtime ownership itself, so providing an
+ * individual Layer would hide the behavior under test.
  *
  * Every repository dies on an unnamed method, the same as the stub Layers do, so
  * a subject that reaches a query the test did not account for fails loudly.

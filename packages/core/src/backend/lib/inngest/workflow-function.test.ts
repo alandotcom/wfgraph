@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { InngestTestEngine, InngestTestRun } from "@inngest/test";
 import { Inngest } from "inngest";
+import { Effect } from "effect";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import {
@@ -12,6 +13,7 @@ import {
   createWorkflowBranchFunction,
   createWorkflowRunFunction,
 } from "#src/backend/lib/inngest/workflow-function";
+import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 
 const { executeWorkflowMock } = vi.hoisted(() => ({
   executeWorkflowMock: vi.fn(),
@@ -30,6 +32,9 @@ vi.mock("#src/backend/engine/core", () => ({
 // mocked, so identity is all this file needs from either.
 const testActions = noWorkflowActions;
 const testStore = noopWorkflowStore;
+const testAppRuntime = stubRovaRuntime();
+
+afterAll(() => testAppRuntime.dispose());
 
 /** Records how often the app was asked for a surface, which is per invocation. */
 const buildTestActions = vi.fn(() => testActions);
@@ -37,7 +42,11 @@ const buildTestActions = vi.fn(() => testActions);
 function createTestFunction() {
   return createWorkflowRunFunction(
     new Inngest({ id: "workflow-function-test", isDev: true }),
-    { actions: buildTestActions, store: testStore }
+    {
+      actions: buildTestActions,
+      store: testStore,
+      appRuntime: testAppRuntime,
+    }
   );
 }
 
@@ -47,11 +56,13 @@ async function executeWorkflowFunctionForTest() {
     function: workflowRunRequestedFunction,
   });
 
-  executeWorkflowMock.mockResolvedValueOnce({
-    success: true,
-    outputs: {},
-    results: {},
-  });
+  executeWorkflowMock.mockReturnValueOnce(
+    Effect.succeed({
+      success: true,
+      outputs: {},
+      results: {},
+    })
+  );
 
   const execution = await engine.execute({
     events: [
@@ -98,7 +109,11 @@ describe("the workflow run function", () => {
   it("registers the branch as a function of its own", () => {
     const branchFunction = createWorkflowBranchFunction(
       new Inngest({ id: "workflow-function-test", isDev: true }),
-      { actions: buildTestActions, store: testStore }
+      {
+        actions: buildTestActions,
+        store: testStore,
+        appRuntime: testAppRuntime,
+      }
     );
 
     expect(branchFunction.id()).toBe("workflow-branch");
@@ -113,7 +128,7 @@ describe("the workflow run function", () => {
       workflowId: "workflow_123",
     };
     const expectedResult = { success: true, outputs: {}, results: {} };
-    executeWorkflowMock.mockResolvedValueOnce(expectedResult);
+    executeWorkflowMock.mockReturnValueOnce(Effect.succeed(expectedResult));
 
     const engine = new InngestTestEngine({
       function: workflowRunRequestedFunction,
@@ -155,13 +170,18 @@ describe("the workflow run function", () => {
    * find `createWaitState` declining to park the run at all.
    */
   it("ends a run that failed without asking for another attempt", async () => {
-    executeWorkflowMock.mockResolvedValueOnce({
-      success: false,
-      outputs: {},
-      results: {
-        email_1: { success: false, error: { message: "the vendor said no" } },
-      },
-    });
+    executeWorkflowMock.mockReturnValueOnce(
+      Effect.succeed({
+        success: false,
+        outputs: {},
+        results: {
+          email_1: {
+            success: false,
+            error: { message: "the vendor said no" },
+          },
+        },
+      })
+    );
 
     const testEngine = new InngestTestEngine({
       function: createTestFunction(),

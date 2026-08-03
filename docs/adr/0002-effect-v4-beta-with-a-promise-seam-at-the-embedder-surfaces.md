@@ -322,6 +322,38 @@ once was written once for the six built-ins and not at all for anybody else. The
 repeat-safety rule is the part that matters, because getting it wrong sends a second
 message to a real person.
 
+**Amendment, 2026-08-03 (stage 7 complete).** The engine interior became Effect-native.
+`executeWorkflow` and `executeWorkflowBranch` now answer Effects, and the Inngest handlers
+run the whole invocation on the app's `ManagedRuntime`. The durability runtime, store, and
+action surface remain three explicit arguments rather than Layers: the actions value is
+built per invocation, so its decrypted-credential cache dies with that invocation instead
+of being memoized across concurrent runs.
+
+The persistence port now answers `Effect<A, DatabaseError>`. Its Postgres adapter closes
+over one `ExecutionRepo` resolved when the Inngest functions are assembled and runs no
+runtime of its own. A terminal write keeps its old policy deliberately: a compare-and-set
+loss and a database refusal both suppress the audit event, while the latter remains typed
+until `terminal-record.ts` logs and handles it. Node and fatal failures likewise carry a
+`kind` and safe message through `CompleteRunInput`; the database adapter is the boundary
+that projects that value onto the existing message column.
+
+The database surface is app-owned now, with no module-level handle retaining it. Disposing
+the app closes that app's pool. One Rova per process remains the supported arrangement,
+but shared mutable state no longer enforces it.
+
+Effect logging annotations replaced the logger threaded through the traversal, and
+`Effect.withSpan` replaced the Promise span helper. Both bridge to the host's existing
+logtape and OpenTelemetry configuration. Action dispatch is Effect-native too:
+`Effect.uninterruptible` covers the assembled step, while the Promise adapter that remains
+inside `step.run` is the durability boundary ADR-0004 requires.
+
+Inngest suspension sets four limits on that Effect program. A per-invocation action surface
+cannot be a memoized Layer; finalizers above a suspension are not an end-of-run mechanism;
+forked fibers would leak from an abandoned invocation; and a timeout or race around a
+durability-runtime call would turn Inngest's deliberately unsettled suspension Promise
+into a failure. End-of-run work therefore remains an explicit durable call, and each
+durable `runtime.run` callback runs its Effect with the invocation's current context.
+
 ## Consequences
 
 - Pinning a beta means upgrades are deliberate work: a bump can break compilation, so read

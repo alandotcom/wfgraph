@@ -110,35 +110,19 @@ export type DatabaseSurface = {
   readonly db: RovaDatabase;
   /** The pool underneath, for the startup log line. */
   readonly client: Sql;
-  /** Gives the pool back and releases this process's claim on the database. */
+  /** Gives the app-owned pool back. */
   close: () => Promise<void>;
 };
 
 /**
- * The surface a live app holds, or null when nothing does.
+ * Builds the database surface one app owns.
  *
- * One Rova per process (ADR-0002), and this is the guard that says so: while one
- * surface is open a second is refused, whatever it names. Letting an equivalent
- * config through would put two pools under one claim, and the first app disposed
- * would hand the claim back while the second was still querying, so a third app
- * naming somewhere else would be let in beside it. `close` gives the claim back,
- * which is what lets a host dispose an app and build another, and what keeps a
- * startup failure that already opened a pool from reading as a rebind.
+ * No process-level registry retains the handle. The app threads this value into
+ * its own Layer graph and closes the same pool when disposed.
  */
-let claimedSurface: DatabaseSurface | null = null;
-
 export function createDatabaseSurface(
   config: NormalizedDatabaseConfig
 ): DatabaseSurface {
-  if (claimedSurface) {
-    throw new Error(
-      "A Rova database surface is already open in this process. Dispose the app holding it before creating another, or restart the process."
-    );
-  }
-
-  // The pool is built before the claim is taken: postgres.js checks its options in
-  // the constructor, and a claim taken first would survive a throw with no surface
-  // left to release it.
   const client = createSqlClient(config, {
     max: config.maxConnections,
     applicationName: "rova",
@@ -148,17 +132,9 @@ export function createDatabaseSurface(
     schema: config.schema,
     db: drizzle(client, { schema: tables }),
     client,
-    close: async () => {
-      // Only this surface's own claim: a host that disposes an app twice would
-      // otherwise release the claim of whichever app it built in between.
-      if (claimedSurface === surface) {
-        claimedSurface = null;
-      }
-      await client.end();
-    },
+    close: () => client.end(),
   };
 
-  claimedSurface = surface;
   return surface;
 }
 

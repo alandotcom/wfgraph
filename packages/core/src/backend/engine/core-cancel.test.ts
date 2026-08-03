@@ -8,7 +8,7 @@
  * the status the run ends on.
  */
 
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
@@ -23,7 +23,7 @@ import {
 } from "@rova/shared/conditions/conditions";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
-import { executeWorkflow } from "#src/backend/engine/core";
+import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
@@ -82,12 +82,13 @@ function withCancelAnswers(
   let reads = 0;
   return {
     ...store,
-    readPendingCancel: async (executionId) => {
-      await store.readPendingCancel(executionId);
-      const answer = answers[reads] ?? null;
-      reads += 1;
-      return answer;
-    },
+    readPendingCancel: (executionId) =>
+      Effect.gen(function* () {
+        yield* store.readPendingCancel(executionId);
+        const answer = answers[reads] ?? null;
+        reads += 1;
+        return answer;
+      }),
   };
 }
 

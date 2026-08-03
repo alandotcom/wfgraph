@@ -35,3 +35,16 @@ open without being decided now.
   reconstructed on the far side.
 - Revisiting this stays cheap on the code side. The seam is four functions wide, so the
   real work of a swap sits in whatever would replace Inngest's managed durability.
+
+**Amendment, 2026-08-03.** Stage 7 made the engine Effect-native without changing this
+substrate. The Promise seam now sits only in the durability adapter: a `runtime.run`
+callback runs its Effect with the invocation's current context so Inngest can memoize the
+JSON-safe answer. The Inngest function handler runs the enclosing engine Effect on the
+app's `ManagedRuntime`.
+
+The comparison with `effect/unstable/workflow` also exposed a behavioral difference that
+keeps the rejection above in force. Effect's workflow resumes when any one durable
+deferred completes. Inngest resumes a function invocation at the last of its outstanding
+pauses. That wake policy is why each waiting branch is handed to a separate durable run in
+ADR-0011; replacing the substrate would therefore require replacing that branch hand-off,
+not only implementing storage interfaces.

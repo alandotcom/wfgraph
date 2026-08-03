@@ -12,7 +12,9 @@ import {
   nodesBehindOutlet,
 } from "@rova/shared/lifecycle/lifecycle-outlets";
 import { readLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
-import type { RunLogger } from "#src/backend/engine/contracts";
+import { Effect } from "effect";
+import type { EngineFailure } from "#src/backend/engine/engine-failure";
+import { runDurable } from "#src/backend/engine/durable";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
 import type { Traversal } from "#src/backend/engine/traversal";
@@ -25,7 +27,6 @@ export type CancelBoundaryInput = {
   runtime: WorkflowExecutionRuntime;
   store: WorkflowStore;
   executionId: string;
-  logger: RunLogger;
 };
 
 /**
@@ -136,23 +137,32 @@ export class CancelBoundary {
    * branch and the next down the Canceled one, and the memoized node outputs
    * would then belong to neither.
    */
-  async settle(nodeId: string): Promise<CancelSettlement> {
+  settle(nodeId: string): Effect.Effect<CancelSettlement, EngineFailure> {
     if (!this.canBeCanceled || this.canceledBranchNodeIds.has(nodeId)) {
-      return { entered: false, nextNodes: [] };
+      return Effect.succeed({ entered: false, nextNodes: [] });
     }
 
     const { runtime, store, executionId } = this.input;
-    const pending = await runtime.run(`lifecycle-check-${nodeId}`, () =>
-      store.readPendingCancel(executionId)
+    return Effect.gen(
+      function* (this: CancelBoundary) {
+        const pending = yield* runDurable(
+          runtime,
+          `lifecycle-check-${nodeId}`,
+          store.readPendingCancel(executionId)
+        );
+
+        // A boundary already crossed leaves nothing to schedule: the outlet's
+        // nodes went to whichever node crossed it first.
+        if (!pending || this.entered) {
+          return { entered: this.entered, nextNodes: [] };
+        }
+
+        return {
+          entered: true,
+          nextNodes: yield* this.enter(pending),
+        };
+      }.bind(this)
     );
-
-    // A boundary already crossed leaves nothing to schedule: the outlet's nodes
-    // went to whichever node crossed it first.
-    if (!pending || this.entered) {
-      return { entered: this.entered, nextNodes: [] };
-    }
-
-    return { entered: true, nextNodes: this.enter(pending) };
   }
 
   /**
@@ -164,34 +174,40 @@ export class CancelBoundary {
    * the payload the canceling Event carried. An outlet with no edge leaves
    * nothing to schedule, and the run ends on the status alone.
    */
-  private enter(pending: PendingCancel): readonly string[] {
-    this.entered = true;
-    this.cancelEventName = pending.eventName;
+  private enter(pending: PendingCancel): Effect.Effect<readonly string[]> {
+    return Effect.gen(
+      function* (this: CancelBoundary) {
+        this.entered = true;
+        this.cancelEventName = pending.eventName;
 
-    const { lifecycleNodes, traversal, logger } = this.input;
+        const { lifecycleNodes, traversal } = this.input;
 
-    const nextNodes: string[] = [];
-    for (const lifecycleNode of lifecycleNodes) {
-      traversal.setOutput(lifecycleNode.id, {
-        label: lifecycleNode.data.label || lifecycleNode.id,
-        data: pending.payload,
-      });
-      // The entry node may not have scheduled anything yet, and the branch's
-      // first node waits on it the way any node waits on its source.
-      traversal.markReadyForDownstream(lifecycleNode.id);
-      nextNodes.push(
-        ...traversal.nextNodes(lifecycleNode.id, {
-          kind: "outlet",
-          outlet: LIFECYCLE_CANCELED_HANDLE,
-        })
-      );
-    }
+        const nextNodes: string[] = [];
+        for (const lifecycleNode of lifecycleNodes) {
+          traversal.setOutput(lifecycleNode.id, {
+            label: lifecycleNode.data.label || lifecycleNode.id,
+            data: pending.payload,
+          });
+          // The entry node may not have scheduled anything yet, and the branch's
+          // first node waits on it the way any node waits on its source.
+          traversal.markReadyForDownstream(lifecycleNode.id);
+          nextNodes.push(
+            ...traversal.nextNodes(lifecycleNode.id, {
+              kind: "outlet",
+              outlet: LIFECYCLE_CANCELED_HANDLE,
+            })
+          );
+        }
 
-    logger.info("Entering the Canceled outlet", {
-      cancelEventName: pending.eventName,
-      nextNodeIds: nextNodes,
-    });
+        yield* Effect.logInfo("Entering the Canceled outlet").pipe(
+          Effect.annotateLogs({
+            cancelEventName: pending.eventName,
+            nextNodeIds: nextNodes,
+          })
+        );
 
-    return nextNodes;
+        return nextNodes;
+      }.bind(this)
+    );
   }
 }

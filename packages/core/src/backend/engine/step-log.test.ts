@@ -7,22 +7,17 @@
  * what an operator has to work with.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "@effect/vitest";
+import { vi } from "vitest";
+import { Effect, Layer, Logger, References } from "effect";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { runWithStepLog } from "#src/backend/engine/step-log";
-import type { WorkflowStore } from "#src/backend/engine/store";
-
-const { loggerWarnMock } = vi.hoisted(() => ({ loggerWarnMock: vi.fn() }));
-
-vi.mock("#src/backend/lib/logger", () => ({
-  getAppLogger: () => ({
-    warn: loggerWarnMock,
-    error: vi.fn(),
-    info: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
+import {
+  noopWorkflowStore,
+  type WorkflowStore,
+} from "#src/backend/engine/store";
+import { DatabaseError } from "#src/backend/lib/effect/database";
 
 const context = {
   executionId: "exec_1",
@@ -34,14 +29,34 @@ const context = {
 
 function storeRefusingTheClose(): WorkflowStore {
   return {
-    startStepLog: () => Promise.resolve({ logId: "log_1", startTime: 0 }),
-    completeStepLog: () => Promise.reject(new Error("run log unreachable")),
-  } as unknown as WorkflowStore;
+    ...noopWorkflowStore,
+    startStepLog: () => Effect.succeed({ logId: "log_1", startTime: 0 }),
+    completeStepLog: () =>
+      Effect.fail(
+        new DatabaseError({ cause: new Error("run log unreachable") })
+      ),
+  };
 }
 
-beforeEach(() => {
-  loggerWarnMock.mockClear();
-});
+function recordingLogger() {
+  const lines: {
+    message: unknown;
+    properties: Record<string, unknown>;
+  }[] = [];
+  const logger = Logger.make<unknown, void>(({ fiber, message }) => {
+    lines.push({
+      message: Array.isArray(message) ? message[0] : message,
+      properties: fiber.getRef(References.CurrentLogAnnotations),
+    });
+  });
+  return {
+    lines,
+    layer: Layer.merge(
+      Logger.layer([logger]),
+      Layer.succeed(References.MinimumLogLevel, "All")
+    ),
+  };
+}
 
 /** What the two writes are wrapped in. This file is about the writes, not replay. */
 const runtime = createInMemoryWorkflowRuntime();
@@ -50,24 +65,31 @@ describe("runWithStepLog", () => {
   // The row is now stuck at `running`, and the usual cause is the database
   // itself: a row id alone can only be resolved against the table that just
   // refused a write, and an outage produces a burst of them.
-  it("names the run and the node when the closing write fails", async () => {
-    const result = await runWithStepLog(
-      { store: storeRefusingTheClose(), context, runtime, input: {} },
-      () => Promise.resolve({ success: true, data: { sid: "SM1" } } as const)
-    );
+  it.effect("names the run and the node when the closing write fails", () =>
+    Effect.gen(function* () {
+      const captured = recordingLogger();
+      const result = yield* runWithStepLog(
+        { store: storeRefusingTheClose(), context, runtime, input: {} },
+        () => Effect.succeed({ success: true, data: { sid: "SM1" } } as const)
+      ).pipe(Effect.provide(captured.layer));
 
-    expect(result.success).toBe(true);
-    expect(loggerWarnMock).toHaveBeenCalledWith(
-      "Could not close a run-log row",
-      expect.objectContaining({
-        logId: "log_1",
-        executionId: "exec_1",
-        nodeId: "node_1",
-        nodeName: "Send SMS",
-        status: "success",
-      })
-    );
-  });
+      expect(result.success).toBe(true);
+      expect(captured.lines).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: "Could not close a run-log row",
+            properties: expect.objectContaining({
+              logId: "log_1",
+              executionId: "exec_1",
+              nodeId: "node_1",
+              nodeName: "Send SMS",
+              status: "success",
+            }),
+          }),
+        ])
+      );
+    })
+  );
 });
 
 /**
@@ -80,68 +102,76 @@ describe("runWithStepLog", () => {
  */
 describe("the duration a closed row carries", () => {
   const answer = () =>
-    Promise.resolve({ success: true, data: { sid: "SM1" } } as const);
+    Effect.succeed({ success: true, data: { sid: "SM1" } } as const);
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("leaves the row alone when the body replays inside one attempt", async () => {
-    vi.useFakeTimers();
-    const store = createRecordingWorkflowStore();
-    const memo = new Map<string, unknown>();
-    const target = {
-      store,
-      context,
-      runtime: createInMemoryWorkflowRuntime({ memo }),
-      input: {},
-    };
+  it.effect(
+    "leaves the row alone when the body replays inside one attempt",
+    () =>
+      Effect.gen(function* () {
+        vi.useFakeTimers();
+        const store = createRecordingWorkflowStore();
+        const memo = new Map<string, unknown>();
+        const target = {
+          store,
+          context,
+          runtime: createInMemoryWorkflowRuntime({ memo }),
+          input: {},
+        };
 
-    await runWithStepLog(target, () => {
-      vi.advanceTimersByTime(200);
-      return answer();
-    });
+        yield* runWithStepLog(target, () => {
+          vi.advanceTimersByTime(200);
+          return answer();
+        });
 
-    // The run parks on a Wait downstream, and an hour later the whole body is
-    // replayed: same memo, so the open is a hit and the row is the same one.
-    // The work comes back out of the memo, so a second close would record the
-    // near-zero elapsed of a replay over the 200 the attempt really took.
-    vi.advanceTimersByTime(3_600_000);
+        // The run parks on a Wait downstream, and an hour later the whole body is
+        // replayed: same memo, so the open is a hit and the row is the same one.
+        // The work comes back out of the memo, so a second close would record the
+        // near-zero elapsed of a replay over the 200 the attempt really took.
+        vi.advanceTimersByTime(3_600_000);
 
-    await runWithStepLog(target, () => answer());
+        yield* runWithStepLog(target, answer);
 
-    const closes = store.callsOf("completeStepLog");
-    expect(closes.map((close) => close.logId)).toEqual(["log_1"]);
-    expect(closes.map((close) => close.durationMs)).toEqual([200]);
-  });
+        const closes = store.callsOf("completeStepLog");
+        expect(closes.map((close) => close.logId)).toEqual(["log_1"]);
+        expect(closes.map((close) => close.durationMs)).toEqual([200]);
+      })
+  );
 
-  it("times each attempt's own work rather than everything since the row opened", async () => {
-    vi.useFakeTimers();
-    const store = createRecordingWorkflowStore();
-    const memo = new Map<string, unknown>();
-    const target = (attempt: number) => ({
-      store,
-      context,
-      runtime: createInMemoryWorkflowRuntime({ memo, attempt }),
-      input: {},
-    });
+  it.effect(
+    "times each attempt's own work rather than everything since the row opened",
+    () =>
+      Effect.gen(function* () {
+        vi.useFakeTimers();
+        const store = createRecordingWorkflowStore();
+        const memo = new Map<string, unknown>();
+        const target = (attempt: number) => ({
+          store,
+          context,
+          runtime: createInMemoryWorkflowRuntime({ memo, attempt }),
+          input: {},
+        });
 
-    await runWithStepLog(target(0), () => {
-      vi.advanceTimersByTime(200);
-      return answer();
-    });
+        yield* runWithStepLog(target(0), () => {
+          vi.advanceTimersByTime(200);
+          return answer();
+        });
 
-    // A retry an hour on, which reaches the same row and is entitled to correct
-    // what the first attempt wrote.
-    vi.advanceTimersByTime(3_600_000);
+        // A retry an hour on, which reaches the same row and is entitled to correct
+        // what the first attempt wrote.
+        vi.advanceTimersByTime(3_600_000);
 
-    await runWithStepLog(target(1), () => {
-      vi.advanceTimersByTime(5);
-      return answer();
-    });
+        yield* runWithStepLog(target(1), () => {
+          vi.advanceTimersByTime(5);
+          return answer();
+        });
 
-    const closes = store.callsOf("completeStepLog");
-    expect(closes.map((close) => close.logId)).toEqual(["log_1", "log_1"]);
-    expect(closes.map((close) => close.durationMs)).toEqual([200, 5]);
-  });
+        const closes = store.callsOf("completeStepLog");
+        expect(closes.map((close) => close.logId)).toEqual(["log_1", "log_1"]);
+        expect(closes.map((close) => close.durationMs)).toEqual([200, 5]);
+      })
+  );
 });

@@ -8,11 +8,16 @@ import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { Effect, Schema } from "effect";
+import { DatabaseError } from "#src/backend/lib/effect/database";
 import { unknownRest } from "@rova/shared/types/schema";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { WorkflowNode } from "@rova/shared/graph/types";
-import { executeWorkflow } from "#src/backend/engine/core";
-import { executionData, executionError } from "#src/backend/engine/contracts";
+import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
+import {
+  executionData,
+  executionError,
+  executionFailure,
+} from "#src/backend/engine/contracts";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
@@ -405,8 +410,57 @@ describe("run persistence through the store port", () => {
 
     const completions = store.callsOf("completeRun");
     expect(completions[0]?.status).toBe("failed");
-    expect(completions[0]?.error).toBe("boom");
+    expect(completions[0]?.failure).toEqual({
+      kind: "failure",
+      message: "boom",
+    });
     expect(store.callsOf("recordAuditEvent")[0]?.eventType).toBe("run_failed");
+  });
+
+  it("records an unchecked engine exception as a defect", async () => {
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createLifecycleNode("lifecycle_1"),
+        createHostActionNode("action_1", ""),
+      ],
+      edges: [
+        {
+          id: "edge_1",
+          source: "lifecycle_1",
+          sourceHandle: "started",
+          target: "action_1",
+        },
+      ],
+    });
+    const actionsWithBrokenCatalog: typeof actions = {
+      stepFor: actions.stepFor,
+      metadataFor: () => {
+        throw new Error("catalog invariant broke");
+      },
+    };
+
+    const result = await executeWorkflow(
+      {
+        graph,
+        executionId: "exec_defect",
+        workflowId: "workflow_defect",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actionsWithBrokenCatalog
+    );
+
+    expect(result.results.action_1).toEqual({
+      success: false,
+      error: {
+        kind: "defect",
+        message: "catalog invariant broke",
+      },
+    });
+    expect(store.callsOf("completeRun")[0]?.failure).toEqual({
+      kind: "defect",
+      message: "catalog invariant broke",
+    });
   });
 
   it("labels a test-mode run in its timeline message", async () => {
@@ -428,7 +482,7 @@ describe("run persistence through the store port", () => {
   });
 
   /**
-   * A store that answers one of its writes with a rejection, the way an
+   * A store that answers one of its writes with `DatabaseError`, the way an
    * unreachable database does.
    */
   function storeRefusing(
@@ -438,7 +492,10 @@ describe("run persistence through the store port", () => {
       | "recordAuditEvent"
       | "completeRun"
   ): RecordingWorkflowStore {
-    const refusal = () => Promise.reject(new Error("run log unreachable"));
+    const refusal = () =>
+      Effect.fail(
+        new DatabaseError({ cause: new Error("run log unreachable") })
+      );
     return { ...store, [method]: refusal };
   }
 
@@ -485,8 +542,51 @@ describe("run persistence through the store port", () => {
     expect(handlerFn).toHaveBeenCalledTimes(0);
     expect(result.success).toBe(false);
     expect(executionError(result.results.lifecycle_1)).toBe(
-      "run log unreachable"
+      "DatabaseError: run log unreachable"
     );
+  });
+
+  it("preserves a defect raised inside a durable runtime callback", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createLifecycleToActionGraph(),
+        executionId: "exec_durable_defect",
+        workflowId: "workflow_durable_defect",
+      },
+      createInMemoryWorkflowRuntime(),
+      {
+        ...store,
+        startStepLog: () =>
+          Effect.die(new Error("durable callback invariant broke")),
+      },
+      actions
+    );
+
+    expect(executionFailure(result.results.lifecycle_1)).toEqual({
+      kind: "defect",
+      message: "durable callback invariant broke",
+    });
+  });
+
+  it("preserves an interrupt raised inside a durable runtime callback", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createLifecycleToActionGraph(),
+        executionId: "exec_durable_interrupt",
+        workflowId: "workflow_durable_interrupt",
+      },
+      createInMemoryWorkflowRuntime(),
+      {
+        ...store,
+        startStepLog: () => Effect.interrupt,
+      },
+      actions
+    );
+
+    expect(executionFailure(result.results.lifecycle_1)).toEqual({
+      kind: "interrupt",
+      message: "Workflow execution was interrupted",
+    });
   });
 
   // Both terminal writes sit inside the step that settles the run's outcome, so
@@ -508,8 +608,8 @@ describe("run persistence through the store port", () => {
     expect(store.callsOf("completeRun")[0]?.status).toBe("completed");
   });
 
-  // The port forbids a rejection here, so this is an adapter breaking its word.
-  // The engine reads it as the unclaimed row it stands for.
+  // Terminal-record folds a refused database write into the same false answer
+  // as a terminal race, after logging the different cause.
   it("announces nothing on the timeline when the terminal row is refused", async () => {
     const result = await executeWorkflow(
       {
@@ -549,14 +649,17 @@ describe("run persistence through the store port", () => {
     expect(result.success).toBe(false);
     expect(executionError(result.results.action_1)).toBe("boom");
     expect(store.callsOf("completeRun")).toHaveLength(1);
-    expect(store.callsOf("completeRun")[0]?.error).toBe("boom");
+    expect(store.callsOf("completeRun")[0]?.failure).toEqual({
+      kind: "failure",
+      message: "boom",
+    });
   });
 
   // Every seam failure the backend answers with is a `Schema.TaggedErrorClass`,
   // which carries its text on `cause` and leaves `.message` empty. A row closed
   // with that message alone is a red node with no sentence beside it.
   it("closes a node's row with a sentence when the error carries an empty message", async () => {
-    class DatabaseError extends Error {
+    class EmptyMessageDatabaseError extends Error {
       constructor(cause: unknown) {
         super("", { cause });
         this.name = "DatabaseError";
@@ -564,7 +667,7 @@ describe("run persistence through the store port", () => {
     }
 
     handlerFn.mockImplementation(() => {
-      throw new DatabaseError(new Error("connection terminated"));
+      throw new EmptyMessageDatabaseError(new Error("connection terminated"));
     });
 
     await executeWorkflow(
@@ -635,10 +738,7 @@ describe("run persistence through the store port", () => {
   function storeClaimingNothing(): RecordingWorkflowStore {
     return {
       ...store,
-      completeRun: (input) => {
-        store.completeRun(input);
-        return Promise.resolve(false);
-      },
+      completeRun: (input) => Effect.as(store.completeRun(input), false),
     };
   }
 

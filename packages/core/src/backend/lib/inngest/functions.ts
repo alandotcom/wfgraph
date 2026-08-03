@@ -1,8 +1,10 @@
 import type { Inngest, InngestFunction } from "inngest";
+import { Effect } from "effect";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
 import type { RovaRuntime } from "#src/backend/runtime";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 // Static, now that the id helper the app assembly needs has moved to a leaf of
 // its own: this import is the only reason the delivery stack loads, and this
 // module is on the path of a request that serves it anyway.
@@ -35,10 +37,18 @@ export async function buildInngestFunctions(
   client: Inngest,
   runtime: RovaRuntime
 ): Promise<InngestFunction.Any[]> {
-  const extensions = await runtime.runPromise(Extensions);
+  const { extensions, executionRepo } = await runtime.runPromise(
+    Effect.gen(function* () {
+      return {
+        extensions: yield* Extensions,
+        executionRepo: yield* ExecutionRepo,
+      };
+    })
+  );
   const ports = {
     actions: () => createWorkflowActions(extensions, runtime),
-    store: createDbWorkflowStore(runtime),
+    store: createDbWorkflowStore(executionRepo),
+    appRuntime: runtime,
   };
 
   return [

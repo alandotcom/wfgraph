@@ -33,6 +33,7 @@ import {
   workflowRunCancelRequested,
   workflowRunRequested,
 } from "#src/backend/lib/inngest/events";
+import type { RovaRuntime } from "#src/backend/runtime";
 
 function toDurationString(milliseconds: number): string {
   const seconds = Math.max(1, Math.ceil(milliseconds / 1000));
@@ -180,10 +181,13 @@ async function workflowRunRequestedHandler({
   attempt,
   actions,
   store,
+  appRuntime,
 }: {
   event: { data: typeof workflowExecutionInputSchema.Type };
   actions: WorkflowActions;
   store: WorkflowStore;
+  /** The application boundary that runs the whole engine Effect. */
+  appRuntime: RovaRuntime;
   /** Zero on the first attempt of this body, and one higher on each retry. */
   attempt: number;
   step: DurableStep;
@@ -192,11 +196,13 @@ async function workflowRunRequestedHandler({
 
   // The engine persists nothing and implements nothing on its own: the store
   // and the dispatch port are the app's, built where the function was.
-  const result = await executeWorkflow(
-    data,
-    createDurableRuntime({ step, attempt, data }),
-    store,
-    actions
+  const result = await appRuntime.runPromise(
+    executeWorkflow(
+      data,
+      createDurableRuntime({ step, attempt, data }),
+      store,
+      actions
+    )
   );
   if (!result.success) {
     // A run that died carries one sentence; a run that finished with failed
@@ -241,10 +247,12 @@ async function workflowBranchRequestedHandler({
   attempt,
   actions,
   store,
+  appRuntime,
 }: {
   event: { data: typeof workflowBranchInputSchema.Type };
   actions: WorkflowActions;
   store: WorkflowStore;
+  appRuntime: RovaRuntime;
   attempt: number;
   step: DurableStep;
 }) {
@@ -252,11 +260,13 @@ async function workflowBranchRequestedHandler({
   // dropped here rather than carried onto whatever branch this one hands off.
   const data: WorkflowBranchInput = omit(event.data, [INNGEST_META_KEY]);
 
-  return await executeWorkflowBranch(
-    data,
-    createDurableRuntime({ step, attempt, data }),
-    store,
-    actions
+  return await appRuntime.runPromise(
+    executeWorkflowBranch(
+      data,
+      createDurableRuntime({ step, attempt, data }),
+      store,
+      actions
+    )
   );
 }
 
@@ -272,6 +282,8 @@ type WorkflowFunctionPorts = {
   actions: () => WorkflowActions;
   /** Where a run's rows go, built by the app from its own runtime. */
   store: WorkflowStore;
+  /** Runs the engine Effect at the outer Inngest execution boundary. */
+  appRuntime: RovaRuntime;
 };
 
 /**
@@ -335,6 +347,7 @@ export function createWorkflowRunFunction(
         ...context,
         actions: input.actions(),
         store: input.store,
+        appRuntime: input.appRuntime,
       })
   );
 }
@@ -376,6 +389,7 @@ export function createWorkflowBranchFunction(
         ...context,
         actions: input.actions(),
         store: input.store,
+        appRuntime: input.appRuntime,
       })
   );
 }

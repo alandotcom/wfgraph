@@ -144,14 +144,18 @@ describe("assembleExtensions", () => {
     const step = set.stepFor("appointments/cancel")?.(stubStepEnvironment());
 
     expect(
-      await step?.({
-        appointmentId: "appt_1",
-        _context: {
-          nodeId: "action_1",
-          nodeName: "Cancel",
-          nodeType: "action",
-        },
-      })
+      step
+        ? await Effect.runPromise(
+            step({
+              appointmentId: "appt_1",
+              _context: {
+                nodeId: "action_1",
+                nodeName: "Cancel",
+                nodeType: "action",
+              },
+            })
+          )
+        : undefined
     ).toEqual({
       success: true,
       data: { echoed: { appointmentId: "appt_1" } },
@@ -372,18 +376,23 @@ describe("assembleExtensions and an integration definition", () => {
 
   it("answers the step for an action id, and nothing for one it does not hold", async () => {
     const set = assembleExtensions({ integrations: [aDefinition("twilio")] });
+    const step = set.stepFor("twilio/send-sms")?.(stubStepEnvironment());
 
     expect(
-      await set.stepFor("twilio/send-sms")?.(stubStepEnvironment())({
-        to: "+15550001111",
-        _context: {
-          executionId: "exec_1",
-          nodeId: "n1",
-          nodeName: "Send SMS",
-          nodeType: "action",
-          runMode: "live",
-        },
-      })
+      step
+        ? await Effect.runPromise(
+            step({
+              to: "+15550001111",
+              _context: {
+                executionId: "exec_1",
+                nodeId: "n1",
+                nodeName: "Send SMS",
+                nodeType: "action",
+                runMode: "live",
+              },
+            })
+          )
+        : undefined
     ).toEqual({
       success: true,
       data: { sid: "SM1" },

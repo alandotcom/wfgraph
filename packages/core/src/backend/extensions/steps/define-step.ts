@@ -119,10 +119,7 @@ type DurableRemember = <T>(
  * it memoizes the bare value, and a throw escapes without a stored entry so a
  * function-level retry re-runs the step (Inngest's model for transient errors).
  */
-export function nodeStepApi(
-  app: StepEnvironment,
-  steps: NodeSteps | undefined
-): NodeStepApi {
+export function nodeStepApi(steps: NodeSteps | undefined): NodeStepApi {
   // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- JsonSafe was enforced on the author's value at `run`
   const memoize = steps?.run as DurableRemember | undefined;
 
@@ -140,32 +137,36 @@ export function nodeStepApi(
     stepId: string,
     work: Effect.Effect<A, StepFailure, HttpClient.HttpClient>
   ): Effect.Effect<A, StepFailure> =>
-    Effect.suspend(() =>
-      Effect.flatMap(
-        Effect.promise(() =>
-          // A plain shape rather than the `Result` itself: what the runtime
-          // stores round-trips through JSON, and an Effect data type does not
-          // survive that.
-          remember(stepId, () =>
-            app.runStep(
-              Effect.map(
-                Effect.result(Effect.provide(work, ExternalTransport)),
-                (answered): RememberedStep<A> =>
-                  Result.isFailure(answered)
-                    ? { ok: false, message: answered.failure.message }
-                    : { ok: true, value: answered.success }
-              )
+    Effect.gen(function* () {
+      const effectContext = yield* Effect.context();
+      const answered = yield* Effect.promise(() =>
+        // The durability API is Promise-shaped. Running the work on the
+        // invocation's current context keeps this the only adapter inside the
+        // action rather than starting another managed-runtime fiber.
+        remember(stepId, () =>
+          Effect.runPromiseWith(effectContext)(
+            // A plain shape rather than the `Result` itself: what the runtime
+            // stores round-trips through JSON, and an Effect data type does not
+            // survive that.
+            Effect.map(
+              Effect.result(Effect.provide(work, ExternalTransport)),
+              (result): RememberedStep<A> =>
+                Result.isFailure(result)
+                  ? { ok: false, message: result.failure.message }
+                  : { ok: true, value: result.success }
             )
           )
-        ),
-        (answered) =>
-          answered.ok
-            ? Effect.succeed(answered.value)
-            : // Rebuilt rather than passed on: the value crossed JSON, so what
-              // arrives on a replay is the message and not the class.
-              Effect.fail(new StepFailure({ message: answered.message }))
-      )
-    );
+        )
+      );
+
+      if (answered.ok) {
+        return answered.value;
+      }
+
+      // Rebuilt rather than passed on: the value crossed JSON, so what arrives
+      // on a replay is the message and not the class.
+      return yield* new StepFailure({ message: answered.message });
+    });
 
   function run<A>(
     stepId: string,
@@ -480,7 +481,7 @@ export function buildStep<TInput, TOutput>(
             ...toHandlerBag(input, context, integrationId),
             credentials,
             readCredentials: () => runToPromise(credentials),
-            step: nodeStepApi(app, steps),
+            step: nodeStepApi(steps),
           }),
         catch: toFailure,
       });
@@ -501,9 +502,9 @@ export function buildStep<TInput, TOutput>(
     }).pipe(
       Effect.map((data): StepResult => ({ success: true, data })),
       // Only the failure this step can answer for becomes the envelope. A
-      // `CredentialsUnavailable` stays in the error channel, where the app's
-      // `runStep` turns it into a rejection, and the engine fails the node on
-      // it: the message then names the credential store rather than the step.
+      // `CredentialsUnavailable` stays in the error channel, where the action
+      // dispatch port turns it into an engine failure: the message then names
+      // the credential store rather than the step.
       Effect.catchTag(
         "StepFailure",
         (failure): Effect.Effect<StepResult> =>
@@ -514,7 +515,7 @@ export function buildStep<TInput, TOutput>(
   }
 
   return (app) => (rawInput, node) =>
-    app.runStep(
+    Effect.uninterruptible(
       runStep(app, rawInput, readStepContext(rawInput._context), node)
     );
 }

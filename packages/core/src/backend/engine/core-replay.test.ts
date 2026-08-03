@@ -18,7 +18,7 @@ import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
-import { executeWorkflow } from "#src/backend/engine/core";
+import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,

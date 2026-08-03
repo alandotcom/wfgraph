@@ -13,7 +13,9 @@
  * `WorkflowExecutionRuntime` in ./runtime covers durability.
  */
 
-import type { StepFunction } from "@rova/shared/actions/step-result";
+import type { Effect } from "effect";
+import type { NodeSteps, StepResult } from "@rova/shared/actions/step-result";
+import type { EngineFailure } from "#src/backend/engine/engine-failure";
 
 /** What the catalog says about an action, as the run needs it. */
 export type ActionRunMetadata = {
@@ -29,9 +31,15 @@ export type ActionRunMetadata = {
   literalConfigKeys: readonly string[];
 };
 
+/** An assembled action in the Effect-native shape the engine dispatches. */
+export type WorkflowAction = (
+  input: Record<string, unknown>,
+  steps?: NodeSteps
+) => Effect.Effect<StepResult, EngineFailure>;
+
 export type WorkflowActions = {
   /** The step for an action id, or undefined when nothing was assembled with it. */
-  stepFor: (actionType: string) => StepFunction | undefined;
+  stepFor: (actionType: string) => WorkflowAction | undefined;
   /** What the catalog holds for an action, or undefined for one it never heard of. */
   metadataFor: (actionType: string) => ActionRunMetadata | undefined;
 };

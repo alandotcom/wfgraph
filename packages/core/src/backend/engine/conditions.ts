@@ -4,7 +4,6 @@
  */
 
 import { evaluateCompiledCondition } from "#src/backend/lib/cel/condition-payload";
-import { getAppLogger } from "#src/backend/lib/logger";
 import {
   collectTimestampFieldPaths,
   parseConditionModel,
@@ -12,10 +11,7 @@ import {
 import { unwrapStepOutput } from "@rova/shared/graph/node-references";
 import type { JsonObject, JsonValue } from "@rova/shared/types/json";
 import type { NodeOutputs } from "#src/backend/engine/contracts";
-
-export const conditionLogger = getAppLogger("workflow", "executor").getChild(
-  "condition"
-);
+import { Effect } from "effect";
 
 type ConditionEvalResult = {
   result: boolean;
@@ -69,16 +65,20 @@ function mergeConditionContextValue(context: JsonObject, value: JsonValue) {
  * belongs to a node that never should have run; the condition still evaluates,
  * against a context where timestamps stay strings.
  */
-function readConditionTimestampPaths(conditionModel: unknown): string[] {
+function readConditionTimestampPaths(
+  conditionModel: unknown
+): Effect.Effect<string[]> {
   const parsed = parseConditionModel(conditionModel);
   if (!parsed.valid) {
-    conditionLogger.warn("Condition model did not parse", {
-      error: parsed.error,
-    });
-    return [];
+    return Effect.as(
+      Effect.logWarning("Condition model did not parse").pipe(
+        Effect.annotateLogs({ error: parsed.error })
+      ),
+      []
+    );
   }
 
-  return collectTimestampFieldPaths(parsed.model);
+  return Effect.succeed(collectTimestampFieldPaths(parsed.model));
 }
 
 export function evaluateConditionExpression(
@@ -87,46 +87,50 @@ export function evaluateConditionExpression(
   conditionModel: unknown,
   /** The Event that put the run on the branch this node sits on. */
   eventName: string | null
-): ConditionEvalResult {
-  conditionLogger.debug("Evaluating condition expression", {
-    conditionExpression,
-  });
+): Effect.Effect<ConditionEvalResult> {
+  return Effect.gen(function* () {
+    yield* Effect.logDebug("Evaluating condition expression").pipe(
+      Effect.annotateLogs({ conditionExpression })
+    );
 
-  if (typeof conditionExpression === "boolean") {
-    return { result: conditionExpression };
-  }
+    if (typeof conditionExpression === "boolean") {
+      return { result: conditionExpression };
+    }
 
-  if (typeof conditionExpression !== "string") {
-    conditionLogger.warn("Condition is neither boolean nor string", {
-      conditionExpression,
+    if (typeof conditionExpression !== "string") {
+      yield* Effect.logWarning("Condition is neither boolean nor string").pipe(
+        Effect.annotateLogs({ conditionExpression })
+      );
+      return { result: false };
+    }
+
+    const expression = conditionExpression.trim();
+    if (!expression) {
+      return { result: false };
+    }
+
+    const merged: JsonObject = {};
+    for (const output of Object.values(outputs)) {
+      mergeConditionContextValue(merged, output.data);
+    }
+
+    const evaluation = evaluateCompiledCondition({
+      expression,
+      timestampPaths: yield* readConditionTimestampPaths(conditionModel),
+      payload: merged,
+      eventName,
     });
-    return { result: false };
-  }
 
-  const expression = conditionExpression.trim();
-  if (!expression) {
-    return { result: false };
-  }
+    if (!evaluation.ok) {
+      yield* Effect.logError("CEL condition evaluation failed").pipe(
+        Effect.annotateLogs({
+          error: evaluation.error,
+          conditionExpression,
+        })
+      );
+      return { result: false };
+    }
 
-  const merged: JsonObject = {};
-  for (const output of Object.values(outputs)) {
-    mergeConditionContextValue(merged, output.data);
-  }
-
-  const evaluation = evaluateCompiledCondition({
-    expression,
-    timestampPaths: readConditionTimestampPaths(conditionModel),
-    payload: merged,
-    eventName,
+    return { result: evaluation.value };
   });
-
-  if (!evaluation.ok) {
-    conditionLogger.error("CEL condition evaluation failed", {
-      error: evaluation.error,
-      conditionExpression,
-    });
-    return { result: false };
-  }
-
-  return { result: evaluation.value };
 }

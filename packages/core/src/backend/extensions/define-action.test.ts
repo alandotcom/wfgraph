@@ -15,6 +15,7 @@ import type {
   StandardJSONSchemaV1,
   StandardSchemaV1,
 } from "@standard-schema/spec";
+import type { NodeSteps } from "@rova/shared/actions/step-result";
 import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import {
   type ActionDefinition,
@@ -33,7 +34,9 @@ const stepContext = {
 
 /** The action as the engine calls it: the step the app has already bound. */
 function run(action: ActionDefinition) {
-  return action.implement(stubStepEnvironment());
+  const step = action.implement(stubStepEnvironment());
+  return (input: Record<string, unknown>, steps?: NodeSteps) =>
+    Effect.runPromise(step(input, steps));
 }
 
 /** One call through the whole seam, with the context the engine always supplies. */
