@@ -54,14 +54,12 @@ function rewriteEmptyAnyOf(issue: SchemaIssue.Issue): SchemaIssue.Issue {
   }
 
   if (issue instanceof SchemaIssue.Composite) {
-    return new SchemaIssue.Composite(
-      issue.ast,
-      issue.actual,
-      issue.issues.map(rewriteEmptyAnyOf) as [
-        SchemaIssue.Issue,
-        ...Array<SchemaIssue.Issue>,
-      ]
-    );
+    const [first, ...rest] = issue.issues.map(rewriteEmptyAnyOf);
+    if (first === undefined) {
+      return issue;
+    }
+
+    return new SchemaIssue.Composite(issue.ast, issue.actual, [first, ...rest]);
   }
 
   if (issue instanceof SchemaIssue.Pointer) {
@@ -165,7 +163,19 @@ function expectedTypeName(ast: SchemaAST.AST): string {
   }
 
   if (SchemaAST.isUnion(ast)) {
-    return ast.types.map(expectedTypeName).join(" | ");
+    // A JSON codec rewrites `optional(X)` so the Undefined arm encodes as Null;
+    // Effect's own expected label follows that link (`string | null`). Walk the
+    // encoded form so a refused `undefined` still names what the wire allows.
+    const annotated = ast.annotations?.expected;
+    if (typeof annotated === "string") {
+      return annotated;
+    }
+
+    return Array.from(
+      new Set(
+        ast.types.map((type) => expectedTypeName(SchemaAST.toEncoded(type)))
+      )
+    ).join(" | ");
   }
 
   return "a valid value";

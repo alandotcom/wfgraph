@@ -31,9 +31,7 @@ describe("formatSchemaFailure", () => {
     expect(message).not.toContain(secret);
     expect(message).not.toContain("sk-live-");
     expect(message.length).toBeLessThan(120);
-    expect(message).toBe(
-      "<root>: Expected an object | an object, got an object"
-    );
+    expect(message).toBe("<root>: Expected an object, got an object");
   });
 
   it("still honours a message annotation on a no-match union", () => {
@@ -75,6 +73,6 @@ describe("formatSchemaFailure", () => {
     const message = formatSchemaFailurePaths(result.failure.issue);
 
     expect(message).not.toContain("sk-live-do-not-echo-this");
-    expect(message).toBe("<root>: Expected an object | an object");
+    expect(message).toBe("<root>: Expected an object");
   });
 });
