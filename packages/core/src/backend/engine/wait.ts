@@ -11,10 +11,7 @@
 
 import { Effect } from "effect";
 import { readWaitConfig } from "@rova/shared/lifecycle/wait-subscription";
-import {
-  closeStepLog,
-  openStepLog,
-} from "#src/backend/engine/step-log";
+import { closeStepLog, openStepLog } from "#src/backend/engine/step-log";
 import { runDurable } from "#src/backend/engine/durable";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 import { executeDelayWait } from "#src/backend/engine/wait-delay";
@@ -137,4 +134,3 @@ function executeWaitActionInner(
     return yield* executeEventWait(branch);
   });
 }
-

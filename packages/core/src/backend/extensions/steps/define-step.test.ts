@@ -2,7 +2,6 @@ import { Effect, Schema } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   defineStep,
-  type NodeStepApi,
   StepFailure,
 } from "#src/backend/extensions/steps/define-step";
 import {
