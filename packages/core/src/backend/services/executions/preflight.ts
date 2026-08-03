@@ -263,26 +263,3 @@ export const loadWorkflowForRun = Effect.fn("loadWorkflowForRun")(function* (
 
   return { workflow, preflight };
 });
-
-/**
- * Load a subscriber's published version for an Event fan-out.
- *
- * Returns null when the workflow is gone or has never been published, which the
- * fan-out turns into a skipped workflow rather than a failure.
- */
-export const loadPublishedVersionForDelivery = Effect.fn(
-  "loadPublishedVersionForDelivery"
-)(function* (workflowId: string) {
-  const repo = yield* WorkflowRepo;
-  const workflow = yield* repo.findById(workflowId);
-  if (!workflow) {
-    return null;
-  }
-
-  const version = yield* repo.findPublishedVersion(workflowId);
-  if (!version) {
-    return null;
-  }
-
-  return { workflow, version };
-});
