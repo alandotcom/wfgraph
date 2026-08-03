@@ -60,8 +60,8 @@ dist/
 # Impeccable live-mode session journals: local recovery state, not project source
 **/.impeccable/live/sessions/
 
-# Reference checkouts cloned by scripts/prepare-effect.sh so agents can read
-# Effect's real source; a build input, never project source
+# Reference checkouts cloned by scripts/prepare-effect.sh (local/agent only)
+# so agents can read Effect's real source; never a CI or build input
 .repos/effect
 
 # Worktrees an agent creates to work on an isolated copy of the repo. A second
