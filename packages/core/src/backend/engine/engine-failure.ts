@@ -1,4 +1,4 @@
-import { Cause, Context, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Context, Effect, Exit, Option, Result, Schema } from "effect";
 import { getErrorMessage } from "@rova/shared/utils";
 
 export type EngineFailureKind = "failure" | "defect" | "interrupt";
@@ -45,20 +45,25 @@ export function failureFromUnknown(error: unknown): EngineFailure {
 /**
  * Reduces a full Effect cause at the node or run boundary.
  *
- * Defects outrank interrupts, and interrupts outrank typed failures, so a
- * combined cause preserves the invariant failure that triggered cancellation.
+ * Defects outrank typed failures, and a typed failure outranks a concurrent
+ * interruption. Only an interruption-only cause becomes an interrupted run.
  */
 export function failureFromCause<E>(cause: Cause.Cause<E>): EngineFailure {
-  if (Cause.hasDies(cause)) {
-    return engineFailure("defect", getErrorMessage(Cause.squash(cause)));
-  }
-
-  if (Cause.hasInterrupts(cause)) {
-    return engineFailure("interrupt", "Workflow execution was interrupted");
+  const defect = Cause.findDefect(cause);
+  if (Result.isSuccess(defect)) {
+    return engineFailure("defect", getErrorMessage(defect.success));
   }
 
   const failure = Option.getOrUndefined(Cause.findErrorOption(cause));
-  return failureFromUnknown(failure);
+  if (failure !== undefined) {
+    return failureFromUnknown(failure);
+  }
+
+  if (Cause.hasInterruptsOnly(cause)) {
+    return engineFailure("interrupt", "Workflow execution was interrupted");
+  }
+
+  return engineFailure("failure", getErrorMessage(Cause.squash(cause)));
 }
 
 /**

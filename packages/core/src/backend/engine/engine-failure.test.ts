@@ -50,4 +50,30 @@ describe("engine failure classification", () => {
         });
       })
   );
+
+  it.effect("keeps a typed failure alongside interruption", () =>
+    Effect.sync(() => {
+      const failure = engineFailure("failure", "The vendor refused the call");
+      const cause = Cause.fromReasons([
+        Cause.makeFailReason(failure),
+        Cause.makeInterruptReason(),
+      ]);
+
+      assert.deepStrictEqual(failureFromCause(cause), failure);
+    })
+  );
+
+  it.effect("takes a defect's message over a typed failure", () =>
+    Effect.sync(() => {
+      const cause = Cause.fromReasons([
+        Cause.makeFailReason(engineFailure("failure", "ordinary refusal")),
+        Cause.makeDieReason(new Error("broken invariant")),
+      ]);
+
+      assert.deepStrictEqual(failureFromCause(cause), {
+        kind: "defect",
+        message: "broken invariant",
+      });
+    })
+  );
 });
