@@ -127,14 +127,16 @@ const readTypeName = readAs(
 
 /** Reads the members of an `anyOf`/`oneOf`/`allOf`, each one tolerated alone. */
 function readNodeBranches(
-  value: unknown
+  value: unknown,
+  seen: WeakSet<object>
 ): (JsonSchemaNode | undefined)[] | undefined {
   const branches = readUnknownArray(value);
-  return branches?.map(readJsonSchemaNode);
+  return branches?.map((branch) => readJsonSchemaNode(branch, seen));
 }
 
 function readJsonSchemaProperties(
-  value: unknown
+  value: unknown,
+  seen: WeakSet<object>
 ): JsonSchemaProperties | undefined {
   const properties = readObject(value);
   if (!properties) {
@@ -143,12 +145,33 @@ function readJsonSchemaProperties(
 
   const out: JsonSchemaProperties = {};
   for (const [key, property] of Object.entries(properties)) {
-    out[key] = readJsonSchemaNode(property);
+    out[key] = readJsonSchemaNode(property, seen);
   }
   return out;
 }
 
-function readJsonSchemaNode(value: unknown): JsonSchemaNode | undefined {
+/**
+ * A JSON Schema node, or `undefined` when the value is not an object or when
+ * this walk has already seen it.
+ *
+ * A cyclic in-memory document (two nodes pointing at each other, or a node at
+ * itself through `properties` / `items` / a union branch) would otherwise
+ * recurse until the stack overflowed. None of the three schema libraries in
+ * the tree emit one -- Effect derives `{}` for `MutableJson`, Zod emits `$ref`
+ * into `$defs` which this reader drops -- but a hand-built or hostile document
+ * can, so identity is tracked and a second visit answers `undefined`.
+ */
+function readJsonSchemaNode(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet()
+): JsonSchemaNode | undefined {
+  if (typeof value === "object" && value !== null) {
+    if (seen.has(value)) {
+      return undefined;
+    }
+    seen.add(value);
+  }
+
   const node = readObject(value);
   if (!node) {
     return undefined;
@@ -168,11 +191,11 @@ function readJsonSchemaNode(value: unknown): JsonSchemaNode | undefined {
     default: node.default,
     examples: readUnknownArray(node.examples),
     minimum: readNumber(node.minimum),
-    properties: readJsonSchemaProperties(node.properties),
-    items: readJsonSchemaNode(node.items),
-    anyOf: readNodeBranches(node.anyOf),
-    oneOf: readNodeBranches(node.oneOf),
-    allOf: readNodeBranches(node.allOf),
+    properties: readJsonSchemaProperties(node.properties, seen),
+    items: readJsonSchemaNode(node.items, seen),
+    anyOf: readNodeBranches(node.anyOf, seen),
+    oneOf: readNodeBranches(node.oneOf, seen),
+    allOf: readNodeBranches(node.allOf, seen),
   };
 }
 
