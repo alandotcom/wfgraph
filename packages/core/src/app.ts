@@ -42,6 +42,7 @@ import {
   type RovaInngestConfig,
   type WorkerConnection,
 } from "#src/backend/lib/inngest/client";
+import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import {
   configureAppLogging,
   configureAppLoggingWithBridge,
@@ -134,16 +135,10 @@ export type RovaApp = {
    */
   basePath: "" | `/${string}`;
   /**
-   * Opens a Connect WebSocket so Inngest can execute this app's functions over
-   * a persistent connection. Long-running hosts call this once after boot;
-   * serverless hosts leave it alone and keep the `/api/inngest` HTTP path.
-   * A second call is refused. `dispose` drains the connection.
-   */
-  connectInngest: () => Promise<void>;
-  /**
    * Give back everything this app holds. Awaiting it waits for the Effect
    * runtime's Layers to finalize; a host that fires and forgets still releases
-   * the registrations synchronously.
+   * the registrations synchronously. When `inngest.connect` was set, the
+   * Connect worker is drained first.
    */
   dispose: () => Promise<void>;
 };
@@ -278,9 +273,10 @@ async function assembleRovaApp(
 ): Promise<RovaApp> {
   const { basePath, authorize, runtime, inngest, database } = startup;
 
-  // Built here rather than on the first callback, so a broken extension
-  // surface fails at boot instead of on the first Inngest request.
-  const inngestHandler = await inngest.serve(runtime);
+  // Built once and shared: serve and connect must register the same list, and
+  // a broken extension surface fails at boot instead of on the first request.
+  const functions = await buildInngestFunctions(inngest.client, runtime);
+  const inngestHandler = inngest.serve(functions);
   const apiApp = createApiApp({
     basePath: `${basePath}/api`,
     authorize,
@@ -311,23 +307,28 @@ async function assembleRovaApp(
     });
   }
 
-  let connectPromise: Promise<WorkerConnection> | undefined;
+  // Connect last so a failed client-bundle check never leaves a live WebSocket.
   let workerConnection: WorkerConnection | undefined;
+  if (options.inngest.connect === true) {
+    workerConnection = await inngest.connect(functions);
+    getAppLogger("inngest").info(
+      `Inngest Connect worker ready: connectionId=${workerConnection.connectionId} state=${workerConnection.state}`
+    );
+  }
 
   const dispose = async (): Promise<void> => {
     // Drain Connect before the runtime goes away: in-flight steps still need
     // the Layer graph, and a closed WebSocket is what stops Inngest from
     // dispatching more work to this process.
-    if (connectPromise) {
+    if (workerConnection) {
       try {
-        const connection = workerConnection ?? (await connectPromise);
-        await connection.close();
-      } catch {
-        // A failed connect leaves nothing to close; dispose still releases the
-        // runtime and the pool.
+        await workerConnection.close();
+      } catch (error) {
+        getAppLogger("inngest").warn(
+          `Inngest Connect worker close failed during dispose: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
       workerConnection = undefined;
-      connectPromise = undefined;
     }
 
     await runtime.dispose();
@@ -341,25 +342,6 @@ async function assembleRovaApp(
   return {
     fetch: async (request) => await fullApp.fetch(request),
     basePath,
-    connectInngest: async () => {
-      if (connectPromise) {
-        throw new Error(
-          "connectInngest() was already called for this Rova app."
-        );
-      }
-
-      connectPromise = inngest.connect(runtime);
-      try {
-        workerConnection = await connectPromise;
-      } catch (error) {
-        connectPromise = undefined;
-        throw error;
-      }
-
-      getAppLogger("inngest").info(
-        `Inngest Connect worker ready: connectionId=${workerConnection.connectionId} state=${workerConnection.state}`
-      );
-    },
     dispose,
   };
 }

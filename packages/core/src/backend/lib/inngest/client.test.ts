@@ -8,18 +8,12 @@ import {
   vi,
 } from "vitest";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
-import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import {
   configureAppLogging,
   configureAppLoggingWithBridge,
 } from "#src/backend/lib/logger";
 
-const buildInngestFunctions = vi.hoisted(() => vi.fn());
 const connect = vi.hoisted(() => vi.fn());
-
-vi.mock("#src/backend/lib/inngest/functions", () => ({
-  buildInngestFunctions,
-}));
 
 vi.mock("inngest/connect", () => ({
   connect,
@@ -116,35 +110,11 @@ describe("the callback exposure warning", () => {
   });
 });
 
-/**
- * `serve` builds the handler fresh on every call rather than caching one: the
- * only caller is `assembleRovaApp`, which awaits it once at boot, so a broken
- * build fails there instead of leaking a stuck retry state into the request path.
- */
-describe("createInngestSurface serve", () => {
-  beforeEach(() => {
-    buildInngestFunctions.mockReset();
-  });
-
-  it("rejects on every call rather than caching a failed build", async () => {
-    buildInngestFunctions.mockRejectedValue(new Error("boom"));
-    const surface = createInngestSurface({ id: "serve-fails", isDev: true });
-    const runtime = stubRovaRuntime();
-
-    await expect(surface.serve(runtime)).rejects.toThrow("boom");
-    await expect(surface.serve(runtime)).rejects.toThrow("boom");
-
-    expect(buildInngestFunctions).toHaveBeenCalledTimes(2);
-  });
-});
-
 describe("createInngestSurface connect", () => {
-  const functions = [{ id: "workflow-run" }];
+  const functions = [{ id: "workflow-run" }] as never[];
 
   beforeEach(() => {
-    buildInngestFunctions.mockReset();
     connect.mockReset();
-    buildInngestFunctions.mockResolvedValue(functions);
     connect.mockResolvedValue({
       connectionId: "conn-test",
       state: "ACTIVE",
@@ -154,7 +124,7 @@ describe("createInngestSurface connect", () => {
     });
   });
 
-  it("registers this app's functions on a Connect WebSocket", async () => {
+  it("registers the caller's function list on a Connect WebSocket", async () => {
     const surface = createInngestSurface({
       id: "connect-app",
       isDev: true,
@@ -162,11 +132,9 @@ describe("createInngestSurface connect", () => {
       gatewayUrl: "ws://localhost:8390/v0/connect",
       maxWorkerConcurrency: 4,
     });
-    const runtime = stubRovaRuntime();
 
-    const connection = await surface.connect(runtime);
+    const connection = await surface.connect(functions);
 
-    expect(buildInngestFunctions).toHaveBeenCalledWith(surface.client, runtime);
     expect(connect).toHaveBeenCalledWith({
       apps: [{ client: surface.client, functions }],
       instanceId: "worker-1",

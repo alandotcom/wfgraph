@@ -17,6 +17,7 @@ import { createRovaApp, type RovaApp } from "#src/app";
 import { createApiApp, MACHINE_ROUTES } from "#src/backend/api-app";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
+import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { createRovaRuntime } from "#src/backend/runtime";
 import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
 import { createDatabaseSurface } from "#src/backend/lib/db/index";
@@ -317,7 +318,9 @@ describe("createRovaApp with an auth predicate", () => {
         basePath: "/rova/api",
         authorize: () => Promise.resolve(true),
         runtime,
-        inngestHandler: await inngest.serve(runtime),
+        inngestHandler: inngest.serve(
+          await buildInngestFunctions(inngest.client, runtime)
+        ),
       });
       const machinePaths = new Set(
         MACHINE_ROUTES.map((route) => `/rova/api${route}`)
@@ -537,7 +540,7 @@ describe("createRovaApp configuration", () => {
   });
 });
 
-describe("createRovaApp connectInngest", () => {
+describe("createRovaApp with inngest.connect", () => {
   const close = vi.fn(async () => undefined);
 
   beforeEach(() => {
@@ -552,13 +555,12 @@ describe("createRovaApp connectInngest", () => {
     });
   });
 
-  it("opens Connect once and drains it on dispose", async () => {
-    const app = await createTestApp();
+  it("opens Connect at boot and drains it on dispose", async () => {
+    const app = await createRovaApp({
+      ...BASE_OPTIONS,
+      inngest: { ...BASE_OPTIONS.inngest, connect: true },
+    });
     try {
-      await app.connectInngest();
-      await expect(app.connectInngest()).rejects.toThrow(
-        "connectInngest() was already called"
-      );
       expect(connect).toHaveBeenCalledTimes(1);
       expect(connect.mock.calls[0]?.[0]).toMatchObject({
         handleShutdownSignals: [],
@@ -568,5 +570,31 @@ describe("createRovaApp connectInngest", () => {
     }
 
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Connect alone when the host does not opt in", async () => {
+    const app = await createTestApp();
+    try {
+      expect(connect).not.toHaveBeenCalled();
+    } finally {
+      await app.dispose();
+    }
+  });
+
+  it("logs a warning when Connect close fails during dispose", async () => {
+    const warn = vi.fn();
+    close.mockRejectedValueOnce(new Error("close failed"));
+    const app = await createRovaApp({
+      ...BASE_OPTIONS,
+      inngest: { ...BASE_OPTIONS.inngest, connect: true },
+      logger: { info: () => {}, warn, error: () => {} },
+    });
+
+    await app.dispose();
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("Connect worker close failed"),
+      undefined
+    );
   });
 });

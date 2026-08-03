@@ -192,6 +192,10 @@ const rova = await createRovaApp({
     signingKeyFallback: process.env.INNGEST_SIGNING_KEY_FALLBACK,
     serveOrigin: process.env.INNGEST_SERVE_ORIGIN,
     servePath: process.env.INNGEST_SERVE_PATH,
+    // Long-running Node owns a Connect WebSocket so Inngest can push executions
+    // here. `/api/inngest` stays mounted for sync and discovery; while connected,
+    // Connect is the execution path. Serverless hosts leave this unset.
+    connect: true,
     instanceId: process.env.INNGEST_INSTANCE_ID,
     gatewayUrl: process.env.INNGEST_CONNECT_GATEWAY_URL,
   },
@@ -208,11 +212,6 @@ const rova = await createRovaApp({
     actions: [cancelAppointmentAction],
   },
 });
-
-// Long-running Node owns a Connect WebSocket so Inngest can push executions
-// here. `/api/inngest` stays mounted for sync and discovery; while connected,
-// Connect is the execution path. Serverless hosts skip this call.
-await rova.connectInngest();
 
 // The whole mount is one fetch handler. Bun, Deno and Workers take `rova.fetch`
 // as it is; node:http speaks IncomingMessage/ServerResponse, so

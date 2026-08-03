@@ -1,12 +1,11 @@
+import type { InngestFunction } from "inngest";
 import { Inngest } from "inngest";
 import {
   connect as connectInngest,
   type WorkerConnection,
 } from "inngest/connect";
 import { serve as serveInngest } from "inngest/hono";
-import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { getAppLogger } from "#src/backend/lib/logger";
-import type { RovaRuntime } from "#src/backend/runtime";
 
 export type { WorkerConnection } from "inngest/connect";
 
@@ -47,20 +46,26 @@ export type RovaInngestConfig = {
   serveOrigin?: string;
   servePath?: string;
   /**
+   * Open a Connect WebSocket at boot so Inngest can push executions to this
+   * process. Long-running hosts set this; serverless hosts leave it unset and
+   * keep the `/api/inngest` HTTP path. `/api/inngest` stays mounted either way
+   * for sync and discovery.
+   */
+  connect?: boolean;
+  /**
    * Stable id for this Connect worker. Defaults to the machine hostname when
-   * absent. Used only when the host calls `connectInngest()`.
+   * absent. Used only when `connect` is true.
    */
   instanceId?: string;
   /**
    * WebSocket gateway URL for Connect, for example
    * `ws://localhost:8390/v0/connect`. The SDK also reads
-   * `INNGEST_CONNECT_GATEWAY_URL`. Used only when the host calls
-   * `connectInngest()`.
+   * `INNGEST_CONNECT_GATEWAY_URL`. Used only when `connect` is true.
    */
   gatewayUrl?: string;
   /**
    * Cap on concurrent step executions on this Connect worker. Used only when
-   * the host calls `connectInngest()`.
+   * `connect` is true.
    */
   maxWorkerConcurrency?: number;
 };
@@ -143,28 +148,24 @@ export type InngestServeHandler = ReturnType<typeof serveInngest>;
  * The connection and the handler that serves this app's functions have to
  * agree: functions registered on one client and served through another are
  * invisible to Inngest. Building both together is what makes the disagreement
- * inexpressible -- `createRovaApp` builds one surface and hands the same value
- * to the Layer graph and to the API app.
+ * inexpressible -- `createRovaApp` builds the function list once and hands the
+ * same array to `serve` and, when opted in, to `connect`.
  */
 export type InngestSurface = {
   /** The connection every send and every registered function is made on. */
   client: Inngest;
   /**
-   * Builds the `/inngest` handler for this app's functions.
-   *
-   * The runtime is a parameter because the functions in that list run services
-   * on it. Called once, at boot, so a build failure surfaces there rather than
-   * on the first Inngest callback.
+   * Builds the `/inngest` handler for a function list already built for this
+   * client. Synchronous: the caller owns the build so serve and connect cannot
+   * disagree about what is registered.
    */
-  serve: (runtime: RovaRuntime) => Promise<InngestServeHandler>;
+  serve: (functions: InngestFunction.Any[]) => InngestServeHandler;
   /**
-   * Opens a Connect WebSocket for this app's functions.
-   *
-   * Long-running hosts call this once; serverless hosts leave it alone and
-   * keep HTTP callbacks. Shutdown signals are left to the host: Rova closes
-   * the returned connection from `dispose`.
+   * Opens a Connect WebSocket for a function list already built for this
+   * client. Shutdown signals are left to the host: Rova closes the returned
+   * connection from `dispose`.
    */
-  connect: (runtime: RovaRuntime) => Promise<WorkerConnection>;
+  connect: (functions: InngestFunction.Any[]) => Promise<WorkerConnection>;
 };
 
 export function createInngestSurface(
@@ -176,23 +177,18 @@ export function createInngestSurface(
 
   return {
     client,
-    serve: async (runtime) =>
+    serve: (functions) =>
       serveInngest({
         client,
-        functions: await buildInngestFunctions(client, runtime),
+        functions,
         // As of v4 the signing keys and base URL live on the client, so what
         // is left for `serve()` is where Inngest should call back.
         serveOrigin: config.serveOrigin,
         servePath: config.servePath,
       }),
-    connect: async (runtime) =>
+    connect: (functions) =>
       connectInngest({
-        apps: [
-          {
-            client,
-            functions: await buildInngestFunctions(client, runtime),
-          },
-        ],
+        apps: [{ client, functions }],
         instanceId: config.instanceId,
         gatewayUrl: config.gatewayUrl,
         maxWorkerConcurrency: config.maxWorkerConcurrency,
