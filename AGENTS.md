@@ -120,10 +120,11 @@ factories in `backend/lib/effect/test-layers.ts`; each fills every unnamed metho
 `Effect.die`, so an unaccounted query kills the test rather than reading a fake empty
 result. ADR-0002 has the Effect plan, ADR-0005 the data layer.
 
-**The run engine is three ports and speaks Promises.** `executeWorkflow` (`backend/engine/`)
-takes a durability runtime, a store for the run's trace, and a `WorkflowActions` for what an
-action id dispatches to; `lib/inngest/workflow-function.ts` is where a live run fills all
-three. The engine imports neither the database, the assembled surface, Inngest, nor Drizzle.
+**The run engine is three ports and speaks Effect.** `executeWorkflow` (`backend/engine/`)
+takes a durability runtime, an Effect-native store for the run's trace, and a
+`WorkflowActions` for what an action id dispatches to; `lib/inngest/workflow-function.ts`
+fills all three and runs the resulting Effect on the app runtime. The engine imports neither
+the database, the assembled surface, Inngest, nor Drizzle.
 
 **Third-party libraries.** Check official usage with Context7 or Exa before writing against
 a library, and never take a version from memory. Prefer latest stable. Use Base UI for UI
@@ -157,6 +158,13 @@ value so a refused call fails the node once rather than four times. Retries are
 function-level, each step carrying its own counter. Step results round-trip through JSON, and
 `JsonSafe` (`packages/shared/src/types/json.ts`) is the compiler holding `step.run` to it: a
 `Date`, `Map` or `Set` in the answer is refused at the field that holds it.
+
+**An Inngest suspension abandons the parked Effect invocation.** A Layer on the app's
+`ManagedRuntime` outlives every run, so it must never hold the per-invocation action surface
+or credentials. Finalizers above a suspension do not run, and a fork there leaks; keep
+end-of-run work as an explicit durable call and do not use `Effect.fork` in the engine. A
+timeout or race around `runtime.run`, `sleep`, `waitForEvent`, or `startBranch` turns
+Inngest's intentionally unsettled Promise into a failure, so those calls get neither.
 
 **A suspension holds the run, and a branch is given a run.** Inngest parks a whole function
 invocation on a sleep and wakes it once, at the last of its outstanding pauses, so each
