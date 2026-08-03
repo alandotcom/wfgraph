@@ -27,7 +27,7 @@ import {
   executeTestWorkflowBranch as executeWorkflowBranch,
 } from "#src/backend/engine/test-execution";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
-import { driveWithReplay } from "#src/backend/engine/replay-runtime";
+import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
 
 const SEND_ACTION_ID = "test/send";
 const ECHO_ACTION_ID = "test/echo";

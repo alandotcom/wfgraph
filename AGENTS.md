@@ -174,7 +174,7 @@ is `step.invoke`. The branch run inherits the outputs above its entry node from 
 its released node ids from the invoke payload, and leaves the terminal record to the run that
 started it. A cancellation kills it where it stands; that run observes the kill, sweeps the
 rows it left open, and routes the Execution. A runtime offering no `startBranch` enters the
-Wait in place. `driveWithReplay` (`engine/replay-runtime.ts`) is how a test sees any of this:
+Wait in place. `driveWithReplay` (`engine/testing/replay-runtime.ts`) is how a test sees any of this:
 it owns a set of runs and keeps the measured wake policy per run.
 
 **happy-dom belongs to the client project alone.** `vitest.config.ts` declares two projects:

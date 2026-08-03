@@ -178,7 +178,7 @@ the next person, and a claim about Inngest with no measurement behind it is the
 thing this skill exists to replace.
 
 If a measurement contradicts a comment in the tree, the comment is what changes.
-`advanceToLastPause` and `endTimersDueNow` in `engine/replay-runtime.ts` state
+`advanceToLastPause` and `endTimersDueNow` in `engine/testing/replay-runtime.ts` state
 the executor policy the suite models: a measurement that disagrees with either
 is a bug in the model, and every test standing on it is then standing on
 something false.
