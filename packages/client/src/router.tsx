@@ -4,6 +4,7 @@ import {
   createRouter,
   Navigate,
   Outlet,
+  type SearchSchemaInput,
 } from "@tanstack/react-router";
 import { ReactFlowProvider } from "@xyflow/react";
 import { Provider } from "jotai";
@@ -20,8 +21,28 @@ import { toSavedWorkflow } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
 import { hydrateWorkflowAtom } from "#src/lib/workflow-graph-store";
 import { workflowNotFoundAtom } from "#src/lib/workflow-save-store";
+import {
+  propertiesPanelActiveTabAtom,
+  selectedExecutionIdAtom,
+} from "#src/lib/workflow-ui-store";
 import WorkflowEditorPage from "#src/routes/workflows/[workflowId]/page";
 import WorkflowsPage from "#src/routes/workflows/page";
+
+/** Which run the Runs panel has open, when any. */
+export type WorkflowRouteSearch = {
+  executionId?: string;
+};
+
+function validateWorkflowSearch(
+  search: WorkflowRouteSearch & SearchSchemaInput
+): WorkflowRouteSearch {
+  return {
+    executionId:
+      typeof search.executionId === "string" && search.executionId.length > 0
+        ? search.executionId
+        : undefined,
+  };
+}
 
 function LayoutContent() {
   return (
@@ -76,6 +97,10 @@ const workflowsRoute = createRoute({
 const workflowRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/workflows/$workflowId",
+  validateSearch: validateWorkflowSearch,
+  loaderDeps: ({ search }) => ({
+    executionId: search.executionId,
+  }),
   /**
    * Put the workflow on screen before the editor renders.
    *
@@ -97,8 +122,11 @@ const workflowRoute = createRoute({
    * back. `fetchQuery` honours both settings: the workflow is refetched every
    * time, and the connection list is refetched only when it has gone stale or a
    * connection write invalidated it.
+   *
+   * An `executionId` search param opens the Runs tab (and selects that run) so
+   * the panel that reads the same search is mounted on arrival.
    */
-  loader: async ({ params }) => {
+  loader: async ({ params, deps }) => {
     try {
       const [payload, integrations] = await Promise.all([
         queryClient.fetchQuery(
@@ -115,6 +143,11 @@ const workflowRoute = createRoute({
         ...workflow,
         nodes: repairNodeIntegrations(workflow.nodes, integrations),
       });
+
+      if (deps.executionId) {
+        appStore.set(propertiesPanelActiveTabAtom, "runs");
+        appStore.set(selectedExecutionIdAtom, deps.executionId);
+      }
     } catch (error) {
       appStore.set(workflowNotFoundAtom, true);
       throw error;
