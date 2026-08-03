@@ -328,8 +328,8 @@ describe("createRovaApp with an auth predicate", () => {
   }
 
   it("refuses every non-machine path when the host says no", async () => {
-    // Read first and on its own: the route table comes from a second app, and one
-    // Rova per process means it cannot be open beside the guarded one.
+    // Read the route table before opening the guarded app; this helper owns and
+    // disposes a complete runtime even though no route executes against it.
     const paths = await listGatedPaths();
     const app = await createGuardedApp(false);
 
@@ -454,10 +454,8 @@ describe("createRovaApp configuration", () => {
     ).rejects.toThrow("64-character hex string");
   });
 
-  // Dispose gives the process back, pools included: postgres.js holds an idle
-  // socket open per pool, so a host that shuts Rova down and never exits would
-  // otherwise keep them. A second app naming a different database is what says
-  // the claim went with them, since a live one would refuse it.
+  // Dispose closes the app-owned pool: postgres.js holds an idle socket open per
+  // pool, so a host that shuts Rova down and never exits would otherwise keep it.
   it("gives the database runtime back when an app is disposed", async () => {
     const app = await createTestApp();
     await app.dispose();
@@ -470,8 +468,7 @@ describe("createRovaApp configuration", () => {
   });
 
   // A host that catches a startup failure, corrects the option and calls again
-  // gets a second app. Leaving the config recorded would have the retry refused
-  // as a rebind, whatever it was corrected to.
+  // gets a fresh app and database surface.
   it("gives the database config back when startup fails", async () => {
     await expect(
       createRovaApp({

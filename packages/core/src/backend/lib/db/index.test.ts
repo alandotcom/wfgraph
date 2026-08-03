@@ -21,9 +21,8 @@ const DISCRETE_CONFIG = {
   database: "rova_config_test",
 } as const;
 
-// The claim on the database is process-wide and vitest shares a worker between
-// files, so a surface left open is what the next file's first surface is refused
-// by.
+// Each surface owns a lazy postgres.js pool. Close every one even though these
+// tests inspect only its options, so a later test cannot inherit a live client.
 const opened: DatabaseSurface[] = [];
 
 afterEach(async () => {
@@ -95,44 +94,22 @@ describe("the pools an app opens", () => {
   });
 });
 
-// One Rova per process (ADR-0002): a second surface would open a pool beside the
-// first one's, and the two would then sit under one claim.
 describe("opening a second surface", () => {
-  it("refuses one, whatever it names", () => {
-    open(URL_CONFIG);
-
-    expect(() => open(URL_CONFIG)).toThrow("already open in this process");
-    expect(() => open({ ...DISCRETE_CONFIG, database: "elsewhere" })).toThrow(
-      "already open in this process"
-    );
-  });
-
-  it("takes the claim back when the first surface closes", async () => {
-    await open(URL_CONFIG).close();
-
-    expect(() => open({ ...URL_CONFIG, schema: "tenant_alpha" })).not.toThrow();
-  });
-
-  // A host that disposes an app twice: the second close has no claim of its own
-  // left to give back, and taking the live one would let a third surface in.
-  it("leaves the live claim alone when a closed surface closes again", async () => {
+  it("keeps each app's database handle on its own surface", () => {
     const first = open(URL_CONFIG);
-    await first.close();
-    open(URL_CONFIG);
+    const second = open({ ...DISCRETE_CONFIG, database: "elsewhere" });
 
-    await first.close();
-
-    expect(() => open(URL_CONFIG)).toThrow("already open in this process");
+    expect(first.client).not.toBe(second.client);
+    expect(first.client.options.database).toBe("rova_config_test");
+    expect(second.client.options.database).toBe("elsewhere");
   });
 
-  // postgres.js checks its options in the constructor, and an unsupported
-  // target_session_attrs is one it refuses there. Nothing was returned, so
-  // nothing could release a claim taken before that throw.
-  it("takes no claim when the pool cannot be built", () => {
-    expect(() =>
-      open({ url: `${URL_CONFIG.url}?target_session_attrs=bogus` })
-    ).toThrow("target_session_attrs");
+  it("closing one surface does not close another", async () => {
+    const first = open(URL_CONFIG);
+    const second = open({ ...URL_CONFIG, schema: "tenant_alpha" });
 
-    expect(() => open(URL_CONFIG)).not.toThrow();
+    await first.close();
+
+    expect(second.client.options.connection.search_path).toBe("tenant_alpha");
   });
 });
