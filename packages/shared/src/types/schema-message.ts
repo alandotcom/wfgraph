@@ -11,8 +11,11 @@
  *
  * So every message here is bounded. An object or an array is named by its kind,
  * a primitive is cut short, and a failure with many issues shows the first few
- * and counts the rest. What the reader needs is which field was wrong and what
- * was expected of it, and neither of those is the value itself.
+ * and counts the rest. An empty union match (AnyOf with no nested issues) is
+ * rewritten into a leaf before Effect's formatter can quote the value;
+ * `makeFormatterStandardSchemaV1` exposes no hook for that case. What the
+ * reader needs is which field was wrong and what was expected of it, and
+ * neither of those is the value itself.
  */
 
 import { Option, SchemaAST, SchemaIssue } from "effect";
@@ -22,6 +25,65 @@ const MAX_QUOTED_LENGTH = 20;
 
 /** The most issues one summary spells out before it starts counting. */
 const MAX_LISTED_ISSUES = 3;
+
+/**
+ * Effect's Standard Schema formatter handles an empty AnyOf itself -- past
+ * `leafHook` -- and quotes `actual` in full. Rewrite those nodes into leaves
+ * the hooks below already know how to bound, before either formatter runs.
+ * Nested issues under a union that matched nothing stay as they are; only the
+ * no-match, no-nested-issues case is the hole.
+ */
+function rewriteEmptyAnyOf(issue: SchemaIssue.Issue): SchemaIssue.Issue {
+  if (issue instanceof SchemaIssue.AnyOf) {
+    if (issue.issues.length === 0) {
+      const annotated = issue.ast.annotations?.message;
+      if (typeof annotated === "string") {
+        return new SchemaIssue.InvalidValue(Option.some(issue.actual), {
+          message: annotated,
+        });
+      }
+
+      return new SchemaIssue.InvalidType(issue.ast, Option.some(issue.actual));
+    }
+
+    return new SchemaIssue.AnyOf(
+      issue.ast,
+      issue.actual,
+      issue.issues.map(rewriteEmptyAnyOf)
+    );
+  }
+
+  if (issue instanceof SchemaIssue.Composite) {
+    const [first, ...rest] = issue.issues.map(rewriteEmptyAnyOf);
+    if (first === undefined) {
+      return issue;
+    }
+
+    return new SchemaIssue.Composite(issue.ast, issue.actual, [first, ...rest]);
+  }
+
+  if (issue instanceof SchemaIssue.Pointer) {
+    return new SchemaIssue.Pointer(issue.path, rewriteEmptyAnyOf(issue.issue));
+  }
+
+  if (issue instanceof SchemaIssue.Encoding) {
+    return new SchemaIssue.Encoding(
+      issue.ast,
+      issue.actual,
+      rewriteEmptyAnyOf(issue.issue)
+    );
+  }
+
+  if (issue instanceof SchemaIssue.Filter) {
+    return new SchemaIssue.Filter(
+      issue.actual,
+      issue.filter,
+      rewriteEmptyAnyOf(issue.issue)
+    );
+  }
+
+  return issue;
+}
 
 function truncate(text: string): string {
   return text.length <= MAX_QUOTED_LENGTH
@@ -84,12 +146,36 @@ function expectedTypeName(ast: SchemaAST.AST): string {
     return "boolean";
   }
 
+  if (SchemaAST.isUndefined(ast)) {
+    return "undefined";
+  }
+
+  if (SchemaAST.isNull(ast)) {
+    return "null";
+  }
+
   if (SchemaAST.isArrays(ast)) {
     return "an array";
   }
 
   if (SchemaAST.isObjects(ast)) {
     return "an object";
+  }
+
+  if (SchemaAST.isUnion(ast)) {
+    // A JSON codec rewrites `optional(X)` so the Undefined arm encodes as Null;
+    // Effect's own expected label follows that link (`string | null`). Walk the
+    // encoded form so a refused `undefined` still names what the wire allows.
+    const annotated = ast.annotations?.expected;
+    if (typeof annotated === "string") {
+      return annotated;
+    }
+
+    return Array.from(
+      new Set(
+        ast.types.map((type) => expectedTypeName(SchemaAST.toEncoded(type)))
+      )
+    ).join(" | ");
   }
 
   return "a valid value";
@@ -224,7 +310,7 @@ const formatIssuePaths = SchemaIssue.makeFormatterStandardSchemaV1({
  * issue would make the count this prints always zero.
  */
 export function formatSchemaFailure(issue: SchemaIssue.Issue): string {
-  return summarize(formatIssues(issue).issues);
+  return summarize(formatIssues(rewriteEmptyAnyOf(issue)).issues);
 }
 
 /**
@@ -235,7 +321,7 @@ export function formatSchemaFailure(issue: SchemaIssue.Issue): string {
  * origins.
  */
 export function formatSchemaFailurePaths(issue: SchemaIssue.Issue): string {
-  return summarize(formatIssuePaths(issue).issues);
+  return summarize(formatIssuePaths(rewriteEmptyAnyOf(issue)).issues);
 }
 
 function summarize(issues: readonly FormattedIssue[]): string {

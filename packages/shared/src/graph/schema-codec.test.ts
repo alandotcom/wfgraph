@@ -246,6 +246,55 @@ describe("workflowSchemaFieldsToJsonSchemaDocument", () => {
       },
     });
   });
+
+  // A cyclic in-memory document overflows the stack inside readJsonSchemaNode
+  // before any later walk can depth-cap it. None of the schema libraries emit
+  // one, but a hand-built document must return a bounded read rather than throw.
+  it("returns a bounded read for a cyclic in-memory JSON Schema document", () => {
+    const document: Record<string, unknown> = {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+      },
+    };
+    (document.properties as Record<string, unknown>).self = document;
+
+    expect(() => parseWorkflowSchemaFieldsOrJsonSchema(document)).not.toThrow();
+
+    expect(parseWorkflowSchemaFieldsOrJsonSchema(document)).toEqual([
+      {
+        name: "id",
+        type: "string",
+        description: undefined,
+      },
+    ]);
+  });
+
+  it("returns a bounded read when items points at its own parent node", () => {
+    const items: Record<string, unknown> = { type: "object", properties: {} };
+    items.items = items;
+    const document = {
+      type: "object",
+      properties: {
+        nested: {
+          type: "array",
+          items,
+        },
+      },
+    };
+
+    expect(() => parseWorkflowSchemaFieldsOrJsonSchema(document)).not.toThrow();
+
+    expect(parseWorkflowSchemaFieldsOrJsonSchema(document)).toEqual([
+      {
+        name: "nested",
+        type: "array",
+        itemType: "object",
+        fields: [],
+        description: undefined,
+      },
+    ]);
+  });
 });
 
 describe("configFieldsFromJsonSchema", () => {
