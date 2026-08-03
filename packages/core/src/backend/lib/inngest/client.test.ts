@@ -8,16 +8,15 @@ import {
   vi,
 } from "vitest";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
-import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import {
   configureAppLogging,
   configureAppLoggingWithBridge,
 } from "#src/backend/lib/logger";
 
-const buildInngestFunctions = vi.hoisted(() => vi.fn());
+const connect = vi.hoisted(() => vi.fn());
 
-vi.mock("#src/backend/lib/inngest/functions", () => ({
-  buildInngestFunctions,
+vi.mock("inngest/connect", () => ({
+  connect,
 }));
 
 /** The startup lines, read off logtape through the bridge sink. */
@@ -109,26 +108,58 @@ describe("the callback exposure warning", () => {
 
     expect(logLines).toEqual([]);
   });
-});
 
-/**
- * `serve` builds the handler fresh on every call rather than caching one: the
- * only caller is `assembleRovaApp`, which awaits it once at boot, so a broken
- * build fails there instead of leaking a stuck retry state into the request path.
- */
-describe("createInngestSurface serve", () => {
-  beforeEach(() => {
-    buildInngestFunctions.mockReset();
+  it("skips the HTTP callback warning when Connect is opted in", () => {
+    vi.stubEnv("INNGEST_SIGNING_KEY", "signkey-test-abc");
+    createInngestSurface({
+      id: "warn-connect-dev",
+      isDev: true,
+      connect: true,
+    });
+
+    expect(logLines).toEqual([]);
   });
 
-  it("rejects on every call rather than caching a failed build", async () => {
-    buildInngestFunctions.mockRejectedValue(new Error("boom"));
-    const surface = createInngestSurface({ id: "serve-fails", isDev: true });
-    const runtime = stubRovaRuntime();
+  it("names the missing signing key for Connect in cloud mode", () => {
+    createInngestSurface({ id: "warn-connect-unsigned", connect: true });
 
-    await expect(surface.serve(runtime)).rejects.toThrow("boom");
-    await expect(surface.serve(runtime)).rejects.toThrow("boom");
+    expect(logLines).toHaveLength(1);
+    expect(logLines[0]).toContain("Connect has no signing key");
+  });
+});
 
-    expect(buildInngestFunctions).toHaveBeenCalledTimes(2);
+describe("createInngestSurface connect", () => {
+  const functions = [{ id: "workflow-run" }] as never[];
+
+  beforeEach(() => {
+    connect.mockReset();
+    connect.mockResolvedValue({
+      connectionId: "conn-test",
+      state: "ACTIVE",
+      close: vi.fn(),
+      closed: Promise.resolve(),
+      getDebugState: vi.fn(),
+    });
+  });
+
+  it("registers the caller's function list on a Connect WebSocket", async () => {
+    const surface = createInngestSurface({
+      id: "connect-app",
+      isDev: true,
+      instanceId: "worker-1",
+      gatewayUrl: "ws://localhost:8390/v0/connect",
+      maxWorkerConcurrency: 4,
+    });
+
+    const connection = await surface.connect(functions);
+
+    expect(connect).toHaveBeenCalledWith({
+      apps: [{ client: surface.client, functions }],
+      instanceId: "worker-1",
+      gatewayUrl: "ws://localhost:8390/v0/connect",
+      maxWorkerConcurrency: 4,
+      handleShutdownSignals: [],
+    });
+    expect(connection.connectionId).toBe("conn-test");
   });
 });

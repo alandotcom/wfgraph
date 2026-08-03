@@ -40,7 +40,9 @@ import {
   createInngestSurface,
   type InngestSurface,
   type RovaInngestConfig,
+  type WorkerConnection,
 } from "#src/backend/lib/inngest/client";
+import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import {
   configureAppLogging,
   configureAppLoggingWithBridge,
@@ -82,7 +84,8 @@ export type RovaAppOptions = {
    * Required everywhere rather than only in production, since the check that
    * would tell the two apart reads an environment variable that says
    * "production" and misses "prod" and an unset one. Covers everything Rova
-   * serves except `MACHINE_ROUTES`.
+   * serves except machine routes (the wait resume path, and `/inngest` when
+   * HTTP serve is mounted).
    */
   auth: RovaAuth;
   /**
@@ -135,7 +138,8 @@ export type RovaApp = {
   /**
    * Give back everything this app holds. Awaiting it waits for the Effect
    * runtime's Layers to finalize; a host that fires and forgets still releases
-   * the registrations synchronously.
+   * the registrations synchronously. When `inngest.connect` was set, the
+   * Connect worker is drained first.
    */
   dispose: () => Promise<void>;
 };
@@ -211,9 +215,9 @@ async function buildRovaApp(
   // corrects an option and calls again is not refused as a rebind.
   let runtime: RovaRuntime | undefined;
   try {
-    // One value for the client and the `/inngest` handler, built before the
-    // runtime because the Layer graph takes it: the functions it serves run on
-    // whichever runtime the route hands them.
+    // One value for the Inngest client this app sends on, built before the
+    // runtime because the Layer graph takes it. Functions are registered later,
+    // once the runtime exists, on either Connect or HTTP serve.
     const inngest = createInngestSurface(options.inngest);
 
     const extensions = assembleExtensions(options.extensions ?? {});
@@ -270,14 +274,18 @@ async function assembleRovaApp(
 ): Promise<RovaApp> {
   const { basePath, authorize, runtime, inngest, database } = startup;
 
-  // Built here rather than on the first callback, so a broken extension
-  // surface fails at boot instead of on the first Inngest request.
-  const inngestHandler = await inngest.serve(runtime);
+  // Built once: Connect and HTTP serve are alternatives, and whichever path
+  // this app takes registers that same list. A broken extension surface fails
+  // at boot instead of on the first request or Connect handshake.
+  const functions = await buildInngestFunctions(inngest.client, runtime);
+  const useConnect = options.inngest.connect === true;
   const apiApp = createApiApp({
     basePath: `${basePath}/api`,
     authorize,
     runtime,
-    inngestHandler,
+    // Connect dials out; mounting `/inngest` would advertise a callback Inngest
+    // cannot reach on a private network and is not how Connect syncs.
+    inngestHandler: useConnect ? undefined : inngest.serve(functions),
   });
   const fullApp = new Hono();
 
@@ -303,7 +311,30 @@ async function assembleRovaApp(
     });
   }
 
+  // Connect last so a failed client-bundle check never leaves a live WebSocket.
+  let workerConnection: WorkerConnection | undefined;
+  if (useConnect) {
+    workerConnection = await inngest.connect(functions);
+    getAppLogger("inngest").info(
+      `Inngest Connect worker ready: connectionId=${workerConnection.connectionId} state=${workerConnection.state}`
+    );
+  }
+
   const dispose = async (): Promise<void> => {
+    // Drain Connect before the runtime goes away: in-flight steps still need
+    // the Layer graph, and a closed WebSocket is what stops Inngest from
+    // dispatching more work to this process.
+    if (workerConnection) {
+      try {
+        await workerConnection.close();
+      } catch (error) {
+        getAppLogger("inngest").warn(
+          `Inngest Connect worker close failed during dispose: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+      workerConnection = undefined;
+    }
+
     await runtime.dispose();
 
     // Last, because a Layer finalizer is free to run a closing query. postgres.js

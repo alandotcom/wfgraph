@@ -1,8 +1,13 @@
+import type { InngestFunction } from "inngest";
 import { Inngest } from "inngest";
+import {
+  connect as connectInngest,
+  type WorkerConnection,
+} from "inngest/connect";
 import { serve as serveInngest } from "inngest/hono";
-import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { getAppLogger } from "#src/backend/lib/logger";
-import type { RovaRuntime } from "#src/backend/runtime";
+
+export type { WorkerConnection } from "inngest/connect";
 
 function getInngestBaseUrl() {
   const candidates = [process.env.INNGEST_BASE_URL, process.env.INNGEST_DEV];
@@ -25,8 +30,9 @@ function getInngestBaseUrl() {
  *
  * Written out by hand rather than derived from the SDK's own option types, so
  * `@rova/core`'s published surface stops moving whenever Inngest changes its
- * constructor. The split between what the client takes and what `serve()` takes
- * is Inngest's business and is applied below, not something a host restates.
+ * constructor. The split between what the client takes and what `serve()` /
+ * `connect()` take is Inngest's business and is applied below, not something a
+ * host restates.
  */
 export type RovaInngestConfig = {
   id: string;
@@ -39,6 +45,29 @@ export type RovaInngestConfig = {
   /** Public origin Inngest should call back on, for example "https://app.example.com". */
   serveOrigin?: string;
   servePath?: string;
+  /**
+   * Open a Connect WebSocket at boot so Inngest can push executions to this
+   * process. Long-running hosts set this; the app dials out and mounts no
+   * `/api/inngest` callback. Serverless hosts leave it unset and keep HTTP
+   * serve, which Inngest must be able to reach.
+   */
+  connect?: boolean;
+  /**
+   * Stable id for this Connect worker. Defaults to the machine hostname when
+   * absent. Used only when `connect` is true.
+   */
+  instanceId?: string;
+  /**
+   * WebSocket gateway URL for Connect, for example
+   * `ws://localhost:8390/v0/connect`. The SDK also reads
+   * `INNGEST_CONNECT_GATEWAY_URL`. Used only when `connect` is true.
+   */
+  gatewayUrl?: string;
+  /**
+   * Cap on concurrent step executions on this Connect worker. Used only when
+   * `connect` is true.
+   */
+  maxWorkerConcurrency?: number;
 };
 
 /**
@@ -86,7 +115,8 @@ function createInngestClient(
  * disagree.
  *
  * A log rather than a refusal, because local development legitimately runs
- * unsigned against `inngest dev`.
+ * unsigned against `inngest dev`. Connect mode mounts no callback route, so
+ * this report is skipped there.
  */
 function reportInngestCallbackExposure(
   mode: Inngest["mode"],
@@ -110,29 +140,54 @@ function reportInngestCallbackExposure(
   );
 }
 
+/**
+ * Connect authenticates the worker to the gateway with the signing key. Dev
+ * mode against `inngest dev` needs none; cloud mode without a key will fail the
+ * handshake rather than run unsigned.
+ */
+function reportInngestConnectCredentials(
+  mode: Inngest["mode"],
+  signingKey: string | undefined
+): void {
+  if (mode === "dev") {
+    return;
+  }
+
+  if (typeof signingKey === "string" && signingKey.trim()) {
+    return;
+  }
+
+  getAppLogger("inngest").error(
+    "Inngest Connect has no signing key: in cloud mode the worker cannot authenticate to the gateway, so no function will run. Set inngest.signingKey or INNGEST_SIGNING_KEY."
+  );
+}
+
 /** What `serve()` answers a callback with. */
 export type InngestServeHandler = ReturnType<typeof serveInngest>;
 
 /**
  * Everything one app does with Inngest, as one value.
  *
- * The connection and the handler that serves this app's functions have to
- * agree: functions registered on one client and served through another are
- * invisible to Inngest. Building both together is what makes the disagreement
- * inexpressible -- `createRovaApp` builds one surface and hands the same value
- * to the Layer graph and to the API app.
+ * HTTP serve and Connect are alternatives: a host picks one registration path
+ * per app. Building the function list once in `createRovaApp` and handing that
+ * same array to whichever path is chosen is what keeps the registered surface
+ * and the client the same app's.
  */
 export type InngestSurface = {
   /** The connection every send and every registered function is made on. */
   client: Inngest;
   /**
-   * Builds the `/inngest` handler for this app's functions.
-   *
-   * The runtime is a parameter because the functions in that list run services
-   * on it. Called once, at boot, so a build failure surfaces there rather than
-   * on the first Inngest callback.
+   * Builds the `/inngest` handler for a function list already built for this
+   * client. Synchronous: the caller owns the build so the list cannot drift
+   * from what Connect would have registered on the other path.
    */
-  serve: (runtime: RovaRuntime) => Promise<InngestServeHandler>;
+  serve: (functions: InngestFunction.Any[]) => InngestServeHandler;
+  /**
+   * Opens a Connect WebSocket for a function list already built for this
+   * client. Shutdown signals are left to the host: Rova closes the returned
+   * connection from `dispose`.
+   */
+  connect: (functions: InngestFunction.Any[]) => Promise<WorkerConnection>;
 };
 
 export function createInngestSurface(
@@ -140,18 +195,32 @@ export function createInngestSurface(
 ): InngestSurface {
   const signingKey = config.signingKey ?? process.env.INNGEST_SIGNING_KEY;
   const client = createInngestClient(config, signingKey);
-  reportInngestCallbackExposure(client.mode, signingKey);
+  if (config.connect === true) {
+    reportInngestConnectCredentials(client.mode, signingKey);
+  } else {
+    reportInngestCallbackExposure(client.mode, signingKey);
+  }
 
   return {
     client,
-    serve: async (runtime) =>
+    serve: (functions) =>
       serveInngest({
         client,
-        functions: await buildInngestFunctions(client, runtime),
+        functions,
         // As of v4 the signing keys and base URL live on the client, so what
         // is left for `serve()` is where Inngest should call back.
         serveOrigin: config.serveOrigin,
         servePath: config.servePath,
+      }),
+    connect: (functions) =>
+      connectInngest({
+        apps: [{ client, functions }],
+        instanceId: config.instanceId,
+        gatewayUrl: config.gatewayUrl,
+        maxWorkerConcurrency: config.maxWorkerConcurrency,
+        // The host owns SIGINT/SIGTERM (and `dispose`); leaving the SDK's
+        // default handlers in place races a second close against that path.
+        handleShutdownSignals: [],
       }),
   };
 }

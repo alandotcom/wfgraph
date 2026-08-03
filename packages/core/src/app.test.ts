@@ -1,4 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,13 +14,20 @@ import { Effect, Schema } from "effect";
 import { defineAction, defineEvent } from "#src/index";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { createRovaApp, type RovaApp } from "#src/app";
-import { createApiApp, MACHINE_ROUTES } from "#src/backend/api-app";
+import { createApiApp, machineRoutes } from "#src/backend/api-app";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
+import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { createRovaRuntime } from "#src/backend/runtime";
 import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
 import { createDatabaseSurface } from "#src/backend/lib/db/index";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
+
+const connect = vi.hoisted(() => vi.fn());
+
+vi.mock("inngest/connect", () => ({
+  connect,
+}));
 
 // createRovaApp opens no connections: the database client is lazy and
 // migrations only run when asked. Every route exercised below answers from
@@ -303,10 +318,14 @@ describe("createRovaApp with an auth predicate", () => {
         basePath: "/rova/api",
         authorize: () => Promise.resolve(true),
         runtime,
-        inngestHandler: await inngest.serve(runtime),
+        inngestHandler: inngest.serve(
+          await buildInngestFunctions(inngest.client, runtime)
+        ),
       });
       const machinePaths = new Set(
-        MACHINE_ROUTES.map((route) => `/rova/api${route}`)
+        machineRoutes({ serveInngest: true }).map(
+          (route) => `/rova/api${route}`
+        )
       );
 
       return [
@@ -520,5 +539,67 @@ describe("createRovaApp configuration", () => {
     } finally {
       await second.dispose();
     }
+  });
+});
+
+describe("createRovaApp with inngest.connect", () => {
+  const close = vi.fn(async () => undefined);
+
+  beforeEach(() => {
+    connect.mockReset();
+    close.mockReset();
+    connect.mockResolvedValue({
+      connectionId: "conn-app",
+      state: "ACTIVE",
+      close,
+      closed: Promise.resolve(),
+      getDebugState: vi.fn(),
+    });
+  });
+
+  it("opens Connect at boot and drains it on dispose", async () => {
+    const app = await createRovaApp({
+      ...BASE_OPTIONS,
+      inngest: { ...BASE_OPTIONS.inngest, connect: true },
+    });
+    try {
+      expect(connect).toHaveBeenCalledTimes(1);
+      expect(connect.mock.calls[0]?.[0]).toMatchObject({
+        handleShutdownSignals: [],
+      });
+      // Connect dials out; the HTTP callback must not be advertised.
+      expect((await get(app, "/api/inngest")).status).toBe(404);
+    } finally {
+      await app.dispose();
+    }
+
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Connect alone when the host does not opt in", async () => {
+    const app = await createTestApp();
+    try {
+      expect(connect).not.toHaveBeenCalled();
+      expect((await get(app, "/api/inngest")).status).not.toBe(404);
+    } finally {
+      await app.dispose();
+    }
+  });
+
+  it("logs a warning when Connect close fails during dispose", async () => {
+    const warn = vi.fn();
+    close.mockRejectedValueOnce(new Error("close failed"));
+    const app = await createRovaApp({
+      ...BASE_OPTIONS,
+      inngest: { ...BASE_OPTIONS.inngest, connect: true },
+      logger: { info: () => {}, warn, error: () => {} },
+    });
+
+    await app.dispose();
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("Connect worker close failed"),
+      undefined
+    );
   });
 });
