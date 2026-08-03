@@ -10,7 +10,7 @@ Choose one of these setup options before continuing:
 
 1. Add `https://github.com/Effect-TS/effect` as a git subtree with squashed history at `./.repos/effect`
 2. Add `https://github.com/Effect-TS/effect` as a git submodule at `./.repos/effect`
-3. Use `git clone` into `./.repos/effect`, ignore it via `.gitignore`, and add a prepare script that bootstraps it when missing
+3. Use `git clone` into `./.repos/effect`, ignore it via `.gitignore`, and run `./scripts/prepare-effect.sh` when missing
 
 ## Supported Options
 
@@ -30,28 +30,18 @@ Use this when the repository should track the Effect source explicitly as a sepa
 - Source: `https://github.com/Effect-TS/effect`
 - Preferred shape: standard Git submodule
 
-### 3. Local Clone + Gitignore + Prepare Task
+### 3. Local Clone + Gitignore + On-Demand Script
 
 Use this when the repository should avoid vendoring or submodule management, but still provide a reproducible local setup.
 
 - Repo path: `./.repos/effect`
 - Source: `https://github.com/Effect-TS/effect`
 - Add `.repos/effect` to the repository `.gitignore`
-- Add a `prepare` task that clones the repo automatically when the directory is missing
+- Keep `scripts/prepare-effect.sh` for local/agent use; do **not** wire it into `package.json` `prepare` (that runs on every `pnpm install`, including CI, and cloning Effect there is slow and unused)
 
 #### Concrete Shape
 
 Use this exact shape for the setup. Do not invent a different script.
-
-`package.json`:
-
-```json
-{
-  "scripts": {
-    "prepare": "./scripts/prepare-effect.sh"
-  }
-}
-```
 
 `.gitignore`:
 
@@ -77,11 +67,13 @@ mkdir -p ".repos"
 git clone "$repo_url" "$repo_dir"
 ```
 
+Run it when an agent needs the checkout: `./scripts/prepare-effect.sh`.
+
 #### Notes
 
 - This keeps `./.repos/effect` available for local research without forcing it into version control
 - The script is only responsible for ensuring the checkout exists; it does not update or reset an existing clone
-- If you choose this option, the setup task should add this exact script, wire it via `prepare`, and add `.repos/effect` to `.gitignore`
+- If you choose this option, the setup task should add this exact script, add `.repos/effect` to `.gitignore`, and leave `prepare` for `effect-tsgo patch` alone
 
 ## Guidance
 
