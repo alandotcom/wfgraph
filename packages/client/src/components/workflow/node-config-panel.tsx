@@ -32,6 +32,7 @@ import {
   workflowNameErrorAtom,
 } from "#src/lib/workflow-save-store";
 import {
+  activePropertiesTabAtom,
   isGeneratingAtom,
   propertiesPanelActiveTabAtom,
 } from "#src/lib/workflow-ui-store";
@@ -77,13 +78,12 @@ export type NodeConfigFrame = {
 
 /**
  * The tab to render, which is the stored one unless it is the owner-only Runs
- * tab and the viewer is not the owner.
+ * tab and the viewer is not the owner. The derivation lives on
+ * `activePropertiesTabAtom` so the canvas overlay cannot disagree.
  */
 function useValidActiveTab() {
-  const [activeTab, setActiveTab] = useAtom(propertiesPanelActiveTabAtom);
-  const isOwner = useAtomValue(isWorkflowOwnerAtom);
-  const validActiveTab =
-    activeTab === "runs" && isOwner ? "runs" : "properties";
+  const validActiveTab = useAtomValue(activePropertiesTabAtom);
+  const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   return { validActiveTab, setActiveTab } as const;
 }
 
