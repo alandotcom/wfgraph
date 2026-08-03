@@ -47,9 +47,9 @@ export type RovaInngestConfig = {
   servePath?: string;
   /**
    * Open a Connect WebSocket at boot so Inngest can push executions to this
-   * process. Long-running hosts set this; serverless hosts leave it unset and
-   * keep the `/api/inngest` HTTP path. `/api/inngest` stays mounted either way
-   * for sync and discovery.
+   * process. Long-running hosts set this; the app dials out and mounts no
+   * `/api/inngest` callback. Serverless hosts leave it unset and keep HTTP
+   * serve, which Inngest must be able to reach.
    */
   connect?: boolean;
   /**
@@ -115,7 +115,8 @@ function createInngestClient(
  * disagree.
  *
  * A log rather than a refusal, because local development legitimately runs
- * unsigned against `inngest dev`.
+ * unsigned against `inngest dev`. Connect mode mounts no callback route, so
+ * this report is skipped there.
  */
 function reportInngestCallbackExposure(
   mode: Inngest["mode"],
@@ -139,25 +140,46 @@ function reportInngestCallbackExposure(
   );
 }
 
+/**
+ * Connect authenticates the worker to the gateway with the signing key. Dev
+ * mode against `inngest dev` needs none; cloud mode without a key will fail the
+ * handshake rather than run unsigned.
+ */
+function reportInngestConnectCredentials(
+  mode: Inngest["mode"],
+  signingKey: string | undefined
+): void {
+  if (mode === "dev") {
+    return;
+  }
+
+  if (typeof signingKey === "string" && signingKey.trim()) {
+    return;
+  }
+
+  getAppLogger("inngest").error(
+    "Inngest Connect has no signing key: in cloud mode the worker cannot authenticate to the gateway, so no function will run. Set inngest.signingKey or INNGEST_SIGNING_KEY."
+  );
+}
+
 /** What `serve()` answers a callback with. */
 export type InngestServeHandler = ReturnType<typeof serveInngest>;
 
 /**
  * Everything one app does with Inngest, as one value.
  *
- * The connection and the handler that serves this app's functions have to
- * agree: functions registered on one client and served through another are
- * invisible to Inngest. Building both together is what makes the disagreement
- * inexpressible -- `createRovaApp` builds the function list once and hands the
- * same array to `serve` and, when opted in, to `connect`.
+ * HTTP serve and Connect are alternatives: a host picks one registration path
+ * per app. Building the function list once in `createRovaApp` and handing that
+ * same array to whichever path is chosen is what keeps the registered surface
+ * and the client the same app's.
  */
 export type InngestSurface = {
   /** The connection every send and every registered function is made on. */
   client: Inngest;
   /**
    * Builds the `/inngest` handler for a function list already built for this
-   * client. Synchronous: the caller owns the build so serve and connect cannot
-   * disagree about what is registered.
+   * client. Synchronous: the caller owns the build so the list cannot drift
+   * from what Connect would have registered on the other path.
    */
   serve: (functions: InngestFunction.Any[]) => InngestServeHandler;
   /**
@@ -173,7 +195,11 @@ export function createInngestSurface(
 ): InngestSurface {
   const signingKey = config.signingKey ?? process.env.INNGEST_SIGNING_KEY;
   const client = createInngestClient(config, signingKey);
-  reportInngestCallbackExposure(client.mode, signingKey);
+  if (config.connect === true) {
+    reportInngestConnectCredentials(client.mode, signingKey);
+  } else {
+    reportInngestCallbackExposure(client.mode, signingKey);
+  }
 
   return {
     client,

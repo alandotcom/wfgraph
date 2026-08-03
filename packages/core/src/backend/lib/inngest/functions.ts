@@ -26,12 +26,11 @@ import {
  * The runtime is a parameter rather than something the caller holds, because the
  * Layer graph takes the surface this is built for: constructing one before the
  * other is what keeps that from being a cycle. `createRovaApp` builds the list
- * once after the runtime exists and hands the same array to `serve` and, when
- * opted in, to `connect`.
+ * once after the runtime exists and hands it to either Connect or HTTP serve.
  *
  * v4 encodes the trigger tuple in a function's type, so the run function and the
  * listeners have no common specific type and this names the general one.
- * `serve()` takes that same type.
+ * `serve()` and `connect()` take that same type.
  */
 export async function buildInngestFunctions(
   client: Inngest,

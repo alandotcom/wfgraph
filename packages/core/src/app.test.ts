@@ -14,7 +14,7 @@ import { Effect, Schema } from "effect";
 import { defineAction, defineEvent } from "#src/index";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { createRovaApp, type RovaApp } from "#src/app";
-import { createApiApp, MACHINE_ROUTES } from "#src/backend/api-app";
+import { createApiApp, machineRoutes } from "#src/backend/api-app";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createInngestSurface } from "#src/backend/lib/inngest/client";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
@@ -323,7 +323,9 @@ describe("createRovaApp with an auth predicate", () => {
         ),
       });
       const machinePaths = new Set(
-        MACHINE_ROUTES.map((route) => `/rova/api${route}`)
+        machineRoutes({ serveInngest: true }).map(
+          (route) => `/rova/api${route}`
+        )
       );
 
       return [
@@ -565,6 +567,8 @@ describe("createRovaApp with inngest.connect", () => {
       expect(connect.mock.calls[0]?.[0]).toMatchObject({
         handleShutdownSignals: [],
       });
+      // Connect dials out; the HTTP callback must not be advertised.
+      expect((await get(app, "/api/inngest")).status).toBe(404);
     } finally {
       await app.dispose();
     }
@@ -576,6 +580,7 @@ describe("createRovaApp with inngest.connect", () => {
     const app = await createTestApp();
     try {
       expect(connect).not.toHaveBeenCalled();
+      expect((await get(app, "/api/inngest")).status).not.toBe(404);
     } finally {
       await app.dispose();
     }

@@ -84,7 +84,8 @@ export type RovaAppOptions = {
    * Required everywhere rather than only in production, since the check that
    * would tell the two apart reads an environment variable that says
    * "production" and misses "prod" and an unset one. Covers everything Rova
-   * serves except `MACHINE_ROUTES`.
+   * serves except machine routes (the wait resume path, and `/inngest` when
+   * HTTP serve is mounted).
    */
   auth: RovaAuth;
   /**
@@ -214,9 +215,9 @@ async function buildRovaApp(
   // corrects an option and calls again is not refused as a rebind.
   let runtime: RovaRuntime | undefined;
   try {
-    // One value for the client and the `/inngest` handler, built before the
-    // runtime because the Layer graph takes it: the functions it serves run on
-    // whichever runtime the route hands them.
+    // One value for the Inngest client this app sends on, built before the
+    // runtime because the Layer graph takes it. Functions are registered later,
+    // once the runtime exists, on either Connect or HTTP serve.
     const inngest = createInngestSurface(options.inngest);
 
     const extensions = assembleExtensions(options.extensions ?? {});
@@ -273,15 +274,18 @@ async function assembleRovaApp(
 ): Promise<RovaApp> {
   const { basePath, authorize, runtime, inngest, database } = startup;
 
-  // Built once and shared: serve and connect must register the same list, and
-  // a broken extension surface fails at boot instead of on the first request.
+  // Built once: Connect and HTTP serve are alternatives, and whichever path
+  // this app takes registers that same list. A broken extension surface fails
+  // at boot instead of on the first request or Connect handshake.
   const functions = await buildInngestFunctions(inngest.client, runtime);
-  const inngestHandler = inngest.serve(functions);
+  const useConnect = options.inngest.connect === true;
   const apiApp = createApiApp({
     basePath: `${basePath}/api`,
     authorize,
     runtime,
-    inngestHandler,
+    // Connect dials out; mounting `/inngest` would advertise a callback Inngest
+    // cannot reach on a private network and is not how Connect syncs.
+    inngestHandler: useConnect ? undefined : inngest.serve(functions),
   });
   const fullApp = new Hono();
 
@@ -309,7 +313,7 @@ async function assembleRovaApp(
 
   // Connect last so a failed client-bundle check never leaves a live WebSocket.
   let workerConnection: WorkerConnection | undefined;
-  if (options.inngest.connect === true) {
+  if (useConnect) {
     workerConnection = await inngest.connect(functions);
     getAppLogger("inngest").info(
       `Inngest Connect worker ready: connectionId=${workerConnection.connectionId} state=${workerConnection.state}`

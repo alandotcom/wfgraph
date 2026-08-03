@@ -41,11 +41,12 @@ it as finished while the three processes keep running. Wait for readiness rather
 than for the command:
 
 ```bash
-until curl -sSf http://localhost:4017/api/inngest >/dev/null 2>&1; do sleep 2; done
+until curl -sSf -o /dev/null http://localhost:4017/api/extensions; do sleep 2; done
 ```
 
-Then give the CLI another few seconds to sync. The log line to look for is
-`Successfully registered`. A run enqueued before that sync sits unclaimed.
+Then give the Connect handshake another few seconds. The log line to look for is
+`Inngest Connect worker ready`. A run enqueued before that handshake sits
+unclaimed.
 
 ## 2. Build a probe workflow
 

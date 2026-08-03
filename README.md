@@ -120,7 +120,8 @@ const rova = await createRovaApp({
     baseUrl: process.env.INNGEST_BASE_URL,
     eventKey: process.env.INNGEST_EVENT_KEY,
     signingKey: process.env.INNGEST_SIGNING_KEY,
-    // Long-running Node owns a Connect WebSocket; serverless hosts omit this.
+    // Long-running Node dials out over Connect; serverless hosts omit this
+    // and keep `/api/inngest` for Inngest to call back.
     connect: true,
   },
   // The full extension surface, in one location.
@@ -753,26 +754,30 @@ Read these once:
   `(request: Request) => boolean | Promise<boolean>` that reads the session your application
   already uses, or `"external"` when something in front of Rova already gates it. It covers
   the RPC, REST, OpenAPI, extensions, and SPA routes.
-- **Two routes sit outside that gate:** the Inngest callback and the wait resume path. Their
-  callers are machines, each carrying a signing key or a resume token. Rova alone knows which
-  of its routes are which, which is why it takes the predicate as an option and applies it
-  route by route.
-- **Set `inngest.signingKey` on each deployment.** `/api/inngest` sits outside the gate
-  because Inngest signs its callbacks, and that holds with a configured signing key alone.
-  Without one the SDK runs in dev mode and skips the signature check, so an anonymous POST to
-  that path can execute a workflow function with a payload of its choice. Rova logs an error
-  at start-up when no key is set.
+- **Two routes can sit outside that gate:** the wait resume path always, and the
+  Inngest HTTP callback only when `inngest.connect` is unset. Their callers are
+  machines, each carrying a signing key or a resume token. Rova alone knows which
+  of its routes are which, which is why it takes the predicate as an option and
+  applies it route by route. Connect mode mounts no `/api/inngest` — the worker
+  dials out — so a private network that Inngest cannot call into still runs.
+- **Set `inngest.signingKey` on each cloud deployment.** With HTTP serve,
+  `/api/inngest` sits outside the gate because Inngest signs its callbacks, and
+  that holds with a configured signing key alone. Without one the SDK runs in
+  dev mode and skips the signature check, so an anonymous POST to that path can
+  execute a workflow function with a payload of its choice. With Connect, the
+  same key authenticates the worker to the gateway. Rova logs an error at
+  start-up when no key is set for the path in use.
 - **A mount under a sub-path takes `basePath`.** Rova builds its API prefix, the
   `<base href>` of the SPA, and each asset URL from it. A host that mounts at `/workflows`
   and omits it gets a client that requests its assets from the root.
 - **Running Inngest is the job of the consumer**, self-hosted or cloud. `pnpm run dev` here
   starts it as a separate process. Long-running hosts set `inngest.connect: true` so
-  executions arrive over a Connect WebSocket; `/api/inngest` stays mounted for sync and
-  discovery, and Connect is the execution path while connected. Local `pnpm run dev` sets
-  `INNGEST_CONNECT_GATEWAY_URL=ws://localhost:8390/v0/connect` because the CLI's Connect
-  gateway listens on 8390. Pass `inngest.instanceId`, `inngest.gatewayUrl`, or
-  `inngest.maxWorkerConcurrency` when the worker needs them; the SDK also reads
-  `INNGEST_CONNECT_GATEWAY_URL`.
+  executions arrive over a Connect WebSocket and `/api/inngest` is not mounted.
+  Local `pnpm run dev` sets `INNGEST_CONNECT_GATEWAY_URL=ws://localhost:8390/v0/connect`
+  because the CLI's Connect gateway listens on 8390. Pass `inngest.instanceId`,
+  `inngest.gatewayUrl`, or `inngest.maxWorkerConcurrency` when the worker needs
+  them; the SDK also reads `INNGEST_CONNECT_GATEWAY_URL`. Serverless hosts leave
+  `connect` unset so Inngest can call `/api/inngest`.
 - `createRovaApp` answers `{ fetch, basePath, dispose }`. `await dispose()` drains an
   open Connect worker, then returns when the layers of the Effect runtime finalize. One
   Rova per process is the supported arrangement, because the database handle, the Inngest

@@ -195,15 +195,19 @@ export type CreateApiAppOptions = {
    * so nothing here has to deduce it from the request.
    */
   basePath: `/${string}`;
-  /** Every route answers to this except those in MACHINE_ROUTES. */
+  /** Every route answers to this except those in `machineRoutes`. */
   authorize: Authorize;
   /**
    * The Effect runtime the app instance owns, put on every request context so a
    * procedure whose service has been migrated can run its Effect on it.
    */
   runtime: RovaRuntime;
-  /** The `/inngest` handler, built once at boot against this app's runtime. */
-  inngestHandler: InngestServeHandler;
+  /**
+   * The `/inngest` HTTP serve handler. Absent when the host opted into Connect:
+   * that mode dials out over a WebSocket and must not expose a callback route
+   * that Inngest cannot reach on a private network.
+   */
+  inngestHandler?: InngestServeHandler;
 };
 
 /**
@@ -212,23 +216,32 @@ export type CreateApiAppOptions = {
  */
 const WAIT_RESUME_ROUTE = "/workflows/waits/:token/resume";
 
+const INNGEST_SERVE_ROUTE = "/inngest";
+
 /**
  * Routes reached by machines, each carrying a credential of its own: Inngest
- * signs its callback, the resume path carries a resume token. A session check
- * would break both.
+ * signs its HTTP callback (when that route is mounted), the resume path carries
+ * a resume token. A session check would break both.
  *
  * Written as the exception, so a route added to this file is gated by default
  * and opening one is an edit here with a reason attached. Listing what to gate
  * instead fails the other way: forgetting it publishes an endpoint silently.
  *
  * Inngest verifies that signature only in cloud mode and with a signing key
- * configured; `reportInngestCallbackExposure` says so at startup when neither
- * holds.
+ * configured; `reportInngestCallbackExposure` says so at startup when the HTTP
+ * serve path is mounted and neither holds. Connect mode mounts no `/inngest`
+ * route, so it is absent from this list then.
  *
  * Each path is named rather than spelled out, so the gate and the route
  * registration below cannot drift apart into a silent 401 for every sender.
  */
-export const MACHINE_ROUTES = ["/inngest", WAIT_RESUME_ROUTE] as const;
+export function machineRoutes(options: {
+  serveInngest: boolean;
+}): readonly string[] {
+  return options.serveInngest
+    ? [INNGEST_SERVE_ROUTE, WAIT_RESUME_ROUTE]
+    : [WAIT_RESUME_ROUTE];
+}
 
 type ApiEnv = {
   Variables: { rovaMachineRoute?: true };
@@ -238,6 +251,9 @@ export function createApiApp(options: CreateApiAppOptions) {
   const { basePath, authorize, runtime, inngestHandler } = options;
   const app = new Hono<ApiEnv>().basePath(basePath);
   const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
+  const ungatedRoutes = machineRoutes({
+    serveInngest: inngestHandler !== undefined,
+  });
 
   // One record per request, written once the answer is known. The message says
   // what happened and the properties carry the payloads, which in development
@@ -282,7 +298,7 @@ export function createApiApp(options: CreateApiAppOptions) {
   });
 
   // Markers before the gate: Hono runs matching middleware in registration order.
-  for (const route of MACHINE_ROUTES) {
+  for (const route of ungatedRoutes) {
     app.use(route, async (c, next) => {
       c.set("rovaMachineRoute", true);
       await next();
@@ -383,35 +399,38 @@ export function createApiApp(options: CreateApiAppOptions) {
     .all("/auth", (c) => c.json({ error: "Not found" }, 404))
     .all("/auth/*", (c) => c.json({ error: "Not found" }, 404))
     .all("/og", (c) => c.json({ error: "Not found" }, 404))
-    .all("/og/*", (c) => c.json({ error: "Not found" }, 404))
-    .on(["GET", "POST", "PUT"], "/inngest", (c) => inngestHandler(c))
-    .post(WAIT_RESUME_ROUTE, async (c) => {
-      const params = readTokenParams(c.req.param());
-      if (Result.isFailure(params)) {
-        return c.json(
-          { error: formatSchemaFailure(params.failure.issue) },
-          400
-        );
-      }
+    .all("/og/*", (c) => c.json({ error: "Not found" }, 404));
 
-      const body = await parseJsonObjectBody(c.req.raw);
-      if (!body.ok) {
-        return c.json({ error: body.error }, 400);
-      }
+  if (inngestHandler) {
+    routes.on(["GET", "POST", "PUT"], INNGEST_SERVE_ROUTE, (c) =>
+      inngestHandler(c)
+    );
+  }
 
-      return await runtime.runPromise(
-        postWorkflowResume({
-          token: params.success.token,
-          body: body.data,
-          authHeader: c.req.header("Authorization") ?? null,
-        }).pipe(
-          Effect.match({
-            onSuccess: (data) => Response.json(data),
-            onFailure: (failure) => responseFromServiceFailure(failure),
-          })
-        )
-      );
-    });
+  routes.post(WAIT_RESUME_ROUTE, async (c) => {
+    const params = readTokenParams(c.req.param());
+    if (Result.isFailure(params)) {
+      return c.json({ error: formatSchemaFailure(params.failure.issue) }, 400);
+    }
+
+    const body = await parseJsonObjectBody(c.req.raw);
+    if (!body.ok) {
+      return c.json({ error: body.error }, 400);
+    }
+
+    return await runtime.runPromise(
+      postWorkflowResume({
+        token: params.success.token,
+        body: body.data,
+        authHeader: c.req.header("Authorization") ?? null,
+      }).pipe(
+        Effect.match({
+          onSuccess: (data) => Response.json(data),
+          onFailure: (failure) => responseFromServiceFailure(failure),
+        })
+      )
+    );
+  });
 
   routes.notFound((c) => c.json({ error: "Not found" }, 404));
 

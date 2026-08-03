@@ -108,6 +108,24 @@ describe("the callback exposure warning", () => {
 
     expect(logLines).toEqual([]);
   });
+
+  it("skips the HTTP callback warning when Connect is opted in", () => {
+    vi.stubEnv("INNGEST_SIGNING_KEY", "signkey-test-abc");
+    createInngestSurface({
+      id: "warn-connect-dev",
+      isDev: true,
+      connect: true,
+    });
+
+    expect(logLines).toEqual([]);
+  });
+
+  it("names the missing signing key for Connect in cloud mode", () => {
+    createInngestSurface({ id: "warn-connect-unsigned", connect: true });
+
+    expect(logLines).toHaveLength(1);
+    expect(logLines[0]).toContain("Connect has no signing key");
+  });
 });
 
 describe("createInngestSurface connect", () => {
