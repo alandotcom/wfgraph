@@ -13,7 +13,11 @@ import { Effect } from "effect";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { runWithStepLog } from "#src/backend/engine/step-log";
-import type { WorkflowStore } from "#src/backend/engine/store";
+import {
+  noopWorkflowStore,
+  type WorkflowStore,
+} from "#src/backend/engine/store";
+import { DatabaseError } from "#src/backend/lib/effect/database";
 
 const { loggerWarnMock } = vi.hoisted(() => ({ loggerWarnMock: vi.fn() }));
 
@@ -36,9 +40,13 @@ const context = {
 
 function storeRefusingTheClose(): WorkflowStore {
   return {
-    startStepLog: () => Promise.resolve({ logId: "log_1", startTime: 0 }),
-    completeStepLog: () => Promise.reject(new Error("run log unreachable")),
-  } as unknown as WorkflowStore;
+    ...noopWorkflowStore,
+    startStepLog: () => Effect.succeed({ logId: "log_1", startTime: 0 }),
+    completeStepLog: () =>
+      Effect.fail(
+        new DatabaseError({ cause: new Error("run log unreachable") })
+      ),
+  };
 }
 
 beforeEach(() => {

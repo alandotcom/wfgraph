@@ -41,6 +41,7 @@ import {
   failureFromCause,
   failureFromUnknown,
 } from "#src/backend/engine/engine-failure";
+import type { DatabaseError } from "#src/backend/lib/effect/database";
 
 export type WaitActionInput = {
   config: Record<string, unknown>;
@@ -77,6 +78,12 @@ function fromPromise<A>(
   evaluate: () => Promise<A>
 ): Effect.Effect<A, EngineFailure> {
   return Effect.tryPromise({ try: evaluate, catch: failureFromUnknown });
+}
+
+function fromStore<A>(
+  effect: Effect.Effect<A, DatabaseError>
+): Effect.Effect<A, EngineFailure> {
+  return Effect.mapError(effect, failureFromUnknown);
 }
 
 function runDurable<A, E>(
@@ -322,7 +329,7 @@ function prepareDelayWait(
         resumedAt: encodeIsoTimestamp(new Date()),
       };
 
-      yield* fromPromise(() =>
+      yield* fromStore(
         store.recordAuditEvent({
           workflowId,
           executionId,
@@ -343,7 +350,7 @@ function prepareDelayWait(
       return { status: "skipped", output };
     }
 
-    const waitState = yield* fromPromise(() =>
+    const waitState = yield* fromStore(
       store.createWaitState({
         executionId,
         workflowId,
@@ -371,7 +378,7 @@ function prepareDelayWait(
       return { status: "error", error: cancelledMessage };
     }
 
-    yield* fromPromise(() =>
+    yield* fromStore(
       store.recordAuditEvent({
         workflowId,
         executionId,
@@ -450,15 +457,15 @@ function executeDelayWait(
       runtime,
       `wait-delay-resume-${context.nodeId}`,
       Effect.gen(function* () {
-        yield* fromPromise(() =>
+        yield* fromStore(
           store.markWaitStateStatus({
             waitStateId: prepared.waitStateId,
             status: "resumed",
           })
         );
-        yield* fromPromise(() => store.markExecutionRunning({ executionId }));
+        yield* fromStore(store.markExecutionRunning({ executionId }));
 
-        yield* fromPromise(() =>
+        yield* fromStore(
           store.recordAuditEvent({
             workflowId,
             executionId,
@@ -551,7 +558,7 @@ function prepareEventWait(
     const waitUntilIso = encodeIsoTimestamp(waitTimeoutResolution.waitUntil);
     const timeoutBehavior = config.waitTimeoutBehavior ?? "continue";
 
-    const waitState = yield* fromPromise(() =>
+    const waitState = yield* fromStore(
       store.createWaitState({
         executionId,
         workflowId,
@@ -582,7 +589,7 @@ function prepareEventWait(
       );
     }
 
-    yield* fromPromise(() =>
+    yield* fromStore(
       store.recordAuditEvent({
         workflowId,
         executionId,
@@ -674,15 +681,15 @@ function executeEventWait(
       runtime,
       `wait-event-resume-${context.nodeId}`,
       Effect.gen(function* () {
-        yield* fromPromise(() =>
+        yield* fromStore(
           store.markWaitStateStatus({
             waitStateId: prepared.waitStateId,
             status: canceled ? "cancelled" : timedOut ? "timed_out" : "resumed",
           })
         );
-        yield* fromPromise(() => store.markExecutionRunning({ executionId }));
+        yield* fromStore(store.markExecutionRunning({ executionId }));
 
-        yield* fromPromise(() =>
+        yield* fromStore(
           store.recordAuditEvent({
             workflowId,
             executionId,

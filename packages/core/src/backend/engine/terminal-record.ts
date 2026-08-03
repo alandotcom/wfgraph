@@ -11,10 +11,7 @@ import type {
   WorkflowStore,
 } from "#src/backend/engine/store";
 import { Cause, Effect } from "effect";
-import {
-  type EngineFailure,
-  failureFromUnknown,
-} from "#src/backend/engine/engine-failure";
+import { type EngineFailure } from "#src/backend/engine/engine-failure";
 
 /**
  * How a run that walked its graph to the end finished. `canceled` is a run that
@@ -65,8 +62,9 @@ const TERMINAL_AUDIT_EVENT = {
 
 /**
  * Writes a run's terminal row, then announces the outcome when that write
- * claimed the row. Resolves through any failure: an error escaping here sends
- * `core.ts` down its fatal path, which records the run a second time.
+ * claimed the row. A database refusal is logged and treated as an unclaimed
+ * row, so neither terminal-write outcome can send `core.ts` down its fatal path
+ * to record the run a second time.
  */
 function writeTerminalRecord(input: {
   store: WorkflowStore;
@@ -75,23 +73,25 @@ function writeTerminalRecord(input: {
   announcement: RecordAuditEventInput;
 }): Effect.Effect<void> {
   return Effect.gen(function* () {
-    const claimed = yield* Effect.catchCause(
-      Effect.tryPromise({
-        try: () => input.store.completeRun(input.run),
-        catch: failureFromUnknown,
-      }),
-      (cause) =>
+    const completion = yield* input.store.completeRun(input.run).pipe(
+      Effect.map((claimed) => ({ kind: "answer" as const, claimed })),
+      Effect.catchTag("DatabaseError", (error) =>
         Effect.sync(() => {
-          // The port forbids a rejection here, so this guards an adapter
-          // breaking its contract rather than an expected engine outcome.
-          input.logger.error("Failed to write the terminal run record", {
-            error: Cause.squash(cause),
+          input.logger.warn("Terminal run record not written", {
+            executionId: input.run.executionId,
+            status: input.run.status,
+            error,
           });
-          return false;
+          return { kind: "database_error" as const };
         })
+      )
     );
 
-    if (!claimed) {
+    if (completion.kind === "database_error") {
+      return;
+    }
+
+    if (!completion.claimed) {
       input.logger.info("Run did not claim the terminal record", {
         status: input.run.status,
       });
@@ -99,10 +99,7 @@ function writeTerminalRecord(input: {
     }
 
     yield* Effect.catchCause(
-      Effect.tryPromise({
-        try: () => input.store.recordAuditEvent(input.announcement),
-        catch: failureFromUnknown,
-      }),
+      input.store.recordAuditEvent(input.announcement),
       (cause) =>
         Effect.sync(() =>
           input.logger.error("Failed to announce the run's outcome", {

@@ -389,6 +389,7 @@ function executeWorkflowBranchInner(
 ): Effect.Effect<BranchRunResult, EngineFailure> {
   return Effect.gen(function* () {
     const { entryNodeId, executionId } = input;
+    const effectContext = yield* Effect.context();
     const { nodes, traversal, scheduler, logger } = prepareRun(
       input,
       runtime,
@@ -403,7 +404,9 @@ function executeWorkflowBranchInner(
     const upstream = yield* Effect.tryPromise({
       try: () =>
         runtime.run(`branch-upstream-${entryNodeId}`, () =>
-          store.readNodeOutputs(executionId)
+          Effect.runPromiseWith(effectContext)(
+            store.readNodeOutputs(executionId)
+          )
         ),
       catch: failureFromUnknown,
     });

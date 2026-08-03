@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { unknownRest } from "@rova/shared/types/schema";
 import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
@@ -429,16 +429,17 @@ describe("a wait node beside another branch", () => {
       // The entry node reads first and finds nothing, which is what lets the
       // wait be handed off at all. The cancel lands while the branch is parked,
       // and the node that handed it off is the next to ask.
-      readPendingCancel: async (executionId: string) => {
-        await store.readPendingCancel(executionId);
-        reads += 1;
-        return reads === 1
-          ? null
-          : ({
-              eventName: "app/appointment.canceled",
-              payload: {},
-            } satisfies PendingCancel);
-      },
+      readPendingCancel: (executionId: string) =>
+        Effect.gen(function* () {
+          yield* store.readPendingCancel(executionId);
+          reads += 1;
+          return reads === 1
+            ? null
+            : ({
+                eventName: "app/appointment.canceled",
+                payload: {},
+              } satisfies PendingCancel);
+        }),
     };
 
     const run = await runGraph(
@@ -545,16 +546,17 @@ describe("a wait node beside another branch", () => {
       // The entry node reads first and finds nothing, which is what lets the
       // Started branch fan out and park its wait in the queue. The cancel lands
       // at the node after it.
-      readPendingCancel: async (executionId: string) => {
-        await store.readPendingCancel(executionId);
-        reads += 1;
-        return reads === 1
-          ? null
-          : ({
-              eventName: "app/appointment.canceled",
-              payload: {},
-            } satisfies PendingCancel);
-      },
+      readPendingCancel: (executionId: string) =>
+        Effect.gen(function* () {
+          yield* store.readPendingCancel(executionId);
+          reads += 1;
+          return reads === 1
+            ? null
+            : ({
+                eventName: "app/appointment.canceled",
+                payload: {},
+              } satisfies PendingCancel);
+        }),
     };
 
     const result = await executeWorkflow(

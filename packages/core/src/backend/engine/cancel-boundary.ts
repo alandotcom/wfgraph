@@ -12,7 +12,12 @@ import {
   nodesBehindOutlet,
 } from "@rova/shared/lifecycle/lifecycle-outlets";
 import { readLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
+import { Effect } from "effect";
 import type { RunLogger } from "#src/backend/engine/contracts";
+import {
+  type EngineFailure,
+  failureFromUnknown,
+} from "#src/backend/engine/engine-failure";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
 import type { Traversal } from "#src/backend/engine/traversal";
@@ -136,23 +141,34 @@ export class CancelBoundary {
    * branch and the next down the Canceled one, and the memoized node outputs
    * would then belong to neither.
    */
-  async settle(nodeId: string): Promise<CancelSettlement> {
+  settle(nodeId: string): Effect.Effect<CancelSettlement, EngineFailure> {
     if (!this.canBeCanceled || this.canceledBranchNodeIds.has(nodeId)) {
-      return { entered: false, nextNodes: [] };
+      return Effect.succeed({ entered: false, nextNodes: [] });
     }
 
     const { runtime, store, executionId } = this.input;
-    const pending = await runtime.run(`lifecycle-check-${nodeId}`, () =>
-      store.readPendingCancel(executionId)
+    return Effect.gen(
+      function* (this: CancelBoundary) {
+        const effectContext = yield* Effect.context();
+        const pending = yield* Effect.tryPromise({
+          try: () =>
+            runtime.run(`lifecycle-check-${nodeId}`, () =>
+              Effect.runPromiseWith(effectContext)(
+                store.readPendingCancel(executionId)
+              )
+            ),
+          catch: failureFromUnknown,
+        });
+
+        // A boundary already crossed leaves nothing to schedule: the outlet's
+        // nodes went to whichever node crossed it first.
+        if (!pending || this.entered) {
+          return { entered: this.entered, nextNodes: [] };
+        }
+
+        return { entered: true, nextNodes: this.enter(pending) };
+      }.bind(this)
     );
-
-    // A boundary already crossed leaves nothing to schedule: the outlet's nodes
-    // went to whichever node crossed it first.
-    if (!pending || this.entered) {
-      return { entered: this.entered, nextNodes: [] };
-    }
-
-    return { entered: true, nextNodes: this.enter(pending) };
   }
 
   /**

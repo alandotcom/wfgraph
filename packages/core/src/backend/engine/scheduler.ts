@@ -141,11 +141,7 @@ export class NodeScheduler {
 
   // The persisted graph is validated as a DAG before execution, so we avoid
   // per-call cycle-tracking allocations on this hot path.
-  executeNode(nodeId: string): Promise<void> {
-    return Effect.runPromise(this.executeNodeEffect(nodeId));
-  }
-
-  private executeNodeEffect(nodeId: string): Effect.Effect<void> {
+  private executeNode(nodeId: string): Effect.Effect<void> {
     const nodeLogger = this.input.logger.with({ nodeId });
     const execute = Effect.gen(
       function* (this: NodeScheduler) {
@@ -377,23 +373,18 @@ export class NodeScheduler {
    */
   private sweepKilledBranchWork(): Effect.Effect<void, EngineFailure> {
     const { runtime, store, executionId } = this.input;
-    return Effect.asVoid(
-      Effect.tryPromise({
+    return Effect.gen(function* () {
+      const effectContext = yield* Effect.context();
+      yield* Effect.tryPromise({
         try: () =>
           runtime.run("branch-kill-sweep", () =>
-            Effect.runPromise(
-              Effect.as(
-                Effect.tryPromise({
-                  try: () => store.cancelOpenWork({ executionId }),
-                  catch: failureFromUnknown,
-                }),
-                null
-              )
+            Effect.runPromiseWith(effectContext)(
+              Effect.as(store.cancelOpenWork({ executionId }), null)
             )
           ),
         catch: failureFromUnknown,
-      })
-    );
+      });
+    });
   }
 
   /**
@@ -446,10 +437,7 @@ export class NodeScheduler {
 
         // A claimed run takes the Canceled outlet instead of whatever came next,
         // and a node that finishes after that stops where it stands.
-        const cancel = yield* Effect.tryPromise({
-          try: () => cancelBoundary.settle(nodeId),
-          catch: failureFromUnknown,
-        });
+        const cancel = yield* cancelBoundary.settle(nodeId);
         if (cancel.entered) {
           yield* this.runAll(cancel.nextNodes);
           return;
@@ -513,8 +501,9 @@ export class NodeScheduler {
 
   /** Runs a set of nodes side by side, which is how every branch fans out. */
   runAll(nodeIds: readonly string[]): Effect.Effect<void[]> {
-    return Effect.promise(() =>
-      Promise.all(nodeIds.map((nodeId) => this.executeNode(nodeId)))
+    return Effect.all(
+      nodeIds.map((nodeId) => this.executeNode(nodeId)),
+      { concurrency: "unbounded" }
     );
   }
 

@@ -8,6 +8,7 @@ import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { Effect, Schema } from "effect";
+import { DatabaseError } from "#src/backend/lib/effect/database";
 import { unknownRest } from "@rova/shared/types/schema";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { WorkflowNode } from "@rova/shared/graph/types";
@@ -477,7 +478,7 @@ describe("run persistence through the store port", () => {
   });
 
   /**
-   * A store that answers one of its writes with a rejection, the way an
+   * A store that answers one of its writes with `DatabaseError`, the way an
    * unreachable database does.
    */
   function storeRefusing(
@@ -487,7 +488,10 @@ describe("run persistence through the store port", () => {
       | "recordAuditEvent"
       | "completeRun"
   ): RecordingWorkflowStore {
-    const refusal = () => Promise.reject(new Error("run log unreachable"));
+    const refusal = () =>
+      Effect.fail(
+        new DatabaseError({ cause: new Error("run log unreachable") })
+      );
     return { ...store, [method]: refusal };
   }
 
@@ -534,7 +538,7 @@ describe("run persistence through the store port", () => {
     expect(handlerFn).toHaveBeenCalledTimes(0);
     expect(result.success).toBe(false);
     expect(executionError(result.results.lifecycle_1)).toBe(
-      "run log unreachable"
+      "DatabaseError: run log unreachable"
     );
   });
 
@@ -557,8 +561,8 @@ describe("run persistence through the store port", () => {
     expect(store.callsOf("completeRun")[0]?.status).toBe("completed");
   });
 
-  // The port forbids a rejection here, so this is an adapter breaking its word.
-  // The engine reads it as the unclaimed row it stands for.
+  // Terminal-record folds a refused database write into the same false answer
+  // as a terminal race, after logging the different cause.
   it("announces nothing on the timeline when the terminal row is refused", async () => {
     const result = await executeWorkflow(
       {
@@ -608,7 +612,7 @@ describe("run persistence through the store port", () => {
   // which carries its text on `cause` and leaves `.message` empty. A row closed
   // with that message alone is a red node with no sentence beside it.
   it("closes a node's row with a sentence when the error carries an empty message", async () => {
-    class DatabaseError extends Error {
+    class EmptyMessageDatabaseError extends Error {
       constructor(cause: unknown) {
         super("", { cause });
         this.name = "DatabaseError";
@@ -616,7 +620,7 @@ describe("run persistence through the store port", () => {
     }
 
     handlerFn.mockImplementation(() => {
-      throw new DatabaseError(new Error("connection terminated"));
+      throw new EmptyMessageDatabaseError(new Error("connection terminated"));
     });
 
     await executeWorkflow(
@@ -687,10 +691,7 @@ describe("run persistence through the store port", () => {
   function storeClaimingNothing(): RecordingWorkflowStore {
     return {
       ...store,
-      completeRun: (input) => {
-        store.completeRun(input);
-        return Promise.resolve(false);
-      },
+      completeRun: (input) => Effect.as(store.completeRun(input), false),
     };
   }
 

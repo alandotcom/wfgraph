@@ -50,17 +50,15 @@ export function openStepLog(target: {
   context: NodeContext;
   input: unknown;
 }): Effect.Effect<WorkflowStepLogHandle, EngineFailure> {
-  return Effect.tryPromise({
-    try: () =>
-      target.store.startStepLog({
-        executionId: target.context.executionId,
-        nodeId: target.context.nodeId,
-        nodeName: target.context.nodeName,
-        nodeType: target.context.nodeType,
-        input: target.input,
-      }),
-    catch: failureFromUnknown,
-  });
+  return target.store
+    .startStepLog({
+      executionId: target.context.executionId,
+      nodeId: target.context.nodeId,
+      nodeName: target.context.nodeName,
+      nodeType: target.context.nodeType,
+      input: target.input,
+    })
+    .pipe(Effect.mapError(failureFromUnknown));
 }
 
 /** The close as the store takes it, with the elapsed the caller measured. */
@@ -70,17 +68,15 @@ function writeStepLogClose(
   close: StepLogClose,
   durationMs: number
 ): Effect.Effect<void, EngineFailure> {
-  return Effect.tryPromise({
-    try: () =>
-      store.completeStepLog({
-        logId: handle.logId,
-        durationMs,
-        status: close.status,
-        output: close.output,
-        error: close.error,
-      }),
-    catch: failureFromUnknown,
-  });
+  return store
+    .completeStepLog({
+      logId: handle.logId,
+      durationMs,
+      status: close.status,
+      output: close.output,
+      error: close.error,
+    })
+    .pipe(Effect.mapError(failureFromUnknown));
 }
 
 /**
