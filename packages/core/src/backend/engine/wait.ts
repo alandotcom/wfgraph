@@ -39,6 +39,7 @@ import {
   type EngineFailure,
   failureFromCause,
   failureFromUnknown,
+  runPromiseWithEngineFailure,
 } from "#src/backend/engine/engine-failure";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
 
@@ -90,9 +91,14 @@ function runDurable<A, E>(
   stepId: string,
   effect: Effect.Effect<A, E>
 ): Effect.Effect<A, EngineFailure> {
-  return fromPromise(() =>
-    runtime.run(stepId, () => Effect.runPromise(effect))
-  );
+  return Effect.gen(function* () {
+    const effectContext = yield* Effect.context();
+    return yield* fromPromise(() =>
+      runtime.run(stepId, () =>
+        runPromiseWithEngineFailure(effectContext)(effect)
+      )
+    );
+  });
 }
 
 /** The token addresses a parked run, so it comes from a cryptographic source. */

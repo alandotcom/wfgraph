@@ -5,7 +5,7 @@ import {
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
-import { Effect } from "effect";
+import { Effect, Layer, Logger, References } from "effect";
 import { noWorkflowActions } from "#src/backend/engine/actions";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
@@ -38,6 +38,20 @@ function actionNode(): WorkflowNode {
       label: "Unknown action",
       config: { actionType: "test/unknown" },
     },
+  };
+}
+
+function recordingLogger() {
+  const messages: unknown[] = [];
+  const logger = Logger.make<unknown, void>(({ message }) => {
+    messages.push(Array.isArray(message) ? message[0] : message);
+  });
+  return {
+    messages,
+    layer: Layer.merge(
+      Logger.layer([logger]),
+      Layer.succeed(References.MinimumLogLevel, "All")
+    ),
   };
 }
 
@@ -167,5 +181,48 @@ describe("engine Effect spans", () => {
       "rova.node.id": "wait_1",
       "rova.node.name": "Wait for reply",
     });
+  });
+
+  test("preserves logger and tracer context inside a Wait durable callback", async () => {
+    const recording = createRecordingWorkflowStore();
+    const capturedLogger = recordingLogger();
+    const store = {
+      ...recording,
+      startStepLog: (input: Parameters<typeof recording.startStepLog>[0]) =>
+        Effect.logInfo("Wait durable callback observed").pipe(
+          Effect.andThen(recording.startStepLog(input)),
+          Effect.withSpan("test.wait.durable")
+        ),
+    };
+
+    await Effect.runPromise(
+      executeWaitAction({
+        config: { waitMode: "not-supported" },
+        context: {
+          executionId: "execution_context",
+          nodeId: "wait_context",
+          nodeName: "Wait context",
+          nodeType: "core/wait",
+        },
+        runtime: createInMemoryWorkflowRuntime(),
+        store,
+        workflowId: "workflow_context",
+        workflowRunId: "run_context",
+        resolveTemplates: (value) => value,
+      }).pipe(
+        Effect.provide(Layer.merge(TracerBridgeLayer, capturedLogger.layer))
+      )
+    );
+    await provider.forceFlush();
+
+    expect(capturedLogger.messages).toContain("Wait durable callback observed");
+    const spans = exporter.getFinishedSpans();
+    const wait = spans.find(
+      (span) =>
+        span.name === "rova.workflow.wait" &&
+        span.attributes["rova.node.id"] === "wait_context"
+    );
+    const durable = spans.find((span) => span.name === "test.wait.durable");
+    expect(durable?.parentSpanContext?.spanId).toBe(wait?.spanContext().spanId);
   });
 });

@@ -4,26 +4,11 @@
  */
 
 import { Effect } from "effect";
-import { beforeEach, describe, expect, layer } from "@effect/vitest";
-import { vi } from "vitest";
+import { describe, expect, layer } from "@effect/vitest";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { stubExecutionRepo } from "#src/backend/lib/effect/test-layers";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
-
-const { loggerInfoMock, loggerWarnMock } = vi.hoisted(() => ({
-  loggerInfoMock: vi.fn(),
-  loggerWarnMock: vi.fn(),
-}));
-
-vi.mock("#src/backend/lib/logger", () => ({
-  getAppLogger: () => ({
-    debug: vi.fn(),
-    error: vi.fn(),
-    info: loggerInfoMock,
-    warn: loggerWarnMock,
-  }),
-}));
 
 const terminalWrite = {
   executionId: "exec_1",
@@ -32,11 +17,6 @@ const terminalWrite = {
 } as const;
 
 describe("completeRun", () => {
-  beforeEach(() => {
-    loggerInfoMock.mockClear();
-    loggerWarnMock.mockClear();
-  });
-
   layer(stubExecutionRepo({ finishRun: () => Effect.succeed(true) }))((it) => {
     it.effect("answers true when the write claimed the row", () =>
       Effect.gen(function* () {
@@ -59,11 +39,6 @@ describe("completeRun", () => {
             yield* createDbWorkflowStore(repo).completeRun(terminalWrite);
 
           expect(result).toBe(false);
-          expect(loggerInfoMock).toHaveBeenCalledWith(
-            "Run completion superseded by an earlier terminal status",
-            { executionId: "exec_1", status: "completed" }
-          );
-          expect(loggerWarnMock).not.toHaveBeenCalled();
         })
     );
   });
@@ -82,8 +57,6 @@ describe("completeRun", () => {
         );
 
         expect(error).toBeInstanceOf(DatabaseError);
-        expect(loggerInfoMock).not.toHaveBeenCalled();
-        expect(loggerWarnMock).not.toHaveBeenCalled();
       })
     );
   });

@@ -13,7 +13,11 @@ import { unknownRest } from "@rova/shared/types/schema";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { WorkflowNode } from "@rova/shared/graph/types";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
-import { executionData, executionError } from "#src/backend/engine/contracts";
+import {
+  executionData,
+  executionError,
+  executionFailure,
+} from "#src/backend/engine/contracts";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
@@ -540,6 +544,49 @@ describe("run persistence through the store port", () => {
     expect(executionError(result.results.lifecycle_1)).toBe(
       "DatabaseError: run log unreachable"
     );
+  });
+
+  it("preserves a defect raised inside a durable runtime callback", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createLifecycleToActionGraph(),
+        executionId: "exec_durable_defect",
+        workflowId: "workflow_durable_defect",
+      },
+      createInMemoryWorkflowRuntime(),
+      {
+        ...store,
+        startStepLog: () =>
+          Effect.die(new Error("durable callback invariant broke")),
+      },
+      actions
+    );
+
+    expect(executionFailure(result.results.lifecycle_1)).toEqual({
+      kind: "defect",
+      message: "durable callback invariant broke",
+    });
+  });
+
+  it("preserves an interrupt raised inside a durable runtime callback", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createLifecycleToActionGraph(),
+        executionId: "exec_durable_interrupt",
+        workflowId: "workflow_durable_interrupt",
+      },
+      createInMemoryWorkflowRuntime(),
+      {
+        ...store,
+        startStepLog: () => Effect.interrupt,
+      },
+      actions
+    );
+
+    expect(executionFailure(result.results.lifecycle_1)).toEqual({
+      kind: "interrupt",
+      message: "Workflow execution was interrupted",
+    });
   });
 
   // Both terminal writes sit inside the step that settles the run's outcome, so

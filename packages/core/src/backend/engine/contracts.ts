@@ -13,18 +13,6 @@ import {
   engineFailure,
 } from "#src/backend/engine/engine-failure";
 
-/**
- * What one node left behind, as the traversal reads it.
- *
- * A step's own envelope, so a dispatched action's answer needs no translation to
- * become a node outcome and `{ success: true, error: "..." }` does not compile.
- * The engine's own name for it, so this module and the Wait node below it can be
- * read without the authoring vocabulary that `StepResult` belongs to.
- *
- * Whether a node stops the run below it is absent here on purpose. That decision
- * is the scheduler's, it is read a few lines from where it is made, and this
- * value is persisted and crosses the branch hand-off as JSON.
- */
 export type ExecutionResult =
   | Extract<StepResult, { success: true }>
   | { success: false; error: EngineFailure };

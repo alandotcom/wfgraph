@@ -1,4 +1,4 @@
-import { Cause, Option, Schema } from "effect";
+import { Cause, Context, Effect, Exit, Option, Schema } from "effect";
 import { getErrorMessage } from "@rova/shared/utils";
 
 export type EngineFailureKind = "failure" | "defect" | "interrupt";
@@ -45,19 +45,31 @@ export function failureFromUnknown(error: unknown): EngineFailure {
 /**
  * Reduces a full Effect cause at the node or run boundary.
  *
- * Interrupts outrank defects, and defects outrank typed failures, so a combined
- * cause is never persisted as a recoverable failure when it also says the fiber
- * was cancelled or the engine broke an invariant.
+ * Defects outrank interrupts, and interrupts outrank typed failures, so a
+ * combined cause preserves the invariant failure that triggered cancellation.
  */
 export function failureFromCause<E>(cause: Cause.Cause<E>): EngineFailure {
-  if (Cause.hasInterrupts(cause)) {
-    return engineFailure("interrupt", "Workflow execution was interrupted");
-  }
-
   if (Cause.hasDies(cause)) {
     return engineFailure("defect", getErrorMessage(Cause.squash(cause)));
   }
 
+  if (Cause.hasInterrupts(cause)) {
+    return engineFailure("interrupt", "Workflow execution was interrupted");
+  }
+
   const failure = Option.getOrUndefined(Cause.findErrorOption(cause));
   return failureFromUnknown(failure);
+}
+
+/**
+ * Runs an Effect inside a Promise-shaped durability callback without losing its
+ * cause or the invocation context that owns its logging and tracing references.
+ */
+export function runPromiseWithEngineFailure<R>(context: Context.Context<R>) {
+  return async <A, E>(effect: Effect.Effect<A, E, R>): Promise<A> => {
+    const exit = await Effect.runPromiseExitWith(context)(effect);
+    return Exit.isFailure(exit)
+      ? Promise.reject(failureFromCause(exit.cause))
+      : exit.value;
+  };
 }

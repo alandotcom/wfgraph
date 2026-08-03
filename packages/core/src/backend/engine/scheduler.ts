@@ -38,6 +38,7 @@ import {
   type EngineFailure,
   failureFromCause,
   failureFromUnknown,
+  runPromiseWithEngineFailure,
 } from "#src/backend/engine/engine-failure";
 
 /** What the run log and the trace call a node. */
@@ -369,7 +370,7 @@ export class NodeScheduler {
       yield* Effect.tryPromise({
         try: () =>
           runtime.run("branch-kill-sweep", () =>
-            Effect.runPromiseWith(effectContext)(
+            runPromiseWithEngineFailure(effectContext)(
               Effect.as(store.cancelOpenWork({ executionId }), null)
             )
           ),

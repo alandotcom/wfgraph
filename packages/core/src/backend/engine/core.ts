@@ -34,6 +34,7 @@ import {
   type EngineFailure,
   failureFromCause,
   failureFromUnknown,
+  runPromiseWithEngineFailure,
 } from "#src/backend/engine/engine-failure";
 import { withAppLogCategory } from "#src/backend/lib/effect/app-logger";
 
@@ -293,7 +294,7 @@ function executeWorkflowInner(
       yield* Effect.tryPromise({
         try: () =>
           runtime.run("workflow-run-completed", () =>
-            Effect.runPromiseWith(effectContext)(
+            runPromiseWithEngineFailure(effectContext)(
               recordRunCompleted({
                 store,
                 executionId,
@@ -337,7 +338,7 @@ function executeWorkflowInner(
         yield* Effect.tryPromise({
           try: () =>
             runtime.run("workflow-run-failed", () =>
-              Effect.runPromiseWith(effectContext)(
+              runPromiseWithEngineFailure(effectContext)(
                 recordRunFailed({
                   store,
                   executionId,
@@ -416,7 +417,7 @@ function executeWorkflowBranchInner(
     const upstream = yield* Effect.tryPromise({
       try: () =>
         runtime.run(`branch-upstream-${entryNodeId}`, () =>
-          Effect.runPromiseWith(effectContext)(
+          runPromiseWithEngineFailure(effectContext)(
             store.readNodeOutputs(executionId)
           )
         ),

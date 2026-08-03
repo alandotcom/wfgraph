@@ -16,6 +16,7 @@ import { Effect } from "effect";
 import {
   type EngineFailure,
   failureFromUnknown,
+  runPromiseWithEngineFailure,
 } from "#src/backend/engine/engine-failure";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
@@ -151,7 +152,7 @@ export class CancelBoundary {
         const pending = yield* Effect.tryPromise({
           try: () =>
             runtime.run(`lifecycle-check-${nodeId}`, () =>
-              Effect.runPromiseWith(effectContext)(
+              runPromiseWithEngineFailure(effectContext)(
                 store.readPendingCancel(executionId)
               )
             ),

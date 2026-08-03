@@ -22,6 +22,7 @@ import {
   type EngineFailure,
   failureFromCause,
   failureFromUnknown,
+  runPromiseWithEngineFailure,
 } from "#src/backend/engine/engine-failure";
 
 const stepLogLogger = getAppLogger("workflow", "step-log");
@@ -165,7 +166,7 @@ export function runWithStepLog<T extends StepResult, E, R>(
     const handle = yield* Effect.tryPromise({
       try: () =>
         runtime.run(`node:${context.nodeId}:log-open`, () =>
-          Effect.runPromiseWith(effectContext)(openStepLog(target))
+          runPromiseWithEngineFailure(effectContext)(openStepLog(target))
         ),
       catch: failureFromUnknown,
     });
@@ -180,7 +181,7 @@ export function runWithStepLog<T extends StepResult, E, R>(
           runtime.run(
             `node:${context.nodeId}:log-close:${runtime.attempt}`,
             () =>
-              Effect.runPromiseWith(effectContext)(
+              runPromiseWithEngineFailure(effectContext)(
                 Effect.as(
                   closeStepLogQuietly(store, context, handle, close, elapsed()),
                   null

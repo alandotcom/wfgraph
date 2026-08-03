@@ -34,4 +34,20 @@ describe("engine failure classification", () => {
       });
     })
   );
+
+  it.effect(
+    "keeps a defect when the same cause also carries interruption",
+    () =>
+      Effect.sync(() => {
+        const cause = Cause.fromReasons([
+          Cause.makeDieReason(new Error("broken during interruption")),
+          Cause.makeInterruptReason(),
+        ]);
+
+        assert.deepStrictEqual(failureFromCause(cause), {
+          kind: "defect",
+          message: "broken during interruption",
+        });
+      })
+  );
 });

@@ -11,7 +11,6 @@
 
 import { Effect } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
-import { getAppLogger } from "#src/backend/lib/logger";
 import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { decodeIsoTimestampOrThrow } from "@rova/shared/types/timestamp";
@@ -20,33 +19,18 @@ import type {
   WorkflowStore,
 } from "#src/backend/engine/store";
 
-const storeLogger = getAppLogger("workflow", "db-store");
-
 export function createDbWorkflowStore(
   repo: ExecutionRepo["Service"]
 ): WorkflowStore {
   function completeRun(
     input: CompleteRunInput
   ): Effect.Effect<boolean, DatabaseError> {
-    return repo
-      .finishRun({
-        executionId: input.executionId,
-        status: input.status,
-        output: redactSensitiveData(input.output),
-        error: input.failure?.message,
-      })
-      .pipe(
-        Effect.tap((recorded) =>
-          recorded
-            ? Effect.void
-            : Effect.sync(() =>
-                storeLogger.info(
-                  "Run completion superseded by an earlier terminal status",
-                  { executionId: input.executionId, status: input.status }
-                )
-              )
-        )
-      );
+    return repo.finishRun({
+      executionId: input.executionId,
+      status: input.status,
+      output: redactSensitiveData(input.output),
+      error: input.failure?.message,
+    });
   }
 
   return {
