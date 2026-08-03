@@ -48,6 +48,7 @@ export async function buildInngestFunctions(
   const ports = {
     actions: () => createWorkflowActions(extensions, runtime),
     store: createDbWorkflowStore(executionRepo),
+    appRuntime: runtime,
   };
 
   return [

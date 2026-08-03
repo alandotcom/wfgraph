@@ -97,30 +97,28 @@ export function runAction(
 
   const environment: StepEnvironment = {
     credentialsFor: () => toCredentialEffect(run.credentials),
-    // The failure a step could not answer for rejects here, the way the app's
-    // own runner rejects for the durable runtime to retry. It reaches the caller
-    // as a defect, which is what a case pinning it matches on with `Effect.exit`.
-    runStep: (effect) => Effect.runPromise(effect),
   };
 
-  return Effect.promise(async () =>
-    step(environment)({
-      ...run.input,
-      // A step reads its credentials by integration id, so an action given none
-      // never fetches, which is what an action against a public API does.
-      ...(run.credentials === undefined
-        ? {}
-        : { integrationId: TEST_INTEGRATION_ID }),
-      _context: {
-        runMode: run.runMode ?? "live",
-        nodeId: run.node?.nodeId ?? "node_1",
-        nodeName: run.node?.nodeName ?? integration.label,
-        nodeType: run.node?.nodeType ?? "action",
-        ...(run.node?.executionId === undefined
+  return Effect.promise(() =>
+    Effect.runPromise(
+      step(environment)({
+        ...run.input,
+        // A step reads its credentials by integration id, so an action given none
+        // never fetches, which is what an action against a public API does.
+        ...(run.credentials === undefined
           ? {}
-          : { executionId: run.node.executionId }),
-      },
-    })
+          : { integrationId: TEST_INTEGRATION_ID }),
+        _context: {
+          runMode: run.runMode ?? "live",
+          nodeId: run.node?.nodeId ?? "node_1",
+          nodeName: run.node?.nodeName ?? integration.label,
+          nodeType: run.node?.nodeType ?? "action",
+          ...(run.node?.executionId === undefined
+            ? {}
+            : { executionId: run.node.executionId }),
+        },
+      })
+    )
   );
 }
 

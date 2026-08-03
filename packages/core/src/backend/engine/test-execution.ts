@@ -1,0 +1,41 @@
+import { Effect, Layer } from "effect";
+import {
+  executeWorkflow,
+  executeWorkflowBranch,
+  type WorkflowBranchInput,
+  type WorkflowExecutionInput,
+} from "#src/backend/engine/core";
+import type { WorkflowActions } from "#src/backend/engine/actions";
+import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
+import type { WorkflowStore } from "#src/backend/engine/store";
+import { AppLoggerLayer } from "#src/backend/lib/effect/app-logger";
+import { TracerBridgeLayer } from "#src/backend/lib/effect/tracer";
+
+/** The observability services a production invocation gets from RovaRuntime. */
+const EngineTestLayer = Layer.merge(AppLoggerLayer, TracerBridgeLayer);
+
+export function executeTestWorkflow(
+  input: WorkflowExecutionInput,
+  runtime: WorkflowExecutionRuntime,
+  store: WorkflowStore,
+  actions: WorkflowActions
+) {
+  return Effect.runPromise(
+    executeWorkflow(input, runtime, store, actions).pipe(
+      Effect.provide(EngineTestLayer)
+    )
+  );
+}
+
+export function executeTestWorkflowBranch(
+  input: WorkflowBranchInput,
+  runtime: WorkflowExecutionRuntime,
+  store: WorkflowStore,
+  actions: WorkflowActions
+) {
+  return Effect.runPromise(
+    executeWorkflowBranch(input, runtime, store, actions).pipe(
+      Effect.provide(EngineTestLayer)
+    )
+  );
+}

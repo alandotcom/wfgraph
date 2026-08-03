@@ -12,7 +12,7 @@ import { DatabaseError } from "#src/backend/lib/effect/database";
 import { unknownRest } from "@rova/shared/types/schema";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { WorkflowNode } from "@rova/shared/graph/types";
-import { executeWorkflow } from "#src/backend/engine/core";
+import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import { executionData, executionError } from "#src/backend/engine/contracts";
 import {
   createRecordingWorkflowStore,

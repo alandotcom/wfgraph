@@ -7,7 +7,7 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { Effect } from "effect";
 import { noWorkflowActions } from "#src/backend/engine/actions";
-import { executeWorkflow } from "#src/backend/engine/core";
+import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { executeWaitAction } from "#src/backend/engine/wait";

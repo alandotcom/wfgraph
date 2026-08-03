@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { CredentialsUnavailable } from "#src/backend/extensions/credential-fetcher";
 import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
+import type { StepEffect } from "#src/backend/extensions/steps/step-runner";
+import type { NodeSteps } from "@rova/shared/actions/step-result";
 import {
   defineStep,
   type NodeStepApi,
@@ -14,6 +16,11 @@ import {
 // log rows belong to the engine and are pinned there.
 const credentialsFor = vi.fn(() => Effect.succeed({ API_KEY: "k" }));
 const runner = stubStepEnvironment({ credentialsFor });
+
+function runStep(step: StepEffect) {
+  return (input: Record<string, unknown>, steps?: NodeSteps) =>
+    Effect.runPromise(step(input, steps));
+}
 
 const input = Schema.Struct({
   to: Schema.String,
@@ -66,7 +73,7 @@ describe("defineStep", () => {
 
   // The id is the integration's to give, so this is the same binding
   // `assembleExtensions` makes when it reads the record key the step sits under.
-  const run = step.implement("demo/send")(runner);
+  const run = runStep(step.implement("demo/send")(runner));
 
   it("answers the envelope the engine reads, carrying the handler's payload", async () => {
     const result = await run({
@@ -125,7 +132,7 @@ describe("defineStep", () => {
       }),
     });
 
-    await quiet.implement("demo/quiet")(runner)({
+    await runStep(quiet.implement("demo/quiet")(runner))({
       to: "someone",
       integrationId: "int_1",
       _context: CONTEXT,
@@ -177,16 +184,18 @@ describe("defineStep", () => {
   /** A step that records the run mode each call reached its handler with. */
   function makeReportingStep(actionId: string) {
     const modes: string[] = [];
-    const reporting = defineStep({
-      ...METADATA,
-      input,
-      output,
-      configFields: [],
-      handler: Effect.fn(function* (bag) {
-        modes.push(bag.runMode);
-        return yield* Effect.succeed({ id: "x", sentTo: bag.input.to });
-      }),
-    }).implement(actionId)(runner);
+    const reporting = runStep(
+      defineStep({
+        ...METADATA,
+        input,
+        output,
+        configFields: [],
+        handler: Effect.fn(function* (bag) {
+          modes.push(bag.runMode);
+          return yield* Effect.succeed({ id: "x", sentTo: bag.input.to });
+        }),
+      }).implement(actionId)(runner)
+    );
 
     return { reporting, modes };
   }
@@ -270,8 +279,10 @@ describe("defineStep and a credential store that refuses the read", () => {
   });
 
   it("rejects rather than answering the envelope, so the step is retried", async () => {
-    const run = step.implement("demo/send")(
-      stubStepEnvironment({ credentialsFor: unreadable })
+    const run = runStep(
+      step.implement("demo/send")(
+        stubStepEnvironment({ credentialsFor: unreadable })
+      )
     );
 
     await expect(
@@ -293,8 +304,10 @@ describe("defineStep and a credential store that refuses the read", () => {
       }),
     });
 
-    const result = await quiet.implement("demo/quiet")(
-      stubStepEnvironment({ credentialsFor: unreadable })
+    const result = await runStep(
+      quiet.implement("demo/quiet")(
+        stubStepEnvironment({ credentialsFor: unreadable })
+      )
     )({ to: "someone", integrationId: "int_1", _context: CONTEXT });
 
     expect(result).toEqual({
@@ -316,7 +329,7 @@ describe("defineStep and a credential store that refuses the read", () => {
       }),
     });
 
-    const result = await refusing.implement("demo/refused")(runner)({
+    const result = await runStep(refusing.implement("demo/refused")(runner))({
       to: "someone",
       _context: CONTEXT,
     });
@@ -342,8 +355,10 @@ describe("defineStep and a credential store that refuses the read", () => {
       },
     });
 
-    const run = asyncStep.implement("demo/async")(
-      stubStepEnvironment({ credentialsFor: unreadable })
+    const run = runStep(
+      asyncStep.implement("demo/async")(
+        stubStepEnvironment({ credentialsFor: unreadable })
+      )
     );
 
     await expect(
@@ -392,7 +407,7 @@ describe("defineStep and the JSON codec", () => {
       }),
     });
 
-    const result = await step.implement("demo/urls")(runner)({
+    const result = await runStep(step.implement("demo/urls")(runner))({
       urls: "a,b,c",
       _context: CONTEXT,
     });
@@ -412,7 +427,7 @@ describe("defineStep and the JSON codec", () => {
       }),
     });
 
-    const result = await step.implement("demo/clock")(runner)({
+    const result = await runStep(step.implement("demo/clock")(runner))({
       _context: CONTEXT,
     });
 
@@ -439,7 +454,7 @@ describe("defineStep and the JSON codec", () => {
       }),
     });
 
-    const result = await step.implement("demo/clock")(runner)({
+    const result = await runStep(step.implement("demo/clock")(runner))({
       _context: CONTEXT,
     });
 
@@ -470,7 +485,7 @@ describe("defineStep and an optional config field", () => {
   });
 
   function runWith(config: Record<string, unknown>) {
-    return defineStep({
+    const step = defineStep({
       ...METADATA,
       input: optionalInput,
       output: Schema.Struct({ note: Schema.String }),
@@ -478,7 +493,8 @@ describe("defineStep and an optional config field", () => {
       handler: Effect.fn(function* (bag) {
         return yield* Effect.succeed({ note: bag.input.note ?? "blank" });
       }),
-    }).implement("demo/optional")(runner)({ ...config, _context: CONTEXT });
+    }).implement("demo/optional")(runner);
+    return runStep(step)({ ...config, _context: CONTEXT });
   }
 
   it("takes an absent key as a field left blank", async () => {
@@ -531,7 +547,9 @@ describe("defineStep and the shape of what it answers", () => {
     });
 
     expect(
-      await step.implement("demo/vendor")(runner)({ _context: CONTEXT })
+      await runStep(step.implement("demo/vendor")(runner))({
+        _context: CONTEXT,
+      })
     ).toEqual({
       success: true,
       data: { id: "1" },
@@ -555,7 +573,9 @@ describe("defineStep and the shape of what it answers", () => {
     });
 
     expect(
-      await step.implement("demo/optional-out")(runner)({ _context: CONTEXT })
+      await runStep(step.implement("demo/optional-out")(runner))({
+        _context: CONTEXT,
+      })
     ).toEqual({
       success: true,
       data: { id: "1", from: null },
@@ -692,7 +712,7 @@ describe("defineStep and a schema from another library", () => {
     handler: (bag) => Effect.succeed({ id: `sent-${bag.input.to}` }),
   });
 
-  const run = step.implement("demo/foreign")(runner);
+  const run = runStep(step.implement("demo/foreign")(runner));
 
   it("derives the form from the schema it was given", () => {
     expect(step.configFields).toEqual([
@@ -746,7 +766,7 @@ describe("defineStep and an input schema that declares a rest", () => {
       }),
     });
 
-    await open.implement("demo/open")(runner)({
+    await runStep(open.implement("demo/open")(runner))({
       to: "someone",
       actionType: "demo",
       integrationId: "int_1",
@@ -775,7 +795,7 @@ describe("defineStep and a handler that is not an Effect", () => {
     },
   });
 
-  const run = asyncStep.implement("demo/async")(runner);
+  const run = runStep(asyncStep.implement("demo/async")(runner));
 
   it("answers the envelope the engine reads", async () => {
     expect(
@@ -795,7 +815,7 @@ describe("defineStep and a handler that is not an Effect", () => {
       },
     });
 
-    await twice.implement("demo/twice")(runner)({
+    await runStep(twice.implement("demo/twice")(runner))({
       to: "someone",
       integrationId: "int_1",
       _context: CONTEXT,
@@ -818,7 +838,7 @@ describe("defineStep and a handler that is not an Effect", () => {
     });
 
     expect(
-      await throwing.implement("demo/throwing")(runner)({
+      await runStep(throwing.implement("demo/throwing")(runner))({
         to: "someone",
         _context: CONTEXT,
       })
@@ -836,7 +856,7 @@ describe("defineStep and a handler that is not an Effect", () => {
     });
 
     expect(
-      await plain.implement("demo/plain")(runner)({
+      await runStep(plain.implement("demo/plain")(runner))({
         to: "someone",
         _context: CONTEXT,
       })
@@ -856,7 +876,7 @@ describe("defineStep and a handler that is not an Effect", () => {
     });
 
     expect(
-      await throwing.implement("demo/sync-throw")(runner)({
+      await runStep(throwing.implement("demo/sync-throw")(runner))({
         to: "someone",
         _context: CONTEXT,
       })
@@ -929,7 +949,7 @@ describe("Promise step.run adapter", () => {
       },
     };
 
-    const run = step.implement("demo/promise-run")(runner);
+    const run = runStep(step.implement("demo/promise-run")(runner));
     const first = await run({ to: "someone", _context: CONTEXT }, steps);
     const second = await run({ to: "someone", _context: CONTEXT }, steps);
 
@@ -967,7 +987,7 @@ describe("Promise step.run adapter", () => {
       },
     };
 
-    const run = step.implement("demo/promise-retry")(runner);
+    const run = runStep(step.implement("demo/promise-retry")(runner));
     const first = await run({ to: "someone", _context: CONTEXT }, steps);
     const second = await run({ to: "someone", _context: CONTEXT }, steps);
 

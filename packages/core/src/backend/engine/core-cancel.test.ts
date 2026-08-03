@@ -23,7 +23,7 @@ import {
 } from "@rova/shared/conditions/conditions";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
-import { executeWorkflow } from "#src/backend/engine/core";
+import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,

@@ -8,10 +8,7 @@ import {
   executionResultFromStepResult,
   failedExecution,
 } from "#src/backend/engine/contracts";
-import {
-  engineFailure,
-  failureFromUnknown,
-} from "#src/backend/engine/engine-failure";
+import { engineFailure } from "#src/backend/engine/engine-failure";
 
 export function runPluginActionStep(input: ActionStepInput) {
   return Effect.gen(function* () {
@@ -47,11 +44,7 @@ export function runPluginActionStep(input: ActionStepInput) {
       // The rows carry the input as the node was configured, minus the three keys
       // the engine's own dispatch owns.
       { store, context, runtime, input: stripInternalFields(stepInput) },
-      () =>
-        Effect.tryPromise({
-          try: () => Promise.resolve(stepFunction(stepInput, steps)),
-          catch: failureFromUnknown,
-        })
+      () => stepFunction(stepInput, steps)
     );
 
     return { result: executionResultFromStepResult(result) };

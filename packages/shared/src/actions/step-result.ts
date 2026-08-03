@@ -54,21 +54,3 @@ export type StepResult<TData = unknown> =
 export type NodeSteps = {
   run: <T>(stepId: string, work: () => Promise<T & JsonSafe<T>>) => Promise<T>;
 };
-
-/**
- * A step as the engine calls it.
- *
- * The input is an open record rather than a JSON object, because the engine
- * builds it as a node's resolved config plus `_context`, which tells the step
- * which node and which run it is part of. The config half is JSON, having come
- * from a jsonb column; the context half is a live object. Each step narrows the
- * record to the fields it declares.
- *
- * `steps` travels beside the record rather than inside it, because the record is
- * written to the run log as jsonb and a function is not JSON. A caller with no
- * durable runtime leaves it out, and the work then runs where it stands.
- */
-export type StepFunction = (
-  input: Record<string, unknown>,
-  steps?: NodeSteps
-) => StepResult | Promise<StepResult>;

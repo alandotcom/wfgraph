@@ -45,7 +45,9 @@ const step = defineStep({
   }),
 });
 
-const run = step.implement("demo/fetch")(stubStepEnvironment());
+const stepEffect = step.implement("demo/fetch")(stubStepEnvironment());
+const run = (input: Record<string, unknown>) =>
+  Effect.runPromise(stepEffect(input));
 
 const CONTEXT = {
   executionId: "exec_1",

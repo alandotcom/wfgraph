@@ -23,9 +23,9 @@ import { defineAction } from "#src/backend/extensions/define-action";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { stubRovaRuntime } from "#src/backend/lib/effect/test-layers";
 import {
-  executeWorkflow,
-  executeWorkflowBranch,
-} from "#src/backend/engine/core";
+  executeTestWorkflow as executeWorkflow,
+  executeTestWorkflowBranch as executeWorkflowBranch,
+} from "#src/backend/engine/test-execution";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
 import { driveWithReplay } from "#src/backend/engine/replay-runtime";
 

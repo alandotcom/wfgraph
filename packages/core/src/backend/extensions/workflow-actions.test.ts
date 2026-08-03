@@ -42,33 +42,35 @@ function slowStep() {
 /**
  * What a shutdown does to a step already doing its work.
  *
- * A step that lost its answer to the dispose would be run again by the durable
- * runtime's retry, sending a second SMS to record the first, so the answer has
- * to survive a dispose landing mid-handler.
+ * Disposal interrupts the outer invocation, but a handler already doing work
+ * must finish before the runtime closes. Otherwise a half-finished vendor call
+ * can be abandoned while the app is shutting down.
  */
 describe("the step the app runs", () => {
-  it("answers a handler that was in flight when the runtime was disposed", async () => {
+  it("finishes a handler that was in flight when the runtime was disposed", async () => {
     const { calls, extensions } = slowStep();
     const runtime = stubRovaRuntime();
     const actions = createWorkflowActions(extensions, runtime);
     const step = actions.stepFor(SLOW_ACTION_ID);
+    if (!step) {
+      throw new Error("Expected the slow action to be assembled.");
+    }
 
-    const pending = step?.({
-      _context: {
-        executionId: "exec_1",
-        nodeId: "n1",
-        nodeName: "Slow",
-        nodeType: "action",
-        runMode: "live",
-      },
-    });
+    const pending = runtime.runPromise(
+      step({
+        _context: {
+          executionId: "exec_1",
+          nodeId: "n1",
+          nodeName: "Slow",
+          nodeType: "action",
+          runMode: "live",
+        },
+      })
+    );
     await Effect.runPromise(Effect.sleep(10));
     const disposed = runtime.dispose();
 
-    await expect(pending).resolves.toEqual({
-      success: true,
-      data: { sent: true },
-    });
+    await expect(pending).rejects.toThrow(/interrupted/);
     await disposed;
     expect(calls).toEqual({ started: 1, finished: 1 });
   });
@@ -78,10 +80,13 @@ describe("the step the app runs", () => {
     const runtime = stubRovaRuntime();
     const actions = createWorkflowActions(extensions, runtime);
     const step = actions.stepFor(SLOW_ACTION_ID);
+    if (!step) {
+      throw new Error("Expected the slow action to be assembled.");
+    }
 
     await runtime.dispose();
 
-    await expect(step?.({})).rejects.toThrow(/disposed/);
+    await expect(runtime.runPromise(step({}))).rejects.toThrow(/disposed/);
     expect(calls.started).toBe(0);
   });
 });

@@ -171,7 +171,6 @@ export function stubStepEnvironment(
 ): StepEnvironment {
   return {
     credentialsFor: () => Effect.succeed({}),
-    runStep: (effect) => Effect.runPromise(effect),
     ...overrides,
   };
 }

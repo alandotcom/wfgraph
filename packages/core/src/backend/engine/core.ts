@@ -12,7 +12,7 @@ import type {
   WorkflowNode,
 } from "@rova/shared/graph/types";
 import type { JsonObject } from "@rova/shared/types/json";
-import { Cause, Effect, Layer } from "effect";
+import { Cause, Effect } from "effect";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { BranchRunResult } from "#src/backend/engine/branch";
 import { CancelBoundary } from "#src/backend/engine/cancel-boundary";
@@ -35,11 +35,7 @@ import {
   failureFromCause,
   failureFromUnknown,
 } from "#src/backend/engine/engine-failure";
-import {
-  AppLoggerLayer,
-  withAppLogCategory,
-} from "#src/backend/lib/effect/app-logger";
-import { TracerBridgeLayer } from "#src/backend/lib/effect/tracer";
+import { withAppLogCategory } from "#src/backend/lib/effect/app-logger";
 
 export type { WorkflowActions } from "#src/backend/engine/actions";
 export type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
@@ -86,8 +82,6 @@ export type WorkflowBranchInput = WorkflowExecutionInput & {
   entryNodeId: string;
   releasedNodeIds: readonly string[];
 };
-
-const EngineObservabilityLayer = Layer.merge(AppLoggerLayer, TracerBridgeLayer);
 
 /** What one call of the engine builds before it can execute a node. */
 type PreparedRun = {
@@ -219,15 +213,14 @@ export function executeWorkflow(
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
   actions: WorkflowActions
-): Promise<WorkflowExecutionResult> {
+): Effect.Effect<WorkflowExecutionResult, EngineFailure> {
   const execute = executeWorkflowInner(input, runtime, store, actions).pipe(
     Effect.annotateLogs(runLogAnnotations(input, runtime)),
     Effect.withSpan("rova.workflow.execution", {
       attributes: workflowSpanAttributes(input),
-    }),
-    Effect.provide(EngineObservabilityLayer)
+    })
   );
-  return Effect.runPromise(withAppLogCategory(execute, "workflow", "executor"));
+  return withAppLogCategory(execute, "workflow", "executor");
 }
 
 function executeWorkflowInner(
@@ -382,7 +375,7 @@ export function executeWorkflowBranch(
   runtime: WorkflowExecutionRuntime,
   store: WorkflowStore,
   actions: WorkflowActions
-): Promise<BranchRunResult> {
+): Effect.Effect<BranchRunResult, EngineFailure> {
   const execute = executeWorkflowBranchInner(
     input,
     runtime,
@@ -395,10 +388,9 @@ export function executeWorkflowBranch(
         ...workflowSpanAttributes(input),
         "rova.branch.entry_node_id": input.entryNodeId,
       },
-    }),
-    Effect.provide(EngineObservabilityLayer)
+    })
   );
-  return Effect.runPromise(withAppLogCategory(execute, "workflow", "executor"));
+  return withAppLogCategory(execute, "workflow", "executor");
 }
 
 function executeWorkflowBranchInner(
