@@ -23,7 +23,7 @@ import type {
   BranchHandoff,
   BranchRunResult,
 } from "#src/backend/engine/branch";
-import { PassScheduler } from "#src/backend/engine/pass-scheduler";
+import { ReplayHostTimers } from "#src/backend/engine/replay-host-timers";
 import type {
   WaitForEventOptions,
   WorkflowExecutionRuntime,
@@ -116,28 +116,24 @@ function pending<T>(): Promise<T> {
 
 /**
  * Waits until the body is settled or every live branch is parked on a step the
- * driver owns. Host timers between step calls land on `scheduler`, so draining
+ * driver owns. Host immediates between step calls land on `timers`, so draining
  * it is what makes "parked" observable rather than inferred from quiet turns.
  *
  * `activity` rises on every runtime port call, including memo hits: the replay
  * half of a pass does its work there, and discoveries alone would not see it.
  */
 async function waitForPassQuiescence(
-  scheduler: PassScheduler,
+  timers: ReplayHostTimers,
   isSettled: () => boolean,
   activity: () => number
 ): Promise<void> {
   while (!isSettled()) {
     const before = activity();
     // eslint-disable-next-line eslint/no-await-in-loop -- each drain may enqueue the next hop the body takes before its next step call
-    await scheduler.drainUntilIdle();
+    await timers.drainUntilIdle();
     // eslint-disable-next-line eslint/no-await-in-loop -- one microtask turn lets a memo hit's continuation reach the next port call
     await Promise.resolve();
-    if (activity() !== before || scheduler.hasDue()) {
-      continue;
-    }
-    if (scheduler.hasFuture()) {
-      scheduler.advanceToNextDeadline();
+    if (activity() !== before || timers.hasPending()) {
       continue;
     }
     return;
@@ -194,43 +190,26 @@ export async function driveWithReplay<T>(
   body: (runtime: WorkflowExecutionRuntime) => Promise<T>,
   options: ReplayRunOptions = {}
 ): Promise<ReplayRun<T>> {
+  const timers = new ReplayHostTimers();
+  timers.install();
+  try {
+    return await driveWithReplayInstalled(body, options, timers);
+  } finally {
+    timers.uninstall();
+  }
+}
+
+async function driveWithReplayInstalled<T>(
+  body: (runtime: WorkflowExecutionRuntime) => Promise<T>,
+  options: ReplayRunOptions,
+  timers: ReplayHostTimers
+): Promise<ReplayRun<T>> {
   const {
     events = {},
     maxInvocations = DEFAULT_MAX_INVOCATIONS,
     branch,
     killBranchesAtMs,
   } = options;
-
-  const scheduler = new PassScheduler();
-  scheduler.install();
-
-  try {
-    return await driveWithReplayInstalled(
-      body,
-      {
-        events,
-        maxInvocations,
-        branch,
-        killBranchesAtMs,
-      },
-      scheduler
-    );
-  } finally {
-    scheduler.uninstall();
-  }
-}
-
-async function driveWithReplayInstalled<T>(
-  body: (runtime: WorkflowExecutionRuntime) => Promise<T>,
-  options: {
-    events: Record<string, unknown>;
-    maxInvocations: number;
-    branch?: ReplayRunOptions["branch"];
-    killBranchesAtMs?: number;
-  },
-  scheduler: PassScheduler
-): Promise<ReplayRun<T>> {
-  const { events, maxInvocations, branch, killBranchesAtMs } = options;
 
   const tree: DurableRun[] = [];
   const executed: ReplayExecution[] = [];
@@ -357,6 +336,15 @@ async function driveWithReplayInstalled<T>(
     const pass: Pass = { runs: new Map(), pauses: new Set() };
     let activity = 0;
 
+    /**
+     * Every runtime port call counts, including memo hits: discoveries alone
+     * miss the replay half of a pass.
+     */
+    const withActivity = <Value>(fn: () => Value): Value => {
+      activity += 1;
+      return fn();
+    };
+
     const noteFirstReach = (stepId: string, durationMs: number) => {
       if (!run.wakeAt.has(stepId)) {
         run.wakeAt.set(stepId, now + Math.max(durationMs, 0));
@@ -368,40 +356,43 @@ async function driveWithReplayInstalled<T>(
       attempt: 0,
       runId: run.id,
 
-      run: <R>(stepId: string, fn: () => Promise<R>): Promise<R> => {
-        activity += 1;
-        if (run.memo.has(stepId)) {
-          // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a step id always maps back to that step's own result type
-          return Promise.resolve(run.memo.get(stepId) as R);
-        }
-        if (!pass.runs.has(stepId)) {
-          pass.runs.set(stepId, fn);
-        }
-        return pending<R>();
-      },
+      run: <R>(stepId: string, fn: () => Promise<R>): Promise<R> =>
+        withActivity(() => {
+          if (run.memo.has(stepId)) {
+            // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a step id always maps back to that step's own result type
+            return Promise.resolve(run.memo.get(stepId) as R);
+          }
+          if (!pass.runs.has(stepId)) {
+            pass.runs.set(stepId, fn);
+          }
+          return pending<R>();
+        }),
 
-      sleep: (stepId, durationMs) => {
-        activity += 1;
-        if (run.finishedSleeps.has(stepId)) {
-          return Promise.resolve();
-        }
-        if (!pass.pauses.has(stepId)) {
-          noteFirstReach(stepId, durationMs);
-        }
-        return pending<void>();
-      },
+      sleep: (stepId, durationMs) =>
+        withActivity(() => {
+          if (run.finishedSleeps.has(stepId)) {
+            return Promise.resolve();
+          }
+          if (!pass.pauses.has(stepId)) {
+            noteFirstReach(stepId, durationMs);
+          }
+          return pending<void>();
+        }),
 
-      waitForEvent: (stepId, waitOptions: WaitForEventOptions) => {
-        activity += 1;
-        if (run.finishedWaits.has(stepId)) {
-          return Promise.resolve(run.finishedWaits.get(stepId));
-        }
-        if (!pass.pauses.has(stepId)) {
-          run.eventWaits.add(stepId);
-          noteFirstReach(stepId, waitOptions.timeoutMs ?? FALLBACK_TIMEOUT_MS);
-        }
-        return pending<unknown>();
-      },
+      waitForEvent: (stepId, waitOptions: WaitForEventOptions) =>
+        withActivity(() => {
+          if (run.finishedWaits.has(stepId)) {
+            return Promise.resolve(run.finishedWaits.get(stepId));
+          }
+          if (!pass.pauses.has(stepId)) {
+            run.eventWaits.add(stepId);
+            noteFirstReach(
+              stepId,
+              waitOptions.timeoutMs ?? FALLBACK_TIMEOUT_MS
+            );
+          }
+          return pending<unknown>();
+        }),
 
       ...(branch
         ? {
@@ -411,28 +402,28 @@ async function driveWithReplayInstalled<T>(
                 entryNodeId: string;
                 releasedNodeIds: readonly string[];
               }
-            ) => {
-              activity += 1;
-              const ended = run.branchEndings.get(stepId);
-              if (ended) {
-                return "error" in ended
-                  ? Promise.reject(ended.error)
-                  : Promise.resolve(ended.handoff);
-              }
-              if (!run.branchRuns.has(stepId)) {
-                run.branchRuns.add(stepId);
-                startRun(
-                  stepId,
-                  (childRuntime) => branch(childRuntime, input),
-                  {
-                    run,
+            ) =>
+              withActivity(() => {
+                const ended = run.branchEndings.get(stepId);
+                if (ended) {
+                  return "error" in ended
+                    ? Promise.reject(ended.error)
+                    : Promise.resolve(ended.handoff);
+                }
+                if (!run.branchRuns.has(stepId)) {
+                  run.branchRuns.add(stepId);
+                  startRun(
                     stepId,
-                  }
-                );
-              }
-              pass.pauses.add(stepId);
-              return pending<BranchHandoff>();
-            },
+                    (childRuntime) => branch(childRuntime, input),
+                    {
+                      run,
+                      stepId,
+                    }
+                  );
+                }
+                pass.pauses.add(stepId);
+                return pending<BranchHandoff>();
+              }),
           }
         : {}),
     };
@@ -448,7 +439,7 @@ async function driveWithReplayInstalled<T>(
     );
 
     await waitForPassQuiescence(
-      scheduler,
+      timers,
       () => settlement !== undefined,
       () => activity
     );
@@ -475,7 +466,7 @@ async function driveWithReplayInstalled<T>(
     // callback use the real clock, not the pass queue.
     for (const [stepId, fn] of pass.runs) {
       // eslint-disable-next-line eslint/no-await-in-loop -- running them in order is what gives `executed` a stable sequence for a test to read
-      const value = await scheduler.withHostTimers(fn);
+      const value = await timers.withHostTimers(fn);
       run.memo.set(stepId, JSON.parse(JSON.stringify(value ?? null)));
       executed.push({ run: run.id, invocation, at: now, stepId });
     }
