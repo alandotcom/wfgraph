@@ -14,6 +14,7 @@ import {
   saveWorkflowAtom,
   workflowNotFoundAtom,
 } from "#src/lib/workflow-save-store";
+import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import {
   formatTemplateToken,
   parseTemplate,
@@ -136,6 +137,7 @@ export const hydrateWorkflowAtom = atom(
     // Also clears undo history, so undo cannot reach back past the switch and
     // write the previous workflow's graph into this one.
     set(loadWorkflowGraphAtom, { nodes, edges: workflow.edges });
+    set(selectedExecutionIdAtom, null);
     set(currentWorkflowIdAtom, workflow.id);
     set(currentWorkflowNameAtom, workflow.name);
     set(currentWorkflowVisibilityAtom, workflow.visibility ?? "private");

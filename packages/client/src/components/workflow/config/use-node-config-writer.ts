@@ -16,6 +16,7 @@ import {
   selectedNodeAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
+import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
 import type { NodeConfigPatch } from "./node-config-patch";
 
@@ -35,6 +36,7 @@ export function useNodeConfigWriter() {
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const clearNodeStatuses = useSetAtom(clearNodeStatusesAtom);
+  const setSelectedExecutionId = useSetAtom(selectedExecutionIdAtom);
 
   const updateConfig = useCallback(
     (patch: NodeConfigPatch) => {
@@ -116,6 +118,7 @@ export function useNodeConfigWriter() {
     orpcQuery.workflow.deleteExecutions.mutationOptions({
       onSuccess: async () => {
         clearNodeStatuses();
+        setSelectedExecutionId(null);
         await refreshRunHistory(queryClient);
         toast.success("All runs deleted");
       },

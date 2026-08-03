@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { NodeConfigPatch } from "#src/components/workflow/config/node-config-patch";
 import { useNodeConfigWriter } from "#src/components/workflow/config/use-node-config-writer";
@@ -12,6 +12,11 @@ import {
   nodesAtom,
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
+import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
+import {
+  propertiesPanelActiveTabAtom,
+  selectedExecutionIdAtom,
+} from "#src/lib/workflow-ui-store";
 import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -28,6 +33,35 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
  * with no required integration, and the repair below would no-op regardless
  * of which case ran.
  */
+
+vi.mock("#src/lib/rpc-query", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#src/lib/rpc-query")>();
+  return {
+    ...actual,
+    refreshRunHistory: vi.fn(() => Promise.resolve()),
+    orpcQuery: {
+      ...actual.orpcQuery,
+      workflow: new Proxy(actual.orpcQuery.workflow, {
+        get(target, prop, receiver) {
+          if (prop === "deleteExecutions") {
+            return {
+              mutationOptions: (opts: Record<string, unknown> = {}) => ({
+                mutationKey: ["workflow", "deleteExecutions"],
+                mutationFn: async () => ({}),
+                ...opts,
+              }),
+            };
+          }
+          return Reflect.get(target as object, prop, receiver);
+        },
+      }),
+    },
+  };
+});
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
 
 const CONNECTED_ACTION = "twilio/send-sms";
 
@@ -192,5 +226,54 @@ describe("updateConfig and the connection a node points at", () => {
     write();
 
     expect(config()?.integrationId).toBeUndefined();
+  });
+});
+
+describe("deleteRuns", () => {
+  it("clears the watched execution id on success", async () => {
+    const store = createStore();
+    store.set(loadWorkflowGraphAtom, {
+      nodes: [connectedNode({ actionType: CONNECTED_ACTION })],
+      edges: [],
+    });
+    store.set(isWorkflowOwnerAtom, true);
+    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(selectedExecutionIdAtom, "exec_to_delete");
+    expect(store.get(selectedExecutionIdAtom)).toBe("exec_to_delete");
+
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    function Deleter() {
+      const { deleteRuns } = useNodeConfigWriter();
+      return (
+        <button
+          onClick={() => deleteRuns.mutate({ workflowId: "wf_1" })}
+          type="button"
+        >
+          delete
+        </button>
+      );
+    }
+
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <JotaiProvider store={store}>
+          <Deleter />
+        </JotaiProvider>
+      </QueryClientProvider>
+    );
+
+    await act(async () => {
+      fireEvent.click(view.getByText("delete"));
+    });
+
+    await waitFor(() => {
+      expect(store.get(selectedExecutionIdAtom)).toBeNull();
+    });
   });
 });

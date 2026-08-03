@@ -11,6 +11,7 @@ import {
   deleteNodeAtom,
   deleteSelectedItemsAtom,
   edgesAtom,
+  hydrateWorkflowAtom,
   loadWorkflowGraphAtom,
   nodesAtom,
   onEdgesChangeAtom,
@@ -22,8 +23,13 @@ import {
   autosaveDelayAtom,
   currentWorkflowIdAtom,
   hasUnsavedChangesAtom,
+  isWorkflowOwnerAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
+import {
+  propertiesPanelActiveTabAtom,
+  selectedExecutionIdAtom,
+} from "#src/lib/workflow-ui-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "./workflow-save-test-support";
 
@@ -276,5 +282,19 @@ describe("clearWorkflowAtom", () => {
     // clearing has to stop short of removing it.
     expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["t"]);
     expect(store.get(edgesAtom)).toEqual([]);
+  });
+});
+
+describe("hydrateWorkflowAtom", () => {
+  it("clears the watched run so the previous workflow's overlay cannot repaint", () => {
+    const store = createStore();
+    store.set(isWorkflowOwnerAtom, true);
+    store.set(propertiesPanelActiveTabAtom, "runs");
+    store.set(selectedExecutionIdAtom, "exec_previous");
+    expect(store.get(selectedExecutionIdAtom)).toBe("exec_previous");
+
+    store.set(hydrateWorkflowAtom, savedWorkflow("workflow_2"));
+
+    expect(store.get(selectedExecutionIdAtom)).toBeNull();
   });
 });

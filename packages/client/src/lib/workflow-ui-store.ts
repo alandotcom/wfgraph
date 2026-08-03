@@ -1,10 +1,13 @@
 import { atom } from "jotai";
+import { isWorkflowOwnerAtom } from "#src/lib/workflow-save-store";
 
 /**
  * Editor chrome: which panel is open, how wide it is, which run is on screen.
  *
- * None of this belongs to the graph, so this module imports from neither
- * `workflow-graph-store` nor `workflow-save-store`.
+ * None of this belongs to the graph, so this module does not import
+ * `workflow-graph-store`. It does read `isWorkflowOwnerAtom` from
+ * `workflow-save-store` so the Runs tab and the canvas overlay agree on
+ * whether that owner-only tab is up; that module does not import this one.
  *
  * Two of these preferences survive a reload, in cookies. Both are read once as
  * the atom's initial value and written from the atom's own setter, so there is
@@ -86,4 +89,31 @@ export const rightPanelWidthAtom = atom((get) =>
 export const isExecutingAtom = atom(false);
 export const isGeneratingAtom = atom(false);
 
-export const selectedExecutionIdAtom = atom<string | null>(null);
+/**
+ * The tab the panel actually shows: the stored one, unless it is the owner-only
+ * Runs tab and the viewer is not the owner.
+ */
+export const activePropertiesTabAtom = atom((get) =>
+  get(propertiesPanelActiveTabAtom) === "runs" && get(isWorkflowOwnerAtom)
+    ? "runs"
+    : "properties"
+);
+
+/** The run last opened in the Runs panel, whether or not that panel is up. */
+const watchedExecutionIdAtom = atom<string | null>(null);
+
+/**
+ * The run the canvas is painting. It reports a run only while the Runs tab is
+ * up, so leaving that tab takes the chips, the borders and the countdown off
+ * the graph and stops both polls, without any caller having to remember to
+ * clear it.
+ */
+export const selectedExecutionIdAtom = atom(
+  (get) =>
+    get(activePropertiesTabAtom) === "runs"
+      ? get(watchedExecutionIdAtom)
+      : null,
+  (_get, set, executionId: string | null) => {
+    set(watchedExecutionIdAtom, executionId);
+  }
+);
