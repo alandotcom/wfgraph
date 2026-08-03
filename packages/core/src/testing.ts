@@ -75,7 +75,10 @@ export function runAction<
     readonly runMode?: "live" | "test";
     readonly node?: NodeUnderTest;
   }
-): Effect.Effect<StepResult<OutputOf<TIntegration["actions"][TSlug]>>>;
+): Effect.Effect<
+  StepResult<OutputOf<TIntegration["actions"][TSlug]>>,
+  CredentialsUnavailable
+>;
 /**
  * The body runs on the erased step, which answers `StepResult` and nothing
  * narrower. An overload is what rejoins that with the output type `ActionStep`
@@ -90,7 +93,7 @@ export function runAction(
     readonly runMode?: "live" | "test";
     readonly node?: NodeUnderTest;
   }
-): Effect.Effect<StepResult> {
+): Effect.Effect<StepResult, CredentialsUnavailable> {
   const step = integration.actions[slug].implement(
     formatActionId(integration.type, slug)
   );
@@ -99,27 +102,23 @@ export function runAction(
     credentialsFor: () => toCredentialEffect(run.credentials),
   };
 
-  return Effect.promise(() =>
-    Effect.runPromise(
-      step(environment)({
-        ...run.input,
-        // A step reads its credentials by integration id, so an action given none
-        // never fetches, which is what an action against a public API does.
-        ...(run.credentials === undefined
-          ? {}
-          : { integrationId: TEST_INTEGRATION_ID }),
-        _context: {
-          runMode: run.runMode ?? "live",
-          nodeId: run.node?.nodeId ?? "node_1",
-          nodeName: run.node?.nodeName ?? integration.label,
-          nodeType: run.node?.nodeType ?? "action",
-          ...(run.node?.executionId === undefined
-            ? {}
-            : { executionId: run.node.executionId }),
-        },
-      })
-    )
-  );
+  return step(environment)({
+    ...run.input,
+    // A step reads its credentials by integration id, so an action given none
+    // never fetches, which is what an action against a public API does.
+    ...(run.credentials === undefined
+      ? {}
+      : { integrationId: TEST_INTEGRATION_ID }),
+    _context: {
+      runMode: run.runMode ?? "live",
+      nodeId: run.node?.nodeId ?? "node_1",
+      nodeName: run.node?.nodeName ?? integration.label,
+      nodeType: run.node?.nodeType ?? "action",
+      ...(run.node?.executionId === undefined
+        ? {}
+        : { executionId: run.node.executionId }),
+    },
+  });
 }
 
 /**

@@ -13,11 +13,8 @@ import {
 } from "@rova/shared/lifecycle/lifecycle-outlets";
 import { readLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
 import { Effect } from "effect";
-import {
-  type EngineFailure,
-  failureFromUnknown,
-  runPromiseWithEngineFailure,
-} from "#src/backend/engine/engine-failure";
+import type { EngineFailure } from "#src/backend/engine/engine-failure";
+import { runDurable } from "#src/backend/engine/durable";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
 import type { Traversal } from "#src/backend/engine/traversal";
@@ -148,16 +145,11 @@ export class CancelBoundary {
     const { runtime, store, executionId } = this.input;
     return Effect.gen(
       function* (this: CancelBoundary) {
-        const effectContext = yield* Effect.context();
-        const pending = yield* Effect.tryPromise({
-          try: () =>
-            runtime.run(`lifecycle-check-${nodeId}`, () =>
-              runPromiseWithEngineFailure(effectContext)(
-                store.readPendingCancel(executionId)
-              )
-            ),
-          catch: failureFromUnknown,
-        });
+        const pending = yield* runDurable(
+          runtime,
+          `lifecycle-check-${nodeId}`,
+          store.readPendingCancel(executionId)
+        );
 
         // A boundary already crossed leaves nothing to schedule: the outlet's
         // nodes went to whichever node crossed it first.

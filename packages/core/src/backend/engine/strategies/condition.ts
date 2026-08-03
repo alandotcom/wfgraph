@@ -1,7 +1,4 @@
-import {
-  conditionLogger,
-  evaluateConditionExpression,
-} from "#src/backend/engine/conditions";
+import { evaluateConditionExpression } from "#src/backend/engine/conditions";
 import { runWithStepLog } from "#src/backend/engine/step-log";
 import type { ActionStepInput } from "#src/backend/engine/strategies/types";
 import { executionResultFromStepResult } from "#src/backend/engine/contracts";
@@ -17,15 +14,15 @@ export function runConditionStep(input: ActionStepInput) {
     };
 
     const originalExpression = stepInput.condition;
-    const { result: evaluatedCondition } = evaluateConditionExpression(
+    const { result: evaluatedCondition } = yield* evaluateConditionExpression(
       originalExpression,
       outputs,
       config.conditionModel,
       input.eventName
     );
-    conditionLogger.debug("Condition evaluation result", {
-      evaluatedCondition,
-    });
+    yield* Effect.logDebug("Condition evaluation result").pipe(
+      Effect.annotateLogs({ evaluatedCondition })
+    );
 
     const result = yield* runWithStepLog(
       {

@@ -9,7 +9,6 @@
  * branches on the far side of a suspension, so it uses the two halves directly.
  */
 
-import { getAppLogger } from "#src/backend/lib/logger";
 import type { StepContext } from "#src/backend/extensions/steps/step-handler";
 import type { StepResult } from "@rova/shared/actions/step-result";
 import { Cause, Effect } from "effect";
@@ -22,10 +21,8 @@ import {
   type EngineFailure,
   failureFromCause,
   failureFromUnknown,
-  runPromiseWithEngineFailure,
 } from "#src/backend/engine/engine-failure";
-
-const stepLogLogger = getAppLogger("workflow", "step-log");
+import { runDurable } from "#src/backend/engine/durable";
 
 /**
  * A `StepContext` as the engine builds one, where the run id is always set.
@@ -110,20 +107,20 @@ function closeStepLogQuietly(
   return Effect.catchCause(
     writeStepLogClose(store, handle, close, durationMs),
     (cause) =>
-      Effect.sync(() => {
-        // The row is now stuck at `running` and the usual cause is the database
-        // itself, so the line names the run rather than only the row: in an outage
-        // this is a burst, and a row id can only be resolved against the table that
-        // just refused a write.
-        stepLogLogger.warn("Could not close a run-log row", {
+      // The row is now stuck at `running` and the usual cause is the database
+      // itself, so the line names the run rather than only the row: in an outage
+      // this is a burst, and a row id can only be resolved against the table that
+      // just refused a write.
+      Effect.logWarning("Could not close a run-log row").pipe(
+        Effect.annotateLogs({
           logId: handle.logId,
           executionId: context.executionId,
           nodeId: context.nodeId,
           nodeName: context.nodeName,
           status: close.status,
           error: Cause.squash(cause),
-        });
-      })
+        })
+      )
   );
 }
 
@@ -162,34 +159,25 @@ export function runWithStepLog<T extends StepResult, E, R>(
 ): Effect.Effect<T, E | EngineFailure, R> {
   return Effect.gen(function* () {
     const { store, context, runtime } = target;
-    const effectContext = yield* Effect.context<R>();
-    const handle = yield* Effect.tryPromise({
-      try: () =>
-        runtime.run(`node:${context.nodeId}:log-open`, () =>
-          runPromiseWithEngineFailure(effectContext)(openStepLog(target))
-        ),
-      catch: failureFromUnknown,
-    });
+    const handle = yield* runDurable(
+      runtime,
+      `node:${context.nodeId}:log-open`,
+      openStepLog(target)
+    );
     const startedAt = Date.now();
     const elapsed = () => Date.now() - startedAt;
 
     // One attempt closes the row down one path, so the two callers below share an
     // id. The step answers null because a memoized value has to be JSON-safe.
     const closeOnce = (close: StepLogClose) =>
-      Effect.tryPromise({
-        try: () =>
-          runtime.run(
-            `node:${context.nodeId}:log-close:${runtime.attempt}`,
-            () =>
-              runPromiseWithEngineFailure(effectContext)(
-                Effect.as(
-                  closeStepLogQuietly(store, context, handle, close, elapsed()),
-                  null
-                )
-              )
-          ),
-        catch: failureFromUnknown,
-      });
+      runDurable(
+        runtime,
+        `node:${context.nodeId}:log-close:${runtime.attempt}`,
+        Effect.as(
+          closeStepLogQuietly(store, context, handle, close, elapsed()),
+          null
+        )
+      );
 
     const result = yield* Effect.matchCauseEffect(Effect.suspend(work), {
       onFailure: (cause) =>

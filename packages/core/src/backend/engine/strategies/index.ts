@@ -1,8 +1,8 @@
 /**
  * Closed strategy table for node work.
  *
- * The scheduler resolves one strategy per node, runs it, then asks for a route
- * when the strategy supplies one. Built-in name checks live here and in the
+ * The scheduler resolves one strategy per node, runs it, then asks
+ * `routeAfterStrategy` how to leave. Built-in name checks live here and in the
  * action strategy's internal dispatch — not in the scheduler class body.
  */
 

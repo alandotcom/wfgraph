@@ -33,9 +33,8 @@ import { Traversal } from "#src/backend/engine/traversal";
 import {
   type EngineFailure,
   failureFromCause,
-  failureFromUnknown,
-  runPromiseWithEngineFailure,
 } from "#src/backend/engine/engine-failure";
+import { runDurable } from "#src/backend/engine/durable";
 import { withAppLogCategory } from "#src/backend/lib/effect/app-logger";
 
 export type { WorkflowActions } from "#src/backend/engine/actions";
@@ -247,7 +246,6 @@ function executeWorkflowInner(
     const attemptStartTime = Date.now();
 
     const execute = Effect.gen(function* () {
-      const effectContext = yield* Effect.context();
       yield* Effect.logInfo("Starting workflow execution").pipe(
         Effect.annotateLogs({
           nodeCount: nodes.length,
@@ -291,24 +289,20 @@ function executeWorkflowInner(
 
       // Wrapped as a durable step so the terminal record and its audit event are
       // written exactly once, even though the body replays after every wait.
-      yield* Effect.tryPromise({
-        try: () =>
-          runtime.run("workflow-run-completed", () =>
-            runPromiseWithEngineFailure(effectContext)(
-              recordRunCompleted({
-                store,
-                executionId,
-                workflowId,
-                status: terminalStatus,
-                output: finalOutput,
-                failure: traversal.firstFailure(),
-                resultCount: traversal.resultCount,
-                runMode,
-              })
-            )
-          ),
-        catch: failureFromUnknown,
-      });
+      yield* runDurable(
+        runtime,
+        "workflow-run-completed",
+        recordRunCompleted({
+          store,
+          executionId,
+          workflowId,
+          status: terminalStatus,
+          output: finalOutput,
+          failure: traversal.firstFailure(),
+          resultCount: traversal.resultCount,
+          runMode,
+        })
+      );
 
       return {
         success: finalSuccess,
@@ -319,7 +313,6 @@ function executeWorkflowInner(
 
     return Effect.catchCause(execute, (cause) =>
       Effect.gen(function* () {
-        const effectContext = yield* Effect.context();
         const failure = failureFromCause(cause);
         yield* Effect.logError("Fatal error during workflow execution").pipe(
           Effect.annotateLogs({
@@ -335,22 +328,18 @@ function executeWorkflowInner(
         const terminalStatus = cancelled ? "canceled" : "failed";
 
         // Same exactly-once treatment as the success path above.
-        yield* Effect.tryPromise({
-          try: () =>
-            runtime.run("workflow-run-failed", () =>
-              runPromiseWithEngineFailure(effectContext)(
-                recordRunFailed({
-                  store,
-                  executionId,
-                  workflowId,
-                  status: terminalStatus,
-                  failure,
-                  runMode,
-                })
-              )
-            ),
-          catch: failureFromUnknown,
-        });
+        yield* runDurable(
+          runtime,
+          "workflow-run-failed",
+          recordRunFailed({
+            store,
+            executionId,
+            workflowId,
+            status: terminalStatus,
+            failure,
+            runMode,
+          })
+        );
 
         return {
           success: false,
@@ -402,7 +391,6 @@ function executeWorkflowBranchInner(
 ): Effect.Effect<BranchRunResult, EngineFailure> {
   return Effect.gen(function* () {
     const { entryNodeId, executionId } = input;
-    const effectContext = yield* Effect.context();
     const { nodes, traversal, scheduler } = prepareRun(
       input,
       runtime,
@@ -414,15 +402,11 @@ function executeWorkflowBranchInner(
     // walked. The store holds that view rather than the invoke payload, because an
     // HTTP Request step's response body is what makes those outputs large. The
     // cost is that a row whose close was refused leaves its template unresolved.
-    const upstream = yield* Effect.tryPromise({
-      try: () =>
-        runtime.run(`branch-upstream-${entryNodeId}`, () =>
-          runPromiseWithEngineFailure(effectContext)(
-            store.readNodeOutputs(executionId)
-          )
-        ),
-      catch: failureFromUnknown,
-    });
+    const upstream = yield* runDurable(
+      runtime,
+      `branch-upstream-${entryNodeId}`,
+      store.readNodeOutputs(executionId)
+    );
 
     for (const node of nodes) {
       const data = upstream[node.id];

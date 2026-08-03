@@ -3,7 +3,6 @@ import type {
   NodeStrategy,
   NodeWorkContext,
 } from "#src/backend/engine/strategies/types";
-import { LIFECYCLE_STARTED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
 import type { JsonObject } from "@rova/shared/types/json";
 import { Effect } from "effect";
 import { executionResultFromStepResult } from "#src/backend/engine/contracts";
@@ -46,5 +45,4 @@ function runLifecycle(ctx: NodeWorkContext) {
 export const lifecycleStrategy: NodeStrategy = {
   id: "lifecycle",
   run: runLifecycle,
-  routeAfter: () => ({ kind: "outlet", outlet: LIFECYCLE_STARTED_HANDLE }),
 };

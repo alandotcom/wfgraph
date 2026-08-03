@@ -7,9 +7,9 @@
  * what an operator has to work with.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "@effect/vitest";
+import { afterEach, describe, expect, it } from "@effect/vitest";
 import { vi } from "vitest";
-import { Effect } from "effect";
+import { Effect, Layer, Logger, References } from "effect";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
 import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
 import { runWithStepLog } from "#src/backend/engine/step-log";
@@ -18,17 +18,6 @@ import {
   type WorkflowStore,
 } from "#src/backend/engine/store";
 import { DatabaseError } from "#src/backend/lib/effect/database";
-
-const { loggerWarnMock } = vi.hoisted(() => ({ loggerWarnMock: vi.fn() }));
-
-vi.mock("#src/backend/lib/logger", () => ({
-  getAppLogger: () => ({
-    warn: loggerWarnMock,
-    error: vi.fn(),
-    info: vi.fn(),
-    debug: vi.fn(),
-  }),
-}));
 
 const context = {
   executionId: "exec_1",
@@ -49,9 +38,25 @@ function storeRefusingTheClose(): WorkflowStore {
   };
 }
 
-beforeEach(() => {
-  loggerWarnMock.mockClear();
-});
+function recordingLogger() {
+  const lines: {
+    message: unknown;
+    properties: Record<string, unknown>;
+  }[] = [];
+  const logger = Logger.make<unknown, void>(({ fiber, message }) => {
+    lines.push({
+      message: Array.isArray(message) ? message[0] : message,
+      properties: fiber.getRef(References.CurrentLogAnnotations),
+    });
+  });
+  return {
+    lines,
+    layer: Layer.merge(
+      Logger.layer([logger]),
+      Layer.succeed(References.MinimumLogLevel, "All")
+    ),
+  };
+}
 
 /** What the two writes are wrapped in. This file is about the writes, not replay. */
 const runtime = createInMemoryWorkflowRuntime();
@@ -62,21 +67,26 @@ describe("runWithStepLog", () => {
   // refused a write, and an outage produces a burst of them.
   it.effect("names the run and the node when the closing write fails", () =>
     Effect.gen(function* () {
+      const captured = recordingLogger();
       const result = yield* runWithStepLog(
         { store: storeRefusingTheClose(), context, runtime, input: {} },
         () => Effect.succeed({ success: true, data: { sid: "SM1" } } as const)
-      );
+      ).pipe(Effect.provide(captured.layer));
 
       expect(result.success).toBe(true);
-      expect(loggerWarnMock).toHaveBeenCalledWith(
-        "Could not close a run-log row",
-        expect.objectContaining({
-          logId: "log_1",
-          executionId: "exec_1",
-          nodeId: "node_1",
-          nodeName: "Send SMS",
-          status: "success",
-        })
+      expect(captured.lines).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: "Could not close a run-log row",
+            properties: expect.objectContaining({
+              logId: "log_1",
+              executionId: "exec_1",
+              nodeId: "node_1",
+              nodeName: "Send SMS",
+              status: "success",
+            }),
+          }),
+        ])
       );
     })
   );

@@ -1,8 +1,8 @@
 /**
  * What a node strategy needs from the run, and what it reports back.
  *
- * The scheduler owns deferral, drain, and branch hand-off. Strategies own the
- * work of one node kind and, when that kind picks an outlet, how to route after.
+ * The scheduler owns deferral, drain, branch hand-off, and post-success routing
+ * via `routeAfterStrategy`. Strategies own the work of one node kind.
  */
 
 import type { WorkflowActions } from "#src/backend/engine/actions";
@@ -13,7 +13,7 @@ import type {
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { NodeContext } from "#src/backend/engine/step-log";
 import type { WorkflowStore } from "#src/backend/engine/store";
-import type { Traversal, TraversalRoute } from "#src/backend/engine/traversal";
+import type { Traversal } from "#src/backend/engine/traversal";
 import type { WorkflowNode } from "@rova/shared/graph/types";
 import type { JsonObject } from "@rova/shared/types/json";
 import type { Effect } from "effect";
@@ -65,14 +65,6 @@ export type NodeStrategy = {
   /** Stable id for spans and logs. */
   readonly id: string;
   run: (ctx: NodeWorkContext) => Effect.Effect<NodeWorkOutcome, EngineFailure>;
-  /**
-   * How to leave this node after a successful run. Absent means the scheduler's
-   * default outlet routing (`downstreamRoute`). Condition supplies its own.
-   */
-  routeAfter?: (
-    ctx: NodeWorkContext,
-    outcome: NodeWorkOutcome
-  ) => TraversalRoute | null;
 };
 
 export type ActionStepInput = {

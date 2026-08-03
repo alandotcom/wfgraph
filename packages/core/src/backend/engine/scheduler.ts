@@ -8,7 +8,7 @@
  * cancellation routes the run is `CancelBoundary`'s.
  */
 
-import type { ConditionBranch, WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowNode } from "@rova/shared/graph/types";
 import {
   actionTypeOf,
   isConditionNode,
@@ -37,9 +37,11 @@ import {
 import {
   type EngineFailure,
   failureFromCause,
-  failureFromUnknown,
-  runPromiseWithEngineFailure,
 } from "#src/backend/engine/engine-failure";
+import {
+  fromUnknownPromise,
+  runDurableUnit,
+} from "#src/backend/engine/durable";
 
 /** What the run log and the trace call a node. */
 function getNodeName(node: WorkflowNode, actions: WorkflowActions): string {
@@ -311,14 +313,12 @@ export class NodeScheduler {
             )
           );
         }
-        const handoff = yield* Effect.tryPromise({
-          try: () =>
-            startBranch(`branch-${node.id}`, {
-              entryNodeId: node.id,
-              releasedNodeIds: traversal.releasedNodeIds,
-            }),
-          catch: failureFromUnknown,
-        });
+        const handoff = yield* fromUnknownPromise(() =>
+          startBranch(`branch-${node.id}`, {
+            entryNodeId: node.id,
+            releasedNodeIds: traversal.releasedNodeIds,
+          })
+        );
 
         if (handoff.status === "killed") {
           // The cancellation killed the branch where it stood. Its rows are closed
@@ -365,18 +365,13 @@ export class NodeScheduler {
    */
   private sweepKilledBranchWork(): Effect.Effect<void, EngineFailure> {
     const { runtime, store, executionId } = this.input;
-    return Effect.gen(function* () {
-      const effectContext = yield* Effect.context();
-      yield* Effect.tryPromise({
-        try: () =>
-          runtime.run("branch-kill-sweep", () =>
-            runPromiseWithEngineFailure(effectContext)(
-              Effect.as(store.cancelOpenWork({ executionId }), null)
-            )
-          ),
-        catch: failureFromUnknown,
-      });
-    });
+    return Effect.asVoid(
+      runDurableUnit(
+        runtime,
+        "branch-kill-sweep",
+        store.cancelOpenWork({ executionId })
+      )
+    );
   }
 
   /**
@@ -435,63 +430,57 @@ export class NodeScheduler {
           return;
         }
 
-        if (result.success) {
-          let shouldContinueDownstream = true;
+        if (!result.success) {
+          return;
+        }
 
-          if (outcome.haltBranch) {
-            yield* Effect.logInfo(
-              "Skipping downstream nodes because step requested halt"
+        if (outcome.haltBranch) {
+          yield* Effect.logInfo(
+            "Skipping downstream nodes because step requested halt"
+          );
+          return;
+        }
+
+        const route = routeAfterStrategy(
+          node,
+          this.currentEventName(),
+          outcome
+        );
+
+        if (isConditionNode(node)) {
+          yield* Effect.logDebug("Condition node result").pipe(
+            Effect.annotateLogs({
+              conditionResult: outcome.conditionValue,
+            })
+          );
+          if (route === null) {
+            yield* Effect.logDebug(
+              "Condition result missing boolean value, skipping downstream nodes"
             );
-            shouldContinueDownstream = false;
-          }
-
-          if (shouldContinueDownstream) {
-            const route = routeAfterStrategy(
-              node,
-              this.currentEventName(),
-              outcome
-            );
-
-            if (isConditionNode(node)) {
-              yield* Effect.logDebug("Condition node result").pipe(
-                Effect.annotateLogs({
-                  conditionResult: outcome.conditionValue,
-                })
-              );
-              if (route === null) {
-                yield* Effect.logDebug(
-                  "Condition result missing boolean value, skipping downstream nodes"
-                );
-              } else if (route.kind === "condition") {
-                const nextBranch: ConditionBranch = route.branch;
-                const nextNodes = traversal.nextNodes(nodeId, route);
-                yield* Effect.logDebug(
-                  "Condition branch selected, executing downstream nodes in parallel"
-                ).pipe(
-                  Effect.annotateLogs({
-                    selectedBranch: nextBranch,
-                    nextNodeCount: nextNodes.length,
-                    nextNodeIds: nextNodes,
-                  })
-                );
-                traversal.markReadyForDownstream(nodeId);
-                yield* this.runAll(nextNodes);
-              }
-            } else if (route) {
-              const nextNodes = traversal.nextNodes(nodeId, route);
-              yield* Effect.logDebug(
-                "Executing downstream nodes in parallel"
-              ).pipe(
-                Effect.annotateLogs({
-                  nextNodeCount: nextNodes.length,
-                  nextNodeIds: nextNodes,
-                })
-              );
-              traversal.markReadyForDownstream(nodeId);
-              yield* this.runAll(nextNodes);
-            }
+            return;
           }
         }
+
+        if (!route) {
+          return;
+        }
+
+        const nextNodes = traversal.nextNodes(nodeId, route);
+        yield* Effect.logDebug(
+          isConditionNode(node)
+            ? "Condition branch selected, executing downstream nodes in parallel"
+            : "Executing downstream nodes in parallel"
+        ).pipe(
+          Effect.annotateLogs({
+            ...(route.kind === "condition"
+              ? { selectedBranch: route.branch }
+              : {}),
+            nextNodeCount: nextNodes.length,
+            nextNodeIds: nextNodes,
+          })
+        );
+        traversal.markReadyForDownstream(nodeId);
+        yield* this.runAll(nextNodes);
       }.bind(this)
     );
 
