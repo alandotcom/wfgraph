@@ -171,6 +171,51 @@ describe("driveWithReplay", () => {
     expect(run.elapsedMs).toBe(90_000);
   });
 
+  it("registers a short branch sleep at its own target after a macrotask between steps", async () => {
+    const sleepFor: Record<string, number> = { short: 20_000, long: 90_000 };
+
+    const run = await driveWithReplay(
+      async (runtime) => {
+        await Promise.all([
+          runtime.startBranch?.("branch-short", {
+            entryNodeId: "short",
+            releasedNodeIds: [],
+          }),
+          runtime.startBranch?.("branch-long", {
+            entryNodeId: "long",
+            releasedNodeIds: [],
+          }),
+        ]);
+        return "done";
+      },
+      {
+        branch: async (runtime, { entryNodeId }) => {
+          await runtime.run(`prepare-${entryNodeId}`, () =>
+            Promise.resolve(null)
+          );
+          // Host macrotask between step ports: under quiet-turn quiescence the
+          // pass ended here and the short sleep registered after the long
+          // sibling had already advanced the clock.
+          await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+          });
+          await runtime.sleep(`wait-${entryNodeId}`, sleepFor[entryNodeId]);
+          await runtime.run(`after-${entryNodeId}`, () =>
+            Promise.resolve(null)
+          );
+          return NOTHING_RAN;
+        },
+      }
+    );
+
+    const at = (stepId: string) =>
+      run.executed.find((step) => step.stepId === stepId)?.at;
+
+    expect(at("after-short")).toBeLessThan(60_000);
+    expect(at("after-long")).toBe(90_000);
+    expect(run.elapsedMs).toBe(90_000);
+  });
+
   it("hands what a branch returned back to the run that started it", async () => {
     const answered: BranchRunResult = {
       results: { reminder: { success: true, data: { sent: true } } },
