@@ -13,7 +13,7 @@
 
 import type { EventMetadata } from "@rova/shared/extensions/catalog";
 import type { ReferenceField } from "@rova/shared/graph/node-references";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   type LifecycleRules,
   readLifecycleRules,

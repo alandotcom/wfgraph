@@ -4,7 +4,7 @@ import {
   createDefaultConditionModel,
   serializeConditionModel,
 } from "@rova/shared/conditions/conditions";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**
  * The starting condition for a node that has just become a Condition step.

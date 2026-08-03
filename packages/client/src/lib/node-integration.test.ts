@@ -6,7 +6,7 @@ import {
   requiredIntegrationType,
 } from "#src/lib/node-integration";
 import type { ExtensionCatalog } from "@rova/shared/extensions/catalog";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**
  * Which connection an action needs is the catalog's answer, so these cases need

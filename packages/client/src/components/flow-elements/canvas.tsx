@@ -1,6 +1,6 @@
 import { Background, ReactFlow, type ReactFlowProps } from "@xyflow/react";
 import type { ReactNode } from "react";
-import type { WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import "@xyflow/react/dist/style.css";
 
 // Every node on this canvas is a workflow node, so React Flow's node generic

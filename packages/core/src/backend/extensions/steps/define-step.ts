@@ -73,15 +73,15 @@ export class StepFailure extends Schema.TaggedErrorClass<StepFailure>()(
  * on every attempt. Rova wraps no handler body for you: that is Inngest's model,
  * and an author who reaches a system twice is an author who did not say so here.
  *
+ * The Effect overload is the internal shape: integrations yield it and memoize
+ * through a `RememberedStep` envelope so a `StepFailure` fails once. The Promise
+ * overload is a thin adapter for a host's `defineAction`: it memoizes the bare
+ * value, and a throw leaves no stored entry so a function-level retry re-runs.
+ *
  * What `run` answers round-trips through JSON on its way into the runtime's
  * storage, and `JsonSafe` is the compiler holding both forms to that. A `Date`,
  * `Map` or `Set` in the answer is refused where it is written, with the offending
  * field named.
- *
- * A `StepFailure` travels back as a failure value rather than as a throw, so a
- * node a system refused fails once instead of spending the retry budget on an
- * answer that will not change. Anything else a handler throws is a step that
- * failed, which the runtime retries.
  */
 export type NodeStepApi = {
   run: StepRunner;
@@ -101,47 +101,46 @@ type RememberedStep<A> =
   | { ok: false; message: string };
 
 /**
+ * Inngest's `run`, without a second `JsonSafe` check on a value that already
+ * passed at the author's `step.run` call. Comparing two generic signatures
+ * applies the check again to something that is no longer the author's type.
+ */
+type DurableRemember = <T>(
+  stepId: string,
+  work: () => Promise<T>
+) => Promise<T>;
+
+/**
  * The author's `step`, over the node's durable runtime.
  *
- * Both arms reach the same memoized call. The Effect arm runs its work to an
- * `Either` inside the step, so the value the runtime stores is a success either
- * way and a `StepFailure` is re-raised on the far side rather than read as a
- * step to run again.
+ * Effect is the primary execution shape: work runs to a `RememberedStep`
+ * envelope so a `StepFailure` is stored once and re-raised on replay rather
+ * than retried. The Promise overload is a thin adapter for host `defineAction`:
+ * it memoizes the bare value, and a throw escapes without a stored entry so a
+ * function-level retry re-runs the step (Inngest's model for transient errors).
  */
 export function nodeStepApi(
   app: StepEnvironment,
   steps: NodeSteps | undefined
 ): NodeStepApi {
-  // `steps.run` carries the JSON-safety check for what an author returns. It is
-  // read here without it, because this forwarder is generic over whatever that
-  // value became and comparing two generic signatures applies the check a second
-  // time, to something that already passed it at `run` below.
-  // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the value was checked at `run`, the signature an author writes against
-  const memoize = steps?.run as
-    | (<T>(stepId: string, work: () => Promise<T>) => Promise<T>)
-    | undefined;
+  // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- JsonSafe was enforced on the author's value at `run`
+  const memoize = steps?.run as DurableRemember | undefined;
 
   // A caller with no durable runtime runs the work where it stands, which is
   // what an in-process test wants and what the engine hands a disabled node.
-  const remember = <T>(stepId: string, work: () => Promise<T>): Promise<T> =>
+  const remember: DurableRemember = (stepId, work) =>
     memoize ? memoize(stepId, work) : work();
 
-  function run<A>(
+  /**
+   * Effect memoization. Work is run to a `Result` inside the step, so the
+   * value the runtime stores is a success either way and a `StepFailure` is
+   * re-raised on the far side rather than read as a step to run again.
+   */
+  const runEffect = <A>(
     stepId: string,
     work: Effect.Effect<A, StepFailure, HttpClient.HttpClient>
-  ): Effect.Effect<A, StepFailure, HttpClient.HttpClient>;
-  function run<A>(stepId: string, work: () => Promise<A>): Promise<A>;
-  function run<A>(
-    stepId: string,
-    work:
-      | Effect.Effect<A, StepFailure, HttpClient.HttpClient>
-      | (() => Promise<A>)
-  ): Effect.Effect<A, StepFailure, HttpClient.HttpClient> | Promise<A> {
-    if (typeof work === "function") {
-      return remember(stepId, work);
-    }
-
-    return Effect.suspend(() =>
+  ): Effect.Effect<A, StepFailure> =>
+    Effect.suspend(() =>
       Effect.flatMap(
         Effect.promise(() =>
           // A plain shape rather than the `Result` itself: what the runtime
@@ -167,9 +166,48 @@ export function nodeStepApi(
               Effect.fail(new StepFailure({ message: answered.message }))
       )
     );
+
+  function run<A>(
+    stepId: string,
+    work: Effect.Effect<A, StepFailure, HttpClient.HttpClient>
+  ): Effect.Effect<A, StepFailure, HttpClient.HttpClient>;
+  function run<A>(stepId: string, work: () => Promise<A>): Promise<A>;
+  function run<A>(
+    stepId: string,
+    work:
+      | Effect.Effect<A, StepFailure, HttpClient.HttpClient>
+      | (() => Promise<A>)
+  ): Effect.Effect<A, StepFailure, HttpClient.HttpClient> | Promise<A> {
+    if (typeof work === "function") {
+      // Bare-value memoization: a throw must not leave a stored entry, or a
+      // function-level retry would replay the failure instead of re-running.
+      return remember(stepId, work);
+    }
+
+    return runEffect(stepId, work);
   }
 
   return { run };
+}
+
+/**
+ * An Effect as a Promise that rejects with the failure itself.
+ *
+ * `Effect.runPromise` would reject with a fiber failure wrapping the cause, and
+ * a handler catching that could not tell a refused credential store from
+ * anything else. Matching first and rejecting by hand is what keeps
+ * `CredentialsUnavailable` recognisable to `stepFailureFrom`, which is what
+ * keeps it out of the `StepResult` envelope.
+ */
+function runToPromise<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
+  return Effect.runPromise(
+    Effect.match(effect, {
+      onSuccess: (value) => ({ ok: true as const, value }),
+      onFailure: (error) => ({ ok: false as const, error }),
+    })
+  ).then((answered) =>
+    answered.ok ? answered.value : Promise.reject(answered.error)
+  );
 }
 
 /**
@@ -199,17 +237,19 @@ export type StepBag<
    */
   readonly credentials: Effect.Effect<TCredentials, CredentialsUnavailable>;
   /**
-   * The same read for a handler written as a plain async function.
+   * The same read for a host `defineAction` written as a plain async function.
    *
-   * One fetch behind both: awaiting this after yielding `credentials` reaches
-   * the value already read. It rejects with the `CredentialsUnavailable` itself,
-   * which `defineStep` recognises and fails the node with, so a handler that
-   * does not catch it gets that behaviour for free.
+   * Integrations yield `credentials` instead. One fetch behind both: awaiting
+   * this after yielding `credentials` reaches the value already read. It rejects
+   * with the `CredentialsUnavailable` itself, which `defineStep` recognises and
+   * fails the node with, so a handler that does not catch it gets that behaviour
+   * for free.
    */
   readonly readCredentials: () => Promise<TCredentials>;
   /**
    * Where work with a side effect goes, so a replay reuses it rather than doing
-   * it again. Nothing outside it is remembered.
+   * it again. Nothing outside it is remembered. Integrations pass an Effect;
+   * a host `defineAction` may pass a Promise factory.
    */
   readonly step: NodeStepApi;
 };
@@ -228,11 +268,12 @@ export type StepHandler<TInput, TOutput> = (
 /**
  * The three shapes a handler may answer in.
  *
- * An `Effect` fails with a `StepFailure` and may ask for the HTTP transport,
- * which `callExternal` needs. A value or a Promise fails by throwing, and the
- * message becomes the run log's sentence, which is how `defineAction`'s handler
- * already works. Nothing else differs: the config decode, the credential fetch
- * and the output encode are the same either way.
+ * Integrations author with an `Effect` (`Effect.fn`): it fails with a
+ * `StepFailure` and may ask for the HTTP transport `callExternal` needs. A host
+ * `defineAction` may answer a value or a Promise and fail by throwing; the
+ * message becomes the run log's sentence. `toHandlerEffect` is the one bridge.
+ * Nothing else differs: the config decode, the credential fetch and the output
+ * encode are the same either way.
  */
 export type HandlerAnswer<TOutput> =
   | TOutput
@@ -518,24 +559,4 @@ function readCredentials(
   return integrationId === undefined
     ? Effect.succeed({})
     : Effect.suspend(() => app.credentialsFor(integrationId));
-}
-
-/**
- * The credential read as a Promise that rejects with the failure itself.
- *
- * `Effect.runPromise` would reject with a fiber failure wrapping the cause, and
- * a handler catching that could not tell a refused credential store from
- * anything else. Matching first and rejecting by hand is what keeps
- * `CredentialsUnavailable` recognisable to `toStepFailure`, which is what keeps
- * it out of the `StepResult` envelope.
- */
-function runToPromise<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
-  return Effect.runPromise(
-    Effect.match(effect, {
-      onSuccess: (value) => ({ ok: true as const, value }),
-      onFailure: (error) => ({ ok: false as const, error }),
-    })
-  ).then((answered) =>
-    answered.ok ? answered.value : Promise.reject(answered.error)
-  );
 }

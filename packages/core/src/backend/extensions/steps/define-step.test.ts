@@ -758,11 +758,11 @@ describe("defineStep and an input schema that declares a rest", () => {
 });
 
 /**
- * A step written the way an outside author would write one: Zod for the
+ * A step written the way a host's `defineAction` is written: Zod for the
  * schemas, an `async` handler, and no Effect anywhere in the definition.
  *
- * This is the claim `@rova/core/plugin`'s header makes, so it is asserted rather
- * than promised. The Effect arm stays first class, and the six built-ins use it.
+ * Integrations author with Effect (`@rova/core/plugin`). The Promise arm stays
+ * for host actions; both shapes share `HandlerAnswer` / `toHandlerEffect`.
  */
 describe("defineStep and a handler that is not an Effect", () => {
   const asyncStep = defineStep({
@@ -878,16 +878,106 @@ describe("defineStep and a handler that is not an Effect", () => {
 describe("what step.run accepts", () => {
   it("takes a value that survives the round trip and refuses one that does not", () => {
     const check = (step: NodeStepApi) => {
-      // An SDK's own interface passes, having no JSON-hostile field in it.
+      // Promise overload — host defineAction.
       void step.run("sdk", async () => ({ id: "1", labels: [{ name: "a" }] }));
       void step.run("iso", async () => ({ at: new Date().toISOString() }));
+      // Effect overload — integration authoring path.
+      void step.run(
+        "effect-iso",
+        Effect.succeed({ at: new Date().toISOString() })
+      );
 
       // @ts-expect-error a Date is a string by the time a replay reads it
       void step.run("date", async () => ({ at: new Date() }));
       // @ts-expect-error a Map is `{}` by the time a replay reads it
       void step.run("map", async () => new Map<string, string>());
+      // @ts-expect-error Effect arm refuses a Date the same way
+      void step.run("effect-date", Effect.succeed({ at: new Date() }));
     };
 
     expect(check).toBeTypeOf("function");
+  });
+});
+
+/**
+ * The Promise `step.run` adapter memoizes the bare value. A throw leaves no
+ * stored entry so a function-level retry re-runs the work (Inngest's model).
+ */
+describe("Promise step.run adapter", () => {
+  it("memoizes a host-style Promise factory as the bare value", async () => {
+    let calls = 0;
+    const step = defineStep({
+      ...METADATA,
+      input: z.object({ to: z.string() }),
+      output: z.object({ id: z.string() }),
+      handler: ({ input: config, step: nodeStep }) =>
+        nodeStep.run("create", async () => {
+          calls += 1;
+          return { id: `made-${config.to}` };
+        }),
+    });
+
+    const remembered = new Map<string, unknown>();
+    const steps = {
+      run: async <T>(stepId: string, work: () => Promise<T>) => {
+        if (remembered.has(stepId)) {
+          return remembered.get(stepId) as T;
+        }
+        const value = await work();
+        remembered.set(stepId, value);
+        return value;
+      },
+    };
+
+    const run = step.implement("demo/promise-run")(runner);
+    const first = await run({ to: "someone", _context: CONTEXT }, steps);
+    const second = await run({ to: "someone", _context: CONTEXT }, steps);
+
+    expect(first).toEqual({ success: true, data: { id: "made-someone" } });
+    expect(second).toEqual(first);
+    expect(calls).toBe(1);
+    expect(remembered.get("create")).toEqual({ id: "made-someone" });
+  });
+
+  it("does not memoize a thrown Promise step", async () => {
+    let calls = 0;
+    const step = defineStep({
+      ...METADATA,
+      input: z.object({ to: z.string() }),
+      output: z.object({ id: z.string() }),
+      handler: ({ step: nodeStep }) =>
+        nodeStep.run("create", async () => {
+          calls += 1;
+          if (calls === 1) {
+            throw new Error("transient");
+          }
+          return { id: "recovered" };
+        }),
+    });
+
+    const remembered = new Map<string, unknown>();
+    const steps = {
+      run: async <T>(stepId: string, work: () => Promise<T>) => {
+        if (remembered.has(stepId)) {
+          return remembered.get(stepId) as T;
+        }
+        const value = await work();
+        remembered.set(stepId, value);
+        return value;
+      },
+    };
+
+    const run = step.implement("demo/promise-retry")(runner);
+    const first = await run({ to: "someone", _context: CONTEXT }, steps);
+    const second = await run({ to: "someone", _context: CONTEXT }, steps);
+
+    expect(first).toEqual({
+      success: false,
+      error: { message: "transient" },
+    });
+    expect(second).toEqual({ success: true, data: { id: "recovered" } });
+    expect(calls).toBe(2);
+    expect(remembered.has("create")).toBe(true);
+    expect(remembered.get("create")).toEqual({ id: "recovered" });
   });
 });

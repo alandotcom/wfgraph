@@ -1,0 +1,87 @@
+/**
+ * What a node strategy needs from the run, and what it reports back.
+ *
+ * The scheduler owns deferral, drain, and branch hand-off. Strategies own the
+ * work of one node kind and, when that kind picks an outlet, how to route after.
+ */
+
+import type { WorkflowActions } from "#src/backend/engine/actions";
+import type {
+  ExecutionResult,
+  NodeOutputs,
+  RunLogger,
+} from "#src/backend/engine/contracts";
+import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
+import type { NodeContext } from "#src/backend/engine/step-log";
+import type { WorkflowStore } from "#src/backend/engine/store";
+import type { Traversal, TraversalRoute } from "#src/backend/engine/traversal";
+import type { WorkflowNode } from "@rova/shared/graph/types";
+import type { JsonObject } from "@rova/shared/types/json";
+
+export type NodeWorkOutcome = {
+  result: ExecutionResult;
+  /** Action node without an actionType: recorded as failed, no output stored. */
+  unconfigured?: boolean;
+  /**
+   * The branch a Condition node picked. Absent on every other node, and absent
+   * on a disabled Condition node, which evaluated nothing and halts its branch
+   * where it stands.
+   */
+  conditionValue?: boolean;
+  /**
+   * Whether the run stops below this node. A Wait that was skipped or woken by
+   * a cancel says so, a disabled routing node says so, and a branch that was
+   * handed to a durable run of its own says so because that run already walked
+   * everything underneath.
+   */
+  haltBranch?: boolean;
+};
+
+export type NodeWorkContext = {
+  node: WorkflowNode;
+  nodeName: string;
+  logger: RunLogger;
+  traversal: Traversal;
+  runtime: WorkflowExecutionRuntime;
+  store: WorkflowStore;
+  actions: WorkflowActions;
+  executionId: string;
+  workflowId: string;
+  workflowRunId: string;
+  runMode: "live" | "test";
+  startPayload: JsonObject;
+  /** Event the nodes running now arrived on. */
+  eventName: string | null;
+  /**
+   * Whether this Wait is entered here rather than handed to a branch run.
+   * Only the wait strategy reads it.
+   */
+  entersInPlace: boolean;
+  /** Hand a Wait to a durable branch run. Only the wait strategy calls it. */
+  handOffBranch: () => Promise<NodeWorkOutcome>;
+};
+
+export type NodeStrategy = {
+  /** Stable id for spans and logs. */
+  readonly id: string;
+  run: (ctx: NodeWorkContext) => Promise<NodeWorkOutcome>;
+  /**
+   * How to leave this node after a successful run. Absent means the scheduler's
+   * default outlet routing (`downstreamRoute`). Condition supplies its own.
+   */
+  routeAfter?: (
+    ctx: NodeWorkContext,
+    outcome: NodeWorkOutcome
+  ) => TraversalRoute | null;
+};
+
+export type ActionStepInput = {
+  actionType: string;
+  config: Record<string, unknown>;
+  outputs: NodeOutputs;
+  context: NodeContext;
+  store: WorkflowStore;
+  actions: WorkflowActions;
+  runtime: WorkflowExecutionRuntime;
+  eventName: string | null;
+};

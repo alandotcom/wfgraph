@@ -1,0 +1,194 @@
+/**
+ * Every action node: Wait, Condition, Event Split, and plugin/host actions.
+ *
+ * Template resolution and the step context are shared; the action id picks the
+ * work. Wait may hand off to a durable branch via the context the scheduler
+ * fills in.
+ */
+
+import { withSpan } from "#src/backend/lib/telemetry";
+import { runConditionStep } from "#src/backend/engine/strategies/condition";
+import { runEventSplitStep } from "#src/backend/engine/strategies/event-split";
+import { runPluginActionStep } from "#src/backend/engine/strategies/plugin-action";
+import type {
+  ActionStepInput,
+  NodeStrategy,
+  NodeWorkContext,
+  NodeWorkOutcome,
+} from "#src/backend/engine/strategies/types";
+import type { NodeContext } from "#src/backend/engine/step-log";
+import {
+  processTemplates,
+  resolveTemplateString,
+} from "#src/backend/engine/templates";
+import { executeWaitAction } from "#src/backend/engine/wait";
+import { BUILT_IN_ACTION_IDS } from "@rova/shared/actions/built-in-actions";
+import { actionTypeOf, readConfigString } from "@rova/shared/graph/node-config";
+
+function getNodeName(
+  node: NodeWorkContext["node"],
+  actions: NodeWorkContext["actions"]
+): string {
+  if (node.data.label) {
+    return node.data.label;
+  }
+  const actionType = actionTypeOf(node);
+  if (actionType) {
+    const label = actions.metadataFor(actionType)?.label;
+    if (label) {
+      return label;
+    }
+  }
+  return "Action";
+}
+
+async function executeActionStep(
+  input: ActionStepInput
+): Promise<{ result: NodeWorkOutcome["result"]; conditionValue?: boolean }> {
+  return withSpan(
+    "rova.workflow.action.execute",
+    {
+      "rova.action.type": input.actionType,
+      "rova.node.id": input.context.nodeId,
+      "rova.node.name": input.context.nodeName,
+    },
+    async () => {
+      if (input.actionType === BUILT_IN_ACTION_IDS.condition) {
+        return runConditionStep(input);
+      }
+      if (input.actionType === BUILT_IN_ACTION_IDS.eventSplit) {
+        return runEventSplitStep(input);
+      }
+      return runPluginActionStep(input);
+    }
+  );
+}
+
+async function runAction(ctx: NodeWorkContext): Promise<NodeWorkOutcome> {
+  const {
+    node,
+    logger,
+    traversal,
+    runtime,
+    store,
+    actions,
+    executionId,
+    workflowId,
+    workflowRunId,
+    runMode,
+  } = ctx;
+
+  const config = node.data.config || {};
+  const actionType = readConfigString(config, "actionType");
+  const actionLogger = logger.with({
+    actionType: actionType ?? null,
+  });
+  actionLogger.debug("Executing action node");
+
+  if (!actionType) {
+    actionLogger.error("Action node missing action type");
+    return {
+      result: {
+        success: false,
+        error: {
+          message: `Action node "${node.data.label || node.id}" has no action type configured`,
+        },
+      },
+      unconfigured: true,
+    };
+  }
+
+  // The Condition node's expression is held out of template resolution and
+  // put back. It cannot say so with a `literal` field the way every other
+  // action does, because `built-ins.ts` gives Condition no config fields at
+  // all: the editor draws it with a bespoke panel. The key is deleted rather
+  // than emptied, because a config key present and holding `undefined` fails
+  // a step's config decode.
+  const { condition: originalCondition, ...configWithoutCondition } = config;
+
+  const processedConfig = processTemplates(
+    configWithoutCondition,
+    traversal.outputs,
+    new Set(actions.metadataFor(actionType)?.literalConfigKeys ?? [])
+  );
+
+  if (originalCondition !== undefined) {
+    processedConfig.condition = originalCondition;
+  }
+
+  const stepContext: NodeContext = {
+    executionId,
+    nodeId: node.id,
+    nodeName: getNodeName(node, actions),
+    nodeType: actionType,
+    runMode,
+  };
+  actionLogger.debug("Calling executeActionStep");
+
+  if (actionType === BUILT_IN_ACTION_IDS.wait) {
+    if (!ctx.entersInPlace) {
+      return await ctx.handOffBranch();
+    }
+
+    const waitOutcome = await executeWaitAction({
+      config: processedConfig,
+      context: stepContext,
+      runtime,
+      store,
+      workflowId,
+      workflowRunId,
+      resolveTemplates: (value) =>
+        resolveTemplateString(value, traversal.outputs),
+    });
+
+    const waitResult = waitOutcome.result;
+    if (waitResult.success) {
+      return {
+        result: { success: true, data: waitResult },
+        haltBranch: waitOutcome.haltBranch,
+      };
+    }
+
+    actionLogger.error("Wait failed", {
+      nodeId: node.id,
+      nodeLabel: node.data.label,
+      error: waitResult.error.message,
+    });
+    return { result: { success: false, error: waitResult.error } };
+  }
+
+  const actionOutcome = await executeActionStep({
+    actionType,
+    config: processedConfig,
+    outputs: traversal.outputs,
+    context: stepContext,
+    runtime,
+    store,
+    actions,
+    eventName: ctx.eventName,
+  });
+
+  const stepResult = actionOutcome.result;
+  if (stepResult.success) {
+    return {
+      result: { success: true, data: stepResult },
+      conditionValue: actionOutcome.conditionValue,
+    };
+  }
+
+  actionLogger.error("Action step failed", {
+    actionType,
+    nodeId: node.id,
+    nodeLabel: node.data.label,
+    error: stepResult.error.message,
+  });
+  return {
+    result: { success: false, error: stepResult.error },
+    conditionValue: actionOutcome.conditionValue,
+  };
+}
+
+export const actionStrategy: NodeStrategy = {
+  id: "action",
+  run: runAction,
+};

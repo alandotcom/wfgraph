@@ -8,20 +8,22 @@
  * What is below is the whole of it, for a file that runs on the server. An
  * integration is one `defineIntegration` call: a credential record, and an
  * action per record key holding an input schema, an output schema, the metadata
- * the editor draws it with, and a handler. A connection test answers the
- * credentials UI over a Promise, so it calls out through `callExternalAsync`.
- * There is nothing to register: an integration is a value a host passes to
- * `createRovaApp`, and the credential fetch and the run logging are
- * `defineIntegration`'s business.
+ * the editor draws it with, and a handler. There is nothing to register: an
+ * integration is a value a host passes to `createRovaApp`, and the credential
+ * fetch and the run logging are `defineIntegration`'s business.
+ *
+ * **Effect is the integration authoring path.** Handlers are `Effect.fn`,
+ * credentials are `yield* bag.credentials`, HTTP goes through `callExternal`,
+ * and durable work is `yield* bag.step.run(id, effect)`. Schemas may still come
+ * from any Standard Schema library. A host's own `defineAction` stays
+ * Promise-first (`async` handlers, `readCredentials`, Promise `step.run`); that
+ * bridge is not what an integration writes.
+ *
+ * A connection test answers the credentials UI over a Promise, so it calls out
+ * through `callExternalAsync`. That is the one Promise HTTP seam on this entry.
  *
  * An integration's own suite drives an action through `@rova/core/testing`,
  * which is a separate entry because nothing in it runs in a server.
- *
- * Effect is optional here. Schemas may come from any Standard Schema library and
- * a handler may be an `async` function, so an integration can be written without
- * importing Effect at all. Everything Effect-shaped below serves the arm that
- * wants it: `StepFailure` is how an Effect handler fails, and `callExternal` is
- * the one an Effect handler yields.
  */
 
 export type {
@@ -78,7 +80,9 @@ export { requireOutputFieldsFromSchema } from "@rova/shared/graph/output-fields"
  *
  * `callExternal` answers an Effect and runs inside a `defineStep` handler, which
  * is already given the transport. `callExternalAsync` provides the transport
- * itself, for a connection test or a handler written as a plain async function.
+ * itself for a connection test (the credentials UI's Promise seam). A host
+ * `defineAction` written as async may use it too; an integration handler does
+ * not — it yields `callExternal`.
  */
 export {
   callExternal,

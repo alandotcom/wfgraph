@@ -20,8 +20,9 @@ import {
   type ReachableField,
   reachableEventFields,
 } from "@rova/shared/graph/reachable-fields";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { upstreamNodeIds } from "@rova/shared/graph/upstream-nodes";
+import { readConfigString } from "@rova/shared/graph/node-config";
 
 export type ConditionSelectableField = ConditionFieldDefinition & {
   sourceNodeId: string;
@@ -30,14 +31,6 @@ export type ConditionSelectableField = ConditionFieldDefinition & {
   nullable?: boolean;
   enumValues?: string[];
 };
-
-function readConfigString(
-  config: Record<string, unknown> | undefined,
-  key: string
-): string | undefined {
-  const value = config?.[key];
-  return typeof value === "string" ? value : undefined;
-}
 
 /**
  * A field together with the picker section it belongs under, where that differs

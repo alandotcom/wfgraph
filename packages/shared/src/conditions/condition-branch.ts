@@ -9,7 +9,8 @@
  */
 
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
-import type { ConditionBranch, WorkflowNode } from "#src/graph/types";
+import { isConditionNode, type NodeConfigSource } from "#src/graph/node-config";
+import type { ConditionBranch } from "#src/graph/types";
 
 export function normalizeConditionBranch(
   value: unknown
@@ -30,10 +31,8 @@ export function isConditionActionType(value: unknown): boolean {
   return value === BUILT_IN_ACTION_IDS.condition;
 }
 
-export function isConditionActionNode(node: WorkflowNode | undefined): boolean {
-  if (!node || node.data.type !== "action") {
-    return false;
-  }
-
-  return isConditionActionType(node.data.config?.actionType);
+export function isConditionActionNode(
+  node: NodeConfigSource | undefined
+): boolean {
+  return isConditionNode(node);
 }

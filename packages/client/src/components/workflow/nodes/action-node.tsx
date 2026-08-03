@@ -26,7 +26,7 @@ import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import {
   type ExecutionLogEntry,
   type WorkflowNodeData,
-} from "@rova/shared/graph/types";
+} from "#src/lib/workflow-graph-types";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { findAction, findIntegration } from "@rova/shared/extensions/catalog";
 import { useIntegrationUi } from "#src/components/integration-ui-provider";
@@ -46,6 +46,10 @@ import { useEventSplitOutlets } from "#src/lib/event-split-outlets";
 import { eventSplitCardWidth } from "#src/components/workflow/workflow-node-dimensions";
 import { useAfterPaint, useNowMs } from "#src/hooks/effects";
 import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
+import {
+  readConfigString,
+  readConfigStringOr,
+} from "@rova/shared/graph/node-config";
 import {
   integrationIdsQueryOptions,
   NO_INTEGRATION_IDS,
@@ -75,23 +79,6 @@ const readRuntimeWaitInput = readAs(
     waitTimeout: Schema.optionalKey(Schema.Unknown),
   })
 );
-
-function readConfigString(
-  config: Record<string, unknown> | undefined,
-  key: string,
-  fallback = ""
-): string {
-  const value = config?.[key];
-  return typeof value === "string" ? value : fallback;
-}
-
-function readOptionalConfigString(
-  config: Record<string, unknown> | undefined,
-  key: string
-): string | undefined {
-  const value = config?.[key];
-  return typeof value === "string" ? value : undefined;
-}
 
 function hasTemplateExpression(value: unknown): boolean {
   return (
@@ -140,7 +127,7 @@ function useWaitPreview(
   actionType: string,
   config: Record<string, unknown> | undefined
 ): WaitPreviewData | null {
-  const waitMode = readConfigString(config, "waitMode", "delay");
+  const waitMode = readConfigStringOr(config, "waitMode", "delay");
   const shouldShowWaitPreview =
     actionType === BUILT_IN_ACTION_IDS.wait &&
     (waitMode === "delay" || waitMode === "event");
@@ -456,11 +443,11 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   const isEventSplitAction = isEventSplitActionType(actionType);
   const splitOutlets = useEventSplitOutlets(isEventSplitAction ? id : null);
   const runtimeWaitPreview = useRuntimeWaitPreview(
-    actionType,
+    actionType ?? "",
     selectedExecutionId,
     nodeLog
   );
-  const configWaitPreview = useWaitPreview(actionType, data?.config);
+  const configWaitPreview = useWaitPreview(actionType ?? "", data?.config);
   const waitPreview = runtimeWaitPreview ?? configWaitPreview;
 
   // A condition node renders two source handles where every other node renders
@@ -537,7 +524,7 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
     data.description || getIntegrationFromActionType(actionType);
 
   const needsIntegration = requiresIntegration(actionType);
-  const configuredIntegrationId = readOptionalConfigString(
+  const configuredIntegrationId = readConfigString(
     data.config,
     "integrationId"
   );
@@ -550,10 +537,10 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
   const getAiModel = (): string | null => {
     if (actionType === "Generate Text") {
-      return readConfigString(data.config, "aiModel", "meta/llama-4-scout");
+      return readConfigStringOr(data.config, "aiModel", "meta/llama-4-scout");
     }
     if (actionType === "Generate Image") {
-      return readConfigString(
+      return readConfigStringOr(
         data.config,
         "imageModel",
         "google/imagen-4.0-generate"

@@ -15,15 +15,21 @@ import {
   createSerializedWorkflowGraph,
   toWorkflowGraphData,
 } from "@rova/shared/graph/graph";
+import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 import type {
-  SerializedWorkflowGraph,
   WorkflowEdge,
   WorkflowMode,
   WorkflowNode,
   WorkflowVisibility,
-} from "@rova/shared/graph/types";
+} from "#src/lib/workflow-graph-types";
+import {
+  toEditorEdge,
+  toEditorNode,
+  toPersistedEdge,
+  toPersistedNode,
+} from "#src/lib/workflow-graph-types";
 
-export type { WorkflowVisibility } from "@rova/shared/graph/types";
+export type { WorkflowVisibility } from "#src/lib/workflow-graph-types";
 
 export type WorkflowData = {
   id?: string;
@@ -215,8 +221,8 @@ export function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
 
   return {
     ...payload,
-    nodes: graphData.nodes,
-    edges: graphData.edges,
+    nodes: graphData.nodes.map(toEditorNode),
+    edges: graphData.edges.map(toEditorEdge),
   };
 }
 
@@ -230,8 +236,8 @@ function toGraphPayload(input: {
   }
 
   return createSerializedWorkflowGraph({
-    nodes: input.nodes ?? [],
-    edges: input.edges ?? [],
+    nodes: (input.nodes ?? []).map(toPersistedNode),
+    edges: (input.edges ?? []).map(toPersistedEdge),
   });
 }
 

@@ -9,7 +9,10 @@
  */
 
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
-import type { WorkflowNode } from "#src/graph/types";
+import {
+  isEventSplitActionNode,
+  type NodeConfigSource,
+} from "#src/graph/node-config";
 
 /**
  * What marks a handle as naming an Event.
@@ -44,10 +47,6 @@ export function isEventSplitActionType(value: unknown): boolean {
 }
 
 /** Whether this node is the one that splits a run by the Event it arrived on. */
-export function isEventSplitNode(node: WorkflowNode | undefined): boolean {
-  if (!node || node.data.type !== "action") {
-    return false;
-  }
-
-  return isEventSplitActionType(node.data.config?.actionType);
+export function isEventSplitNode(node: NodeConfigSource | undefined): boolean {
+  return isEventSplitActionNode(node);
 }

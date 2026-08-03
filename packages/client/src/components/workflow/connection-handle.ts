@@ -18,7 +18,7 @@ import {
   LIFECYCLE_STARTED_HANDLE,
 } from "@rova/shared/lifecycle/lifecycle-outlets";
 import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**
  * Which of a Condition node's two branches an edge with no handle takes: the

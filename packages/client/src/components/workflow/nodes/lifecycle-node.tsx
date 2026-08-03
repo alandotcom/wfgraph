@@ -11,7 +11,7 @@ import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
 } from "@rova/shared/lifecycle/lifecycle-outlets";
-import type { WorkflowNodeData } from "@rova/shared/graph/types";
+import type { WorkflowNodeData } from "#src/lib/workflow-graph-types";
 import {
   manualStartAllowed,
   readLifecycleRules,

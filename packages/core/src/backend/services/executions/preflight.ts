@@ -206,6 +206,11 @@ export const runWorkflowExecutionPreflight = Effect.fn(
     integrations.typesByIds
   );
   if (!integrationValidation.valid) {
+    if (integrationValidation.reason === "unconfigured") {
+      return yield* new InvalidInput({
+        error: integrationValidation.error,
+      });
+    }
     return yield* new IntegrationValidationFailed({
       error: "Workflow contains invalid integration references",
       invalidIntegrationIds: integrationValidation.invalidIds,

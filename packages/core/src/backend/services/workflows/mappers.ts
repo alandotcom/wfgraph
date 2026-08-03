@@ -84,7 +84,6 @@ export function withDefaultLifecycleNode(graph: unknown): unknown {
           description: "",
           type: "lifecycle",
           config: {},
-          status: "idle",
         },
       },
     ],

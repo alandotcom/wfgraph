@@ -204,10 +204,10 @@ export function callExternal<T>(
 /**
  * Run a call for a caller that is still a Promise, providing the transport.
  *
- * A step written with `defineStep` runs its own effect and is given the
- * transport, so this serves the callers that are not one: a connection test,
- * which answers the credentials UI over its own Promise seam, and a handler
- * written as a plain async function.
+ * An integration handler yields `callExternal` inside `defineStep`, which is
+ * already given the transport. This serves the Promise seams that are not that:
+ * a connection test answering the credentials UI, and a host `defineAction`
+ * written as a plain async function. An integration does not call this.
  *
  * Only an `ExternalError` becomes a result object. A defect, a `refusedInBody`
  * that throws among them, rejects the returned Promise.

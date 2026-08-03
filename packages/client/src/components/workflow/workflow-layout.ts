@@ -1,7 +1,7 @@
 import dagre from "@dagrejs/dagre";
 import { hierarchy, tree } from "d3-hierarchy";
 import { eventsReachingTarget } from "#src/lib/upstream-node-fields";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   eventSplitOutlet,
   eventSplitOutletEvent,

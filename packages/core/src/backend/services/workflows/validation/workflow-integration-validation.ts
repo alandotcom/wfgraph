@@ -7,6 +7,8 @@ import {
   findAction,
 } from "@rova/shared/extensions/catalog";
 import type { WorkflowNode } from "@rova/shared/graph/types";
+import { readConfigTrimmedString } from "@rova/shared/graph/node-config";
+import { findUnconfiguredIntegrationNodes } from "@rova/shared/graph/workflow-issues";
 
 /** As much of a catalog entry as the checks below read. */
 type ResolvedAction = {
@@ -43,13 +45,14 @@ type IntegrationRequirement = {
 
 /**
  * What `validateWorkflowIntegrations` answers: whether the graph's integration
- * references check out, and the ids at fault when they do not. Named so a
- * caller reads `.invalidIds` off a declared contract rather than off whatever
- * TypeScript happened to infer from the three return statements below.
+ * references check out. A blank `integrationId` on an action that needs one is
+ * an `unconfigured` refusal (InvalidInput upstream); a present id that is
+ * absent or mistyped is `invalid_ids`.
  */
 export type IntegrationValidation =
   | { valid: true }
-  | { valid: false; invalidIds: string[] };
+  | { valid: false; reason: "unconfigured"; error: string }
+  | { valid: false; reason: "invalid_ids"; invalidIds: string[] };
 
 const integrationValidationLogger = getAppLogger("workflow", "integration");
 const STRICT_VALIDATION_ENV = "WORKFLOW_STRICT_INTEGRATION_VALIDATION";
@@ -69,14 +72,6 @@ function shouldEnforceStrictValidation(
   return !["0", "false", "no", "off"].includes(configured);
 }
 
-function readConfigString(
-  config: Record<string, unknown> | undefined,
-  key: string
-): string | undefined {
-  const value = config?.[key];
-  return typeof value === "string" ? value.trim() : undefined;
-}
-
 function extractRequiredIntegrationRequirements(
   nodes: WorkflowNode[],
   resolveActionByType: ResolveActionByType
@@ -88,7 +83,7 @@ function extractRequiredIntegrationRequirements(
       continue;
     }
 
-    const actionType = readConfigString(node.data.config, "actionType");
+    const actionType = readConfigTrimmedString(node.data.config, "actionType");
     // Which integration an action needs is the catalog's answer, the same for a
     // plugin action and a host's own.
     const requiredType = actionType
@@ -98,7 +93,10 @@ function extractRequiredIntegrationRequirements(
       continue;
     }
 
-    const integrationId = readConfigString(node.data.config, "integrationId");
+    const integrationId = readConfigTrimmedString(
+      node.data.config,
+      "integrationId"
+    );
     if (!integrationId) {
       continue;
     }
@@ -184,6 +182,30 @@ export const validateWorkflowIntegrations = Effect.fn(
   const strictValidationEnabled = shouldEnforceStrictValidation(
     options.strictValidation
   );
+
+  // A blank connection comes first: the builder has not picked one yet, which
+  // is a different fix from an id that no longer exists.
+  const unconfigured = findUnconfiguredIntegrationNodes({ nodes, catalog });
+  if (unconfigured.length > 0) {
+    if (!strictValidationEnabled) {
+      integrationValidationLogger.warn(
+        "Bypassing unconfigured integration references because strict validation is disabled",
+        {
+          unconfiguredCount: unconfigured.length,
+          strictValidationEnv: STRICT_VALIDATION_ENV,
+        }
+      );
+    } else {
+      const first = unconfigured[0];
+      const invalid: IntegrationValidation = {
+        valid: false,
+        reason: "unconfigured",
+        error: `Node "${first.nodeLabel}" needs a ${first.integrationLabel} connection`,
+      };
+      return invalid;
+    }
+  }
+
   const requirements = extractRequiredIntegrationRequirements(
     nodes,
     resolveFromCatalog(catalog)
@@ -217,6 +239,7 @@ export const validateWorkflowIntegrations = Effect.fn(
   // from an id carrying the wrong type, and naming both at once helps nobody.
   const invalid: IntegrationValidation = {
     valid: false,
+    reason: "invalid_ids",
     invalidIds: missingIds.length > 0 ? missingIds : mismatchedIds,
   };
   return invalid;

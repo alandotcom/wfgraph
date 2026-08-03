@@ -22,7 +22,7 @@ import {
 import type { LifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
 import { isoTimestampString } from "@rova/shared/types/timestamp";
 import { requireOutputFieldsFromSchema } from "@rova/shared/graph/output-fields";
-import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 // What a node offers downstream comes off the catalog the editor fetches once
 // before render: an action's own entry, and for the entry node the Events its rules

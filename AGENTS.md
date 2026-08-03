@@ -67,7 +67,7 @@ something to learn:
   process, and under a canonical JSON codec the two swap places. All three cases are worked
   in `packages/core/src/backend/extensions/steps/define-step.test.ts`.
 - Annotate the base type before any check, or the annotation lands on the check and a
-  wrong-typed value never reaches it. `packages/shared/src/conditions/conditions.ts` is the
+  wrong-typed value never reaches it. `packages/shared/src/conditions/condition-schema.ts` is the
   worked example.
 
 **A message never quotes the value it rejected.** Render a decode failure a person will read
@@ -313,5 +313,4 @@ The app refuses to start without `INTEGRATION_ENCRYPTION_KEY` (64-char hex). Put
 
 - **Node 24 is required** (`engines` / `.node-version`). The Cloud Agent image may expose an older Node ahead of nvm on `PATH` (e.g. `/exec-daemon/node`). Prefer the nvm Node 24 binary first: `export PATH="$HOME/.nvm/versions/node/v24.18.1/bin:$PATH"` (or whatever `nvm which 24` returns).
 - **Docker is often unavailable** in this VM. When `docker compose` cannot start Postgres, install/run a local PostgreSQL cluster on port `55437` with the same credentials as `docker-compose.yml`.
-- **`pnpm run type-check` needs `@rova/client`'s `dist`.** The root `tsconfig` maps `@rova/shared|core|plugins` to source, but `@rova/client` resolves through package `exports` to `dist/`. Run `pnpm run build` (or at least the client package build) once after a clean install before type-check; lint/test do not need it. Standard commands live in the "Required checks before finishing" section above and in `.github/workflows/pr-checks.yml`.
 - For driving a real workflow against Inngest (not vitest), use `.claude/skills/live-run/SKILL.md`.
