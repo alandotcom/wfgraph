@@ -129,6 +129,9 @@ const rova = await createRovaApp({
   },
 });
 
+// Long-running Node owns a Connect WebSocket; serverless hosts skip this.
+await rova.connectInngest();
+
 // rova.fetch answers the API on /api/*. This call passes a client, so rova.fetch
 // answers the editor on /* too.
 createServer(createRequestListener(rova)).listen(3000);
