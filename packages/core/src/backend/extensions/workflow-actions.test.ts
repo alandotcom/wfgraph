@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
+import type { NodeSteps } from "@rova/shared/actions/step-result";
 import { emptyExtensionCatalog } from "@rova/shared/extensions/catalog";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import { defineStep } from "#src/backend/extensions/steps/define-step";
@@ -11,26 +12,31 @@ const SLOW_ACTION_ID = "test/slow";
 /** A step that suspends the way a vendor call does, and counts its own calls. */
 function slowStep() {
   const calls = { started: 0, finished: 0 };
-  const step = defineStep({
+  const definition = defineStep({
     label: "Slow",
     description: "Suspends before it answers",
     category: "Test",
     configFields: [],
     input: Schema.Struct({}),
     output: Schema.Struct({ sent: Schema.Boolean }),
-    handler: () =>
-      Effect.gen(function* () {
-        calls.started += 1;
-        yield* Effect.sleep(50);
-        calls.finished += 1;
-        return { sent: true };
-      }),
+    handler: ({ step }) =>
+      step.run(
+        "send",
+        Effect.gen(function* () {
+          calls.started += 1;
+          yield* Effect.sleep(50);
+          calls.finished += 1;
+          return { sent: true };
+        })
+      ),
   });
 
   const extensions: ExtensionSet = {
     catalog: emptyExtensionCatalog,
     stepFor: (actionId) =>
-      actionId === SLOW_ACTION_ID ? step.implement(SLOW_ACTION_ID) : undefined,
+      actionId === SLOW_ACTION_ID
+        ? definition.implement(SLOW_ACTION_ID)
+        : undefined,
     connectionTestFor: () => undefined,
     eventByName: () => undefined,
     events: [],
@@ -43,11 +49,12 @@ function slowStep() {
  * What a shutdown does to a step already doing its work.
  *
  * Disposal interrupts the outer invocation, but a handler already doing work
- * must finish before the runtime closes. Otherwise a half-finished vendor call
- * can be abandoned while the app is shutting down.
+ * must finish and deliver its result to the durable step before the runtime
+ * closes. The outer invocation may reject: Inngest retries it and replays the
+ * delivered step result instead of repeating the vendor call.
  */
 describe("the step the app runs", () => {
-  it("finishes a handler that was in flight when the runtime was disposed", async () => {
+  it("delivers an in-flight handler result before the runtime is disposed", async () => {
     const { calls, extensions } = slowStep();
     const runtime = stubRovaRuntime();
     const actions = createWorkflowActions(extensions, runtime);
@@ -56,23 +63,37 @@ describe("the step the app runs", () => {
       throw new Error("Expected the slow action to be assembled.");
     }
 
+    const delivered: unknown[] = [];
+    const nodeSteps: NodeSteps = {
+      run: async (_stepId, work) => {
+        const value = await work();
+        delivered.push(value);
+        return value;
+      },
+    };
     const pending = runtime.runPromise(
-      step({
-        _context: {
-          executionId: "exec_1",
-          nodeId: "n1",
-          nodeName: "Slow",
-          nodeType: "action",
-          runMode: "live",
+      step(
+        {
+          _context: {
+            executionId: "exec_1",
+            nodeId: "n1",
+            nodeName: "Slow",
+            nodeType: "action",
+            runMode: "live",
+          },
         },
-      })
+        nodeSteps
+      )
     );
     await Effect.runPromise(Effect.sleep(10));
     const disposed = runtime.dispose();
 
-    await expect(pending).rejects.toThrow(/interrupted/);
+    await expect(pending).rejects.toThrow(
+      "All fibers interrupted without error"
+    );
     await disposed;
     expect(calls).toEqual({ started: 1, finished: 1 });
+    expect(delivered).toEqual([{ ok: true, value: { sent: true } }]);
   });
 
   it("rejects a step dispatched after the runtime was disposed", async () => {
