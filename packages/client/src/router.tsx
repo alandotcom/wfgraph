@@ -21,11 +21,14 @@ import { toSavedWorkflow } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
 import { hydrateWorkflowAtom } from "#src/lib/workflow-graph-store";
 import { workflowNotFoundAtom } from "#src/lib/workflow-save-store";
-import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
+import {
+  propertiesPanelActiveTabAtom,
+  selectedExecutionIdAtom,
+} from "#src/lib/workflow-ui-store";
 import WorkflowEditorPage from "#src/routes/workflows/[workflowId]/page";
 import WorkflowsPage from "#src/routes/workflows/page";
 
-/** Optional deep-link into the Runs panel for one execution. */
+/** Which run the Runs panel has open, when any. */
 export type WorkflowRouteSearch = {
   executionId?: string;
 };
@@ -120,8 +123,8 @@ const workflowRoute = createRoute({
    * time, and the connection list is refetched only when it has gone stale or a
    * connection write invalidated it.
    *
-   * A deep-linked `executionId` switches the sidebar to Runs before the first
-   * paint, so the panel that consumes that id is mounted on arrival.
+   * An `executionId` search param opens the Runs tab (and selects that run) so
+   * the panel that reads the same search is mounted on arrival.
    */
   loader: async ({ params, deps }) => {
     try {
@@ -143,6 +146,7 @@ const workflowRoute = createRoute({
 
       if (deps.executionId) {
         appStore.set(propertiesPanelActiveTabAtom, "runs");
+        appStore.set(selectedExecutionIdAtom, deps.executionId);
       }
     } catch (error) {
       appStore.set(workflowNotFoundAtom, true);

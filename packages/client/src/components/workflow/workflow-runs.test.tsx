@@ -182,7 +182,7 @@ describe("WorkflowRuns", () => {
     fireEvent.click(row);
 
     expect(
-      view.getByRole("button", { name: "Back to runs list" })
+      await view.findByRole("button", { name: "Back to runs list" })
     ).toBeTruthy();
 
     served.items = [];
@@ -205,14 +205,6 @@ describe("WorkflowRuns", () => {
 
     fireEvent.click(await view.findByTestId("workflow-run-summary-row"));
 
-    expect(view.queryByText(/has left the runs list/)).toBeNull();
-  });
-
-  it("opens a deep-linked run that is already in the list", async () => {
-    served.items = [execution("exec_deep", "completed")];
-    served.supersededCount = 0;
-    const { view } = renderRuns({ executionId: "exec_deep" });
-
     await waitFor(() => {
       expect(
         view.getByRole("button", { name: "Back to runs list" })
@@ -221,7 +213,18 @@ describe("WorkflowRuns", () => {
     expect(view.queryByText(/has left the runs list/)).toBeNull();
   });
 
-  it("reveals superseded rows to open a deep-linked superseded run", async () => {
+  it("opens the run named in the search param", async () => {
+    served.items = [execution("exec_deep", "completed")];
+    served.supersededCount = 0;
+    const { view } = renderRuns({ executionId: "exec_deep" });
+
+    expect(
+      await view.findByRole("button", { name: "Back to runs list" })
+    ).toBeTruthy();
+    expect(view.queryByText(/has left the runs list/)).toBeNull();
+  });
+
+  it("opens a superseded run from the search param", async () => {
     served.items = [
       execution("exec_live", "completed"),
       execution("exec_old", "superseded"),
@@ -229,38 +232,30 @@ describe("WorkflowRuns", () => {
     served.supersededCount = 1;
     const { view } = renderRuns({ executionId: "exec_old" });
 
-    await waitFor(() => {
-      expect(
-        view.getByRole("button", { name: "Back to runs list" })
-      ).toBeTruthy();
-    });
+    expect(
+      await view.findByRole("button", { name: "Back to runs list" })
+    ).toBeTruthy();
   });
 
-  it("opens a deep-linked run past the list from the logs summary", async () => {
+  it("opens a search-param run past the list from the logs summary", async () => {
     served.items = [execution("exec_other", "completed")];
     served.supersededCount = 0;
     const { view } = renderRuns({ executionId: "exec_past_cap" });
 
-    await waitFor(() => {
-      expect(
-        view.getByRole("button", { name: "Back to runs list" })
-      ).toBeTruthy();
-    });
+    expect(
+      await view.findByRole("button", { name: "Back to runs list" })
+    ).toBeTruthy();
     expect(view.getByText(/has left the runs list/)).toBeTruthy();
   });
 
-  it("clears the deep-link search when going back to the list", async () => {
+  it("clears the search param when going back to the list", async () => {
     served.items = [execution("exec_deep", "completed")];
     served.supersededCount = 0;
     const { view, router } = renderRuns({ executionId: "exec_deep" });
 
-    await waitFor(() => {
-      expect(
-        view.getByRole("button", { name: "Back to runs list" })
-      ).toBeTruthy();
-    });
-
-    fireEvent.click(view.getByRole("button", { name: "Back to runs list" }));
+    fireEvent.click(
+      await view.findByRole("button", { name: "Back to runs list" })
+    );
 
     await waitFor(() => {
       expect(router.state.location.search).toEqual({});
