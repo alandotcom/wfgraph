@@ -15,9 +15,14 @@ import {
 } from "#src/backend/lib/logger";
 
 const buildInngestFunctions = vi.hoisted(() => vi.fn());
+const connect = vi.hoisted(() => vi.fn());
 
 vi.mock("#src/backend/lib/inngest/functions", () => ({
   buildInngestFunctions,
+}));
+
+vi.mock("inngest/connect", () => ({
+  connect,
 }));
 
 /** The startup lines, read off logtape through the bridge sink. */
@@ -130,5 +135,45 @@ describe("createInngestSurface serve", () => {
     await expect(surface.serve(runtime)).rejects.toThrow("boom");
 
     expect(buildInngestFunctions).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("createInngestSurface connect", () => {
+  const functions = [{ id: "workflow-run" }];
+
+  beforeEach(() => {
+    buildInngestFunctions.mockReset();
+    connect.mockReset();
+    buildInngestFunctions.mockResolvedValue(functions);
+    connect.mockResolvedValue({
+      connectionId: "conn-test",
+      state: "ACTIVE",
+      close: vi.fn(),
+      closed: Promise.resolve(),
+      getDebugState: vi.fn(),
+    });
+  });
+
+  it("registers this app's functions on a Connect WebSocket", async () => {
+    const surface = createInngestSurface({
+      id: "connect-app",
+      isDev: true,
+      instanceId: "worker-1",
+      gatewayUrl: "ws://localhost:8390/v0/connect",
+      maxWorkerConcurrency: 4,
+    });
+    const runtime = stubRovaRuntime();
+
+    const connection = await surface.connect(runtime);
+
+    expect(buildInngestFunctions).toHaveBeenCalledWith(surface.client, runtime);
+    expect(connect).toHaveBeenCalledWith({
+      apps: [{ client: surface.client, functions }],
+      instanceId: "worker-1",
+      gatewayUrl: "ws://localhost:8390/v0/connect",
+      maxWorkerConcurrency: 4,
+      handleShutdownSignals: [],
+    });
+    expect(connection.connectionId).toBe("conn-test");
   });
 });

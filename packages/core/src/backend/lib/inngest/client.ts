@@ -1,8 +1,14 @@
 import { Inngest } from "inngest";
+import {
+  connect as connectInngest,
+  type WorkerConnection,
+} from "inngest/connect";
 import { serve as serveInngest } from "inngest/hono";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { RovaRuntime } from "#src/backend/runtime";
+
+export type { WorkerConnection } from "inngest/connect";
 
 function getInngestBaseUrl() {
   const candidates = [process.env.INNGEST_BASE_URL, process.env.INNGEST_DEV];
@@ -25,8 +31,9 @@ function getInngestBaseUrl() {
  *
  * Written out by hand rather than derived from the SDK's own option types, so
  * `@rova/core`'s published surface stops moving whenever Inngest changes its
- * constructor. The split between what the client takes and what `serve()` takes
- * is Inngest's business and is applied below, not something a host restates.
+ * constructor. The split between what the client takes and what `serve()` /
+ * `connect()` take is Inngest's business and is applied below, not something a
+ * host restates.
  */
 export type RovaInngestConfig = {
   id: string;
@@ -39,6 +46,23 @@ export type RovaInngestConfig = {
   /** Public origin Inngest should call back on, for example "https://app.example.com". */
   serveOrigin?: string;
   servePath?: string;
+  /**
+   * Stable id for this Connect worker. Defaults to the machine hostname when
+   * absent. Used only when the host calls `connectInngest()`.
+   */
+  instanceId?: string;
+  /**
+   * WebSocket gateway URL for Connect, for example
+   * `ws://localhost:8390/v0/connect`. The SDK also reads
+   * `INNGEST_CONNECT_GATEWAY_URL`. Used only when the host calls
+   * `connectInngest()`.
+   */
+  gatewayUrl?: string;
+  /**
+   * Cap on concurrent step executions on this Connect worker. Used only when
+   * the host calls `connectInngest()`.
+   */
+  maxWorkerConcurrency?: number;
 };
 
 /**
@@ -133,6 +157,14 @@ export type InngestSurface = {
    * on the first Inngest callback.
    */
   serve: (runtime: RovaRuntime) => Promise<InngestServeHandler>;
+  /**
+   * Opens a Connect WebSocket for this app's functions.
+   *
+   * Long-running hosts call this once; serverless hosts leave it alone and
+   * keep HTTP callbacks. Shutdown signals are left to the host: Rova closes
+   * the returned connection from `dispose`.
+   */
+  connect: (runtime: RovaRuntime) => Promise<WorkerConnection>;
 };
 
 export function createInngestSurface(
@@ -152,6 +184,21 @@ export function createInngestSurface(
         // is left for `serve()` is where Inngest should call back.
         serveOrigin: config.serveOrigin,
         servePath: config.servePath,
+      }),
+    connect: async (runtime) =>
+      connectInngest({
+        apps: [
+          {
+            client,
+            functions: await buildInngestFunctions(client, runtime),
+          },
+        ],
+        instanceId: config.instanceId,
+        gatewayUrl: config.gatewayUrl,
+        maxWorkerConcurrency: config.maxWorkerConcurrency,
+        // The host owns SIGINT/SIGTERM (and `dispose`); leaving the SDK's
+        // default handlers in place races a second close against that path.
+        handleShutdownSignals: [],
       }),
   };
 }

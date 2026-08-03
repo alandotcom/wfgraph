@@ -40,6 +40,7 @@ import {
   createInngestSurface,
   type InngestSurface,
   type RovaInngestConfig,
+  type WorkerConnection,
 } from "#src/backend/lib/inngest/client";
 import {
   configureAppLogging,
@@ -132,6 +133,13 @@ export type RovaApp = {
    * what lets an adapter tell a mount-point mismatch from an ordinary 404.
    */
   basePath: "" | `/${string}`;
+  /**
+   * Opens a Connect WebSocket so Inngest can execute this app's functions over
+   * a persistent connection. Long-running hosts call this once after boot;
+   * serverless hosts leave it alone and keep the `/api/inngest` HTTP path.
+   * A second call is refused. `dispose` drains the connection.
+   */
+  connectInngest: () => Promise<void>;
   /**
    * Give back everything this app holds. Awaiting it waits for the Effect
    * runtime's Layers to finalize; a host that fires and forgets still releases
@@ -303,7 +311,25 @@ async function assembleRovaApp(
     });
   }
 
+  let connectPromise: Promise<WorkerConnection> | undefined;
+  let workerConnection: WorkerConnection | undefined;
+
   const dispose = async (): Promise<void> => {
+    // Drain Connect before the runtime goes away: in-flight steps still need
+    // the Layer graph, and a closed WebSocket is what stops Inngest from
+    // dispatching more work to this process.
+    if (connectPromise) {
+      try {
+        const connection = workerConnection ?? (await connectPromise);
+        await connection.close();
+      } catch {
+        // A failed connect leaves nothing to close; dispose still releases the
+        // runtime and the pool.
+      }
+      workerConnection = undefined;
+      connectPromise = undefined;
+    }
+
     await runtime.dispose();
 
     // Last, because a Layer finalizer is free to run a closing query. postgres.js
@@ -315,6 +341,25 @@ async function assembleRovaApp(
   return {
     fetch: async (request) => await fullApp.fetch(request),
     basePath,
+    connectInngest: async () => {
+      if (connectPromise) {
+        throw new Error(
+          "connectInngest() was already called for this Rova app."
+        );
+      }
+
+      connectPromise = inngest.connect(runtime);
+      try {
+        workerConnection = await connectPromise;
+      } catch (error) {
+        connectPromise = undefined;
+        throw error;
+      }
+
+      getAppLogger("inngest").info(
+        `Inngest Connect worker ready: connectionId=${workerConnection.connectionId} state=${workerConnection.state}`
+      );
+    },
     dispose,
   };
 }

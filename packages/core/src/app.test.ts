@@ -1,4 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +21,12 @@ import { createRovaRuntime } from "#src/backend/runtime";
 import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
 import { createDatabaseSurface } from "#src/backend/lib/db/index";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
+
+const connect = vi.hoisted(() => vi.fn());
+
+vi.mock("inngest/connect", () => ({
+  connect,
+}));
 
 // createRovaApp opens no connections: the database client is lazy and
 // migrations only run when asked. Every route exercised below answers from
@@ -520,5 +534,39 @@ describe("createRovaApp configuration", () => {
     } finally {
       await second.dispose();
     }
+  });
+});
+
+describe("createRovaApp connectInngest", () => {
+  const close = vi.fn(async () => undefined);
+
+  beforeEach(() => {
+    connect.mockReset();
+    close.mockReset();
+    connect.mockResolvedValue({
+      connectionId: "conn-app",
+      state: "ACTIVE",
+      close,
+      closed: Promise.resolve(),
+      getDebugState: vi.fn(),
+    });
+  });
+
+  it("opens Connect once and drains it on dispose", async () => {
+    const app = await createTestApp();
+    try {
+      await app.connectInngest();
+      await expect(app.connectInngest()).rejects.toThrow(
+        "connectInngest() was already called"
+      );
+      expect(connect).toHaveBeenCalledTimes(1);
+      expect(connect.mock.calls[0]?.[0]).toMatchObject({
+        handleShutdownSignals: [],
+      });
+    } finally {
+      await app.dispose();
+    }
+
+    expect(close).toHaveBeenCalledTimes(1);
   });
 });
