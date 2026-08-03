@@ -5,7 +5,7 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { ReplayHostTimers } from "#src/backend/engine/replay-host-timers";
+import { ReplayHostTimers } from "#src/backend/engine/testing/replay-host-timers";
 
 describe("ReplayHostTimers", () => {
   const hostImmediate = globalThis.setImmediate;

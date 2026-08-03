@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { BranchRunResult } from "#src/backend/engine/branch";
-import { driveWithReplay } from "#src/backend/engine/replay-runtime";
+import { driveWithReplay } from "#src/backend/engine/testing/replay-runtime";
 
 /** A branch body's answer, which the driver hands to whoever started it. */
 const NOTHING_RAN: BranchRunResult = { results: {}, outputs: {} };

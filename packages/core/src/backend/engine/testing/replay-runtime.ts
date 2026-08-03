@@ -23,7 +23,7 @@ import type {
   BranchHandoff,
   BranchRunResult,
 } from "#src/backend/engine/branch";
-import { ReplayHostTimers } from "#src/backend/engine/replay-host-timers";
+import { ReplayHostTimers } from "#src/backend/engine/testing/replay-host-timers";
 import type {
   WaitForEventOptions,
   WorkflowExecutionRuntime,
