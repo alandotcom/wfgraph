@@ -30,6 +30,22 @@ export type WorkflowRunTarget = {
   catalogFingerprint: string;
 };
 
+/** Build the run target every start path hands to concurrency / enqueue. */
+export function toWorkflowRunTarget(input: {
+  workflow: { id: string; name: string };
+  versionId: string;
+  catalogFingerprint: string;
+  graph: SerializedWorkflowGraph;
+}): WorkflowRunTarget {
+  return {
+    id: input.workflow.id,
+    name: input.workflow.name,
+    graph: input.graph,
+    versionId: input.versionId,
+    catalogFingerprint: input.catalogFingerprint,
+  };
+}
+
 /**
  * Where the run came from, and which entity it is about.
  *

@@ -30,6 +30,7 @@ import {
   clearGraphSelectionAtom,
   clearWorkflowAtom,
   edgesAtom,
+  executionOverlayGraphAtom,
   nodesAtom,
   selectedNodeAtom,
   updateNodeDataAtom,
@@ -57,6 +58,7 @@ import {
   setWorkflowModeAtom,
   workflowNameErrorAtom,
 } from "#src/lib/workflow-save-store";
+import { toSerializedGraph } from "#src/lib/rpc-client";
 import {
   isExecutingAtom,
   isGeneratingAtom,
@@ -116,6 +118,7 @@ function useWorkflowHandlers({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const clearGraphSelection = useSetAtom(clearGraphSelectionAtom);
+  const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const createWorkflow = useSetAtom(createWorkflowAtom);
   // No errorMessage: a rejected run carries a server message worth reading, and
@@ -198,6 +201,10 @@ function useWorkflowHandlers({
 
     // Switch to Runs tab when starting a run
     setActiveTab("runs");
+
+    // Drop any run overlay so optimistic status and the new selection paint the
+    // draft until the new run's pinned graph arrives.
+    setExecutionOverlay(null);
 
     // Deselect all nodes and edges
     clearGraphSelection();
@@ -492,7 +499,10 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     if (!currentWorkflowId) {
       return;
     }
-    publishWorkflow.mutate({ workflowId: currentWorkflowId });
+    publishWorkflow.mutate({
+      workflowId: currentWorkflowId,
+      graph: toSerializedGraph({ nodes, edges }),
+    });
   };
 
   const handleSetWorkflowMode = async (mode: "live" | "test") => {

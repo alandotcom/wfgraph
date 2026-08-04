@@ -10,10 +10,10 @@ import {
 
 export type WorkflowRunRequestedEventData = {
   graph: SerializedWorkflowGraph;
-  /** The published version this run pins, when known. */
-  workflowVersionId?: string;
+  /** The published version this run pins. */
+  workflowVersionId: string;
   /** Catalog fingerprint at publish, compared on wake for drift. */
-  catalogFingerprint?: string;
+  catalogFingerprint: string;
   /**
    * The payload that set the run going. Inngest stringifies event data before
    * sending it, so anything here that is not JSON is lost in transit; the type

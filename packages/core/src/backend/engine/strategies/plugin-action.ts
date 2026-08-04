@@ -14,10 +14,7 @@ export function runPluginActionStep(input: ActionStepInput) {
   return Effect.gen(function* () {
     const { actionType, config, context, store, actions, runtime } = input;
 
-    if (
-      input.catalogFingerprint !== undefined &&
-      input.catalogFingerprint !== actions.catalogFingerprint()
-    ) {
+    if (input.catalogFingerprint !== actions.catalogFingerprint()) {
       return {
         result: failedExecution(
           engineFailure(

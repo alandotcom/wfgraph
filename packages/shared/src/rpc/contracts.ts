@@ -457,11 +457,19 @@ export const rpcContract = {
       .input(contractSchema(Schema.Struct({ workflowId: idSchema })))
       .output(workflowApiPayload),
     /**
-     * Mint (or reuse) an immutable version from the current draft and point
-     * starts at it. Draft saves alone never start runs.
+     * Mint (or reuse) an immutable version from the graph the editor is showing
+     * and point starts at it. Draft saves alone never start runs; the client
+     * sends the canvas graph so an unsaved edit is what gets published.
      */
     publish: route("POST", "/workflows/{workflowId}/publish")
-      .input(contractSchema(Schema.Struct({ workflowId: idSchema })))
+      .input(
+        contractSchema(
+          Schema.Struct({
+            workflowId: idSchema,
+            graph: serializedWorkflowGraphSchema,
+          })
+        )
+      )
       .output(workflowPublishPayload),
     getCurrent: route("GET", "/workflows/current")
       .input(noInput)
@@ -574,9 +582,8 @@ export const rpcContract = {
           Schema.Struct({
             execution: executionSummarySchema,
             /**
-             * The graph this run pinned, when a version is known. Absent for a
-             * legacy row that predates versioning; the editor then falls back to
-             * the live draft.
+             * The graph this run pinned. Absent only when the row has no
+             * `workflow_version_id` (a terminal refuse that never executed).
              */
             graph: Schema.optionalKey(serializedWorkflowGraphSchema),
             logs: listOf(executionLogSchema),

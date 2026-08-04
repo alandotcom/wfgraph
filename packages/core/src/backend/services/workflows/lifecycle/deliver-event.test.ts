@@ -156,6 +156,11 @@ function publishedVersion(workflow: Workflow): WorkflowVersion {
 function stubPublishedWorkflow(workflow: Workflow) {
   return stubWorkflowRepo({
     findById: () => Effect.succeed(workflow),
+    findByIdWithPublishedVersion: () =>
+      Effect.succeed({
+        workflow,
+        publishedVersion: publishedVersion(workflow),
+      }),
     findPublishedVersion: () => Effect.succeed(publishedVersion(workflow)),
   });
 }

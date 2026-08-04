@@ -236,7 +236,9 @@ export const rpcRouter = rpc.router({
       rpcEffectHandler(({ input }) => postWorkflowDuplicate(input.workflowId))
     ),
     publish: rpc.workflow.publish.handler(
-      rpcEffectHandler(({ input }) => publishWorkflow(input.workflowId))
+      rpcEffectHandler(({ input }) =>
+        publishWorkflow({ workflowId: input.workflowId, graph: input.graph })
+      )
     ),
     getCurrent: rpc.workflow.getCurrent.handler(
       rpcEffectHandler(() => getWorkflowsCurrent())

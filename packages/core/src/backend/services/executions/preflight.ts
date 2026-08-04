@@ -242,13 +242,13 @@ export const loadWorkflowForRun = Effect.fn("loadWorkflowForRun")(function* (
   workflowId: string
 ) {
   const repo = yield* WorkflowRepo;
-  const workflow = yield* repo.findById(workflowId);
+  const loaded = yield* repo.findByIdWithPublishedVersion(workflowId);
 
-  if (!workflow) {
+  if (!loaded) {
     return yield* new NotFound({ error: "Workflow not found" });
   }
 
-  const version = yield* repo.findPublishedVersion(workflowId);
+  const { workflow, publishedVersion: version } = loaded;
   if (!version) {
     return yield* new InvalidInput({
       error: "Workflow has not been published",

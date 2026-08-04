@@ -71,22 +71,23 @@ describe("publishWorkflow", () => {
     it.effect("mints a version and rewrites subscriptions", () =>
       Effect.gen(function* () {
         const published: Array<
-          Parameters<WorkflowRepo["Service"]["insertVersionAndPublish"]>[0]
+          Parameters<WorkflowRepo["Service"]["publishVersion"]>[0]
         > = [];
 
         const repo = stubWorkflowRepo({
           findById: () => Effect.succeed(draft),
+          findVersionByContent: () => Effect.succeed(null),
           findLatestVersion: () => Effect.succeed(null),
-          insertVersionAndPublish: (input) =>
+          publishVersion: (input) =>
             Effect.sync(() => {
               published.push(input);
               const version: WorkflowVersion = {
-                id: input.version.id,
+                id: input.versionId,
                 workflowId: input.workflowId,
-                version: input.version.version,
-                graph: input.version.graph,
-                catalogFingerprint: input.version.catalogFingerprint,
-                graphDigest: input.version.graphDigest,
+                version: input.mint?.version ?? 1,
+                graph: input.draftGraph,
+                catalogFingerprint: input.mint?.catalogFingerprint ?? "",
+                graphDigest: input.mint?.graphDigest ?? "",
                 publishedAt: new Date("2026-08-03T00:00:00.000Z"),
               };
               return {
@@ -100,9 +101,10 @@ describe("publishWorkflow", () => {
             }),
         });
 
-        const result = yield* publishWorkflow("wf_1").pipe(
-          Effect.provide(repo)
-        );
+        const result = yield* publishWorkflow({
+          workflowId: "wf_1",
+          graph: draft.graph,
+        }).pipe(Effect.provide(repo));
 
         assert.strictEqual(result.publishedVersion, 1);
         assert.strictEqual(published.length, 1);
@@ -131,47 +133,59 @@ describe("publishWorkflow", () => {
         let capturedFingerprint = "";
         const mint = stubWorkflowRepo({
           findById: () => Effect.succeed(draft),
+          findVersionByContent: () => Effect.succeed(null),
           findLatestVersion: () => Effect.succeed(null),
-          insertVersionAndPublish: (input) =>
+          publishVersion: (input) =>
             Effect.sync(() => {
-              capturedDigest = input.version.graphDigest;
-              capturedFingerprint = input.version.catalogFingerprint;
+              capturedDigest = input.mint?.graphDigest ?? "";
+              capturedFingerprint = input.mint?.catalogFingerprint ?? "";
               return {
-                workflow: { ...draft, publishedVersionId: input.version.id },
+                workflow: { ...draft, publishedVersionId: input.versionId },
                 version: {
-                  id: input.version.id,
+                  id: input.versionId,
                   workflowId: input.workflowId,
-                  version: input.version.version,
-                  graph: input.version.graph,
-                  catalogFingerprint: input.version.catalogFingerprint,
-                  graphDigest: input.version.graphDigest,
+                  version: input.mint?.version ?? 1,
+                  graph: input.draftGraph,
+                  catalogFingerprint: capturedFingerprint,
+                  graphDigest: capturedDigest,
                   publishedAt: new Date(),
                 },
               };
             }),
         });
-        yield* publishWorkflow("wf_1").pipe(Effect.provide(mint));
+        yield* publishWorkflow({
+          workflowId: "wf_1",
+          graph: draft.graph,
+        }).pipe(Effect.provide(mint));
 
         const reused: string[] = [];
         const repo = stubWorkflowRepo({
           findById: () => Effect.succeed(draft),
-          findLatestVersion: () =>
+          findVersionByContent: () =>
             Effect.succeed({
               ...existing,
               graphDigest: capturedDigest,
               catalogFingerprint: capturedFingerprint,
               graph: draft.graph,
             }),
-          setPublishedVersion: (input) =>
+          publishVersion: (input) =>
             Effect.sync(() => {
               reused.push(input.versionId);
-              return { ...draft, publishedVersionId: input.versionId };
+              return {
+                workflow: { ...draft, publishedVersionId: input.versionId },
+                version: {
+                  ...existing,
+                  graphDigest: capturedDigest,
+                  catalogFingerprint: capturedFingerprint,
+                },
+              };
             }),
         });
 
-        const result = yield* publishWorkflow("wf_1").pipe(
-          Effect.provide(repo)
-        );
+        const result = yield* publishWorkflow({
+          workflowId: "wf_1",
+          graph: draft.graph,
+        }).pipe(Effect.provide(repo));
 
         assert.strictEqual(result.publishedVersion, 3);
         assert.deepStrictEqual(reused, ["ver_1"]);

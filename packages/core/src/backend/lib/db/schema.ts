@@ -246,13 +246,13 @@ export const workflowExecutions = pgTable(
 );
 
 /**
- * Which workflows care about which Events, derived from their graphs.
+ * Which workflows care about which Events, derived from their published graphs.
  *
  * The listener set is app-wide, so a delivered Event needs one indexed lookup to
  * find the workflows it concerns rather than a scan of every stored graph. The
- * rows are rewritten in the same transaction as the graph they come from, and
- * the fan-out re-reads a workflow's rules before acting, so a row that somehow
- * outlived its graph costs a wasted read and nothing else.
+ * rows are rewritten on publish from the published graph, and the fan-out
+ * re-reads a workflow's rules before acting, so a row that somehow outlived its
+ * graph costs a wasted read and nothing else. Draft saves leave this index alone.
  */
 export const workflowEventSubscriptions = pgTable(
   "workflow_event_subscriptions",

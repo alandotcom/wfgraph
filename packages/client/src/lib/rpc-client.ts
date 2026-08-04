@@ -56,6 +56,19 @@ export type SavedWorkflow = WorkflowData & {
   publishedVersionId?: string;
 };
 
+/** Assemble a wire graph from editor nodes/edges, dropping the `add` placeholder. */
+export function toSerializedGraph(input: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}): SerializedWorkflowGraph {
+  return createSerializedWorkflowGraph({
+    nodes: input.nodes
+      .filter((node) => node.type !== "add")
+      .map(toPersistedNode),
+    edges: input.edges.map(toPersistedEdge),
+  });
+}
+
 export class ApiError extends Error {
   status: number;
 
@@ -217,6 +230,9 @@ export type WorkflowExecuteResult = RpcOutput<typeof rpc.workflow.execute>;
 export type WorkflowExecutionsGlobalResult = RpcOutput<
   typeof rpc.workflow.getExecutionsGlobal
 >;
+export type ExecutionLogsResult = RpcOutput<
+  typeof rpc.workflow.getExecutionLogs
+>;
 
 export function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
   const graphData = toWorkflowGraphData(payload.graph);
@@ -237,9 +253,9 @@ function toGraphPayload(input: {
     return input.graph;
   }
 
-  return createSerializedWorkflowGraph({
-    nodes: (input.nodes ?? []).map(toPersistedNode),
-    edges: (input.edges ?? []).map(toPersistedEdge),
+  return toSerializedGraph({
+    nodes: input.nodes ?? [],
+    edges: input.edges ?? [],
   });
 }
 

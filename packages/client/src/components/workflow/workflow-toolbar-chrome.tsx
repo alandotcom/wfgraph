@@ -56,17 +56,17 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 function PublishButton({
   isPublishing,
-  isBusy,
+  disabled,
   handlePublish,
 }: {
   isPublishing: boolean;
-  isBusy: boolean;
+  disabled: boolean;
   handlePublish: () => void;
 }) {
   return (
     <Button
       className="relative border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-      disabled={isBusy || isPublishing}
+      disabled={disabled || isPublishing}
       onClick={handlePublish}
       size="icon"
       title={isPublishing ? "Publishing..." : "Publish workflow"}
@@ -191,6 +191,10 @@ export function ToolbarActions({
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
   const hasSelection = selectedNode || selectedEdge;
+  const publishDisabled =
+    state.isGenerating ||
+    state.isSaving ||
+    !state.nodes.some((node) => node.type !== "add");
 
   // For non-owners viewing public workflows, don't show toolbar actions.
   if (workflowId && !state.isOwner) {
@@ -378,12 +382,8 @@ export function ToolbarActions({
       <ButtonGroup className="flex lg:hidden" orientation="vertical">
         <SaveButton handleSave={actions.handleSave} state={state} />
         <PublishButton
+          disabled={publishDisabled}
           handlePublish={actions.handlePublish}
-          isBusy={
-            state.isGenerating ||
-            state.isSaving ||
-            !state.nodes.some((node) => node.type !== "add")
-          }
           isPublishing={actions.isPublishing}
         />
       </ButtonGroup>
@@ -392,12 +392,8 @@ export function ToolbarActions({
       <ButtonGroup className="hidden lg:flex" orientation="horizontal">
         <SaveButton handleSave={actions.handleSave} state={state} />
         <PublishButton
+          disabled={publishDisabled}
           handlePublish={actions.handlePublish}
-          isBusy={
-            state.isGenerating ||
-            state.isSaving ||
-            !state.nodes.some((node) => node.type !== "add")
-          }
           isPublishing={actions.isPublishing}
         />
       </ButtonGroup>

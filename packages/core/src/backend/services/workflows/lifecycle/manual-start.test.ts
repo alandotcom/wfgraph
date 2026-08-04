@@ -227,6 +227,19 @@ function graphWithEventSplit() {
 function workflowLayer(workflow: Workflow) {
   return stubWorkflowRepo({
     findById: () => Effect.succeed(workflow),
+    findByIdWithPublishedVersion: () =>
+      Effect.succeed({
+        workflow,
+        publishedVersion: {
+          id: "ver_1",
+          workflowId: workflow.id,
+          version: 1,
+          graph: workflow.graph,
+          catalogFingerprint: "fp",
+          graphDigest: "digest",
+          publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+        },
+      }),
     findPublishedVersion: () =>
       Effect.succeed({
         id: "ver_1",

@@ -83,10 +83,9 @@ export type NodeSchedulerInput = {
   startEventName: string | null;
   /**
    * Catalog fingerprint the published version pinned. Compared against the live
-   * catalog when an action resolves. Absent on a legacy run that predates
-   * versioning.
+   * catalog when an action resolves.
    */
-  catalogFingerprint?: string;
+  catalogFingerprint: string;
   /**
    * The Wait node this run was handed, on a run that is itself a branch. It is
    * the one Wait this run enters in place rather than hands on again, which is

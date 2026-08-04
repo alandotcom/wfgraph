@@ -43,13 +43,13 @@ export type { WorkflowStore } from "#src/backend/engine/store";
 
 export type WorkflowExecutionInput = {
   graph: SerializedWorkflowGraph;
-  /** The published version this run pins, when known. */
-  workflowVersionId?: string;
+  /** The published version this run pins. */
+  workflowVersionId: string;
   /**
    * Catalog fingerprint at publish. Compared against the live catalog when an
    * action resolves, so drift fails the node once.
    */
-  catalogFingerprint?: string;
+  catalogFingerprint: string;
   /**
    * The payload that set this run going: a manual-run input, or the data on the
    * Inngest event a Start Event arrived as. It reached the engine as JSON and is

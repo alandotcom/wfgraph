@@ -1,5 +1,5 @@
 /**
- * Publish: mint (or reuse) an immutable workflow version from the current draft,
+ * Publish: mint (or reuse) an immutable workflow version from the editor graph,
  * rewrite the event subscription index from that graph, and point the workflow
  * at it so starts use it.
  */
@@ -12,6 +12,7 @@ import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-f
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
 import type { WorkflowPublishPayload } from "@rova/shared/graph/api-contracts";
+import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 import {
   checkCanceledBranchNeedsCancelEvent,
   checkUnreachableSubtrees,
@@ -28,17 +29,24 @@ const loggerFor = (workflowId: string) =>
     appLogger.get("workflow", "publish").with({ workflowId })
   );
 
+const publishOnlyChecks = [
+  checkUnreachableSubtrees,
+  checkCanceledBranchNeedsCancelEvent,
+] as const;
+
 /**
- * Publish the workflow's current draft as an immutable version.
+ * Publish the graph the editor sent as an immutable version.
  *
  * Runs the ordinary graph+catalog battery plus the publish-only checks
  * (unreachable subtrees, Canceled branch without a Cancel Event). Content-hash
- * dedupe reuses the latest version when the digest and fingerprint match, so an
+ * dedupe reuses any prior version with the same digest and fingerprint, so an
  * idle editor does not accrete rows. The subscription index is rewritten from
- * the published graph only -- draft saves leave it alone.
+ * the published graph only -- draft saves leave it alone. The draft column is
+ * aligned to the published graph in the same transaction.
  */
 export const publishWorkflow = Effect.fn("publishWorkflow")(
-  function* (workflowId: string) {
+  function* (input: { workflowId: string; graph: SerializedWorkflowGraph }) {
+    const { workflowId, graph } = input;
     const repo = yield* WorkflowRepo;
     const { catalog } = yield* Extensions;
     const logger = yield* loggerFor(workflowId);
@@ -48,7 +56,7 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
       return yield* new NotFound({ error: "Workflow not found" });
     }
 
-    const prepared = yield* prepareGraphSave({ graph: workflow.graph }).pipe(
+    const prepared = yield* prepareGraphSave({ graph }).pipe(
       Effect.tapError((failure) =>
         "error" in failure
           ? logger.warn("Rejected workflow publish", { error: failure.error })
@@ -56,19 +64,11 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
       )
     );
 
-    for (const check of [
-      () =>
-        checkUnreachableSubtrees({
-          nodes: prepared.nodes,
-          edges: prepared.edges,
-        }),
-      () =>
-        checkCanceledBranchNeedsCancelEvent({
-          nodes: prepared.nodes,
-          edges: prepared.edges,
-        }),
-    ]) {
-      const result = check();
+    for (const check of publishOnlyChecks) {
+      const result = check({
+        nodes: prepared.nodes,
+        edges: prepared.edges,
+      });
       if (!result.valid) {
         yield* logger.warn("Rejected workflow publish", {
           error: result.error,
@@ -79,58 +79,47 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
 
     const digest = graphDigest(prepared.graph);
     const fingerprint = catalogFingerprint(catalog);
-    const latest = yield* repo.findLatestVersion(workflowId);
-
-    if (
-      latest &&
-      latest.graphDigest === digest &&
-      latest.catalogFingerprint === fingerprint
-    ) {
-      const pointed = yield* repo.setPublishedVersion({
-        workflowId,
-        versionId: latest.id,
-        eventSubscriptions: prepared.subscriptionsFor(workflowId),
-      });
-      if (!pointed) {
-        return yield* new NotFound({ error: "Workflow not found" });
-      }
-
-      yield* logger.info("Workflow publish reused existing version", {
-        versionId: latest.id,
-        version: latest.version,
-      });
-
-      const payload: WorkflowPublishPayload = {
-        ...toWorkflowApiPayload(pointed),
-        publishedVersionId: latest.id,
-        publishedVersion: latest.version,
-      };
-      return payload;
-    }
-
-    const nextVersion = (latest?.version ?? 0) + 1;
-    const versionId = generateId();
-    const published = yield* repo.insertVersionAndPublish({
+    const matching = yield* repo.findVersionByContent({
       workflowId,
-      version: {
-        id: versionId,
-        version: nextVersion,
-        graph: prepared.graph,
-        catalogFingerprint: fingerprint,
-        graphDigest: digest,
-      },
-      eventSubscriptions: prepared.subscriptionsFor(workflowId),
+      graphDigest: digest,
+      catalogFingerprint: fingerprint,
     });
+    const latest = matching ? null : yield* repo.findLatestVersion(workflowId);
+
+    const published = matching
+      ? yield* repo.publishVersion({
+          workflowId,
+          versionId: matching.id,
+          draftGraph: prepared.graph,
+          eventSubscriptions: prepared.subscriptionsFor(workflowId),
+        })
+      : yield* repo.publishVersion({
+          workflowId,
+          versionId: generateId(),
+          mint: {
+            version: (latest?.version ?? 0) + 1,
+            graph: prepared.graph,
+            catalogFingerprint: fingerprint,
+            graphDigest: digest,
+          },
+          draftGraph: prepared.graph,
+          eventSubscriptions: prepared.subscriptionsFor(workflowId),
+        });
 
     if (!published) {
       return yield* new NotFound({ error: "Workflow not found" });
     }
 
-    yield* logger.info("Workflow published", {
-      versionId,
-      version: nextVersion,
-      nodeCount: prepared.nodes.length,
-    });
+    yield* logger.info(
+      matching
+        ? "Workflow publish reused existing version"
+        : "Workflow published",
+      {
+        versionId: published.version.id,
+        version: published.version.version,
+        ...(matching ? {} : { nodeCount: prepared.nodes.length }),
+      }
+    );
 
     const payload: WorkflowPublishPayload = {
       ...toWorkflowApiPayload(published.workflow),
@@ -139,12 +128,12 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
     };
     return payload;
   },
-  (effect, workflowId) =>
+  (effect, input) =>
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",
         internalFailureRelayingCause(
-          loggerFor(workflowId),
+          loggerFor(input.workflowId),
           "Failed to publish workflow"
         )
       )

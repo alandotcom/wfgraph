@@ -3,11 +3,11 @@ import {
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
 } from "@rova/shared/lifecycle/execution-contracts";
-import { isSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type {
   ExecutionLogEntry,
   SerializedWorkflowGraph,
 } from "@rova/shared/graph/types";
+import type { ExecutionLogsResult } from "#src/lib/rpc-client";
 
 /**
  * The shapes a workflow run takes on the client, and the pure functions that
@@ -55,6 +55,22 @@ export type ExecutionEvent = {
   message: string;
   metadata: unknown;
   createdAt: Date;
+};
+
+/**
+ * One node this run is parked at, with what would unpark it.
+ *
+ * A run reaches this state when a Wait node is holding it, and the token is what
+ * the panel's Resume affordance posts: an operator's way out when the Event a run
+ * is waiting for is never going to arrive.
+ */
+export type ExecutionWait = {
+  id: string;
+  nodeId: string;
+  nodeName: string;
+  resumeToken: string | null;
+  subscribedEvents: string[];
+  waitUntil: Date | null;
 };
 
 /**
@@ -111,71 +127,23 @@ export function toWorkflowExecutions(payload: {
   };
 }
 
-export function toExecutionLogs(payload: RawExecutionLogs): ExecutionLog[] {
-  return applyExecutionStatusToLogs(
-    payload.logs.map((log) => ({
-      id: log.id,
-      nodeId: log.nodeId,
-      nodeName: log.nodeName,
-      nodeType: log.nodeType,
-      status: log.status,
-      startedAt: new Date(log.startedAt),
-      completedAt: log.completedAt ? new Date(log.completedAt) : null,
-      duration: log.duration,
-      input: log.input,
-      output: log.output,
-      error: log.error,
-    })),
-    payload.execution.status
-  );
-}
-
-/**
- * One node this run is parked at, with what would unpark it.
- *
- * A run reaches this state when a Wait node is holding it, and the token is what
- * the panel's Resume affordance posts: an operator's way out when the Event a run
- * is waiting for is never going to arrive.
- */
-export type ExecutionWait = {
-  id: string;
-  nodeId: string;
-  nodeName: string;
-  resumeToken: string | null;
-  subscribedEvents: string[];
-  waitUntil: Date | null;
-};
-
-/**
- * Everything the run detail view reads, off the one payload that carries it.
- *
- * The logs and the waits arrive together, so they are selected together: two
- * observers on one query key would each hold their own `refetchInterval`, and the
- * pair would drift apart into two polls of the same endpoint. `graph` is the
- * version this run pinned, when known.
- */
-export function toExecutionDetail(payload: RawExecutionLogs): {
+export function toExecutionDetail(payload: ExecutionLogsResult): {
   logs: ExecutionLog[];
   waits: ExecutionWait[];
   graph?: SerializedWorkflowGraph;
 } {
-  const graph =
-    payload.graph !== undefined && isSerializedWorkflowGraph(payload.graph)
-      ? payload.graph
-      : undefined;
-
   return {
     logs: toExecutionLogs(payload),
     waits: payload.waits.map((wait) => ({
       ...wait,
       waitUntil: wait.waitUntil ? new Date(wait.waitUntil) : null,
     })),
-    ...(graph ? { graph } : {}),
+    ...(payload.graph ? { graph: payload.graph } : {}),
   };
 }
 
 export function toExecutionLogsByNodeId(
-  payload: RawExecutionLogs
+  payload: ExecutionLogsResult
 ): Record<string, ExecutionLogEntry> {
   return createExecutionLogsMap(toExecutionLogs(payload));
 }
@@ -199,17 +167,24 @@ type RawExecution = Omit<
   completedAt: string | null;
 };
 
-type RawExecutionLogs = {
-  execution: { status: string };
-  graph?: unknown;
-  logs: Array<
-    Omit<ExecutionLog, "startedAt" | "completedAt"> & {
-      startedAt: string;
-      completedAt: string | null;
-    }
-  >;
-  waits: Array<Omit<ExecutionWait, "waitUntil"> & { waitUntil: string | null }>;
-};
+function toExecutionLogs(payload: ExecutionLogsResult): ExecutionLog[] {
+  return applyExecutionStatusToLogs(
+    payload.logs.map((log) => ({
+      id: log.id,
+      nodeId: log.nodeId,
+      nodeName: log.nodeName,
+      nodeType: log.nodeType,
+      status: log.status,
+      startedAt: new Date(log.startedAt),
+      completedAt: log.completedAt ? new Date(log.completedAt) : null,
+      duration: log.duration,
+      input: log.input,
+      output: log.output,
+      error: log.error,
+    })),
+    payload.execution.status
+  );
+}
 
 type RawExecutionEvents = {
   events: Array<Omit<ExecutionEvent, "createdAt"> & { createdAt: string }>;
