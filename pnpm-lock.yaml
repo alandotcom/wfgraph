@@ -307,7 +307,7 @@ importers:
         version: 4.0.0-beta.102(@opentelemetry/api-logs@0.221.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.10.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.221.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.10.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.10.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.10.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.43.0)(effect@4.0.0-beta.102)
       '@hono/node-server':
         specifier: ^2.0.12
-        version: 2.0.12(hono@4.12.32)
+        version: 2.0.12(hono@4.12.34)
       '@logtape/logtape':
         specifier: 'catalog:'
         version: 2.3.0
@@ -360,11 +360,11 @@ importers:
         specifier: ^0.4.1
         version: 0.4.1(graphology-types@0.24.8)
       hono:
-        specifier: ^4.12.32
-        version: 4.12.32
+        specifier: ^4.12.34
+        version: 4.12.34
       inngest:
         specifier: ^4.14.0
-        version: 4.14.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(express@5.2.1(supports-color@8.1.1))(fastify@5.10.0)(hono@4.12.32)(react@19.2.4)(supports-color@8.1.1)(typescript@7.0.2)(zod@4.4.3)
+        version: 4.14.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(express@5.2.1(supports-color@8.1.1))(fastify@5.10.0)(hono@4.12.34)(react@19.2.4)(supports-color@8.1.1)(typescript@7.0.2)(zod@4.4.3)
       nanoid:
         specifier: 'catalog:'
         version: 5.1.16
@@ -377,7 +377,7 @@ importers:
         version: 9.3.3
       '@inngest/test':
         specifier: ^1.0.0
-        version: 1.0.0(inngest@4.14.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(express@5.2.1(supports-color@8.1.1))(fastify@5.10.0)(hono@4.12.32)(react@19.2.4)(supports-color@8.1.1)(typescript@7.0.2)(zod@4.4.3))
+        version: 1.0.0(inngest@4.14.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(express@5.2.1(supports-color@8.1.1))(fastify@5.10.0)(hono@4.12.34)(react@19.2.4)(supports-color@8.1.1)(typescript@7.0.2)(zod@4.4.3))
       '@opentelemetry/sdk-trace-base':
         specifier: ^2.10.0
         version: 2.10.0(@opentelemetry/api@1.9.1)
@@ -4010,8 +4010,8 @@ packages:
   hermes-parser@0.25.1:
     resolution: {integrity: sha512-6pEjquH3rqaI6cYAXYPcz9MS4rY6R4ngRgrgfDshRptUZIc3lw0MCIJIGDj9++mfySOuPTHB4nrSW99BCvOPIA==}
 
-  hono@4.12.32:
-    resolution: {integrity: sha512-XcuyW9qE2kJn07PkecMOBd5Vq/hMy7mmGw+idz1yblbg9N17ijJODrvPkn7/dwL3Kulj8LcRJ69DLOWf91dRUg==}
+  hono@4.12.34:
+    resolution: {integrity: sha512-GqXJqY/xJkJmuloTrnV1ZEXG3fqte+VjkUqoRNZXcrUidiUOP4fMSIHHY4tsqZBK++kVyWmt/AAfSUuy57/eSA==}
     engines: {node: '>=16.9.0'}
 
   hookable@6.1.1:
@@ -5902,9 +5902,9 @@ snapshots:
 
   '@hey-api/types@0.1.4': {}
 
-  '@hono/node-server@2.0.12(hono@4.12.32)':
+  '@hono/node-server@2.0.12(hono@4.12.34)':
     dependencies:
-      hono: 4.12.32
+      hono: 4.12.34
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -5929,9 +5929,9 @@ snapshots:
       '@types/node': 22.20.1
       typescript: 5.9.3
 
-  '@inngest/test@1.0.0(inngest@4.14.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(express@5.2.1(supports-color@8.1.1))(fastify@5.10.0)(hono@4.12.32)(react@19.2.4)(supports-color@8.1.1)(typescript@7.0.2)(zod@4.4.3))':
+  '@inngest/test@1.0.0(inngest@4.14.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(express@5.2.1(supports-color@8.1.1))(fastify@5.10.0)(hono@4.12.34)(react@19.2.4)(supports-color@8.1.1)(typescript@7.0.2)(zod@4.4.3))':
     dependencies:
-      inngest: 4.14.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(express@5.2.1(supports-color@8.1.1))(fastify@5.10.0)(hono@4.12.32)(react@19.2.4)(supports-color@8.1.1)(typescript@7.0.2)(zod@4.4.3)
+      inngest: 4.14.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(express@5.2.1(supports-color@8.1.1))(fastify@5.10.0)(hono@4.12.34)(react@19.2.4)(supports-color@8.1.1)(typescript@7.0.2)(zod@4.4.3)
       tinyspy: 3.0.2
       ulid: 2.4.0
 
@@ -8693,7 +8693,7 @@ snapshots:
     dependencies:
       hermes-estree: 0.25.1
 
-  hono@4.12.32: {}
+  hono@4.12.34: {}
 
   hookable@6.1.1: {}
 
@@ -8752,7 +8752,7 @@ snapshots:
       - supports-color
     optional: true
 
-  inngest@4.14.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(express@5.2.1(supports-color@8.1.1))(fastify@5.10.0)(hono@4.12.32)(react@19.2.4)(supports-color@8.1.1)(typescript@7.0.2)(zod@4.4.3):
+  inngest@4.14.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(express@5.2.1(supports-color@8.1.1))(fastify@5.10.0)(hono@4.12.34)(react@19.2.4)(supports-color@8.1.1)(typescript@7.0.2)(zod@4.4.3):
     dependencies:
       '@bufbuild/protobuf': 2.13.0
       '@inngest/ai': 0.1.7
@@ -8781,7 +8781,7 @@ snapshots:
     optionalDependencies:
       express: 5.2.1(supports-color@8.1.1)
       fastify: 5.10.0
-      hono: 4.12.32
+      hono: 4.12.34
       react: 19.2.4
       typescript: 7.0.2
     transitivePeerDependencies:
