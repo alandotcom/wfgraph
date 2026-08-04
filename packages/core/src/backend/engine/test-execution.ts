@@ -29,7 +29,9 @@ export function executeTestWorkflow(
   return Effect.runPromise(
     executeWorkflow(
       {
-        catalogFingerprint: "test-catalog",
+        // Match the live catalog by default so drift is opt-in for the cases
+        // that assert it, rather than failing every host-action suite.
+        catalogFingerprint: actions.catalogFingerprint(),
         workflowVersionId: "ver_test",
         ...input,
       },
@@ -52,7 +54,7 @@ export function executeTestWorkflowBranch(
   return Effect.runPromise(
     executeWorkflowBranch(
       {
-        catalogFingerprint: "test-catalog",
+        catalogFingerprint: actions.catalogFingerprint(),
         workflowVersionId: "ver_test",
         ...input,
       },

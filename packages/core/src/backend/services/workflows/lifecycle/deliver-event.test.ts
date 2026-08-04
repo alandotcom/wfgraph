@@ -514,7 +514,9 @@ describe("applyLifecycleRules", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubWorkflowRepo({ findById: () => Effect.succeed(null) }),
+              stubWorkflowRepo({
+                findByIdWithPublishedVersion: () => Effect.succeed(null),
+              }),
               unreachedRunSeams
             )
           )
@@ -570,7 +572,7 @@ describe("applyLifecycleRules", () => {
           Effect.provide(
             Layer.mergeAll(
               stubWorkflowRepo({
-                findById: () =>
+                findByIdWithPublishedVersion: () =>
                   Effect.fail(
                     new DatabaseError({
                       cause: new Error("terminating connection due to crash"),
