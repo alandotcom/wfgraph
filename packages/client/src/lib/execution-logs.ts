@@ -1,5 +1,6 @@
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
+  WORKFLOW_EXECUTION_STATUSES,
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
 } from "@rova/shared/lifecycle/execution-contracts";
@@ -127,9 +128,22 @@ export function toWorkflowExecutions(payload: {
   };
 }
 
+/**
+ * Everything the run detail view reads, off the one payload that carries it.
+ *
+ * The logs and the waits arrive together, so they are selected together: two
+ * observers on one query key would each hold their own `refetchInterval`, and the
+ * pair would drift apart into two polls of the same endpoint.
+ *
+ * The execution summary rides along for deep-links that open a run no longer in
+ * the polled list: the panel needs a row shape before it can show detail, and
+ * the list cannot supply one past its newest-50 cap. `graph` is the version this
+ * run pinned, when known.
+ */
 export function toExecutionDetail(payload: ExecutionLogsResult): {
   logs: ExecutionLog[];
   waits: ExecutionWait[];
+  execution: WorkflowExecution;
   graph?: SerializedWorkflowGraph;
 } {
   return {
@@ -138,8 +152,43 @@ export function toExecutionDetail(payload: ExecutionLogsResult): {
       ...wait,
       waitUntil: wait.waitUntil ? new Date(wait.waitUntil) : null,
     })),
+    execution: toWorkflowExecutionFromSummary(payload.execution),
     ...(payload.graph ? { graph: payload.graph } : {}),
   };
+}
+
+/**
+ * The logs endpoint's thinner execution summary, turned into the row shape the
+ * Runs panel already uses. Fields the summary omits stay null / live.
+ */
+export function toWorkflowExecutionFromSummary(
+  summary: ExecutionLogsResult["execution"]
+): WorkflowExecution {
+  return {
+    id: summary.id,
+    workflowId: summary.workflowId,
+    status: toExecutionStatus(summary.status),
+    startSource: null,
+    runMode: "live",
+    startEventName: null,
+    entityValue: null,
+    workflowRunId: null,
+    startedAt: new Date(summary.startedAt),
+    waitingAt: null,
+    cancelledAt: null,
+    completedAt: summary.completedAt ? new Date(summary.completedAt) : null,
+    duration: summary.duration,
+    error: summary.error,
+  };
+}
+
+function toExecutionStatus(status: string): WorkflowExecutionStatus {
+  for (const known of WORKFLOW_EXECUTION_STATUSES) {
+    if (known === status) {
+      return known;
+    }
+  }
+  return "failed";
 }
 
 export function toExecutionLogsByNodeId(

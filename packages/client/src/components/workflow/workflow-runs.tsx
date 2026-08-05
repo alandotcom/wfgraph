@@ -4,6 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Play } from "lucide-react";
 import { useState } from "react";
@@ -15,7 +16,6 @@ import {
   toExecutionDetail,
   toExecutionEvents,
   toWorkflowExecutions,
-  type WorkflowExecution,
 } from "#src/lib/execution-logs";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
@@ -37,14 +37,10 @@ const RUN_POLL_MS = 2000;
  */
 const EXECUTIONS_PAGE_CAP = 50;
 
-/** The open run, and the position it held in the list when it was opened. */
-type OpenRun = {
-  execution: WorkflowExecution;
-  runNumber: number;
-};
-
 const LEFT_THE_LIST_NOTICE =
   "This run has left the runs list, so what it shows stops here. A newer start supersedes the runs going for the same entity, and the list holds the newest 50.";
+
+const workflowRouteApi = getRouteApi("/workflows/$workflowId");
 
 export function WorkflowRuns() {
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
@@ -52,26 +48,24 @@ export function WorkflowRuns() {
     selectedExecutionIdAtom
   );
   const queryClient = useQueryClient();
+  // Which run is open is URL state (TanStack Router search params), not a
+  // local mirror of a one-shot deep link.
+  const { executionId } = workflowRouteApi.useSearch();
+  const navigate = useNavigate({ from: "/workflows/$workflowId" });
 
-  // Which run the detail view is showing, held as the row itself. Null means the
-  // list.
-  //
-  // The row rather than an id, because the list this panel polls is filtered and
-  // capped: a newest-wins workflow supersedes the open run out of it, and a busy
-  // one pushes it past the newest 50. A detail view that existed only while its
-  // row was in the list closed itself mid-read when either happened.
-  const [openRun, setOpenRun] = useState<OpenRun | null>(null);
   // Superseded runs are the ones a newer start displaced. They are hidden by
   // default because a newest-wins workflow makes one on every reschedule, and a
-  // builder opens this panel to see what ran, not what was replaced.
+  // builder opens this panel to see what ran, not what was replaced. Opening a
+  // specific run via the URL includes them so a superseded id can still resolve.
   const [showSuperseded, setShowSuperseded] = useState(false);
+  const includeSuperseded = showSuperseded || executionId !== undefined;
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
 
   const executionsQuery = useQuery({
     ...orpcQuery.workflow.getExecutions.queryOptions({
       input: {
         workflowId: currentWorkflowId ?? "",
-        includeSuperseded: showSuperseded,
+        includeSuperseded,
       },
       select: toWorkflowExecutions,
     }),
@@ -88,11 +82,11 @@ export function WorkflowRuns() {
   const supersededCount = executionsQuery.data?.supersededCount ?? 0;
   const refusedStarts = executionsQuery.data?.refusedStarts ?? [];
 
-  const activeRunId = openRun?.execution.id ?? null;
-  // The open run's row as the list has it now, or undefined once it has left.
-  const listedRun = executions.find(
-    (execution) => execution.id === activeRunId
-  );
+  const listedIndex =
+    executionId === undefined
+      ? -1
+      : executions.findIndex((execution) => execution.id === executionId);
+  const listedRun = listedIndex >= 0 ? executions[listedIndex] : undefined;
 
   // Both detail queries follow the same run, so they read its status from the
   // same place: the list, which is polling anyway. Deriving it from each
@@ -106,22 +100,23 @@ export function WorkflowRuns() {
   // Opening a run enables its logs and events; the cache decides whether that
   // means a request. Both stop once the run is finished, which the single
   // interval this replaced could not do: it refreshed the open run forever,
-  // long after there was anything left to learn about it.
+  // long after there was anything left to learn about it. The logs payload also
+  // carries an execution summary for ids past the newest-50 list.
   const detailQuery = useQuery({
     ...orpcQuery.workflow.getExecutionLogs.queryOptions({
-      input: { executionId: activeRunId ?? "" },
+      input: { executionId: executionId ?? "" },
       select: toExecutionDetail,
     }),
-    enabled: activeRunId !== null,
+    enabled: executionId !== undefined,
     staleTime: 0,
     refetchInterval: detailPollInterval,
   });
 
   // Paint the version this run pinned onto the canvas so statuses land on the
   // graph it walked, not the live draft. Cleared when the run is closed.
-  useAfterCommit(detailQuery.data?.graph ?? activeRunId, () => {
+  useAfterCommit(detailQuery.data?.graph ?? executionId, () => {
     const graph = detailQuery.data?.graph;
-    if (!activeRunId || !graph) {
+    if (!executionId || !graph) {
       setExecutionOverlay(null);
       return;
     }
@@ -142,10 +137,10 @@ export function WorkflowRuns() {
 
   const eventsQuery = useQuery({
     ...orpcQuery.workflow.getExecutionEvents.queryOptions({
-      input: { executionId: activeRunId ?? "" },
+      input: { executionId: executionId ?? "" },
       select: toExecutionEvents,
     }),
-    enabled: activeRunId !== null,
+    enabled: executionId !== undefined,
     staleTime: 0,
     refetchInterval: detailPollInterval,
   });
@@ -164,26 +159,18 @@ export function WorkflowRuns() {
     })
   );
 
-  const handleSelectRun = (executionId: string) => {
-    const index = executions.findIndex(
-      (execution) => execution.id === executionId
-    );
-    const execution = executions[index];
-    if (!execution) {
-      return;
-    }
-
-    setOpenRun({ execution, runNumber: executions.length - index });
-    setSelectedExecutionId(executionId);
+  const handleSelectRun = (id: string) => {
+    void navigate({ search: { executionId: id } });
+    setSelectedExecutionId(id);
   };
 
   const handleBack = () => {
-    setOpenRun(null);
+    void navigate({ search: {} });
     setSelectedExecutionId(null);
     setExecutionOverlay(null);
   };
 
-  if (executionsQuery.isPending) {
+  if (executionsQuery.isPending && executionId === undefined) {
     return (
       <div className="flex items-center justify-center py-12">
         <Spinner />
@@ -213,13 +200,42 @@ export function WorkflowRuns() {
       </div>
     ) : null;
 
-  // Detail view. Ahead of the empty-list branch, because a run being read keeps
-  // its view whether or not the list behind it still holds a row for it.
-  if (openRun) {
-    const execution = listedRun ?? openRun.execution;
-    const runNumber = listedRun
-      ? executions.length - executions.indexOf(listedRun)
-      : openRun.runNumber;
+  // Detail view is keyed off the search param. Ahead of the empty-list branch,
+  // because a run being read keeps its view whether or not the list behind it
+  // still holds a row for it.
+  if (executionId !== undefined) {
+    const execution = listedRun ?? detailQuery.data?.execution;
+    if (!execution) {
+      if (
+        !detailQuery.isError &&
+        (detailQuery.isPending || executionsQuery.isPending)
+      ) {
+        return (
+          <div className="flex items-center justify-center py-12">
+            <Spinner />
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-2 px-1 py-2">
+          <Button
+            aria-label="Back to runs list"
+            onClick={handleBack}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            Back
+          </Button>
+          <p className="text-muted-foreground text-sm">
+            This run could not be loaded.
+          </p>
+        </div>
+      );
+    }
+
+    const runNumber = listedIndex >= 0 ? executions.length - listedIndex : 0;
 
     return (
       <WorkflowRunDetail
@@ -233,7 +249,7 @@ export function WorkflowRuns() {
         logs={detailQuery.data?.logs ?? []}
         notice={listedRun ? undefined : LEFT_THE_LIST_NOTICE}
         onBack={handleBack}
-        onCancel={(executionId) => cancelExecution.mutate({ executionId })}
+        onCancel={(id) => cancelExecution.mutate({ executionId: id })}
         onResume={(token) => resumeWait.mutate({ token })}
         runNumber={runNumber}
         waits={detailQuery.data?.waits ?? []}
