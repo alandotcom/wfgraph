@@ -974,4 +974,102 @@ describe("upstream-node-fields", () => {
     expect(fields.some((field) => field.path === "count")).toBe(true);
     expect(fields.some((field) => field.path === "items")).toBe(false);
   });
+
+  // Output fields declare showWhen the same way config fields do. A delay Wait
+  // leaves waitMode unset or "delay", so event-only paths stay out of the picker.
+  it("offers only delay Wait outputs when the upstream Wait is on a clock", () => {
+    const eventOnly = { field: "waitMode", equals: "event" } as const;
+    surface.actions = [
+      anAction({
+        id: "Wait",
+        label: "Wait",
+        outputFields: [
+          { path: "waitType", type: "string" },
+          { path: "timedOut", type: "boolean", showWhen: eventOnly },
+          { path: "resumedAt", type: "timestamp", format: "timestamp" },
+          { path: "event", type: "string", showWhen: eventOnly },
+          { path: "payload", type: "object", showWhen: eventOnly },
+        ],
+      }),
+    ];
+
+    const nodes: WorkflowNode[] = [
+      anEntryNode({ startEvents: [] }),
+      createNode({
+        id: "wait-1",
+        type: "action",
+        label: "Wait",
+        config: { actionType: "Wait", waitMode: "delay", waitDuration: "30s" },
+      }),
+      createNode({
+        id: "condition-1",
+        type: "action",
+        label: "Condition",
+        config: { actionType: "Condition" },
+      }),
+    ];
+    const edges: WorkflowEdge[] = [
+      createEdge({ id: "e1", source: "lifecycle-1", target: "wait-1" }),
+      createEdge({ id: "e2", source: "wait-1", target: "condition-1" }),
+    ];
+
+    const paths = getUpstreamConditionFields({
+      currentNodeId: "condition-1",
+      nodes,
+      edges,
+    }).map((field) => field.path);
+
+    expect(paths).toEqual(["resumedAt", "waitType"]);
+  });
+
+  it("offers event Wait outputs when the upstream Wait parks on an Event", () => {
+    const eventOnly = { field: "waitMode", equals: "event" } as const;
+    surface.actions = [
+      anAction({
+        id: "Wait",
+        label: "Wait",
+        outputFields: [
+          { path: "waitType", type: "string" },
+          { path: "timedOut", type: "boolean", showWhen: eventOnly },
+          { path: "resumedAt", type: "timestamp", format: "timestamp" },
+          { path: "event", type: "string", showWhen: eventOnly },
+          { path: "payload", type: "object", showWhen: eventOnly },
+        ],
+      }),
+    ];
+
+    const nodes: WorkflowNode[] = [
+      anEntryNode({ startEvents: [] }),
+      createNode({
+        id: "wait-1",
+        type: "action",
+        label: "Wait",
+        config: {
+          actionType: "Wait",
+          waitMode: "event",
+          waitFor: [{ event: "billing/payment.settled" }],
+          waitTimeout: "7d",
+        },
+      }),
+      createNode({
+        id: "condition-1",
+        type: "action",
+        label: "Condition",
+        config: { actionType: "Condition" },
+      }),
+    ];
+    const edges: WorkflowEdge[] = [
+      createEdge({ id: "e1", source: "lifecycle-1", target: "wait-1" }),
+      createEdge({ id: "e2", source: "wait-1", target: "condition-1" }),
+    ];
+
+    const paths = getUpstreamConditionFields({
+      currentNodeId: "condition-1",
+      nodes,
+      edges,
+    }).map((field) => field.path);
+
+    // payload is object and stays out of the condition vocabulary.
+    expect(paths).toEqual(["event", "resumedAt", "timedOut", "waitType"]);
+  });
 });
