@@ -10,7 +10,7 @@ import {
 } from "@tanstack/react-router";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkflowRuns } from "#src/components/workflow/workflow-runs";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import {
@@ -198,12 +198,16 @@ function renderRuns(options?: { executionId?: string }) {
 }
 
 describe("WorkflowRuns", () => {
+  beforeEach(() => {
+    served.items = [];
+    served.supersededCount = 0;
+    served.graphs = {};
+  });
+
   // A newest-wins workflow supersedes the open run out of the polled list, so
   // the detail view has to survive its row disappearing from underneath it.
   it("keeps the detail view open when its run leaves the list", async () => {
     served.items = [execution("exec_1", "running")];
-    served.supersededCount = 0;
-    served.graphs = {};
     const { view, queryClient } = renderRuns();
 
     const row = await view.findByTestId("workflow-run-summary-row");
@@ -228,8 +232,6 @@ describe("WorkflowRuns", () => {
 
   it("says nothing about the list while the run is still in it", async () => {
     served.items = [execution("exec_1", "running")];
-    served.supersededCount = 0;
-    served.graphs = {};
     const { view } = renderRuns();
 
     fireEvent.click(await view.findByTestId("workflow-run-summary-row"));
@@ -244,8 +246,6 @@ describe("WorkflowRuns", () => {
 
   it("opens the run named in the search param", async () => {
     served.items = [execution("exec_deep", "completed")];
-    served.supersededCount = 0;
-    served.graphs = {};
     const { view } = renderRuns({ executionId: "exec_deep" });
 
     expect(
@@ -260,7 +260,6 @@ describe("WorkflowRuns", () => {
       execution("exec_old", "superseded"),
     ];
     served.supersededCount = 1;
-    served.graphs = {};
     const { view } = renderRuns({ executionId: "exec_old" });
 
     expect(
@@ -270,8 +269,6 @@ describe("WorkflowRuns", () => {
 
   it("opens a search-param run past the list from the logs summary", async () => {
     served.items = [execution("exec_other", "completed")];
-    served.supersededCount = 0;
-    served.graphs = {};
     const { view } = renderRuns({ executionId: "exec_past_cap" });
 
     expect(
@@ -282,8 +279,6 @@ describe("WorkflowRuns", () => {
 
   it("clears the search param when going back to the list", async () => {
     served.items = [execution("exec_deep", "completed")];
-    served.supersededCount = 0;
-    served.graphs = {};
     const { view, router } = renderRuns({ executionId: "exec_deep" });
 
     fireEvent.click(
@@ -306,7 +301,6 @@ describe("WorkflowRuns", () => {
       execution("exec_new", "completed"),
       execution("exec_old", "completed"),
     ];
-    served.supersededCount = 0;
     served.graphs = {
       exec_old: pinnedGraph("v1_lifecycle"),
       exec_new: pinnedGraph("v2_lifecycle"),
@@ -341,20 +335,16 @@ describe("WorkflowRuns", () => {
     });
   });
 
-  it("switches the overlay to the newly selected run's pinned graph", async () => {
+  it("switches the overlay when selecting another run while one is open", async () => {
     served.items = [
       execution("exec_new", "completed"),
       execution("exec_old", "completed"),
     ];
-    served.supersededCount = 0;
     served.graphs = {
       exec_old: pinnedGraph("v1_lifecycle"),
       exec_new: pinnedGraph("v2_lifecycle"),
     };
-    const { view, store } = renderRuns();
-
-    const rows = await view.findAllByTestId("workflow-run-summary-row");
-    fireEvent.click(rows[0]!);
+    const { store, router } = renderRuns({ executionId: "exec_new" });
 
     await waitFor(() => {
       expect(
@@ -362,21 +352,54 @@ describe("WorkflowRuns", () => {
       ).toEqual(["v2_lifecycle"]);
     });
 
-    fireEvent.click(
-      await view.findByRole("button", { name: "Back to runs list" })
-    );
-
-    await waitFor(() => {
-      expect(store.get(executionOverlayGraphAtom)).toBeNull();
-      expect(view.getAllByTestId("workflow-run-summary-row")).toHaveLength(2);
+    await act(async () => {
+      await router.navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: "wf_1" },
+        search: { executionId: "exec_old" },
+      });
     });
-
-    fireEvent.click(view.getAllByTestId("workflow-run-summary-row")[1]!);
 
     await waitFor(() => {
       expect(
         store.get(executionOverlayGraphAtom)?.nodes.map((n) => n.id)
       ).toEqual(["v1_lifecycle"]);
+    });
+  });
+
+  // A logs poll advances dataUpdatedAt; the overlay key must not, or every
+  // poll would rebuild nodes as idle and wipe statuses the status poll painted.
+  it("does not reset overlay node statuses when logs poll", async () => {
+    served.items = [execution("exec_1", "running")];
+    served.graphs = { exec_1: pinnedGraph("v1_lifecycle") };
+    const { view, store, queryClient } = renderRuns();
+
+    fireEvent.click(await view.findByTestId("workflow-run-summary-row"));
+
+    await waitFor(() => {
+      expect(store.get(executionOverlayGraphAtom)?.nodes[0]?.id).toBe(
+        "v1_lifecycle"
+      );
+    });
+
+    const overlay = store.get(executionOverlayGraphAtom);
+    expect(overlay).not.toBeNull();
+    store.set(executionOverlayGraphAtom, {
+      ...overlay!,
+      nodes: overlay!.nodes.map((node) => ({
+        ...node,
+        data: { ...node.data, status: "success" as const },
+      })),
+    });
+
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ["logs", "exec_1"] });
+    });
+
+    await waitFor(() => {
+      expect(store.get(executionOverlayGraphAtom)?.nodes[0]?.data.status).toBe(
+        "success"
+      );
     });
   });
 });

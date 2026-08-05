@@ -116,32 +116,28 @@ export function WorkflowRuns() {
     refetchInterval: detailPollInterval,
   });
 
-  // URL search is the source of truth for which run is open. Selecting a run
-  // only navigates; this is what writes the atoms (and opens the Runs tab for
-  // deep links / browser back). Clearing the search drops the overlay so the
-  // canvas returns to the draft.
-  useAfterCommit(executionId ?? null, () => {
-    if (executionId === undefined) {
-      setSelectedExecutionId(null);
-      setExecutionOverlay(null);
-      return;
-    }
-    setActiveTab("runs");
-    setSelectedExecutionId(executionId);
-  });
-
-  // Paint the version this run pinned onto the canvas so statuses land on the
-  // graph it walked, not the live draft. Keyed on executionId and the logs
-  // update time so re-selecting a cached run still re-applies after the overlay
-  // was cleared (e.g. back to the list). Missing graph while a run is open is
-  // left alone: clearing here would flash the draft between run switches.
+  // URL search owns which run is open. One sync: selection, Runs tab, and the
+  // pinned-graph overlay. Key is closed | open (loading) | ready (graph in
+  // hand) — never fetch timestamps, so a logs poll cannot rebuild the overlay
+  // and wipe node statuses that page.tsx painted onto it.
   const pinnedGraph = detailQuery.data?.graph;
   useAfterCommit(
-    executionId === undefined || pinnedGraph === undefined
-      ? null
-      : `${executionId}:${detailQuery.dataUpdatedAt}`,
+    executionId === undefined
+      ? "closed"
+      : pinnedGraph === undefined
+        ? `open:${executionId}`
+        : `ready:${executionId}`,
     () => {
-      if (!executionId || !pinnedGraph) {
+      if (executionId === undefined) {
+        setSelectedExecutionId(null);
+        setExecutionOverlay(null);
+        return;
+      }
+
+      setActiveTab("runs");
+      setSelectedExecutionId(executionId);
+
+      if (!pinnedGraph) {
         return;
       }
 

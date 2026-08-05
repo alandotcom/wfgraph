@@ -21,10 +21,7 @@ import { toSavedWorkflow } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
 import { hydrateWorkflowAtom } from "#src/lib/workflow-graph-store";
 import { workflowNotFoundAtom } from "#src/lib/workflow-save-store";
-import {
-  propertiesPanelActiveTabAtom,
-  selectedExecutionIdAtom,
-} from "#src/lib/workflow-ui-store";
+import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import WorkflowEditorPage from "#src/routes/workflows/[workflowId]/page";
 import WorkflowsPage from "#src/routes/workflows/page";
 
@@ -99,6 +96,17 @@ const workflowRoute = createRoute({
   path: "/workflows/$workflowId",
   validateSearch: validateWorkflowSearch,
   /**
+   * Open the Runs tab before the loader hydrates so a deep-linked run mounts
+   * the panel that owns URL→selection sync. Does not touch selection or
+   * overlay: hydrate clears those, and the panel writes them after mount.
+   * Safe on every search change — selecting a run must not re-hydrate.
+   */
+  beforeLoad: ({ search }) => {
+    if (search.executionId) {
+      appStore.set(propertiesPanelActiveTabAtom, "runs");
+    }
+  },
+  /**
    * Put the workflow on screen before the editor renders.
    *
    * A loader avoids fetching from an effect after mounting, which would render
@@ -120,12 +128,10 @@ const workflowRoute = createRoute({
    * time, and the connection list is refetched only when it has gone stale or a
    * connection write invalidated it.
    *
-   * `executionId` is deliberately not a loader dep: selecting a run must not
-   * re-hydrate the draft (which clears the run's pinned-graph overlay). Deep
-   * links still open the Runs tab here on workflow entry; further selection is
-   * URL state owned by the Runs panel.
+   * Run selection is not a loader concern: hydrating on `executionId` cleared
+   * the pinned-graph overlay and left the canvas on the live draft.
    */
-  loader: async ({ params, location }) => {
+  loader: async ({ params }) => {
     try {
       const [payload, integrations] = await Promise.all([
         queryClient.fetchQuery(
@@ -142,15 +148,6 @@ const workflowRoute = createRoute({
         ...workflow,
         nodes: repairNodeIntegrations(workflow.nodes, integrations),
       });
-
-      // Search is validated on the route; without `loaderDeps` the loader's
-      // `location.search` is not narrowed, so read the deep-link id from the
-      // validated shape. Selecting a run still must not re-run this loader.
-      const executionId = (location.search as WorkflowRouteSearch).executionId;
-      if (executionId) {
-        appStore.set(propertiesPanelActiveTabAtom, "runs");
-        appStore.set(selectedExecutionIdAtom, executionId);
-      }
     } catch (error) {
       appStore.set(workflowNotFoundAtom, true);
       throw error;
