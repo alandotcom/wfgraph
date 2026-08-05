@@ -159,6 +159,8 @@ const Animated = ({
   });
   const branchLabel = getConditionBranchDisplayLabel(sourceHandleId);
   const edgeLabel = branchLabel ?? data?.displayLabel ?? null;
+  // Display atoms mute an inactive Canceled subtree by setting style.opacity;
+  // that is the contract for dropping the dash animation here.
   const inactive = style?.opacity !== undefined;
 
   return (
