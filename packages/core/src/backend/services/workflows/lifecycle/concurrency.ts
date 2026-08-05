@@ -95,6 +95,7 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
     const opened = yield* repo.startForEntity({
       execution: {
         workflowId: workflow.id,
+        workflowVersionId: workflow.versionId,
         startSource: start.source,
         runMode,
         startEventName: start.eventName,

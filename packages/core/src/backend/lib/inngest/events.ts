@@ -43,6 +43,14 @@ import { serializedWorkflowGraphSchema } from "@rova/shared/graph/schemas";
  */
 export const workflowExecutionInputSchema = Schema.Struct({
   graph: serializedWorkflowGraphSchema,
+  /** The published version this run pins. */
+  workflowVersionId: NonEmptyTrimmedString,
+  /**
+   * Catalog fingerprint at publish. Compared on wake so a deploy that changes
+   * the assembled surface fails the node rather than running against a different
+   * set of actions.
+   */
+  catalogFingerprint: NonEmptyTrimmedString,
   // JSON is all that survived the trip, so JSON is what the schema accepts.
   startPayload: Schema.optional(jsonObjectSchema),
   startEventName: Schema.optional(NonEmptyTrimmedString),

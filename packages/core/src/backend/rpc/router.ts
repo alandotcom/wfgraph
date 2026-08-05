@@ -29,6 +29,7 @@ import {
   patchWorkflow,
 } from "#src/backend/services/workflows/workflow";
 import { postWorkflowDuplicate } from "#src/backend/services/workflows/duplicate";
+import { publishWorkflow } from "#src/backend/services/workflows/publish";
 import {
   deleteWorkflowExecutions,
   getWorkflowExecutions,
@@ -233,6 +234,11 @@ export const rpcRouter = rpc.router({
     ),
     duplicate: rpc.workflow.duplicate.handler(
       rpcEffectHandler(({ input }) => postWorkflowDuplicate(input.workflowId))
+    ),
+    publish: rpc.workflow.publish.handler(
+      rpcEffectHandler(({ input }) =>
+        publishWorkflow({ workflowId: input.workflowId, graph: input.graph })
+      )
     ),
     getCurrent: rpc.workflow.getCurrent.handler(
       rpcEffectHandler(() => getWorkflowsCurrent())

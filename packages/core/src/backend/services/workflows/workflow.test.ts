@@ -61,6 +61,7 @@ const stored: Workflow = {
   isPaused: false,
   mode: "live",
   visibility: "private",
+  publishedVersionId: null,
   createdAt: new Date("2026-03-01T00:00:00.000Z"),
   updatedAt: new Date("2026-03-01T00:00:00.000Z"),
 };
@@ -87,10 +88,9 @@ describe("patchWorkflow", () => {
   layer(
     Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, stubIntegrationRepo())
   )((it) => {
-    // The index is derived from the graph being written, so dropping a Cancel
-    // Event has to shrink it in the same call. A stale row would keep delivering
-    // an Event the workflow no longer names.
-    it.effect("rewrites the subscriptions a graph write changes", () =>
+    // Draft saves keep the subscription index alone: only publish rewrites it
+    // from the published graph, so a half-built canvas cannot start runs.
+    it.effect("leaves the subscriptions alone on a graph write", () =>
       Effect.gen(function* () {
         const repo = makeRepo();
 
@@ -102,14 +102,7 @@ describe("patchWorkflow", () => {
           }),
         }).pipe(Effect.provide(repo.layer));
 
-        assert.deepStrictEqual(repo.updates[0]?.eventSubscriptions, [
-          {
-            workflowId: "wf_1",
-            eventName: "app/appointment.created",
-            role: "start",
-            correlationPath: null,
-          },
-        ]);
+        assert.strictEqual(repo.updates[0]?.eventSubscriptions, "unchanged");
       })
     );
 

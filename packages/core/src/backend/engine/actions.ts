@@ -42,6 +42,12 @@ export type WorkflowActions = {
   stepFor: (actionType: string) => WorkflowAction | undefined;
   /** What the catalog holds for an action, or undefined for one it never heard of. */
   metadataFor: (actionType: string) => ActionRunMetadata | undefined;
+  /**
+   * Fingerprint of the live assembled catalog. Compared against the version a
+   * run pinned at publish so a deploy that changes the surface fails the node
+   * rather than resolving against a different set of actions.
+   */
+  catalogFingerprint: () => string;
 };
 
 /**
@@ -52,4 +58,5 @@ export type WorkflowActions = {
 export const noWorkflowActions: WorkflowActions = {
   stepFor: () => undefined,
   metadataFor: () => undefined,
+  catalogFingerprint: () => "",
 };

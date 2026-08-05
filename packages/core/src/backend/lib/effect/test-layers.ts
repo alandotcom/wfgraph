@@ -248,6 +248,12 @@ const workflowRepoStubs: WorkflowRepo["Service"] = {
   deleteById: refuse("deleteById"),
   findCurrent: refuse("findCurrent")(),
   insertCurrent: refuse("insertCurrent"),
+  findLatestVersion: refuse("findLatestVersion"),
+  findVersionById: refuse("findVersionById"),
+  findVersionByContent: refuse("findVersionByContent"),
+  findPublishedVersion: refuse("findPublishedVersion"),
+  findByIdWithPublishedVersion: refuse("findByIdWithPublishedVersion"),
+  publishVersion: refuse("publishVersion"),
 };
 
 /**
@@ -268,6 +274,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   countSuperseded: refuse("countSuperseded"),
   listPage: refuse("listPage"),
   findSummaryById: refuse("findSummaryById"),
+  findSummaryWithPinnedGraph: refuse("findSummaryWithPinnedGraph"),
   findStatusById: refuse("findStatusById"),
   existsById: refuse("existsById"),
   findWorkflowIdById: refuse("findWorkflowIdById"),

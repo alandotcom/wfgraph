@@ -19,6 +19,7 @@ import type { StepEnvironment } from "#src/backend/extensions/steps/step-runner"
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import { failureFromUnknown } from "#src/backend/engine/engine-failure";
 import type { RovaRuntime } from "#src/backend/runtime";
+import { catalogFingerprint as fingerprintCatalog } from "#src/backend/services/workflows/version-digest";
 
 export function createWorkflowActions(
   extensions: ExtensionSet,
@@ -74,5 +75,6 @@ export function createWorkflowActions(
         literalConfigKeys: literalFieldKeys(action.configFields),
       };
     },
+    catalogFingerprint: () => fingerprintCatalog(extensions.catalog),
   };
 }

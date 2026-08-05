@@ -130,10 +130,22 @@ Event needs no lifecycle role to wake a wait, and waking follows Precedence.
 
 ### Runs
 
+**Workflow Version**:
+An immutable published copy of a workflow's graph, together with the catalog
+fingerprint it was sound against. Draft saves edit the live graph only;
+Publish mints (or reuses) a version and points the workflow at it. Event and
+manual starts refuse a never-published workflow.
+
+**Publish**:
+The hard gate that turns a draft into a Workflow Version. Content-hash
+dedupe stops an idle editor from accreting identical versions. The event
+subscription index tracks the published graph, so a half-built draft cannot
+start runs.
+
 **Execution**:
 One run of one workflow, started by a Start Event, a schedule, or a manual
-test. Ends with exactly one status: completed, canceled, superseded, or
-failed.
+test. Pins the Workflow Version it started against. Ends with exactly one
+status: completed, canceled, superseded, or failed.
 _Avoid_: workflow (a workflow is the definition; an Execution is one run of it)
 
 ### Extensions

@@ -58,6 +58,7 @@ const sourceWorkflow: Workflow = {
   isPaused: false,
   mode: "test",
   visibility: "public",
+  publishedVersionId: null,
   createdAt: new Date("2026-02-01T00:00:00.000Z"),
   updatedAt: new Date("2026-02-02T00:00:00.000Z"),
 };
@@ -203,13 +204,13 @@ describe("postWorkflowDuplicate", () => {
     );
   });
 
-  // A copy names the same Start Event as its source, so it subscribes to it
-  // from the moment it exists -- under its own id, and paused, because two
-  // unpaused workflows on one Event would double every run.
+  // A copy starts paused and unpublished. Subscriptions wait for publish so an
+  // unpaused copy cannot double the source's Event starts until someone
+  // deliberately publishes it.
   layer(
     Layer.mergeAll(SilentAppLoggerLayer, catalogLayer, stubIntegrationRepo())
   )((it) => {
-    it.effect("derives the copy's own subscriptions and pauses it", () =>
+    it.effect("pauses the copy and leaves subscriptions empty", () =>
       Effect.gen(function* () {
         const repo = makeWorkflowRepo();
 
@@ -220,14 +221,7 @@ describe("postWorkflowDuplicate", () => {
         const insert = repo.calls.inserts[0];
         assert.isDefined(insert);
         assert.strictEqual(insert.isPaused, true);
-        assert.deepStrictEqual(insert.eventSubscriptions, [
-          {
-            workflowId: insert.id,
-            eventName: "app/appointment.created",
-            role: "start",
-            correlationPath: null,
-          },
-        ]);
+        assert.deepStrictEqual(insert.eventSubscriptions, []);
         assert.notStrictEqual(insert.id, sourceWorkflow.id);
       })
     );

@@ -44,6 +44,7 @@ function createExecution(
     cancelRequestedAt: null,
     cancelEventName: null,
     cancelPayload: null,
+    workflowVersionId: null,
     ...overrides,
   };
 }
@@ -52,6 +53,8 @@ const runTarget = {
   id: "wf_1",
   name: "Appointment Reminders",
   graph: { nodes: [], edges: [] },
+  versionId: "ver_1",
+  catalogFingerprint: "fp",
 };
 
 describe("buildRunStartedAuditMessage", () => {

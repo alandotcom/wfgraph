@@ -3,7 +3,7 @@ import { assert, describe, layer } from "@effect/vitest";
 // `@effect/vitest` re-export leaves it unable to find the module registry.
 import { beforeEach, vi } from "vitest";
 import { Effect, Layer } from "effect";
-import type { Workflow } from "#src/backend/lib/db/schema";
+import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   SilentAppLoggerLayer,
@@ -134,9 +134,35 @@ function createWorkflow(input: {
     isPaused: input.isPaused ?? false,
     mode: "live",
     visibility: "private",
+    publishedVersionId: "ver_1",
     createdAt: new Date("2026-03-01T00:00:00.000Z"),
     updatedAt: new Date("2026-03-01T00:00:00.000Z"),
   };
+}
+
+function publishedVersion(workflow: Workflow): WorkflowVersion {
+  return {
+    id: "ver_1",
+    workflowId: workflow.id,
+    version: 1,
+    graph: workflow.graph,
+    catalogFingerprint: "fp",
+    graphDigest: "digest",
+    publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+  };
+}
+
+/** A workflow repo answering both the draft row and its published version. */
+function stubPublishedWorkflow(workflow: Workflow) {
+  return stubWorkflowRepo({
+    findById: () => Effect.succeed(workflow),
+    findByIdWithPublishedVersion: () =>
+      Effect.succeed({
+        workflow,
+        publishedVersion: publishedVersion(workflow),
+      }),
+    findPublishedVersion: () => Effect.succeed(publishedVersion(workflow)),
+  });
 }
 
 function subscriber(overrides: Partial<EventSubscriber> = {}): EventSubscriber {
@@ -187,10 +213,7 @@ describe("applyLifecycleRules", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubWorkflowRepo({
-                findById: () =>
-                  Effect.succeed(createWorkflow({ rules: startRules })),
-              }),
+              stubPublishedWorkflow(createWorkflow({ rules: startRules })),
               unreachedRunSeams
             )
           )
@@ -207,6 +230,15 @@ describe("applyLifecycleRules", () => {
           startWithConcurrencyMock.mock.calls[0]?.[0].start.entityValue,
           "appt_8813"
         );
+        assert.strictEqual(
+          startWithConcurrencyMock.mock.calls[0]?.[0].workflow.versionId,
+          "ver_1"
+        );
+        assert.strictEqual(
+          startWithConcurrencyMock.mock.calls[0]?.[0].workflow
+            .catalogFingerprint,
+          "fp"
+        );
       })
     );
 
@@ -222,21 +254,18 @@ describe("applyLifecycleRules", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubWorkflowRepo({
-                findById: () =>
-                  Effect.succeed(
-                    createWorkflow({
-                      rules: {
-                        startEvents: [
-                          "app/appointment.created",
-                          "app/appointment.canceled",
-                        ],
-                        cancelEvents: [],
-                        concurrency: "newest-wins",
-                      },
-                    })
-                  ),
-              }),
+              stubPublishedWorkflow(
+                createWorkflow({
+                  rules: {
+                    startEvents: [
+                      "app/appointment.created",
+                      "app/appointment.canceled",
+                    ],
+                    cancelEvents: [],
+                    concurrency: "newest-wins",
+                  },
+                })
+              ),
               unreachedRunSeams
             )
           )
@@ -261,10 +290,7 @@ describe("applyLifecycleRules", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubWorkflowRepo({
-                findById: () =>
-                  Effect.succeed(createWorkflow({ rules: startRules })),
-              }),
+              stubPublishedWorkflow(createWorkflow({ rules: startRules })),
               unreachedRunSeams
             )
           )
@@ -289,9 +315,7 @@ describe("applyLifecycleRules", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubWorkflowRepo({
-                findById: () => Effect.succeed(createWorkflow({})),
-              }),
+              stubPublishedWorkflow(createWorkflow({})),
               unreachedRunSeams
             )
           )
@@ -322,10 +346,7 @@ describe("applyLifecycleRules", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubWorkflowRepo({
-                findById: () =>
-                  Effect.succeed(createWorkflow({ rules: startRules })),
-              }),
+              stubPublishedWorkflow(createWorkflow({ rules: startRules })),
               unreachedRunSeams
             )
           )
@@ -348,10 +369,7 @@ describe("applyLifecycleRules", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubWorkflowRepo({
-                findById: () =>
-                  Effect.succeed(createWorkflow({ rules: cancelRules })),
-              }),
+              stubPublishedWorkflow(createWorkflow({ rules: cancelRules })),
               unreachedRunSeams
             )
           )
@@ -393,10 +411,7 @@ describe("applyLifecycleRules", () => {
           }).pipe(
             Effect.provide(
               Layer.mergeAll(
-                stubWorkflowRepo({
-                  findById: () =>
-                    Effect.succeed(createWorkflow({ rules: cancelRules })),
-                }),
+                stubPublishedWorkflow(createWorkflow({ rules: cancelRules })),
                 unreachedRunSeams
               )
             )
@@ -425,10 +440,7 @@ describe("applyLifecycleRules", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubWorkflowRepo({
-                findById: () =>
-                  Effect.succeed(createWorkflow({ rules: cancelRules })),
-              }),
+              stubPublishedWorkflow(createWorkflow({ rules: cancelRules })),
               stubExecutionRepo({
                 recordAuditEvent: (input) =>
                   Effect.sync(() => {
@@ -477,10 +489,7 @@ describe("applyLifecycleRules", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubWorkflowRepo({
-                findById: () =>
-                  Effect.succeed(createWorkflow({ rules: startRules })),
-              }),
+              stubPublishedWorkflow(createWorkflow({ rules: startRules })),
               unreachedRunSeams
             )
           )
@@ -505,7 +514,9 @@ describe("applyLifecycleRules", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubWorkflowRepo({ findById: () => Effect.succeed(null) }),
+              stubWorkflowRepo({
+                findByIdWithPublishedVersion: () => Effect.succeed(null),
+              }),
               unreachedRunSeams
             )
           )
@@ -528,17 +539,14 @@ describe("applyLifecycleRules", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              stubWorkflowRepo({
-                findById: () =>
-                  Effect.succeed(
-                    createWorkflow({
-                      graph: createSerializedWorkflowGraph({
-                        nodes: [],
-                        edges: [],
-                      }),
-                    })
-                  ),
-              }),
+              stubPublishedWorkflow(
+                createWorkflow({
+                  graph: createSerializedWorkflowGraph({
+                    nodes: [],
+                    edges: [],
+                  }),
+                })
+              ),
               unreachedRunSeams
             )
           )
@@ -564,7 +572,7 @@ describe("applyLifecycleRules", () => {
           Effect.provide(
             Layer.mergeAll(
               stubWorkflowRepo({
-                findById: () =>
+                findByIdWithPublishedVersion: () =>
                   Effect.fail(
                     new DatabaseError({
                       cause: new Error("terminating connection due to crash"),

@@ -12,9 +12,14 @@ import {
   sql,
 } from "drizzle-orm";
 import type { Effect } from "effect";
-import { workflowExecutions, workflows } from "#src/backend/lib/db/schema";
+import {
+  workflowExecutions,
+  workflows,
+  workflowVersions,
+} from "#src/backend/lib/db/schema";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@rova/shared/lifecycle/execution-contracts";
+import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 import type { JsonObject, JsonValue } from "@rova/shared/types/json";
 import type {
   ExecutionPageQuery,
@@ -100,6 +105,17 @@ export type RunsRepoMethods = {
   readonly findSummaryById: (
     executionId: string
   ) => Effect.Effect<ExecutionSummary | null, DatabaseError>;
+  /**
+   * The logs payload's run row plus the pinned version graph, in one round trip.
+   * `graph` is null when the row has no `workflow_version_id`.
+   */
+  readonly findSummaryWithPinnedGraph: (executionId: string) => Effect.Effect<
+    | (ExecutionSummary & {
+        graph: SerializedWorkflowGraph | null;
+      })
+    | null,
+    DatabaseError
+  >;
   /** Where one run got to, the smallest answer the status poll can be given. */
   readonly findStatusById: (
     executionId: string
@@ -269,6 +285,7 @@ export function makeRunsMethods(
             duration: workflowExecutions.duration,
             cancelRequestedAt: workflowExecutions.cancelRequestedAt,
             cancelEventName: workflowExecutions.cancelEventName,
+            workflowVersionId: workflowExecutions.workflowVersionId,
           })
           .from(workflowExecutions)
           .innerJoin(workflows, eq(workflowExecutions.workflowId, workflows.id))
@@ -287,6 +304,7 @@ export function makeRunsMethods(
           columns: {
             id: true,
             workflowId: true,
+            workflowVersionId: true,
             status: true,
             input: true,
             output: true,
@@ -298,6 +316,33 @@ export function makeRunsMethods(
         });
 
         return execution ?? null;
+      }),
+
+    findSummaryWithPinnedGraph: (executionId) =>
+      database.query(async (db) => {
+        const [row] = await db
+          .select({
+            id: workflowExecutions.id,
+            workflowId: workflowExecutions.workflowId,
+            workflowVersionId: workflowExecutions.workflowVersionId,
+            status: workflowExecutions.status,
+            input: workflowExecutions.input,
+            output: workflowExecutions.output,
+            error: workflowExecutions.error,
+            startedAt: workflowExecutions.startedAt,
+            completedAt: workflowExecutions.completedAt,
+            duration: workflowExecutions.duration,
+            graph: workflowVersions.graph,
+          })
+          .from(workflowExecutions)
+          .leftJoin(
+            workflowVersions,
+            eq(workflowExecutions.workflowVersionId, workflowVersions.id)
+          )
+          .where(eq(workflowExecutions.id, executionId))
+          .limit(1);
+
+        return row ?? null;
       }),
 
     findStatusById: (executionId) =>

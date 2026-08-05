@@ -37,6 +37,7 @@ function createRow(
     duration: null,
     cancelRequestedAt: null,
     cancelEventName: null,
+    workflowVersionId: null,
     ...overrides,
   };
 }

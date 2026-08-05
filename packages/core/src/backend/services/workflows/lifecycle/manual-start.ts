@@ -12,6 +12,7 @@ import { loadWorkflowForRun } from "#src/backend/services/executions/preflight";
 import {
   buildIgnoredRunAuditMessage,
   recordPausedRunIgnored,
+  toWorkflowRunTarget,
 } from "#src/backend/services/executions/run-rows";
 import {
   type ExtensionCatalog,
@@ -249,11 +250,12 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
     });
 
     const started = yield* startWithConcurrency({
-      workflow: {
-        id: workflowId,
-        name: workflow.name,
+      workflow: toWorkflowRunTarget({
+        workflow: { id: workflowId, name: workflow.name },
+        versionId: preflight.workflowVersionId,
+        catalogFingerprint: preflight.catalogFingerprint,
         graph: preflight.workflowGraph,
-      },
+      }),
       concurrency: rules.concurrency,
       start: {
         source: "manual",

@@ -5,11 +5,12 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Play } from "lucide-react";
 import { useState } from "react";
 import { Button } from "#src/components/ui/button";
 import { Spinner } from "#src/components/ui/spinner";
+import { useAfterCommit } from "#src/hooks/effects";
 import {
   isRunInProgress,
   toExecutionDetail,
@@ -17,8 +18,11 @@ import {
   toWorkflowExecutions,
 } from "#src/lib/execution-logs";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
+import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
+import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
+import { toWorkflowGraphData } from "@rova/shared/graph/graph";
 import { WorkflowRefusedStarts } from "./workflow-refused-starts";
 import { WorkflowRunDetail } from "./workflow-run-detail";
 import { WorkflowRunsList } from "./workflow-runs-list";
@@ -55,6 +59,7 @@ export function WorkflowRuns() {
   // specific run via the URL includes them so a superseded id can still resolve.
   const [showSuperseded, setShowSuperseded] = useState(false);
   const includeSuperseded = showSuperseded || executionId !== undefined;
+  const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
 
   const executionsQuery = useQuery({
     ...orpcQuery.workflow.getExecutions.queryOptions({
@@ -107,6 +112,29 @@ export function WorkflowRuns() {
     refetchInterval: detailPollInterval,
   });
 
+  // Paint the version this run pinned onto the canvas so statuses land on the
+  // graph it walked, not the live draft. Cleared when the run is closed.
+  useAfterCommit(detailQuery.data?.graph ?? executionId, () => {
+    const graph = detailQuery.data?.graph;
+    if (!executionId || !graph) {
+      setExecutionOverlay(null);
+      return;
+    }
+
+    const graphData = toWorkflowGraphData(graph);
+    setExecutionOverlay({
+      nodes: graphData.nodes.map((node) => {
+        const editorNode = toEditorNode(node);
+        return {
+          ...editorNode,
+          selected: false,
+          data: { ...editorNode.data, status: "idle" as const },
+        };
+      }),
+      edges: graphData.edges.map(toEditorEdge),
+    });
+  });
+
   const eventsQuery = useQuery({
     ...orpcQuery.workflow.getExecutionEvents.queryOptions({
       input: { executionId: executionId ?? "" },
@@ -139,6 +167,7 @@ export function WorkflowRuns() {
   const handleBack = () => {
     void navigate({ search: {} });
     setSelectedExecutionId(null);
+    setExecutionOverlay(null);
   };
 
   if (executionsQuery.isPending && executionId === undefined) {

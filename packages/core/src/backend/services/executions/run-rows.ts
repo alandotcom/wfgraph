@@ -21,12 +21,30 @@ import type {
   WorkflowMode,
 } from "@rova/shared/graph/types";
 
-/** Identity of the workflow plus the graph the run will execute. */
+/** Identity of the workflow plus the published version the run will execute. */
 export type WorkflowRunTarget = {
   id: string;
   name: string;
   graph: SerializedWorkflowGraph;
+  versionId: string;
+  catalogFingerprint: string;
 };
+
+/** Build the run target every start path hands to concurrency / enqueue. */
+export function toWorkflowRunTarget(input: {
+  workflow: { id: string; name: string };
+  versionId: string;
+  catalogFingerprint: string;
+  graph: SerializedWorkflowGraph;
+}): WorkflowRunTarget {
+  return {
+    id: input.workflow.id,
+    name: input.workflow.name,
+    graph: input.graph,
+    versionId: input.versionId,
+    catalogFingerprint: input.catalogFingerprint,
+  };
+}
 
 /**
  * Where the run came from, and which entity it is about.
@@ -187,6 +205,8 @@ export const enqueueStartedRun = Effect.fn("enqueueStartedRun")(function* (
   const run = yield* inngest
     .sendRunRequested({
       graph: workflow.graph,
+      workflowVersionId: workflow.versionId,
+      catalogFingerprint: workflow.catalogFingerprint,
       startPayload: payload,
       ...(start.eventName ? { startEventName: start.eventName } : {}),
       requestPayload: input.requestPayload ?? payload,

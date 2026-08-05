@@ -155,11 +155,11 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
       graph: unboundGraph,
       mode: sourceWorkflow.mode,
       visibility: "private",
-      // A copy starts paused. It names the same Start Event as its source, so an
-      // unpaused copy would double every run the original does from the moment it
-      // exists -- and a copy is made to be edited, not to run as it is.
+      // A copy starts paused and unpublished. Subscriptions wait for publish so
+      // an unpaused copy cannot double the source's Event starts until someone
+      // deliberately publishes it.
       isPaused: true,
-      eventSubscriptions: prepared.subscriptionsFor(newWorkflowId),
+      eventSubscriptions: [],
     });
 
     yield* logger.info("Workflow duplicated", {

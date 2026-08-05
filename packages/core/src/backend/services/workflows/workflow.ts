@@ -144,7 +144,9 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
       );
 
       updateInput.graph = prepared.graph;
-      eventSubscriptions = prepared.subscriptionsFor(workflowId);
+      // Draft saves keep the subscription index alone: only publish rewrites it
+      // from the published graph, so a half-built canvas cannot start runs.
+      eventSubscriptions = "unchanged";
     }
 
     const updatedWorkflow = yield* repo.update({

@@ -26,8 +26,9 @@ import {
   addNodeAtom,
   applyNodeLayoutAtom,
   connectNodesAtom,
-  edgesAtom,
-  nodesAtom,
+  displayEdgesAtom,
+  displayNodesAtom,
+  isExecutionOverlayActiveAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
   redoAtom,
@@ -63,8 +64,9 @@ const edgeTypes = {
 };
 
 export function WorkflowCanvas() {
-  const nodes = useAtomValue(nodesAtom);
-  const edges = useAtomValue(edgesAtom);
+  const nodes = useAtomValue(displayNodesAtom);
+  const edges = useAtomValue(displayEdgesAtom);
+  const isExecutionOverlay = useAtomValue(isExecutionOverlayActiveAtom);
   const [isGenerating] = useAtom(isGeneratingAtom);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
@@ -90,6 +92,10 @@ export function WorkflowCanvas() {
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const { screenToFlowPosition, fitView, getViewport, setViewport } =
     useReactFlow();
+
+  // Draft edits and run-overlay viewing are mutually exclusive: mutating while
+  // the overlay is up would write the draft under a canvas that is not showing it.
+  const editingLocked = isGenerating || isExecutionOverlay;
 
   const connectingNodeId = useRef<string | null>(null);
   const connectingHandleType = useRef<"source" | "target" | null>(null);
@@ -206,7 +212,7 @@ export function WorkflowCanvas() {
       }
 
       // Matches the toolbar buttons, which are disabled while generating.
-      if (isGenerating) {
+      if (editingLocked) {
         return;
       }
 
@@ -217,7 +223,7 @@ export function WorkflowCanvas() {
         undo();
       }
     },
-    [undo, redo, isGenerating]
+    [undo, redo, editingLocked]
   );
 
   useDomEvent(window, "keydown", handleUndoRedoShortcut);
@@ -235,7 +241,7 @@ export function WorkflowCanvas() {
   useDomEvent(window, "keydown", handleFitViewShortcut);
 
   const handleReflow = useCallback(() => {
-    if (isGenerating || realNodeCount < 2 || isReflowingRef.current) {
+    if (editingLocked || realNodeCount < 2 || isReflowingRef.current) {
       return;
     }
 
@@ -273,7 +279,7 @@ export function WorkflowCanvas() {
         setIsReflowing(false);
       }
     }
-  }, [applyNodeLayout, edges, fitView, isGenerating, nodes, realNodeCount]);
+  }, [applyNodeLayout, edges, fitView, editingLocked, nodes, realNodeCount]);
 
   const nodeTypes = useMemo(
     () => ({
@@ -673,32 +679,32 @@ export function WorkflowCanvas() {
         connectionMode={ConnectionMode.Strict}
         edges={edges}
         edgeTypes={edgeTypes}
-        elementsSelectable={!isGenerating}
+        elementsSelectable={!editingLocked}
         isValidConnection={isValidConnection}
         nodes={nodes}
-        nodesConnectable={!isGenerating}
-        nodesDraggable={!isGenerating}
+        nodesConnectable={!editingLocked}
+        nodesDraggable={!editingLocked}
         nodeTypes={nodeTypes}
         onBeforeDelete={onBeforeDelete}
-        onConnect={isGenerating ? undefined : onConnect}
-        onConnectEnd={isGenerating ? undefined : onConnectEnd}
-        onConnectStart={isGenerating ? undefined : onConnectStart}
-        onEdgeContextMenu={isGenerating ? undefined : onEdgeContextMenu}
-        onEdgesChange={isGenerating ? undefined : onEdgesChange}
-        onNodeClick={isGenerating ? undefined : onNodeClick}
-        onNodeContextMenu={isGenerating ? undefined : onNodeContextMenu}
-        onNodesChange={isGenerating ? undefined : onNodesChange}
+        onConnect={editingLocked ? undefined : onConnect}
+        onConnectEnd={editingLocked ? undefined : onConnectEnd}
+        onConnectStart={editingLocked ? undefined : onConnectStart}
+        onEdgeContextMenu={editingLocked ? undefined : onEdgeContextMenu}
+        onEdgesChange={editingLocked ? undefined : onEdgesChange}
+        onNodeClick={editingLocked ? undefined : onNodeClick}
+        onNodeContextMenu={editingLocked ? undefined : onNodeContextMenu}
+        onNodesChange={editingLocked ? undefined : onNodesChange}
         onPaneClick={onPaneClick}
-        onPaneContextMenu={isGenerating ? undefined : onPaneContextMenu}
-        onSelectionChange={isGenerating ? undefined : onSelectionChange}
+        onPaneContextMenu={editingLocked ? undefined : onPaneContextMenu}
+        onSelectionChange={editingLocked ? undefined : onSelectionChange}
       >
         <Panel
           className="workflow-controls-panel border-none bg-transparent p-0"
           position="bottom-left"
         >
           <Controls
-            canReflow={!isGenerating && realNodeCount > 1 && !isReflowing}
-            onReflow={isGenerating ? undefined : handleReflow}
+            canReflow={!editingLocked && realNodeCount > 1 && !isReflowing}
+            onReflow={editingLocked ? undefined : handleReflow}
           />
         </Panel>
         {showMinimap && (

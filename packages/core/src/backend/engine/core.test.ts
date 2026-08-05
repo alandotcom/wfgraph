@@ -437,6 +437,7 @@ describe("run persistence through the store port", () => {
       metadataFor: () => {
         throw new Error("catalog invariant broke");
       },
+      catalogFingerprint: () => "",
     };
 
     const result = await executeWorkflow(

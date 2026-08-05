@@ -18,6 +18,7 @@ import {
   Settings2,
   Trash2,
   Undo2,
+  Upload,
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useState } from "react";
@@ -52,6 +53,33 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+
+function PublishButton({
+  isPublishing,
+  disabled,
+  handlePublish,
+}: {
+  isPublishing: boolean;
+  disabled: boolean;
+  handlePublish: () => void;
+}) {
+  return (
+    <Button
+      className="relative border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
+      disabled={disabled || isPublishing}
+      onClick={handlePublish}
+      size="icon"
+      title={isPublishing ? "Publishing..." : "Publish workflow"}
+      variant="secondary"
+    >
+      {isPublishing ? (
+        <Loader2 className="size-4 animate-spin" />
+      ) : (
+        <Upload className="size-4" />
+      )}
+    </Button>
+  );
+}
 
 function SaveButton({
   state,
@@ -163,6 +191,10 @@ export function ToolbarActions({
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
   const hasSelection = selectedNode || selectedEdge;
+  const publishDisabled =
+    state.isGenerating ||
+    state.isSaving ||
+    !state.nodes.some((node) => node.type !== "add");
 
   // For non-owners viewing public workflows, don't show toolbar actions.
   if (workflowId && !state.isOwner) {
@@ -349,11 +381,21 @@ export function ToolbarActions({
       {/* Save - Mobile Vertical */}
       <ButtonGroup className="flex lg:hidden" orientation="vertical">
         <SaveButton handleSave={actions.handleSave} state={state} />
+        <PublishButton
+          disabled={publishDisabled}
+          handlePublish={actions.handlePublish}
+          isPublishing={actions.isPublishing}
+        />
       </ButtonGroup>
 
       {/* Save - Desktop Horizontal */}
       <ButtonGroup className="hidden lg:flex" orientation="horizontal">
         <SaveButton handleSave={actions.handleSave} state={state} />
+        <PublishButton
+          disabled={publishDisabled}
+          handlePublish={actions.handlePublish}
+          isPublishing={actions.isPublishing}
+        />
       </ButtonGroup>
 
       <RunButtonGroup actions={actions} state={state} />

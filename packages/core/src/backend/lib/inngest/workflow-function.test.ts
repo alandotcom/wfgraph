@@ -70,6 +70,8 @@ async function executeWorkflowFunctionForTest() {
         name: "workflow/run.requested",
         data: {
           graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+          workflowVersionId: "ver_1",
+          catalogFingerprint: "fp",
           executionId: "exec_123",
           workflowId: "workflow_123",
         },
@@ -124,6 +126,8 @@ describe("the workflow run function", () => {
     const workflowRunRequestedFunction = createTestFunction();
     const workflowInput = {
       graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+      workflowVersionId: "ver_1",
+      catalogFingerprint: "fp",
       executionId: "exec_123",
       workflowId: "workflow_123",
     };
@@ -190,6 +194,8 @@ describe("the workflow run function", () => {
           name: "workflow/run.requested",
           data: {
             graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+            workflowVersionId: "ver_1",
+            catalogFingerprint: "fp",
             executionId: "exec_123",
             workflowId: "workflow_123",
           },
@@ -244,6 +250,8 @@ describe("the workflow run function", () => {
       function: expect.anything(),
       data: {
         graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        workflowVersionId: "ver_1",
+        catalogFingerprint: "fp",
         executionId: "exec_123",
         workflowId: "workflow_123",
         entryNodeId: "wait_1",

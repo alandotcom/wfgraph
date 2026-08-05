@@ -36,6 +36,8 @@ const TestInngestClientLayer = makeInngestClientLayer(testClient);
 
 const runRequest = {
   graph: { nodes: [], edges: [] },
+  workflowVersionId: "ver_1",
+  catalogFingerprint: "fp",
   executionId: "exec_1",
   workflowId: "wf_1",
 };

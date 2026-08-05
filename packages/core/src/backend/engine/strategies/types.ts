@@ -52,6 +52,8 @@ export type NodeWorkContext = {
   startPayload: JsonObject;
   /** Event the nodes running now arrived on. */
   eventName: string | null;
+  /** Published catalog fingerprint. */
+  catalogFingerprint: string;
   /**
    * Whether this Wait is entered here rather than handed to a branch run.
    * Only the wait strategy reads it.
@@ -76,4 +78,6 @@ export type ActionStepInput = {
   actions: WorkflowActions;
   runtime: WorkflowExecutionRuntime;
   eventName: string | null;
+  /** Published catalog fingerprint. */
+  catalogFingerprint: string;
 };

@@ -2,10 +2,12 @@ import { and, arrayContains, desc, eq, ne, sql } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import {
   type Workflow,
+  type WorkflowVersion,
   workflowEventSubscriptions,
   type WorkflowMode,
   type WorkflowVisibility,
   workflows,
+  workflowVersions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
@@ -25,6 +27,7 @@ const workflowSummaryColumns = {
   isPaused: workflows.isPaused,
   mode: workflows.mode,
   visibility: workflows.visibility,
+  publishedVersionId: workflows.publishedVersionId,
   createdAt: workflows.createdAt,
   updatedAt: workflows.updatedAt,
 };
@@ -179,6 +182,60 @@ export class WorkflowRepo extends Context.Service<
       id: string;
       graph: SerializedWorkflowGraph;
     }) => Effect.Effect<Workflow | null, DatabaseError>;
+    /** The newest published version for this workflow, or null when none exist. */
+    readonly findLatestVersion: (
+      workflowId: string
+    ) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
+    /** One version by id, or null when it is gone. */
+    readonly findVersionById: (
+      versionId: string
+    ) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
+    /**
+     * A prior version whose content hash and catalog fingerprint match, newest
+     * first. Used by publish to reuse rather than mint a duplicate row.
+     */
+    readonly findVersionByContent: (input: {
+      workflowId: string;
+      graphDigest: string;
+      catalogFingerprint: string;
+    }) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
+    /**
+     * The version `published_version_id` names, or null when the workflow is
+     * gone or has never been published.
+     */
+    readonly findPublishedVersion: (
+      workflowId: string
+    ) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
+    /**
+     * The workflow and the version it currently points at, in one round trip.
+     * `publishedVersion` is null when the workflow exists but has never been
+     * published.
+     */
+    readonly findByIdWithPublishedVersion: (
+      workflowId: string
+    ) => Effect.Effect<
+      { workflow: Workflow; publishedVersion: WorkflowVersion | null } | null,
+      DatabaseError
+    >;
+    /**
+     * Point the workflow at a version (minting it first when `mint` is set),
+     * align the draft graph, and rewrite subscriptions, in one transaction.
+     */
+    readonly publishVersion: (input: {
+      workflowId: string;
+      versionId: string;
+      mint?: {
+        version: number;
+        graph: SerializedWorkflowGraph;
+        catalogFingerprint: string;
+        graphDigest: string;
+      };
+      draftGraph: SerializedWorkflowGraph;
+      eventSubscriptions: WorkflowEventSubscriptionRow[];
+    }) => Effect.Effect<
+      { workflow: Workflow; version: WorkflowVersion } | null,
+      DatabaseError
+    >;
   }
 >()("@rova/core/WorkflowRepo") {}
 
@@ -364,6 +421,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                     graph: input.graph,
                     mode: input.mode,
                     visibility: input.visibility,
+                    isPaused: input.isPaused,
                   })
                   .returning();
 
@@ -451,6 +509,151 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
 
             return saved.at(0) ?? null;
           }),
+
+        findLatestVersion: (workflowId) =>
+          database.query(async (db) => {
+            const [row] = await db
+              .select()
+              .from(workflowVersions)
+              .where(eq(workflowVersions.workflowId, workflowId))
+              .orderBy(desc(workflowVersions.version))
+              .limit(1);
+
+            return row ?? null;
+          }),
+
+        findVersionById: (versionId) =>
+          database.query(async (db) => {
+            const row = await db.query.workflowVersions.findFirst({
+              where: eq(workflowVersions.id, versionId),
+            });
+
+            return row ?? null;
+          }),
+
+        findVersionByContent: (input) =>
+          database.query(async (db) => {
+            const [row] = await db
+              .select()
+              .from(workflowVersions)
+              .where(
+                and(
+                  eq(workflowVersions.workflowId, input.workflowId),
+                  eq(workflowVersions.graphDigest, input.graphDigest),
+                  eq(
+                    workflowVersions.catalogFingerprint,
+                    input.catalogFingerprint
+                  )
+                )
+              )
+              .orderBy(desc(workflowVersions.version))
+              .limit(1);
+
+            return row ?? null;
+          }),
+
+        findPublishedVersion: (workflowId) =>
+          database.query(async (db) => {
+            const workflow = await db.query.workflows.findFirst({
+              where: eq(workflows.id, workflowId),
+              columns: { publishedVersionId: true },
+            });
+            if (!workflow?.publishedVersionId) {
+              return null;
+            }
+
+            const row = await db.query.workflowVersions.findFirst({
+              where: eq(workflowVersions.id, workflow.publishedVersionId),
+            });
+
+            return row ?? null;
+          }),
+
+        findByIdWithPublishedVersion: (workflowId) =>
+          database.query(async (db) => {
+            const [row] = await db
+              .select({
+                workflow: workflows,
+                publishedVersion: workflowVersions,
+              })
+              .from(workflows)
+              .leftJoin(
+                workflowVersions,
+                eq(workflows.publishedVersionId, workflowVersions.id)
+              )
+              .where(eq(workflows.id, workflowId))
+              .limit(1);
+
+            if (!row) {
+              return null;
+            }
+
+            return {
+              workflow: row.workflow,
+              publishedVersion: row.publishedVersion,
+            };
+          }),
+
+        publishVersion: (input) =>
+          database.query(
+            async (db) =>
+              await db.transaction(async (tx) => {
+                let version: WorkflowVersion;
+                if (input.mint) {
+                  const [minted] = await tx
+                    .insert(workflowVersions)
+                    .values({
+                      id: input.versionId,
+                      workflowId: input.workflowId,
+                      version: input.mint.version,
+                      graph: input.mint.graph,
+                      catalogFingerprint: input.mint.catalogFingerprint,
+                      graphDigest: input.mint.graphDigest,
+                    })
+                    .returning();
+                  version = minted;
+                } else {
+                  const existing = await tx.query.workflowVersions.findFirst({
+                    where: eq(workflowVersions.id, input.versionId),
+                  });
+                  if (!existing) {
+                    return null;
+                  }
+                  version = existing;
+                }
+
+                const updated = await tx
+                  .update(workflows)
+                  .set({
+                    publishedVersionId: version.id,
+                    // Keep the draft aligned with what was just published so a
+                    // subsequent edit starts from the published content.
+                    graph: input.draftGraph,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(workflows.id, input.workflowId))
+                  .returning();
+
+                const workflow = updated.at(0);
+                if (!workflow) {
+                  return null;
+                }
+
+                await tx
+                  .delete(workflowEventSubscriptions)
+                  .where(
+                    eq(workflowEventSubscriptions.workflowId, input.workflowId)
+                  );
+
+                if (input.eventSubscriptions.length > 0) {
+                  await tx
+                    .insert(workflowEventSubscriptions)
+                    .values(input.eventSubscriptions);
+                }
+
+                return { workflow, version };
+              })
+          ),
       };
     })
   );

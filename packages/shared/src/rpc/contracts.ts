@@ -137,6 +137,8 @@ const workflowSummarySchema = Schema.Struct({
   updatedAt: Schema.String,
   /** Absent on a payload the viewer did not author. */
   isOwner: Schema.optionalKey(Schema.Boolean),
+  /** Absent until the first publish. */
+  publishedVersionId: Schema.optionalKey(idSchema),
 });
 
 /**
@@ -147,6 +149,15 @@ const workflowSummarySchema = Schema.Struct({
 const workflowApiPayloadSchema = Schema.Struct({
   ...workflowSummarySchema.fields,
   graph: serializedWorkflowGraphSchema,
+});
+
+const workflowPublishPayloadSchema = Schema.Struct({
+  ...workflowApiPayloadSchema.fields,
+  publishedVersionId: idSchema,
+  publishedVersion: Schema.Finite.check(
+    Schema.isInt(),
+    Schema.isGreaterThan(0)
+  ),
 });
 
 /**
@@ -161,6 +172,7 @@ const workflowApiPayloadSchema = Schema.Struct({
 const integrationWithConfig = contractSchema(integrationWithConfigSchema);
 const integrationTestResult = contractSchema(integrationTestResultSchema);
 const workflowApiPayload = contractSchema(workflowApiPayloadSchema);
+const workflowPublishPayload = contractSchema(workflowPublishPayloadSchema);
 
 const workflowRunModeSchema = Schema.Literals(["live", "test"]);
 
@@ -444,6 +456,21 @@ export const rpcContract = {
     duplicate: route("POST", "/workflows/{workflowId}/duplicate")
       .input(contractSchema(Schema.Struct({ workflowId: idSchema })))
       .output(workflowApiPayload),
+    /**
+     * Mint (or reuse) an immutable version from the graph the editor is showing
+     * and point starts at it. Draft saves alone never start runs; the client
+     * sends the canvas graph so an unsaved edit is what gets published.
+     */
+    publish: route("POST", "/workflows/{workflowId}/publish")
+      .input(
+        contractSchema(
+          Schema.Struct({
+            workflowId: idSchema,
+            graph: serializedWorkflowGraphSchema,
+          })
+        )
+      )
+      .output(workflowPublishPayload),
     getCurrent: route("GET", "/workflows/current")
       .input(noInput)
       .output(workflowApiPayload),
@@ -554,6 +581,11 @@ export const rpcContract = {
         contractSchema(
           Schema.Struct({
             execution: executionSummarySchema,
+            /**
+             * The graph this run pinned. Absent only when the row has no
+             * `workflow_version_id` (a terminal refuse that never executed).
+             */
+            graph: Schema.optionalKey(serializedWorkflowGraphSchema),
             logs: listOf(executionLogSchema),
             waits: listOf(executionWaitSchema),
           })

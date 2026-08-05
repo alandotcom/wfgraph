@@ -25,6 +25,7 @@ import {
   type EventSubscriber,
   WorkflowRepo,
 } from "#src/backend/services/workflows/repo";
+import { toWorkflowRunTarget } from "#src/backend/services/executions/run-rows";
 import type { JsonObject } from "@rova/shared/types/json";
 import { getValueByPath } from "@rova/shared/utils/object-path";
 import { emptyLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
@@ -73,7 +74,7 @@ export type LifecycleDeliveryOutcome =
   | {
       kind: "skipped";
       workflowId: string;
-      reason: "workflow_gone" | "graph_unrunnable";
+      reason: "workflow_gone" | "graph_unrunnable" | "not_published";
     };
 
 /** What the wait half did, which is a count and nothing else. */
@@ -161,11 +162,18 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       .get("workflow", "deliver-event")
       .with({ eventName: input.event.name, workflowId: input.subscriber.id });
 
-    const workflow = yield* repo.findById(input.subscriber.id);
-    if (!workflow) {
+    const loaded = yield* repo.findByIdWithPublishedVersion(
+      input.subscriber.id
+    );
+    if (!loaded) {
       // The subscription rows cascade with the workflow, so this is a delete
       // landing between the index read and here.
       return skipped(input.subscriber.id, "workflow_gone");
+    }
+
+    const { workflow, publishedVersion: version } = loaded;
+    if (!version) {
+      return skipped(input.subscriber.id, "not_published");
     }
 
     // Preflight is the start branch's alone: it validates every action, condition
@@ -173,7 +181,9 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     // that. Its refusals are this workflow's problem rather than the Event's, so
     // they answer here instead of failing.
     const preflight = yield* runWorkflowExecutionPreflight({
-      workflow,
+      workflow: { graph: version.graph },
+      workflowVersionId: version.id,
+      catalogFingerprint: version.catalogFingerprint,
     }).pipe(
       Effect.catchTags({
         InvalidInput: (failure) =>
@@ -260,11 +270,12 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     }
 
     const started = yield* startWithConcurrency({
-      workflow: {
-        id: workflow.id,
-        name: workflow.name,
+      workflow: toWorkflowRunTarget({
+        workflow,
+        versionId: version.id,
+        catalogFingerprint: version.catalogFingerprint,
         graph: preflight.workflowGraph,
-      },
+      }),
       concurrency: rules.concurrency,
       start: {
         source: "event",
@@ -365,7 +376,7 @@ export const deliverToWaits = Effect.fn("deliverToWaits")(function* (input: {
 
 function skipped(
   workflowId: string,
-  reason: "workflow_gone" | "graph_unrunnable"
+  reason: "workflow_gone" | "graph_unrunnable" | "not_published"
 ): LifecycleDeliveryOutcome {
   return { kind: "skipped", workflowId, reason };
 }

@@ -39,9 +39,41 @@ import type {
 const nodesStateAtom = atom<WorkflowNode[]>([]);
 const edgesStateAtom = atom<WorkflowEdge[]>([]);
 
-/** Read-only. Mutate through the action atoms below so undo always sees it. */
+/**
+ * The published graph a selected run pinned, shown on the canvas instead of the
+ * draft so node statuses land on the shape the run actually walked. Cleared
+ * when the run is deselected. Never saved: draft atoms stay draft-only so a
+ * Cmd+S or toolbar save cannot persist the run graph over the editor's draft.
+ */
+export const executionOverlayGraphAtom = atom<{
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+} | null>(null);
+
+/** Read-only draft. Mutate through the action atoms below so undo always sees it. */
 export const nodesAtom = atom((get) => get(nodesStateAtom));
 export const edgesAtom = atom((get) => get(edgesStateAtom));
+
+/** Whether the canvas is showing a run's pinned graph instead of the draft. */
+export const isExecutionOverlayActiveAtom = atom(
+  (get) => get(executionOverlayGraphAtom) !== null
+);
+
+/**
+ * What the canvas paints: the run overlay when a run is open, otherwise the
+ * draft. Saves, publish, and config always read `nodesAtom` / `edgesAtom`.
+ */
+export const displayNodesAtom = atom(
+  (get) => get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom)
+);
+export const displayEdgesAtom = atom(
+  (get) => get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom)
+);
+
+/** Refuse draft mutations while a run overlay owns the canvas. */
+function draftEditable(get: Getter): boolean {
+  return get(executionOverlayGraphAtom) === null;
+}
 
 export const selectedNodeAtom = atom<string | null>(null);
 export const selectedEdgeAtom = atom<string | null>(null);
@@ -137,6 +169,7 @@ export const hydrateWorkflowAtom = atom(
     // Also clears undo history, so undo cannot reach back past the switch and
     // write the previous workflow's graph into this one.
     set(loadWorkflowGraphAtom, { nodes, edges: workflow.edges });
+    set(executionOverlayGraphAtom, null);
     set(selectedExecutionIdAtom, null);
     set(currentWorkflowIdAtom, workflow.id);
     set(currentWorkflowNameAtom, workflow.name);
@@ -158,6 +191,10 @@ export const hydrateWorkflowAtom = atom(
 export const repairIntegrationsAtom = atom(
   null,
   (get, set, integrations: readonly { id: string; type: string }[]) => {
+    if (!draftEditable(get)) {
+      return;
+    }
+
     const currentNodes = get(nodesStateAtom);
     const repaired = repairNodeIntegrations(currentNodes, integrations);
 
@@ -178,11 +215,17 @@ export const repairIntegrationsAtom = atom(
  * from `onBeforeDelete`, which is the last moment the graph is still whole.
  */
 export const snapshotHistoryAtom = atom(null, (get, set) => {
+  if (!draftEditable(get)) {
+    return;
+  }
   pushHistory(get, set);
 });
 
 /** Drop selection flags without touching the graph's shape. Not an undo step. */
 export const clearGraphSelectionAtom = atom(null, (get, set) => {
+  if (!draftEditable(get)) {
+    return;
+  }
   set(
     nodesStateAtom,
     get(nodesStateAtom).map((node) => ({ ...node, selected: false }))
@@ -197,6 +240,9 @@ export const clearGraphSelectionAtom = atom(null, (get, set) => {
 
 /** Make one node the only selected node. Selection only, so not an undo step. */
 export const selectOnlyNodeAtom = atom(null, (get, set, nodeId: string) => {
+  if (!draftEditable(get)) {
+    return;
+  }
   set(
     nodesStateAtom,
     get(nodesStateAtom).map((node) => ({
@@ -211,6 +257,10 @@ export const selectOnlyNodeAtom = atom(null, (get, set, nodeId: string) => {
 export const onNodesChangeAtom = atom(
   null,
   (get, set, changes: NodeChange<WorkflowNode>[]) => {
+    if (!draftEditable(get)) {
+      return;
+    }
+
     const currentNodes = get(nodesStateAtom);
 
     // Lifecycle Nodes are the workflow's entrypoint; the graph is invalid
@@ -284,6 +334,10 @@ export const onNodesChangeAtom = atom(
 export const onEdgesChangeAtom = atom(
   null,
   (get, set, changes: EdgeChange[]) => {
+    if (!draftEditable(get)) {
+      return;
+    }
+
     // No history push here; see the note in onNodesChangeAtom.
     const hasRemoval = changes.some((change) => change.type === "remove");
     const newEdges = applyEdgeChanges(changes, get(edgesStateAtom));
@@ -308,6 +362,10 @@ export const onEdgesChangeAtom = atom(
 );
 
 export const addNodeAtom = atom(null, (get, set, node: WorkflowNode) => {
+  if (!draftEditable(get)) {
+    return;
+  }
+
   pushHistory(get, set);
 
   const updatedNodes = get(nodesStateAtom).map((n) => ({
@@ -328,6 +386,10 @@ export const addNodeAtom = atom(null, (get, set, node: WorkflowNode) => {
 
 /** Connect two nodes, recorded as an undo step like every graph mutation. */
 export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {
+  if (!draftEditable(get)) {
+    return;
+  }
+
   pushHistory(get, set);
   set(edgesStateAtom, [...get(edgesStateAtom), edge]);
   requestGraphSave(get, set, { immediate: true });
@@ -337,6 +399,10 @@ export const connectNodesAtom = atom(null, (get, set, edge: WorkflowEdge) => {
 export const applyNodeLayoutAtom = atom(
   null,
   (get, set, nodes: WorkflowNode[]) => {
+    if (!draftEditable(get)) {
+      return;
+    }
+
     pushHistory(get, set);
     set(nodesStateAtom, nodes);
     requestGraphSave(get, set, { immediate: true });
@@ -346,6 +412,10 @@ export const applyNodeLayoutAtom = atom(
 export const updateNodeDataAtom = atom(
   null,
   (get, set, { id, data }: { id: string; data: Partial<WorkflowNodeData> }) => {
+    if (!draftEditable(get)) {
+      return;
+    }
+
     const currentNodes = get(nodesStateAtom);
 
     const oldNode = currentNodes.find((node) => node.id === id);
@@ -452,6 +522,10 @@ function updateTemplatesInConfig(
 }
 
 export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
+  if (!draftEditable(get)) {
+    return;
+  }
+
   const currentNodes = get(nodesStateAtom);
 
   const nodeToDelete = currentNodes.find((node) => node.id === nodeId);
@@ -480,6 +554,10 @@ export const deleteNodeAtom = atom(null, (get, set, nodeId: string) => {
 });
 
 export const deleteEdgeAtom = atom(null, (get, set, edgeId: string) => {
+  if (!draftEditable(get)) {
+    return;
+  }
+
   const currentEdges = get(edgesStateAtom);
   const remaining = currentEdges.filter((edge) => edge.id !== edgeId);
   if (remaining.length === currentEdges.length) {
@@ -497,6 +575,10 @@ export const deleteEdgeAtom = atom(null, (get, set, edgeId: string) => {
 });
 
 export const deleteSelectedItemsAtom = atom(null, (get, set) => {
+  if (!draftEditable(get)) {
+    return;
+  }
+
   const currentNodes = get(nodesStateAtom);
   const currentEdges = get(edgesStateAtom);
   const selectedNodeIds = new Set(
@@ -544,6 +626,10 @@ export const deleteSelectedItemsAtom = atom(null, (get, set) => {
  * canvas outright produced something that could never be saved.
  */
 export const clearWorkflowAtom = atom(null, (get, set) => {
+  if (!draftEditable(get)) {
+    return;
+  }
+
   const currentNodes = get(nodesStateAtom);
   const lifecycleNodes = currentNodes.filter(
     (node) => node.data.type === "lifecycle"
@@ -566,6 +652,10 @@ export const clearWorkflowAtom = atom(null, (get, set) => {
 });
 
 export const undoAtom = atom(null, (get, set) => {
+  if (!draftEditable(get)) {
+    return;
+  }
+
   const history = get(historyAtom);
   const previousState = history.at(-1);
   if (!previousState) {
@@ -584,6 +674,10 @@ export const undoAtom = atom(null, (get, set) => {
 });
 
 export const redoAtom = atom(null, (get, set) => {
+  if (!draftEditable(get)) {
+    return;
+  }
+
   const future = get(futureAtom);
   const nextState = future.at(-1);
   if (!nextState) {
@@ -606,6 +700,9 @@ export const canRedoAtom = atom((get) => get(futureAtom).length > 0);
 
 /** Reset run badges. Execution state, so it neither dirties nor saves. */
 export const clearNodeStatusesAtom = atom(null, (get, set) => {
+  // Deleting runs (the only caller) must also drop the run overlay so the
+  // canvas returns to the draft rather than painting statuses on a gone run.
+  set(executionOverlayGraphAtom, null);
   set(
     nodesStateAtom,
     get(nodesStateAtom).map((node) => ({
@@ -633,18 +730,32 @@ export const setNodeStatusesAtom = atom(
       statuses.map((statusEntry) => [statusEntry.nodeId, statusEntry.status])
     );
 
-    let hasUpdates = false;
-    const nextNodes = get(nodesStateAtom).map((node) => {
-      const nextStatus = statusByNodeId.get(node.id);
-      if (!nextStatus || node.data.status === nextStatus) {
-        return node;
+    const applyStatuses = (nodes: WorkflowNode[]) => {
+      let hasUpdates = false;
+      const nextNodes = nodes.map((node) => {
+        const nextStatus = statusByNodeId.get(node.id);
+        if (!nextStatus || node.data.status === nextStatus) {
+          return node;
+        }
+
+        hasUpdates = true;
+        return { ...node, data: { ...node.data, status: nextStatus } };
+      });
+      return hasUpdates ? nextNodes : null;
+    };
+
+    // Statuses belong on the graph the canvas is showing.
+    const overlay = get(executionOverlayGraphAtom);
+    if (overlay) {
+      const nextNodes = applyStatuses(overlay.nodes);
+      if (nextNodes) {
+        set(executionOverlayGraphAtom, { ...overlay, nodes: nextNodes });
       }
+      return;
+    }
 
-      hasUpdates = true;
-      return { ...node, data: { ...node.data, status: nextStatus } };
-    });
-
-    if (hasUpdates) {
+    const nextNodes = applyStatuses(get(nodesStateAtom));
+    if (nextNodes) {
       set(nodesStateAtom, nextNodes);
     }
   }
