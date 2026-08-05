@@ -1,7 +1,7 @@
 /**
  * When no Cancel Event is declared, the Canceled branch is drawable but the
- * engine never enters it. The editor marks that subtree inactive so publish
- * need not refuse the graph.
+ * engine never enters it. The editor mutes that subtree so publish need not
+ * refuse the graph.
  */
 
 import {
@@ -13,12 +13,16 @@ import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 export type InactiveCanceledBranch = {
   nodeIds: ReadonlySet<string>;
+  /** Every edge in the inactive Canceled subtree (outlet + downstream). */
   edgeIds: ReadonlySet<string>;
+  /** Edges leaving the Canceled handle — the only ones that get a label. */
+  outletEdgeIds: ReadonlySet<string>;
 };
 
 const EMPTY: InactiveCanceledBranch = {
   nodeIds: new Set(),
   edgeIds: new Set(),
+  outletEdgeIds: new Set(),
 };
 
 /**
@@ -58,15 +62,20 @@ export function inactiveCanceledBranch(input: {
   }
 
   const edgeIds = new Set<string>();
+  const outletEdgeIds = new Set<string>();
   for (const edge of input.edges) {
     const leavesCanceledOutlet =
       entryNodeIds.has(edge.source) &&
       edge.sourceHandle === LIFECYCLE_CANCELED_HANDLE;
-    const leavesCanceledNode = nodeIds.has(edge.source);
-    if (leavesCanceledOutlet || leavesCanceledNode) {
+    if (leavesCanceledOutlet) {
+      outletEdgeIds.add(edge.id);
+      edgeIds.add(edge.id);
+      continue;
+    }
+    if (nodeIds.has(edge.source)) {
       edgeIds.add(edge.id);
     }
   }
 
-  return { nodeIds, edgeIds };
+  return { nodeIds, edgeIds, outletEdgeIds };
 }

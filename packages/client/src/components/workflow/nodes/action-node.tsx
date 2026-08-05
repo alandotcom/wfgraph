@@ -487,14 +487,12 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
   if (!actionType) {
     const isDisabled = data.enabled === false;
-    const isInactiveCanceled = data.inactiveCanceled === true;
-    const isMuted = isDisabled || isInactiveCanceled;
     return (
       <Node
         className={cn(
           "flex h-48 w-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
           selected && "border-primary",
-          isMuted && "opacity-50"
+          isDisabled && "opacity-50"
         )}
         data-testid={`action-node-${id}`}
         handles={{ target: true, source: true }}
@@ -553,15 +551,13 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
 
   const aiModel = getAiModel();
   const isDisabled = data.enabled === false;
-  const isInactiveCanceled = data.inactiveCanceled === true;
-  const isMuted = isDisabled || isInactiveCanceled;
 
   return (
     <Node
       className={cn(
         "relative flex h-48 w-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
         selected && "border-primary",
-        isMuted && "opacity-50"
+        isDisabled && "opacity-50"
       )}
       data-testid={`action-node-${id}`}
       handles={{

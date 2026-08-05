@@ -9,6 +9,7 @@ import {
   useInternalNode,
 } from "@xyflow/react";
 import { getConditionBranchDisplayLabel } from "@rova/shared/conditions/condition-branch";
+import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
 
 const Temporary = ({
   id,
@@ -133,7 +134,7 @@ const Animated = ({
   style,
   selected,
   data,
-}: EdgeProps) => {
+}: EdgeProps<WorkflowEdge>) => {
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
 
@@ -157,13 +158,8 @@ const Animated = ({
     targetPosition: targetPos,
   });
   const branchLabel = getConditionBranchDisplayLabel(sourceHandleId);
-  const inactiveCanceled =
-    typeof data === "object" &&
-    data !== null &&
-    "inactiveCanceled" in data &&
-    data.inactiveCanceled === true;
-  const edgeLabel =
-    branchLabel ?? (inactiveCanceled ? "No Cancel Event" : null);
+  const edgeLabel = branchLabel ?? data?.displayLabel ?? null;
+  const inactive = style?.opacity !== undefined;
 
   return (
     <>
@@ -174,9 +170,9 @@ const Animated = ({
           ...style,
           stroke: selected ? "var(--muted-foreground)" : "var(--border)",
           strokeWidth: 2,
-          strokeDasharray: inactiveCanceled ? "5, 5" : 5,
-          ...(inactiveCanceled
-            ? { opacity: 0.4 }
+          strokeDasharray: inactive ? "5, 5" : 5,
+          ...(inactive
+            ? {}
             : { animation: "dashdraw 0.5s linear infinite" }),
         }}
       />
@@ -186,7 +182,7 @@ const Animated = ({
             className="pointer-events-none absolute rounded-sm border bg-background px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground leading-none"
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-              ...(inactiveCanceled ? { opacity: 0.7 } : {}),
+              ...(inactive ? { opacity: 0.7 } : {}),
             }}
           >
             {edgeLabel}

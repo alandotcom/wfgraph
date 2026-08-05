@@ -85,7 +85,8 @@ vi.mock("@xyflow/react", () => ({
 
 function renderAnimatedEdge(
   sourceHandleId?: string,
-  data?: Record<string, unknown>
+  data?: { displayLabel?: string },
+  style?: Record<string, unknown>
 ) {
   return render(
     createElement(
@@ -95,7 +96,7 @@ function renderAnimatedEdge(
         selected: false,
         source: "source",
         sourceHandleId,
-        style: {},
+        style: style ?? {},
         target: "target",
         targetHandleId: "in",
         data,
@@ -126,13 +127,14 @@ describe("Edge.Animated", () => {
     expect(view.queryByText("False")).toBeNull();
   });
 
-  it("labels an inactive Canceled edge and mutes its stroke", () => {
-    const view = renderAnimatedEdge(undefined, { inactiveCanceled: true });
+  it("renders a displayLabel and keeps muted opacity from style", () => {
+    const view = renderAnimatedEdge(
+      undefined,
+      { displayLabel: "No Cancel Event" },
+      { opacity: 0.4 }
+    );
 
     expect(view.getByText("No Cancel Event")).toBeTruthy();
-    expect(view.getByTestId("base-edge").getAttribute("data-edge-stroke")).toBe(
-      "var(--border)"
-    );
     expect(
       view.getByTestId("base-edge").getAttribute("data-edge-opacity")
     ).toBe("0.4");

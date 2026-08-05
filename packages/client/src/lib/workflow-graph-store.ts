@@ -64,45 +64,57 @@ export const isExecutionOverlayActiveAtom = atom(
  * What the canvas paints: the run overlay when a run is open, otherwise the
  * draft. Saves, publish, and config always read `nodesAtom` / `edgesAtom`.
  *
- * When no Cancel Event is declared, nodes and edges behind Canceled are marked
- * `inactiveCanceled` here only so the canvas can mute them without writing that
- * flag into the draft.
+ * When no Cancel Event is declared, the Canceled subtree is muted here via
+ * React Flow presentation props (`style` / `data.displayLabel`) so the draft
+ * stays clean.
  */
-export const displayNodesAtom = atom((get) => {
+const inactiveCanceledBranchAtom = atom((get) => {
   const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
   const edges = get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom);
-  const { nodeIds } = inactiveCanceledBranch({ nodes, edges });
+  return inactiveCanceledBranch({ nodes, edges });
+});
+
+const INACTIVE_NODE_STYLE = { opacity: 0.5 } as const;
+const INACTIVE_EDGE_STYLE = { opacity: 0.4 } as const;
+
+export const displayNodesAtom = atom((get) => {
+  const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
+  const { nodeIds } = get(inactiveCanceledBranchAtom);
   if (nodeIds.size === 0) {
     return nodes;
   }
   return nodes.map((node) =>
     nodeIds.has(node.id)
-      ? { ...node, data: { ...node.data, inactiveCanceled: true } }
+      ? {
+          ...node,
+          style: { ...node.style, ...INACTIVE_NODE_STYLE },
+        }
       : node
   );
 });
 export const displayEdgesAtom = atom((get) => {
-  const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
   const edges = get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom);
-  const { edgeIds } = inactiveCanceledBranch({ nodes, edges });
+  const { edgeIds, outletEdgeIds } = get(inactiveCanceledBranchAtom);
   if (edgeIds.size === 0) {
     return edges;
   }
-  return edges.map((edge) =>
-    edgeIds.has(edge.id)
-      ? {
-          ...edge,
-          data: {
-            ...(typeof edge.data === "object" &&
-            edge.data !== null &&
-            !Array.isArray(edge.data)
-              ? edge.data
-              : {}),
-            inactiveCanceled: true,
-          },
-        }
-      : edge
-  );
+  return edges.map((edge) => {
+    if (!edgeIds.has(edge.id)) {
+      return edge;
+    }
+    return {
+      ...edge,
+      style: { ...edge.style, ...INACTIVE_EDGE_STYLE },
+      ...(outletEdgeIds.has(edge.id)
+        ? {
+            data: {
+              ...edge.data,
+              displayLabel: "No Cancel Event",
+            },
+          }
+        : {}),
+    };
+  });
 });
 
 /** Refuse draft mutations while a run overlay owns the canvas. */

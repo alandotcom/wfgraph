@@ -23,24 +23,20 @@ export type {
 
 export type EditorNodeData = PersistedNodeData & {
   status?: NodeRunStatus;
-  /**
-   * Display-only: the node sits behind Canceled with no Cancel Event declared.
-   * Never persisted; derived onto `displayNodesAtom` only.
-   */
-  inactiveCanceled?: boolean;
+};
+
+/** Display-only fields painted onto edges; never part of the draft save path. */
+export type EditorEdgeData = Record<string, unknown> & {
+  displayLabel?: string;
 };
 
 export type WorkflowNodeData = EditorNodeData;
 export type WorkflowNode = Node<EditorNodeData>;
-export type WorkflowEdge = Edge;
+export type WorkflowEdge = Edge<EditorEdgeData>;
 
 /** Strip editor-only fields before a node crosses into the persist path. */
 export function toPersistedNode(node: WorkflowNode): PersistedWorkflowNode {
-  const {
-    status: _status,
-    inactiveCanceled: _inactiveCanceled,
-    ...data
-  } = node.data;
+  const { status: _status, ...data } = node.data;
   const persisted: PersistedWorkflowNode = {
     id: node.id,
     position: node.position,
@@ -69,26 +65,14 @@ export function toPersistedNode(node: WorkflowNode): PersistedWorkflowNode {
 }
 
 export function toPersistedEdge(edge: WorkflowEdge): PersistedWorkflowEdge {
-  let data: Record<string, unknown> | undefined;
-  if (
-    typeof edge.data === "object" &&
-    edge.data !== null &&
-    !Array.isArray(edge.data)
-  ) {
-    const { inactiveCanceled: _inactiveCanceled, ...rest } = edge.data as {
-      inactiveCanceled?: unknown;
-      [key: string]: unknown;
-    };
-    data = Object.keys(rest).length > 0 ? rest : undefined;
-  }
-
+  const { displayLabel: _displayLabel, ...rest } = edge.data ?? {};
   return {
     id: edge.id,
     source: edge.source,
     target: edge.target,
     sourceHandle: edge.sourceHandle,
     targetHandle: edge.targetHandle,
-    data,
+    data: Object.keys(rest).length > 0 ? rest : undefined,
     type: edge.type,
     selected: edge.selected,
   };

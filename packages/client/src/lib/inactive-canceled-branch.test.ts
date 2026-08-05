@@ -68,6 +68,7 @@ describe("inactiveCanceledBranch", () => {
       "canceled-wait",
     ]);
     expect([...inactive.edgeIds].sort()).toEqual(["e-canceled", "e-cleanup"]);
+    expect([...inactive.outletEdgeIds]).toEqual(["e-canceled"]);
   });
 
   it("marks nothing when a Cancel Event is declared", () => {
@@ -82,6 +83,7 @@ describe("inactiveCanceledBranch", () => {
     expect(inactiveCanceledBranch({ nodes, edges })).toEqual({
       nodeIds: new Set(),
       edgeIds: new Set(),
+      outletEdgeIds: new Set(),
     });
   });
 
@@ -94,6 +96,7 @@ describe("inactiveCanceledBranch", () => {
     expect(inactiveCanceledBranch({ nodes, edges })).toEqual({
       nodeIds: new Set(),
       edgeIds: new Set(),
+      outletEdgeIds: new Set(),
     });
   });
 });
