@@ -12,11 +12,15 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkflowRuns } from "#src/components/workflow/workflow-runs";
-import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
+import {
+  executionOverlayGraphAtom,
+  hydrateWorkflowAtom,
+} from "#src/lib/workflow-graph-store";
 import {
   currentWorkflowIdAtom,
   isWorkflowOwnerAtom,
 } from "#src/lib/workflow-save-store";
+import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
@@ -77,24 +81,29 @@ vi.mock("#src/lib/rpc-query", () => ({
           select: (payload: unknown) => unknown;
         }) => ({
           queryKey: ["logs", input.executionId],
-          queryFn: () => ({
-            execution: {
-              id: input.executionId,
-              workflowId: "wf_1",
-              status: "completed",
-              error: null,
-              startedAt: "2026-03-01T10:00:00.000Z",
-              completedAt: "2026-03-01T10:00:30.000Z",
-              duration: "30s",
-              input: {},
-              output: {},
-            },
-            logs: [],
-            waits: [],
-            ...(served.graphs[input.executionId]
-              ? { graph: served.graphs[input.executionId] }
-              : {}),
-          }),
+          queryFn: () => {
+            const listed = served.items.find(
+              (item) => item.id === input.executionId
+            );
+            return {
+              execution: {
+                id: input.executionId,
+                workflowId: listed?.workflowId ?? "wf_1",
+                status: listed?.status ?? "completed",
+                error: null,
+                startedAt: "2026-03-01T10:00:00.000Z",
+                completedAt: "2026-03-01T10:00:30.000Z",
+                duration: "30s",
+                input: {},
+                output: {},
+              },
+              logs: [],
+              waits: [],
+              ...(served.graphs[input.executionId]
+                ? { graph: served.graphs[input.executionId] }
+                : {}),
+            };
+          },
           select,
         }),
       },
@@ -119,10 +128,14 @@ vi.mock("#src/lib/rpc-query", () => ({
   },
 }));
 
-function execution(id: string, status: string): RawExecution {
+function execution(
+  id: string,
+  status: string,
+  workflowId = "wf_1"
+): RawExecution {
   return {
     id,
-    workflowId: "wf_1",
+    workflowId,
     workflowRunId: `run_${id}`,
     status,
     startedAt: "2026-03-01T10:00:00.000Z",
@@ -364,6 +377,51 @@ describe("WorkflowRuns", () => {
       expect(
         store.get(executionOverlayGraphAtom)?.nodes.map((n) => n.id)
       ).toEqual(["v1_lifecycle"]);
+    });
+  });
+
+  // Cross-workflow deep link while Runs stays mounted: the pinned graph can be
+  // ready before the route loader hydrates. Painting then would be cleared by
+  // hydrate while the sync key stayed `ready`, leaving the canvas on the draft.
+  it("waits for hydrate before painting a deep-linked run on another workflow", async () => {
+    served.items = [
+      execution("exec_a", "completed", "wf_1"),
+      execution("exec_b", "completed", "wf_2"),
+    ];
+    served.graphs = {
+      exec_a: pinnedGraph("a_lifecycle"),
+      exec_b: pinnedGraph("b_lifecycle"),
+    };
+    const { store, router } = renderRuns({ executionId: "exec_a" });
+
+    await waitFor(() => {
+      expect(
+        store.get(executionOverlayGraphAtom)?.nodes.map((n) => n.id)
+      ).toEqual(["a_lifecycle"]);
+    });
+
+    await act(async () => {
+      await router.navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: "wf_2" },
+        search: { executionId: "exec_b" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(store.get(executionOverlayGraphAtom)).toBeNull();
+      expect(store.get(currentWorkflowIdAtom)).toBe("wf_1");
+    });
+
+    await act(() => {
+      store.set(hydrateWorkflowAtom, savedWorkflow("wf_2"));
+    });
+
+    await waitFor(() => {
+      expect(store.get(currentWorkflowIdAtom)).toBe("wf_2");
+      expect(
+        store.get(executionOverlayGraphAtom)?.nodes.map((n) => n.id)
+      ).toEqual(["b_lifecycle"]);
     });
   });
 
