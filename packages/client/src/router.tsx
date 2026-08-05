@@ -21,10 +21,7 @@ import { toSavedWorkflow } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
 import { hydrateWorkflowAtom } from "#src/lib/workflow-graph-store";
 import { workflowNotFoundAtom } from "#src/lib/workflow-save-store";
-import {
-  propertiesPanelActiveTabAtom,
-  selectedExecutionIdAtom,
-} from "#src/lib/workflow-ui-store";
+import { propertiesPanelActiveTabAtom } from "#src/lib/workflow-ui-store";
 import WorkflowEditorPage from "#src/routes/workflows/[workflowId]/page";
 import WorkflowsPage from "#src/routes/workflows/page";
 
@@ -98,9 +95,17 @@ const workflowRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/workflows/$workflowId",
   validateSearch: validateWorkflowSearch,
-  loaderDeps: ({ search }) => ({
-    executionId: search.executionId,
-  }),
+  /**
+   * Open the Runs tab before the loader hydrates so a deep-linked run mounts
+   * the panel that owns URL→selection sync. Does not touch selection or
+   * overlay: hydrate clears those, and the panel writes them after mount.
+   * Safe on every search change — selecting a run must not re-hydrate.
+   */
+  beforeLoad: ({ search }) => {
+    if (search.executionId) {
+      appStore.set(propertiesPanelActiveTabAtom, "runs");
+    }
+  },
   /**
    * Put the workflow on screen before the editor renders.
    *
@@ -123,10 +128,10 @@ const workflowRoute = createRoute({
    * time, and the connection list is refetched only when it has gone stale or a
    * connection write invalidated it.
    *
-   * An `executionId` search param opens the Runs tab (and selects that run) so
-   * the panel that reads the same search is mounted on arrival.
+   * Run selection is not a loader concern: hydrating on `executionId` cleared
+   * the pinned-graph overlay and left the canvas on the live draft.
    */
-  loader: async ({ params, deps }) => {
+  loader: async ({ params }) => {
     try {
       const [payload, integrations] = await Promise.all([
         queryClient.fetchQuery(
@@ -143,11 +148,6 @@ const workflowRoute = createRoute({
         ...workflow,
         nodes: repairNodeIntegrations(workflow.nodes, integrations),
       });
-
-      if (deps.executionId) {
-        appStore.set(propertiesPanelActiveTabAtom, "runs");
-        appStore.set(selectedExecutionIdAtom, deps.executionId);
-      }
     } catch (error) {
       appStore.set(workflowNotFoundAtom, true);
       throw error;
