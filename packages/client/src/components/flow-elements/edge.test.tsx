@@ -58,6 +58,7 @@ vi.mock("@xyflow/react", () => ({
       "data-edge-id": id,
       "data-edge-path": path,
       "data-edge-stroke": String(style?.stroke ?? ""),
+      "data-edge-opacity": String(style?.opacity ?? ""),
     }),
   EdgeLabelRenderer: ({ children }: { children: ReactNode }) =>
     createElement("div", { "data-testid": "edge-label-layer" }, children),
@@ -82,7 +83,11 @@ vi.mock("@xyflow/react", () => ({
   },
 }));
 
-function renderAnimatedEdge(sourceHandleId?: string) {
+function renderAnimatedEdge(
+  sourceHandleId?: string,
+  data?: { displayLabel?: string },
+  style?: Record<string, unknown>
+) {
   return render(
     createElement(
       Edge.Animated as (props: Record<string, unknown>) => ReactNode,
@@ -91,9 +96,10 @@ function renderAnimatedEdge(sourceHandleId?: string) {
         selected: false,
         source: "source",
         sourceHandleId,
-        style: {},
+        style: style ?? {},
         target: "target",
         targetHandleId: "in",
+        data,
       }
     )
   );
@@ -119,5 +125,18 @@ describe("Edge.Animated", () => {
 
     expect(view.queryByText("True")).toBeNull();
     expect(view.queryByText("False")).toBeNull();
+  });
+
+  it("renders a displayLabel and keeps muted opacity from style", () => {
+    const view = renderAnimatedEdge(
+      undefined,
+      { displayLabel: "No Cancel Event" },
+      { opacity: 0.4 }
+    );
+
+    expect(view.getByText("No Cancel Event")).toBeTruthy();
+    expect(
+      view.getByTestId("base-edge").getAttribute("data-edge-opacity")
+    ).toBe("0.4");
   });
 });

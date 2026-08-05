@@ -25,9 +25,14 @@ export type EditorNodeData = PersistedNodeData & {
   status?: NodeRunStatus;
 };
 
+/** Display-only fields painted onto edges; never part of the draft save path. */
+export type EditorEdgeData = Record<string, unknown> & {
+  displayLabel?: string;
+};
+
 export type WorkflowNodeData = EditorNodeData;
 export type WorkflowNode = Node<EditorNodeData>;
-export type WorkflowEdge = Edge;
+export type WorkflowEdge = Edge<EditorEdgeData>;
 
 /** Strip editor-only fields before a node crosses into the persist path. */
 export function toPersistedNode(node: WorkflowNode): PersistedWorkflowNode {
@@ -60,18 +65,14 @@ export function toPersistedNode(node: WorkflowNode): PersistedWorkflowNode {
 }
 
 export function toPersistedEdge(edge: WorkflowEdge): PersistedWorkflowEdge {
+  const { displayLabel: _displayLabel, ...rest } = edge.data ?? {};
   return {
     id: edge.id,
     source: edge.source,
     target: edge.target,
     sourceHandle: edge.sourceHandle,
     targetHandle: edge.targetHandle,
-    data:
-      typeof edge.data === "object" &&
-      edge.data !== null &&
-      !Array.isArray(edge.data)
-        ? { ...edge.data }
-        : undefined,
+    data: Object.keys(rest).length > 0 ? rest : undefined,
     type: edge.type,
     selected: edge.selected,
   };

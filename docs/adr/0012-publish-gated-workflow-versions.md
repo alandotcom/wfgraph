@@ -55,3 +55,11 @@ a publish concern.
   than silently resolving against a different surface.
 - Host code changes with an unchanged catalog still follow Inngest step
   memoization; major engine rewrites still use Inngest's new-function pattern.
+
+## Amendment, 2026-08-05: Canceled branch without Cancel Event is inactive, not refused
+
+Publish still refuses unreachable subtrees. A Canceled branch with no Cancel
+Event declared is no longer refused: the engine never enters that branch
+(`CancelBoundary` buys no boundary read without a Cancel Event), and the editor
+mutes it instead. The Decision paragraph above that named both refusals is
+superseded for the Cancel Event half only.

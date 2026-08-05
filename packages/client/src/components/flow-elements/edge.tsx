@@ -9,6 +9,7 @@ import {
   useInternalNode,
 } from "@xyflow/react";
 import { getConditionBranchDisplayLabel } from "@rova/shared/conditions/condition-branch";
+import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
 
 const Temporary = ({
   id,
@@ -132,7 +133,8 @@ const Animated = ({
   targetHandleId,
   style,
   selected,
-}: EdgeProps) => {
+  data,
+}: EdgeProps<WorkflowEdge>) => {
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
 
@@ -156,6 +158,10 @@ const Animated = ({
     targetPosition: targetPos,
   });
   const branchLabel = getConditionBranchDisplayLabel(sourceHandleId);
+  const edgeLabel = branchLabel ?? data?.displayLabel ?? null;
+  // Display atoms mute an inactive Canceled subtree by setting style.opacity;
+  // that is the contract for dropping the dash animation here.
+  const inactive = style?.opacity !== undefined;
 
   return (
     <>
@@ -166,19 +172,22 @@ const Animated = ({
           ...style,
           stroke: selected ? "var(--muted-foreground)" : "var(--border)",
           strokeWidth: 2,
-          animation: "dashdraw 0.5s linear infinite",
-          strokeDasharray: 5,
+          strokeDasharray: inactive ? "5, 5" : 5,
+          ...(inactive
+            ? {}
+            : { animation: "dashdraw 0.5s linear infinite" }),
         }}
       />
-      {branchLabel && (
+      {edgeLabel && (
         <EdgeLabelRenderer>
           <div
             className="pointer-events-none absolute rounded-sm border bg-background px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground leading-none"
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              ...(inactive ? { opacity: 0.7 } : {}),
             }}
           >
-            {branchLabel}
+            {edgeLabel}
           </div>
         </EdgeLabelRenderer>
       )}
