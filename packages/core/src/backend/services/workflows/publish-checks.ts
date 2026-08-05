@@ -1,8 +1,8 @@
 /**
  * Extra refusals the publish gate runs beyond ordinary graph+catalog soundness.
  *
- * Both are silent at run time today: an unreachable subtree is skipped, and a
- * Canceled branch with no Cancel Event is drawable but never entered.
+ * An unreachable subtree is skipped at run time; a Canceled branch with no
+ * Cancel Event is drawable and never entered (the editor shows it inactive).
  */
 
 import {
@@ -10,7 +10,6 @@ import {
   LIFECYCLE_STARTED_HANDLE,
   nodesBehindOutlet,
 } from "@rova/shared/lifecycle/lifecycle-outlets";
-import { readLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
 import type { WorkflowEdge, WorkflowNode } from "@rova/shared/graph/types";
 
 export type PublishCheckResult =
@@ -75,45 +74,5 @@ export function checkUnreachableSubtrees(input: {
   return {
     valid: false,
     error: `Unreachable ${named}: nothing from the Lifecycle Node reaches them. Connect them or delete them before publishing.`,
-  };
-}
-
-/**
- * Refuse a Canceled branch on a workflow that declares no Cancel Event.
- *
- * `CancelBoundary` skips the boundary read entirely when no Cancel Event is
- * declared, so the branch is drawable and unreachable.
- */
-export function checkCanceledBranchNeedsCancelEvent(input: {
-  nodes: readonly WorkflowNode[];
-  edges: readonly WorkflowEdge[];
-}): PublishCheckResult {
-  const lifecycleNodes = input.nodes.filter(
-    (node) => node.data.type === "lifecycle"
-  );
-  const entryNodeIds = new Set(lifecycleNodes.map((node) => node.id));
-  const canceledBranch = nodesBehindOutlet({
-    entryNodeIds,
-    outlet: LIFECYCLE_CANCELED_HANDLE,
-    edges: input.edges,
-  });
-
-  if (canceledBranch.size === 0) {
-    return { valid: true };
-  }
-
-  const hasCancelEvent = lifecycleNodes.some(
-    (node) =>
-      (readLifecycleRules(node.data.config)?.cancelEvents.length ?? 0) > 0
-  );
-
-  if (hasCancelEvent) {
-    return { valid: true };
-  }
-
-  return {
-    valid: false,
-    error:
-      "This workflow has a Canceled branch but declares no Cancel Event. Add a Cancel Event on the Lifecycle Node, or remove the Canceled branch, before publishing.",
   };
 }

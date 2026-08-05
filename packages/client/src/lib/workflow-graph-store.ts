@@ -19,6 +19,7 @@ import {
   formatTemplateToken,
   parseTemplate,
 } from "@rova/shared/graph/node-references";
+import { inactiveCanceledBranch } from "#src/lib/inactive-canceled-branch";
 import type {
   WorkflowEdge,
   WorkflowNode,
@@ -62,13 +63,47 @@ export const isExecutionOverlayActiveAtom = atom(
 /**
  * What the canvas paints: the run overlay when a run is open, otherwise the
  * draft. Saves, publish, and config always read `nodesAtom` / `edgesAtom`.
+ *
+ * When no Cancel Event is declared, nodes and edges behind Canceled are marked
+ * `inactiveCanceled` here only so the canvas can mute them without writing that
+ * flag into the draft.
  */
-export const displayNodesAtom = atom(
-  (get) => get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom)
-);
-export const displayEdgesAtom = atom(
-  (get) => get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom)
-);
+export const displayNodesAtom = atom((get) => {
+  const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
+  const edges = get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom);
+  const { nodeIds } = inactiveCanceledBranch({ nodes, edges });
+  if (nodeIds.size === 0) {
+    return nodes;
+  }
+  return nodes.map((node) =>
+    nodeIds.has(node.id)
+      ? { ...node, data: { ...node.data, inactiveCanceled: true } }
+      : node
+  );
+});
+export const displayEdgesAtom = atom((get) => {
+  const nodes = get(executionOverlayGraphAtom)?.nodes ?? get(nodesStateAtom);
+  const edges = get(executionOverlayGraphAtom)?.edges ?? get(edgesStateAtom);
+  const { edgeIds } = inactiveCanceledBranch({ nodes, edges });
+  if (edgeIds.size === 0) {
+    return edges;
+  }
+  return edges.map((edge) =>
+    edgeIds.has(edge.id)
+      ? {
+          ...edge,
+          data: {
+            ...(typeof edge.data === "object" &&
+            edge.data !== null &&
+            !Array.isArray(edge.data)
+              ? edge.data
+              : {}),
+            inactiveCanceled: true,
+          },
+        }
+      : edge
+  );
+});
 
 /** Refuse draft mutations while a run overlay owns the canvas. */
 function draftEditable(get: Getter): boolean {

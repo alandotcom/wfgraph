@@ -58,6 +58,7 @@ vi.mock("@xyflow/react", () => ({
       "data-edge-id": id,
       "data-edge-path": path,
       "data-edge-stroke": String(style?.stroke ?? ""),
+      "data-edge-opacity": String(style?.opacity ?? ""),
     }),
   EdgeLabelRenderer: ({ children }: { children: ReactNode }) =>
     createElement("div", { "data-testid": "edge-label-layer" }, children),
@@ -82,7 +83,10 @@ vi.mock("@xyflow/react", () => ({
   },
 }));
 
-function renderAnimatedEdge(sourceHandleId?: string) {
+function renderAnimatedEdge(
+  sourceHandleId?: string,
+  data?: Record<string, unknown>
+) {
   return render(
     createElement(
       Edge.Animated as (props: Record<string, unknown>) => ReactNode,
@@ -94,6 +98,7 @@ function renderAnimatedEdge(sourceHandleId?: string) {
         style: {},
         target: "target",
         targetHandleId: "in",
+        data,
       }
     )
   );
@@ -119,5 +124,17 @@ describe("Edge.Animated", () => {
 
     expect(view.queryByText("True")).toBeNull();
     expect(view.queryByText("False")).toBeNull();
+  });
+
+  it("labels an inactive Canceled edge and mutes its stroke", () => {
+    const view = renderAnimatedEdge(undefined, { inactiveCanceled: true });
+
+    expect(view.getByText("No Cancel Event")).toBeTruthy();
+    expect(view.getByTestId("base-edge").getAttribute("data-edge-stroke")).toBe(
+      "var(--border)"
+    );
+    expect(
+      view.getByTestId("base-edge").getAttribute("data-edge-opacity")
+    ).toBe("0.4");
   });
 });

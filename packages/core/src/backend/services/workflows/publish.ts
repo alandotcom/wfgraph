@@ -13,10 +13,7 @@ import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
 import type { WorkflowPublishPayload } from "@rova/shared/graph/api-contracts";
 import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
-import {
-  checkCanceledBranchNeedsCancelEvent,
-  checkUnreachableSubtrees,
-} from "#src/backend/services/workflows/publish-checks";
+import { checkUnreachableSubtrees } from "#src/backend/services/workflows/publish-checks";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   catalogFingerprint,
@@ -29,18 +26,16 @@ const loggerFor = (workflowId: string) =>
     appLogger.get("workflow", "publish").with({ workflowId })
   );
 
-const publishOnlyChecks = [
-  checkUnreachableSubtrees,
-  checkCanceledBranchNeedsCancelEvent,
-] as const;
+const publishOnlyChecks = [checkUnreachableSubtrees] as const;
 
 /**
  * Publish the graph the editor sent as an immutable version.
  *
- * Runs the ordinary graph+catalog battery plus the publish-only checks
- * (unreachable subtrees, Canceled branch without a Cancel Event). Content-hash
- * dedupe reuses any prior version with the same digest and fingerprint, so an
- * idle editor does not accrete rows. The subscription index is rewritten from
+ * Runs the ordinary graph+catalog battery plus the publish-only unreachable-
+ * subtree check. A Canceled branch with no Cancel Event is drawable and never
+ * entered; the editor shows it inactive rather than refusing publish. Content-
+ * hash dedupe reuses any prior version with the same digest and fingerprint, so
+ * an idle editor does not accrete rows. The subscription index is rewritten from
  * the published graph only -- draft saves leave it alone. The draft column is
  * aligned to the published graph in the same transaction.
  */

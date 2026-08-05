@@ -97,4 +97,40 @@ describe("LifecycleNode handles", () => {
     expect(view.getByText("Started")).toBeTruthy();
     expect(view.getByText("Canceled")).toBeTruthy();
   });
+
+  it("softens the Canceled chip when no Cancel Event is declared", () => {
+    const view = renderLifecycleNode({
+      label: "",
+      description: "",
+      type: "lifecycle",
+      config: {
+        lifecycleRules: {
+          startEvents: ["app/appointment.created"],
+          cancelEvents: [],
+          concurrency: "unlimited",
+        },
+      },
+      status: "idle",
+    });
+
+    expect(view.getByText("Canceled").className).toContain("opacity-50");
+  });
+
+  it("keeps the Canceled chip full strength when a Cancel Event is declared", () => {
+    const view = renderLifecycleNode({
+      label: "",
+      description: "",
+      type: "lifecycle",
+      config: {
+        lifecycleRules: {
+          startEvents: ["app/appointment.created"],
+          cancelEvents: ["app/appointment.canceled"],
+          concurrency: "unlimited",
+        },
+      },
+      status: "idle",
+    });
+
+    expect(view.getByText("Canceled").className).not.toContain("opacity-50");
+  });
 });

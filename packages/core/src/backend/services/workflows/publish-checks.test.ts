@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  checkCanceledBranchNeedsCancelEvent,
   checkUnreachableSubtrees,
   reachableNodeIds,
 } from "#src/backend/services/workflows/publish-checks";
@@ -58,7 +57,9 @@ describe("publish-checks", () => {
     });
   });
 
-  it("flags a Canceled branch with no Cancel Event", () => {
+  // A Canceled branch with no Cancel Event is drawable and never entered; the
+  // editor shows it inactive. Publish must not refuse it as unreachable.
+  it("treats a Canceled branch as reachable even with no Cancel Event", () => {
     const onCancel = {
       id: "on-cancel",
       type: "action" as const,
@@ -83,51 +84,8 @@ describe("publish-checks", () => {
       })
     );
 
-    expect(checkCanceledBranchNeedsCancelEvent({ nodes, edges })).toEqual({
-      valid: false,
-      error: expect.stringContaining("Cancel Event"),
-    });
-  });
-
-  it("accepts a Canceled branch when a Cancel Event is declared", () => {
-    const withCancel = {
-      ...lifecycle,
-      data: {
-        ...lifecycle.data,
-        config: {
-          lifecycleRules: {
-            startEvents: ["app/appointment.created"],
-            cancelEvents: ["app/appointment.canceled"],
-            concurrency: "unlimited" as const,
-          },
-        },
-      },
-    };
-    const onCancel = {
-      id: "on-cancel",
-      type: "action" as const,
-      position: { x: 0, y: 100 },
-      data: {
-        label: "Cleanup",
-        type: "action" as const,
-        config: { actionType: "Wait" },
-      },
-    };
-    const { nodes, edges } = toWorkflowGraphData(
-      createSerializedWorkflowGraph({
-        nodes: [withCancel, onCancel],
-        edges: [
-          {
-            id: "e1",
-            source: withCancel.id,
-            target: onCancel.id,
-            sourceHandle: LIFECYCLE_CANCELED_HANDLE,
-          },
-        ],
-      })
-    );
-
-    expect(checkCanceledBranchNeedsCancelEvent({ nodes, edges })).toEqual({
+    expect(reachableNodeIds({ nodes, edges }).has("on-cancel")).toBe(true);
+    expect(checkUnreachableSubtrees({ nodes, edges })).toEqual({
       valid: true,
     });
   });

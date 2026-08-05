@@ -60,6 +60,10 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
   const displayDescription = data.description || "Where a run begins";
   const startSummary = getStartSummary(data.config);
   const status = data.status;
+  // Soften the chip when no Cancel Event can take this outlet; the handle stays
+  // connectable so a builder can still wire the branch before naming Events.
+  const canceledInactive =
+    (readLifecycleRules(data.config)?.cancelEvents.length ?? 0) === 0;
 
   return (
     <Node
@@ -78,7 +82,12 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
           {
             id: LIFECYCLE_CANCELED_HANDLE,
             position: Position.Bottom,
-            style: { left: CANCELED_HANDLE_LEFT, width: 12, height: 12 },
+            style: {
+              left: CANCELED_HANDLE_LEFT,
+              width: 12,
+              height: 12,
+              ...(canceledInactive ? { opacity: 0.45 } : {}),
+            },
           },
         ],
       }}
@@ -91,7 +100,10 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
         Started
       </div>
       <div
-        className="pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none"
+        className={cn(
+          "pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none",
+          canceledInactive && "opacity-50"
+        )}
         style={{ left: CANCELED_HANDLE_LEFT }}
       >
         Canceled
