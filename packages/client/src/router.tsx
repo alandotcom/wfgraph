@@ -98,9 +98,6 @@ const workflowRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/workflows/$workflowId",
   validateSearch: validateWorkflowSearch,
-  loaderDeps: ({ search }) => ({
-    executionId: search.executionId,
-  }),
   /**
    * Put the workflow on screen before the editor renders.
    *
@@ -123,10 +120,12 @@ const workflowRoute = createRoute({
    * time, and the connection list is refetched only when it has gone stale or a
    * connection write invalidated it.
    *
-   * An `executionId` search param opens the Runs tab (and selects that run) so
-   * the panel that reads the same search is mounted on arrival.
+   * `executionId` is deliberately not a loader dep: selecting a run must not
+   * re-hydrate the draft (which clears the run's pinned-graph overlay). Deep
+   * links still open the Runs tab here on workflow entry; further selection is
+   * URL state owned by the Runs panel.
    */
-  loader: async ({ params, deps }) => {
+  loader: async ({ params, location }) => {
     try {
       const [payload, integrations] = await Promise.all([
         queryClient.fetchQuery(
@@ -144,9 +143,13 @@ const workflowRoute = createRoute({
         nodes: repairNodeIntegrations(workflow.nodes, integrations),
       });
 
-      if (deps.executionId) {
+      // Search is validated on the route; without `loaderDeps` the loader's
+      // `location.search` is not narrowed, so read the deep-link id from the
+      // validated shape. Selecting a run still must not re-run this loader.
+      const executionId = (location.search as WorkflowRouteSearch).executionId;
+      if (executionId) {
         appStore.set(propertiesPanelActiveTabAtom, "runs");
-        appStore.set(selectedExecutionIdAtom, deps.executionId);
+        appStore.set(selectedExecutionIdAtom, executionId);
       }
     } catch (error) {
       appStore.set(workflowNotFoundAtom, true);

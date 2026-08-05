@@ -21,7 +21,10 @@ import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
+import {
+  propertiesPanelActiveTabAtom,
+  selectedExecutionIdAtom,
+} from "#src/lib/workflow-ui-store";
 import { toWorkflowGraphData } from "@rova/shared/graph/graph";
 import { WorkflowRefusedStarts } from "./workflow-refused-starts";
 import { WorkflowRunDetail } from "./workflow-run-detail";
@@ -47,6 +50,7 @@ export function WorkflowRuns() {
   const [selectedExecutionId, setSelectedExecutionId] = useAtom(
     selectedExecutionIdAtom
   );
+  const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const queryClient = useQueryClient();
   // Which run is open is URL state (TanStack Router search params), not a
   // local mirror of a one-shot deep link.
@@ -112,28 +116,49 @@ export function WorkflowRuns() {
     refetchInterval: detailPollInterval,
   });
 
-  // Paint the version this run pinned onto the canvas so statuses land on the
-  // graph it walked, not the live draft. Cleared when the run is closed.
-  useAfterCommit(detailQuery.data?.graph ?? executionId, () => {
-    const graph = detailQuery.data?.graph;
-    if (!executionId || !graph) {
+  // URL search is the source of truth for which run is open. Selecting a run
+  // only navigates; this is what writes the atoms (and opens the Runs tab for
+  // deep links / browser back). Clearing the search drops the overlay so the
+  // canvas returns to the draft.
+  useAfterCommit(executionId ?? null, () => {
+    if (executionId === undefined) {
+      setSelectedExecutionId(null);
       setExecutionOverlay(null);
       return;
     }
-
-    const graphData = toWorkflowGraphData(graph);
-    setExecutionOverlay({
-      nodes: graphData.nodes.map((node) => {
-        const editorNode = toEditorNode(node);
-        return {
-          ...editorNode,
-          selected: false,
-          data: { ...editorNode.data, status: "idle" as const },
-        };
-      }),
-      edges: graphData.edges.map(toEditorEdge),
-    });
+    setActiveTab("runs");
+    setSelectedExecutionId(executionId);
   });
+
+  // Paint the version this run pinned onto the canvas so statuses land on the
+  // graph it walked, not the live draft. Keyed on executionId and the logs
+  // update time so re-selecting a cached run still re-applies after the overlay
+  // was cleared (e.g. back to the list). Missing graph while a run is open is
+  // left alone: clearing here would flash the draft between run switches.
+  const pinnedGraph = detailQuery.data?.graph;
+  useAfterCommit(
+    executionId === undefined || pinnedGraph === undefined
+      ? null
+      : `${executionId}:${detailQuery.dataUpdatedAt}`,
+    () => {
+      if (!executionId || !pinnedGraph) {
+        return;
+      }
+
+      const graphData = toWorkflowGraphData(pinnedGraph);
+      setExecutionOverlay({
+        nodes: graphData.nodes.map((node) => {
+          const editorNode = toEditorNode(node);
+          return {
+            ...editorNode,
+            selected: false,
+            data: { ...editorNode.data, status: "idle" as const },
+          };
+        }),
+        edges: graphData.edges.map(toEditorEdge),
+      });
+    }
+  );
 
   const eventsQuery = useQuery({
     ...orpcQuery.workflow.getExecutionEvents.queryOptions({
@@ -161,13 +186,10 @@ export function WorkflowRuns() {
 
   const handleSelectRun = (id: string) => {
     void navigate({ search: { executionId: id } });
-    setSelectedExecutionId(id);
   };
 
   const handleBack = () => {
     void navigate({ search: {} });
-    setSelectedExecutionId(null);
-    setExecutionOverlay(null);
   };
 
   if (executionsQuery.isPending && executionId === undefined) {
