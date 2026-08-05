@@ -28,6 +28,7 @@ import type {
   WorkflowEdge,
   WorkflowNode,
 } from "#src/graph/types";
+import { fieldsVisibleForConfig } from "#src/graph/node-references";
 import {
   eventSplitOutletEvent,
   isEventSplitNode,
@@ -238,7 +239,13 @@ function actionOutputPaths(
   }
 
   const action = findAction(catalog, actionType);
-  return action ? action.outputFields.map((field) => field.path) : [];
+  if (!action) {
+    return [];
+  }
+
+  return fieldsVisibleForConfig(node.data.config, action.outputFields).map(
+    (field) => field.path
+  );
 }
 
 /**

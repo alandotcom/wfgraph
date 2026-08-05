@@ -49,6 +49,20 @@ describe("readExtensionCatalog", () => {
     );
   });
 
+  it("carries showWhen on a reference field across the wire", () => {
+    const payloadFields: ReferenceField[] = [
+      {
+        path: "event",
+        type: "string",
+        showWhen: { field: "waitMode", equals: "event" },
+      },
+    ];
+
+    expect(readExtensionCatalog(aCatalog(payloadFields))).toEqual(
+      aCatalog(payloadFields)
+    );
+  });
+
   it("answers nothing for a field type the vocabulary has no word for", () => {
     expect(
       readExtensionCatalog(aCatalog([{ path: "x", type: "money" } as never]))

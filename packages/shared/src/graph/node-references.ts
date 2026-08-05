@@ -14,6 +14,7 @@
  */
 
 import type { JsonObject, JsonValue } from "#src/types/json";
+import { matchesShowWhen, type ShowWhen } from "#src/types/show-when";
 import type {
   WorkflowSchemaField,
   WorkflowSchemaFieldType,
@@ -30,6 +31,10 @@ import type {
  * subtypes, `timestamp` and `duration`. Folding `format` into `type` would
  * change the serialized schema contract and needs a read-side migration, so both
  * are kept for now.
+ *
+ * `showWhen` belongs to action output fields: offer the path only when another
+ * config key holds a given value. Absent means always offered. Event payload
+ * fields do not use it.
  */
 export type ReferenceField = {
   path: string;
@@ -39,7 +44,20 @@ export type ReferenceField = {
   format?: "timestamp" | "duration";
   nullable?: boolean;
   enumValues?: string[];
+  showWhen?: ShowWhen;
 };
+
+/**
+ * Catalog output fields this config currently makes addressable.
+ *
+ * Uses the same `showWhen` predicate as config inputs.
+ */
+export function fieldsVisibleForConfig(
+  config: Record<string, unknown> | undefined,
+  fields: readonly ReferenceField[]
+): readonly ReferenceField[] {
+  return fields.filter((field) => matchesShowWhen(config, field.showWhen));
+}
 
 /**
  * A reference field together with the node that produces it. This is what a

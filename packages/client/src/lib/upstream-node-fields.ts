@@ -12,9 +12,10 @@ import {
   EVENT_NAME_FIELD_PATH,
 } from "@rova/shared/conditions/conditions";
 import { eventsReaching } from "@rova/shared/graph/events-reaching";
-import type {
-  ReferenceField,
-  UpstreamField,
+import {
+  fieldsVisibleForConfig,
+  type ReferenceField,
+  type UpstreamField,
 } from "@rova/shared/graph/node-references";
 import {
   type ReachableField,
@@ -154,7 +155,7 @@ export function getNodeOutputFields(
   if (actionType) {
     const pluginFields = getPluginActionOutputFields(actionType);
     if (pluginFields.length > 0) {
-      return pluginFields;
+      return [...fieldsVisibleForConfig(node.data.config, pluginFields)];
     }
   }
 

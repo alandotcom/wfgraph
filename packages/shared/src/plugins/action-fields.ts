@@ -12,6 +12,8 @@
  * few helpers over a field list.
  */
 
+import type { ShowWhen } from "#src/types/show-when";
+
 /**
  * Select Option
  * Used for select/dropdown fields
@@ -69,10 +71,7 @@ export type ActionConfigFieldBase = {
   literal?: true;
 
   // Conditional rendering: only show if another field has a specific value
-  showWhen?: {
-    field: string;
-    equals: string;
-  };
+  showWhen?: ShowWhen;
 };
 
 /**

@@ -5,6 +5,7 @@ import {
   readWaitDelayTiming,
   readWaitSubscriptions,
 } from "#src/lifecycle/wait-subscription";
+import { matchesShowWhen, type ShowWhen } from "#src/types/show-when";
 import { parseTimeOfDayMinutes } from "#src/utils/wait-allowed-hours";
 import type { WorkflowNode } from "#src/graph/types";
 
@@ -23,10 +24,7 @@ type ActionConfigFieldBaseLike = {
   key: string;
   label: string;
   required?: boolean;
-  showWhen?: {
-    field: string;
-    equals: string;
-  };
+  showWhen?: ShowWhen;
   type?: string;
 };
 
@@ -85,17 +83,6 @@ function flattenConfigFields(
   return flattened;
 }
 
-function shouldShowField(
-  field: ActionConfigFieldBaseLike,
-  config: Record<string, unknown>
-): boolean {
-  if (!field.showWhen) {
-    return true;
-  }
-
-  return config[field.showWhen.field] === field.showWhen.equals;
-}
-
 function getPluginMissingRequiredFields(input: {
   config: Record<string, unknown>;
   configFields: readonly ActionConfigFieldLike[];
@@ -107,7 +94,7 @@ function getPluginMissingRequiredFields(input: {
     .filter(
       (field) =>
         field.required === true &&
-        shouldShowField(field, config) &&
+        matchesShowWhen(config, field.showWhen) &&
         isFieldEmpty(config[field.key])
     )
     .map((field) => ({

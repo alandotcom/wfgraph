@@ -47,11 +47,12 @@ export const builtInActions: readonly ActionMetadata[] = [
     category: "System",
     configFields: [],
     // What both modes leave behind, plus the arriving Event's name and payload
-    // for an event wait. `payload` is offered as one object rather than as
-    // leaves, because each Event the node parks on carries its own payload
-    // shape and the catalog has one field list for the node. A builder writes
-    // `payload.<field>` themselves, and reads `event` to learn which Event
-    // arrived.
+    // for an event wait. Event-only paths declare `showWhen` so any reader of
+    // `fieldsVisibleForConfig` drops them on a delay Wait. `payload` is one
+    // object rather than leaves, because each Event the node parks on carries
+    // its own shape and the catalog has one field list for the node. A builder
+    // writes `payload.<field>` themselves, and reads `event` to learn which
+    // Event arrived.
     outputFields: [
       {
         path: "waitType",
@@ -62,6 +63,7 @@ export const builtInActions: readonly ActionMetadata[] = [
         path: "timedOut",
         description: "Whether the wait ended on its timeout",
         type: "boolean",
+        showWhen: { field: "waitMode", equals: "event" },
       },
       {
         path: "resumedAt",
@@ -73,11 +75,13 @@ export const builtInActions: readonly ActionMetadata[] = [
         path: "event",
         description: "The name of the Event that resumed the run",
         type: "string",
+        showWhen: { field: "waitMode", equals: "event" },
       },
       {
         path: "payload",
         description: "The payload of the Event that resumed the run",
         type: "object",
+        showWhen: { field: "waitMode", equals: "event" },
       },
     ],
   },

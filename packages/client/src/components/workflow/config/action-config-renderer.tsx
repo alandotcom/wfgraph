@@ -17,6 +17,7 @@ import {
   type ActionConfigFieldBase,
   isFieldGroup,
 } from "@rova/shared/plugins/action-fields";
+import { matchesShowWhen } from "@rova/shared/types/show-when";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 type FieldProps = {
@@ -251,11 +252,8 @@ function renderField(
   disabled?: boolean
 ) {
   // Check conditional rendering
-  if (field.showWhen) {
-    const dependentValue = config[field.showWhen.field];
-    if (dependentValue !== field.showWhen.equals) {
-      return null;
-    }
+  if (!matchesShowWhen(config, field.showWhen)) {
+    return null;
   }
 
   const rawValue = config[field.key];

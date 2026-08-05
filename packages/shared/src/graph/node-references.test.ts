@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  fieldsVisibleForConfig,
   findTemplateTokens,
   flattenSchemaToReferenceFields,
   formatTemplateToken,
@@ -412,5 +413,25 @@ describe("resolveOutputPath", () => {
     expect(
       resolveOutputPath({ items: [{ sku: "SKU-1" }] }, itemPath.path)
     ).toBe("SKU-1");
+  });
+});
+
+describe("fieldsVisibleForConfig", () => {
+  it("keeps fields whose showWhen matches the config", () => {
+    const fields = [
+      { path: "always", type: "string" as const },
+      {
+        path: "onEvent",
+        type: "string" as const,
+        showWhen: { field: "waitMode", equals: "event" },
+      },
+    ];
+
+    expect(
+      fieldsVisibleForConfig({ waitMode: "delay" }, fields).map((f) => f.path)
+    ).toEqual(["always"]);
+    expect(
+      fieldsVisibleForConfig({ waitMode: "event" }, fields).map((f) => f.path)
+    ).toEqual(["always", "onEvent"]);
   });
 });

@@ -17,12 +17,18 @@ import type {
   ExtensionCatalog,
 } from "#src/extensions/catalog";
 import type { ActionConfigField } from "#src/plugins/action-fields";
+import type { ShowWhen } from "#src/types/show-when";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 import type { ReferenceField } from "#src/graph/node-references";
 
 const selectOptionSchema = Schema.Struct({
   value: Schema.String,
   label: Schema.String,
+});
+
+const showWhenWireSchema: Schema.Codec<ShowWhen> = Schema.Struct({
+  field: Schema.String,
+  equals: Schema.String,
 });
 
 /**
@@ -53,12 +59,7 @@ const actionConfigFieldBaseSchema = Schema.Struct({
   min: Schema.optionalKey(Schema.Finite),
   required: Schema.optionalKey(Schema.Boolean),
   literal: Schema.optionalKey(Schema.Literal(true)),
-  showWhen: Schema.optionalKey(
-    Schema.Struct({
-      field: Schema.String,
-      equals: Schema.String,
-    })
-  ),
+  showWhen: Schema.optionalKey(showWhenWireSchema),
 });
 
 const actionConfigFieldGroupSchema = Schema.Struct({
@@ -96,6 +97,7 @@ const referenceFieldWireSchema: Schema.Codec<ReferenceField> = Schema.Struct({
   format: Schema.optionalKey(Schema.Literals(["timestamp", "duration"])),
   nullable: Schema.optionalKey(Schema.Boolean),
   enumValues: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
+  showWhen: Schema.optionalKey(showWhenWireSchema),
 });
 
 const eventMetadataSchema = Schema.Struct({
