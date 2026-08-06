@@ -8,7 +8,7 @@ import {
   LIFECYCLE_CANCELED_HANDLE,
   nodesBehindOutlet,
 } from "@rova/shared/lifecycle/lifecycle-outlets";
-import { readLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
+import { configDeclaresCancelEvent } from "@rova/shared/lifecycle/lifecycle-rules";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 export type InactiveCanceledBranch = {
@@ -42,9 +42,8 @@ export function inactiveCanceledBranch(input: {
     return EMPTY;
   }
 
-  const hasCancelEvent = lifecycleNodes.some(
-    (node) =>
-      (readLifecycleRules(node.data.config)?.cancelEvents.length ?? 0) > 0
+  const hasCancelEvent = lifecycleNodes.some((node) =>
+    configDeclaresCancelEvent(node.data.config)
   );
   if (hasCancelEvent) {
     return EMPTY;

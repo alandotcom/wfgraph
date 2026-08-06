@@ -4,6 +4,7 @@ import type { ExtensionCatalog } from "#src/extensions/catalog";
 import { rejectUnknownKeys } from "#src/types/schema";
 import {
   checkLifecycleRules,
+  configDeclaresCancelEvent,
   eventsNeedingCorrelationPath,
   hasStartSource,
   type LifecycleRules,
@@ -127,6 +128,33 @@ describe("readLifecycleRules", () => {
     expect(
       readLifecycleRules({ lifecycleRules: { concurrency: "replace" } })
     ).toBeUndefined();
+  });
+});
+
+describe("configDeclaresCancelEvent", () => {
+  it("is true when cancelEvents lists at least one name", () => {
+    expect(
+      configDeclaresCancelEvent({
+        lifecycleRules: {
+          startEvents: [],
+          cancelEvents: ["app/appointment.canceled"],
+          concurrency: "unlimited",
+        },
+      })
+    ).toBe(true);
+  });
+
+  it("is false when cancelEvents is empty or the config carries no rules", () => {
+    expect(
+      configDeclaresCancelEvent({
+        lifecycleRules: {
+          startEvents: ["app/appointment.created"],
+          cancelEvents: [],
+          concurrency: "unlimited",
+        },
+      })
+    ).toBe(false);
+    expect(configDeclaresCancelEvent(undefined)).toBe(false);
   });
 });
 

@@ -13,6 +13,7 @@ import {
 } from "@rova/shared/lifecycle/lifecycle-outlets";
 import type { WorkflowNodeData } from "#src/lib/workflow-graph-types";
 import {
+  configDeclaresCancelEvent,
   manualStartAllowed,
   readLifecycleRules,
 } from "@rova/shared/lifecycle/lifecycle-rules";
@@ -62,8 +63,7 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
   const status = data.status;
   // Soften the chip when no Cancel Event can take this outlet; the handle stays
   // connectable so a builder can still wire the branch before naming Events.
-  const canceledInactive =
-    (readLifecycleRules(data.config)?.cancelEvents.length ?? 0) === 0;
+  const canceledInactive = !configDeclaresCancelEvent(data.config);
 
   return (
     <Node

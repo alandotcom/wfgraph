@@ -14,22 +14,26 @@ import {
 } from "@rova/shared/graph/graph";
 import { LIFECYCLE_CANCELED_HANDLE } from "@rova/shared/lifecycle/lifecycle-outlets";
 
-const lifecycle = {
-  id: "lifecycle-1",
-  type: "lifecycle" as const,
-  position: { x: 0, y: 0 },
-  data: {
-    label: "Start",
+function lifecycleNode(cancelEvents: string[] = []) {
+  return {
+    id: "lifecycle-1",
     type: "lifecycle" as const,
-    config: {
-      lifecycleRules: {
-        startEvents: ["app/appointment.created"],
-        cancelEvents: [] as string[],
-        concurrency: "unlimited" as const,
+    position: { x: 0, y: 0 },
+    data: {
+      label: "Start",
+      type: "lifecycle" as const,
+      config: {
+        lifecycleRules: {
+          startEvents: ["app/appointment.created"],
+          cancelEvents,
+          concurrency: "unlimited" as const,
+        },
       },
     },
-  },
-};
+  };
+}
+
+const lifecycle = lifecycleNode();
 
 describe("publish-checks", () => {
   it("flags nodes the Lifecycle Node cannot reach", () => {
@@ -58,8 +62,9 @@ describe("publish-checks", () => {
   });
 
   // A Canceled branch with no Cancel Event is drawable and never entered; the
-  // editor shows it inactive. Publish must not refuse it as unreachable.
-  it("treats a Canceled branch as reachable even with no Cancel Event", () => {
+  // editor shows it inactive. Publish must not refuse it as unreachable, but
+  // reachableNodeIds must match the engine (CancelBoundary never schedules it).
+  it("keeps an inactive Canceled branch out of engine reachability", () => {
     const onCancel = {
       id: "on-cancel",
       type: "action" as const,
@@ -77,6 +82,38 @@ describe("publish-checks", () => {
           {
             id: "e1",
             source: lifecycle.id,
+            target: onCancel.id,
+            sourceHandle: LIFECYCLE_CANCELED_HANDLE,
+          },
+        ],
+      })
+    );
+
+    expect(reachableNodeIds({ nodes, edges }).has("on-cancel")).toBe(false);
+    expect(checkUnreachableSubtrees({ nodes, edges })).toEqual({
+      valid: true,
+    });
+  });
+
+  it("counts the Canceled branch as reachable when a Cancel Event is declared", () => {
+    const entry = lifecycleNode(["app/appointment.canceled"]);
+    const onCancel = {
+      id: "on-cancel",
+      type: "action" as const,
+      position: { x: 0, y: 100 },
+      data: {
+        label: "Cleanup",
+        type: "action" as const,
+        config: { actionType: "Wait" },
+      },
+    };
+    const { nodes, edges } = toWorkflowGraphData(
+      createSerializedWorkflowGraph({
+        nodes: [entry, onCancel],
+        edges: [
+          {
+            id: "e1",
+            source: entry.id,
             target: onCancel.id,
             sourceHandle: LIFECYCLE_CANCELED_HANDLE,
           },

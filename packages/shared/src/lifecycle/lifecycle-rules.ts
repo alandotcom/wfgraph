@@ -108,6 +108,16 @@ export function readLifecycleRules(
 }
 
 /**
+ * Whether this Lifecycle Node config lists at least one Cancel Event.
+ * Without one, CancelBoundary never enters the Canceled outlet.
+ */
+export function configDeclaresCancelEvent(
+  config: Record<string, unknown> | undefined
+): boolean {
+  return (readLifecycleRules(config)?.cancelEvents.length ?? 0) > 0;
+}
+
+/**
  * Where an Event's Entity Value sits for this workflow: the builder's path, or
  * the Event Author's declaration where the builder wrote none.
  *
