@@ -300,12 +300,13 @@ describe("WorkflowRuns", () => {
   it("opens a search-param run past the list from the logs summary", async () => {
     served.items = [execution("exec_other", "completed")];
     // Past the newest-50 cap the list has no row; the logs summary alone must
-    // still paint Test Mode and the event start source.
+    // still paint Test Mode and the start source. Use "manual" so the source
+    // assertion cannot be satisfied by the mock's "event" default.
     served.logsSummaryExtras = {
       exec_past_cap: {
         runMode: "test",
-        startSource: "event",
-        startEventName: "app/appointment.created",
+        startSource: "manual",
+        startEventName: null,
         entityValue: "appt_99",
       },
     };
@@ -316,7 +317,7 @@ describe("WorkflowRuns", () => {
     ).toBeTruthy();
     expect(view.getByText(/has left the runs list/)).toBeTruthy();
     expect(view.getByText("Test Mode")).toBeTruthy();
-    expect(view.getByText("event")).toBeTruthy();
+    expect(view.getByText("manual")).toBeTruthy();
   });
 
   it("clears the search param when going back to the list", async () => {
