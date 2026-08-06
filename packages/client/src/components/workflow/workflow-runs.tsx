@@ -117,16 +117,23 @@ export function WorkflowRuns() {
   });
 
   // URL search owns which run is open. One sync: selection, Runs tab, and the
-  // pinned-graph overlay. Key is closed | open (loading) | ready (graph in
-  // hand) — never fetch timestamps, so a logs poll cannot rebuild the overlay
-  // and wipe node statuses that page.tsx painted onto it.
+  // pinned-graph overlay. Paint only when the run's workflowId matches the
+  // hydrated editor (`currentWorkflowId`) — never before, or a late hydrate
+  // clears the overlay while the key stays `ready` and the canvas sticks on
+  // the draft. Key is closed | open:exec:wf | ready:exec:wf; never fetch
+  // timestamps, so a logs poll cannot rebuild nodes as idle and wipe statuses.
   const pinnedGraph = detailQuery.data?.graph;
+  const executionWorkflowId = detailQuery.data?.execution.workflowId;
+  const workflowAligned =
+    pinnedGraph !== undefined &&
+    executionWorkflowId !== undefined &&
+    executionWorkflowId === currentWorkflowId;
   useAfterCommit(
     executionId === undefined
       ? "closed"
-      : pinnedGraph === undefined
-        ? `open:${executionId}`
-        : `ready:${executionId}`,
+      : workflowAligned
+        ? `ready:${executionId}:${currentWorkflowId}`
+        : `open:${executionId}:${currentWorkflowId ?? ""}`,
     () => {
       if (executionId === undefined) {
         setSelectedExecutionId(null);
@@ -137,7 +144,10 @@ export function WorkflowRuns() {
       setActiveTab("runs");
       setSelectedExecutionId(executionId);
 
-      if (!pinnedGraph) {
+      if (!workflowAligned || !pinnedGraph) {
+        // Stay selection-only until hydrate and the run agree; drop any stale
+        // overlay from the previous workflow rather than paint-then-lose.
+        setExecutionOverlay(null);
         return;
       }
 

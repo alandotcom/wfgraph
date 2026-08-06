@@ -11,6 +11,7 @@ import { isRefusal } from "#src/lib/rpc-client";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
   edgesAtom,
+  isExecutionOverlayActiveAtom,
   nodesAtom,
   setNodeStatusesAtom,
 } from "#src/lib/workflow-graph-store";
@@ -36,6 +37,7 @@ const WorkflowEditor = () => {
   const edges = useAtomValue(edgesAtom);
   const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
   const [selectedExecutionId] = useAtom(selectedExecutionIdAtom);
+  const isExecutionOverlayActive = useAtomValue(isExecutionOverlayActiveAtom);
   const setIsExecuting = useSetAtom(isExecutingAtom);
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
@@ -99,28 +101,43 @@ const WorkflowEditor = () => {
   // Projecting a run's progress onto the graph. The statuses live on the nodes
   // because that is where React Flow reads them from, so this is a write into a
   // store rather than something render can return, and the thing it follows is
-  // a server response rather than anything the user did.
-  useAfterCommit(executionStatus ?? selectedExecutionId, () => {
-    if (!selectedExecutionId) {
+  // a server response rather than anything the user did. Overlay presence is in
+  // the key so a null→present rebuild (late hydrate restore) re-projects chips
+  // onto the new nodes; completed runs do not poll, so identity alone is not enough.
+  const nodeStatusKey =
+    executionStatus?.nodeStatuses
+      .map((nodeStatus) => `${nodeStatus.nodeId}=${nodeStatus.status}`)
+      .join(",") ?? "";
+  useAfterCommit(
+    selectedExecutionId === null
+      ? "idle"
+      : `${selectedExecutionId}:${isExecutionOverlayActive}:${
+          executionStatus === undefined
+            ? "loading"
+            : `${executionStatus.status}:${nodeStatusKey}`
+        }`,
+    () => {
+      if (!selectedExecutionId) {
+        setNodeStatuses(
+          nodes.map((node) => ({ nodeId: node.id, status: "idle" }))
+        );
+        setIsExecuting(false);
+        return;
+      }
+
+      if (!executionStatus) {
+        return;
+      }
+
       setNodeStatuses(
-        nodes.map((node) => ({ nodeId: node.id, status: "idle" }))
+        executionStatus.nodeStatuses.map((nodeStatus) => ({
+          nodeId: nodeStatus.nodeId,
+          status: nodeStatus.status === "pending" ? "idle" : nodeStatus.status,
+        }))
       );
-      setIsExecuting(false);
-      return;
+      setIsExecuting(isRunInProgress(executionStatus.status));
     }
-
-    if (!executionStatus) {
-      return;
-    }
-
-    setNodeStatuses(
-      executionStatus.nodeStatuses.map((nodeStatus) => ({
-        nodeId: nodeStatus.nodeId,
-        status: nodeStatus.status === "pending" ? "idle" : nodeStatus.status,
-      }))
-    );
-    setIsExecuting(isRunInProgress(executionStatus.status));
-  });
+  );
 
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden">
