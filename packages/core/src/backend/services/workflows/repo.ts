@@ -611,62 +611,86 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
           }),
 
         setPublishedVersion: (input) =>
-          database.query(
-            async (db) =>
-              await db.transaction(async (tx) => {
-                const version = await tx.query.workflowVersions.findFirst({
-                  where: eq(workflowVersions.id, input.versionId),
-                });
-                if (!version) {
-                  return null;
-                }
-                return activatePublishedVersion(tx, {
-                  workflowId: input.workflowId,
-                  version,
-                  draftGraph: input.draftGraph,
-                  eventSubscriptions: input.eventSubscriptions,
-                });
-              })
+          database.query(async (db) =>
+            publishTransaction(db, async (tx) => {
+              const version = await tx.query.workflowVersions.findFirst({
+                where: eq(workflowVersions.id, input.versionId),
+              });
+              if (!version) {
+                return null;
+              }
+              return activatePublishedVersion(tx, {
+                workflowId: input.workflowId,
+                version,
+                draftGraph: input.draftGraph,
+                eventSubscriptions: input.eventSubscriptions,
+              });
+            })
           ),
 
         insertPublishedVersion: (input) =>
-          database.query(
-            async (db) =>
-              await db.transaction(async (tx) => {
-                // Optimistic claim: insert only if `version` is still free.
-                // Empty returning means another publish took it.
-                const [minted] = await tx
-                  .insert(workflowVersions)
-                  .values({
-                    id: input.versionId,
-                    workflowId: input.workflowId,
-                    version: input.version,
-                    graph: input.graph,
-                    catalogFingerprint: input.catalogFingerprint,
-                    graphDigest: input.graphDigest,
-                  })
-                  .onConflictDoNothing({
-                    target: [
-                      workflowVersions.workflowId,
-                      workflowVersions.version,
-                    ],
-                  })
-                  .returning();
-                if (!minted) {
-                  return { stale: true };
-                }
-
-                return activatePublishedVersion(tx, {
+          database.query(async (db) =>
+            publishTransaction(db, async (tx) => {
+              // Optimistic claim: insert only if `version` is still free.
+              // Empty returning means another publish took it.
+              const [minted] = await tx
+                .insert(workflowVersions)
+                .values({
+                  id: input.versionId,
                   workflowId: input.workflowId,
-                  version: minted,
-                  draftGraph: input.draftGraph,
-                  eventSubscriptions: input.eventSubscriptions,
-                });
-              })
+                  version: input.version,
+                  graph: input.graph,
+                  catalogFingerprint: input.catalogFingerprint,
+                  graphDigest: input.graphDigest,
+                })
+                .onConflictDoNothing({
+                  target: [
+                    workflowVersions.workflowId,
+                    workflowVersions.version,
+                  ],
+                })
+                .returning();
+              if (!minted) {
+                return { stale: true };
+              }
+
+              return activatePublishedVersion(tx, {
+                workflowId: input.workflowId,
+                version: minted,
+                draftGraph: input.draftGraph,
+                eventSubscriptions: input.eventSubscriptions,
+              });
+            })
           ),
       };
     })
   );
+
+/**
+ * Thrown when the workflow row is gone after a publish write has already run
+ * inside the transaction. Catching it outside maps to `null` (NotFound) while
+ * the throw itself rolls the mint back — a soft `return null` would commit it.
+ */
+class PublishedWorkflowMissing extends Error {
+  constructor() {
+    super("Workflow missing during publish activation");
+    this.name = "PublishedWorkflowMissing";
+  }
+}
+
+async function publishTransaction<A>(
+  db: RovaDatabase,
+  body: (tx: RovaTransaction) => Promise<A>
+): Promise<A | null> {
+  try {
+    return await db.transaction(body);
+  } catch (error) {
+    if (error instanceof PublishedWorkflowMissing) {
+      return null;
+    }
+    throw error;
+  }
+}
 
 async function activatePublishedVersion(
   tx: RovaDatabase | RovaTransaction,
@@ -676,7 +700,7 @@ async function activatePublishedVersion(
     draftGraph: SerializedWorkflowGraph;
     eventSubscriptions: WorkflowEventSubscriptionRow[];
   }
-): Promise<{ workflow: Workflow; version: WorkflowVersion } | null> {
+): Promise<{ workflow: Workflow; version: WorkflowVersion }> {
   const updated = await tx
     .update(workflows)
     .set({
@@ -691,7 +715,7 @@ async function activatePublishedVersion(
 
   const workflow = updated.at(0);
   if (!workflow) {
-    return null;
+    throw new PublishedWorkflowMissing();
   }
 
   await tx

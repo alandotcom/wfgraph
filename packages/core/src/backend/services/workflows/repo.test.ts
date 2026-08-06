@@ -264,4 +264,38 @@ describe("insertPublishedVersion", () => {
 
     expect(published).toEqual({ stale: true });
   });
+
+  // Soft-returning null after a successful mint would commit the version row.
+  // The txn must throw (abort) so the catch outside can map to NotFound.
+  it("aborts the transaction when the workflow update matches nothing after minting", async () => {
+    const {
+      layer: databaseLayer,
+      statements,
+      transactionOutcomes,
+    } = stubDatabase(({ query }) => {
+      if (query.startsWith("insert") && query.includes("workflow_versions")) {
+        return [versionRow("ver_orphan", 1)];
+      }
+      if (query.startsWith("update") && query.includes("workflows")) {
+        return [];
+      }
+      return [];
+    });
+
+    const published = await Effect.runPromise(
+      insert(1).pipe(
+        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
+      )
+    );
+
+    expect(published).toBeNull();
+    expect(transactionOutcomes).toEqual(["threw"]);
+    expect(
+      statements.some(
+        (statement) =>
+          statement.query.startsWith("insert") &&
+          statement.query.includes("workflow_versions")
+      )
+    ).toBe(true);
+  });
 });
