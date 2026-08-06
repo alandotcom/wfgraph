@@ -254,6 +254,23 @@ describe("node data failure messages", () => {
     expect(message).toContain("Unexpected key");
   });
 
+  // Retired waitMode "hook" fails at the graph boundary so autosave never
+  // parks a shape the engine would refuse.
+  it("refuses a Wait node still configured for the retired hook mode", () => {
+    const message = messageFor({
+      label: "Wait",
+      type: "action",
+      config: {
+        actionType: "Wait",
+        waitMode: "hook",
+        waitHookToken: "token_abc",
+      },
+    });
+
+    expect(message).toContain("waitMode");
+    expect(message).not.toContain("token_abc");
+  });
+
   it("keeps the rejected node data out of the message", () => {
     const message = messageFor({
       label: "Webhook",

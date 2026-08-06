@@ -93,6 +93,8 @@ export type StartedWorkflowRun = {
 
 export type RecordTerminalWorkflowRunInput = {
   workflowId: string;
+  /** The published version this terminal row still pins. */
+  workflowVersionId: string;
   start: WorkflowRunStart;
   runMode: WorkflowMode;
   payload: JsonObject;
@@ -342,6 +344,7 @@ export const recordTerminalWorkflowRun = Effect.fn("recordTerminalWorkflowRun")(
 
     const execution = yield* repo.insertTerminal({
       workflowId: input.workflowId,
+      workflowVersionId: input.workflowVersionId,
       status: input.status,
       startSource: input.start.source,
       runMode: input.runMode,
@@ -376,12 +379,14 @@ export const recordTerminalWorkflowRun = Effect.fn("recordTerminalWorkflowRun")(
 export const recordPausedRunIgnored = Effect.fn("recordPausedRunIgnored")(
   function* (input: {
     workflowId: string;
+    workflowVersionId: string;
     startSource: WorkflowExecutionStartSource;
     runMode: WorkflowMode;
     payload: JsonObject;
   }) {
     return yield* recordTerminalWorkflowRun({
       workflowId: input.workflowId,
+      workflowVersionId: input.workflowVersionId,
       start: { source: input.startSource },
       runMode: input.runMode,
       payload: input.payload,

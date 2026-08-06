@@ -33,10 +33,10 @@ export type WorkflowWaitState = typeof workflowWaitStates.$inferSelect;
 export type NewExecution = {
   workflowId: string;
   /**
-   * The published version this run pins. Required for a start that will execute
-   * the graph; absent on a terminal row that never ran (paused ignore, etc.).
+   * The published version this run pins. Required even when the row is terminal
+   * and never executes: the runs panel still resolves node ids against it.
    */
-  workflowVersionId?: string;
+  workflowVersionId: string;
   startSource: NonNullable<WorkflowExecution["startSource"]>;
   runMode: WorkflowExecution["runMode"];
   startEventName?: string;

@@ -286,41 +286,27 @@ const ignoredReasonSchema = Schema.Literals(WORKFLOW_EXECUTION_IGNORED_REASONS);
 /**
  * The two shapes a manual run answers with: it started a run, or it did not and
  * says why.
- *
- * Each stays open, as the Zod originals did: the engine adds counters to a
- * response as it learns them, and a client that has not been rebuilt should
- * read the fields it knows rather than fail on the ones it does not.
  */
-const workflowExecutionRunningSchema = Schema.StructWithRest(
-  Schema.Struct({
-    status: Schema.Literal("running"),
-    executionId: Schema.String,
-    runId: Schema.optionalKey(Schema.String),
-    runMode: workflowRunModeSchema,
-    supersededExecutions: Schema.optionalKey(Schema.Finite),
-    failedToSupersede: Schema.optionalKey(listOf(Schema.String)),
-  }),
-  unknownRest
-);
-
-const workflowExecutionIgnoredFields = {
-  status: Schema.Literal("ignored"),
+const workflowExecutionRunningSchema = Schema.Struct({
+  status: Schema.Literal("running"),
+  executionId: Schema.String,
+  runId: Schema.optionalKey(Schema.String),
   runMode: workflowRunModeSchema,
-  reason: ignoredReasonSchema,
-};
+  supersededExecutions: Schema.optionalKey(Schema.Finite),
+  failedToSupersede: Schema.optionalKey(listOf(Schema.String)),
+});
 
 // A paused workflow gets a run row saying it declined, so the runs list still
 // shows the decision; a first-wins refusal has no run of its own, which is why
 // the id is optional on this arm.
 const workflowExecuteResponseSchema = Schema.Union([
   workflowExecutionRunningSchema,
-  Schema.StructWithRest(
-    Schema.Struct({
-      ...workflowExecutionIgnoredFields,
-      executionId: Schema.optionalKey(Schema.String),
-    }),
-    unknownRest
-  ),
+  Schema.Struct({
+    status: Schema.Literal("ignored"),
+    runMode: workflowRunModeSchema,
+    reason: ignoredReasonSchema,
+    executionId: Schema.optionalKey(Schema.String),
+  }),
 ]);
 
 const workflowExecutionStatusFilterSchema = Schema.Literals(
@@ -591,11 +577,8 @@ export const rpcContract = {
         contractSchema(
           Schema.Struct({
             execution: executionSummarySchema,
-            /**
-             * The graph this run pinned. Absent only when the row has no
-             * `workflow_version_id` (a terminal refuse that never executed).
-             */
-            graph: Schema.optionalKey(serializedWorkflowGraphSchema),
+            /** The graph this run pinned. */
+            graph: serializedWorkflowGraphSchema,
             logs: listOf(executionLogSchema),
             waits: listOf(executionWaitSchema),
           })

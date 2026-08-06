@@ -46,7 +46,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
         completedAt: toIso(execution.completedAt),
         duration: execution.duration,
       },
-      ...(execution.graph ? { graph: execution.graph } : {}),
+      graph: execution.graph,
       // Whatever a node was handed and answered with is shown here verbatim,
       // which is why it passes through redaction on the way out.
       logs: logs.map((log) => ({

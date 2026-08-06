@@ -55,12 +55,13 @@ export const isoTimestampToDate = Schema.String.check(
  * A datetime field that stays an ISO string on both sides, for a schema written
  * in Effect.
  *
- * `format: "date-time"` is the whole of how the editor learns a field is a
- * moment in time, and Effect emits it for none of its own date schemas, so it is
- * written by hand. The annotation lands on the base type before the check,
- * because an annotation added after one lands on the check and the derivation
- * reads the flat property. The check is the other half: the keyword alone tells
- * the editor how to draw the field and refuses nothing.
+ * `format: "date-time"` is the JSON Schema keyword `schema-codec` reads to set
+ * `type: "timestamp"` on the flat reference field the editor menus off. Effect
+ * emits it for none of its own date schemas, so it is written by hand. The
+ * annotation lands on the base type before the check, because an annotation
+ * added after one lands on the check and the derivation reads the flat
+ * property. The check is the other half: the keyword alone tells the editor how
+ * to draw the field and refuses nothing.
  */
 export function isoTimestampString(description?: string) {
   return Schema.String.annotate({ description, format: "date-time" }).check(

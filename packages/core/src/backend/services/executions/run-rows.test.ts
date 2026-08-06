@@ -44,7 +44,7 @@ function createExecution(
     cancelRequestedAt: null,
     cancelEventName: null,
     cancelPayload: null,
-    workflowVersionId: null,
+    workflowVersionId: "ver_1",
     ...overrides,
   };
 }
@@ -417,6 +417,7 @@ describe("recordPausedRunIgnored", () => {
 
         const execution = yield* recordPausedRunIgnored({
           workflowId: "wf_1",
+          workflowVersionId: "ver_1",
           startSource: "event",
           runMode: "test",
           payload: { order: "o1" },
@@ -440,6 +441,7 @@ describe("recordPausedRunIgnored", () => {
 
         const recorded = calls.terminals[0];
         assert.isDefined(recorded);
+        assert.strictEqual(recorded.workflowVersionId, "ver_1");
         assert.strictEqual(recorded.status, "completed");
         assert.strictEqual(recorded.startSource, "event");
         assert.strictEqual(recorded.runMode, "test");

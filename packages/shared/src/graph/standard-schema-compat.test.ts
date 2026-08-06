@@ -441,7 +441,6 @@ describe("the field derivation over Effect schemas", () => {
         path: "startsAt",
         description: "When it starts",
         type: "timestamp",
-        format: "timestamp",
         nullable: true,
       },
     ]);

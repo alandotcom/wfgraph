@@ -13,8 +13,8 @@ import { parseDurationMs } from "#src/utils/wait-time";
 /**
  * A duration field, for a schema written in Effect.
  *
- * `format: "duration"` is the whole of how the editor learns a field is a length
- * of time, which is what puts it in the menu a wait's duration input opens.
+ * `format: "duration"` is the JSON Schema keyword `schema-codec` reads to set
+ * `type: "duration"` on the flat reference field the editor menus off.
  */
 export function durationString(description?: string) {
   return Schema.String.annotate({ description, format: "duration" }).check(

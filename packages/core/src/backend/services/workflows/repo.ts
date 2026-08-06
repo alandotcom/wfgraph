@@ -10,6 +10,7 @@ import {
   workflowVersions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
+import type { RovaDatabase, RovaTransaction } from "#src/backend/lib/db/index";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import type { WorkflowUpdateData } from "#src/backend/services/workflows/mappers";
@@ -218,26 +219,41 @@ export class WorkflowRepo extends Context.Service<
       DatabaseError
     >;
     /**
-     * Point the workflow at a version (minting it first when `mint` is set),
-     * align the draft graph, and rewrite subscriptions, in one transaction.
+     * Point the workflow at an existing version, align the draft graph, and
+     * rewrite subscriptions, in one transaction.
      */
-    readonly publishVersion: (input: {
+    readonly setPublishedVersion: (input: {
       workflowId: string;
       versionId: string;
-      mint?: {
-        version: number;
-        graph: SerializedWorkflowGraph;
-        catalogFingerprint: string;
-        graphDigest: string;
-      };
       draftGraph: SerializedWorkflowGraph;
       eventSubscriptions: WorkflowEventSubscriptionRow[];
     }) => Effect.Effect<
       { workflow: Workflow; version: WorkflowVersion } | null,
       DatabaseError
     >;
+    /**
+     * Claim a new version number (optimistic: insert only if still free), then
+     * point the workflow at it, align the draft, and rewrite subscriptions.
+     * `{ stale: true }` means another publish already took that number.
+     */
+    readonly insertPublishedVersion: (input: {
+      workflowId: string;
+      versionId: string;
+      version: number;
+      graph: SerializedWorkflowGraph;
+      catalogFingerprint: string;
+      graphDigest: string;
+      draftGraph: SerializedWorkflowGraph;
+      eventSubscriptions: WorkflowEventSubscriptionRow[];
+    }) => Effect.Effect<InsertPublishedVersionResult, DatabaseError>;
   }
 >()("@rova/core/WorkflowRepo") {}
+
+/** Outcome of `insertPublishedVersion`: published, behind, or workflow missing. */
+export type InsertPublishedVersionResult =
+  | { workflow: Workflow; version: WorkflowVersion }
+  | { stale: true }
+  | null;
 
 export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
   Layer.effect(
@@ -594,66 +610,99 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
             };
           }),
 
-        publishVersion: (input) =>
+        setPublishedVersion: (input) =>
           database.query(
             async (db) =>
               await db.transaction(async (tx) => {
-                let version: WorkflowVersion;
-                if (input.mint) {
-                  const [minted] = await tx
-                    .insert(workflowVersions)
-                    .values({
-                      id: input.versionId,
-                      workflowId: input.workflowId,
-                      version: input.mint.version,
-                      graph: input.mint.graph,
-                      catalogFingerprint: input.mint.catalogFingerprint,
-                      graphDigest: input.mint.graphDigest,
-                    })
-                    .returning();
-                  version = minted;
-                } else {
-                  const existing = await tx.query.workflowVersions.findFirst({
-                    where: eq(workflowVersions.id, input.versionId),
-                  });
-                  if (!existing) {
-                    return null;
-                  }
-                  version = existing;
-                }
-
-                const updated = await tx
-                  .update(workflows)
-                  .set({
-                    publishedVersionId: version.id,
-                    // Keep the draft aligned with what was just published so a
-                    // subsequent edit starts from the published content.
-                    graph: input.draftGraph,
-                    updatedAt: new Date(),
-                  })
-                  .where(eq(workflows.id, input.workflowId))
-                  .returning();
-
-                const workflow = updated.at(0);
-                if (!workflow) {
+                const version = await tx.query.workflowVersions.findFirst({
+                  where: eq(workflowVersions.id, input.versionId),
+                });
+                if (!version) {
                   return null;
                 }
+                return activatePublishedVersion(tx, {
+                  workflowId: input.workflowId,
+                  version,
+                  draftGraph: input.draftGraph,
+                  eventSubscriptions: input.eventSubscriptions,
+                });
+              })
+          ),
 
-                await tx
-                  .delete(workflowEventSubscriptions)
-                  .where(
-                    eq(workflowEventSubscriptions.workflowId, input.workflowId)
-                  );
-
-                if (input.eventSubscriptions.length > 0) {
-                  await tx
-                    .insert(workflowEventSubscriptions)
-                    .values(input.eventSubscriptions);
+        insertPublishedVersion: (input) =>
+          database.query(
+            async (db) =>
+              await db.transaction(async (tx) => {
+                // Optimistic claim: insert only if `version` is still free.
+                // Empty returning means another publish took it.
+                const [minted] = await tx
+                  .insert(workflowVersions)
+                  .values({
+                    id: input.versionId,
+                    workflowId: input.workflowId,
+                    version: input.version,
+                    graph: input.graph,
+                    catalogFingerprint: input.catalogFingerprint,
+                    graphDigest: input.graphDigest,
+                  })
+                  .onConflictDoNothing({
+                    target: [
+                      workflowVersions.workflowId,
+                      workflowVersions.version,
+                    ],
+                  })
+                  .returning();
+                if (!minted) {
+                  return { stale: true };
                 }
 
-                return { workflow, version };
+                return activatePublishedVersion(tx, {
+                  workflowId: input.workflowId,
+                  version: minted,
+                  draftGraph: input.draftGraph,
+                  eventSubscriptions: input.eventSubscriptions,
+                });
               })
           ),
       };
     })
   );
+
+async function activatePublishedVersion(
+  tx: RovaDatabase | RovaTransaction,
+  input: {
+    workflowId: string;
+    version: WorkflowVersion;
+    draftGraph: SerializedWorkflowGraph;
+    eventSubscriptions: WorkflowEventSubscriptionRow[];
+  }
+): Promise<{ workflow: Workflow; version: WorkflowVersion } | null> {
+  const updated = await tx
+    .update(workflows)
+    .set({
+      publishedVersionId: input.version.id,
+      // Keep the draft aligned with what was just published so a subsequent
+      // edit starts from the published content.
+      graph: input.draftGraph,
+      updatedAt: new Date(),
+    })
+    .where(eq(workflows.id, input.workflowId))
+    .returning();
+
+  const workflow = updated.at(0);
+  if (!workflow) {
+    return null;
+  }
+
+  await tx
+    .delete(workflowEventSubscriptions)
+    .where(eq(workflowEventSubscriptions.workflowId, input.workflowId));
+
+  if (input.eventSubscriptions.length > 0) {
+    await tx
+      .insert(workflowEventSubscriptions)
+      .values(input.eventSubscriptions);
+  }
+
+  return { workflow, version: input.version };
+}

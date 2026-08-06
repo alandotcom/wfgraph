@@ -47,7 +47,6 @@ describe("flattenSchemaToReferenceFields", () => {
       {
         path: "appointment.startsAt",
         type: "timestamp",
-        format: "timestamp",
       },
       { path: "appointment.mediaUrls", type: "array" },
     ]);
@@ -96,7 +95,6 @@ describe("flattenSchemaToReferenceFields", () => {
       {
         path: "items[0].shippedAt",
         type: "timestamp",
-        format: "timestamp",
       },
     ]);
   });

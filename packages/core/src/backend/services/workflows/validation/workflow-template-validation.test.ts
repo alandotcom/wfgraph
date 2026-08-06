@@ -22,12 +22,12 @@ const catalog: ExtensionCatalog = {
   events: [
     anEvent(CREATED, [
       { path: "appointmentId", type: "string" },
-      { path: "startsAt", type: "timestamp", format: "timestamp" },
+      { path: "startsAt", type: "timestamp" },
     ]),
     anEvent(RESCHEDULED, [
       { path: "appointmentId", type: "string" },
       { path: "startsAt", type: "string" },
-      { path: "leadTime", type: "duration", format: "duration" },
+      { path: "leadTime", type: "duration" },
     ]),
   ],
   actions: [],

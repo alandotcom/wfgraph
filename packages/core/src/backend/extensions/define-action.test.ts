@@ -660,7 +660,6 @@ describe("defineAction with Arktype schemas", () => {
     const createdAtField = fields.find((f) => f.path === "createdAt");
     expect(createdAtField).toBeDefined();
     expect(createdAtField?.type).toBe("timestamp");
-    expect(createdAtField?.format).toBe("timestamp");
   });
 
   it("does not crash when an Arktype output schema has predicate types", () => {

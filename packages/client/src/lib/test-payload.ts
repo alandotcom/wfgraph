@@ -78,9 +78,7 @@ function controlFor(field: ReferenceField): TestPayloadControl {
     return "number";
   }
 
-  return field.format === "timestamp" || field.type === "timestamp"
-    ? "datetime"
-    : "text";
+  return field.type === "timestamp" ? "datetime" : "text";
 }
 
 /** The fields the form draws for one Event, in the order the Event declares. */

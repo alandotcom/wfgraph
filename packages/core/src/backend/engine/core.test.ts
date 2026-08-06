@@ -194,6 +194,49 @@ describe("host action execution", () => {
     expect(handlerFn).toHaveBeenCalledTimes(1);
   });
 
+  // ADR-0012: a run pinned to a published catalog fingerprint must not execute
+  // against a changed catalog. Without this case, deleting the guard still
+  // leaves every host-action suite green, because executeTestWorkflow defaults
+  // the pin to the live fingerprint.
+  it("fails when the pinned catalog fingerprint drifts", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createLifecycleToActionGraph(),
+        executionId: "exec_catalog_drift",
+        workflowId: "workflow_1",
+        catalogFingerprint: "stale",
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions
+    );
+
+    expect(result.results.action_1?.success).toBe(false);
+    expect(executionFailure(result.results.action_1)).toEqual({
+      kind: "failure",
+      message: expect.stringContaining("Extension catalog changed"),
+    });
+    expect(handlerFn).not.toHaveBeenCalled();
+  });
+
+  it("runs a host action when the pinned fingerprint matches the live catalog", async () => {
+    const result = await executeWorkflow(
+      {
+        graph: createLifecycleToActionGraph(),
+        executionId: "exec_catalog_match",
+        workflowId: "workflow_1",
+        catalogFingerprint: actions.catalogFingerprint(),
+      },
+      createInMemoryWorkflowRuntime(),
+      store,
+      actions
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.results.action_1?.success).toBe(true);
+    expect(handlerFn).toHaveBeenCalledTimes(1);
+  });
+
   // The context is how an author learns which node their action is running as, and
   // the node name is the label off the saved graph rather than anything the action
   // declared.

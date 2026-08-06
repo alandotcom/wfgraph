@@ -7,7 +7,11 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
-import { InvalidInput, NotFound } from "#src/backend/lib/effect/failures";
+import {
+  Conflict,
+  InvalidInput,
+  NotFound,
+} from "#src/backend/lib/effect/failures";
 import { internalFailureRelayingCause } from "#src/backend/lib/effect/internal-failure";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
@@ -28,6 +32,9 @@ const loggerFor = (workflowId: string) =>
 
 const publishOnlyChecks = [checkUnreachableSubtrees] as const;
 
+const STALE_PUBLISH_MESSAGE =
+  "This workflow was published elsewhere. Refresh and try again.";
+
 /**
  * Publish the graph the editor sent as an immutable version.
  *
@@ -35,9 +42,11 @@ const publishOnlyChecks = [checkUnreachableSubtrees] as const;
  * subtree check. A Canceled branch with no Cancel Event is drawable and never
  * entered; the editor shows it inactive rather than refusing publish. Content-
  * hash dedupe reuses any prior version with the same digest and fingerprint, so
- * an idle editor does not accrete rows. The subscription index is rewritten from
- * the published graph only -- draft saves leave it alone. The draft column is
- * aligned to the published graph in the same transaction.
+ * an idle editor does not accrete rows — that path only re-points the workflow
+ * and rewrites subscriptions. A new version number is read outside the write and
+ * claimed optimistically; if another publish took it, the caller is told to
+ * refresh. Draft saves leave the subscription index alone. The draft column is
+ * aligned to the published graph in the same write.
  */
 export const publishWorkflow = Effect.fn("publishWorkflow")(
   function* (input: { workflowId: string; graph: SerializedWorkflowGraph }) {
@@ -79,26 +88,39 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
       graphDigest: digest,
       catalogFingerprint: fingerprint,
     });
-    const latest = matching ? null : yield* repo.findLatestVersion(workflowId);
+
+    const draftGraph = prepared.graph;
+    const eventSubscriptions = prepared.subscriptionsFor(workflowId);
 
     const published = matching
-      ? yield* repo.publishVersion({
+      ? yield* repo.setPublishedVersion({
           workflowId,
           versionId: matching.id,
-          draftGraph: prepared.graph,
-          eventSubscriptions: prepared.subscriptionsFor(workflowId),
+          draftGraph,
+          eventSubscriptions,
         })
-      : yield* repo.publishVersion({
-          workflowId,
-          versionId: generateId(),
-          mint: {
-            version: (latest?.version ?? 0) + 1,
+      : yield* Effect.gen(function* () {
+          // Optimistic concurrency: read the current version outside the write,
+          // then claim current+1. If that number was taken, we are behind.
+          const latest = yield* repo.findLatestVersion(workflowId);
+          const expectedVersion = (latest?.version ?? 0) + 1;
+          const inserted = yield* repo.insertPublishedVersion({
+            workflowId,
+            versionId: generateId(),
+            version: expectedVersion,
             graph: prepared.graph,
             catalogFingerprint: fingerprint,
             graphDigest: digest,
-          },
-          draftGraph: prepared.graph,
-          eventSubscriptions: prepared.subscriptionsFor(workflowId),
+            draftGraph,
+            eventSubscriptions,
+          });
+          if (inserted && "stale" in inserted) {
+            yield* logger.warn("Rejected workflow publish: version race", {
+              expectedVersion,
+            });
+            return yield* new Conflict({ error: STALE_PUBLISH_MESSAGE });
+          }
+          return inserted;
         });
 
     if (!published) {

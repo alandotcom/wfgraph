@@ -122,12 +122,12 @@ export function WorkflowRuns() {
   // clears the overlay while the key stays `ready` and the canvas sticks on
   // the draft. Key is closed | open:exec:wf | ready:exec:wf; never fetch
   // timestamps, so a logs poll cannot rebuild nodes as idle and wipe statuses.
-  const pinnedGraph = detailQuery.data?.graph;
-  const executionWorkflowId = detailQuery.data?.execution.workflowId;
+  // `graph` is always on a successful logs payload; absence means the query
+  // has not landed yet.
+  const detail = detailQuery.data;
+  const executionWorkflowId = detail?.execution.workflowId;
   const workflowAligned =
-    pinnedGraph !== undefined &&
-    executionWorkflowId !== undefined &&
-    executionWorkflowId === currentWorkflowId;
+    detail !== undefined && executionWorkflowId === currentWorkflowId;
   useAfterCommit(
     executionId === undefined
       ? "closed"
@@ -144,14 +144,14 @@ export function WorkflowRuns() {
       setActiveTab("runs");
       setSelectedExecutionId(executionId);
 
-      if (!workflowAligned || !pinnedGraph) {
+      if (!workflowAligned || detail === undefined) {
         // Stay selection-only until hydrate and the run agree; drop any stale
         // overlay from the previous workflow rather than paint-then-lose.
         setExecutionOverlay(null);
         return;
       }
 
-      const graphData = toWorkflowGraphData(pinnedGraph);
+      const graphData = toWorkflowGraphData(detail.graph);
       setExecutionOverlay({
         nodes: graphData.nodes.map((node) => {
           const editorNode = toEditorNode(node);

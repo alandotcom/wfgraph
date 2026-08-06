@@ -74,7 +74,7 @@ function createExecution(
     cancelRequestedAt: null,
     cancelEventName: null,
     cancelPayload: null,
-    workflowVersionId: null,
+    workflowVersionId: "ver_1",
     ...overrides,
   };
 }
