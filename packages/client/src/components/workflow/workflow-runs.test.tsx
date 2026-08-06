@@ -47,6 +47,16 @@ const served = vi.hoisted(() => ({
   items: [] as RawExecution[],
   supersededCount: 0,
   graphs: {} as Record<string, SerializedWorkflowGraph>,
+  /** Start identity the logs summary carries for ids not in the list. */
+  logsSummaryExtras: {} as Record<
+    string,
+    {
+      runMode?: string;
+      startSource?: string | null;
+      startEventName?: string | null;
+      entityValue?: string | null;
+    }
+  >,
 }));
 
 vi.mock("#src/lib/rpc-query", () => ({
@@ -85,17 +95,23 @@ vi.mock("#src/lib/rpc-query", () => ({
             const listed = served.items.find(
               (item) => item.id === input.executionId
             );
+            const extras = served.logsSummaryExtras[input.executionId] ?? {};
             return {
               execution: {
                 id: input.executionId,
                 workflowId: listed?.workflowId ?? "wf_1",
                 status: listed?.status ?? "completed",
+                startSource: listed?.startSource ?? "event",
+                runMode: listed?.runMode ?? "live",
+                startEventName: listed?.startEventName ?? null,
+                entityValue: listed?.entityValue ?? null,
                 error: null,
                 startedAt: "2026-03-01T10:00:00.000Z",
                 completedAt: "2026-03-01T10:00:30.000Z",
                 duration: "30s",
                 input: {},
                 output: {},
+                ...extras,
               },
               logs: [],
               waits: [],
@@ -215,6 +231,7 @@ describe("WorkflowRuns", () => {
     served.items = [];
     served.supersededCount = 0;
     served.graphs = {};
+    served.logsSummaryExtras = {};
   });
 
   // A newest-wins workflow supersedes the open run out of the polled list, so
@@ -282,12 +299,25 @@ describe("WorkflowRuns", () => {
 
   it("opens a search-param run past the list from the logs summary", async () => {
     served.items = [execution("exec_other", "completed")];
+    // Past the newest-50 cap the list has no row; the logs summary alone must
+    // still paint Test Mode and the start source. Use "manual" so the source
+    // assertion cannot be satisfied by the mock's "event" default.
+    served.logsSummaryExtras = {
+      exec_past_cap: {
+        runMode: "test",
+        startSource: "manual",
+        startEventName: null,
+        entityValue: "appt_99",
+      },
+    };
     const { view } = renderRuns({ executionId: "exec_past_cap" });
 
     expect(
       await view.findByRole("button", { name: "Back to runs list" })
     ).toBeTruthy();
     expect(view.getByText(/has left the runs list/)).toBeTruthy();
+    expect(view.getByText("Test Mode")).toBeTruthy();
+    expect(view.getByText("manual")).toBeTruthy();
   });
 
   it("clears the search param when going back to the list", async () => {

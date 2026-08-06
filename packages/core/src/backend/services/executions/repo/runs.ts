@@ -101,7 +101,7 @@ export type RunsRepoMethods = {
   readonly listPage: (
     query: ExecutionPageQuery
   ) => Effect.Effect<GlobalExecutionRow[], DatabaseError>;
-  /** One run without its routing columns, which is what the logs view shows. */
+  /** One run as the logs view paints it (status, timing, and start identity). */
   readonly findSummaryById: (
     executionId: string
   ) => Effect.Effect<ExecutionSummary | null, DatabaseError>;
@@ -306,6 +306,10 @@ export function makeRunsMethods(
             workflowId: true,
             workflowVersionId: true,
             status: true,
+            startSource: true,
+            runMode: true,
+            startEventName: true,
+            entityValue: true,
             input: true,
             output: true,
             error: true,
@@ -326,6 +330,10 @@ export function makeRunsMethods(
             workflowId: workflowExecutions.workflowId,
             workflowVersionId: workflowExecutions.workflowVersionId,
             status: workflowExecutions.status,
+            startSource: workflowExecutions.startSource,
+            runMode: workflowExecutions.runMode,
+            startEventName: workflowExecutions.startEventName,
+            entityValue: workflowExecutions.entityValue,
             input: workflowExecutions.input,
             output: workflowExecutions.output,
             error: workflowExecutions.error,

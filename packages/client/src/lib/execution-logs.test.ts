@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isRunInProgress, toWorkflowExecutions } from "#src/lib/execution-logs";
+import {
+  isRunInProgress,
+  toWorkflowExecutionFromSummary,
+  toWorkflowExecutions,
+} from "#src/lib/execution-logs";
+import type { ExecutionLogsResult } from "#src/lib/rpc-client";
 
 const rawExecution = {
   id: "exec_1",
@@ -70,5 +75,34 @@ describe("isRunInProgress", () => {
     expect(isRunInProgress("completed")).toBe(false);
     expect(isRunInProgress("superseded")).toBe(false);
     expect(isRunInProgress(undefined)).toBe(false);
+  });
+});
+
+describe("toWorkflowExecutionFromSummary", () => {
+  // A deep link past the newest-50 list builds the row from this summary alone,
+  // so mode, source, event, and entity have to survive the mapping.
+  it("keeps start identity from the summary", () => {
+    const summary: ExecutionLogsResult["execution"] = {
+      id: "exec_past_cap",
+      workflowId: "wf_1",
+      status: "completed",
+      input: {},
+      output: {},
+      error: null,
+      startedAt: "2026-03-01T10:00:00.000Z",
+      completedAt: "2026-03-01T10:00:30.000Z",
+      duration: "30s",
+      runMode: "test",
+      startSource: "event",
+      startEventName: "app/appointment.created",
+      entityValue: "appt_99",
+    };
+
+    const mapped = toWorkflowExecutionFromSummary(summary);
+
+    expect(mapped.runMode).toBe("test");
+    expect(mapped.startSource).toBe("event");
+    expect(mapped.startEventName).toBe("app/appointment.created");
+    expect(mapped.entityValue).toBe("appt_99");
   });
 });
