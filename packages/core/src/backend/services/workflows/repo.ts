@@ -12,7 +12,6 @@ import {
 } from "#src/backend/lib/db/schema";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
-import { mintWorkflowVersion } from "#src/backend/services/workflows/mint-workflow-version";
 import type { WorkflowUpdateData } from "#src/backend/services/workflows/mappers";
 import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 
@@ -183,6 +182,10 @@ export class WorkflowRepo extends Context.Service<
       id: string;
       graph: SerializedWorkflowGraph;
     }) => Effect.Effect<Workflow | null, DatabaseError>;
+    /** The newest published version for this workflow, or null when none exist. */
+    readonly findLatestVersion: (
+      workflowId: string
+    ) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
     /** One version by id, or null when it is gone. */
     readonly findVersionById: (
       versionId: string
@@ -218,26 +221,31 @@ export class WorkflowRepo extends Context.Service<
      * Point the workflow at a version (minting it first when `mint` is set),
      * align the draft graph, and rewrite subscriptions, in one transaction.
      *
-     * Mint claims the next free version number inside the transaction. The
-     * unique index is the optimistic condition: on conflict we are behind and
-     * reuse matching content or take the next free number.
+     * Mint is optimistic: the caller reads the current version outside any
+     * transaction and passes `mint.version` as current+1. The unique index is
+     * the condition — if that number was taken, the result is `{ stale: true }`
+     * so the service can ask the user to refresh. No retry inside the write.
      */
     readonly publishVersion: (input: {
       workflowId: string;
       versionId: string;
       mint?: {
+        version: number;
         graph: SerializedWorkflowGraph;
         catalogFingerprint: string;
         graphDigest: string;
       };
       draftGraph: SerializedWorkflowGraph;
       eventSubscriptions: WorkflowEventSubscriptionRow[];
-    }) => Effect.Effect<
-      { workflow: Workflow; version: WorkflowVersion } | null,
-      DatabaseError
-    >;
+    }) => Effect.Effect<PublishVersionResult, DatabaseError>;
   }
 >()("@rova/core/WorkflowRepo") {}
+
+/** Outcome of `publishVersion`: published, behind another publish, or missing. */
+export type PublishVersionResult =
+  | { workflow: Workflow; version: WorkflowVersion }
+  | { stale: true }
+  | null;
 
 export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
   Layer.effect(
@@ -510,6 +518,18 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
             return saved.at(0) ?? null;
           }),
 
+        findLatestVersion: (workflowId) =>
+          database.query(async (db) => {
+            const [row] = await db
+              .select()
+              .from(workflowVersions)
+              .where(eq(workflowVersions.workflowId, workflowId))
+              .orderBy(desc(workflowVersions.version))
+              .limit(1);
+
+            return row ?? null;
+          }),
+
         findVersionById: (versionId) =>
           database.query(async (db) => {
             const row = await db.query.workflowVersions.findFirst({
@@ -588,13 +608,29 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               await db.transaction(async (tx) => {
                 let version: WorkflowVersion;
                 if (input.mint) {
-                  version = await mintWorkflowVersion(tx, {
-                    workflowId: input.workflowId,
-                    versionId: input.versionId,
-                    graph: input.mint.graph,
-                    catalogFingerprint: input.mint.catalogFingerprint,
-                    graphDigest: input.mint.graphDigest,
-                  });
+                  // Optimistic claim: insert only if `mint.version` is still
+                  // free. Empty returning means another publish took it.
+                  const [minted] = await tx
+                    .insert(workflowVersions)
+                    .values({
+                      id: input.versionId,
+                      workflowId: input.workflowId,
+                      version: input.mint.version,
+                      graph: input.mint.graph,
+                      catalogFingerprint: input.mint.catalogFingerprint,
+                      graphDigest: input.mint.graphDigest,
+                    })
+                    .onConflictDoNothing({
+                      target: [
+                        workflowVersions.workflowId,
+                        workflowVersions.version,
+                      ],
+                    })
+                    .returning();
+                  if (!minted) {
+                    return { stale: true };
+                  }
+                  version = minted;
                 } else {
                   const existing = await tx.query.workflowVersions.findFirst({
                     where: eq(workflowVersions.id, input.versionId),

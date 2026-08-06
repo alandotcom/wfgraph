@@ -190,26 +190,27 @@ describe("publishVersion", () => {
     new Date(),
   ];
 
-  const versionRow = (id: string, version: number, digest: string) => [
+  const versionRow = (id: string, version: number) => [
     id,
     "wf_1",
     version,
     JSON.stringify(emptyGraph),
     "fp",
-    digest,
+    "digest",
     new Date(),
   ];
 
-  function publish(mintDigest: string) {
+  function publish(version: number) {
     return Effect.gen(function* () {
       const repo = yield* WorkflowRepo;
       return yield* repo.publishVersion({
         workflowId: "wf_1",
         versionId: "ver_new",
         mint: {
+          version,
           graph: emptyGraph,
           catalogFingerprint: "fp",
-          graphDigest: mintDigest,
+          graphDigest: "digest",
         },
         draftGraph: emptyGraph,
         eventSubscriptions: [],
@@ -217,95 +218,12 @@ describe("publishVersion", () => {
     });
   }
 
-  // Two overlapping publishes can mint the same version number; the unique
-  // index is the optimistic condition, and a conflict must not throw.
-  it("mints with on conflict do nothing on the version number", async () => {
+  // The unique index is the optimistic condition: insert only when that
+  // version number is still free.
+  it("claims a version number with on conflict do nothing", async () => {
     const { layer: databaseLayer, statements } = stubDatabase(({ query }) => {
       if (query.startsWith("insert") && query.includes("workflow_versions")) {
-        return [versionRow("ver_1", 1, "digest")];
-      }
-      if (query.startsWith("update") && query.includes("workflows")) {
-        return [workflowRow("ver_1")];
-      }
-      return [];
-    });
-
-    await Effect.runPromise(
-      publish("digest").pipe(
-        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
-      )
-    );
-
-    const mintInserts = statements.filter(
-      (statement) =>
-        statement.query.startsWith("insert") &&
-        statement.query.includes("workflow_versions")
-    );
-    expect(mintInserts.length).toBeGreaterThan(0);
-    for (const mintInsert of mintInserts) {
-      expect(mintInsert.query).toContain(
-        'on conflict ("workflow_id","version") do nothing'
-      );
-    }
-  });
-
-  it("reuses matching content when the version number was taken", async () => {
-    let versionInserts = 0;
-    const { layer: databaseLayer, statements } = stubDatabase(({ query }) => {
-      if (query.startsWith("insert") && query.includes("workflow_versions")) {
-        versionInserts += 1;
-        // Conflict: no row returned.
-        return [];
-      }
-      if (
-        query.startsWith("select") &&
-        query.includes("graph_digest") &&
-        versionInserts > 0
-      ) {
-        return [versionRow("ver_winner", 1, "digest")];
-      }
-      if (query.startsWith("update") && query.includes("workflows")) {
-        return [workflowRow("ver_winner")];
-      }
-      return [];
-    });
-
-    const published = await Effect.runPromise(
-      publish("digest").pipe(
-        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
-      )
-    );
-
-    expect(published?.version.id).toBe("ver_winner");
-    expect(published?.version.version).toBe(1);
-    expect(published?.workflow.publishedVersionId).toBe("ver_winner");
-    expect(
-      statements.some(
-        (statement) =>
-          statement.query.startsWith("insert") &&
-          statement.query.includes("workflow_versions") &&
-          !statement.query.includes("on conflict")
-      )
-    ).toBe(false);
-  });
-
-  it("claims the next version when different content won the number", async () => {
-    let versionInserts = 0;
-    const { layer: databaseLayer, statements } = stubDatabase(({ query }) => {
-      if (query.startsWith("insert") && query.includes("workflow_versions")) {
-        versionInserts += 1;
-        if (versionInserts === 1) {
-          return [];
-        }
-        return [versionRow("ver_new", 2, "digest-b")];
-      }
-      // Latest-number read selects only the version column.
-      if (
-        query.startsWith("select") &&
-        query.includes('"version"') &&
-        !query.includes("graph_digest")
-      ) {
-        return [[1]];
+        return [versionRow("ver_new", 1)];
       }
       if (query.startsWith("update") && query.includes("workflows")) {
         return [workflowRow("ver_new")];
@@ -314,23 +232,38 @@ describe("publishVersion", () => {
     });
 
     const published = await Effect.runPromise(
-      publish("digest-b").pipe(
+      publish(1).pipe(
         Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
       )
     );
 
-    expect(published?.version.id).toBe("ver_new");
-    expect(published?.version.version).toBe(2);
-    const mintInserts = statements.filter(
+    expect(
+      published && "stale" in published ? null : published?.version.id
+    ).toBe("ver_new");
+    const mintInsert = statements.find(
       (statement) =>
         statement.query.startsWith("insert") &&
         statement.query.includes("workflow_versions")
     );
-    expect(mintInserts).toHaveLength(2);
-    for (const mintInsert of mintInserts) {
-      expect(mintInsert.query).toContain(
-        'on conflict ("workflow_id","version") do nothing'
-      );
-    }
+    expect(mintInsert?.query).toContain(
+      'on conflict ("workflow_id","version") do nothing'
+    );
+  });
+
+  it("answers stale when the version number was already taken", async () => {
+    const { layer: databaseLayer } = stubDatabase(({ query }) => {
+      if (query.startsWith("insert") && query.includes("workflow_versions")) {
+        return [];
+      }
+      return [];
+    });
+
+    const published = await Effect.runPromise(
+      publish(1).pipe(
+        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
+      )
+    );
+
+    expect(published).toEqual({ stale: true });
   });
 });

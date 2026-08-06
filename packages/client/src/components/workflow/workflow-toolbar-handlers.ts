@@ -484,7 +484,8 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
         toast.success(`Published version ${payload.publishedVersion}`);
         void loadWorkflows();
       },
-      meta: { errorMessage: "Failed to publish workflow. Please try again." },
+      // Let Conflict ("Refresh and try again") and validation errors surface
+      // their own wording rather than a generic publish failure.
     })
   );
 

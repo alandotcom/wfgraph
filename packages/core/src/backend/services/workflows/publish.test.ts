@@ -1,6 +1,7 @@
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
+import { Conflict } from "#src/backend/lib/effect/failures";
 import {
   SilentAppLoggerLayer,
   stubExtensionCatalog,
@@ -77,13 +78,14 @@ describe("publishWorkflow", () => {
         const repo = stubWorkflowRepo({
           findById: () => Effect.succeed(draft),
           findVersionByContent: () => Effect.succeed(null),
+          findLatestVersion: () => Effect.succeed(null),
           publishVersion: (input) =>
             Effect.sync(() => {
               published.push(input);
               const version: WorkflowVersion = {
                 id: input.versionId,
                 workflowId: input.workflowId,
-                version: 1,
+                version: input.mint?.version ?? 1,
                 graph: input.draftGraph,
                 catalogFingerprint: input.mint?.catalogFingerprint ?? "",
                 graphDigest: input.mint?.graphDigest ?? "",
@@ -107,6 +109,7 @@ describe("publishWorkflow", () => {
 
         assert.strictEqual(result.publishedVersion, 1);
         assert.strictEqual(published.length, 1);
+        assert.strictEqual(published[0]?.mint?.version, 1);
         assert.ok(published[0]?.eventSubscriptions.length === 1);
         assert.strictEqual(
           published[0]?.eventSubscriptions[0]?.eventName,
@@ -133,6 +136,7 @@ describe("publishWorkflow", () => {
         const mint = stubWorkflowRepo({
           findById: () => Effect.succeed(draft),
           findVersionByContent: () => Effect.succeed(null),
+          findLatestVersion: () => Effect.succeed(null),
           publishVersion: (input) =>
             Effect.sync(() => {
               capturedDigest = input.mint?.graphDigest ?? "";
@@ -142,7 +146,7 @@ describe("publishWorkflow", () => {
                 version: {
                   id: input.versionId,
                   workflowId: input.workflowId,
-                  version: 1,
+                  version: input.mint?.version ?? 1,
                   graph: input.draftGraph,
                   catalogFingerprint: capturedFingerprint,
                   graphDigest: capturedDigest,
@@ -187,6 +191,37 @@ describe("publishWorkflow", () => {
 
         assert.strictEqual(result.publishedVersion, 3);
         assert.deepStrictEqual(reused, ["ver_1"]);
+      })
+    );
+
+    it.effect("answers Conflict when the version claim is stale", () =>
+      Effect.gen(function* () {
+        const repo = stubWorkflowRepo({
+          findById: () => Effect.succeed(draft),
+          findVersionByContent: () => Effect.succeed(null),
+          findLatestVersion: () =>
+            Effect.succeed({
+              id: "ver_1",
+              workflowId: "wf_1",
+              version: 2,
+              graph: draft.graph,
+              catalogFingerprint: "",
+              graphDigest: "",
+              publishedAt: new Date(),
+            }),
+          publishVersion: () => Effect.succeed({ stale: true }),
+        });
+
+        const failure = yield* publishWorkflow({
+          workflowId: "wf_1",
+          graph: draft.graph,
+        }).pipe(Effect.provide(repo), Effect.flip);
+
+        assert.instanceOf(failure, Conflict);
+        assert.ok(
+          failure.error.includes("Refresh"),
+          `expected refresh guidance, got: ${failure.error}`
+        );
       })
     );
   });
