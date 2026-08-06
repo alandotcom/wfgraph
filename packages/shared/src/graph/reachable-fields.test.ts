@@ -10,12 +10,12 @@ function anEvent(name: string, payloadFields: ReferenceField[]): EventMetadata {
 
 const created = anEvent("app/appointment.created", [
   { path: "appointment.id", type: "string" },
-  { path: "appointment.startsAt", type: "timestamp", format: "timestamp" },
+  { path: "appointment.startsAt", type: "timestamp" },
 ]);
 
 const rescheduled = anEvent("app/appointment.rescheduled", [
   { path: "appointment.id", type: "string" },
-  { path: "appointment.startsAt", type: "timestamp", format: "timestamp" },
+  { path: "appointment.startsAt", type: "timestamp" },
   { path: "appointment.previousStartsAt", type: "timestamp" },
 ]);
 
@@ -92,16 +92,6 @@ describe("reachableEventFields", () => {
 
     expect(fieldAt(fields, "amount")).toMatchObject({ type: "number" });
     expect(fieldAt(fields, "amount")).not.toHaveProperty("typeClash");
-  });
-
-  it("drops a format the Events disagree on while keeping the type", () => {
-    const fields = reachableEventFields([
-      anEvent("a", [{ path: "when", type: "string", format: "timestamp" }]),
-      anEvent("b", [{ path: "when", type: "string" }]),
-    ]);
-
-    expect(fieldAt(fields, "when")).toMatchObject({ type: "string" });
-    expect(fieldAt(fields, "when")).not.toHaveProperty("format");
   });
 
   it("offers one Event's fields as declared", () => {

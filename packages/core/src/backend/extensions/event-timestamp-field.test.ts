@@ -255,13 +255,11 @@ describe("an Event's datetime field, end to end", () => {
           path: "appointment.startsAt",
           description: "When the appointment starts",
           type: "timestamp",
-          format: "timestamp",
         },
         {
           path: "occurredAt",
           description: "When the event was raised",
           type: "timestamp",
-          format: "timestamp",
         },
       ])
     );

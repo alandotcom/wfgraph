@@ -40,8 +40,8 @@ describe("readExtensionCatalog", () => {
 
   it("carries both string formats across the wire", () => {
     const payloadFields: ReferenceField[] = [
-      { path: "startsAt", type: "timestamp", format: "timestamp" },
-      { path: "leadTime", type: "duration", format: "duration" },
+      { path: "startsAt", type: "timestamp" },
+      { path: "leadTime", type: "duration" },
     ];
 
     expect(readExtensionCatalog(aCatalog(payloadFields))).toEqual(

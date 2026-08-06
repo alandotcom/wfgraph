@@ -115,7 +115,6 @@ describe("requireOutputFieldsFromSchema", () => {
         path: "startsAt",
         description: "When it starts",
         type: "timestamp",
-        format: "timestamp",
       },
       { path: "endsAt", type: "string" },
     ]);

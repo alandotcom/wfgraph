@@ -15,7 +15,6 @@ describe("durationString", () => {
         path: "leadTime",
         description: "How long before",
         type: "duration",
-        format: "duration",
       },
     ]);
   });

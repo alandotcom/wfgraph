@@ -22,9 +22,9 @@
  * fields this schema has never heard of. An index signature skips the
  * excess-property check, so those stay open under the same decode options.
  *
- * Run `status` and editor `onClick` are not part of this schema. Old rows that
- * still carry `status` on node data are admitted by `StructWithRest` and stripped
- * in `graph.ts` before a node becomes `PersistedNodeData`.
+ * Run `status` and editor `onClick` are not part of this schema. A live overlay
+ * may still write `status` onto node data; `StructWithRest` admits it and
+ * `graph.ts` strips it before a node becomes `PersistedNodeData`.
  */
 
 import { Schema } from "effect";
@@ -83,18 +83,19 @@ const conditionActionConfigSchema = Schema.Struct({
 });
 
 /**
- * Wait config on the wire is open beside a typed actionType.
+ * Wait config on the wire beside a typed actionType.
  *
- * `readWaitConfig` is the closed decode a run uses; the graph must still load a
- * retired `waitMode: "hook"` row so that path can refuse it at execution rather
- * than at autosave. Named keys are the ones the editor writes today.
+ * `waitMode` is closed here the same way `waitConfigSchema` is: `"hook"` is
+ * retired, and a save that still carries it fails at the graph boundary rather
+ * than parking a run that the engine would refuse. Named keys are the ones the
+ * editor writes today; the rest rides through for React Flow bookkeeping.
  */
 const waitActionConfigSchema = Schema.StructWithRest(
   Schema.Struct({
     actionType: Schema.Literal(BUILT_IN_ACTION_IDS.wait),
     integrationId: Schema.optional(Schema.String),
     waitDelayTimingMode: Schema.optional(Schema.String),
-    waitMode: Schema.optional(Schema.String),
+    waitMode: Schema.optional(Schema.Literals(["delay", "event"])),
     waitFor: Schema.optional(Schema.Unknown),
     waitTimeout: Schema.optional(Schema.String),
     waitTimeoutBehavior: Schema.optional(Schema.String),

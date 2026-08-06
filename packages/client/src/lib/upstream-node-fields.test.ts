@@ -986,7 +986,7 @@ describe("upstream-node-fields", () => {
         outputFields: [
           { path: "waitType", type: "string" },
           { path: "timedOut", type: "boolean", showWhen: eventOnly },
-          { path: "resumedAt", type: "timestamp", format: "timestamp" },
+          { path: "resumedAt", type: "timestamp" },
           { path: "event", type: "string", showWhen: eventOnly },
           { path: "payload", type: "object", showWhen: eventOnly },
         ],
@@ -1031,7 +1031,7 @@ describe("upstream-node-fields", () => {
         outputFields: [
           { path: "waitType", type: "string" },
           { path: "timedOut", type: "boolean", showWhen: eventOnly },
-          { path: "resumedAt", type: "timestamp", format: "timestamp" },
+          { path: "resumedAt", type: "timestamp" },
           { path: "event", type: "string", showWhen: eventOnly },
           { path: "payload", type: "object", showWhen: eventOnly },
         ],

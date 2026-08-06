@@ -138,13 +138,13 @@ export function toWorkflowExecutions(payload: {
  * The execution summary rides along for deep-links that open a run no longer in
  * the polled list: the panel needs a row shape before it can show detail, and
  * the list cannot supply one past its newest-50 cap. `graph` is the version this
- * run pinned, when known.
+ * run pinned.
  */
 export function toExecutionDetail(payload: ExecutionLogsResult): {
   logs: ExecutionLog[];
   waits: ExecutionWait[];
   execution: WorkflowExecution;
-  graph?: SerializedWorkflowGraph;
+  graph: SerializedWorkflowGraph;
 } {
   return {
     logs: toExecutionLogs(payload),
@@ -153,7 +153,7 @@ export function toExecutionDetail(payload: ExecutionLogsResult): {
       waitUntil: wait.waitUntil ? new Date(wait.waitUntil) : null,
     })),
     execution: toWorkflowExecutionFromSummary(payload.execution),
-    ...(payload.graph ? { graph: payload.graph } : {}),
+    graph: payload.graph,
   };
 }
 

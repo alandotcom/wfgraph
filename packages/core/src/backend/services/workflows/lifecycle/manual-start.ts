@@ -207,6 +207,7 @@ export const postWorkflowExecute = Effect.fn("postWorkflowExecute")(
     if (workflow.isPaused) {
       const ignoredExecution = yield* recordPausedRunIgnored({
         workflowId,
+        workflowVersionId: preflight.workflowVersionId,
         startSource: "manual",
         runMode,
         payload,

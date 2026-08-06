@@ -59,7 +59,7 @@ function isWorkflowNodeType(value: unknown): value is WorkflowNodeType {
 
 /**
  * Drop editor/run overlay keys that StructWithRest may have admitted from an
- * old row or an in-process React Flow export.
+ * in-process React Flow export (run status overlays, click handlers).
  */
 function toPersistedNodeData(data: {
   label: string;

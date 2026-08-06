@@ -215,7 +215,7 @@ export function getUpstreamFields(input: {
 }
 
 function toConditionFieldType(field: UpstreamField): ConditionFieldType | null {
-  if (field.type === "timestamp" || field.format === "timestamp") {
+  if (field.type === "timestamp") {
     return "timestamp";
   }
 

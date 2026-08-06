@@ -76,6 +76,7 @@ function harness(answers: {
         return yield* repo.startForEntity({
           execution: {
             workflowId: "wf_1",
+            workflowVersionId: "ver_1",
             startSource: "event",
             runMode: "live",
             entityValue: "appt_1",

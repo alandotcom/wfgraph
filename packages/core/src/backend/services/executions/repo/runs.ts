@@ -107,11 +107,10 @@ export type RunsRepoMethods = {
   ) => Effect.Effect<ExecutionSummary | null, DatabaseError>;
   /**
    * The logs payload's run row plus the pinned version graph, in one round trip.
-   * `graph` is null when the row has no `workflow_version_id`.
    */
   readonly findSummaryWithPinnedGraph: (executionId: string) => Effect.Effect<
     | (ExecutionSummary & {
-        graph: SerializedWorkflowGraph | null;
+        graph: SerializedWorkflowGraph;
       })
     | null,
     DatabaseError
@@ -343,7 +342,7 @@ export function makeRunsMethods(
             graph: workflowVersions.graph,
           })
           .from(workflowExecutions)
-          .leftJoin(
+          .innerJoin(
             workflowVersions,
             eq(workflowExecutions.workflowVersionId, workflowVersions.id)
           )
@@ -390,6 +389,7 @@ export function makeRunsMethods(
           .insert(workflowExecutions)
           .values({
             workflowId: input.workflowId,
+            workflowVersionId: input.workflowVersionId,
             status: input.status,
             startSource: input.startSource,
             runMode: input.runMode,

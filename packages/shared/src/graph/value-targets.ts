@@ -25,7 +25,7 @@ export type ValueTargetType = "duration" | "timestamp";
  * it. That is the ordinary state of an action's output.
  */
 export function targetAccepts(
-  field: Pick<ReferenceField, "type" | "format">,
+  field: Pick<ReferenceField, "type">,
   targetType: ValueTargetType | undefined,
   options: { allowNumber: boolean }
 ): boolean {
@@ -37,5 +37,5 @@ export function targetAccepts(
     return true;
   }
 
-  return field.type === targetType || field.format === targetType;
+  return field.type === targetType;
 }

@@ -32,7 +32,7 @@ type TemplateAutocompleteProps = {
 
 /** What the menu offers a typed target: the save's rule, without the numbers. */
 function offeredFor(
-  field: Pick<ReferenceField, "type" | "format">,
+  field: Pick<ReferenceField, "type">,
   targetType: ValueTargetType | undefined
 ): boolean {
   return targetAccepts(field, targetType, { allowNumber: false });
