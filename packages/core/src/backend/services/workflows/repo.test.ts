@@ -16,6 +16,7 @@ import {
   WorkflowRepo,
   WorkflowRepoLayer,
 } from "#src/backend/services/workflows/repo";
+import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 
 /** One row of the subscription-index read, in the order it selects columns. */
 type NamedRow = [
@@ -170,5 +171,74 @@ describe("listEventSubscribers", () => {
         correlationPath: null,
       },
     ]);
+  });
+});
+
+describe("publishVersion", () => {
+  // Two overlapping publishes can mint the same version number; the unique
+  // index is the optimistic condition, and a conflict must not throw.
+  it("mints with on conflict do nothing on the version number", async () => {
+    const emptyGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
+    const { layer: databaseLayer, statements } = stubDatabase(({ query }) => {
+      if (query.startsWith("insert") && query.includes("workflow_versions")) {
+        return [
+          [
+            "ver_1",
+            "wf_1",
+            1,
+            JSON.stringify(emptyGraph),
+            "fp",
+            "digest",
+            new Date(),
+          ],
+        ];
+      }
+      if (query.startsWith("update") && query.includes("workflows")) {
+        return [
+          [
+            "wf_1",
+            "Name",
+            null,
+            JSON.stringify(emptyGraph),
+            false,
+            "live",
+            "private",
+            "ver_1",
+            new Date(),
+            new Date(),
+          ],
+        ];
+      }
+      return [];
+    });
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const repo = yield* WorkflowRepo;
+        return yield* repo.publishVersion({
+          workflowId: "wf_1",
+          versionId: "ver_1",
+          mint: {
+            version: 1,
+            graph: emptyGraph,
+            catalogFingerprint: "fp",
+            graphDigest: "digest",
+          },
+          draftGraph: emptyGraph,
+          eventSubscriptions: [],
+        });
+      }).pipe(
+        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
+      )
+    );
+
+    const mintInsert = statements.find(
+      (statement) =>
+        statement.query.startsWith("insert") &&
+        statement.query.includes("workflow_versions")
+    );
+    expect(mintInsert?.query).toContain(
+      'on conflict ("workflow_id","version") do nothing'
+    );
   });
 });
