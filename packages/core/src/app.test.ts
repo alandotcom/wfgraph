@@ -607,14 +607,13 @@ describe("createRovaApp with inngest.connect", () => {
   // The shared catch still gives the pool back, so a host that retries after
   // fixing the gateway is not refused by a leaked connection.
   it("rejects boot when Connect handshake fails and gives the pool back", async () => {
-    const closeSpy = vi.fn(async () => undefined);
     const createSurface = dbModule.createDatabaseSurface;
+    let database: ReturnType<typeof createSurface> | undefined;
     const surfaceSpy = vi
       .spyOn(dbModule, "createDatabaseSurface")
       .mockImplementation((config) => {
-        const surface = createSurface(config);
-        closeSpy.mockImplementation(() => surface.close());
-        return { ...surface, close: closeSpy };
+        database = createSurface(config);
+        return database;
       });
 
     connect.mockRejectedValueOnce(new Error("gateway handshake failed"));
@@ -627,7 +626,15 @@ describe("createRovaApp with inngest.connect", () => {
         })
       ).rejects.toThrow("gateway handshake failed");
 
-      expect(closeSpy).toHaveBeenCalledTimes(1);
+      if (!database) {
+        throw new Error("Boot opened no database surface to give back.");
+      }
+
+      // A pool that was never ended would answer with ECONNREFUSED
+      // (nothing listens on :1), not CONNECTION_ENDED.
+      await expect(database.client`select 1`).rejects.toThrow(
+        "CONNECTION_ENDED"
+      );
     } finally {
       surfaceSpy.mockRestore();
     }
