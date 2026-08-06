@@ -1,11 +1,13 @@
 import type { Edge, Node, XYPosition } from "@xyflow/react";
 import { useAtomValue, useSetAtom } from "jotai";
-import { Link2Off, Plus, Trash2 } from "lucide-react";
+import { Link2Off, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useRef } from "react";
+import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { useDomEvent } from "#src/hooks/effects";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   addNodeAtom,
   deleteEdgeAtom,
@@ -43,6 +45,7 @@ export function WorkflowContextMenu({
   const setSelectedNode = useSetAtom(selectedNodeAtom);
   const setActiveTab = useSetAtom(propertiesPanelActiveTabAtom);
   const { open: openOverlay } = useOverlay();
+  const isMobile = useIsMobile();
   const menuRef = useRef<HTMLDivElement>(null);
 
   const handleDeleteNode = useCallback(() => {
@@ -61,6 +64,27 @@ export function WorkflowContextMenu({
       });
     }
   }, [menuState, deleteNode, onClose, openOverlay]);
+
+  const handleEditNode = useCallback(() => {
+    if (menuState?.nodeId) {
+      const nodeId = menuState.nodeId;
+      onClose();
+      setSelectedNode(nodeId);
+      setActiveTab("properties");
+      // On a narrow canvas no rail is mounted to show the selection, so the
+      // sheet is the only surface that can answer this click.
+      if (isMobile) {
+        openOverlay(ConfigurationOverlay, {});
+      }
+    }
+  }, [
+    menuState,
+    onClose,
+    setSelectedNode,
+    setActiveTab,
+    isMobile,
+    openOverlay,
+  ]);
 
   const handleDeleteEdge = useCallback(() => {
     if (menuState?.edgeId) {
@@ -136,6 +160,10 @@ export function WorkflowContextMenu({
     enabled: isMenuOpen,
   });
   useDomEvent(document, "keydown", handleEscape, { enabled: isMenuOpen });
+  // The menu is positioned in viewport coordinates against a node that has since
+  // moved, so a resize leaves it pointing at nothing. It also survived the
+  // breakpoint change that swaps the canvas layout.
+  useDomEvent(window, "resize", onClose, { enabled: isMenuOpen });
 
   if (!menuState) {
     return null;
@@ -164,13 +192,20 @@ export function WorkflowContextMenu({
       }}
     >
       {menuState.type === "node" && (
-        <MenuItem
-          disabled={isLifecycleNode}
-          icon={<Trash2 className="size-4" />}
-          label={`Delete ${getNodeLabel()}`}
-          onClick={handleDeleteNode}
-          variant="destructive"
-        />
+        <>
+          <MenuItem
+            icon={<SlidersHorizontal className="size-4" />}
+            label={`Edit ${getNodeLabel()}`}
+            onClick={handleEditNode}
+          />
+          <MenuItem
+            disabled={isLifecycleNode}
+            icon={<Trash2 className="size-4" />}
+            label={`Delete ${getNodeLabel()}`}
+            onClick={handleDeleteNode}
+            variant="destructive"
+          />
+        </>
       )}
 
       {menuState.type === "edge" && (

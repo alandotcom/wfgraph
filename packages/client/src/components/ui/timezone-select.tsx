@@ -111,7 +111,7 @@ export function TimezoneSelect({
       onValueChange={whenChosen(onValueChange)}
       value={value}
     >
-      <SelectTrigger id={id}>
+      <SelectTrigger className="w-full" id={id}>
         <SelectValue placeholder="Select timezone" />
       </SelectTrigger>
       <SelectContent>

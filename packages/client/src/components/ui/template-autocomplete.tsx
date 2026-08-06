@@ -265,7 +265,7 @@ export function TemplateAutocomplete({
 
   const menuContent = (
     <div
-      className="fixed z-[9999] w-80 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
+      className="fixed z-50 w-80 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
       style={{
         top: `${adjustedPosition.top}px`,
         left: `${adjustedPosition.left}px`,
@@ -317,7 +317,7 @@ export function TemplateAutocomplete({
                 </div>
               )}
               {option.absentOn && (
-                <div className="text-amber-600 text-xs dark:text-amber-500">
+                <div className="text-warning text-xs dark:text-warning">
                   Absent on {option.absentOn.join(", ")}
                 </div>
               )}
@@ -328,7 +328,7 @@ export function TemplateAutocomplete({
               )}
             </div>
             {index === selectedOptionIndex && !option.unusable && (
-              <Check className="h-4 w-4" />
+              <Check className="size-4" />
             )}
           </div>
         ))}

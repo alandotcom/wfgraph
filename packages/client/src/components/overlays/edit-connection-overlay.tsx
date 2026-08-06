@@ -66,7 +66,7 @@ function SecretField({
         <Label htmlFor={fieldId}>{label}</Label>
         <div className="flex items-center gap-2">
           <div className="flex h-9 flex-1 items-center gap-2 rounded-md border bg-muted/30 px-3">
-            <Check className="size-4 text-green-600" />
+            <Check className="size-4 text-success" />
             <span className="text-muted-foreground text-sm">Configured</span>
           </div>
           <Button

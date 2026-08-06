@@ -82,8 +82,26 @@ export const sidebarWidthPercentAtom = atom(
  * The mobile case is deliberately absent. Whether the viewport is narrow is the
  * canvas's own layout question, and it asks `useIsMobile` itself.
  */
+/**
+ * The panel's rendered width as CSS, clamped.
+ *
+ * One home for the clamp, because two of them is a visible bug: the canvas
+ * reserves its space with `calc(100% - this)` while the panel sets `width` from
+ * it, so a percentage here and a clamped value there left a strip of bare page
+ * between the canvas edge and the panel on any screen wide enough for the
+ * percentage to beat the cap.
+ *
+ * The floor stops the panel becoming unusable on a small laptop; the cap stops
+ * a bare percentage handing 576px of a 1920px screen to a column of form fields.
+ */
+export function sidebarWidthCss(percent: number): string {
+  return `min(max(${percent}%, 320px), 460px)`;
+}
+
 export const rightPanelWidthAtom = atom((get) =>
-  get(isSidebarCollapsedAtom) ? null : `${get(sidebarWidthPercentAtom)}%`
+  get(isSidebarCollapsedAtom)
+    ? null
+    : sidebarWidthCss(get(sidebarWidthPercentAtom))
 );
 
 export const isExecutingAtom = atom(false);

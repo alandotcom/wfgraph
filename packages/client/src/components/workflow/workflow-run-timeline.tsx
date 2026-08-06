@@ -23,14 +23,14 @@ function TimelineEntry({
     <div className="relative flex gap-3">
       {/* Vertical connecting line */}
       {isLast ? null : (
-        <div className="absolute top-5 bottom-0 left-[7px] w-px bg-border" />
+        <div className="absolute top-5 bottom-0 left-2 w-px bg-border" />
       )}
 
       {/* Status dot */}
       <div className="relative z-10 mt-1.5 flex shrink-0 items-center justify-center">
         <div
           className={cn(
-            "size-[15px] rounded-full ring-2 ring-background",
+            "size-4 rounded-full ring-2 ring-background",
             getStatusDotClass(log.status)
           )}
         />
@@ -81,7 +81,7 @@ function TimelineEntry({
                 isError
                 title="Error"
               >
-                <pre className="overflow-auto rounded-lg border border-red-500/20 bg-red-500/5 p-3 font-mono text-red-600 text-xs leading-relaxed">
+                <pre className="overflow-auto rounded-lg border border-destructive/20 bg-destructive/5 p-3 font-mono text-destructive text-xs leading-relaxed">
                   {log.error}
                 </pre>
               </CollapsibleSection>

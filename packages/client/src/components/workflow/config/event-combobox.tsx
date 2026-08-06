@@ -59,7 +59,7 @@ function EventComboboxBody({
             <ComboboxItem key={choice.name} value={choice}>
               <span className="block truncate">{choice.label}</span>
               {choice.label === choice.name ? null : (
-                <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                <span className="block truncate font-mono text-xs text-muted-foreground">
                   {choice.name}
                 </span>
               )}

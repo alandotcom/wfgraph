@@ -68,7 +68,7 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
   return (
     <Node
       className={cn(
-        "flex h-48 w-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
+        "flex size-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
         selected && "border-primary"
       )}
       handles={{
@@ -94,14 +94,14 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
       status={status}
     >
       <div
-        className="pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none"
+        className="pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
         style={{ left: STARTED_HANDLE_LEFT }}
       >
         Started
       </div>
       <div
         className={cn(
-          "pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none",
+          "pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none",
           canceledInactive && "opacity-50"
         )}
         style={{ left: CANCELED_HANDLE_LEFT }}
@@ -110,7 +110,7 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
       </div>
 
       <div className="flex flex-col items-center justify-center gap-3 p-6">
-        <Play className="size-12 text-blue-500" strokeWidth={1.5} />
+        <Play className="size-12 text-node-lifecycle" strokeWidth={1.5} />
         <div className="flex flex-col items-center gap-1 text-center">
           <NodeTitle className="text-base">{displayTitle}</NodeTitle>
           {displayDescription && (
@@ -118,7 +118,7 @@ export const LifecycleNode = memo(({ data, selected }: LifecycleNodeProps) => {
               {displayDescription}
             </NodeDescription>
           )}
-          <p className="max-w-40 text-[11px] text-muted-foreground leading-tight">
+          <p className="max-w-40 text-xs text-muted-foreground leading-tight">
             {startSummary}
           </p>
         </div>

@@ -75,9 +75,9 @@ function renderTrailingSlot(
           variant="outline"
         >
           {trailing.isCanceling ? (
-            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+            <Loader2 className="mr-1 size-3 animate-spin" />
           ) : (
-            <Ban className="mr-1 h-3 w-3" />
+            <Ban className="mr-1 size-3" />
           )}
           Cancel
         </Button>
@@ -110,14 +110,14 @@ function SummaryContent({
           <span className="font-medium text-sm">Run #{runNumber}</span>
           <span
             className={cn(
-              "rounded border px-1.5 py-0.5 font-medium text-[10px] uppercase",
+              "rounded border px-1.5 py-0.5 font-medium text-xs uppercase",
               getStatusBadgeClass(execution.status)
             )}
           >
             {getStatusLabel(execution.status)}
           </span>
           {execution.runMode === "test" ? (
-            <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 font-medium text-[10px] text-amber-700 uppercase dark:text-amber-300">
+            <span className="rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 font-medium text-xs text-warning uppercase">
               Test Mode
             </span>
           ) : null}

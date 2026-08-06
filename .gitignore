@@ -68,3 +68,4 @@ dist/
 # checkout of the whole tree, so anything walking the repo would judge every
 # file twice.
 .claude/worktrees/
+.impeccable/live

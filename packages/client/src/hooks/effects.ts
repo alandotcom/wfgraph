@@ -229,3 +229,83 @@ export function useMeasuredHeight(
 
   return height;
 }
+
+/** Focusable descendants, in tab order, skipping anything hidden or disabled. */
+const FOCUSABLE =
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
+
+function focusableWithin(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    (el) =>
+      el.offsetWidth > 0 || el.offsetHeight > 0 || el === document.activeElement
+  );
+}
+
+/**
+ * Hold keyboard focus inside `ref`'s element while `enabled`, and give it back
+ * to whatever had it once the element goes away.
+ *
+ * The editor's overlays are a hand-rolled surface rather than a mounted popup,
+ * so nothing was scoping Tab: focus walked out of the dialog and onto the canvas
+ * behind the backdrop, where a keyboard user could act on controls they believed
+ * were in front of them. This is the trap that surface never got.
+ *
+ * Not a substitute for the dialog role and `aria-modal`, which the container
+ * sets; those tell a screen reader what the element is, and this decides where
+ * Tab may go.
+ */
+export function useFocusTrap(
+  ref: RefObject<HTMLElement | null>,
+  enabled: boolean
+): void {
+  const restoreTo = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const root = enabled ? ref.current : null;
+    if (root) {
+      restoreTo.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+
+      // Move focus in, so the first Tab lands inside rather than after the trap.
+      if (!root.contains(document.activeElement)) {
+        (focusableWithin(root)[0] ?? root).focus();
+      }
+    }
+
+    return () => {
+      restoreTo.current?.focus();
+      restoreTo.current = null;
+    };
+  }, [ref, enabled]);
+
+  const onKeyDown = useLatestEvent((event: KeyboardEvent) => {
+    const root = ref.current;
+    if (event.key !== "Tab" || !root) {
+      return;
+    }
+    const items = focusableWithin(root);
+    if (items.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    const first = items[0];
+    const last = items.at(-1);
+    const active = document.activeElement;
+
+    // Wrap at each end, and pull focus back in if it has already escaped.
+    if (!root.contains(active)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first)?.focus();
+    } else if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last?.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+
+  useDomEvent(document, "keydown", onKeyDown, { enabled });
+}

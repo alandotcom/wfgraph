@@ -32,8 +32,10 @@ function TemplateInputField({ field, value, onChange, disabled }: FieldProps) {
     <TemplateBadgeInput
       disabled={disabled}
       id={field.key}
+      labelledBy={field.label ? `${field.key}-label` : undefined}
       onChange={onChange}
       placeholder={field.placeholder}
+      required={field.required}
       value={typeof value === "string" ? value : ""}
     />
   );
@@ -49,8 +51,10 @@ function TemplateTextareaField({
     <TemplateBadgeTextarea
       disabled={disabled}
       id={field.key}
+      labelledBy={field.label ? `${field.key}-label` : undefined}
       onChange={onChange}
       placeholder={field.placeholder}
+      required={field.required}
       rows={field.rows || 4}
       value={typeof value === "string" ? value : ""}
     />
@@ -197,6 +201,7 @@ function KeyValueField({ value, onChange, disabled }: FieldProps) {
             value={entry.name}
           />
           <TemplateBadgeInput
+            ariaLabel="Value"
             className="flex-1"
             disabled={disabled}
             onChange={(val) => updateEntry(entry._id, "value", val ?? "")}
@@ -204,14 +209,14 @@ function KeyValueField({ value, onChange, disabled }: FieldProps) {
             value={entry.value}
           />
           <Button
-            className="h-8 w-8 shrink-0"
+            className="size-8 shrink-0"
             disabled={disabled}
             onClick={() => removeEntry(entry._id)}
             size="icon"
             type="button"
             variant="ghost"
           >
-            <X className="h-4 w-4" />
+            <X className="size-4" />
           </Button>
         </div>
       ))}
@@ -223,7 +228,7 @@ function KeyValueField({ value, onChange, disabled }: FieldProps) {
         type="button"
         variant="outline"
       >
-        <Plus className="mr-1 h-3.5 w-3.5" />
+        <Plus className="mr-1 size-3.5" />
         Add
       </Button>
     </div>
@@ -261,11 +266,18 @@ function renderField(
   const FieldRenderer = FIELD_RENDERERS[field.type];
 
   return (
-    <div className="space-y-2" key={field.key}>
+    <div className="flex flex-col gap-2" key={field.key}>
       {field.label && (
-        <Label className="ml-1" htmlFor={field.key}>
+        // The id is what names the template fields, whose editor is a
+        // contenteditable div that `htmlFor` cannot reach. The asterisk is
+        // decorative once `required` reaches the control as `aria-required`.
+        <Label className="ml-1" htmlFor={field.key} id={`${field.key}-label`}>
           {field.label}
-          {field.required && <span className="text-red-500">*</span>}
+          {field.required && (
+            <span aria-hidden="true" className="text-destructive">
+              *
+            </span>
+          )}
         </Label>
       )}
       <FieldRenderer
@@ -307,7 +319,7 @@ function FieldGroup({
       >
         <span className="font-medium text-sm">{label}</span>
         <ChevronDown
-          className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${
+          className={`size-3.5 text-muted-foreground transition-transform duration-200 ${
             isExpanded ? "" : "-rotate-90"
           }`}
         />

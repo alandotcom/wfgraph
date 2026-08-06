@@ -336,13 +336,13 @@ const ProviderLogo = ({ actionType }: { actionType: string }) => {
   // Check for system actions first (non-plugin)
   switch (actionType) {
     case BUILT_IN_ACTION_IDS.condition:
-      return <GitBranch className="size-12 text-pink-300" strokeWidth={1.5} />;
-    case BUILT_IN_ACTION_IDS.eventSplit:
-      return <Split className="size-12 text-sky-400" strokeWidth={1.5} />;
-    case BUILT_IN_ACTION_IDS.wait:
       return (
-        <Hourglass className="size-12 text-orange-300" strokeWidth={1.5} />
+        <GitBranch className="size-12 text-node-condition" strokeWidth={1.5} />
       );
+    case BUILT_IN_ACTION_IDS.eventSplit:
+      return <Split className="size-12 text-node-split" strokeWidth={1.5} />;
+    case BUILT_IN_ACTION_IDS.wait:
+      return <Hourglass className="size-12 text-node-wait" strokeWidth={1.5} />;
     default:
       // Not a built-in, so the icon comes from its integration below.
       break;
@@ -360,7 +360,7 @@ const ProviderLogo = ({ actionType }: { actionType: string }) => {
     }
   }
 
-  return <Zap className="size-12 text-amber-300" strokeWidth={1.5} />;
+  return <Zap className="size-12 text-node-wait" strokeWidth={1.5} />;
 };
 
 const ModelBadge = ({ model }: { model: string }) => {
@@ -369,7 +369,7 @@ const ModelBadge = ({ model }: { model: string }) => {
   }
 
   return (
-    <div className="rounded-full border border-muted-foreground/50 px-2 py-0.5 font-medium text-[10px] text-muted-foreground">
+    <div className="rounded-full border border-muted-foreground/50 px-2 py-0.5 font-medium text-xs text-muted-foreground">
       {getModelDisplayName(model)}
     </div>
   );
@@ -490,7 +490,7 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
     return (
       <Node
         className={cn(
-          "flex h-48 w-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
+          "flex size-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
           selected && "border-primary",
           isDisabled && "opacity-50"
         )}
@@ -499,8 +499,8 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
         status={status}
       >
         {isDisabled && (
-          <div className="absolute top-2 left-2 rounded-full bg-gray-500/50 p-1">
-            <EyeOff className="size-3.5 text-white" />
+          <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
+            <EyeOff className="size-3.5 text-background" />
           </div>
         )}
         <div className="flex flex-col items-center justify-center gap-3 p-6">
@@ -555,7 +555,7 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
   return (
     <Node
       className={cn(
-        "relative flex h-48 w-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
+        "relative flex size-48 flex-col items-center justify-center shadow-none transition-all duration-150 ease-out",
         selected && "border-primary",
         isDisabled && "opacity-50"
       )}
@@ -606,24 +606,24 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
     >
       {/* Disabled badge in top left */}
       {isDisabled && (
-        <div className="absolute top-2 left-2 rounded-full bg-gray-500/50 p-1">
-          <EyeOff className="size-3.5 text-white" />
+        <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
+          <EyeOff className="size-3.5 text-background" />
         </div>
       )}
 
       {/* Integration warning badge in top left (only if not disabled) */}
       {!isDisabled && integrationMissing && (
-        <div className="absolute top-2 left-2 rounded-full bg-orange-500/50 p-1">
-          <AlertTriangle className="size-3.5 text-white" />
+        <div className="absolute top-2 left-2 rounded-full bg-warning/50 p-1">
+          <AlertTriangle className="size-3.5 text-background" />
         </div>
       )}
 
       {isConditionAction && (
         <>
-          <div className="pointer-events-none absolute -bottom-8 left-[38%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none">
+          <div className="pointer-events-none absolute -bottom-8 left-[38%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none">
             True
           </div>
-          <div className="pointer-events-none absolute -bottom-8 left-[62%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none">
+          <div className="pointer-events-none absolute -bottom-8 left-[62%] -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none">
             False
           </div>
         </>
@@ -632,7 +632,7 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
       {isEventSplitAction &&
         splitOutlets.map((event, index) => (
           <div
-            className="pointer-events-none absolute -bottom-8 max-w-28 -translate-x-1/2 truncate rounded-sm border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none"
+            className="pointer-events-none absolute -bottom-8 max-w-28 -translate-x-1/2 truncate rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
             key={event.name}
             style={{
               left: eventSplitOutletLeft(index, splitOutlets.length),
@@ -653,10 +653,10 @@ export const ActionNode = memo(({ data, selected, id }: ActionNodeProps) => {
           <NodeTitle className="text-base">{displayTitle}</NodeTitle>
           {waitPreview ? (
             <div className="flex flex-col items-center gap-0.5">
-              <NodeDescription className="font-medium text-[11px] tabular-nums">
+              <NodeDescription className="font-medium text-xs tabular-nums">
                 {waitPreview.countdown}
               </NodeDescription>
-              <NodeDescription className="max-w-[10.5rem] text-[10px] leading-tight">
+              <NodeDescription className="max-w-[10.5rem] text-xs leading-tight">
                 {waitPreview.triggerTime}
               </NodeDescription>
             </div>

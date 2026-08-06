@@ -181,7 +181,7 @@ const Animated = ({
       {edgeLabel && (
         <EdgeLabelRenderer>
           <div
-            className="pointer-events-none absolute rounded-sm border bg-background px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground leading-none"
+            className="pointer-events-none absolute rounded-sm border bg-background px-1.5 py-0.5 font-medium text-xs text-muted-foreground leading-none"
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
               ...(inactive ? { opacity: 0.7 } : {}),

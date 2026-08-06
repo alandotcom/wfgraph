@@ -27,19 +27,19 @@ const STATUS_CHIP = {
   success: {
     label: "Succeeded",
     Icon: Check,
-    className: "bg-green-500/10 text-green-700 dark:text-green-400",
+    className: "bg-success/10 text-success",
     iconClassName: "",
   },
   error: {
     label: "Failed",
     Icon: XCircle,
-    className: "bg-red-500/10 text-red-700 dark:text-red-400",
+    className: "bg-destructive/10 text-destructive",
     iconClassName: "",
   },
   cancelled: {
     label: "Cancelled",
     Icon: Ban,
-    className: "bg-slate-500/10 text-slate-700 dark:text-slate-400",
+    className: "bg-cancelled/10 text-cancelled",
     iconClassName: "",
   },
 } as const;
@@ -53,7 +53,7 @@ const NodeStatusChip = ({ status }: { status?: NodeProps["status"] }) => {
   return (
     <div
       className={cn(
-        "absolute top-2 right-2 z-10 flex items-center gap-1 rounded-full py-0.5 pr-2 pl-1.5 font-medium text-[10px] leading-none",
+        "absolute top-2 right-2 z-10 flex items-center gap-1 rounded-sm py-0.5 pr-2 pl-1.5 font-medium text-xs leading-none",
         chip.className
       )}
       role="status"
@@ -116,9 +116,9 @@ export const Node = ({ handles, className, status, ...props }: NodeProps) => (
   <Card
     className={cn(
       "node-container relative size-full h-auto w-sm gap-0 overflow-visible rounded-md bg-card p-0 transition-all duration-200",
-      status === "success" && "border-2 border-green-500",
-      status === "error" && "border-2 border-red-500",
-      status === "cancelled" && "border-2 border-slate-500",
+      status === "success" && "border-2 border-success",
+      status === "error" && "border-2 border-destructive",
+      status === "cancelled" && "border-2 border-cancelled",
       className
     )}
     {...props}

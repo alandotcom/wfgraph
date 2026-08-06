@@ -25,6 +25,23 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  /* Run-status signals. Every value is solved so the text form clears 4.5:1 on
+     its own 10% tint, which is the `bg-x/10 text-x` pattern the editor uses. */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-cancelled: var(--cancelled);
+  /* Node-type identity. The one sanctioned tinted-neutral and decorative-hue
+     exception in the system; see DESIGN.md section 2. Each clears 3:1 on both
+     card surfaces, so one value serves both themes. */
+  --color-node-lifecycle: var(--node-lifecycle);
+  --color-node-split: var(--node-split);
+  --color-node-wait: var(--node-wait);
+  --color-node-condition: var(--node-condition);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -64,9 +81,23 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --success: oklch(0.526 0.148 149.58);
+  --success-foreground: oklch(0.985 0 0);
+  --warning: oklch(0.546 0.12 70.08);
+  --warning-foreground: oklch(0.985 0 0);
+  --info: oklch(0.482 0.18 259.8);
+  --info-foreground: oklch(0.985 0 0);
+  --cancelled: oklch(0.52 0.046 257.417);
+  --node-lifecycle: oklch(0.646 0.19 259.815);
+  --node-split: oklch(0.646 0.13 232.661);
+  --node-wait: oklch(0.661 0.14 66.29);
+  --node-condition: oklch(0.673 0.16 346.018);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* Solved for SC 1.4.11: the old oklch(0.708) put the focus border at 2.59:1
+     on Paper, under the 3:1 floor for a non-text indicator. */
+  --ring: oklch(0.6 0 0);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -85,9 +116,12 @@
 .dark {
   --background: oklch(0 0 0);
   --foreground: oklch(0.98 0 0);
-  --card: oklch(0.04 0 0);
+  /* oklch(0.04) and oklch(0.09) both quantise to rgb(0,0,0) at 8 bits, so the
+     tonal layering this theme relies on rendered as nothing. 0.205 is the first
+     step that separates from Void on screen (#171717, 1.17:1). */
+  --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.04 0 0);
+  --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.98 0 0);
   --primary: oklch(0.98 0 0);
   --primary-foreground: oklch(0.09 0 0);
@@ -98,6 +132,14 @@
   --accent: oklch(0.15 0 0);
   --accent-foreground: oklch(0.98 0 0);
   --destructive: oklch(0.65 0.25 29);
+  --destructive-foreground: oklch(0.09 0 0);
+  --success: oklch(0.8 0.15 149.58);
+  --success-foreground: oklch(0.09 0 0);
+  --warning: oklch(0.79 0.15 70.08);
+  --warning-foreground: oklch(0.09 0 0);
+  --info: oklch(0.7 0.15 259.8);
+  --info-foreground: oklch(0.09 0 0);
+  --cancelled: oklch(0.7 0.046 257.417);
   --border: oklch(0.27 0 0);
   --input: oklch(0.27 0 0);
   --ring: oklch(0.8 0 0);
@@ -165,21 +207,83 @@
   }
 }
 
+/* The running-node border sweep. Lives here rather than in a `<style>` inside
+   AnimatedBorder, which re-emitted these rules once per running node. */
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes border-rotate {
+  from {
+    --angle: 0deg;
+  }
+  to {
+    --angle: 360deg;
+  }
+}
+
+.animate-border-mask {
+  animation: border-rotate 2s linear infinite;
+  mask-image: conic-gradient(
+    from var(--angle),
+    transparent 70%,
+    black 90%,
+    transparent 100%
+  );
+}
+
+/* DESIGN.md commits to a static alternative for every animation and names the
+   node border sweep specifically. Each rule below keeps the state visible and
+   drops only the movement: the sweep becomes a solid ring, the active edge
+   keeps its dash pattern without marching, spinners hold still. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-border-mask {
+    animation: none;
+    mask-image: none;
+    opacity: 0.65;
+  }
+
+  /* The dash pattern stays, so an active edge still reads as active. Only the
+     marching stops. The inline style on the edge needs the !important. */
+  .react-flow__edge-path {
+    animation: none !important;
+  }
+
+  /* Panel and node transitions collapse to an instant state change rather than
+     being removed, so hierarchy and position still update. */
+  .node-container,
+  .workflow-sidebar-panel {
+    transition-duration: 1ms !important;
+  }
+}
+
+/* React Flow ships a blue-tinted grey edge stroke that is identical in both
+   themes. Against Void it measured 9.84:1 while the node border it connects
+   measured 1.39:1, so the wire read louder than the node. Route it through the
+   border token instead, which inverts with the theme. */
+.react-flow {
+  --xy-edge-stroke-default: var(--border);
+  --xy-edge-stroke-selected-default: var(--primary);
+  --xy-connectionline-stroke-default: var(--muted-foreground);
+}
+
 /* React Flow attribution styling */
 .react-flow__attribution {
   background: transparent !important;
   padding: 2px 4px !important;
-  font-size: 10px !important;
+  font-size: 0.75rem !important;
   opacity: 0.4 !important;
 }
 
 .dark .react-flow__attribution {
   background: transparent !important;
-  color: rgba(255, 255, 255, 0.4) !important;
+  color: color-mix(in oklch, var(--foreground) 40%, transparent) !important;
 }
 
 .dark .react-flow__attribution a {
-  color: rgba(255, 255, 255, 0.5) !important;
+  color: color-mix(in oklch, var(--foreground) 50%, transparent) !important;
 }
 
 /* React Flow pane cursor */
@@ -194,6 +298,25 @@
 /* React Flow node and edge cursor */
 .react-flow__node {
   cursor: pointer !important;
+}
+
+/* React Flow puts `tabindex=0` on every node and edge, so both already take
+   keyboard focus. Neither drew anything when it arrived, which left the canvas
+   focusable and unreadable at the same time. This is the system's own focus
+   treatment, applied where React Flow had put the tab stop. */
+.react-flow__node:focus-visible,
+.react-flow__edge:focus-visible {
+  outline: none;
+}
+
+.react-flow__node:focus-visible .node-container {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent);
+}
+
+.react-flow__edge:focus-visible .react-flow__edge-path {
+  stroke: var(--ring);
+  stroke-width: 3;
 }
 
 /* When dragging a node, show grabbing cursor */
@@ -215,22 +338,31 @@
   z-index: 20 !important;
 }
 
-/* Invisible hit area for desktop */
+/* Invisible hit area for desktop.
+   The pseudo-element lives inside `.react-flow__viewport`, which carries the
+   pan/zoom scale transform, so a flat px size shrinks with the zoom: the 44px
+   mobile rule below was measuring 24.6px on a phone after fitView. Dividing by
+   the live zoom keeps the on-screen target at its nominal size. `--rf-zoom` is
+   published by the canvas on every viewport move; the fallback of 1 keeps this
+   correct before the first move fires. The cap stops a zoomed-out canvas from
+   growing hit areas until neighbouring handles overlap. */
 .react-flow__handle::after {
   content: "" !important;
   position: absolute !important;
   top: 50% !important;
   left: 50% !important;
   transform: translate(-50%, -50%) !important;
-  width: 24px !important;
-  height: 24px !important;
+  width: min(calc(24px / var(--rf-zoom, 1)), 48px) !important;
+  height: min(calc(24px / var(--rf-zoom, 1)), 48px) !important;
 }
 
-/* Invisible hit area for mobile with WCAG minimum target size */
-@media (max-width: 768px) {
+/* Invisible hit area for touch, at the WCAG 2.5.5 target size.
+   767.98px rather than 768px so this agrees with `useIsMobile`, which is an
+   exclusive `innerWidth < 768`. */
+@media (max-width: 767.98px) {
   .react-flow__handle::after {
-    width: 44px !important;
-    height: 44px !important;
+    width: min(calc(44px / var(--rf-zoom, 1)), 88px) !important;
+    height: min(calc(44px / var(--rf-zoom, 1)), 88px) !important;
   }
 }
 

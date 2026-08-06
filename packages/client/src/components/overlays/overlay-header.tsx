@@ -12,6 +12,7 @@ export function OverlayHeader({
   onBack,
   onClose,
   className,
+  overlayId,
 }: OverlayHeaderProps & { overlayId?: string }) {
   const { pop, closeAll } = useOverlay();
 
@@ -49,7 +50,12 @@ export function OverlayHeader({
           </Button>
         )}
         {title && (
-          <h2 className="flex-1 font-semibold text-lg leading-none tracking-tight">
+          // The container points aria-labelledby here, so the id has to track
+          // the overlay's own id rather than being generated per render.
+          <h2
+            className="flex-1 font-semibold text-base leading-none"
+            id={overlayId ? `overlay-title-${overlayId}` : undefined}
+          >
             {title}
           </h2>
         )}
@@ -83,6 +89,7 @@ export function SmartOverlayHeader({
   return (
     <OverlayHeader
       {...props}
+      overlayId={overlayId}
       showBackButton={showBackButtonProp ?? stackShowBackButton}
     />
   );

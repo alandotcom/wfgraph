@@ -8,7 +8,11 @@ import {
 import { useCallback, useRef } from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 import { Dialog, DialogPortal } from "#src/components/ui/dialog";
-import { useDomEvent, useMeasuredHeight } from "#src/hooks/effects";
+import {
+  useDomEvent,
+  useFocusTrap,
+  useMeasuredHeight,
+} from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { cn } from "@rova/shared/utils";
 import { useOverlay } from "./overlay-provider";
@@ -81,6 +85,7 @@ function DesktopOverlayContainer() {
   const { stack, closeAll, pop } = useOverlay();
   const shouldReduceMotion = useReducedMotion();
   const contentRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const isOpen = stack.length > 0;
 
@@ -112,6 +117,7 @@ function DesktopOverlayContainer() {
   );
 
   useDomEvent(document, "keydown", handleEscapeKey, { enabled: isOpen });
+  useFocusTrap(dialogRef, isOpen);
 
   if (!isOpen) {
     return null;
@@ -125,30 +131,46 @@ function DesktopOverlayContainer() {
             {/* Backdrop - standalone clickable div */}
             <motion.div
               animate={{ opacity: 1 }}
-              className="fixed inset-0 z-50 bg-black/60"
+              className="fixed inset-0 z-50 bg-foreground/60"
               exit={{ opacity: 0 }}
               initial={{ opacity: 0 }}
               onClick={handleBackdropClick}
               transition={{ duration: 0.2 }}
             />
 
-            {/* Dialog container */}
+            {/* Dialog container.
+                This surface is a plain div rather than a mounted popup, so the
+                dialog role, aria-modal and the focus trap are set here by hand;
+                without them a screen reader was never told an overlay opened and
+                Tab walked onto the canvas behind the backdrop. */}
             <motion.div
               animate="visible"
+              aria-labelledby={
+                currentItem ? `overlay-title-${currentItem.id}` : undefined
+              }
+              aria-modal="true"
               className="fixed top-1/2 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 px-4"
               exit="exit"
               initial="hidden"
+              ref={dialogRef}
+              role="dialog"
               variants={containerVariants}
             >
               <LayoutGroup>
                 <motion.div
-                  className="relative overflow-hidden rounded-xl border bg-background shadow-2xl ring-1 ring-black/5"
+                  className="relative flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-xl border bg-card shadow-lg ring-1 ring-border"
                   layout="position"
                   style={{ minHeight: minHeight > 0 ? minHeight : "auto" }}
                   transition={iosSpring}
                 >
-                  {/* Content area - all items rendered persistently to preserve state */}
-                  <div className="relative" ref={contentRef}>
+                  {/* Content area - all items rendered persistently to preserve state.
+                      `min-h-0` is what lets the overlay's own scroller take over
+                      once the content is taller than the viewport; without it the
+                      card grew past the screen and clipped its footer actions. */}
+                  <div
+                    className="relative flex min-h-0 flex-1 flex-col"
+                    ref={contentRef}
+                  >
                     {renderStack.map((item, index) => {
                       const isCurrent = index === currentIndex;
                       const isPrevious = index < currentIndex;
@@ -172,7 +194,7 @@ function DesktopOverlayContainer() {
                           className={cn(
                             "w-full",
                             isCurrent
-                              ? "relative"
+                              ? "relative flex min-h-0 flex-col"
                               : "pointer-events-none absolute inset-0"
                           )}
                           initial={initialValue}
@@ -244,14 +266,21 @@ function MobileOverlayContainer() {
 
         {/* Drawer container - let Vaul handle open/close animations */}
         <DrawerPrimitive.Content
+          aria-labelledby={
+            currentItem ? `overlay-title-${currentItem.id}` : undefined
+          }
           className={cn(
             "fixed inset-x-0 bottom-0 z-50 flex max-h-[90vh] flex-col",
-            "rounded-t-2xl border-t bg-background shadow-2xl"
+            "rounded-t-xl border-t bg-card shadow-lg"
           )}
         >
-          {/* Accessible title for screen readers */}
+          {/* Vaul requires a Title, and the overlays that render their own
+              visible header already carry one with a stable id, which is what
+              aria-labelledby above points at. This stays as the fallback for an
+              overlay with no header of its own; it used to read the literal
+              word "Dialog" to a screen reader even when a real title existed. */}
           <DrawerPrimitive.Title className="sr-only">
-            {currentItem?.options.title || "Dialog"}
+            {currentItem?.options.title || "Overlay"}
           </DrawerPrimitive.Title>
 
           {/* Drag handle */}

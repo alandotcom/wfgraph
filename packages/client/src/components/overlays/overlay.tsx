@@ -42,7 +42,7 @@ export function Overlay({
   className,
 }: OverlayComponentProps) {
   return (
-    <div className={cn("flex flex-col", className)}>
+    <div className={cn("flex min-h-0 flex-col", className)}>
       {/* Header with smart back button detection */}
       {(title || description) && (
         <SmartOverlayHeader
@@ -52,8 +52,11 @@ export function Overlay({
         />
       )}
 
-      {/* Content area */}
-      {children && <div className="flex-1 overflow-y-auto p-6">{children}</div>}
+      {/* Content area. `min-h-0` lets this scroll inside a height-capped card
+          rather than pushing the footer actions off the bottom of the screen. */}
+      {children && (
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">{children}</div>
+      )}
 
       {/* Footer with actions */}
       <OverlayFooter actions={actions} />

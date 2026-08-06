@@ -11,6 +11,8 @@ import {
 } from "@xyflow/react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
+import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { Canvas } from "#src/components/flow-elements/canvas";
 import { Connection } from "#src/components/flow-elements/connection";
 import { Controls } from "#src/components/flow-elements/controls";
@@ -73,6 +75,7 @@ export function WorkflowCanvas() {
   // The sidebar renders nothing on a narrow viewport, so the canvas keeps the
   // whole width. Whether the viewport is narrow is the canvas's own question.
   const isMobile = useIsMobile();
+  const { open: openOverlay } = useOverlay();
   const sidebarWidth = useAtomValue(rightPanelWidthAtom);
   const rightPanelWidth = isMobile ? null : sidebarWidth;
   const [isTransitioningFromHomepage, setIsTransitioningFromHomepage] = useAtom(
@@ -406,8 +409,16 @@ export function WorkflowCanvas() {
   const onNodeClick: NodeMouseHandler = useCallback(
     (_event, node) => {
       setSelectedNode(node.id);
+      setActiveTab("properties");
+      // Below the rail's breakpoint there is no panel mounted to receive the
+      // selection, so selecting a node used to look like nothing happening: the
+      // config lived behind an unlabelled toolbar icon a first-time user has no
+      // reason to find. On a narrow canvas the tap opens the sheet itself.
+      if (isMobile) {
+        openOverlay(ConfigurationOverlay, {});
+      }
     },
-    [setSelectedNode]
+    [setSelectedNode, setActiveTab, isMobile, openOverlay]
   );
 
   const onConnectStart = useCallback(
@@ -708,7 +719,17 @@ export function WorkflowCanvas() {
           />
         </Panel>
         {showMinimap && (
-          <MiniMap bgColor="var(--sidebar)" nodeStrokeColor="var(--border)" />
+          // maskColor and nodeColor default to hardcoded light-mode values that
+          // never invert: the viewport rectangle was invisible in light (1.05:1)
+          // and a bright reversed frame in dark (6.58:1). The test-mode banner
+          // moved to bottom-centre, so this corner is no longer contested.
+          <MiniMap
+            bgColor="var(--sidebar)"
+            className="rounded-lg border shadow-sm"
+            maskColor="color-mix(in oklch, var(--muted) 60%, transparent)"
+            nodeColor="var(--muted-foreground)"
+            nodeStrokeColor="var(--border)"
+          />
         )}
       </Canvas>
 

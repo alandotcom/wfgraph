@@ -536,7 +536,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
             }
           >
             {selectedNode.data.type === "lifecycle" ? (
-              <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+              <p className="font-medium text-muted-foreground text-sm">
                 Node Metadata
               </p>
             ) : null}

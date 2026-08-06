@@ -159,8 +159,8 @@ export function ApiKeysOverlay({ overlayId }: ApiKeysOverlayProps) {
         <div className="space-y-4">
           {/* Newly created key warning */}
           {newlyCreatedKey && (
-            <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3">
-              <p className="mb-2 font-medium text-sm text-yellow-600 dark:text-yellow-400">
+            <div className="rounded-md border border-warning/50 bg-warning/10 p-3">
+              <p className="mb-2 font-medium text-sm text-warning">
                 Copy your API key now. You won't be able to see it again!
               </p>
               <div className="flex items-center gap-2">

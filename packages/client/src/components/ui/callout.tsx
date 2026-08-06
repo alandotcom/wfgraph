@@ -22,7 +22,7 @@ export function WarningCallout({
 }) {
   if (variant === "text") {
     return (
-      <p className={cn("text-amber-700 text-xs dark:text-amber-200", className)}>
+      <p className={cn("text-warning text-xs", className)}>
         {children}
       </p>
     );
@@ -31,18 +31,18 @@ export function WarningCallout({
   return (
     <div
       className={cn(
-        "flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2",
+        "flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-2",
         className
       )}
     >
-      <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
+      <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" />
       <div className="space-y-0.5">
         {title ? (
-          <p className="font-medium text-amber-700 text-xs dark:text-amber-200">
+          <p className="font-medium text-warning text-xs">
             {title}
           </p>
         ) : null}
-        <p className="text-amber-700 text-xs dark:text-amber-200">{children}</p>
+        <p className="text-warning text-xs">{children}</p>
       </div>
     </div>
   );

@@ -13,8 +13,14 @@ colors:
   graphite-line-dark: "oklch(0.27 0 0)"
   graphite-wash-dark: "oklch(0.15 0 0)"
   signal-red: "oklch(0.577 0.245 27.325)"
-  signal-green: "oklch(0.723 0.192 149.58)"
-  signal-slate: "oklch(0.554 0.046 257.417)"
+  signal-green: "oklch(0.526 0.148 149.58)"
+  signal-amber: "oklch(0.546 0.12 70.08)"
+  signal-blue: "oklch(0.482 0.18 259.8)"
+  signal-slate: "oklch(0.52 0.046 257.417)"
+  node-lifecycle: "oklch(0.646 0.19 259.815)"
+  node-split: "oklch(0.646 0.13 232.661)"
+  node-wait: "oklch(0.661 0.14 66.29)"
+  node-condition: "oklch(0.673 0.16 346.018)"
 typography:
   title:
     fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
@@ -36,6 +42,11 @@ typography:
     fontSize: "0.8125rem"
     fontWeight: 400
     lineHeight: 1.5
+  caption:
+    fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.75rem"
+    fontWeight: 400
+    lineHeight: 1.35
 rounded:
   sm: "6px"
   md: "8px"
@@ -80,7 +91,7 @@ components:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.graphite-ink}"
     rounded: "{rounded.md}"
-    width: "384px"
+    width: "192px"
 ---
 
 # Design System: Rova Workflow Builder
@@ -119,15 +130,25 @@ An achromatic graphite ramp carries the entire interface; saturated hues exist o
 
 ### Tertiary (signals)
 
-- **Signal Red** (oklch(0.577 0.245 27.325)): Destructive actions and failed runs. The tokenized `--destructive`; node error borders currently use Tailwind red-500 (oklch(0.637 0.237 25.331)) and should converge on the token.
-- **Signal Green** (oklch(0.723 0.192 149.58)): Successful runs. Currently Tailwind green-500 on node borders; promote to a `--success` token.
-- **Signal Slate** (oklch(0.554 0.046 257.417)): Cancelled runs. Currently Tailwind slate-500.
+Each signal is one token carrying both the fill and the text form, and each light-mode value is solved so its text form clears 4.5:1 on its own 10% tint, which is the `bg-x/10 text-x` pattern the run panel uses throughout.
+
+- **Signal Red** (oklch(0.577 0.245 27.325)): Destructive actions and failed runs. `--destructive`.
+- **Signal Green** (oklch(0.526 0.148 149.58)): Successful runs. `--success`.
+- **Signal Amber** (oklch(0.546 0.12 70.08)): Waiting runs, test mode, and unmet prerequisites. `--warning`.
+- **Signal Blue** (oklch(0.482 0.18 259.8)): Work in progress, including the running-node border sweep, and live template variables. `--info`.
+- **Signal Slate** (oklch(0.52 0.046 257.417)): Cancelled and superseded runs. `--cancelled`.
+
+### Node-type accents
+
+Four hues name what a built-in node does: `--node-lifecycle`, `--node-split`, `--node-wait`, `--node-condition`. These are a deliberate exception to the Signal Rule, kept because node type is the fastest thing to read on a dense canvas. Each is a single value clearing 3:1 against both card surfaces, so it serves light and dark without a variant, which is what WCAG 1.4.11 asks of a graphic carrying meaning.
+
+The exception is bounded. It applies to the glyph of a built-in node and to nothing else: never a node fill, never a border, never a panel. A plugin's identity still lives in its own icon.
 
 ### Named Rules
 
 **The Signal Rule.** Chroma is earned by state. If an element is not communicating run status, a destructive consequence, selection, or an integration's identity, it is grayscale. There is no decorative color anywhere in the editor.
 
-**The One Ramp Rule.** All neutrals come from the zero-chroma graphite ramp. Never introduce a warm or cool tinted gray; slate-tinted text or borders would break the achromatic field.
+**The One Ramp Rule.** All neutrals come from the zero-chroma graphite ramp. The single exception is Signal Slate, which carries cancelled and superseded runs: the tint is what separates "this run stopped" from "this text is quiet", and it is spent on status rather than on the field. Everywhere else a warm or cool tinted gray breaks the achromatic field.
 
 ## 3. Typography
 
@@ -144,6 +165,7 @@ Both families are self-hosted through Fontsource variable packages, imported in 
 - **Label** (500, 0.875rem, 1.25): Buttons, form labels, tabs, menu items.
 - **Body** (400, 0.875rem, 1.5): Descriptions, settings prose, run detail text. `text-base` (1rem) only on mobile inputs to prevent iOS zoom.
 - **Mono** (400, 0.8125rem, 1.5): Template expressions, cron strings, JSON output, execution logs.
+- **Caption** (400, 0.75rem, 1.35): Canvas edge labels, node status chips, handle labels, and secondary run metadata. The floor of the scale. Nothing renders below it; the 10px and 11px values that used to sit here were arbitrary rather than a step.
 
 ### Named Rules
 
@@ -151,7 +173,7 @@ Both families are self-hosted through Fontsource variable packages, imported in 
 
 ## 4. Elevation
 
-Depth follows shadcn's native vocabulary and nothing more: hairline borders define structure, a whisper of shadow keeps surfaces from feeling painted on, and real shadow is reserved for things that genuinely float. In dark mode, tonal layering does most of the work (Void background, 0.04-lightness cards, 0.15 washes) because shadows read poorly on black.
+Depth follows shadcn's native vocabulary and nothing more: hairline borders define structure, a whisper of shadow keeps surfaces from feeling painted on, and real shadow is reserved for things that genuinely float. In dark mode, tonal layering does most of the work (Void background, 0.205-lightness cards, 0.15 washes) because shadows read poorly on black. The card step has to survive 8-bit quantisation to do that job: anything under about oklch(0.12) rounds to the same rgb(0,0,0) as the background and separates by nothing at all.
 
 ### Shadow Vocabulary
 
@@ -174,7 +196,7 @@ All primitives are shadcn/ui new-york on Base UI, refined and restrained: quiet 
 - **Outline:** Paper fill, hairline border, shadow-xs; hover fills with Graphite Wash.
 - **Ghost:** Transparent until hovered, then Graphite Wash.
 - **Destructive:** Signal Red fill; the only chromatic button.
-- **Focus:** 3px ring at 50% ring color, visible in both themes.
+- **Focus:** 3px ring at 50% ring color plus a border shift, visible in both themes. `--ring` is oklch(0.6 0 0) in light so the border shift clears the 3:1 that WCAG 1.4.11 asks of a focus indicator.
 
 ### Cards / Containers
 
@@ -192,7 +214,11 @@ All primitives are shadcn/ui new-york on Base UI, refined and restrained: quiet 
 
 ### Workflow Node (signature component)
 
-The reason the product exists. A 384px-wide card at 8px radius sitting on the React Flow canvas: integration icon, title, and description at rest. Status is worn on the border: a 2px Signal Green border for success, Signal Red for failure, Signal Slate for cancelled, and an animated border sweep while running. Handles are 12px dots in Graphite Ink with a hairline ring, enlarged hit areas (24px desktop, 44px mobile) hidden behind them.
+The reason the product exists. A 192px square card at 8px radius sitting on the React Flow canvas: integration icon, title, and description at rest. Event Split is wider at 264px on purpose, because it carries two labelled outlets. The card is flat; elevation on the canvas would compete with the status border.
+
+Status is worn on the border: a 2px Signal Green border for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. Every status also renders its word in a chip, so the border is never the only carrier.
+
+Handles are 12px dots in Graphite Ink with a hairline ring, and their hit areas are 24px on desktop and 44px on touch. Those sizes are divided by `--rf-zoom`, the live canvas scale the viewport transform applies, because a flat pixel size inside that transform shrinks with the zoom and delivered 24.6px on a phone.
 
 ### Navigation
 
@@ -203,7 +229,7 @@ A quiet toolbar over the canvas and a Panel-toned sidebar for workflow lists and
 ### Do:
 
 - **Do** keep every neutral at zero chroma; the graphite ramp is the entire field.
-- **Do** route new status colors through tokens (`--destructive` today; add `--success` and friends rather than reaching for Tailwind palette classes like `green-500`).
+- **Do** route every status color through its token (`--destructive`, `--success`, `--warning`, `--info`, `--cancelled`). A Tailwind palette class like `green-500` in the editor is a defect.
 - **Do** hold body and muted text at or above 4.5:1: Graphite Mid (oklch(0.556 0 0)) is the lightness floor for text on Paper.
 - **Do** use the standard component vocabulary everywhere; a save button looks identical on every screen.
 - **Do** keep motion in the 150–250ms band, easing out, conveying state (the running-node border sweep is the model).

@@ -4,7 +4,12 @@ import { Separator } from "#src/components/ui/separator";
 import { cn } from "@rova/shared/utils";
 
 const buttonGroupVariants = cva(
-  "flex w-fit items-stretch has-[>[data-slot=button-group]]:gap-2 [&>*]:focus-visible:relative [&>*]:focus-visible:z-10 has-[select[aria-hidden=true]:last-child]:[&>[data-slot=select-trigger]:last-of-type]:rounded-r-md [&>[data-slot=select-trigger]:not([class*='w-'])]:w-fit [&>input]:flex-1",
+  // `shrink-0` matters more than it looks: the base layer applies `min-w-0` to
+  // every element, so a `w-fit` group inside a flex row would collapse below its
+  // content while its buttons (which are `shrink-0`) kept their width and spilled
+  // out of the group box into the next one. That is how the toolbar ended up
+  // with buttons overlapping by up to 13px on a narrow canvas.
+  "flex w-fit shrink-0 items-stretch has-[>[data-slot=button-group]]:gap-2 [&>*]:focus-visible:relative [&>*]:focus-visible:z-10 has-[select[aria-hidden=true]:last-child]:[&>[data-slot=select-trigger]:last-of-type]:rounded-r-md [&>[data-slot=select-trigger]:not([class*='w-'])]:w-fit [&>input]:flex-1",
   {
     variants: {
       orientation: {

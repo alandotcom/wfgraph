@@ -55,11 +55,11 @@ function toneOf(status: string): StatusTone {
 }
 
 const DOT_CLASSES: Record<StatusTone, string> = {
-  good: "bg-green-600",
-  bad: "bg-red-600",
-  info: "bg-blue-600",
-  pending: "bg-amber-600",
-  quiet: "bg-slate-600",
+  good: "bg-success",
+  bad: "bg-destructive",
+  info: "bg-info",
+  pending: "bg-warning",
+  quiet: "bg-cancelled",
   muted: "bg-muted-foreground",
 };
 
@@ -90,13 +90,11 @@ const NODE_STATUS_LABELS = {
 } satisfies Record<NodeStatus, string>;
 
 const BADGE_CLASSES: Record<StatusTone, string> = {
-  good: "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300",
-  bad: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
-  info: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  pending:
-    "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  quiet:
-    "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300",
+  good: "border-success/30 bg-success/10 text-success",
+  bad: "border-destructive/30 bg-destructive/10 text-destructive",
+  info: "border-info/30 bg-info/10 text-info",
+  pending: "border-warning/30 bg-warning/10 text-warning",
+  quiet: "border-cancelled/30 bg-cancelled/10 text-cancelled",
   muted: "border-muted bg-muted/40 text-muted-foreground",
 };
 
@@ -162,7 +160,7 @@ export function JsonWithLinks({ data }: { data: unknown }) {
           if (isUrl(innerValue)) {
             return (
               <a
-                className="text-blue-500 underline hover:text-blue-400"
+                className="text-info underline underline-offset-2 hover:text-info/80"
                 href={innerValue}
                 key={innerValue}
                 rel="noopener noreferrer"
@@ -209,9 +207,9 @@ export function CopyButton({
       variant="ghost"
     >
       {copied ? (
-        <Check className="h-3 w-3 text-green-600" />
+        <Check className="size-3 text-success" />
       ) : (
-        <Copy className="h-3 w-3" />
+        <Copy className="size-3" />
       )}
     </Button>
   );
@@ -241,11 +239,11 @@ export function CollapsibleSection({
           type="button"
         >
           {isOpen ? (
-            <ChevronDown className="h-3 w-3 text-muted-foreground" />
+            <ChevronDown className="size-3 text-muted-foreground" />
           ) : (
-            <ChevronRight className="h-3 w-3 text-muted-foreground" />
+            <ChevronRight className="size-3 text-muted-foreground" />
           )}
-          <span className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+          <span className="font-medium text-muted-foreground text-sm">
             {title}
           </span>
         </button>

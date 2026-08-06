@@ -11,6 +11,16 @@ export interface TemplateBadgeInputProps {
   id?: string;
   fieldType?: "duration" | "timestamp";
   currentNodeId?: string;
+  /**
+   * Id of the element naming this field. Required in practice: the editor is a
+   * `contenteditable` div, and `<label for>` cannot name one, so without this
+   * the field reaches the accessibility tree as an unnamed textbox.
+   */
+  labelledBy?: string;
+  /** Direct name, for a field with no visible label element to point at. */
+  ariaLabel?: string;
+  required?: boolean;
+  invalid?: boolean;
 }
 
 /**
@@ -29,6 +39,10 @@ export function TemplateBadgeInput({
   id,
   fieldType,
   currentNodeId,
+  labelledBy,
+  ariaLabel,
+  required,
+  invalid,
 }: TemplateBadgeInputProps) {
   const {
     attachEditor,
@@ -50,12 +64,23 @@ export function TemplateBadgeInput({
     <>
       <div
         className={cn(
-          "flex min-h-9 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-within:outline-none focus-within:ring-1 focus-within:ring-ring",
+          // Matches the shared Input: shadow-xs at rest, and on focus a border
+          // shift plus the 3px ring-ring/50 halo. This wrapper used to draw a
+          // 1px opaque ring with no border change, so the one field type that
+          // needed the most attention had the least visible focus.
+          "flex min-h-9 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-[3px] focus-within:ring-ring/50 lg:text-sm",
+          invalid &&
+            "border-destructive focus-within:border-destructive focus-within:ring-destructive/20",
           disabled && "cursor-not-allowed opacity-50",
           className
         )}
+        data-invalid={invalid || undefined}
       >
         <div
+          aria-invalid={invalid || undefined}
+          aria-label={ariaLabel}
+          aria-labelledby={labelledBy}
+          aria-required={required || undefined}
           className="w-full outline-none"
           contentEditable={!disabled}
           id={id}

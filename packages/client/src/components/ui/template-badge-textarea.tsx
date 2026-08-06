@@ -11,6 +11,14 @@ export interface TemplateBadgeTextareaProps {
   id?: string;
   rows?: number;
   fieldType?: "duration" | "timestamp";
+  /**
+   * Id of the element naming this field. Required in practice: the editor is a
+   * `contenteditable` div, and `<label for>` cannot name one, so without this
+   * the field reaches the accessibility tree as an unnamed textbox.
+   */
+  labelledBy?: string;
+  required?: boolean;
+  invalid?: boolean;
 }
 
 /**
@@ -28,6 +36,9 @@ export function TemplateBadgeTextarea({
   id,
   rows = 3,
   fieldType,
+  labelledBy,
+  required,
+  invalid,
 }: TemplateBadgeTextareaProps) {
   const {
     attachEditor,
@@ -54,13 +65,21 @@ export function TemplateBadgeTextarea({
     <>
       <div
         className={cn(
-          "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-within:outline-none focus-within:ring-1 focus-within:ring-ring",
+          // Matches the shared Textarea: shadow-xs at rest, and on focus a
+          // border shift plus the 3px ring-ring/50 halo.
+          "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-[3px] focus-within:ring-ring/50 lg:text-sm",
+          invalid &&
+            "border-destructive focus-within:border-destructive focus-within:ring-destructive/20",
           disabled && "cursor-not-allowed opacity-50",
           className
         )}
+        data-invalid={invalid || undefined}
         style={{ minHeight: `${rows * 1.5}rem` }}
       >
         <div
+          aria-invalid={invalid || undefined}
+          aria-labelledby={labelledBy}
+          aria-required={required || undefined}
           className="w-full whitespace-pre-wrap break-words outline-none"
           contentEditable={!disabled}
           id={id}

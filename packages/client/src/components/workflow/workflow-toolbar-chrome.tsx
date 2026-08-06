@@ -25,6 +25,7 @@ import { useState } from "react";
 import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import { Button } from "#src/components/ui/button";
 import { ButtonGroup } from "#src/components/ui/button-group";
 import {
@@ -53,6 +54,7 @@ import {
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { cn } from "@rova/shared/utils";
 
 function PublishButton({
   isPublishing,
@@ -64,19 +66,27 @@ function PublishButton({
   handlePublish: () => void;
 }) {
   return (
+    // Publish is the one control here that changes what real customers receive,
+    // and it used to be the fifth identical 36px square in a row of six. It gets
+    // the primary fill and a written label so it stops reading like Redo.
     <Button
-      className="relative border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
+      className="relative gap-1.5"
       disabled={disabled || isPublishing}
       onClick={handlePublish}
-      size="icon"
+      size="default"
       title={isPublishing ? "Publishing..." : "Publish workflow"}
-      variant="secondary"
+      variant="default"
     >
       {isPublishing ? (
-        <Loader2 className="size-4 animate-spin" />
+        <Loader2 className="size-4 animate-spin" data-icon="inline-start" />
       ) : (
-        <Upload className="size-4" />
+        <Upload className="size-4" data-icon="inline-start" />
       )}
+      {/* Same breakpoint the toolbar row uses to go horizontal, so the label
+          appears exactly when there is a row wide enough to hold it. */}
+      <span className="hidden @xl:inline">
+        {isPublishing ? "Publishing" : "Publish"}
+      </span>
     </Button>
   );
 }
@@ -187,6 +197,7 @@ export function ToolbarActions({
   const deleteNode = useSetAtom(deleteNodeAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const { screenToFlowPosition } = useReactFlow();
+  const isMobile = useIsMobile();
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
@@ -236,7 +247,6 @@ export function ToolbarActions({
     position.y -= WORKFLOW_NODE_HEIGHT / 2;
 
     const offset = 20;
-    const threshold = 20;
 
     const finalPosition = { ...position };
     let hasOverlap = true;
@@ -244,11 +254,14 @@ export function ToolbarActions({
     const maxAttempts = 20;
 
     while (hasOverlap && attempts < maxAttempts) {
-      hasOverlap = state.nodes.some((node) => {
-        const dx = Math.abs(node.position.x - finalPosition.x);
-        const dy = Math.abs(node.position.y - finalPosition.y);
-        return dx < threshold && dy < threshold;
-      });
+      // Full rectangles, not top-left corners. Comparing corners against a 20px
+      // threshold meant a node offset by 21px counted as clear, so a new step
+      // landed on top of a neighbour it overlapped by nearly its whole width.
+      hasOverlap = state.nodes.some(
+        (node) =>
+          Math.abs(node.position.x - finalPosition.x) < WORKFLOW_NODE_WIDTH &&
+          Math.abs(node.position.y - finalPosition.y) < WORKFLOW_NODE_HEIGHT
+      );
 
       if (hasOverlap) {
         finalPosition.x += offset;
@@ -277,8 +290,12 @@ export function ToolbarActions({
 
   return (
     <>
-      {/* Add Step - Mobile Vertical */}
-      <ButtonGroup className="flex lg:hidden" orientation="vertical">
+      {/* One horizontal set at every width. There used to be a vertical
+          duplicate of each group for narrow screens, which stacked the toolbar
+          into a 368px column over the graph and reversed the control order
+          against desktop, so muscle memory broke at the breakpoint. The row
+          scrolls instead. */}
+      <ButtonGroup className="flex" orientation="horizontal">
         <Button
           className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
           disabled={state.isGenerating}
@@ -291,8 +308,15 @@ export function ToolbarActions({
         </Button>
       </ButtonGroup>
 
-      {/* Properties - Mobile Vertical (always visible) */}
-      <ButtonGroup className="flex lg:hidden" orientation="vertical">
+      {/* Config and Delete, shown only while the properties rail is absent.
+          Gated on the same test the rail uses, not on the toolbar's container
+          width: those two disagreed, so a narrow canvas on a wide window showed
+          the sheet button while the rail was still mounted, and both edited the
+          same node. */}
+      <ButtonGroup
+        className={cn("flex", isMobile ? "" : "hidden")}
+        orientation="horizontal"
+      >
         <Button
           className="border hover:bg-secondary dark:hover:bg-secondary"
           onClick={() => openOverlay(ConfigurationOverlay, {})}
@@ -302,7 +326,6 @@ export function ToolbarActions({
         >
           <Settings2 className="size-4" />
         </Button>
-        {/* Delete - Show when node or edge is selected */}
         {hasSelection && (
           <Button
             className="border hover:bg-secondary dark:hover:bg-secondary"
@@ -316,22 +339,7 @@ export function ToolbarActions({
         )}
       </ButtonGroup>
 
-      {/* Add Step - Desktop Horizontal */}
-      <ButtonGroup className="hidden lg:flex" orientation="horizontal">
-        <Button
-          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-          disabled={state.isGenerating}
-          onClick={handleAddStep}
-          size="icon"
-          title="Add Step"
-          variant="secondary"
-        >
-          <Plus className="size-4" />
-        </Button>
-      </ButtonGroup>
-
-      {/* Undo/Redo - Mobile Vertical */}
-      <ButtonGroup className="flex lg:hidden" orientation="vertical">
+      <ButtonGroup className="flex" orientation="horizontal">
         <Button
           className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
           disabled={!state.canUndo || state.isGenerating}
@@ -354,42 +362,7 @@ export function ToolbarActions({
         </Button>
       </ButtonGroup>
 
-      {/* Undo/Redo - Desktop Horizontal */}
-      <ButtonGroup className="hidden lg:flex" orientation="horizontal">
-        <Button
-          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-          disabled={!state.canUndo || state.isGenerating}
-          onClick={() => state.undo()}
-          size="icon"
-          title="Undo"
-          variant="secondary"
-        >
-          <Undo2 className="size-4" />
-        </Button>
-        <Button
-          className="border hover:bg-secondary disabled:opacity-100 dark:hover:bg-secondary disabled:[&>svg]:text-muted-foreground"
-          disabled={!state.canRedo || state.isGenerating}
-          onClick={() => state.redo()}
-          size="icon"
-          title="Redo"
-          variant="secondary"
-        >
-          <Redo2 className="size-4" />
-        </Button>
-      </ButtonGroup>
-
-      {/* Save - Mobile Vertical */}
-      <ButtonGroup className="flex lg:hidden" orientation="vertical">
-        <SaveButton handleSave={actions.handleSave} state={state} />
-        <PublishButton
-          disabled={publishDisabled}
-          handlePublish={actions.handlePublish}
-          isPublishing={actions.isPublishing}
-        />
-      </ButtonGroup>
-
-      {/* Save - Desktop Horizontal */}
-      <ButtonGroup className="hidden lg:flex" orientation="horizontal">
+      <ButtonGroup className="flex" orientation="horizontal">
         <SaveButton handleSave={actions.handleSave} state={state} />
         <PublishButton
           disabled={publishDisabled}
@@ -400,25 +373,33 @@ export function ToolbarActions({
 
       <RunButtonGroup actions={actions} state={state} />
       {workflowId && (
-        <ButtonGroup className="flex" orientation="horizontal">
-          <Button
-            className="border"
-            disabled={state.isSaving || state.isGenerating}
-            onClick={() => actions.handleSetWorkflowMode("live")}
-            size="sm"
-            variant={state.workflowMode === "live" ? "secondary" : "outline"}
-          >
-            Live
-          </Button>
-          <Button
-            className="border"
-            disabled={state.isSaving || state.isGenerating}
-            onClick={() => actions.handleSetWorkflowMode("test")}
-            size="sm"
-            variant={state.workflowMode === "test" ? "secondary" : "outline"}
-          >
-            Test
-          </Button>
+        // A radiogroup rather than two buttons: this decides whether the
+        // workflow sends real SMS and email, and it previously reported no state
+        // at all to a screen reader while distinguishing the two visually by a
+        // 3% fill difference.
+        <ButtonGroup
+          aria-label="Workflow mode"
+          className="flex"
+          orientation="horizontal"
+          role="radiogroup"
+        >
+          {(["live", "test"] as const).map((mode) => {
+            const isSelected = state.workflowMode === mode;
+            return (
+              <Button
+                aria-checked={isSelected}
+                className="border"
+                disabled={state.isSaving || state.isGenerating}
+                key={mode}
+                onClick={() => actions.handleSetWorkflowMode(mode)}
+                role="radio"
+                size="default"
+                variant={isSelected ? "default" : "outline"}
+              >
+                {mode === "live" ? "Live" : "Test"}
+              </Button>
+            );
+          })}
         </ButtonGroup>
       )}
     </>
@@ -530,7 +511,7 @@ export function WorkflowMenuComponent({
           </DropdownMenu>
         </div>
         {workflowId && !state.isOwner && (
-          <span className="text-muted-foreground text-xs uppercase lg:hidden">
+          <span className="text-muted-foreground text-xs @xl:hidden">
             Read-only
           </span>
         )}

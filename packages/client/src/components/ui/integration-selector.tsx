@@ -61,7 +61,7 @@ function ConnectionRow({
         type="button"
       >
         {selected ? (
-          <Check className="size-4 shrink-0 text-green-600" />
+          <Check className="size-4 shrink-0 text-success" />
         ) : (
           <Circle className="size-4 shrink-0 text-muted-foreground" />
         )}
@@ -162,7 +162,7 @@ export function IntegrationSelector({
   if (integrations.length === 0) {
     return (
       <Button
-        className="w-full justify-start gap-2 border-orange-500/50 bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 dark:text-orange-400"
+        className="w-full justify-start gap-2 border-warning/50 bg-warning/10 text-warning hover:bg-warning/20"
         disabled={disabled}
         onClick={handleAddConnection}
         variant="outline"
@@ -205,7 +205,7 @@ export function IntegrationSelector({
         return (
           <ConnectionRow
             className={cn(
-              "flex w-full items-center gap-2 rounded-md px-[13px] py-1.5 text-sm transition-colors",
+              "flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors",
               selected ? "bg-primary/10 text-primary" : "hover:bg-muted/50"
             )}
             disabled={disabled}
@@ -221,7 +221,7 @@ export function IntegrationSelector({
 
       {onOpenSettings && (
         <button
-          className="flex w-full items-center gap-2 rounded-md px-[13px] py-1.5 text-muted-foreground text-sm transition-colors hover:bg-muted/50 hover:text-foreground"
+          className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-muted-foreground text-sm transition-colors hover:bg-muted/50 hover:text-foreground"
           disabled={disabled}
           onClick={onOpenSettings}
           type="button"

@@ -72,7 +72,7 @@ export function WorkflowRunDetail({
           key={wait.id}
         >
           <p className="font-medium text-xs">Parked at {wait.nodeName}</p>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {wait.subscribedEvents.length > 0
               ? `Waiting for ${wait.subscribedEvents.join(", ")}`
               : "Waiting on a timer"}
@@ -110,11 +110,11 @@ export function WorkflowRunDetail({
                   <div className="truncate font-medium text-xs">
                     {event.message}
                   </div>
-                  <div className="truncate text-[11px] text-muted-foreground">
+                  <div className="truncate text-xs text-muted-foreground">
                     {event.eventType}
                   </div>
                 </div>
-                <div className="ml-3 shrink-0 text-[11px] text-muted-foreground">
+                <div className="ml-3 shrink-0 text-xs text-muted-foreground">
                   {getRelativeTime(event.createdAt)}
                 </div>
               </div>

@@ -84,9 +84,9 @@ const PLACEHOLDER_ATTRIBUTE = "data-placeholder";
 const FILLER_ATTRIBUTE = "data-filler";
 
 const LIVE_BADGE_CLASS =
-  "inline-flex items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-blue-600 dark:text-blue-400 font-mono text-xs border border-blue-500/20 mx-0.5";
+  "inline-flex items-center gap-1 rounded bg-info/10 px-1.5 py-0.5 text-info font-mono text-xs border border-info/20 mx-0.5";
 const BROKEN_BADGE_CLASS =
-  "inline-flex items-center gap-1 rounded bg-red-500/10 px-1.5 py-0.5 text-red-600 dark:text-red-400 font-mono text-xs border border-red-500/20 mx-0.5";
+  "inline-flex items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 text-destructive font-mono text-xs border border-destructive/20 mx-0.5";
 
 
 /**

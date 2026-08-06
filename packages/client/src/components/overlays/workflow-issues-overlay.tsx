@@ -88,7 +88,7 @@ export function WorkflowIssuesOverlay({
       overlayId={overlayId}
       title={`Workflow Issues (${totalIssues})`}
     >
-      <div className="flex items-center gap-2 text-orange-500">
+      <div className="flex items-center gap-2 text-warning">
         <AlertTriangle className="size-5" />
         <p className="text-muted-foreground text-sm">
           This workflow has issues that may cause it to fail.
@@ -104,7 +104,7 @@ export function WorkflowIssuesOverlay({
         {/* Missing Connections Section */}
         {missingIntegrations.length > 0 && (
           <div className="space-y-1">
-            <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+            <h4 className="font-medium text-muted-foreground text-sm">
               Missing Connections
             </h4>
             {missingIntegrations.map((missing) => (
@@ -143,7 +143,7 @@ export function WorkflowIssuesOverlay({
         {/* Broken References Section */}
         {brokenReferences.length > 0 && (
           <div className="space-y-2">
-            <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+            <h4 className="font-medium text-muted-foreground text-sm">
               Broken References
             </h4>
             {brokenReferences.map((broken) => (
@@ -181,7 +181,7 @@ export function WorkflowIssuesOverlay({
         {/* Missing Required Fields Section */}
         {missingRequiredFields.length > 0 && (
           <div className="space-y-2">
-            <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+            <h4 className="font-medium text-muted-foreground text-sm">
               Missing Required Fields
             </h4>
             {missingRequiredFields.map((node) => (

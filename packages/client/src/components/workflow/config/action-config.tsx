@@ -161,9 +161,7 @@ function EventSplitFields() {
 
   return (
     <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <p className="font-medium text-xs uppercase tracking-wide">
-        Splits On Event
-      </p>
+      <p className="font-medium text-sm">Splits On Event</p>
 
       {outlets.length === 0 ? (
         <p className="text-muted-foreground text-xs">
@@ -219,9 +217,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
 
   return (
     <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <p className="font-medium text-xs uppercase tracking-wide">
-        Time-Based Wait
-      </p>
+      <p className="font-medium text-sm">Time-Based Wait</p>
 
       <div className="space-y-2">
         <Label htmlFor="waitDelayTimingMode">Time input mode</Label>

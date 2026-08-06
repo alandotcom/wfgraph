@@ -1,11 +1,15 @@
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { DeleteConfirmDialog } from "#src/components/delete-confirm-dialog";
-import { useDomEvent } from "#src/hooks/effects";
+import { ConfigurationOverlay } from "#src/components/overlays/configuration-overlay";
+import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import {
   isSidebarCollapsedAtom,
+  sidebarWidthCss,
   sidebarWidthPercentAtom,
 } from "#src/lib/workflow-ui-store";
 import {
@@ -13,6 +17,9 @@ import {
   type NodeConfigFrame,
   NodeConfigPanel,
 } from "./node-config-panel";
+
+/** Below this much travel a press on the resize edge counts as a click. */
+const DRAG_THRESHOLD_PX = 4;
 
 /**
  * The rail's half of the node config panel: it confirms in an AlertDialog, its
@@ -52,6 +59,19 @@ export function WorkflowSidebarPanel() {
   const isMobile = useIsMobile();
   const [panelCollapsed, setPanelCollapsed] = useAtom(isSidebarCollapsedAtom);
   const [panelWidth, setPanelWidth] = useAtom(sidebarWidthPercentAtom);
+  const selectedNodeId = useAtomValue(selectedNodeAtom);
+  const { open: openOverlay, hasOverlays } = useOverlay();
+
+  // Narrowing past the breakpoint unmounts this rail. If it was showing a node,
+  // that node's config would vanish with it, so the sheet picks it up. The
+  // widening direction is handled in ConfigurationOverlay, which dismisses
+  // itself once a rail exists; between them there is exactly one editor on
+  // screen at any width.
+  useAfterCommit(isMobile, () => {
+    if (isMobile && selectedNodeId && !hasOverlays) {
+      openOverlay(ConfigurationOverlay, {});
+    }
+  });
 
   const [isDraggingResize, setIsDraggingResize] = useState(false);
   const isResizing = useRef(false);
@@ -68,14 +88,29 @@ export function WorkflowSidebarPanel() {
 
   useDomEvent(window, "keydown", handleToggleShortcut);
 
+  // Pointer events rather than mouse events, so the strip also answers touch
+  // and pen. On a tablet the mouse-only version left the panel unresizable and,
+  // with the collapse button hidden behind hover, undismissable.
   const handleResizeStart = useCallback(
-    (e: React.MouseEvent) => {
+    (e: React.PointerEvent) => {
       e.preventDefault();
       isResizing.current = true;
       setIsDraggingResize(true);
 
-      const handleMouseMove = (moveEvent: MouseEvent) => {
+      // A press that never travels is a click, and a click on the edge collapses
+      // the panel. Without this the edge is a control that answers only one of
+      // the two gestures a user will try on it.
+      const startX = e.clientX;
+      let travelled = false;
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
         if (!isResizing.current) {
+          return;
+        }
+        if (Math.abs(moveEvent.clientX - startX) > DRAG_THRESHOLD_PX) {
+          travelled = true;
+        }
+        if (!travelled) {
           return;
         }
         const newWidth =
@@ -83,21 +118,26 @@ export function WorkflowSidebarPanel() {
         setPanelWidth(Math.min(50, Math.max(20, newWidth)));
       };
 
-      const handleMouseUp = () => {
+      const handlePointerUp = () => {
         isResizing.current = false;
         setIsDraggingResize(false);
-        document.removeEventListener("mousemove", handleMouseMove);
-        document.removeEventListener("mouseup", handleMouseUp);
+        document.removeEventListener("pointermove", handlePointerMove);
+        document.removeEventListener("pointerup", handlePointerUp);
+        document.removeEventListener("pointercancel", handlePointerUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
+        if (!travelled) {
+          setPanelCollapsed((previous) => !previous);
+        }
       };
 
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
+      document.addEventListener("pointermove", handlePointerMove);
+      document.addEventListener("pointerup", handlePointerUp);
+      document.addEventListener("pointercancel", handlePointerUp);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     },
-    [setPanelWidth]
+    [setPanelWidth, setPanelCollapsed]
   );
 
   return (
@@ -118,18 +158,23 @@ export function WorkflowSidebarPanel() {
       {/* Right panel overlay (desktop only) */}
       {!isMobile && (
         <div
-          className="pointer-events-auto absolute inset-y-0 right-0 z-20 border-l bg-background transition-transform duration-300 ease-out"
+          className="workflow-sidebar-panel pointer-events-auto absolute inset-y-0 right-0 z-20 border-l bg-sidebar transition-transform duration-200 ease-out"
           style={{
-            width: `${panelWidth}%`,
+            // Same expression the canvas reserves with, from one helper, so the
+            // two can never disagree and leave a gap. The Panel tone is what
+            // makes this read as a separate plane, which a 1.00:1 fill against
+            // the canvas in dark mode was not doing.
+            width: sidebarWidthCss(panelWidth),
             transform: panelCollapsed ? "translateX(100%)" : "translateX(0)",
           }}
         >
           {/* Resize handle with collapse button */}
           <div
+            aria-label="Resize properties panel. Click to collapse."
             aria-orientation="vertical"
             aria-valuenow={panelWidth}
             className="group absolute inset-y-0 left-0 z-10 w-3 cursor-col-resize"
-            onMouseDown={handleResizeStart}
+            onPointerDown={handleResizeStart}
             role="separator"
             tabIndex={0}
           >
@@ -138,12 +183,17 @@ export function WorkflowSidebarPanel() {
             {/* Collapse button - hidden while resizing */}
             {!(isDraggingResize || panelCollapsed) && (
               <button
-                className="absolute top-1/2 left-0 flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-background opacity-0 shadow-sm transition-opacity hover:bg-muted group-hover:opacity-100"
+                aria-label="Collapse panel"
+                className="absolute top-1/2 left-0 flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-background shadow-sm transition-opacity hover:bg-muted focus-visible:opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
                 onClick={(e) => {
                   e.stopPropagation();
                   setPanelCollapsed(true);
                 }}
-                onMouseDown={(e) => e.stopPropagation()}
+                // Must match the event the strip starts a resize on. While this
+                // guard was still on mousedown, pointerdown reached the strip,
+                // began a drag, and its preventDefault swallowed the click, so
+                // the button did nothing at all.
+                onPointerDown={(e) => e.stopPropagation()}
                 type="button"
               >
                 <ChevronRight className="size-4" />
