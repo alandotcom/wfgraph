@@ -35,10 +35,8 @@ const publishOnlyChecks = [checkUnreachableSubtrees] as const;
  * subtree check. A Canceled branch with no Cancel Event is drawable and never
  * entered; the editor shows it inactive rather than refusing publish. Content-
  * hash dedupe reuses any prior version with the same digest and fingerprint, so
- * an idle editor does not accrete rows. Concurrent mints of the same next
- * version number recover inside `publishVersion` rather than answering 500: the
- * unique index is the optimistic condition, and a loser reuses matching content
- * or takes the next free number. The subscription index is rewritten from
+ * an idle editor does not accrete rows. Concurrent mints recover inside
+ * `publishVersion` rather than answering 500. The subscription index is rewritten from
  * the published graph only -- draft saves leave it alone. The draft column is
  * aligned to the published graph in the same transaction.
  */
@@ -82,7 +80,6 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
       graphDigest: digest,
       catalogFingerprint: fingerprint,
     });
-    const latest = matching ? null : yield* repo.findLatestVersion(workflowId);
 
     const published = matching
       ? yield* repo.publishVersion({
@@ -95,7 +92,6 @@ export const publishWorkflow = Effect.fn("publishWorkflow")(
           workflowId,
           versionId: generateId(),
           mint: {
-            version: (latest?.version ?? 0) + 1,
             graph: prepared.graph,
             catalogFingerprint: fingerprint,
             graphDigest: digest,

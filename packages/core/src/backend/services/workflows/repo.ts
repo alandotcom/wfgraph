@@ -10,9 +10,9 @@ import {
   workflowVersions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
-import type { RovaDatabase, RovaTransaction } from "#src/backend/lib/db/index";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
+import { mintWorkflowVersion } from "#src/backend/services/workflows/mint-workflow-version";
 import type { WorkflowUpdateData } from "#src/backend/services/workflows/mappers";
 import type { SerializedWorkflowGraph } from "@rova/shared/graph/types";
 
@@ -183,10 +183,6 @@ export class WorkflowRepo extends Context.Service<
       id: string;
       graph: SerializedWorkflowGraph;
     }) => Effect.Effect<Workflow | null, DatabaseError>;
-    /** The newest published version for this workflow, or null when none exist. */
-    readonly findLatestVersion: (
-      workflowId: string
-    ) => Effect.Effect<WorkflowVersion | null, DatabaseError>;
     /** One version by id, or null when it is gone. */
     readonly findVersionById: (
       versionId: string
@@ -222,15 +218,14 @@ export class WorkflowRepo extends Context.Service<
      * Point the workflow at a version (minting it first when `mint` is set),
      * align the draft graph, and rewrite subscriptions, in one transaction.
      *
-     * Mint is optimistic on `mint.version`: the unique index is the condition.
-     * A conflict means we are behind — reuse matching content, or take the next
-     * free number when the winner published different content.
+     * Mint claims the next free version number inside the transaction. The
+     * unique index is the optimistic condition: on conflict we are behind and
+     * reuse matching content or take the next free number.
      */
     readonly publishVersion: (input: {
       workflowId: string;
       versionId: string;
       mint?: {
-        version: number;
         graph: SerializedWorkflowGraph;
         catalogFingerprint: string;
         graphDigest: string;
@@ -515,18 +510,6 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
             return saved.at(0) ?? null;
           }),
 
-        findLatestVersion: (workflowId) =>
-          database.query(async (db) => {
-            const [row] = await db
-              .select()
-              .from(workflowVersions)
-              .where(eq(workflowVersions.workflowId, workflowId))
-              .orderBy(desc(workflowVersions.version))
-              .limit(1);
-
-            return row ?? null;
-          }),
-
         findVersionById: (versionId) =>
           database.query(async (db) => {
             const row = await db.query.workflowVersions.findFirst({
@@ -608,7 +591,9 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                   version = await mintWorkflowVersion(tx, {
                     workflowId: input.workflowId,
                     versionId: input.versionId,
-                    mint: input.mint,
+                    graph: input.mint.graph,
+                    catalogFingerprint: input.mint.catalogFingerprint,
+                    graphDigest: input.mint.graphDigest,
                   });
                 } else {
                   const existing = await tx.query.workflowVersions.findFirst({
@@ -655,90 +640,3 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
       };
     })
   );
-
-type PublishMintInput = {
-  workflowId: string;
-  versionId: string;
-  mint: {
-    version: number;
-    graph: SerializedWorkflowGraph;
-    catalogFingerprint: string;
-    graphDigest: string;
-  };
-};
-
-/**
- * Claim `mint.version` when it is still free. The unique index is the
- * optimistic condition: on conflict we are behind, so reuse matching content or
- * take the next free number. Contention is assumed rare.
- */
-async function mintWorkflowVersion(
-  tx: RovaDatabase | RovaTransaction,
-  input: PublishMintInput
-): Promise<WorkflowVersion> {
-  const mintValues = {
-    id: input.versionId,
-    workflowId: input.workflowId,
-    graph: input.mint.graph,
-    catalogFingerprint: input.mint.catalogFingerprint,
-    graphDigest: input.mint.graphDigest,
-  };
-
-  const findByContent = async (): Promise<WorkflowVersion | null> => {
-    const [row] = await tx
-      .select()
-      .from(workflowVersions)
-      .where(
-        and(
-          eq(workflowVersions.workflowId, input.workflowId),
-          eq(workflowVersions.graphDigest, input.mint.graphDigest),
-          eq(workflowVersions.catalogFingerprint, input.mint.catalogFingerprint)
-        )
-      )
-      .orderBy(desc(workflowVersions.version))
-      .limit(1);
-    return row ?? null;
-  };
-
-  const findLatestVersionNumber = async (): Promise<number> => {
-    const [latest] = await tx
-      .select({ version: workflowVersions.version })
-      .from(workflowVersions)
-      .where(eq(workflowVersions.workflowId, input.workflowId))
-      .orderBy(desc(workflowVersions.version))
-      .limit(1);
-    return latest?.version ?? 0;
-  };
-
-  let nextVersion = input.mint.version;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const [claimed] = await tx
-      .insert(workflowVersions)
-      .values({ ...mintValues, version: nextVersion })
-      .onConflictDoNothing({
-        target: [workflowVersions.workflowId, workflowVersions.version],
-      })
-      .returning();
-
-    if (claimed) {
-      return claimed;
-    }
-
-    const matching = await findByContent();
-    if (matching) {
-      return matching;
-    }
-
-    nextVersion = (await findLatestVersionNumber()) + 1;
-  }
-
-  // Sustained collision: let a unique violation surface as DatabaseError.
-  const [forced] = await tx
-    .insert(workflowVersions)
-    .values({
-      ...mintValues,
-      version: (await findLatestVersionNumber()) + 1,
-    })
-    .returning();
-  return forced;
-}

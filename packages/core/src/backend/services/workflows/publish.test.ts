@@ -77,14 +77,13 @@ describe("publishWorkflow", () => {
         const repo = stubWorkflowRepo({
           findById: () => Effect.succeed(draft),
           findVersionByContent: () => Effect.succeed(null),
-          findLatestVersion: () => Effect.succeed(null),
           publishVersion: (input) =>
             Effect.sync(() => {
               published.push(input);
               const version: WorkflowVersion = {
                 id: input.versionId,
                 workflowId: input.workflowId,
-                version: input.mint?.version ?? 1,
+                version: 1,
                 graph: input.draftGraph,
                 catalogFingerprint: input.mint?.catalogFingerprint ?? "",
                 graphDigest: input.mint?.graphDigest ?? "",
@@ -134,7 +133,6 @@ describe("publishWorkflow", () => {
         const mint = stubWorkflowRepo({
           findById: () => Effect.succeed(draft),
           findVersionByContent: () => Effect.succeed(null),
-          findLatestVersion: () => Effect.succeed(null),
           publishVersion: (input) =>
             Effect.sync(() => {
               capturedDigest = input.mint?.graphDigest ?? "";
@@ -144,7 +142,7 @@ describe("publishWorkflow", () => {
                 version: {
                   id: input.versionId,
                   workflowId: input.workflowId,
-                  version: input.mint?.version ?? 1,
+                  version: 1,
                   graph: input.draftGraph,
                   catalogFingerprint: capturedFingerprint,
                   graphDigest: capturedDigest,

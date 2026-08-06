@@ -1,11 +1,11 @@
 /**
- * Real-DB regression for issue #32: concurrent publishes that mint the same
- * version number must not 500. Gated by RUN_PUBLISH_RACE_REPRO=1.
+ * Real-DB regression for issue #32: concurrent publishes that would mint the
+ * same version number must not 500. Gated by RUN_PUBLISH_RACE_REPRO=1.
  *
- * Wraps the live WorkflowRepo only in this file: after both publishers read
- * latest (and mint the same next version), a barrier releases so both inserts
- * collide on `workflow_versions_workflow_id_version_uidx`. Optimistic mint
- * recovery must let both finishes succeed.
+ * Wraps the live WorkflowRepo only in this file: both publishers wait at
+ * `publishVersion` so their transactions open together and collide on
+ * `workflow_versions_workflow_id_version_uidx`. Optimistic mint recovery must
+ * let both finishes succeed.
  */
 
 import { assert, describe, it } from "@effect/vitest";
@@ -81,52 +81,60 @@ function makeBarrier(expected: number) {
   };
 }
 
+async function withLiveRepo() {
+  const url =
+    process.env.DATABASE_URL?.trim() ||
+    "postgresql://workflow:workflow@localhost:55437/workflow_builder";
+  const surface = createDatabaseSurface(
+    normalizeDatabaseConfig({ url, schema: "_workflows" })
+  );
+  const dbLayer = makeDatabaseLayer(surface.db);
+  const liveRepo = await Effect.runPromise(
+    WorkflowRepo.pipe(
+      Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(dbLayer)))
+    )
+  );
+  return { surface, liveRepo };
+}
+
+function racingLayer(
+  liveRepo: WorkflowRepo["Service"],
+  barrier: ReturnType<typeof makeBarrier>,
+  overrides: Partial<WorkflowRepo["Service"]> = {}
+) {
+  const racingRepo: WorkflowRepo["Service"] = {
+    ...liveRepo,
+    publishVersion: (input) =>
+      Effect.gen(function* () {
+        // Hold both publishers until each is about to open the mint txn, so
+        // both claim the same next version number.
+        yield* Effect.promise(() => barrier.wait());
+        return yield* liveRepo.publishVersion(input);
+      }),
+    ...overrides,
+  };
+
+  return Layer.mergeAll(
+    SilentAppLoggerLayer,
+    catalogLayer,
+    stubIntegrationRepo({ typesByIds: () => Effect.succeed({}) }),
+    Layer.succeed(WorkflowRepo, racingRepo)
+  );
+}
+
 describe.skipIf(!runRepro)(
   "issue #32 concurrent publish race (real DB)",
   () => {
     it("overlapping publishes with different content both succeed", async () => {
-      const url =
-        process.env.DATABASE_URL?.trim() ||
-        "postgresql://workflow:workflow@localhost:55437/workflow_builder";
-      const surface = createDatabaseSurface(
-        normalizeDatabaseConfig({ url, schema: "_workflows" })
-      );
-
+      const { surface, liveRepo } = await withLiveRepo();
       const workflowId = generateId();
-      const name = `race-repro-${workflowId.slice(0, 8)}`;
       await surface.db.insert(workflows).values({
         id: workflowId,
-        name,
+        name: `race-repro-${workflowId.slice(0, 8)}`,
         graph: graphWith("Start A"),
       });
 
-      const dbLayer = makeDatabaseLayer(surface.db);
-      const liveRepo = await Effect.runPromise(
-        Effect.gen(function* () {
-          return yield* WorkflowRepo;
-        }).pipe(Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(dbLayer))))
-      );
-
-      const barrier = makeBarrier(2);
-
-      const racingRepo: WorkflowRepo["Service"] = {
-        ...liveRepo,
-        findLatestVersion: (id) =>
-          Effect.gen(function* () {
-            const row = yield* liveRepo.findLatestVersion(id);
-            // Hold both publishers on the same minted number before either
-            // insert commits, so the unique index is forced to decide.
-            yield* Effect.promise(() => barrier.wait());
-            return row;
-          }),
-      };
-
-      const layer = Layer.mergeAll(
-        SilentAppLoggerLayer,
-        catalogLayer,
-        stubIntegrationRepo({ typesByIds: () => Effect.succeed({}) }),
-        Layer.succeed(WorkflowRepo, racingRepo)
-      );
+      const layer = racingLayer(liveRepo, makeBarrier(2));
 
       const [exitA, exitB] = await Promise.all([
         Effect.runPromiseExit(
@@ -163,49 +171,19 @@ describe.skipIf(!runRepro)(
     });
 
     it("overlapping publishes with identical content reuse one version", async () => {
-      const url =
-        process.env.DATABASE_URL?.trim() ||
-        "postgresql://workflow:workflow@localhost:55437/workflow_builder";
-      const surface = createDatabaseSurface(
-        normalizeDatabaseConfig({ url, schema: "_workflows" })
-      );
-
+      const { surface, liveRepo } = await withLiveRepo();
       const workflowId = generateId();
-      const name = `race-reuse-${workflowId.slice(0, 8)}`;
       const graph = graphWith("Start");
       await surface.db.insert(workflows).values({
         id: workflowId,
-        name,
+        name: `race-reuse-${workflowId.slice(0, 8)}`,
         graph,
       });
 
-      const dbLayer = makeDatabaseLayer(surface.db);
-      const liveRepo = await Effect.runPromise(
-        Effect.gen(function* () {
-          return yield* WorkflowRepo;
-        }).pipe(Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(dbLayer))))
-      );
-
-      const barrier = makeBarrier(2);
-      const racingRepo: WorkflowRepo["Service"] = {
-        ...liveRepo,
-        findLatestVersion: (id) =>
-          Effect.gen(function* () {
-            const row = yield* liveRepo.findLatestVersion(id);
-            yield* Effect.promise(() => barrier.wait());
-            return row;
-          }),
-        // Both miss the pre-txn content check so they both attempt a mint;
-        // the loser recovers by reusing the winner's row.
+      // Force both through the mint path so the loser recovers by content.
+      const layer = racingLayer(liveRepo, makeBarrier(2), {
         findVersionByContent: () => Effect.succeed(null),
-      };
-
-      const layer = Layer.mergeAll(
-        SilentAppLoggerLayer,
-        catalogLayer,
-        stubIntegrationRepo({ typesByIds: () => Effect.succeed({}) }),
-        Layer.succeed(WorkflowRepo, racingRepo)
-      );
+      });
 
       const [exitA, exitB] = await Promise.all([
         Effect.runPromiseExit(
