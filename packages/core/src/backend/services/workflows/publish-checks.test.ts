@@ -5,6 +5,7 @@ import {
 } from "#src/backend/services/workflows/publish-checks";
 import {
   catalogFingerprint,
+  draftDiffersFromPublished,
   graphDigest,
 } from "#src/backend/services/workflows/version-digest";
 import { emptyExtensionCatalog } from "@rova/shared/extensions/catalog";
@@ -98,6 +99,21 @@ describe("version-digest", () => {
       edges: [],
     });
     expect(graphDigest(graph)).toBe(graphDigest(graph));
+  });
+
+  it("detects a draft that no longer matches the published graph", () => {
+    const published = createSerializedWorkflowGraph({
+      nodes: [lifecycle],
+      edges: [],
+    });
+    const moved = createSerializedWorkflowGraph({
+      nodes: [{ ...lifecycle, position: { x: 40, y: 0 } }],
+      edges: [],
+    });
+
+    expect(draftDiffersFromPublished(published, published)).toBe(false);
+    expect(draftDiffersFromPublished(moved, published)).toBe(true);
+    expect(draftDiffersFromPublished(moved, null)).toBe(false);
   });
 
   it("fingerprints an empty catalog stably", () => {

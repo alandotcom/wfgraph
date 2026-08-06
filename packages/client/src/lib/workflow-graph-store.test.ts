@@ -22,6 +22,7 @@ import {
 import {
   autosaveDelayAtom,
   currentWorkflowIdAtom,
+  hasUnpublishedChangesAtom,
   hasUnsavedChangesAtom,
   isWorkflowOwnerAtom,
   workflowApiAtom,
@@ -293,8 +294,12 @@ describe("hydrateWorkflowAtom", () => {
     store.set(selectedExecutionIdAtom, "exec_previous");
     expect(store.get(selectedExecutionIdAtom)).toBe("exec_previous");
 
-    store.set(hydrateWorkflowAtom, savedWorkflow("workflow_2"));
+    store.set(hydrateWorkflowAtom, {
+      ...savedWorkflow("workflow_2"),
+      hasUnpublishedChanges: true,
+    });
 
     expect(store.get(selectedExecutionIdAtom)).toBeNull();
+    expect(store.get(hasUnpublishedChangesAtom)).toBe(true);
   });
 });

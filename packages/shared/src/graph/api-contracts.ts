@@ -25,6 +25,11 @@ export type WorkflowSummaryPayload = {
 
 export type WorkflowApiPayload = WorkflowSummaryPayload & {
   graph: SerializedWorkflowGraph;
+  /**
+   * Whether the draft graph differs from the published version's graph.
+   * False when the workflow has never been published.
+   */
+  hasUnpublishedChanges: boolean;
 };
 
 /** What publish answers with: the draft payload plus the version it just pinned. */

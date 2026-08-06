@@ -38,11 +38,13 @@ export const getWorkflow = Effect.fn("getWorkflow")(
   function* (workflowId: string) {
     const repo = yield* WorkflowRepo;
 
-    const workflow = yield* repo.findById(workflowId);
+    const found = yield* repo.findByIdWithPublishedVersion(workflowId);
 
-    if (!workflow) {
+    if (!found) {
       return yield* new NotFound({ error: "Workflow not found" });
     }
+
+    const { workflow, publishedVersion } = found;
 
     const graphValidation = validateWorkflowGraph(workflow.graph);
     if (!graphValidation.valid) {
@@ -52,7 +54,7 @@ export const getWorkflow = Effect.fn("getWorkflow")(
     // Conditions are checked when the graph is written and again before a run,
     // never here: a stored expression that no longer matches its model would
     // otherwise lock the user out of the editor, the one screen that can fix it.
-    return toWorkflowApiPayload(workflow);
+    return toWorkflowApiPayload(workflow, publishedVersion);
   },
   // Every query this function runs answers the same way when the database
   // refuses it, so the policy is stated here once rather than at each call.
@@ -176,7 +178,14 @@ export const patchWorkflow = Effect.fn("patchWorkflow")(
       modeChanged,
     });
 
-    return toWorkflowApiPayload(updatedWorkflow);
+    // Resolve the version this draft still points at by id, not by re-reading
+    // `published_version_id` through the workflow: a concurrent publish could
+    // otherwise pair this draft with a newer version than the one it knew.
+    const publishedVersion = updatedWorkflow.publishedVersionId
+      ? yield* repo.findVersionById(updatedWorkflow.publishedVersionId)
+      : null;
+
+    return toWorkflowApiPayload(updatedWorkflow, publishedVersion);
   },
   (effect, workflowId) =>
     effect.pipe(

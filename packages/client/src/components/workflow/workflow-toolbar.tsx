@@ -49,13 +49,15 @@ export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
             )}
           {workflowId &&
             isPublished && (
-              // Answers "is what I am looking at what is running", which nothing
+              // Answers "is the draft what is running", which nothing
               // on this screen said once the publish toast faded. Worded away
               // from "Live" on purpose: that word already names the run mode two
               // controls to the right, and two meanings for it read as one
-              // switch.
+              // switch. Driven by draft-vs-published digest, not the save queue.
               <span className="rounded-md border bg-card px-2 py-1 font-medium text-muted-foreground text-xs">
-                {state.hasUnsavedChanges ? "Unpublished changes" : "Published"}
+                {state.hasUnpublishedChanges
+                  ? "Unpublished changes"
+                  : "Published"}
               </span>
             )}
           {workflowId && !isPublished && (

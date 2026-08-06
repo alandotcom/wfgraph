@@ -51,6 +51,8 @@ import {
   currentWorkflowIdAtom,
   currentWorkflowModeAtom,
   currentWorkflowNameAtom,
+  hasUnpublishedChangesAtom,
+  applyPublicationStateAtom,
   hasUnsavedChangesAtom,
   isSavingAtom,
   isWorkflowOwnerAtom,
@@ -309,6 +311,7 @@ export function useWorkflowState() {
   const isOwner = useAtomValue(isWorkflowOwnerAtom);
   const isSaving = useAtomValue(isSavingAtom);
   const hasUnsavedChanges = useAtomValue(hasUnsavedChangesAtom);
+  const hasUnpublishedChanges = useAtomValue(hasUnpublishedChangesAtom);
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
   const addNode = useSetAtom(addNodeAtom);
@@ -339,6 +342,7 @@ export function useWorkflowState() {
     isOwner,
     isSaving,
     hasUnsavedChanges,
+    hasUnpublishedChanges,
     undo,
     redo,
     addNode,
@@ -369,6 +373,7 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
   const queryClient = useQueryClient();
   const deleteWorkflow = useDeleteWorkflow();
   const setWorkflowMode = useSetAtom(setWorkflowModeAtom);
+  const applyPublicationState = useSetAtom(applyPublicationStateAtom);
   const {
     currentWorkflowId,
     workflowName,
@@ -482,6 +487,11 @@ export function useWorkflowActions(state: WorkflowToolbarState) {
     orpcQuery.workflow.publish.mutationOptions({
       onSuccess: (payload) => {
         toast.success(`Published version ${payload.publishedVersion}`);
+        applyPublicationState({
+          workflowId: payload.id,
+          hasUnpublishedChanges: payload.hasUnpublishedChanges,
+          source: "publish",
+        });
         void loadWorkflows();
       },
       meta: { errorMessage: "Failed to publish workflow. Please try again." },

@@ -40,6 +40,40 @@ export const workflowNotFoundAtom = atom(false);
 // Save status, read by the toolbar and the unsaved-changes indicator.
 export const isSavingAtom = atom(false);
 export const hasUnsavedChangesAtom = atom(false);
+/**
+ * Whether the server draft differs from the published version. Distinct from
+ * `hasUnsavedChangesAtom`, which tracks the draft write queue: a settled save
+ * clears the latter while this stays true until publish.
+ */
+export const hasUnpublishedChangesAtom = atom(false);
+
+/**
+ * Apply a server publication flag for a specific workflow. Ignores answers that
+ * arrive after the editor has already switched away, so a late save or publish
+ * cannot paint the wrong badge on the workflow now on screen. A publish that
+ * finishes after a newer local edit is also ignored: the next save response
+ * owns the flag once the queue is dirty again.
+ */
+export const applyPublicationStateAtom = atom(
+  null,
+  (
+    get,
+    set,
+    input: {
+      workflowId: string;
+      hasUnpublishedChanges: boolean;
+      source: "hydrate" | "save" | "publish";
+    }
+  ) => {
+    if (get(currentWorkflowIdAtom) !== input.workflowId) {
+      return;
+    }
+    if (input.source === "publish" && get(hasUnsavedChangesAtom)) {
+      return;
+    }
+    set(hasUnpublishedChangesAtom, input.hasUnpublishedChanges);
+  }
+);
 
 /**
  * The last save failure, or null after a save succeeds.
@@ -219,12 +253,18 @@ export const saveWorkflowAtom = atom(
             markWorkflowListStale();
 
             // Clear the dirty flag only when nothing newer is queued and the
-            // saved workflow is still the one on screen.
+            // saved workflow is still the one on screen. The publish badge
+            // reads `hasUnpublishedChanges` from the response, not this flag.
             if (
               queue.pending.length === 0 &&
               get(currentWorkflowIdAtom) === next.workflowId
             ) {
               set(hasUnsavedChangesAtom, false);
+              set(applyPublicationStateAtom, {
+                workflowId: next.workflowId,
+                hasUnpublishedChanges: workflow.hasUnpublishedChanges,
+                source: "save",
+              });
             }
           } catch (error) {
             const saveError = toError(error);
@@ -335,6 +375,11 @@ export const createWorkflowAtom = atom(
       set(currentWorkflowNameAtom, workflow.name);
       set(workflowNameErrorAtom, null);
       set(hasUnsavedChangesAtom, false);
+      set(applyPublicationStateAtom, {
+        workflowId: workflow.id,
+        hasUnpublishedChanges: workflow.hasUnpublishedChanges,
+        source: "save",
+      });
       set(lastSaveErrorAtom, null);
       markWorkflowListStale();
       return { ok: true, workflow };

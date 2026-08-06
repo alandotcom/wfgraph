@@ -22,6 +22,7 @@ const aWorkflow = (id: string) => ({
   visibility: "private" as const,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
+  hasUnpublishedChanges: false,
 });
 
 /** One page of runs, matching what the dashboard asks for. */

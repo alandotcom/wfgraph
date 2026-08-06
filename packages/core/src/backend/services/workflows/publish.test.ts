@@ -107,6 +107,7 @@ describe("publishWorkflow", () => {
         }).pipe(Effect.provide(repo));
 
         assert.strictEqual(result.publishedVersion, 1);
+        assert.strictEqual(result.hasUnpublishedChanges, false);
         assert.strictEqual(published.length, 1);
         assert.ok(published[0]?.eventSubscriptions.length === 1);
         assert.strictEqual(

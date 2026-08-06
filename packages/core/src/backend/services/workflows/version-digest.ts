@@ -19,6 +19,24 @@ export function graphDigest(graph: unknown): string {
 }
 
 /**
+ * Whether the editable draft differs from the version starts use.
+ *
+ * Both sides are hashed as loaded (typically from JSONB), so key-order drift
+ * between an in-memory prepare and a round-tripped row cannot disagree with
+ * itself. Never-published workflows answer false: the badge for that case is
+ * "Never published", not this flag.
+ */
+export function draftDiffersFromPublished(
+  draftGraph: unknown,
+  publishedGraph: unknown
+): boolean {
+  if (publishedGraph == null) {
+    return false;
+  }
+  return graphDigest(draftGraph) !== graphDigest(publishedGraph);
+}
+
+/**
  * Fingerprint of the assembled extension catalog surface.
  *
  * Hashes the ids and shapes that decide soundness (Event names, action ids and

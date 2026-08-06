@@ -7,6 +7,7 @@ import {
   currentWorkflowIdAtom,
   currentWorkflowNameAtom,
   hasUnsavedChangesAtom,
+  hasUnpublishedChangesAtom,
   isSavingAtom,
   lastSaveErrorAtom,
   renameWorkflowAtom,
@@ -140,6 +141,25 @@ describe("saveWorkflowAtom", () => {
     await secondSave;
     expect(store.get(hasUnsavedChangesAtom)).toBe(false);
     expect(store.get(isSavingAtom)).toBe(false);
+  });
+
+  it("records unpublished changes from the save response", async () => {
+    const store = createSaveStore();
+
+    const save = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("node_1")], edges: [] },
+      { immediate: true }
+    );
+    pending.shift()?.resolve({
+      ...savedWorkflow("workflow_1"),
+      publishedVersionId: "ver_1",
+      hasUnpublishedChanges: true,
+    });
+    await save;
+
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+    expect(store.get(hasUnpublishedChangesAtom)).toBe(true);
   });
 
   it("keeps unsaved changes when a stale save lands after a workflow switch", async () => {
