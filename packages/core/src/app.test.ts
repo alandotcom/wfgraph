@@ -20,7 +20,7 @@ import { createInngestSurface } from "#src/backend/lib/inngest/client";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { createRovaRuntime } from "#src/backend/runtime";
 import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
-import { createDatabaseSurface } from "#src/backend/lib/db/index";
+import * as dbModule from "#src/backend/lib/db/index";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
 
 const connect = vi.hoisted(() => vi.fn());
@@ -304,7 +304,7 @@ describe("createRovaApp with an auth predicate", () => {
     // first Effect it runs and this app never serves a request, so this one is
     // disposed having built nothing.
     const inngest = createInngestSurface(BASE_OPTIONS.inngest);
-    const database = createDatabaseSurface(
+    const database = dbModule.createDatabaseSurface(
       normalizeDatabaseConfig(BASE_OPTIONS.database)
     );
     const runtime = createRovaRuntime({
@@ -601,5 +601,42 @@ describe("createRovaApp with inngest.connect", () => {
       expect.stringContaining("Connect worker close failed"),
       undefined
     );
+  });
+
+  // A down or misconfigured gateway rejects the Connect handshake at boot.
+  // The shared catch still gives the pool back, so a host that retries after
+  // fixing the gateway is not refused by a leaked connection.
+  it("rejects boot when Connect handshake fails and gives the pool back", async () => {
+    const createSurface = dbModule.createDatabaseSurface;
+    let database: ReturnType<typeof createSurface> | undefined;
+    const surfaceSpy = vi
+      .spyOn(dbModule, "createDatabaseSurface")
+      .mockImplementation((config) => {
+        database = createSurface(config);
+        return database;
+      });
+
+    connect.mockRejectedValueOnce(new Error("gateway handshake failed"));
+
+    try {
+      await expect(
+        createRovaApp({
+          ...BASE_OPTIONS,
+          inngest: { ...BASE_OPTIONS.inngest, connect: true },
+        })
+      ).rejects.toThrow("gateway handshake failed");
+
+      if (!database) {
+        throw new Error("Boot opened no database surface to give back.");
+      }
+
+      // A pool that was never ended would answer with ECONNREFUSED
+      // (nothing listens on :1), not CONNECTION_ENDED.
+      await expect(database.client`select 1`).rejects.toThrow(
+        "CONNECTION_ENDED"
+      );
+    } finally {
+      surfaceSpy.mockRestore();
+    }
   });
 });
