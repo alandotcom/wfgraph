@@ -21,7 +21,6 @@ Postgres on port `55437`).
 docker compose up -d
 
 # Install
-corepack enable
 pnpm install
 
 # Root .env.local (gitignored). DATABASE_URL falls back in examples/app.ts.
