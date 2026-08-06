@@ -1,7 +1,8 @@
 /**
- * Coverage for the host-timer queue itself: install/uninstall, cancel, drain,
- * and nested `withHostTimers`, so the replay driver's quiescence is standing
- * on a stated model rather than on the one end-to-end regression alone.
+ * Coverage for the host-timer queue itself: install/uninstall, cancel, drain
+ * (including a timer enqueued from a microtask), and nested `withHostTimers`,
+ * so the replay driver's quiescence is standing on a stated model rather than
+ * on the one end-to-end regression alone.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -55,6 +56,26 @@ describe("ReplayHostTimers", () => {
       expect(timers.hasPending()).toBe(true);
       await timers.drainUntilIdle();
       expect(ran).toBe(true);
+      expect(timers.hasPending()).toBe(false);
+    } finally {
+      timers.uninstall();
+    }
+  });
+
+  it("drains a timer scheduled from a microtask before declaring idle", async () => {
+    const timers = new ReplayHostTimers();
+    timers.install();
+    try {
+      let marker = false;
+      setImmediate(() => {
+        void Promise.resolve().then(() => {
+          setImmediate(() => {
+            marker = true;
+          });
+        });
+      });
+      await timers.drainUntilIdle();
+      expect(marker).toBe(true);
       expect(timers.hasPending()).toBe(false);
     } finally {
       timers.uninstall();
