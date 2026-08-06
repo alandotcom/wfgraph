@@ -10,7 +10,8 @@ beside `@rova/example-app` (`examples/`), the host app `pnpm run dev` runs.
   builds against `@rova/core/plugin` alone; the browser half is one exported record,
   `src/ui.ts`, which the editor provides through React context.
 
-Read the code for structure. `README.md` is the host-facing manual, `CONTEXT.md` the domain
+Read the code for structure. `README.md` is the short host entrypoint, `docs/embedding.md`,
+`docs/events.md`, and `docs/integrations.md` hold the host manuals, `CONTEXT.md` the domain
 vocabulary, `docs/adr/` the decisions. What follows is what none of those say.
 
 ## Package management
@@ -85,12 +86,13 @@ time.
 rather than promised. In `packages/` it is a devDependency of `core` and `shared` only.
 
 **The authoring vocabulary is three functions**, all in
-`packages/core/src/backend/extensions/` and all walked through in README: `defineEvent` and
-`defineAction` for a host, `defineIntegration` for an integration. Nothing registers on
-import. An integration's actions are object literals inside that one call, and `defineStep`
-is the internal builder each is mapped through, reachable from no entry. README's "Writing
-an integration" section owns the canonical JSON codec contract a step boundary runs both
-directions through; `steps/define-step.ts`'s header states the invariant in brief.
+`packages/core/src/backend/extensions/` and walked through in `docs/events.md` and
+`docs/integrations.md`: `defineEvent` and `defineAction` for a host, `defineIntegration`
+for an integration. Nothing registers on import. An integration's actions are object
+literals inside that one call, and `defineStep` is the internal builder each is mapped
+through, reachable from no entry. `docs/integrations.md` owns the canonical JSON codec
+contract a step boundary runs both directions through; `steps/define-step.ts`'s header
+states the invariant in brief.
 
 **The extension surface is one JSON catalog, served on one route** (ADR-0008). A test that
 needs one provides `stubExtensions` or `stubExtensionCatalog` from
@@ -207,8 +209,8 @@ the built bundle handed to `createRovaApp`.
 **The published package is not the dev tree.** `packages/core` publishes `dist` and
 `drizzle`, with `@rova/shared` inlined into the build so it never appears as a dependency,
 and `backend/lib/effect/test-layers.ts` reachable from no entry. Verify a packaging change
-with `pnpm pack` and read the extracted manifest. README's "Package exports" is the one home
-of the six entry points.
+with `pnpm pack` and read the extracted manifest. `docs/embedding.md` ("Package exports")
+is the one home of the six entry points.
 
 ## Code cleanliness
 
@@ -287,8 +289,10 @@ No emojis. Do not create new markdown docs unless asked.
 - **CONTEXT.md** owns domain vocabulary, one paragraph per term.
 - **An ADR** owns why a design was chosen: once, in past tense, never updated. A decision
   that changes gets a dated amendment, not a rewrite.
-- **README.md** owns everything a host does: install, embed, define an Event, write an
-  integration, deploy.
+- **README.md** owns the short entrypoint: what Rova is, how to run it locally, and a
+  minimal embed. Detail lives under `docs/`: `docs/embedding.md` (mount, database,
+  options, package exports), `docs/events.md` (`defineEvent`), `docs/integrations.md`
+  (`defineIntegration`).
 - **AGENTS.md** owns what an agent must know that no other file says.
 - **A module header** owns the contract a caller cannot read off the signature (units,
   nullability, call order, failure modes). At most five lines, and it never repeats a

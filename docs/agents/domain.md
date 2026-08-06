@@ -17,9 +17,14 @@ workspace packages.
 ```
 /
 ├── CONTEXT.md
-├── docs/adr/
-│   ├── 0001-steps-return-step-result.md
-│   └── 0002-timestamps-cross-through-a-codec.md
+├── README.md              # short host entrypoint
+├── docs/
+│   ├── embedding.md       # mount, database, options, package exports
+│   ├── events.md          # defineEvent
+│   ├── integrations.md    # defineIntegration
+│   └── adr/
+│       ├── 0001-…
+│       └── …
 └── packages/
     ├── shared/
     ├── core/

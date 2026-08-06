@@ -133,7 +133,7 @@ step, and it now passes through `runWithStepLog`, which closes the row as an
 error. Restoring the retry means opening a step boundary of its own for the read
 inside `buildStep`, which nothing else needs; the contract is stated as it now
 behaves instead, in `step-runner.ts`, `credential-fetcher.ts`, `define-step.ts`
-and README.
+and `docs/integrations.md`.
 
 Nothing new is memoized by any of the three. The surface a run's steps are
 dispatched through now holds one credential read per integration, built per
