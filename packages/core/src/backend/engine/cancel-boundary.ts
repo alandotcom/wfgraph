@@ -11,7 +11,7 @@ import {
   LIFECYCLE_CANCELED_HANDLE,
   nodesBehindOutlet,
 } from "@rova/shared/lifecycle/lifecycle-outlets";
-import { readLifecycleRules } from "@rova/shared/lifecycle/lifecycle-rules";
+import { configDeclaresCancelEvent } from "@rova/shared/lifecycle/lifecycle-rules";
 import { Effect } from "effect";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 import { runDurable } from "#src/backend/engine/durable";
@@ -90,9 +90,8 @@ export class CancelBoundary {
   constructor(input: CancelBoundaryInput) {
     this.input = input;
 
-    this.canBeCanceled = input.lifecycleNodes.some(
-      (node) =>
-        (readLifecycleRules(node.data.config)?.cancelEvents.length ?? 0) > 0
+    this.canBeCanceled = input.lifecycleNodes.some((node) =>
+      configDeclaresCancelEvent(node.data.config)
     );
 
     this.canceledBranchNodeIds = nodesBehindOutlet({
