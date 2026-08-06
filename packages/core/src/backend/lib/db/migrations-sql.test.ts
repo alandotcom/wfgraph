@@ -101,9 +101,9 @@ describe("the generated migrations", () => {
   });
   // Drizzle applies a migration by comparing folder timestamps and never hashes,
   // so a regenerated baseline re-runs `CREATE TABLE` on every database that ran
-  // the old one. These two entries are what every existing database recorded;
-  // changing them is a deliberate act that costs every operator a dropped schema,
-  // and `assertJournalHashesAreOurs` is what turns it into a sentence.
+  // the old one. This entry is what every existing database recorded after the
+  // squash; changing it is a deliberate act that costs every operator a dropped
+  // schema, and `assertJournalHashesAreOurs` is what turns it into a sentence.
   it("keeps the journal's baseline entries append-only", async () => {
     const journal = JSON.parse(
       await readFile(join(MIGRATIONS_DIR, "meta/_journal.json"), "utf8")
@@ -111,11 +111,8 @@ describe("the generated migrations", () => {
 
     expect(
       journal.entries
-        .slice(0, 2)
+        .slice(0, 1)
         .map((entry: { tag: string; when: number }) => [entry.tag, entry.when])
-    ).toEqual([
-      ["0000_new_lord_tyger", 1785420141549],
-      ["0001_typical_zaladane", 1785438823846],
-    ]);
+    ).toEqual([["0000_light_emma_frost", 1785990903350]]);
   });
 });

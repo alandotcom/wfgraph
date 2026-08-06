@@ -33,7 +33,7 @@ function execution(id: string, status: WorkflowExecution["status"]) {
     cancelRequestedAt: null,
     cancelEventName: null,
     cancelPayload: null,
-    workflowVersionId: null,
+    workflowVersionId: "ver_1",
   };
 }
 

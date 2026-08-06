@@ -28,9 +28,8 @@ import type {
  * node label inside a template token, and the exact string the walker consumes.
  *
  * Known redundancy: `type` and `format` say the same thing for the two string
- * subtypes, `timestamp` and `duration`. Folding `format` into `type` would
- * change the serialized schema contract and needs a read-side migration, so both
- * are kept for now.
+ * subtypes, `timestamp` and `duration`. Both stay until every reader of
+ * `ReferenceField` is updated together.
  *
  * `showWhen` belongs to action output fields: offer the path only when another
  * config key holds a given value. Absent means always offered. Event payload

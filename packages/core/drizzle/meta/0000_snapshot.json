@@ -1,5 +1,5 @@
 {
-  "id": "85ba6452-6f51-46b1-926c-6c44a2d22d16",
+  "id": "a855f595-127f-480f-9c8d-0f1aba333a6d",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -37,7 +37,7 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": "(now() at time zone 'utc')"
         },
         "last_used_at": {
           "name": "last_used_at",
@@ -110,14 +110,14 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": "(now() at time zone 'utc')"
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": "(now() at time zone 'utc')"
         }
       },
       "indexes": {},
@@ -179,8 +179,12 @@
           "name": "workflow_event_subscriptions_workflow_id_workflows_id_fk",
           "tableFrom": "workflow_event_subscriptions",
           "tableTo": "workflows",
-          "columnsFrom": ["workflow_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "workflow_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -188,7 +192,11 @@
       "compositePrimaryKeys": {
         "workflow_event_subscriptions_workflow_id_event_name_role_pk": {
           "name": "workflow_event_subscriptions_workflow_id_event_name_role_pk",
-          "columns": ["workflow_id", "event_name", "role"]
+          "columns": [
+            "workflow_id",
+            "event_name",
+            "role"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -241,7 +249,7 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": "(now() at time zone 'utc')"
         }
       },
       "indexes": {
@@ -286,6 +294,28 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "workflow_execution_events_workflow_scoped_idx": {
+          "name": "workflow_execution_events_workflow_scoped_idx",
+          "columns": [
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"workflow_execution_events\".\"event_type\" in ('run_refused', 'cancel_not_delivered')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -293,8 +323,12 @@
           "name": "workflow_execution_events_workflow_id_workflows_id_fk",
           "tableFrom": "workflow_execution_events",
           "tableTo": "workflows",
-          "columnsFrom": ["workflow_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "workflow_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -302,8 +336,12 @@
           "name": "workflow_execution_events_execution_id_workflow_executions_id_fk",
           "tableFrom": "workflow_execution_events",
           "tableTo": "workflow_executions",
-          "columnsFrom": ["execution_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "execution_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -377,7 +415,7 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": "(now() at time zone 'utc')"
         },
         "completed_at": {
           "name": "completed_at",
@@ -396,7 +434,7 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": "(now() at time zone 'utc')"
         }
       },
       "indexes": {
@@ -442,8 +480,12 @@
           "name": "workflow_execution_logs_execution_id_workflow_executions_id_fk",
           "tableFrom": "workflow_execution_logs",
           "tableTo": "workflow_executions",
-          "columnsFrom": ["execution_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "execution_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -470,6 +512,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "workflow_version_id": {
+          "name": "workflow_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "workflow_run_id": {
           "name": "workflow_run_id",
           "type": "text",
@@ -488,6 +536,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "delivery_id": {
+          "name": "delivery_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enqueued_at": {
+          "name": "enqueued_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "run_mode": {
           "name": "run_mode",
           "type": "text",
@@ -495,14 +555,14 @@
           "notNull": true,
           "default": "'live'"
         },
-        "trigger_event_type": {
-          "name": "trigger_event_type",
+        "start_event_name": {
+          "name": "start_event_name",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "correlation_key": {
-          "name": "correlation_key",
+        "entity_value": {
+          "name": "entity_value",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -530,7 +590,7 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": "(now() at time zone 'utc')"
         },
         "waiting_at": {
           "name": "waiting_at",
@@ -555,6 +615,24 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "cancel_requested_at": {
+          "name": "cancel_requested_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancel_event_name": {
+          "name": "cancel_event_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancel_payload": {
+          "name": "cancel_payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -563,6 +641,27 @@
           "columns": [
             {
               "expression": "workflow_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workflow_executions_workflow_id_delivery_id_uidx": {
+          "name": "workflow_executions_workflow_id_delivery_id_uidx",
+          "columns": [
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "delivery_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -587,24 +686,9 @@
               "isExpression": false,
               "asc": true,
               "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "workflow_executions_workflow_id_correlation_key_idx": {
-          "name": "workflow_executions_workflow_id_correlation_key_idx",
-          "columns": [
-            {
-              "expression": "workflow_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
             },
             {
-              "expression": "correlation_key",
+              "expression": "id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -615,8 +699,45 @@
           "method": "btree",
           "with": {}
         },
-        "workflow_executions_in_flight_by_correlation_idx": {
-          "name": "workflow_executions_in_flight_by_correlation_idx",
+        "workflow_executions_started_at_id_idx": {
+          "name": "workflow_executions_started_at_id_idx",
+          "columns": [
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workflow_executions_superseded_by_workflow_idx": {
+          "name": "workflow_executions_superseded_by_workflow_idx",
+          "columns": [
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"workflow_executions\".\"status\" = 'superseded'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workflow_executions_live_by_workflow_idx": {
+          "name": "workflow_executions_live_by_workflow_idx",
           "columns": [
             {
               "expression": "workflow_id",
@@ -625,7 +746,29 @@
               "nulls": "last"
             },
             {
-              "expression": "correlation_key",
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"workflow_executions\".\"status\" <> 'superseded'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workflow_executions_in_flight_by_entity_idx": {
+          "name": "workflow_executions_in_flight_by_entity_idx",
+          "columns": [
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "entity_value",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -649,8 +792,138 @@
           "name": "workflow_executions_workflow_id_workflows_id_fk",
           "tableFrom": "workflow_executions",
           "tableTo": "workflows",
-          "columnsFrom": ["workflow_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "workflow_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "workflow_executions_workflow_version_id_workflow_versions_id_fk": {
+          "name": "workflow_executions_workflow_version_id_workflow_versions_id_fk",
+          "tableFrom": "workflow_executions",
+          "tableTo": "workflow_versions",
+          "columnsFrom": [
+            "workflow_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.workflow_versions": {
+      "name": "workflow_versions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workflow_id": {
+          "name": "workflow_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "graph": {
+          "name": "graph",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "catalog_fingerprint": {
+          "name": "catalog_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "graph_digest": {
+          "name": "graph_digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "(now() at time zone 'utc')"
+        }
+      },
+      "indexes": {
+        "workflow_versions_workflow_id_version_uidx": {
+          "name": "workflow_versions_workflow_id_version_uidx",
+          "columns": [
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workflow_versions_workflow_id_published_at_idx": {
+          "name": "workflow_versions_workflow_id_published_at_idx",
+          "columns": [
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "published_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "workflow_versions_workflow_id_workflows_id_fk": {
+          "name": "workflow_versions_workflow_id_workflows_id_fk",
+          "tableFrom": "workflow_versions",
+          "tableTo": "workflows",
+          "columnsFrom": [
+            "workflow_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -742,7 +1015,7 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": "(now() at time zone 'utc')"
         },
         "resumed_at": {
           "name": "resumed_at",
@@ -794,21 +1067,6 @@
           "method": "btree",
           "with": {}
         },
-        "workflow_wait_states_run_id_idx": {
-          "name": "workflow_wait_states_run_id_idx",
-          "columns": [
-            {
-              "expression": "run_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "workflow_wait_states_subscribed_events_idx": {
           "name": "workflow_wait_states_subscribed_events_idx",
           "columns": [
@@ -824,6 +1082,22 @@
           "concurrently": false,
           "method": "gin",
           "with": {}
+        },
+        "workflow_wait_states_waiting_by_workflow_idx": {
+          "name": "workflow_wait_states_waiting_by_workflow_idx",
+          "columns": [
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"workflow_wait_states\".\"status\" = 'waiting'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -831,8 +1105,12 @@
           "name": "workflow_wait_states_execution_id_workflow_executions_id_fk",
           "tableFrom": "workflow_wait_states",
           "tableTo": "workflow_executions",
-          "columnsFrom": ["execution_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "execution_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -840,8 +1118,12 @@
           "name": "workflow_wait_states_workflow_id_workflows_id_fk",
           "tableFrom": "workflow_wait_states",
           "tableTo": "workflows",
-          "columnsFrom": ["workflow_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "workflow_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -901,19 +1183,25 @@
           "notNull": true,
           "default": "'private'"
         },
+        "published_version_id": {
+          "name": "published_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": "(now() at time zone 'utc')"
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "default": "now()"
+          "default": "(now() at time zone 'utc')"
         }
       },
       "indexes": {
@@ -933,7 +1221,21 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "workflows_published_version_id_workflow_versions_id_fk": {
+          "name": "workflows_published_version_id_workflow_versions_id_fk",
+          "tableFrom": "workflows",
+          "tableTo": "workflow_versions",
+          "columnsFrom": [
+            "published_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
