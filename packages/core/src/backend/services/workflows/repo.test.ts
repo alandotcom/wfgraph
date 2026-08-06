@@ -216,18 +216,30 @@ describe("insertPublishedVersion", () => {
     });
   }
 
+  function answerWhenWorkflowPresent({
+    query,
+  }: {
+    query: string;
+  }): unknown[][] {
+    // Presence check before mint (columns: id only).
+    if (query.startsWith("select") && query.includes('"workflows"')) {
+      return [["wf_1"]];
+    }
+    if (query.startsWith("insert") && query.includes("workflow_versions")) {
+      return [versionRow("ver_new", 1)];
+    }
+    if (query.startsWith("update") && query.includes("workflows")) {
+      return [workflowRow("ver_new")];
+    }
+    return [];
+  }
+
   // The unique index is the optimistic condition: insert only when that
   // version number is still free.
   it("claims a version number with on conflict do nothing", async () => {
-    const { layer: databaseLayer, statements } = stubDatabase(({ query }) => {
-      if (query.startsWith("insert") && query.includes("workflow_versions")) {
-        return [versionRow("ver_new", 1)];
-      }
-      if (query.startsWith("update") && query.includes("workflows")) {
-        return [workflowRow("ver_new")];
-      }
-      return [];
-    });
+    const { layer: databaseLayer, statements } = stubDatabase(
+      answerWhenWorkflowPresent
+    );
 
     const published = await Effect.runPromise(
       insert(1).pipe(
@@ -250,6 +262,9 @@ describe("insertPublishedVersion", () => {
 
   it("answers stale when the version number was already taken", async () => {
     const { layer: databaseLayer } = stubDatabase(({ query }) => {
+      if (query.startsWith("select") && query.includes('"workflows"')) {
+        return [["wf_1"]];
+      }
       if (query.startsWith("insert") && query.includes("workflow_versions")) {
         return [];
       }
@@ -265,19 +280,12 @@ describe("insertPublishedVersion", () => {
     expect(published).toEqual({ stale: true });
   });
 
-  // Soft-returning null after a successful mint would commit the version row.
-  // The txn must throw (abort) so the catch outside can map to NotFound.
-  it("aborts the transaction when the workflow update matches nothing after minting", async () => {
-    const {
-      layer: databaseLayer,
-      statements,
-      transactionOutcomes,
-    } = stubDatabase(({ query }) => {
+  // Soft null after a mint would commit an orphan version row. The presence
+  // check runs before the insert so a missing workflow never writes one.
+  it("does not mint a version when the workflow is missing", async () => {
+    const { layer: databaseLayer, statements } = stubDatabase(({ query }) => {
       if (query.startsWith("insert") && query.includes("workflow_versions")) {
         return [versionRow("ver_orphan", 1)];
-      }
-      if (query.startsWith("update") && query.includes("workflows")) {
-        return [];
       }
       return [];
     });
@@ -289,13 +297,12 @@ describe("insertPublishedVersion", () => {
     );
 
     expect(published).toBeNull();
-    expect(transactionOutcomes).toEqual(["threw"]);
     expect(
       statements.some(
         (statement) =>
           statement.query.startsWith("insert") &&
           statement.query.includes("workflow_versions")
       )
-    ).toBe(true);
+    ).toBe(false);
   });
 });

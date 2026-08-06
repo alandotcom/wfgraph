@@ -188,12 +188,6 @@ export type StubbedDatabase = {
   readonly layer: Layer.Layer<Database>;
   /** Every statement sent, in the order the repository sent them. */
   readonly statements: CapturedStatement[];
-  /**
-   * How each `transaction` body settled: `"returned"` is the commit shape,
-   * `"threw"` the abort shape. The proxy has no real rollback; the outcome is
-   * what a test asserts when soft-return vs throw is the contract under test.
-   */
-  readonly transactionOutcomes: Array<"returned" | "threw">;
 };
 
 /**
@@ -213,7 +207,6 @@ export function stubDatabase(
   answer: (statement: CapturedStatement) => StatementRows = () => []
 ): StubbedDatabase {
   const statements: CapturedStatement[] = [];
-  const transactionOutcomes: Array<"returned" | "threw"> = [];
 
   const base = drizzle(
     async (query, params) => {
@@ -228,16 +221,7 @@ export function stubDatabase(
   const db: RovaDatabase = new Proxy(base, {
     get(target, property, receiver) {
       if (property === "transaction") {
-        return async (body: (tx: unknown) => Promise<unknown>) => {
-          try {
-            const value = await body(db);
-            transactionOutcomes.push("returned");
-            return value;
-          } catch (error) {
-            transactionOutcomes.push("threw");
-            throw error;
-          }
-        };
+        return async (body: (tx: unknown) => Promise<unknown>) => body(db);
       }
       return Reflect.get(target, property, receiver);
     },
@@ -247,12 +231,7 @@ export function stubDatabase(
     query: (run) => Effect.promise(() => run(db)),
   };
 
-  return {
-    service,
-    layer: Layer.succeed(Database, service),
-    statements,
-    transactionOutcomes,
-  };
+  return { service, layer: Layer.succeed(Database, service), statements };
 }
 
 const workflowRepoStubs: WorkflowRepo["Service"] = {
