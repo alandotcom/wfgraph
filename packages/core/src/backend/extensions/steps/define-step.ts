@@ -3,8 +3,8 @@
  * transform an author writes (a comma-separated field to a list, a `Date` to an
  * ISO string) runs on the way in and out rather than on the bare schema. A
  * schema from another library validates on the way in and passes through on the
- * way out, because that is the whole of what Standard Schema publishes. README's
- * "Schemas at a step boundary" section owns the full contract.
+ * way out, because that is the whole of what Standard Schema publishes.
+ * `docs/integrations.md` ("Schemas at a step boundary") owns the full contract.
  */
 
 import { Effect, Result, Schema } from "effect";
@@ -524,8 +524,8 @@ export function buildStep<TInput, TOutput>(
  * Build a step from its schemas, its metadata, and its handler.
  *
  * Internal: an integration declares an action as an object literal and
- * `defineIntegration` maps each one through here. README's "Writing an
- * integration" and the example on `defineIntegration` own the authoring shape.
+ * `defineIntegration` maps each one through here. `docs/integrations.md` and the
+ * example on `defineIntegration` own the authoring shape.
  */
 export function defineStep<TInput, TOutput>(
   definition: ActionStepInput<TInput, TOutput>

@@ -63,8 +63,8 @@ migrations could only ever build one schema.
 - Only a connection that keeps the `search_path` startup parameter works, since a pooler
   that swallows it would build the wrong schema silently. `runMigrations` reads
   `current_schema()` back before applying anything and fails naming both schemas, so that
-  failure surfaces at the migration rather than in a query downstream. README's database
-  options section has the pooler configuration this requires.
+  failure surfaces at the migration rather than in a query downstream. `docs/embedding.md`
+  ("The database options") has the pooler configuration this requires.
 - Migrations hold a session-scoped advisory lock, which is why the migration pool is one
   connection. Postgres does not serialize concurrent `CREATE SCHEMA` or `CREATE TABLE` of
   one name; it fails the losers on a unique violation, so replicas starting together used

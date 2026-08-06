@@ -1,8 +1,8 @@
 # Writing an integration
 
-README's "Writing an integration" is the walkthrough: the `defineIntegration` shape, what
-it owns around a handler, the canonical JSON codec and which optional spelling goes on which
-side. This file holds what is specific to the six integrations in this directory.
+`docs/integrations.md` is the walkthrough: the `defineIntegration` shape, what it owns
+around a handler, the canonical JSON codec and which optional spelling goes on which side.
+This file holds what is specific to the six integrations in this directory.
 
 ## The files
 
@@ -87,7 +87,8 @@ that step's output in the runs panel.
 
 The form is derived from the step's `input` schema, so a `configFields` entry states
 only what the schema cannot and merges into the derived field of the same key. Write
-none and the schema's own list is the form. README's "The config form" owns the rule.
+none and the schema's own list is the form. `docs/integrations.md` ("The config form")
+owns the rule.
 
 | Type                | Description                                | Templates |
 | ------------------- | ------------------------------------------ | --------- |
@@ -106,9 +107,9 @@ run steering its own test address from its payload defeats the point of nominati
 
 ## Describe the wire, not the SDK
 
-README states the rule. Pin a wire shape with a fixture built from a recorded response
-and an assertion running the encode: `acuity/appointments.test.ts` is the pattern, and a
-field-derivation test alone catches none of what an SDK type gets wrong.
+`docs/integrations.md` states the rule. Pin a wire shape with a fixture built from a
+recorded response and an assertion running the encode: `acuity/appointments.test.ts` is
+the pattern, and a field-derivation test alone catches none of what an SDK type gets wrong.
 
 ## Adding one
 
