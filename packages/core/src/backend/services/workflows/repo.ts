@@ -633,6 +633,17 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
           database.query(
             async (db) =>
               await db.transaction(async (tx) => {
+                // Verify before minting: a soft null after the insert would
+                // commit an orphan version row. Presence here means the later
+                // update cannot miss under the FK KEY SHARE the insert takes.
+                const existing = await tx.query.workflows.findFirst({
+                  where: eq(workflows.id, input.workflowId),
+                  columns: { id: true },
+                });
+                if (!existing) {
+                  return null;
+                }
+
                 // Optimistic claim: insert only if `version` is still free.
                 // Empty returning means another publish took it.
                 const [minted] = await tx
