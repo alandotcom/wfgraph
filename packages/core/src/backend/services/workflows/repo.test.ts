@@ -16,6 +16,7 @@ import {
   WorkflowRepo,
   WorkflowRepoLayer,
 } from "#src/backend/services/workflows/repo";
+import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 
 /** One row of the subscription-index read, in the order it selects columns. */
 type NamedRow = [
@@ -170,5 +171,97 @@ describe("listEventSubscribers", () => {
         correlationPath: null,
       },
     ]);
+  });
+});
+
+describe("insertPublishedVersion", () => {
+  const emptyGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
+
+  const workflowRow = (versionId: string) => [
+    "wf_1",
+    "Name",
+    null,
+    JSON.stringify(emptyGraph),
+    false,
+    "live",
+    "private",
+    versionId,
+    new Date(),
+    new Date(),
+  ];
+
+  const versionRow = (id: string, version: number) => [
+    id,
+    "wf_1",
+    version,
+    JSON.stringify(emptyGraph),
+    "fp",
+    "digest",
+    new Date(),
+  ];
+
+  function insert(version: number) {
+    return Effect.gen(function* () {
+      const repo = yield* WorkflowRepo;
+      return yield* repo.insertPublishedVersion({
+        workflowId: "wf_1",
+        versionId: "ver_new",
+        version,
+        graph: emptyGraph,
+        catalogFingerprint: "fp",
+        graphDigest: "digest",
+        draftGraph: emptyGraph,
+        eventSubscriptions: [],
+      });
+    });
+  }
+
+  // The unique index is the optimistic condition: insert only when that
+  // version number is still free.
+  it("claims a version number with on conflict do nothing", async () => {
+    const { layer: databaseLayer, statements } = stubDatabase(({ query }) => {
+      if (query.startsWith("insert") && query.includes("workflow_versions")) {
+        return [versionRow("ver_new", 1)];
+      }
+      if (query.startsWith("update") && query.includes("workflows")) {
+        return [workflowRow("ver_new")];
+      }
+      return [];
+    });
+
+    const published = await Effect.runPromise(
+      insert(1).pipe(
+        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
+      )
+    );
+
+    expect(
+      published && "stale" in published ? null : published?.version.id
+    ).toBe("ver_new");
+    const mintInsert = statements.find(
+      (statement) =>
+        statement.query.startsWith("insert") &&
+        statement.query.includes("workflow_versions")
+    );
+    expect(mintInsert?.query).toContain(
+      'on conflict ("workflow_id","version") do nothing'
+    );
+  });
+
+  it("answers stale when the version number was already taken", async () => {
+    const { layer: databaseLayer } = stubDatabase(({ query }) => {
+      if (query.startsWith("insert") && query.includes("workflow_versions")) {
+        return [];
+      }
+      return [];
+    });
+
+    const published = await Effect.runPromise(
+      insert(1).pipe(
+        Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
+      )
+    );
+
+    expect(published).toEqual({ stale: true });
   });
 });
