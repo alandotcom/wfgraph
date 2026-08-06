@@ -1,7 +1,8 @@
 /**
- * Coverage for the host-timer queue itself: install/uninstall, cancel, drain,
- * and nested `withHostTimers`, so the replay driver's quiescence is standing
- * on a stated model rather than on the one end-to-end regression alone.
+ * Coverage for the host-timer queue itself: install/uninstall, cancel, drain
+ * (including a timer enqueued from a microtask), and nested `withHostTimers`,
+ * so the replay driver's quiescence is standing on a stated model rather than
+ * on the one end-to-end regression alone.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
