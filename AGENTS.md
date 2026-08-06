@@ -78,8 +78,8 @@ answered over HTTP.
 
 **Timestamps cross through a codec.** `packages/shared/src/types/timestamp.ts` owns the one
 ISO-string-to-`Date` conversion, and `isoTimestampString` is the spelling that also carries
-`format: "date-time"`, which is the whole of how the editor learns a field is a moment in
-time.
+`format: "date-time"`, which `schema-codec` reads to set `type: "timestamp"` on the flat
+`ReferenceField` the editor menus off.
 
 **Zod is the example app's schema library, and a test fixture inside `packages/`.**
 `@rova/example-app` is written in it, which makes "an adopter needs no Effect" enforceable

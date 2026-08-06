@@ -69,7 +69,6 @@ export const builtInActions: readonly ActionMetadata[] = [
         path: "resumedAt",
         description: "When the run left the wait",
         type: "timestamp",
-        format: "timestamp",
       },
       {
         path: "event",

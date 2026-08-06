@@ -94,7 +94,6 @@ const referenceFieldWireSchema: Schema.Codec<ReferenceField> = Schema.Struct({
       "object",
     ])
   ),
-  format: Schema.optionalKey(Schema.Literals(["timestamp", "duration"])),
   nullable: Schema.optionalKey(Schema.Boolean),
   enumValues: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
   showWhen: Schema.optionalKey(showWhenWireSchema),

@@ -58,20 +58,6 @@ function reconcileType(declarations: Declaration[]): {
   };
 }
 
-/**
- * The format, kept only where every declaration of a known type carries the same
- * one. A format the Events disagree on says less than nothing about a value, and
- * dropping it leaves the type standing.
- */
-function reconcileFormat(
-  declarations: Declaration[]
-): ReferenceField["format"] | undefined {
-  const formats = uniq(
-    declarations.map((declaration) => declaration.field.format)
-  );
-  return formats.length === 1 ? formats[0] : undefined;
-}
-
 function reconcileDescription(declarations: Declaration[]): string | undefined {
   return declarations.find((declaration) => declaration.field.description)
     ?.field.description;
@@ -138,7 +124,6 @@ export function reachableEventFields(
   return Array.from(declarationsByPath.entries()).map(
     ([path, declarations]) => {
       const { type, typeClash } = reconcileType(declarations);
-      const format = reconcileFormat(declarations);
       const description = reconcileDescription(declarations);
       const enumValues = reconcileEnumValues(declarations);
 
@@ -146,7 +131,6 @@ export function reachableEventFields(
         path,
         ...(description ? { description } : {}),
         ...(type ? { type } : {}),
-        ...(type && format ? { format } : {}),
         ...(enumValues ? { enumValues } : {}),
         ...(typeClash ? { typeClash } : {}),
         ...(declarations.length < events.length ||

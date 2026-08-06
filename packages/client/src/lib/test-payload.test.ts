@@ -14,7 +14,7 @@ const appointmentCreated: EventMetadata = {
   correlationPath: "appointment.id",
   payloadFields: [
     { path: "appointment.id", type: "string" },
-    { path: "appointment.startsAt", type: "timestamp", format: "timestamp" },
+    { path: "appointment.startsAt", type: "timestamp" },
     { path: "appointment.seats", type: "number" },
     { path: "appointment.confirmed", type: "boolean", nullable: true },
     {

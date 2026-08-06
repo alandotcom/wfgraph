@@ -27,9 +27,9 @@ import type {
  * for example `order.items[0].sku`. It is the exact string that goes after the
  * node label inside a template token, and the exact string the walker consumes.
  *
- * Known redundancy: `type` and `format` say the same thing for the two string
- * subtypes, `timestamp` and `duration`. Both stay until every reader of
- * `ReferenceField` is updated together.
+ * `type` is the whole of how a timestamp or duration is told apart from plain
+ * text: JSON Schema's `format` keyword is read once in `schema-codec` and lands
+ * here as `type: "timestamp"` or `type: "duration"`.
  *
  * `showWhen` belongs to action output fields: offer the path only when another
  * config key holds a given value. Absent means always offered. Event payload
@@ -40,7 +40,6 @@ export type ReferenceField = {
   /** The author's own words for the field, absent when they wrote none. */
   description?: string;
   type?: WorkflowSchemaFieldType;
-  format?: "timestamp" | "duration";
   nullable?: boolean;
   enumValues?: string[];
   showWhen?: ShowWhen;
@@ -78,8 +77,6 @@ function schemaFieldToReferenceField(
     path,
     ...(description ? { description } : {}),
     type: field.type,
-    ...(field.type === "timestamp" ? { format: "timestamp" as const } : {}),
-    ...(field.type === "duration" ? { format: "duration" as const } : {}),
     ...(field.nullable ? { nullable: true } : {}),
     ...(field.enumValues ? { enumValues: field.enumValues } : {}),
   };

@@ -22,7 +22,6 @@ vi.mock("#src/lib/extensions", () => ({
           {
             path: "appointment.startsAt",
             type: "timestamp",
-            format: "timestamp",
           },
         ],
       },
