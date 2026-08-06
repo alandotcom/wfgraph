@@ -253,7 +253,8 @@ const workflowRepoStubs: WorkflowRepo["Service"] = {
   findVersionByContent: refuse("findVersionByContent"),
   findPublishedVersion: refuse("findPublishedVersion"),
   findByIdWithPublishedVersion: refuse("findByIdWithPublishedVersion"),
-  publishVersion: refuse("publishVersion"),
+  setPublishedVersion: refuse("setPublishedVersion"),
+  insertPublishedVersion: refuse("insertPublishedVersion"),
 };
 
 /**

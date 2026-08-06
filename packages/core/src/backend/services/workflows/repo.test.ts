@@ -174,7 +174,7 @@ describe("listEventSubscribers", () => {
   });
 });
 
-describe("publishVersion", () => {
+describe("insertPublishedVersion", () => {
   const emptyGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
 
   const workflowRow = (versionId: string) => [
@@ -200,18 +200,16 @@ describe("publishVersion", () => {
     new Date(),
   ];
 
-  function publish(version: number) {
+  function insert(version: number) {
     return Effect.gen(function* () {
       const repo = yield* WorkflowRepo;
-      return yield* repo.publishVersion({
+      return yield* repo.insertPublishedVersion({
         workflowId: "wf_1",
         versionId: "ver_new",
-        mint: {
-          version,
-          graph: emptyGraph,
-          catalogFingerprint: "fp",
-          graphDigest: "digest",
-        },
+        version,
+        graph: emptyGraph,
+        catalogFingerprint: "fp",
+        graphDigest: "digest",
         draftGraph: emptyGraph,
         eventSubscriptions: [],
       });
@@ -232,7 +230,7 @@ describe("publishVersion", () => {
     });
 
     const published = await Effect.runPromise(
-      publish(1).pipe(
+      insert(1).pipe(
         Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
       )
     );
@@ -259,7 +257,7 @@ describe("publishVersion", () => {
     });
 
     const published = await Effect.runPromise(
-      publish(1).pipe(
+      insert(1).pipe(
         Effect.provide(WorkflowRepoLayer.pipe(Layer.provide(databaseLayer)))
       )
     );

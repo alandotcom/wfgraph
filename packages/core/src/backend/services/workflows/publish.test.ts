@@ -69,26 +69,26 @@ describe("publishWorkflow", () => {
       stubIntegrationRepo({ typesByIds: () => Effect.succeed({}) })
     )
   )((it) => {
-    it.effect("mints a version and rewrites subscriptions", () =>
+    it.effect("inserts a version and rewrites subscriptions", () =>
       Effect.gen(function* () {
-        const published: Array<
-          Parameters<WorkflowRepo["Service"]["publishVersion"]>[0]
+        const inserted: Array<
+          Parameters<WorkflowRepo["Service"]["insertPublishedVersion"]>[0]
         > = [];
 
         const repo = stubWorkflowRepo({
           findById: () => Effect.succeed(draft),
           findVersionByContent: () => Effect.succeed(null),
           findLatestVersion: () => Effect.succeed(null),
-          publishVersion: (input) =>
+          insertPublishedVersion: (input) =>
             Effect.sync(() => {
-              published.push(input);
+              inserted.push(input);
               const version: WorkflowVersion = {
                 id: input.versionId,
                 workflowId: input.workflowId,
-                version: input.mint?.version ?? 1,
+                version: input.version,
                 graph: input.draftGraph,
-                catalogFingerprint: input.mint?.catalogFingerprint ?? "",
-                graphDigest: input.mint?.graphDigest ?? "",
+                catalogFingerprint: input.catalogFingerprint,
+                graphDigest: input.graphDigest,
                 publishedAt: new Date("2026-08-03T00:00:00.000Z"),
               };
               return {
@@ -108,11 +108,11 @@ describe("publishWorkflow", () => {
         }).pipe(Effect.provide(repo));
 
         assert.strictEqual(result.publishedVersion, 1);
-        assert.strictEqual(published.length, 1);
-        assert.strictEqual(published[0]?.mint?.version, 1);
-        assert.ok(published[0]?.eventSubscriptions.length === 1);
+        assert.strictEqual(inserted.length, 1);
+        assert.strictEqual(inserted[0]?.version, 1);
+        assert.ok(inserted[0]?.eventSubscriptions.length === 1);
         assert.strictEqual(
-          published[0]?.eventSubscriptions[0]?.eventName,
+          inserted[0]?.eventSubscriptions[0]?.eventName,
           "app/appointment.created"
         );
       })
@@ -130,23 +130,22 @@ describe("publishWorkflow", () => {
           publishedAt: new Date("2026-08-01T00:00:00.000Z"),
         };
 
-        // First publish to learn the digest/fingerprint the helper will compute.
         let capturedDigest = "";
         let capturedFingerprint = "";
         const mint = stubWorkflowRepo({
           findById: () => Effect.succeed(draft),
           findVersionByContent: () => Effect.succeed(null),
           findLatestVersion: () => Effect.succeed(null),
-          publishVersion: (input) =>
+          insertPublishedVersion: (input) =>
             Effect.sync(() => {
-              capturedDigest = input.mint?.graphDigest ?? "";
-              capturedFingerprint = input.mint?.catalogFingerprint ?? "";
+              capturedDigest = input.graphDigest;
+              capturedFingerprint = input.catalogFingerprint;
               return {
                 workflow: { ...draft, publishedVersionId: input.versionId },
                 version: {
                   id: input.versionId,
                   workflowId: input.workflowId,
-                  version: input.mint?.version ?? 1,
+                  version: input.version,
                   graph: input.draftGraph,
                   catalogFingerprint: capturedFingerprint,
                   graphDigest: capturedDigest,
@@ -170,7 +169,7 @@ describe("publishWorkflow", () => {
               catalogFingerprint: capturedFingerprint,
               graph: draft.graph,
             }),
-          publishVersion: (input) =>
+          setPublishedVersion: (input) =>
             Effect.sync(() => {
               reused.push(input.versionId);
               return {
@@ -209,7 +208,7 @@ describe("publishWorkflow", () => {
               graphDigest: "",
               publishedAt: new Date(),
             }),
-          publishVersion: () => Effect.succeed({ stale: true }),
+          insertPublishedVersion: () => Effect.succeed({ stale: true }),
         });
 
         const failure = yield* publishWorkflow({
