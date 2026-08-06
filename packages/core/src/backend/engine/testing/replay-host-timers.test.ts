@@ -61,6 +61,26 @@ describe("ReplayHostTimers", () => {
     }
   });
 
+  it("drains a timer scheduled from a microtask before declaring idle", async () => {
+    const timers = new ReplayHostTimers();
+    timers.install();
+    try {
+      let marker = false;
+      setImmediate(() => {
+        void Promise.resolve().then(() => {
+          setImmediate(() => {
+            marker = true;
+          });
+        });
+      });
+      await timers.drainUntilIdle();
+      expect(marker).toBe(true);
+      expect(timers.hasPending()).toBe(false);
+    } finally {
+      timers.uninstall();
+    }
+  });
+
   it("treats setTimeout(0) as an immediate and refuses a positive delay", async () => {
     const timers = new ReplayHostTimers();
     timers.install();
