@@ -9,7 +9,6 @@ import {
   currentWorkflowModeAtom,
   currentWorkflowNameAtom,
   currentWorkflowVisibilityAtom,
-  applyPublicationStateAtom,
   hasUnsavedChangesAtom,
   isWorkflowOwnerAtom,
   saveWorkflowAtom,
@@ -224,11 +223,6 @@ export const hydrateWorkflowAtom = atom(
     set(currentWorkflowVisibilityAtom, workflow.visibility ?? "private");
     set(currentWorkflowModeAtom, workflow.mode ?? "live");
     set(isWorkflowOwnerAtom, workflow.isOwner !== false);
-    set(applyPublicationStateAtom, {
-      workflowId: workflow.id,
-      hasUnpublishedChanges: workflow.hasUnpublishedChanges,
-      source: "hydrate",
-    });
     set(workflowNotFoundAtom, false);
   }
 );

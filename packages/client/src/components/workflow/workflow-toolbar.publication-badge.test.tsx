@@ -1,33 +1,10 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import { createStore } from "jotai";
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
-import {
-  currentWorkflowIdAtom,
-  hasUnpublishedChangesAtom,
-  hasUnsavedChangesAtom,
-  saveWorkflowAtom,
-  workflowApiAtom,
-} from "#src/lib/workflow-save-store";
-import { savedWorkflow } from "#src/lib/workflow-save-test-support";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-
-const toolbar = vi.hoisted(() => ({
-  state: {
-    allWorkflows: [
-      {
-        id: "workflow_1",
-        name: "Workflow",
-        publishedVersionId: "version_1",
-      },
-    ],
-    currentWorkflowId: "workflow_1",
-    hasUnsavedChanges: false,
-    hasUnpublishedChanges: false,
-    isOwner: true,
-    workflowMode: "live" as const,
-  },
-}));
+import { orpcQuery } from "#src/lib/rpc-query";
+import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 
 vi.mock("#src/components/workflows/user-menu", () => ({
   UserMenu: () => null,
@@ -41,63 +18,69 @@ vi.mock("#src/components/workflow/workflow-toolbar-chrome", () => ({
 
 vi.mock("#src/components/workflow/workflow-toolbar-handlers", () => ({
   useWorkflowActions: () => ({}),
-  useWorkflowState: () => toolbar.state,
+  useWorkflowState: () => ({
+    allWorkflows: [
+      {
+        id: "workflow_1",
+        name: "Workflow",
+        publishedVersionId: "version_1",
+      },
+    ],
+    currentWorkflowId: "workflow_1",
+    hasUnsavedChanges: false,
+    isOwner: true,
+    workflowMode: "live" as const,
+  }),
 }));
 
-function actionNode(x: number): WorkflowNode {
-  return {
-    id: "node_1",
-    type: "action",
-    position: { x, y: 0 },
-    data: {
-      label: "Send",
-      type: "action",
-      config: { actionType: "custom/send-message" },
-    },
-  };
+function seedPublication(
+  queryClient: QueryClient,
+  hasUnpublishedChanges: boolean
+) {
+  queryClient.setQueryData(
+    orpcQuery.workflow.getById.queryKey({
+      input: { workflowId: "workflow_1" },
+    }),
+    {
+      id: "workflow_1",
+      name: "Workflow",
+      isPaused: false,
+      mode: "live" as const,
+      visibility: "private" as const,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      publishedVersionId: "version_1",
+      hasUnpublishedChanges,
+      graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+    }
+  );
+}
+
+function renderToolbar(queryClient: QueryClient) {
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  return render(<WorkflowToolbar workflowId="workflow_1" />, { wrapper });
 }
 
 describe("workflow publication badge", () => {
-  it("keeps Unpublished changes after a draft save that differs from published", async () => {
-    const store = createStore();
-    const pendingSave =
-      Promise.withResolvers<ReturnType<typeof savedWorkflow>>();
-
-    store.set(currentWorkflowIdAtom, "workflow_1");
-    store.set(hasUnpublishedChangesAtom, false);
-    store.set(workflowApiAtom, {
-      ...store.get(workflowApiAtom),
-      update: () => pendingSave.promise,
+  it("shows Unpublished changes when getById says the draft differs", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
     });
-
-    const save = store.set(
-      saveWorkflowAtom,
-      { nodes: [actionNode(120)], edges: [] },
-      { immediate: true }
-    );
-
-    pendingSave.resolve({
-      ...savedWorkflow("workflow_1"),
-      publishedVersionId: "version_1",
-      hasUnpublishedChanges: true,
-    });
-    await save;
-
-    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
-    expect(store.get(hasUnpublishedChangesAtom)).toBe(true);
-
-    toolbar.state.hasUnsavedChanges = store.get(hasUnsavedChangesAtom);
-    toolbar.state.hasUnpublishedChanges = store.get(hasUnpublishedChangesAtom);
-    render(<WorkflowToolbar workflowId="workflow_1" />);
+    seedPublication(queryClient, true);
+    renderToolbar(queryClient);
 
     expect(screen.getByText("Unpublished changes")).toBeTruthy();
     expect(screen.queryByText("Published")).toBeNull();
   });
 
-  it("shows Published when the draft matches the published version", () => {
-    toolbar.state.hasUnsavedChanges = false;
-    toolbar.state.hasUnpublishedChanges = false;
-    render(<WorkflowToolbar workflowId="workflow_1" />);
+  it("shows Published when getById says the draft matches", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    seedPublication(queryClient, false);
+    renderToolbar(queryClient);
 
     expect(screen.getByText("Published")).toBeTruthy();
     expect(screen.queryByText("Unpublished changes")).toBeNull();

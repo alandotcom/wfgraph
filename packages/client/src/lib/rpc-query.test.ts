@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createSerializedWorkflowGraph } from "@rova/shared/graph/graph";
 import {
   orpcQuery,
+  cacheWorkflowPublication,
   refreshIntegrations,
   refreshRunHistory,
   refreshWorkflowList,
@@ -120,5 +121,20 @@ describe("refreshIntegrations", () => {
 
     expect(isInvalidated(integrationsKey)).toBe(true);
     expect(isInvalidated(workflowListKey)).toBe(false);
+  });
+});
+
+describe("cacheWorkflowPublication", () => {
+  it("writes hasUnpublishedChanges into the getById entry", () => {
+    cacheWorkflowPublication(queryClient, {
+      id: "a",
+      hasUnpublishedChanges: true,
+    });
+
+    expect(queryClient.getQueryData(workflowKey("a"))).toMatchObject({
+      id: "a",
+      hasUnpublishedChanges: true,
+    });
+    expect(isInvalidated(workflowKey("a"))).toBe(false);
   });
 });
