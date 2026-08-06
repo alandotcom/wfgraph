@@ -652,8 +652,8 @@ describe("wait node - event mode", () => {
     expect(waitStepLogs(store).closed[0]?.status).toBe("error");
   });
 
-  // The retired third mode has no fallback path: a saved node holding it fails
-  // the decode, which is where a graph written against the old shape stops.
+  // The retired third mode has no fallback path: a node holding it fails the
+  // decode at park time (and at save, once the graph schema sees it).
   it("fails a node still configured for the retired hook mode", async () => {
     const { runtime, execution } = runWait({
       config: { waitMode: "hook", waitHookToken: "token_abc" },
