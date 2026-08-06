@@ -115,9 +115,9 @@ vi.mock("#src/lib/rpc-query", () => ({
               },
               logs: [],
               waits: [],
-              ...(served.graphs[input.executionId]
-                ? { graph: served.graphs[input.executionId] }
-                : {}),
+              graph:
+                served.graphs[input.executionId] ??
+                createSerializedWorkflowGraph({ nodes: [], edges: [] }),
             };
           },
           select,

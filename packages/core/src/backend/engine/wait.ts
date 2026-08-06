@@ -62,8 +62,9 @@ function executeWaitActionInner(
     const runId = workflowRunId || runtime.runId || context.executionId;
 
     // The first schema this node has ever had, so a config written against the
-    // retired shape stops the run here rather than parking on a wait nothing can
-    // reach. Both log rows are one durable unit, so a replay does not duplicate.
+    // retired shape (or an already-enqueued run that still carries it) stops
+    // here rather than parking on a wait nothing can reach. Autosave refuses
+    // `waitMode: "hook"` at the graph boundary; this is the park-time gate.
     const read = readWaitConfig(input.config);
     if (!read.valid) {
       const errorMessage = `Wait node configuration is invalid: ${read.error}`;

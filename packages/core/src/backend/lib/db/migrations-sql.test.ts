@@ -113,6 +113,6 @@ describe("the generated migrations", () => {
       journal.entries
         .slice(0, 1)
         .map((entry: { tag: string; when: number }) => [entry.tag, entry.when])
-    ).toEqual([["0000_light_emma_frost", 1785990903350]]);
+    ).toEqual([["0000_peaceful_blacklash", 1785991417231]]);
   });
 });

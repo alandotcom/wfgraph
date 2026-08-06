@@ -159,11 +159,13 @@ export const workflowExecutions = pgTable(
     /**
      * The published version this run walks. Every Execution pins one, including
      * a terminal row that never ran the graph: readers (run panel, logs)
-     * resolve node ids against this graph, never the draft.
+     * resolve node ids against this graph, never the draft. Cascade with the
+     * version so a workflow delete cannot race sibling cascades against a
+     * required pin.
      */
     workflowVersionId: text("workflow_version_id")
       .notNull()
-      .references(() => workflowVersions.id, { onDelete: "restrict" }),
+      .references(() => workflowVersions.id, { onDelete: "cascade" }),
     workflowRunId: text("workflow_run_id"),
     status: text("status").notNull().$type<WorkflowExecutionStatus>(),
     startSource: text("start_source").$type<WorkflowExecutionStartSource>(),
