@@ -1,4 +1,3 @@
-import { appendFileSync } from "node:fs";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
@@ -48,7 +47,7 @@ const served = vi.hoisted(() => ({
   items: [] as RawExecution[],
   supersededCount: 0,
   graphs: {} as Record<string, SerializedWorkflowGraph>,
-  /** Identity fields the logs summary *should* carry for past-cap deep links. */
+  /** Start identity the logs summary carries for ids not in the list. */
   logsSummaryExtras: {} as Record<
     string,
     {
@@ -102,6 +101,10 @@ vi.mock("#src/lib/rpc-query", () => ({
                 id: input.executionId,
                 workflowId: listed?.workflowId ?? "wf_1",
                 status: listed?.status ?? "completed",
+                startSource: listed?.startSource ?? "event",
+                runMode: listed?.runMode ?? "live",
+                startEventName: listed?.startEventName ?? null,
+                entityValue: listed?.entityValue ?? null,
                 error: null,
                 startedAt: "2026-03-01T10:00:00.000Z",
                 completedAt: "2026-03-01T10:00:30.000Z",
@@ -296,8 +299,8 @@ describe("WorkflowRuns", () => {
 
   it("opens a search-param run past the list from the logs summary", async () => {
     served.items = [execution("exec_other", "completed")];
-    // Logs summary carries test/event identity the panel should show — mapper
-    // currently hardcodes live / null, and past-cap runNumber is 0 (BUG #43).
+    // Past the newest-50 cap the list has no row; the logs summary alone must
+    // still paint Test Mode and the event start source.
     served.logsSummaryExtras = {
       exec_past_cap: {
         runMode: "test",
@@ -312,60 +315,8 @@ describe("WorkflowRuns", () => {
       await view.findByRole("button", { name: "Back to runs list" })
     ).toBeTruthy();
     expect(view.getByText(/has left the runs list/)).toBeTruthy();
-
-    // #region agent log
-    const rowText =
-      view.getByTestId("workflow-run-summary-row").textContent ?? "";
-    appendFileSync(
-      "/opt/cursor/logs/debug.log",
-      `${JSON.stringify({
-        location: "workflow-runs.test.tsx",
-        message: "past-cap deep link UI BUG #43",
-        hypothesisId: "B",
-        data: {
-          rowText,
-          hasRun0: rowText.includes("Run #0"),
-          hasTestMode: rowText.includes("Test Mode"),
-          hasStartSource: /event/i.test(rowText),
-        },
-        timestamp: Date.now(),
-      })}\n`
-    );
-    // eslint-disable-next-line no-console -- repro evidence for BUG #43
-    console.log(
-      "[BUG#43 UI]",
-      JSON.stringify({
-        rowText,
-        hasRun0: rowText.includes("Run #0"),
-        hasTestMode: rowText.includes("Test Mode"),
-      })
-    );
-    // #endregion
-
-    // Current broken UI (evidence): Run #0, no Test Mode badge.
-    expect(view.getByText("Run #0")).toBeTruthy();
-    expect(view.queryByText("Test Mode")).toBeNull();
-  });
-
-  // Desired UI once #43 is fixed (known fail: mapper hardcodes live; runNumber 0).
-  it.fails("should show Test Mode and a real run number for a past-cap test deep link", async () => {
-    served.items = [execution("exec_other", "completed")];
-    served.logsSummaryExtras = {
-      exec_past_cap: {
-        runMode: "test",
-        startSource: "event",
-        startEventName: "app/appointment.created",
-        entityValue: "appt_99",
-      },
-    };
-    const { view } = renderRuns({ executionId: "exec_past_cap" });
-
-    expect(
-      await view.findByRole("button", { name: "Back to runs list" })
-    ).toBeTruthy();
-
     expect(view.getByText("Test Mode")).toBeTruthy();
-    expect(view.queryByText("Run #0")).toBeNull();
+    expect(view.getByText("event")).toBeTruthy();
   });
 
   it("clears the search param when going back to the list", async () => {

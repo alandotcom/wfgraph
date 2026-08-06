@@ -1,4 +1,3 @@
-import { appendFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   isRunInProgress,
@@ -24,18 +23,6 @@ const rawExecution = {
   cancelledAt: null,
   completedAt: "2026-03-01T10:00:05.000Z",
   duration: "5000",
-};
-
-/**
- * BUG #43 repro: a past-cap deep link builds the row from the logs summary.
- * The summary (and this mapper) omit/hardcode identity fields the row needs.
- * Cast carries the fields the row *should* have once the summary is extended.
- */
-type SummaryWithIdentity = ExecutionLogsResult["execution"] & {
-  runMode: "live" | "test";
-  startSource: "event" | "manual" | "schedule" | null;
-  startEventName: string | null;
-  entityValue: string | null;
 };
 
 describe("toWorkflowExecutions", () => {
@@ -91,69 +78,11 @@ describe("isRunInProgress", () => {
   });
 });
 
-describe("toWorkflowExecutionFromSummary (BUG #43)", () => {
-  // Documents the current broken mapping: identity is discarded / hardcoded.
-  it("hardcodes runMode live and null start identity even when summary carries test/event", () => {
-    const summary: SummaryWithIdentity = {
-      id: "exec_past_cap",
-      workflowId: "wf_1",
-      status: "completed",
-      input: {},
-      output: {},
-      error: null,
-      startedAt: "2026-03-01T10:00:00.000Z",
-      completedAt: "2026-03-01T10:00:30.000Z",
-      duration: "30s",
-      runMode: "test",
-      startSource: "event",
-      startEventName: "app/appointment.created",
-      entityValue: "appt_99",
-    };
-
-    const mapped = toWorkflowExecutionFromSummary(summary);
-
-    // #region agent log
-    appendFileSync(
-      "/opt/cursor/logs/debug.log",
-      `${JSON.stringify({
-        location: "execution-logs.test.ts",
-        message: "toWorkflowExecutionFromSummary BUG #43 output",
-        hypothesisId: "A",
-        data: {
-          summaryRunMode: summary.runMode,
-          summaryStartSource: summary.startSource,
-          summaryStartEventName: summary.startEventName,
-          summaryEntityValue: summary.entityValue,
-          mappedRunMode: mapped.runMode,
-          mappedStartSource: mapped.startSource,
-          mappedStartEventName: mapped.startEventName,
-          mappedEntityValue: mapped.entityValue,
-        },
-        timestamp: Date.now(),
-      })}\n`
-    );
-    // eslint-disable-next-line no-console -- repro evidence for BUG #43
-    console.log(
-      "[BUG#43 mapper]",
-      JSON.stringify({
-        summaryRunMode: summary.runMode,
-        mappedRunMode: mapped.runMode,
-        summaryStartSource: summary.startSource,
-        mappedStartSource: mapped.startSource,
-      })
-    );
-    // #endregion
-
-    // Current broken behaviour (evidence): identity lost.
-    expect(mapped.runMode).toBe("live");
-    expect(mapped.startSource).toBeNull();
-    expect(mapped.startEventName).toBeNull();
-    expect(mapped.entityValue).toBeNull();
-  });
-
-  // Desired behaviour once summary + mapper carry identity (known fail until #43).
-  it.fails("should preserve test/event identity from the summary", () => {
-    const summary: SummaryWithIdentity = {
+describe("toWorkflowExecutionFromSummary", () => {
+  // A deep link past the newest-50 list builds the row from this summary alone,
+  // so mode, source, event, and entity have to survive the mapping.
+  it("keeps start identity from the summary", () => {
+    const summary: ExecutionLogsResult["execution"] = {
       id: "exec_past_cap",
       workflowId: "wf_1",
       status: "completed",

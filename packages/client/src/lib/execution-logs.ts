@@ -159,7 +159,8 @@ export function toExecutionDetail(payload: ExecutionLogsResult): {
 
 /**
  * The logs endpoint's thinner execution summary, turned into the row shape the
- * Runs panel already uses. Fields the summary omits stay null / live.
+ * Runs panel already uses. Start identity rides on the summary so a deep link
+ * past the newest-50 list still paints mode, source, event, and entity.
  */
 export function toWorkflowExecutionFromSummary(
   summary: ExecutionLogsResult["execution"]
@@ -168,10 +169,10 @@ export function toWorkflowExecutionFromSummary(
     id: summary.id,
     workflowId: summary.workflowId,
     status: toExecutionStatus(summary.status),
-    startSource: null,
-    runMode: "live",
-    startEventName: null,
-    entityValue: null,
+    startSource: summary.startSource,
+    runMode: summary.runMode,
+    startEventName: summary.startEventName,
+    entityValue: summary.entityValue,
     workflowRunId: null,
     startedAt: new Date(summary.startedAt),
     waitingAt: null,

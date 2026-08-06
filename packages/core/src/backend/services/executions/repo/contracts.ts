@@ -67,13 +67,21 @@ export type NewTerminalExecution = NewExecution & {
   error?: string;
 };
 
-/** A run without the columns that say how it was triggered. */
+/**
+ * The logs payload's run row: where it got to, plus the fields that distinguish
+ * how it was started (mode, source, event, entity). Omits the rest of the
+ * routing columns the panel does not paint from this thinner shape.
+ */
 export type ExecutionSummary = Pick<
   WorkflowExecution,
   | "id"
   | "workflowId"
   | "workflowVersionId"
   | "status"
+  | "startSource"
+  | "runMode"
+  | "startEventName"
+  | "entityValue"
   | "input"
   | "output"
   | "error"
