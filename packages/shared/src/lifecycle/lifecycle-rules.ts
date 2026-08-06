@@ -107,10 +107,7 @@ export function readLifecycleRules(
   return readRules(config?.lifecycleRules);
 }
 
-/**
- * Whether this Lifecycle Node config lists at least one Cancel Event.
- * Without one, CancelBoundary never enters the Canceled outlet.
- */
+/** Whether this Lifecycle Node config lists at least one Cancel Event. */
 export function configDeclaresCancelEvent(
   config: Record<string, unknown> | undefined
 ): boolean {

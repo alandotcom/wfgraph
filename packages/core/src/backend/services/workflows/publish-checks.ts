@@ -52,35 +52,27 @@ function nodesBehindOutlets(input: {
 /**
  * Every node the engine can schedule from the Lifecycle Node: the entry nodes,
  * everything behind Started, and everything behind Canceled only when a Cancel
- * Event exists. Without one, CancelBoundary never enters that outlet.
+ * Event exists.
  */
 export function reachableNodeIds(input: {
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
 }): Set<string> {
-  const entryNodeIds = lifecycleEntryIds(input.nodes);
-  const outlets: LifecycleOutlet[] = [LIFECYCLE_STARTED_HANDLE];
-  if (
-    input.nodes.some(
-      (node) =>
-        node.data.type === "lifecycle" &&
-        configDeclaresCancelEvent(node.data.config)
-    )
-  ) {
-    outlets.push(LIFECYCLE_CANCELED_HANDLE);
-  }
+  const includeCanceled = input.nodes.some(
+    (node) =>
+      node.data.type === "lifecycle" &&
+      configDeclaresCancelEvent(node.data.config)
+  );
 
   return nodesBehindOutlets({
-    entryNodeIds,
-    outlets,
+    entryNodeIds: lifecycleEntryIds(input.nodes),
+    outlets: includeCanceled ? BOTH_OUTLETS : [LIFECYCLE_STARTED_HANDLE],
     edges: input.edges,
   });
 }
 
 /**
- * Refuse nodes that hang off neither Lifecycle outlet. The inactive Canceled
- * subtree stays connected through that outlet, so publish still allows it when
- * no Cancel Event is declared (ADR-0012); the editor mutes it instead.
+ * Refuse nodes that hang off neither Lifecycle outlet.
  *
  * Deleting a node mid-chain orphans everything below it; the graph saves clean
  * and every run skips the orphans in silence.
